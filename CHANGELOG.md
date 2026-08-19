@@ -1,0 +1,22 @@
+# Changelog
+
+## 0.1.0
+
+Initial integrated Medialogue build covering the v1 roadmap through packaging/release readiness:
+
+- leave-in-place Movie and Show inventory;
+- TMDB identity and Plex secondary verification;
+- multiple qBittorrent clients and torrent recovery archive;
+- replacement/duplicate reconciliation;
+- interactive Prowlarr/Torznab search;
+- Custom Formats and Quality Profiles;
+- season packs and multi-episode mapping;
+- Problems, Jobs, SSE, Events, Recovery Bundle export;
+- Movie tags and bulk administration;
+- first-run setup checklist and Docker release packaging.
+
+## Deployment fix
+
+- Force `/usr/local/bin/medialogue-entrypoint` to mode `0755` during Docker build so Git/ZIP/Windows file-mode loss cannot make the container fail with `permission denied`.
+- Force shell scripts to LF line endings in Git.
+- CI now verifies the built container entrypoint is executable before booting the smoke-test stack.

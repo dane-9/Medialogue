@@ -1,0 +1,16 @@
+# Documentation
+
+- [Installation](INSTALLATION.md)
+- [Upgrade](UPGRADE.md)
+- [Backup / Restore](BACKUP_RESTORE.md)
+- [Remote Path Mapping](PATH_MAPPING.md)
+- [qBittorrent Setup](QBITTORRENT.md)
+- [Plex Setup](PLEX.md)
+- [Prowlarr / Torznab Setup](PROWLARR.md)
+- [Custom Formats](CUSTOM_FORMATS.md)
+- [Schedules and polling](SCHEDULES.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [Release checklist](RELEASE_CHECKLIST.md)
+- [Product master specification](design/media_manager_master_spec.md)
+- [Technical architecture](design/technical_architecture.md)
+- [Implementation roadmap](design/implementation_roadmap.md)
