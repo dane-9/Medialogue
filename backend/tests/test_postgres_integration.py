@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.models.domain import IdentityState, Movie, MovieRelease, ReleaseState
+from app.models.domain import IdentityState, Movie, MovieRelease, ReleaseState, Torrent
 
 
 POSTGRES_URL = os.getenv("MEDIALOGUE_TEST_POSTGRES_URL")
@@ -79,6 +79,36 @@ async def test_postgres_transaction_rollback_unique_tmdb_and_jsonb_roundtrip() -
             await db.delete(loaded)
             if movie is not None:
                 await db.delete(movie)
+            await db.commit()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgres_torrent_total_size_supports_large_season_packs() -> None:
+    """qBittorrent byte counts must not overflow PostgreSQL INTEGER."""
+
+    assert POSTGRES_URL is not None
+    engine = create_async_engine(POSTGRES_URL, pool_pre_ping=True)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    info_hash = f"part19-bigint-{random.getrandbits(64):016x}"
+    torrent_id = None
+    try:
+        async with sessions() as db:
+            torrent = Torrent(
+                info_hash=info_hash,
+                name="Large Season Pack",
+                total_size=96_122_540_555,
+            )
+            db.add(torrent)
+            await db.commit()
+            torrent_id = torrent.id
+
+        async with sessions() as db:
+            loaded = await db.get(Torrent, torrent_id)
+            assert loaded is not None
+            assert loaded.total_size == 96_122_540_555
+            await db.delete(loaded)
             await db.commit()
     finally:
         await engine.dispose()

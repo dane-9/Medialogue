@@ -435,7 +435,7 @@ class Torrent(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     info_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    total_size: Mapped[int | None] = mapped_column()
+    total_size: Mapped[int | None] = mapped_column(BigInteger)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
