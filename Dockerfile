@@ -32,7 +32,12 @@ COPY backend/ /app/backend/
 COPY --from=frontend-build /src/frontend/dist/ /app/frontend/dist/
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/medialogue-entrypoint
 WORKDIR /app/backend
+# backend/alembic/ is Medialogue's migration script directory. Setuptools
+# must not install it as the Python "alembic" package because that would
+# collide with the real Alembic dependency. Verify the import/CLI in-image.
 RUN pip install --no-cache-dir . \
+    && python -c "import alembic; from alembic.config import main; assert getattr(alembic, '__version__', None); print('Alembic', alembic.__version__)" \
+    && alembic --version \
     && test -x /usr/local/bin/medialogue-entrypoint \
     && mkdir -p /config/recovery-exports /torrent-archive \
     && chown -R appuser:appuser /app /config /torrent-archive

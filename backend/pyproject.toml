@@ -36,3 +36,5 @@ target-version = "py312"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["app*"]
+namespaces = false

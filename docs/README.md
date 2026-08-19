@@ -1,6 +1,7 @@
 # Documentation
 
 - [Installation](INSTALLATION.md)
+- [TrueNAS SCALE + Dockge + GHCR](TRUENAS_DOCKGE_GHCR.md)
 - [Upgrade](UPGRADE.md)
 - [Backup / Restore](BACKUP_RESTORE.md)
 - [Remote Path Mapping](PATH_MAPPING.md)

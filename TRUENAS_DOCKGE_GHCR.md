@@ -25,6 +25,8 @@ YOU manually tell Dockge to pull/redeploy it
 
 Create a GitHub repository named `medialogue` and upload the contents of this Medialogue folder.
 
+**Important if you are replacing an older upload through GitHub's web interface:** uploading new files does not delete obsolete files already in the repository. Remove stale files explicitly when instructed. This package is hardened so the old `backend/alembic/__init__.py` file cannot be installed as the real Alembic package, but keeping the repository clean is still recommended.
+
 Do not upload your real `.env` file. The repository `.gitignore` explicitly ignores `.env` and other `.env.*` files except the supplied examples.
 
 After the upload, **nothing runs automatically**.
