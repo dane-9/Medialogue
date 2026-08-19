@@ -1,0 +1,7 @@
+# Normalize text files in Git. Shell scripts must stay Unix/LF even when
+# the repository is edited or checked out on Windows.
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

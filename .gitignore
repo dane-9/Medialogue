@@ -1,0 +1,18 @@
+/.idea/
+/.local/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+backend/*.db
+backend/*.db-*
+backend/*.sqlite
+backend/*.sqlite-*
+frontend/node_modules/
+frontend/dist/
+
+# Local deployment secrets. Never commit these.
+.env
+.env.*
+!.env.example
+!.env.truenas-dockge.example

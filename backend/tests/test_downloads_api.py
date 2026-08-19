@@ -1,0 +1,396 @@
+"""qBittorrent client and observation API coverage for Part 7.
+
+The fake below deliberately exposes only the read-only methods used by the
+poller.  This keeps these tests independent of a running qBittorrent process
+while still asserting the durable behavior at the API boundary.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.core.config import Settings
+from app.db import session as db_session
+from app.db.base import Base
+from app.integrations.qbittorrent import TorrentObservation
+from app.main import create_app
+
+
+@pytest.fixture
+def client():
+    db_path = tempfile.mktemp(prefix="medialogue-downloads-", suffix=".db", dir=os.getcwd())
+    database_url = f"sqlite+aiosqlite:///{db_path}"
+    settings = Settings(
+        database_url=database_url,
+        bootstrap_admin=True,
+        secret_key="test-secret-key-123456",
+    )
+    engine = create_async_engine(database_url)
+
+    async def create_schema():
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        await engine.dispose()
+
+    asyncio.run(create_schema())
+    app = create_app(settings)
+    with TestClient(app) as test_client:
+        yield test_client
+    asyncio.run(db_session.engine.dispose())
+    try:
+        os.remove(db_path)
+    except FileNotFoundError:
+        pass
+
+
+@dataclass
+class FakeQBitBehavior:
+    torrents: list[TorrentObservation] = field(default_factory=list)
+    health_error: str | None = None
+    version: str = "v4.6.4"
+    instances: list[FakeQBitClient] = field(default_factory=list)
+
+    def factory(self, url: str, username: str, password: str) -> FakeQBitClient:
+        return FakeQBitClient(self, url, username, password)
+
+
+class FakeQBitClient:
+    def __init__(self, behavior: FakeQBitBehavior, url: str, username: str, password: str):
+        self.behavior = behavior
+        self.url = url
+        self.username = username
+        self.password = password
+        self.closed = False
+        behavior.instances.append(self)
+
+    async def health(self) -> dict[str, str]:
+        if self.behavior.health_error:
+            raise RuntimeError(self.behavior.health_error)
+        return {"status": "healthy", "version": self.behavior.version}
+
+    async def list_torrents(self) -> list[TorrentObservation]:
+        return list(self.behavior.torrents)
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def _login(client: TestClient) -> dict[str, str]:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "adminadmin"},
+    )
+    assert response.status_code == 200, response.text
+    return {"X-CSRF-Token": response.json()["csrf_token"]}
+
+
+def _enable_operations(client: TestClient, headers: dict[str, str]) -> None:
+    response = client.put("/api/v1/operations", headers=headers, json={"enabled": True})
+    assert response.status_code == 200, response.text
+
+
+def _torrent(
+    info_hash: str,
+    name: str,
+    *,
+    progress: float = 0.2,
+    state: str = "downloading",
+    save_path: str = "/downloads/movies",
+    content_path: str | None = None,
+    category: str = "movies",
+    tags: tuple[str, ...] = ("managed",),
+) -> TorrentObservation:
+    return TorrentObservation(
+        info_hash=info_hash,
+        name=name,
+        progress=progress,
+        state=state,
+        save_path=save_path,
+        content_path=content_path,
+        category=category,
+        tags=tags,
+        tracker="https://tracker.example/announce",
+        total_size=10_000,
+        added_at=1_700_000_000,
+        completed_at=1_700_000_100 if progress >= 1 else None,
+    )
+
+
+def _create_client(client: TestClient, headers: dict[str, str], **overrides) -> dict:
+    payload = {
+        "name": "qbit-movies-1",
+        "url": "http://qbit.test:8080",
+        "username": "media",
+        "password": "super-secret-qbit-password",
+        "scope": "movies",
+        "category": "movies",
+        "tags": ["managed", "archive"],
+        "enabled": True,
+        "poll_interval_seconds": 15,
+    }
+    payload.update(overrides)
+    response = client.post("/api/v1/download-clients", headers=headers, json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _install_fake(client: TestClient, behavior: FakeQBitBehavior) -> None:
+    # The dependency mirrors the Plex adapter seam and accepts URL, username,
+    # and password.  Keep this override local to each test to avoid leaking a
+    # fake into another isolated TestClient.
+    from app.api import downloads as downloads_api
+
+    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
+
+
+def test_download_client_crud_redacts_password_and_preserves_multiple_scopes(client: TestClient) -> None:
+    headers = _login(client)
+    movie = _create_client(client, headers)
+    show_one = _create_client(
+        client,
+        headers,
+        name="qbit-shows-1",
+        scope="shows",
+        url="http://qbit-shows-1.test:8080",
+        password="show-secret-1",
+    )
+    show_two = _create_client(
+        client,
+        headers,
+        name="qbit-shows-2",
+        scope="shows",
+        url="http://qbit-shows-2.test:8080",
+        password="show-secret-2",
+    )
+
+    assert movie["scope"] == "movies"
+    assert movie["password_configured"] is True
+    assert "password" not in movie
+    assert "super-secret-qbit-password" not in str(movie)
+    assert {show_one["scope"], show_two["scope"]} == {"shows"}
+
+    listing = client.get("/api/v1/download-clients")
+    assert listing.status_code == 200, listing.text
+    items = listing.json()["items"]
+    assert {item["name"] for item in items} == {"qbit-movies-1", "qbit-shows-1", "qbit-shows-2"}
+    assert all("password" not in item for item in items)
+    assert all(item["password_configured"] is True for item in items)
+
+    updated = client.patch(
+        f"/api/v1/download-clients/{movie['id']}",
+        headers=headers,
+        json={
+            "name": "qbit-movies-renamed",
+            "password": "",
+            "expected_revision": movie["revision"],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["name"] == "qbit-movies-renamed"
+    assert updated.json()["password_configured"] is True
+    assert updated.json()["revision"] == movie["revision"] + 1
+    assert "super-secret-qbit-password" not in updated.text
+
+    stale = client.patch(
+        f"/api/v1/download-clients/{movie['id']}",
+        headers=headers,
+        json={"expected_revision": movie["revision"]},
+    )
+    assert stale.status_code == 409, stale.text
+
+    deleted = client.delete(f"/api/v1/download-clients/{show_two['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    remaining = client.get("/api/v1/download-clients").json()["items"]
+    assert {item["name"] for item in remaining} == {"qbit-movies-renamed", "qbit-shows-1"}
+
+
+def test_download_client_test_and_health_refresh_use_read_only_fake(client: TestClient) -> None:
+    headers = _login(client)
+    configured = _create_client(client, headers)
+    behavior = FakeQBitBehavior()
+    _install_fake(client, behavior)
+    try:
+        tested = client.post(f"/api/v1/download-clients/{configured['id']}/test", headers=headers)
+        assert tested.status_code == 200, tested.text
+        assert tested.json()["status"] == "healthy"
+        assert tested.json()["version"] == "v4.6.4"
+        assert tested.json()["latency_ms"] is not None
+        assert behavior.instances[-1].password == "super-secret-qbit-password"
+
+        refreshed = client.post(
+            f"/api/v1/download-clients/{configured['id']}/test",
+            headers=headers,
+        )
+        assert refreshed.status_code == 200, refreshed.text
+        assert refreshed.json()["status"] == "healthy"
+
+        fetched = client.get(f"/api/v1/download-clients/{configured['id']}")
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json()["health"] == "healthy"
+    finally:
+        client.app.dependency_overrides.clear()
+
+    unavailable = FakeQBitBehavior(health_error="qBittorrent is offline")
+    _install_fake(client, unavailable)
+    try:
+        failed = client.post(
+            f"/api/v1/download-clients/{configured['id']}/test",
+            headers=headers,
+        )
+        assert failed.status_code == 200, failed.text
+        assert failed.json()["status"] == "unavailable"
+        assert "offline" in (failed.json().get("message") or "")
+    finally:
+        client.app.dependency_overrides.clear()
+
+
+def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance(client: TestClient) -> None:
+    headers = _login(client)
+    _enable_operations(client, headers)
+    root = Path.cwd() / f"qbit-movies-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    try:
+        configured_root = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": "qbit movies", "path": str(root), "media_type": "movies"},
+        )
+        assert configured_root.status_code == 201, configured_root.text
+        configured = _create_client(client, headers, tags=["managed"])
+        behavior = FakeQBitBehavior(
+            torrents=[
+                _torrent(
+                    "moviehash",
+                    "Inception 2010 2160p WEB-DL",
+                    progress=0.25,
+                    save_path=str(root),
+                    content_path=str(root / "Inception 2010 2160p WEB-DL"),
+                ),
+                _torrent(
+                    "unrelatedhash",
+                    "Linux ISO",
+                    progress=0.75,
+                    save_path="/other/downloads",
+                    content_path="/other/downloads/Linux ISO",
+                ),
+            ]
+        )
+        _install_fake(client, behavior)
+        try:
+            first = client.post(
+                f"/api/v1/download-clients/{configured['id']}/poll",
+                headers=headers,
+            )
+            assert first.status_code == 200, first.text
+            assert first.json()["observed"] == 2
+            assert first.json()["relevant"] == 1
+            assert first.json()["added"] == 1
+            assert first.json()["ignored"] == 1
+
+            downloads = client.get("/api/v1/downloads")
+            assert downloads.status_code == 200, downloads.text
+            items = downloads.json()["items"]
+            assert len(items) == 1
+            assert items[0]["info_hash"] == "moviehash"
+            assert items[0]["progress"] == pytest.approx(0.25)
+            assert items[0]["is_present"] is True
+            assert root.exists(), "Polling must not mutate media roots"
+
+            behavior.torrents = [
+                _torrent(
+                    "moviehash",
+                    "Inception 2010 2160p WEB-DL",
+                    progress=0.85,
+                    save_path=str(root),
+                    content_path=str(root / "Inception 2010 2160p WEB-DL"),
+                ),
+            ]
+            second = client.post(
+                f"/api/v1/download-clients/{configured['id']}/poll",
+                headers=headers,
+            )
+            assert second.status_code == 200, second.text
+            assert second.json()["added"] == 0
+            assert second.json()["removed"] == 0
+            current = client.get("/api/v1/downloads").json()["items"]
+            assert current[0]["progress"] == pytest.approx(0.85)
+
+            behavior.torrents = []
+            third = client.post(
+                f"/api/v1/download-clients/{configured['id']}/poll",
+                headers=headers,
+            )
+            assert third.status_code == 200, third.text
+            assert third.json()["removed"] == 1
+            historical = client.get("/api/v1/downloads")
+            assert historical.status_code == 200, historical.text
+            assert historical.json()["items"] == []
+            historical = client.get("/api/v1/downloads?include_removed=true")
+            assert historical.status_code == 200, historical.text
+            assert historical.json()["items"][0]["is_present"] is False
+            assert historical.json()["items"][0]["removed_at"] is not None
+        finally:
+            client.app.dependency_overrides.clear()
+    finally:
+        if root.exists():
+            root.rmdir()
+
+
+def test_manual_externally_added_torrent_is_observed_without_touching_media(client: TestClient) -> None:
+    headers = _login(client)
+    _enable_operations(client, headers)
+    root = Path.cwd() / f"qbit-manual-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    sentinel = root / "already-present.mkv"
+    sentinel.write_bytes(b"do not change")
+    try:
+        configured_root = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": "qbit manual movies", "path": str(root), "media_type": "movies"},
+        )
+        assert configured_root.status_code == 201, configured_root.text
+        configured = _create_client(client, headers, category=None, tags=[])
+        behavior = FakeQBitBehavior(
+            torrents=[
+                _torrent(
+                    "manualhash",
+                    "Arrival 2016 1080p BluRay REMUX",
+                    progress=1,
+                    state="uploading",
+                    save_path=str(root),
+                    content_path=str(root / "Arrival 2016 1080p BluRay REMUX"),
+                    category="",
+                    tags=(),
+                )
+            ]
+        )
+        _install_fake(client, behavior)
+        try:
+            polled = client.post(
+                f"/api/v1/download-clients/{configured['id']}/poll",
+                headers=headers,
+            )
+            assert polled.status_code == 200, polled.text
+            assert polled.json()["added"] == 1
+            observed = client.get("/api/v1/downloads").json()["items"]
+            assert len(observed) == 1
+            assert observed[0]["name"] == "Arrival 2016 1080p BluRay REMUX"
+            assert observed[0]["info_hash"] == "manualhash"
+            assert observed[0]["progress"] == pytest.approx(1)
+            assert observed[0]["is_present"] is True
+            assert sentinel.read_bytes() == b"do not change"
+        finally:
+            client.app.dependency_overrides.clear()
+    finally:
+        if root.exists():
+            sentinel.unlink(missing_ok=True)
+            root.rmdir()

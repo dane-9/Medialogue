@@ -1,0 +1,59 @@
+services:
+  media-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${MEDIALOGUE_VERSION:-0.1.0}
+    image: ${MEDIALOGUE_IMAGE:-medialogue:local}
+    restart: unless-stopped
+    ports:
+      - "${MEDIA_MANAGER_PORT:-8000}:8000"
+    environment:
+      PUID: ${PUID:-10001}
+      PGID: ${PGID:-10001}
+      TZ: ${TZ:-UTC}
+      MEDIALOGUE_ENVIRONMENT: production
+      MEDIALOGUE_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-media_manager}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-media_manager}
+      MEDIALOGUE_CONFIG_DIR: /config
+      MEDIALOGUE_TORRENT_ARCHIVE_DIR: /torrent-archive
+      MEDIALOGUE_RECOVERY_EXPORT_DIR: /config/recovery-exports
+      MEDIALOGUE_RECOVERY_EXPORT_RETENTION_HOURS: ${RECOVERY_EXPORT_RETENTION_HOURS:-24}
+      MEDIALOGUE_PG_BASEBACKUP_BIN: /usr/lib/postgresql/16/bin/pg_basebackup
+      MEDIALOGUE_SECRET_KEY: ${SECRET_KEY:-replace-with-a-long-random-secret}
+      MEDIALOGUE_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MEDIALOGUE_COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - ${CONFIG_DIR:-./.local/config}:/config
+      - ${TORRENT_ARCHIVE_DIR:-./.local/torrent-archive}:/torrent-archive
+      # Add only media paths Medialogue may inspect. Read-only is the safe default.
+      # Change a specific bind to :rw only if explicit GUI deletion is desired.
+      - ${MEDIA_DIR:-./media}:/media:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-media_manager}
+      POSTGRES_USER: ${POSTGRES_USER:-media_manager}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

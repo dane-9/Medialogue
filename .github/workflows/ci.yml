@@ -1,0 +1,97 @@
+name: CI (manual)
+
+# Nothing runs automatically when you push or upload files.
+# Run this only when YOU choose Actions -> CI (manual) -> Run workflow.
+on:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: medialogue_test
+          POSTGRES_USER: medialogue
+          POSTGRES_PASSWORD: medialogue-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medialogue -d medialogue_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install backend and test dependencies
+        run: python -m pip install -e './backend[test]'
+      - name: Compile backend
+        working-directory: backend
+        run: python -m compileall -q app tests
+      - name: Run fast regression suite
+        working-directory: backend
+        run: pytest -q --ignore=tests/test_postgres_integration.py
+      - name: Apply migrations to PostgreSQL 16 through asyncpg
+        working-directory: backend
+        env:
+          MEDIALOGUE_DATABASE_URL: postgresql+asyncpg://medialogue:medialogue-test@127.0.0.1:5432/medialogue_test
+        run: alembic upgrade head
+      - name: Run PostgreSQL-specific integration tests
+        working-directory: backend
+        env:
+          MEDIALOGUE_TEST_POSTGRES_URL: postgresql+asyncpg://medialogue:medialogue-test@127.0.0.1:5432/medialogue_test
+        run: pytest -q tests/test_postgres_integration.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Frontend behavior tests
+        run: npm test
+      - name: Typecheck and production build
+        run: npm run build
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare release-smoke environment
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-release-password/' .env
+          sed -i 's/^SECRET_KEY=.*/SECRET_KEY=ci-release-secret-0123456789abcdefghijklmnopqrstuvwxyz/' .env
+          mkdir -p .ci-media .local/config .local/torrent-archive
+      - name: Validate Compose configuration
+        run: docker compose config -q
+      - name: Build production image
+        run: docker compose build media-manager
+      - name: Verify container entrypoint is executable
+        run: docker run --rm --entrypoint /bin/sh medialogue:local -c 'test -x /usr/local/bin/medialogue-entrypoint'
+      - name: Boot fresh release stack
+        run: docker compose up -d
+      - name: Wait for application readiness
+        run: |
+          timeout 180 bash -c 'until curl -fsS http://127.0.0.1:8000/readyz >/dev/null; do sleep 3; done'
+          curl -fsS http://127.0.0.1:8000/healthz
+          curl -fsS http://127.0.0.1:8000/readyz
+      - name: Show container state
+        if: always()
+        run: docker compose ps && docker compose logs --no-color --tail=150
+      - name: Stop release stack
+        if: always()
+        run: docker compose down -v
