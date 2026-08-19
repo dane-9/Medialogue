@@ -41,6 +41,7 @@ def test_upgrade_head_on_fresh_sqlite_database_has_no_duplicate_ddl() -> None:
             season_columns = {column["name"] for column in inspector.get_columns("seasons")}
             episode_columns = {column["name"] for column in inspector.get_columns("episodes")}
             media_file_columns = {column["name"] for column in inspector.get_columns("media_files")}
+            torrent_columns = {column["name"]: column for column in inspector.get_columns("torrents")}
             profile_indexes = {index["name"] for index in inspector.get_indexes("quality_profiles")}
             override_indexes = {index["name"] for index in inspector.get_indexes("media_profile_overrides")}
             tables = set(inspector.get_table_names())
@@ -57,6 +58,7 @@ def test_upgrade_head_on_fresh_sqlite_database_has_no_duplicate_ddl() -> None:
     assert "revision" in season_columns
     assert "revision" in episode_columns
     assert {"last_exists_check_at", "missing_since", "missing_check_count"} <= media_file_columns
+    assert "BIGINT" in str(torrent_columns["total_size"]["type"]).upper()
     assert "uq_quality_profiles_name" in profile_indexes
     assert {"uq_media_profile_override_movie", "uq_media_profile_override_show"} <= override_indexes
     assert "tmdb_configurations" in tables
@@ -102,6 +104,7 @@ def test_initial_migration_is_explicit_and_does_not_import_live_orm_metadata() -
     assert (backend_dir / "alembic" / "versions" / "0007_custom_formats.py").exists()
     assert (backend_dir / "alembic" / "versions" / "0008_quality_profiles.py").exists()
     assert (backend_dir / "alembic" / "versions" / "0009_shows_seasons_episodes.py").exists()
+    assert (backend_dir / "alembic" / "versions" / "0010_torrent_size_bigint.py").exists()
 
 
 def test_upgrade_existing_part11_database_to_part12() -> None:
