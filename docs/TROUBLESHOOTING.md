@@ -44,3 +44,11 @@ Check per-indexer status in the search job. Indexers time out independently; suc
 ## Recovery export is unsupported
 
 Open Settings → Backup / Recovery and inspect the capability reasons. Physical export requires PostgreSQL, matching `pg_basebackup` major version, a readable torrent archive, a writable export directory, and no unsupported custom tablespaces.
+## Medialogue exits during startup with `cannot import name '__version__' from 'alembic'`
+
+This was caused by an older packaging configuration accidentally treating Medialogue's `backend/alembic/` migration-script directory as a Python package. A stale `backend/alembic/__init__.py` left behind by GitHub web uploads could then collide with the real Alembic dependency.
+
+Use the v4-or-newer source package, publish a new image, then pull/recreate the Medialogue container. v4 restricts Python package discovery to `app*` and validates the real Alembic CLI during the Docker build and again before GHCR publishing.
+
+If you maintain the repository through GitHub's web uploader, remember that uploading a newer folder does not delete obsolete files already in the repository. Delete obsolete files explicitly or use a normal Git checkout/sync.
+

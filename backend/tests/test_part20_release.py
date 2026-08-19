@@ -97,3 +97,22 @@ def test_readiness_reports_database_availability(client) -> None:
     response = test_client.get("/readyz")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "database": "available"}
+
+
+def test_backend_distribution_does_not_claim_alembic_namespace() -> None:
+    """Migration scripts must never be packaged as the third-party alembic module."""
+    import tomllib
+
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    config = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    finder = config["tool"]["setuptools"]["packages"]["find"]
+    assert finder["include"] == ["app*"]
+    assert finder["namespaces"] is False
+
+
+def test_real_alembic_dependency_exposes_version_and_cli_module() -> None:
+    import alembic
+    from alembic.config import main as alembic_main
+
+    assert alembic.__version__
+    assert callable(alembic_main)

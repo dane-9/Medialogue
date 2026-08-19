@@ -20,3 +20,10 @@ Initial integrated Medialogue build covering the v1 roadmap through packaging/re
 - Force `/usr/local/bin/medialogue-entrypoint` to mode `0755` during Docker build so Git/ZIP/Windows file-mode loss cannot make the container fail with `permission denied`.
 - Force shell scripts to LF line endings in Git.
 - CI now verifies the built container entrypoint is executable before booting the smoke-test stack.
+## Deployment fix v4
+
+- Restrict setuptools package discovery to `app*` only. The `backend/alembic/` migration directory and `tests/` are no longer installed into Python site-packages.
+- Prevent a stale `backend/alembic/__init__.py` from colliding with the real Alembic dependency.
+- Docker builds now fail immediately if the real Alembic import/CLI is broken.
+- Manual GHCR publishing now builds and validates the image locally before any tag is pushed.
+

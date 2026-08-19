@@ -80,9 +80,14 @@ jobs:
         run: docker compose config -q
       - name: Build production image
         run: docker compose build media-manager
-      - name: Verify container entrypoint is executable
-        run: docker run --rm --entrypoint /bin/sh medialogue:local -c 'test -x /usr/local/bin/medialogue-entrypoint'
-      - name: Boot fresh release stack
+      - name: Verify packaged runtime tools
+        run: |
+          docker run --rm --entrypoint /bin/sh medialogue:local -ec \
+            "test -x /usr/local/bin/medialogue-entrypoint && python -c 'import alembic; from alembic.config import main; print(alembic.__version__)' && alembic --version"
+      - name: Boot fresh release stack with TrueNAS-style PUID 0
+        env:
+          PUID: "0"
+          PGID: "1000"
         run: docker compose up -d
       - name: Wait for application readiness
         run: |
