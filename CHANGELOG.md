@@ -1,3 +1,8 @@
+## v8 runtime migration hotfix
+
+- Widen PostgreSQL `alembic_version.version_num` from 32 to 128 characters before applying revision 0011.
+- Add regression checks for descriptive Alembic revision identifiers.
+
 # Changelog
 
 ## Runtime stability fixes (v7)
