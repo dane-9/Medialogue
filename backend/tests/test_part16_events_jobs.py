@@ -1,6 +1,8 @@
 import asyncio
 import os
 import tempfile
+import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -23,6 +25,7 @@ from app.models.domain import (
     Movie,
     MovieRelease,
     MovieReleaseTorrent,
+    Problem,
     ReleaseState,
     StorageRoot,
     Torrent,
@@ -135,10 +138,16 @@ def test_empty_root_scan_has_durable_history_and_survives_refresh(client: TestCl
         assert started.status_code == 202
         job_id = started.json()["job_id"]
 
-        first = client.get(f"/api/v1/jobs/{job_id}")
-        second = client.get(f"/api/v1/jobs/{job_id}")
-        assert first.json()["status"] == "completed"
-        assert second.json()["status"] == "completed"
+        deadline = time.monotonic() + 5.0
+        second = None
+        while time.monotonic() < deadline:
+            second = client.get(f"/api/v1/jobs/{job_id}")
+            assert second.status_code == 200
+            if second.json()["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+                break
+            time.sleep(0.02)
+        assert second is not None
+        assert second.json()["status"] == "completed", second.json()
         assert second.json()["progress"]["percent"] == 100
 
         history = client.get("/api/v1/events?event_type=scan.completed")
@@ -213,3 +222,85 @@ def test_movie_event_history_includes_related_release_and_torrent_evidence(clien
     assert filtered.status_code == 200
     assert filtered.json()["total"] >= 1
     assert all(item["event_type"] == "torrent.removed" for item in filtered.json()["items"])
+
+
+def test_storage_scan_job_is_runtime_visible_deduplicated_and_cancellable(client: TestClient, monkeypatch) -> None:
+    """Regression for the production bug where scans stayed QUEUED forever.
+
+    The runtime worker must be independent from the request, persist RUNNING,
+    deduplicate a second click, and accept cancellation immediately.
+    """
+
+    from app.api import storage as storage_api
+    from app.services.jobs import update_job
+
+    headers = login_headers(client)
+    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
+    root_path = Path(tempfile.mkdtemp(prefix="medialogue-cancellable-root-", dir=os.getcwd()))
+    started = threading.Event()
+    cancelled = threading.Event()
+
+    async def slow_scan(job_id, root_id):
+        del root_id
+        async with db_session.async_session_factory() as db:
+            job = await db.get(Job, job_id)
+            assert job is not None
+            await update_job(db, job, status=JobStatus.RUNNING, progress={"percent": 1, "stage": "test_wait"})
+            await db.commit()
+        started.set()
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(storage_api, "run_storage_root_scan", slow_scan)
+    try:
+        root = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": f"Slow-{uuid.uuid4().hex[:8]}", "path": str(root_path), "media_type": "movies"},
+        )
+        assert root.status_code == 201, root.text
+        root_id = root.json()["id"]
+
+        first = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
+        assert first.status_code == 202, first.text
+        job_id = first.json()["job_id"]
+        assert started.wait(2), "runtime scan worker never started"
+
+        visible = client.get(f"/api/v1/jobs/{job_id}")
+        assert visible.status_code == 200, visible.text
+        assert visible.json()["status"] == "running"
+
+        duplicate = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
+        assert duplicate.status_code == 202, duplicate.text
+        assert duplicate.json()["job_id"] == job_id
+
+        stopped = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=headers)
+        assert stopped.status_code == 200, stopped.text
+        assert stopped.json()["status"] == "cancelled"
+        assert cancelled.wait(2), "runtime scan task was not cancelled"
+        durable = client.get(f"/api/v1/jobs/{job_id}")
+        assert durable.json()["status"] == "cancelled"
+    finally:
+        if root_path.exists():
+            root_path.rmdir()
+
+
+def test_problem_count_endpoint_returns_only_a_count(client: TestClient) -> None:
+    headers = login_headers(client)
+
+    async def seed():
+        async with db_session.async_session_factory() as db:
+            db.add_all([
+                Problem(reason="ONE", entity_type="test", message="one"),
+                Problem(reason="TWO", entity_type="test", message="two", status=ProblemStatus.RESOLVED),
+            ])
+            await db.commit()
+
+    from app.models.domain import ProblemStatus
+    asyncio.run(seed())
+    response = client.get("/api/v1/problems/count?status=open", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"count": 1}

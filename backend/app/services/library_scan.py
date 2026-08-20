@@ -6,13 +6,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session as db_session
 from app.integrations.filesystem import FilesystemObserver
 from app.models.domain import Job, JobStatus, MediaType, StorageRoot
 from app.services.events import create_event, publish_live_event
-from app.services.jobs import update_job
+from app.services.jobs import publish_job_status, update_job
 from app.services.reconciliation import (
     mark_absent_known_directories,
     mark_root_available,
@@ -29,6 +30,29 @@ def storage_root_scan_running(root_id: UUID) -> bool:
     """Return whether this process is already reconciling the root."""
 
     return _root_locks[root_id].locked()
+
+
+
+async def active_storage_root_scan_job(db: AsyncSession, root_id: UUID) -> Job | None:
+    """Return the newest queued/running scan for a root, if any.
+
+    This protects against duplicate clicks and against a second request being
+    queued behind the per-root runtime lock.  The summary field is inspected
+    in Python so the query stays portable between PostgreSQL and SQLite tests.
+    """
+
+    rows = (
+        await db.scalars(
+            select(Job)
+            .where(
+                Job.job_type.in_(("storage_root_scan", "reconciliation")),
+                Job.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
+            )
+            .order_by(Job.created_at.desc())
+        )
+    ).all()
+    expected = str(root_id)
+    return next((job for job in rows if str((job.summary or {}).get("storage_root_id") or "") == expected), None)
 
 
 def utcnow() -> datetime:
@@ -81,8 +105,12 @@ async def execute_storage_root_scan(
     observer = observer or FilesystemObserver()
     if job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
         return {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0}
-    await update_job(db, job, status=JobStatus.RUNNING, progress={"current": 0, "total": 0, "percent": 0})
-    await db.flush()
+    await update_job(db, job, status=JobStatus.RUNNING, progress={"current": 0, "total": 0, "percent": 0, "stage": "enumerating"})
+    # Commit the RUNNING transition immediately.  Holding this write until the
+    # end of a large scan made other sessions see the job as eternally QUEUED
+    # and also blocked cancellation on PostgreSQL.
+    await db.commit()
+    publish_job_status(job)
     publish_live_event(
         "scan.progress",
         entity_type="storage_root",
@@ -104,6 +132,8 @@ async def execute_storage_root_scan(
                 "affected_count": affected,
             },
         )
+        await db.commit()
+        publish_job_status(job)
         return {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0, "affected": affected}
 
     observations = await asyncio.to_thread(observer.scan_root, root.resolved_root_path)
@@ -113,6 +143,12 @@ async def execute_storage_root_scan(
         await mark_absent_show_directories(db, root, seen_paths)
     else:
         await mark_absent_known_directories(db, root, seen_paths)
+    # The filesystem enumeration is complete at this point, so commit the
+    # root/absence observations before doing per-directory reconciliation.
+    await db.commit()
+    await db.refresh(job)
+    if job.status == JobStatus.CANCELLED:
+        return {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0}
 
     summary = {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0}
     total = len(observations)
@@ -126,14 +162,18 @@ async def execute_storage_root_scan(
             else await reconcile_movie_directory(db, root, observation)
         )
         summary[result] += 1
-        progress = {"current": index, "total": total, "percent": round(index * 100 / total, 1) if total else 100}
+        progress = {"current": index, "total": total, "percent": round(index * 100 / total, 1) if total else 100, "stage": "reconciling"}
         await update_job(
             db,
             job,
             progress=progress,
             summary={**summary, "storage_root_id": str(root.id)},
         )
-        await db.flush()
+        # Each directory is its own durable checkpoint.  Besides making
+        # progress visible, this releases the Job row so Cancel can commit
+        # immediately instead of waiting for the full scan transaction.
+        await db.commit()
+        publish_job_status(job)
         publish_live_event(
             "scan.progress",
             entity_type="storage_root",
@@ -157,4 +197,6 @@ async def execute_storage_root_scan(
         message=f"Scan of {root.name} completed.",
         details=summary,
     )
+    await db.commit()
+    publish_job_status(job)
     return summary

@@ -27,3 +27,8 @@ def configure_logging(level: str = "INFO") -> None:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(JsonFormatter())
         root.addHandler(handler)
+    # Routine integration HTTP calls are expected background traffic. Keep
+    # connection failures visible while avoiding one INFO line per qBit/Plex/
+    # metadata request on a home-server console.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)

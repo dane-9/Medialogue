@@ -50,3 +50,19 @@ export function searchResultNeedsWarning(minimumQualityMet: boolean | undefined,
 export function isRegexConditionType(type: CustomFormatConditionType): boolean {
   return type === 'release_title' || type === 'release_group'
 }
+
+
+let fallbackIdCounter = 0
+
+export function browserSafeId(randomUuid: (() => string) | null | undefined = undefined): string {
+  const generator = randomUuid === undefined
+    ? (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID.bind(globalThis.crypto)
+      : null)
+    : randomUuid
+  if (generator) {
+    try { return generator() } catch { /* insecure/unsupported context: fall back below */ }
+  }
+  fallbackIdCounter += 1
+  return `local-${Date.now().toString(36)}-${fallbackIdCounter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}

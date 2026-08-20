@@ -20,6 +20,7 @@ from app.models.auth import AdminUser
 from app.api.dependencies import require_admin
 from app.services.qbittorrent import poll_due_download_clients
 from app.services.recovery import cleanup_expired_recovery_exports
+from app.services.runtime_jobs import cancel_all_runtime_jobs
 
 
 async def _qbit_poll_loop(stop_event: asyncio.Event) -> None:
@@ -74,6 +75,7 @@ async def lifespan(_: FastAPI):
         yield
     finally:
         stop_event.set()
+        cancel_all_runtime_jobs()
         await poll_task
 
 

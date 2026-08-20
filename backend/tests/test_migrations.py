@@ -50,7 +50,7 @@ def test_upgrade_head_on_fresh_sqlite_database_has_no_duplicate_ddl() -> None:
     finally:
         database_path.unlink(missing_ok=True)
 
-    assert {"revision", "poll_interval_seconds", "last_polled_at"} <= columns
+    assert {"revision", "poll_interval_seconds", "last_polled_at", "last_health_checked_at", "last_success_at", "latency_ms", "last_error"} <= columns
     assert {"enabled", "revision"} <= custom_format_columns
     assert "revision" in quality_profile_columns
     assert "revision" in profile_override_columns
@@ -105,6 +105,7 @@ def test_initial_migration_is_explicit_and_does_not_import_live_orm_metadata() -
     assert (backend_dir / "alembic" / "versions" / "0008_quality_profiles.py").exists()
     assert (backend_dir / "alembic" / "versions" / "0009_shows_seasons_episodes.py").exists()
     assert (backend_dir / "alembic" / "versions" / "0010_torrent_size_bigint.py").exists()
+    assert (backend_dir / "alembic" / "versions" / "0011_download_client_health_diagnostics.py").exists()
 
 
 def test_upgrade_existing_part11_database_to_part12() -> None:
@@ -179,3 +180,32 @@ def test_online_postgres_migrations_use_installed_asyncpg_driver() -> None:
     assert "async_engine_from_config" in source
     assert 'configuration["sqlalchemy.url"] = get_settings().database_url' in source
     assert "await connection.run_sync" in source
+
+
+def test_upgrade_existing_v6_database_adds_qbit_health_diagnostics() -> None:
+    """The TrueNAS v6 database upgrades in place without being recreated."""
+
+    backend_dir = Path(__file__).parents[1]
+    database_path = Path(tempfile.mktemp(prefix="medialogue-v6-upgrade-", suffix=".db", dir=backend_dir))
+    database_url = f"sqlite:///{database_path}"
+    environment = {**os.environ, "MEDIALOGUE_DATABASE_URL": database_url}
+    try:
+        to_v6 = subprocess.run(
+            ["alembic", "-c", str(backend_dir / "alembic.ini"), "upgrade", "0010_torrent_size_bigint"],
+            cwd=backend_dir, env=environment, capture_output=True, text=True,
+        )
+        assert to_v6.returncode == 0, to_v6.stdout + to_v6.stderr
+        to_head = subprocess.run(
+            ["alembic", "-c", str(backend_dir / "alembic.ini"), "upgrade", "head"],
+            cwd=backend_dir, env=environment, capture_output=True, text=True,
+        )
+        assert to_head.returncode == 0, to_head.stdout + to_head.stderr
+
+        engine = create_engine(database_url)
+        try:
+            columns = {column["name"] for column in inspect(engine).get_columns("download_clients")}
+        finally:
+            engine.dispose()
+        assert {"last_health_checked_at", "last_success_at", "latency_ms", "last_error"} <= columns
+    finally:
+        database_path.unlink(missing_ok=True)

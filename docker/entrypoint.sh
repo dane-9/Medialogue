@@ -7,7 +7,10 @@ PGID="${PGID:-10001}"
 run_app() {
   cd /app/backend
   alembic upgrade head
-  exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+  if [ "${MEDIALOGUE_ACCESS_LOG:-0}" = "1" ]; then
+    exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+  fi
+  exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --no-access-log
 }
 
 # Internal re-entry target used when gosu keeps UID 0 but changes the primary

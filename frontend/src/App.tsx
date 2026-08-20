@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { Component, FormEvent, useEffect, useState } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError, api } from './api/client'
 import { AppShell } from './components/Shell'
@@ -40,7 +41,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const setupSettings = location.pathname === '/settings' && new URLSearchParams(location.search).get('setup') === '1'
   if (setupRequired && location.pathname !== '/setup' && !setupSettings) return <Navigate to="/setup" replace />
 
-  return <AppShell onLogout={onLogout}><Routes>
+  return <AppShell onLogout={onLogout}><PageErrorBoundary key={location.pathname}><Routes>
     <Route path="/setup" element={<SetupPage onComplete={() => setSetupRequired(false)} />} />
     <Route path="/movies" element={<MoviesPage />} />
     <Route path="/movies/:id" element={<MovieDetailRoute />} />
@@ -55,7 +56,24 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/events" element={<EventHistoryPage />} />
     <Route path="/settings" element={<SettingsPage />} />
     <Route path="*" element={<Navigate to={setupRequired ? '/setup' : '/movies'} replace />} />
-  </Routes></AppShell>
+  </Routes></PageErrorBoundary></AppShell>
+}
+
+class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Medialogue page render failed', error, info)
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    return <div className="page"><div className="page-heading"><div className="heading-copy"><div className="eyebrow">PAGE ERROR</div><h1>This page crashed.</h1><p>The rest of Medialogue is still running. Refresh this page or navigate elsewhere while the error is investigated.</p></div></div><div className="settings-note error-note"><span>{this.state.error.message || 'Unexpected frontend error'}</span></div><Button variant="primary" onClick={() => window.location.reload()}>Reload page</Button></div>
+  }
 }
 
 function BootScreen() { return <div className="boot-screen"><div className="brand-mark"><span>✦</span></div><span>Loading Medialogue…</span></div> }

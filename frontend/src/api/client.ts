@@ -411,7 +411,7 @@ function normalizeDownloadClient(value: unknown): DownloadClient {
     tags: Array.isArray(item.tags) ? item.tags.map((tag) => textValue(tag)).filter(Boolean) : textValue(item.tags).split(',').map((tag) => tag.trim()).filter(Boolean),
     enabled: item.enabled !== false,
     health: textValue(item.health || item.status, 'unknown'),
-    last_checked_at: textValue(item.last_checked_at || item.checked_at) || undefined,
+    last_checked_at: textValue(item.last_health_checked_at || item.last_checked_at || item.checked_at) || undefined,
     last_success_at: textValue(item.last_success_at || item.last_success) || undefined,
     latency_ms: item.latency_ms === undefined ? undefined : numberValue(item.latency_ms),
     last_error: textValue(item.last_error || item.message) || undefined,
@@ -865,7 +865,7 @@ export const api = {
   },
   startRecoveryExport: () => request<{ job_id: string; status: string; warning: string }>('/api/v1/recovery/export', { method: 'POST' }),
   recoveryDownloadUrl: (jobId: string) => `/api/v1/recovery/exports/${encodeURIComponent(jobId)}/download`,
-  cancelJob: (jobId: string) => request<unknown>(`/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }),
+  cancelJob: (jobId: string) => request<JobPayload>(`/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }).then(normalizeJobPayload),
   events: async (filters: { eventType?: string; severity?: string; entityType?: string; page?: number; pageSize?: number } = {}) => {
     const params = new URLSearchParams()
     if (filters.eventType) params.set('event_type', filters.eventType)
@@ -1025,6 +1025,10 @@ export const api = {
   torrentArchiveItem: async (id: string) => normalizeTorrentArchiveItem(await request<unknown>(`/api/v1/torrent-archive/${encodeURIComponent(id)}`)),
   retryTorrentArchive: (id: string) => request<{ torrent_id: string; archive_state: string; archive_path?: string; manifest_path?: string; message?: string }>(`/api/v1/torrent-archive/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   restoreTorrentArchive: (id: string, payload: { download_client_id: string; save_path: string; category?: string; tags?: string[] }) => request<{ torrent_id: string; download_client_id: string; client_name: string; info_hash: string; save_path: string; resolved_save_path: string; status: string }>(`/api/v1/torrent-archive/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify(payload) }),
+  problemCount: async (status = 'open') => {
+    const payload = await request<{ count: number }>(`/api/v1/problems/count?status=${encodeURIComponent(status)}`)
+    return numberValue(payload.count)
+  },
   problems: async (status?: string) => {
     const payload = await request<{ items?: unknown[] } | unknown[]>(`/api/v1/problems${status ? `?status=${encodeURIComponent(status)}` : ''}`)
     const items = Array.isArray(payload) ? payload : payload.items ?? []

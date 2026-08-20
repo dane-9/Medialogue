@@ -515,6 +515,10 @@ class DownloadClient(TimestampMixin, Base):
     # exposes manual polling only; a later scheduler can consume this value.
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
     last_polled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_health_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(Text)
 
     observations: Mapped[list[TorrentClientObservation]] = relationship(
         back_populates="download_client", cascade="all, delete-orphan", passive_deletes=True

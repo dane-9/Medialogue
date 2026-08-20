@@ -63,6 +63,10 @@ class DownloadClientResponse(ORMModel):
     tags: list[str]
     enabled: bool
     health: str | None
+    last_health_checked_at: datetime | None = None
+    last_success_at: datetime | None = None
+    latency_ms: int | None = None
+    last_error: str | None = None
     revision: int
     poll_interval_seconds: int
     created_at: datetime

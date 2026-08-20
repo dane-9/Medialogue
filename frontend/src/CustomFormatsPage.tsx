@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react'
 import { api } from './api/client'
 import { Icon } from './components/Icon'
 import { Badge, Button, EmptyState, Input, Panel, Select } from './components/ui'
-import { isRegexConditionType } from './lib/uiState'
+import { browserSafeId, isRegexConditionType } from './lib/uiState'
 import type {
   CustomFormat,
   CustomFormatCondition,
@@ -40,7 +40,7 @@ const scopeLabel = (scope: CustomFormatScope) => scope === 'both' ? 'Both' : sco
 
 function freshCondition(type: CustomFormatConditionType = 'release_attribute'): CustomFormatCondition {
   return {
-    id: crypto.randomUUID(),
+    id: browserSafeId(),
     type,
     value: isRegexType(type) ? undefined : '',
     pattern: isRegexType(type) ? '' : undefined,
@@ -72,7 +72,7 @@ function cloneFormat(format: CustomFormat): CustomFormat {
     name: `${format.name} Copy`,
     revision: 0,
     usedByProfiles: 0,
-    conditions: format.conditions.map((condition) => ({ ...condition, id: crypto.randomUUID() })),
+    conditions: format.conditions.map((condition) => ({ ...condition, id: browserSafeId() })),
   }
 }
 
