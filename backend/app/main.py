@@ -13,7 +13,7 @@ from app.api import auth, bulk, custom_formats, downloads, duplicates, health, i
 from app.core.config import Settings, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.logging import configure_logging
-from app.db.bootstrap import ensure_default_admin, ensure_quality_definitions, mark_running_jobs_interrupted
+from app.db.bootstrap import ensure_default_admin, ensure_problem_integrity, ensure_quality_definitions, mark_running_jobs_interrupted
 from app.db import session as db_session
 from app.db.session import configure_database
 from app.models.auth import AdminUser
@@ -62,6 +62,7 @@ async def lifespan(_: FastAPI):
                 await ensure_default_admin(db, settings)
                 await ensure_quality_definitions(db)
                 await mark_running_jobs_interrupted(db)
+                await ensure_problem_integrity(db)
                 await db.commit()
         except Exception:
             # Migrations may be run after the process is started in local

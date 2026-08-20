@@ -114,11 +114,14 @@ async def run_reconciliation(
         raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
     job_ids: list[UUID] = []
     skipped_root_ids: list[UUID] = []
+    active_job_ids: list[UUID] = []
     pending_launches: list[tuple[UUID, UUID]] = []
     for root in roots:
         existing = await active_storage_root_scan_job(db, root.id)
         if existing is not None or storage_root_scan_running(root.id):
             skipped_root_ids.append(root.id)
+            if existing is not None:
+                active_job_ids.append(existing.id)
             continue
         job = await create_job(db, "reconciliation", summary={"storage_root_id": str(root.id), "path": root.resolved_root_path})
         job_ids.append(job.id)
@@ -130,7 +133,11 @@ async def run_reconciliation(
             publish_job_status(committed_job)
     for job_id, root_id in pending_launches:
         launch_runtime_job(job_id, lambda job_id=job_id, root_id=root_id: run_storage_root_scan(job_id, root_id))
-    return ReconciliationRunResponse(job_ids=job_ids, skipped_root_ids=skipped_root_ids)
+    return ReconciliationRunResponse(
+        job_ids=job_ids,
+        skipped_root_ids=skipped_root_ids,
+        active_job_ids=active_job_ids,
+    )
 
 
 @router.post("/movies/{movie_id}/manual-attach", response_model=ReconciliationActionResponse)

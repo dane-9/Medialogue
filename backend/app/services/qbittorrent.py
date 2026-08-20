@@ -38,6 +38,7 @@ from app.services.reconciliation import (
     cancel_incoming_torrent,
     finalize_completed_torrent,
     reconcile_torrent_disagreements,
+    resolve_problem,
 )
 
 
@@ -457,6 +458,11 @@ async def _poll_download_client(
                 )
                 torrent = await db.get(Torrent, row.torrent_id)
                 if torrent is not None:
+                    # A prior duplicate-resolution removal may have failed,
+                    # but the torrent can later disappear through a retry or
+                    # manual qBittorrent action. Fresh qBit evidence then
+                    # proves that failure Problem is no longer current.
+                    await resolve_problem(db, "QBIT_REMOVE_FAILED", "torrent", torrent.id)
                     await cancel_incoming_torrent(db, torrent)
                     await reconcile_torrent_disagreements(db, torrent, qbit_present=False)
 

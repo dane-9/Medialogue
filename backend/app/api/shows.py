@@ -45,6 +45,7 @@ from app.schemas.shows import (
     TMDBShowLookupResponse,
 )
 from app.services.events import create_event, scope_predicate, show_event_scope
+from app.services.reconciliation import resolve_problem
 from app.services.shows import add_show_from_tmdb, resolve_show_resource, set_media_file_episode_mappings, show_plex_state, show_problem_count
 from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
@@ -219,6 +220,7 @@ async def refresh_show_metadata(
     except Exception as exc:
         await db.rollback()
         raise AppError("TMDB_SHOW_METADATA_FAILED", f"Could not refresh Show metadata: {exc}", status_code=503) from exc
+    await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
     show.revision += 1
     await create_event(db, "show.metadata_refreshed", entity_type="show", entity_id=show.id, message=f"Refreshed metadata for {show.title}.", details=counts)
     await db.commit()

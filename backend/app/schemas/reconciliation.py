@@ -28,6 +28,7 @@ class ReconciliationRunRequest(BaseModel):
 class ReconciliationRunResponse(BaseModel):
     job_ids: list[UUID]
     skipped_root_ids: list[UUID] = Field(default_factory=list)
+    active_job_ids: list[UUID] = Field(default_factory=list)
 
 
 class ManualAttachRequest(BaseModel):

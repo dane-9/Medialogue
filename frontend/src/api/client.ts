@@ -953,7 +953,40 @@ export const api = {
   refreshTmdbHealth: () => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/health/refresh', { method: 'POST' }),
   recheckMoviePlex: (id: string) => request<{ movie_id: string; state: string; checked_releases: number; matched_releases: number; conflict_releases: number }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
   reconcileMovie: (_id: string) => request<unknown>('/api/v1/reconciliation/refresh', { method: 'POST' }),
-  reconcileAll: () => request<unknown>('/api/v1/reconciliation/refresh', { method: 'POST' }),
+  reconcileAll: async () => {
+    const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })
+    return {
+      jobIds: (payload.job_ids ?? []).map(String),
+      activeJobIds: (payload.active_job_ids ?? []).map(String),
+      skippedRootIds: (payload.skipped_root_ids ?? []).map(String),
+    }
+  },
+  waitForJobs: async (jobIds: string[]) => {
+    const pending = new Set(jobIds.filter(Boolean))
+    const seen = new Set(pending)
+    const finished: Job[] = []
+    while (pending.size) {
+      const jobs = await Promise.all(Array.from(pending, (jobId) => request<JobPayload>(`/api/v1/jobs/${encodeURIComponent(jobId)}`).then(normalizeJobPayload)))
+      for (const job of jobs) {
+        if (!['completed', 'failed', 'cancelled', 'interrupted'].includes(job.state)) continue
+        pending.delete(job.id)
+        finished.push(job)
+        // Reconciliation scans can schedule read-only Plex verification after
+        // filesystem work completes. Follow those jobs as part of the same
+        // evidence refresh instead of reporting completion prematurely.
+        const followups = Array.isArray(job.summary?.followup_job_ids) ? job.summary.followup_job_ids : []
+        for (const value of followups) {
+          const followupId = String(value || '')
+          if (followupId && !seen.has(followupId)) {
+            seen.add(followupId)
+            pending.add(followupId)
+          }
+        }
+      }
+      if (pending.size) await new Promise((resolve) => window.setTimeout(resolve, 500))
+    }
+    return finished
+  },
   downloadClients: async () => {
     const payload = await request<{ items?: unknown[] } | unknown[]>('/api/v1/download-clients')
     const items = Array.isArray(payload) ? payload : payload.items ?? []

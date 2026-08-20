@@ -345,9 +345,12 @@ async def reconcile_show_directory(
     if show is None:
         match, reason = await resolve_show_identity(db, title, year)
         if match is None:
+            problem_reason = "TMDB_SHOW_MATCH_REQUIRED" if reason in {"not_configured", "unavailable"} else "TMDB_SHOW_IDENTITY_UNRESOLVED"
+            alternate = "TMDB_SHOW_IDENTITY_UNRESOLVED" if problem_reason == "TMDB_SHOW_MATCH_REQUIRED" else "TMDB_SHOW_MATCH_REQUIRED"
+            await resolve_problem(db, alternate, "media_directory", directory.id)
             await open_problem(
                 db,
-                reason="TMDB_SHOW_MATCH_REQUIRED" if reason in {"not_configured", "unavailable"} else "TMDB_SHOW_IDENTITY_UNRESOLVED",
+                reason=problem_reason,
                 entity_type="media_directory",
                 entity_id=directory.id,
                 message="TMDB must uniquely identify a newly discovered Show before it is added automatically.",
@@ -355,6 +358,8 @@ async def reconcile_show_directory(
                 severity=Severity.ERROR if reason == "unavailable" else Severity.WARNING,
             )
             return "review"
+        await resolve_problem(db, "TMDB_SHOW_MATCH_REQUIRED", "media_directory", directory.id)
+        await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         show = await db.scalar(select(Show).where(Show.tmdb_id == match.tmdb_id))
         if show is None:
             show = Show(
@@ -371,6 +376,7 @@ async def reconcile_show_directory(
             await db.flush()
             try:
                 await sync_show_metadata(db, show)
+                await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
             except Exception:
                 await open_problem(
                     db,
@@ -388,6 +394,9 @@ async def reconcile_show_directory(
                 message=f"Discovered {show.title} from the configured Show root.",
                 details={"tmdb_id": show.tmdb_id, "path": observation.path},
             )
+    else:
+        await resolve_problem(db, "TMDB_SHOW_MATCH_REQUIRED", "media_directory", directory.id)
+        await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
 
     parsed_by_path: dict[str, Any] = {
         relative_path: parse_release_name(Path(relative_path).stem)
@@ -547,6 +556,7 @@ async def reconcile_show_directory(
         parsed_title = parsed.identity.title_candidate
         if season_number is None or not episode_numbers:
             unresolved += 1
+            await resolve_problem(db, "SHOW_FILE_IDENTITY_MISMATCH", "media_file", media_file.id)
             await open_problem(
                 db,
                 reason="EPISODE_MAPPING_UNRESOLVED",
@@ -558,6 +568,9 @@ async def reconcile_show_directory(
             continue
         if parsed_title and _normalized_title(parsed_title) != _normalized_title(show.title):
             unresolved += 1
+            await resolve_problem(db, "EPISODE_MAPPING_UNRESOLVED", "media_file", media_file.id)
+            await resolve_problem(db, "SEASON_PACK_MAPPING_PENDING", "media_file", media_file.id)
+            await resolve_problem(db, "MULTI_EPISODE_MAPPING_PENDING", "media_file", media_file.id)
             await open_problem(
                 db,
                 reason="SHOW_FILE_IDENTITY_MISMATCH",

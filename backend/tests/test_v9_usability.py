@@ -14,7 +14,7 @@ from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
 from app.main import create_app
-from app.models.domain import Event, MediaDirectory, MediaType, Movie, Problem, ProblemStatus, Severity, StorageRoot
+from app.models.domain import Event, MediaDirectory, MediaFile, MediaRole, MediaType, Movie, Problem, ProblemStatus, Severity, StorageRoot
 
 
 @pytest.fixture
@@ -91,6 +91,7 @@ def test_problem_queue_paginates_and_supports_single_and_bulk_deletion(client: T
                         status=ProblemStatus.OPEN,
                         severity=Severity.WARNING,
                         entity_type="media_directory",
+                        entity_id=uuid.uuid4(),
                         message=f"Problem {index}",
                         details={"index": index},
                     )
@@ -106,9 +107,20 @@ def test_problem_queue_paginates_and_supports_single_and_bulk_deletion(client: T
     assert first.json()["pages"] == 3
     assert len(first.json()["items"]) == 100
 
+    # Friendly UI priority aliases must map to the stored severity enum.
+    medium = client.get("/api/v1/problems?status=open&severity=medium&page_size=250")
+    assert medium.status_code == 200, medium.text
+    assert medium.json()["total"] == 275
+    assert client.get("/api/v1/problems?status=open&severity=high&page_size=250").json()["total"] == 0
+
     third = client.get("/api/v1/problems?status=open&page=3&page_size=100")
     assert third.status_code == 200
     assert len(third.json()["items"]) == 75
+
+    clamped = client.get("/api/v1/problems?status=open&page=999&page_size=100")
+    assert clamped.status_code == 200, clamped.text
+    assert clamped.json()["page"] == 3
+    assert len(clamped.json()["items"]) == 75
 
     problem_id = first.json()["items"][0]["id"]
     removed = client.delete(f"/api/v1/problems/{problem_id}", headers=headers)
@@ -122,6 +134,38 @@ def test_problem_queue_paginates_and_supports_single_and_bulk_deletion(client: T
     assert cleared.json()["deleted"] == duplicate_count
     remaining = client.get("/api/v1/problems?status=open&category=duplicates&page_size=250")
     assert remaining.json()["total"] == 0
+
+
+def test_media_file_problem_subject_is_human_readable(client: TestClient) -> None:
+    _headers(client)
+
+    async def seed():
+        async with db_session.async_session_factory() as db:
+            directory = MediaDirectory(resolved_path="/shows/Example Show/Season 01")
+            db.add(directory)
+            await db.flush()
+            media_file = MediaFile(
+                media_directory_id=directory.id,
+                relative_path="Example.Show.S01E01.mkv",
+                filename="Example.Show.S01E01.mkv",
+                media_role=MediaRole.EPISODE_VIDEO,
+            )
+            db.add(media_file)
+            await db.flush()
+            db.add(
+                Problem(
+                    reason="EPISODE_MAPPING_UNRESOLVED",
+                    entity_type="media_file",
+                    entity_id=media_file.id,
+                    message="Episode needs review.",
+                )
+            )
+            await db.commit()
+
+    asyncio.run(seed())
+    response = client.get("/api/v1/problems?status=open&reason=EPISODE_MAPPING_UNRESOLVED")
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["subject"] == "Example.Show.S01E01.mkv · /shows/Example Show/Season 01"
 
 
 

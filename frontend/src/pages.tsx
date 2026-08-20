@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from './components/Icon'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select, Stat } from './components/ui'
@@ -563,27 +563,53 @@ export function ProblemsPage() {
   const [pages, setPages] = useState(0)
   const [total, setTotal] = useState(0)
   const [openTotal, setOpenTotal] = useState(0)
+  const loadGeneration = useRef(0)
+  const reloadCurrent = useRef<() => void>(() => undefined)
   const pageSize = 100
 
-  const load = async (targetPage = page) => {
+  const load = async (targetPage = page, preserveMessage = false) => {
+    const generation = ++loadGeneration.current
     setLoading(true)
     try {
       const [payload, count] = await Promise.all([
         api.problemsPage({ status: 'open', page: targetPage, pageSize, category: reasonFilter, severity: severityFilter }),
         api.problemCount('open'),
       ])
+      if (generation !== loadGeneration.current) return
       setItems(payload.items)
       setPage(payload.page)
       setPages(payload.pages)
       setTotal(payload.total)
       setOpenTotal(count)
-      setMessage('')
+      if (!preserveMessage) setMessage('')
       setLoaded(true)
     }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load live problems.'); setLoaded(true) }
-    finally { setLoading(false) }
+    catch (reason) {
+      if (generation === loadGeneration.current) {
+        setMessage(reason instanceof Error ? reason.message : 'Could not load live problems.')
+        setLoaded(true)
+      }
+    }
+    finally { if (generation === loadGeneration.current) setLoading(false) }
   }
+  reloadCurrent.current = () => { void load(page, true) }
   useEffect(() => { void load() }, [page, reasonFilter, severityFilter])
+  useEffect(() => {
+    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    let timer: number | undefined
+    const invalidate = () => {
+      if (timer !== undefined) window.clearTimeout(timer)
+      timer = window.setTimeout(() => reloadCurrent.current(), 150)
+    }
+    stream.addEventListener('problem.created', invalidate)
+    stream.addEventListener('problem.updated', invalidate)
+    stream.addEventListener('problem.resolved', invalidate)
+    stream.addEventListener('problem.deleted', invalidate)
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer)
+      stream.close()
+    }
+  }, [])
   const sourceProblems = items
   const visible = sourceProblems
   const current = visible.find((problem) => problem.id === selected) ?? visible[0]
@@ -607,11 +633,20 @@ export function ProblemsPage() {
 
   const reEvaluate = async () => {
     setLoading(true); setMessage('Refreshing reconciliation evidence…')
-    try { await api.reconcileAll(); await load(); setMessage('Reconciliation refresh complete. No filesystem changes were made.') }
+    try {
+      const refresh = await api.reconcileAll()
+      const jobs = await api.waitForJobs([...new Set([...refresh.jobIds, ...refresh.activeJobIds])])
+      await load(page, true)
+      const failures = jobs.filter((job) => job.state !== 'completed')
+      if (failures.length) setMessage(`Reconciliation finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`)
+      else if (refresh.skippedRootIds.length && !refresh.activeJobIds.length) setMessage('Problems refreshed. A storage-root scan was already running and could not be tracked from this request.')
+      else setMessage('Reconciliation refresh complete. No filesystem changes were made.')
+    }
     catch (reason) {
       if (reason instanceof ApiError && (reason.status === 404 || reason.status === 405)) { await load(); setMessage('Problems refreshed. This server does not expose a bulk reconciliation action.') }
-      else { setMessage(reason instanceof Error ? reason.message : 'Could not refresh problems.'); setLoading(false) }
+      else setMessage(reason instanceof Error ? reason.message : 'Could not refresh problems.')
     }
+    finally { setLoading(false) }
   }
 
   const releaseIds = current?.code === 'DUPLICATE_PHYSICAL_RELEASE' && Array.isArray(current.details?.release_ids)
@@ -699,8 +734,32 @@ export function ProblemsPage() {
   const recheckProblem = async () => {
     if (!current) return
     setLoading(true); setMessage('')
-    try { await api.resolveProblem(current.id, 'recheck'); await reEvaluate() }
+    try {
+      const result = await api.resolveProblem(current.id, 'recheck')
+      const jobIds = Array.isArray(result.resolution?.recheck_job_ids) ? result.resolution.recheck_job_ids.map(String) : []
+      const jobs = jobIds.length ? await api.waitForJobs(jobIds) : []
+      await load(page, true)
+      const recheckError = typeof result.resolution?.recheck_error === 'string' ? result.resolution.recheck_error : ''
+      const failures = jobs.filter((job) => job.state !== 'completed')
+      setMessage(recheckError
+        ? `Evidence recheck could not complete: ${recheckError}`
+        : failures.length
+          ? `Evidence recheck finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`
+          : 'Evidence recheck complete. The Problem remains open only if the condition is still present.')
+    }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not request a recheck.') }
+    finally { setLoading(false) }
+  }
+
+  const dismissProblem = async () => {
+    if (!current) return
+    setLoading(true); setMessage('')
+    try {
+      await api.resolveProblem(current.id, 'dismiss')
+      setSelected(undefined)
+      await load(page, true)
+      setMessage('Problem dismissed after manual review.')
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not dismiss Problem.') }
     finally { setLoading(false) }
   }
 
@@ -756,7 +815,7 @@ export function ProblemsPage() {
 
         {current.availableActions?.includes('choose_episode_winner') && Array.isArray(current.details?.media_file_ids) && <div className="resolution-block"><div className="eyebrow">EPISODE DUPLICATE</div><p>Choose a preferred mapping. The physical duplicate remains a Problem until the losing file is actually removed.</p><div className="detail-actions">{current.details.media_file_ids.map((id) => <Button variant="ghost" key={String(id)} onClick={() => void chooseEpisodeWinner(String(id))}>Prefer {String(id)}</Button>)}</div></div>}
 
-        <div className="detail-actions">{current.availableActions?.includes('recheck') && <Button variant="ghost" icon="refresh" onClick={() => void recheckProblem()} disabled={loading}>Recheck evidence</Button>}<Button variant="ghost" onClick={() => setMessage('Problem remains open; no media was changed.')}>Keep unresolved</Button><Button variant="danger" onClick={() => void deleteCurrentProblem()} disabled={loading}>Delete Problem</Button></div>
+        <div className="detail-actions">{current.availableActions?.includes('recheck') && <Button variant="ghost" icon="refresh" onClick={() => void recheckProblem()} disabled={loading}>Recheck evidence</Button>}{current.availableActions?.includes('dismiss') && <Button variant="ghost" onClick={() => void dismissProblem()} disabled={loading}>Dismiss</Button>}<Button variant="ghost" onClick={() => setMessage('Problem remains open; no media was changed.')}>Keep unresolved</Button><Button variant="danger" onClick={() => void deleteCurrentProblem()} disabled={loading}>Delete Problem</Button></div>
       </> : <EmptyState icon="alert" title="No unresolved problems on this page" detail={total ? 'Use the page controls to continue through the queue.' : 'The live reconciliation queue is clear.'} />}</Panel></div>
     {pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button><span>Page {page} of {pages} · {total} matching Problems</span><Button variant="ghost" disabled={page >= pages || loading} onClick={() => setPage((value) => Math.min(pages, value + 1))}>Next</Button></div>}
   </Page>
