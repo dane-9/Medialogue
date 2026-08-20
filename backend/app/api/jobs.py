@@ -17,7 +17,8 @@ from app.models.domain import Event, Job, JobStatus
 from app.schemas.common import Collection
 from app.schemas.jobs import EventResponse, JobResponse
 from app.services.events import subscribe, unsubscribe
-from app.services.jobs import cancel_job
+from app.services.jobs import cancel_job, publish_job_status
+from app.services.runtime_jobs import cancel_runtime_job
 
 router = APIRouter(tags=["jobs and events"])
 
@@ -71,8 +72,12 @@ async def cancel(job_id: UUID, _: object = Depends(require_csrf), db: AsyncSessi
     job = await db.get(Job, job_id)
     if job is None:
         raise AppError("NOT_FOUND", "Job was not found.", status_code=404)
+    previous = job.status
     await cancel_job(db, job)
     await db.commit()
+    publish_job_status(job)
+    if previous in {JobStatus.QUEUED, JobStatus.RUNNING} and job.status == JobStatus.CANCELLED:
+        cancel_runtime_job(job.id)
     return JobResponse.model_validate(job)
 
 

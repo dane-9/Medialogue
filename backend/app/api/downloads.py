@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from time import perf_counter
 from uuid import UUID
 
@@ -44,6 +45,10 @@ from app.services.qbittorrent import (
 router = APIRouter(tags=["downloads"])
 
 
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def get_qbittorrent_client_factory():
     return QBittorrentClient
 
@@ -63,6 +68,10 @@ def _client_response(client: DownloadClient) -> DownloadClientResponse:
         tags=list(client.tags or []),
         enabled=client.enabled,
         health=client.health,
+        last_health_checked_at=client.last_health_checked_at,
+        last_success_at=client.last_success_at,
+        latency_ms=client.latency_ms,
+        last_error=client.last_error,
         revision=client.revision,
         poll_interval_seconds=client.poll_interval_seconds,
         created_at=client.created_at,
@@ -248,6 +257,10 @@ async def update_download_client(
     client.revision += 1
     client.health = "unknown"
     client.last_polled_at = None
+    client.last_health_checked_at = None
+    client.last_success_at = None
+    client.latency_ms = None
+    client.last_error = None
     await db.commit()
     return _client_response(client)
 
@@ -277,13 +290,19 @@ async def test_download_client(
     client = await db.get(DownloadClient, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
+    client.last_health_checked_at = utcnow()
     try:
         result = await test_download_client_connection(client, client_factory=client_factory)
     except Exception as exc:
         client.health = "unavailable"
+        client.last_error = str(exc)
+        client.latency_ms = None
         await db.commit()
         return DownloadClientTestResponse(status="unavailable", message=str(exc))
     client.health = "healthy"
+    client.last_success_at = utcnow()
+    client.last_error = None
+    client.latency_ms = int(result.get("latency_ms") or 0)
     await db.commit()
     return DownloadClientTestResponse(**result)
 
@@ -310,13 +329,19 @@ async def refresh_download_client_health(
     client = await db.get(DownloadClient, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
+    client.last_health_checked_at = utcnow()
     try:
         result = await test_download_client_connection(client, client_factory=client_factory)
     except Exception as exc:
         client.health = "unavailable"
+        client.last_error = str(exc)
+        client.latency_ms = None
         await db.commit()
         return DownloadClientTestResponse(status="unavailable", message=str(exc))
     client.health = "healthy"
+    client.last_success_at = utcnow()
+    client.last_error = None
+    client.latency_ms = int(result.get("latency_ms") or 0)
     await db.commit()
     return DownloadClientTestResponse(**result)
 

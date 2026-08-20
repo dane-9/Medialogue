@@ -2,6 +2,7 @@ import asyncio
 import os
 import tempfile
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -92,6 +93,25 @@ def _configure_tmdb(client: TestClient, headers: dict[str, str]) -> None:
     assert response.status_code == 200, response.text
 
 
+def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"job did not reach a terminal state within {timeout}s: {payload}")
+
+
+def _scan(client: TestClient, headers: dict[str, str], root_id: str, *, timeout: float = 5.0) -> dict:
+    response = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
+    assert response.status_code == 202, response.text
+    return _wait_job(client, response.json()["job_id"], timeout=timeout)
+
+
 def test_login_session_and_csrf(client: TestClient) -> None:
     unauthenticated = client.get("/api/v1/auth/me")
     assert unauthenticated.status_code == 401
@@ -172,11 +192,9 @@ def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: Tes
         assert created.status_code == 201
         root_id = created.json()["id"]
 
-        first_scan = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
-        assert first_scan.status_code == 202
-        job = client.get(f"/api/v1/jobs/{first_scan.json()['job_id']}")
-        assert job.json()["status"] == "completed", job.json()
-        assert job.json()["summary"]["matched"] == 1
+        job = _scan(client, headers, root_id)
+        assert job["status"] == "completed", job
+        assert job["summary"]["matched"] == 1
 
         library = client.get("/api/v1/movies")
         assert library.status_code == 200
@@ -189,14 +207,14 @@ def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: Tes
         assert movie["edition"] is None  # Hybrid is an attribute, never an edition.
         assert movie["state"] == "Present"
 
-        second_scan = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
-        assert second_scan.status_code == 202
+        second_job = _scan(client, headers, root_id)
+        assert second_job["status"] == "completed", second_job
         assert client.get("/api/v1/movies").json()["total"] == 1
 
         shutil.rmtree(release_dir)
-        client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
+        _scan(client, headers, root_id)
         assert client.get("/api/v1/movies").json()["items"][0]["state"] == "Present"
-        client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
+        _scan(client, headers, root_id)
         missing = client.get("/api/v1/movies?state=missing").json()
         assert missing["total"] == 1
         detail = client.get(f"/api/v1/movies/{movie['id']}").json()
@@ -207,8 +225,8 @@ def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: Tes
         replacement_dir = fixture_root / replacement_name
         replacement_dir.mkdir()
         (replacement_dir / f"{replacement_name}.mkv").write_bytes(b"replacement")
-        replacement_scan = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
-        assert replacement_scan.status_code == 202
+        replacement_job = _scan(client, headers, root_id)
+        assert replacement_job["status"] == "completed", replacement_job
         replaced = client.get(f"/api/v1/movies/{movie['id']}").json()
         assert replaced["state"] == "Present"
         assert {release["state"] for release in replaced["releases"]} == {"current", "replaced"}
@@ -240,8 +258,7 @@ def test_scan_flags_two_present_same_edition_releases_as_duplicate(client: TestC
             headers=headers,
             json={"name": "Duplicates", "path": str(fixture_root), "media_type": "movies"},
         ).json()
-        scan = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
-        job = client.get(f"/api/v1/jobs/{scan.json()['job_id']}").json()
+        job = _scan(client, headers, root["id"])
         assert job["status"] == "completed", job
         assert job["summary"]["duplicates"] == 1
         movie = client.get("/api/v1/movies").json()["items"][0]
@@ -269,9 +286,8 @@ def test_new_scan_requires_tmdb_identity_before_automatic_add(client: TestClient
             headers=headers,
             json={"name": "TMDB required", "path": str(fixture_root), "media_type": "movies"},
         ).json()
-        scan = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
-        job = client.get(f"/api/v1/jobs/{scan.json()['job_id']}").json()
-        assert job["status"] == "completed"
+        job = _scan(client, headers, root["id"])
+        assert job["status"] == "completed", job
         assert client.get("/api/v1/movies").json()["total"] == 0
         problems = client.get("/api/v1/problems?reason=TMDB_MATCH_REQUIRED").json()
         assert problems["total"] == 1
@@ -300,9 +316,7 @@ def test_show_root_scan_tracks_episode_presence_independently(client: TestClient
         )
         assert root.status_code == 201, root.text
 
-        scan = client.post(f"/api/v1/storage-roots/{root.json()['id']}/scan", headers=headers)
-        assert scan.status_code == 202, scan.text
-        job = client.get(f"/api/v1/jobs/{scan.json()['job_id']}").json()
+        job = _scan(client, headers, root.json()["id"])
         assert job["status"] == "completed", job
         assert job["summary"]["matched"] == 1
 
@@ -327,7 +341,7 @@ def test_show_root_scan_tracks_episode_presence_independently(client: TestClient
         assert first["media"][0]["path"].endswith(episode1.name)
 
         episode2.write_bytes(b"episode-two")
-        client.post(f"/api/v1/storage-roots/{root.json()['id']}/scan", headers=headers)
+        _scan(client, headers, root.json()["id"])
         complete = client.get(f"/api/v1/shows/{show['resource_id']}").json()
         assert complete["state"] == "Present"
         assert complete["episodes_present"] == 2
@@ -335,11 +349,11 @@ def test_show_root_scan_tracks_episode_presence_independently(client: TestClient
 
         # Individual-file disappearance uses the same configured grace count.
         episode1.unlink()
-        client.post(f"/api/v1/storage-roots/{root.json()['id']}/scan", headers=headers)
+        _scan(client, headers, root.json()["id"])
         grace = client.get(f"/api/v1/shows/{show['resource_id']}").json()
         grace_e1 = next(item for item in grace["seasons"][0]["episodes"] if item["episode_number"] == 1)
         assert grace_e1["presence_state"] == "present"
-        client.post(f"/api/v1/storage-roots/{root.json()['id']}/scan", headers=headers)
+        _scan(client, headers, root.json()["id"])
         missing = client.get(f"/api/v1/shows/{show['resource_id']}").json()
         missing_e1 = next(item for item in missing["seasons"][0]["episodes"] if item["episode_number"] == 1)
         assert missing_e1["presence_state"] == "missing"
@@ -382,9 +396,8 @@ def test_show_scan_maps_multi_episode_and_flags_episode_less_video(client: TestC
             headers=headers,
             json={"name": "Part14 Mapping", "path": str(fixture_root), "media_type": "shows"},
         ).json()
-        scan = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
-        job = client.get(f"/api/v1/jobs/{scan.json()['job_id']}").json()
-        assert job["status"] == "completed"
+        job = _scan(client, headers, root["id"])
+        assert job["status"] == "completed", job
         # Part 14 maps the valid E01E02 file immediately while isolating the
         # episode-less S01 video as an unresolved member instead of rejecting
         # the whole directory.

@@ -101,6 +101,10 @@ async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSes
                     "enabled": client.enabled,
                     "health": client.health or "unknown",
                     "last_polled_at": client.last_polled_at,
+                    "last_health_checked_at": client.last_health_checked_at,
+                    "last_success_at": client.last_success_at,
+                    "latency_ms": client.latency_ms,
+                    "last_error": client.last_error,
                 }
                 for client in clients
             ],

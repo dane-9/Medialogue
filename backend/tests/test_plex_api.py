@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,25 @@ class FakePlexBehavior:
         return FakePlexClient(self, url, token)
 
 
+def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"job did not reach a terminal state within {timeout}s: {payload}")
+
+
+def _scan(client: TestClient, headers: dict[str, str], root_id: str) -> dict:
+    response = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
+    assert response.status_code == 202, response.text
+    return _wait_job(client, response.json()["job_id"])
+
+
 def _login(client: TestClient) -> dict[str, str]:
     response = client.post(
         "/api/v1/auth/login",
@@ -185,11 +205,8 @@ def movie_context(client: TestClient):
         },
     )
     assert root.status_code == 201, root.text
-    scan = client.post(f"/api/v1/storage-roots/{root.json()['id']}/scan", headers=headers)
-    assert scan.status_code == 202, scan.text
-    job = client.get(f"/api/v1/jobs/{scan.json()['job_id']}")
-    assert job.status_code == 200
-    assert job.json()["status"] == "completed", job.text
+    job = _scan(client, headers, root.json()["id"])
+    assert job["status"] == "completed", job
     movie = client.get("/api/v1/movies").json()["items"][0]
 
     try:
@@ -483,9 +500,8 @@ def test_initial_scan_persists_plex_exact_path_verification(client: TestClient, 
             headers=headers,
             json={"name": "Plex auto", "path": str(fixture_root), "media_type": "movies"},
         ).json()
-        scan = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
-        job = client.get(f"/api/v1/jobs/{scan.json()['job_id']}").json()
-        assert job["status"] == "completed"
+        job = _scan(client, headers, root["id"])
+        assert job["status"] == "completed", job
         movie = client.get("/api/v1/movies").json()["items"][0]
         assert movie["plex_state"] == "matched"
         detail = client.get(f"/api/v1/movies/{movie['resource_id']}").json()
@@ -509,8 +525,7 @@ def test_plex_recheck_show_exact_episode_path_match(client: TestClient) -> None:
         json={"name": "Plex Shows", "path": str(fixture_root), "media_type": "shows"},
     )
     assert root.status_code == 201, root.text
-    scan = client.post(f"/api/v1/storage-roots/{root.json()['id']}/scan", headers=headers)
-    job = client.get(f"/api/v1/jobs/{scan.json()['job_id']}").json()
+    job = _scan(client, headers, root.json()["id"])
     assert job["status"] == "completed", job
     show = client.get("/api/v1/shows").json()["items"][0]
     _configure_plex(client, headers)

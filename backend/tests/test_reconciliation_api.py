@@ -6,6 +6,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import UUID
@@ -182,12 +183,23 @@ def _create_qbit(client: TestClient, headers: dict[str, str]) -> dict:
     return response.json()
 
 
-def _scan(client: TestClient, headers: dict[str, str], root_id: str) -> dict:
+def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"job did not reach a terminal state within {timeout}s: {payload}")
+
+
+def _scan(client: TestClient, headers: dict[str, str], root_id: str, *, timeout: float = 5.0) -> dict:
     response = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
     assert response.status_code == 202, response.text
-    job = client.get(f"/api/v1/jobs/{response.json()['job_id']}")
-    assert job.status_code == 200, job.text
-    return job.json()
+    return _wait_job(client, response.json()["job_id"], timeout=timeout)
 
 
 def _movie_setup(client: TestClient, *, release_name: str = "Inception 2010 1080p BluRay REMUX AVC DTS-HD MA 5.1-K"):
@@ -483,9 +495,8 @@ def test_reconciliation_refresh_status_and_root_overlap_lock(client: TestClient)
         assert run.status_code == 202, run.text
         assert len(run.json()["job_ids"]) == 1
         assert run.json()["skipped_root_ids"] == []
-        run_job = client.get(f"/api/v1/jobs/{run.json()['job_ids'][0]}")
-        assert run_job.status_code == 200, run_job.text
-        assert run_job.json()["status"] == "completed"
+        run_job = _wait_job(client, run.json()["job_ids"][0])
+        assert run_job["status"] == "completed", run_job
 
         status = client.get("/api/v1/reconciliation/status")
         assert status.status_code == 200, status.text

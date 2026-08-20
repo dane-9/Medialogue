@@ -12,9 +12,11 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import Settings
@@ -22,6 +24,7 @@ from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.qbittorrent import TorrentObservation
 from app.main import create_app
+from app.models.domain import DownloadClient, Torrent
 
 
 @pytest.fixture
@@ -393,4 +396,69 @@ def test_manual_externally_added_torrent_is_observed_without_touching_media(clie
     finally:
         if root.exists():
             sentinel.unlink(missing_ok=True)
+            root.rmdir()
+
+
+def test_qbit_connectivity_health_survives_internal_processing_failure(client: TestClient, monkeypatch) -> None:
+    """A Medialogue parser/reconciliation bug must not label qBit offline."""
+
+    from app.services import qbittorrent as qbit_service
+
+    headers = _login(client)
+    _enable_operations(client, headers)
+    root = Path.cwd() / f"qbit-health-separation-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    try:
+        root_response = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": f"Health-{os.urandom(5).hex()}", "path": str(root), "media_type": "movies"},
+        )
+        assert root_response.status_code == 201, root_response.text
+        configured = _create_client(client, headers)
+        behavior = FakeQBitBehavior(
+            torrents=[
+                _torrent(
+                    "processingfailurehash",
+                    "Broken Movie 2026 2160p WEB-DL-GROUP",
+                    save_path=str(root),
+                    content_path=str(root / "Broken Movie 2026 2160p WEB-DL-GROUP"),
+                ),
+                _torrent(
+                    "healthysecondhash",
+                    "Healthy Movie 2026 2160p WEB-DL-GROUP",
+                    save_path=str(root),
+                    content_path=str(root / "Healthy Movie 2026 2160p WEB-DL-GROUP"),
+                ),
+            ]
+        )
+
+        original_associate = qbit_service.associate_incoming_torrent
+
+        async def explode_one(db, torrent, **kwargs):
+            if torrent.info_hash == "processingfailurehash":
+                raise RuntimeError("synthetic reconciliation failure")
+            return await original_associate(db, torrent, **kwargs)
+
+        monkeypatch.setattr(qbit_service, "associate_incoming_torrent", explode_one)
+
+        async def scenario():
+            async with db_session.async_session_factory() as db:
+                results = await qbit_service.poll_due_download_clients(db, client_factory=behavior.factory)
+                saved = await db.get(DownloadClient, UUID(configured["id"]))
+                second = await db.scalar(select(Torrent).where(Torrent.info_hash == "healthysecondhash"))
+                broken = await db.scalar(select(Torrent).where(Torrent.info_hash == "processingfailurehash"))
+                return results, saved.health, saved.last_success_at, saved.last_error, second, broken
+
+        results, health, last_success_at, last_error, second, broken = asyncio.run(scenario())
+        assert health == "healthy"
+        assert last_success_at is not None
+        assert last_error is None
+        assert results[0]["status"] == "healthy"
+        assert results[0]["processing_errors"] == 1
+        assert "could not be processed" in str(results[0].get("message"))
+        assert second is not None  # later torrents still process after one bad row
+        assert broken is None  # the failed torrent SAVEPOINT is rolled back cleanly
+    finally:
+        if root.exists():
             root.rmdir()

@@ -111,6 +111,22 @@ async def list_problems(
     return Collection(items=[await _response(db, row) for row in rows], page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size)
 
 
+@router.get("/count")
+async def count_problems(
+    status_filter: str | None = Query(default="open", alias="status"),
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int]:
+    query = select(func.count()).select_from(Problem)
+    if status_filter:
+        try:
+            parsed = ProblemStatus(status_filter)
+        except ValueError as exc:
+            raise AppError("INVALID_STATUS", "Unknown problem status.", status_code=422) from exc
+        query = query.where(Problem.status == parsed)
+    return {"count": int(await db.scalar(query) or 0)}
+
+
 @router.get("/{problem_id}", response_model=ProblemResponse)
 async def get_problem(problem_id: UUID, _: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> ProblemResponse:
     problem = await db.get(Problem, problem_id)

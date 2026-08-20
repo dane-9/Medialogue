@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +20,10 @@ from app.schemas.storage import (
     StorageRootResponse,
     StorageRootUpdate,
 )
-from app.services.jobs import create_job
+from app.services.jobs import create_job, publish_job_status
+from app.services.runtime_jobs import launch_runtime_job
 from app.api.operations import active_operations_enabled
-from app.services.library_scan import run_storage_root_scan
+from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
 
 router = APIRouter(tags=["storage"])
 
@@ -138,7 +139,6 @@ async def delete_storage_root(
 @router.post("/storage-roots/{root_id}/scan", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def scan_storage_root(
     root_id: UUID,
-    background_tasks: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> JobAcceptedResponse:
@@ -153,9 +153,13 @@ async def scan_storage_root(
             "Enable Active Operations before starting a storage scan.",
             status_code=423,
         )
+    existing = await active_storage_root_scan_job(db, root.id)
+    if existing is not None:
+        return JobAcceptedResponse(job_id=existing.id)
     job = await create_job(db, "storage_root_scan", summary={"storage_root_id": str(root.id), "path": root.resolved_root_path})
     await db.commit()
-    background_tasks.add_task(run_storage_root_scan, job.id, root.id)
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_storage_root_scan(job.id, root.id))
     return JobAcceptedResponse(job_id=job.id)
 
 

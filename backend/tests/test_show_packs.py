@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -108,13 +109,20 @@ def create_show_root(client: TestClient, headers: dict[str, str], root: Path, na
     return response.json()
 
 
-def scan(client: TestClient, headers: dict[str, str], root_id: str) -> dict:
+def scan(client: TestClient, headers: dict[str, str], root_id: str, *, timeout: float = 5.0) -> dict:
     response = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
     assert response.status_code == 202, response.text
-    job = client.get(f"/api/v1/jobs/{response.json()['job_id']}")
-    assert job.status_code == 200, job.text
-    assert job.json()["status"] == "completed", job.json()
-    return job.json()
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        job = client.get(f"/api/v1/jobs/{response.json()['job_id']}")
+        assert job.status_code == 200, job.text
+        payload = job.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            break
+        time.sleep(0.02)
+    assert payload.get("status") == "completed", payload
+    return payload
 
 
 def detail(client: TestClient) -> dict:

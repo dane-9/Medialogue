@@ -27,7 +27,10 @@ async def get_current_session(request: Request, db: AsyncSession = Depends(get_d
     auth_session = result.scalar_one_or_none()
     if auth_session is None or _as_utc(auth_session.expires_at) <= datetime.now(timezone.utc):
         raise AppError("AUTHENTICATION_REQUIRED", "Session is missing or expired.", status_code=401)
-    auth_session.last_seen_at = datetime.now(timezone.utc)
+    # Authentication reads must stay read-only. Updating last_seen_at here made
+    # every authenticated GET become a database write via SQLAlchemy autoflush,
+    # causing session-row contention and blocking background job checkpoints.
+    # Sessions use an absolute expiry, so request-time writes are unnecessary.
     return auth_session
 
 

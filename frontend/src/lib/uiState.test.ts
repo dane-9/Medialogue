@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  browserSafeId,
   contextMenuSelection,
   duplicateLoserIds,
   duplicatePreviewReady,
@@ -57,6 +58,15 @@ describe('search/custom-format presentation rules', () => {
     expect(searchResultNeedsWarning(false, [])).toBe(true)
     expect(searchResultNeedsWarning(true, ['Parser disagreement'])).toBe(true)
     expect(searchResultNeedsWarning(true, [])).toBe(false)
+  })
+
+
+  it('creates local IDs even when crypto.randomUUID is unavailable on plain HTTP', () => {
+    const first = browserSafeId(null)
+    const second = browserSafeId(null)
+    expect(first).toMatch(/^local-/)
+    expect(second).toMatch(/^local-/)
+    expect(second).not.toBe(first)
   })
 
   it('treats only Release Title and Release Group conditions as regex conditions', () => {
