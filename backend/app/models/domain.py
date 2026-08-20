@@ -25,6 +25,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
@@ -697,7 +698,30 @@ class Job(Base):
 
 class Problem(Base):
     __tablename__ = "problems"
-    __table_args__ = (Index("ix_problems_status_created", "status", "created_at"), Index("ix_problems_reason", "reason"))
+    __table_args__ = (
+        Index("ix_problems_status_created", "status", "created_at"),
+        Index("ix_problems_reason", "reason"),
+        # Exactly one durable OPEN problem may represent a given condition.
+        # Separate partial indexes are required because PostgreSQL/SQLite both
+        # treat NULL values as distinct in ordinary UNIQUE indexes.
+        Index(
+            "uq_problems_open_entity",
+            "reason",
+            "entity_type",
+            "entity_id",
+            unique=True,
+            postgresql_where=text("status = 'OPEN' AND entity_id IS NOT NULL"),
+            sqlite_where=text("status = 'OPEN' AND entity_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_problems_open_global",
+            "reason",
+            "entity_type",
+            unique=True,
+            postgresql_where=text("status = 'OPEN' AND entity_id IS NULL"),
+            sqlite_where=text("status = 'OPEN' AND entity_id IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     reason: Mapped[str] = mapped_column(String(128), nullable=False)

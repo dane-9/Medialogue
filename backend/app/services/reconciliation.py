@@ -8,6 +8,7 @@ release state.  It never creates, moves, renames, copies, or deletes media.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,7 +16,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -61,7 +63,7 @@ from app.reconciliation.types import (
     ExistingRelease,
     PlexState,
 )
-from app.services.events import create_event, publish_live_event
+from app.services.events import create_event, publish_live_event, queue_live_event
 from app.services.tmdb import resolve_movie_identity
 from app.services.quality_profiles import evaluate_current_release_score
 
@@ -121,7 +123,21 @@ async def open_problem(
     details: dict[str, Any] | None = None,
     severity: Severity = Severity.WARNING,
 ) -> Problem:
-    """Open/update one problem, avoiding polling floods."""
+    """Open/update one durable problem without duplicate OPEN rows.
+
+    The database partial unique indexes are the final concurrency guard. The
+    nested transaction lets two workers race safely: the loser rolls back only
+    its attempted insert, then updates the row committed by the winner.
+    """
+
+    # Existing v9 databases may predate the partial unique indexes. PostgreSQL
+    # transaction advisory locking still serializes the same logical Problem
+    # identity across workers/processes, while the indexes remain a final
+    # schema-level guard for fresh installs.
+    if db.get_bind().dialect.name == "postgresql":
+        identity = f"{reason}\0{entity_type}\0{entity_id or 'global'}".encode()
+        advisory_key = int.from_bytes(hashlib.blake2b(identity, digest_size=8).digest(), "big", signed=True)
+        await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": advisory_key})
 
     query = select(Problem).where(
         Problem.reason == reason,
@@ -132,10 +148,12 @@ async def open_problem(
         query = query.where(Problem.entity_id.is_(None))
     else:
         query = query.where(Problem.entity_id == entity_id)
-    problem = await db.scalar(query)
-    created = problem is None
+    existing_problems = (await db.scalars(query.order_by(Problem.created_at.asc()))).all()
+    problem = existing_problems[0] if existing_problems else None
+    duplicate_problems = existing_problems[1:]
+    created = False
     if problem is None:
-        problem = Problem(
+        candidate = Problem(
             reason=reason,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -143,10 +161,55 @@ async def open_problem(
             details=details or {},
             severity=severity,
         )
-        db.add(problem)
-    else:
+        try:
+            async with db.begin_nested():
+                db.add(candidate)
+                await db.flush()
+            problem = candidate
+            created = True
+        except IntegrityError:
+            # Another transaction opened the same condition between our read
+            # and insert. Its committed row is now the canonical one.
+            problem = await db.scalar(query.order_by(Problem.created_at.asc()).limit(1))
+            if problem is None:
+                raise
+
+    # Older builds could race and leave more than one OPEN row for the same
+    # logical condition. Existing installations do not automatically gain the
+    # new partial indexes, so opportunistically collapse those rows whenever
+    # the condition is observed again.
+    if duplicate_problems:
+        resolved_at = utcnow()
+        for duplicate in duplicate_problems:
+            duplicate.status = ProblemStatus.RESOLVED
+            duplicate.resolved_at = resolved_at
+            duplicate.resolution = {
+                "action": "deduplicated",
+                "canonical_problem_id": str(problem.id),
+            }
+        await create_event(
+            db,
+            "problem.resolved",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            message=f"Collapsed duplicate Problems for {reason}.",
+            details={
+                "problem_id": str(problem.id),
+                "problem_ids": [str(item.id) for item in duplicate_problems],
+                "count": len(duplicate_problems),
+                "reason": reason,
+                "resolution": "deduplicated",
+            },
+        )
+
+    if not created:
         # Preserve creation/history, but keep affected counts and current
         # evidence fresh when a root or torrent remains unhealthy.
+        changed = (
+            problem.message != message
+            or dict(problem.details or {}) != (details or {})
+            or problem.severity != severity
+        )
         problem.message = message
         problem.details = details or {}
         problem.severity = severity
@@ -160,6 +223,14 @@ async def open_problem(
             message=message,
             severity=severity,
             details={"problem_id": str(problem.id), "reason": reason, **(details or {})},
+        )
+    elif changed:
+        queue_live_event(
+            db,
+            "problem.updated",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            data={"problem_id": str(problem.id), "reason": reason},
         )
     return problem
 
@@ -176,17 +247,28 @@ async def resolve_problem(
         query = query.where(Problem.entity_id.is_(None))
     else:
         query = query.where(Problem.entity_id == entity_id)
-    problem = await db.scalar(query)
-    if problem is not None:
-        problem.status = ProblemStatus.RESOLVED
-        problem.resolved_at = utcnow()
+    problems = (await db.scalars(query.order_by(Problem.created_at.asc()))).all()
+    if problems:
+        resolved_at = utcnow()
+        for problem in problems:
+            problem.status = ProblemStatus.RESOLVED
+            problem.resolved_at = resolved_at
+        # Old builds could race and create duplicate OPEN rows. Resolve every
+        # matching row defensively so stale duplicates cannot survive forever.
+        problem = problems[0]
         await create_event(
             db,
             "problem.resolved",
             entity_type=entity_type,
             entity_id=entity_id,
             message=f"Resolved problem: {problem.message}",
-            details={"problem_id": str(problem.id), "reason": reason, "resolution": "evidence_changed"},
+            details={
+                "problem_id": str(problem.id),
+                "problem_ids": [str(item.id) for item in problems],
+                "count": len(problems),
+                "reason": reason,
+                "resolution": "evidence_changed",
+            },
         )
 
 
@@ -277,7 +359,10 @@ async def mark_absent_known_directories(
     ).all()
     now = utcnow()
     started = committed = restored = 0
+    affected_movie_ids: set[UUID] = set()
     for directory in rows:
+        if directory.movie_release is not None:
+            affected_movie_ids.add(directory.movie_release.movie_id)
         directory.last_exists_check_at = now
         if directory.resolved_path in seen_paths:
             was_missing = not directory.exists
@@ -311,7 +396,7 @@ async def mark_absent_known_directories(
         directory.exists = False
         committed += 1
         release = directory.movie_release
-        if release and release.release_state == ReleaseState.CURRENT:
+        if release and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}:
             release.release_state = ReleaseState.MISSING
             await create_event(
                 db,
@@ -322,6 +407,8 @@ async def mark_absent_known_directories(
                 severity=Severity.WARNING,
                 details={"path": directory.resolved_path, "reason": "PATH_NOT_FOUND", "grace_checks": threshold},
             )
+    for movie_id in affected_movie_ids:
+        await _refresh_movie_duplicate_problem(db, movie_id)
     return {"started": started, "missing": committed, "restored": restored, "threshold": threshold}
 
 
@@ -342,6 +429,60 @@ def _existing_release_rows(movie: Movie, releases: list[MovieRelease] | None = N
             )
         )
     return rows
+
+
+async def _refresh_movie_duplicate_problem(db: AsyncSession, movie_id: UUID) -> None:
+    """Recompute the durable movie duplicate Problem from current disk evidence."""
+
+    releases = (
+        await db.scalars(
+            select(MovieRelease)
+            .options(selectinload(MovieRelease.directories))
+            .where(MovieRelease.movie_id == movie_id)
+            .order_by(MovieRelease.first_seen_at.asc())
+            .with_for_update()
+        )
+    ).unique().all()
+    physically_present = [
+        release
+        for release in releases
+        if release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}
+        and any(directory.exists for directory in release.directories)
+    ]
+    by_edition: defaultdict[str, list[MovieRelease]] = defaultdict(list)
+    for release in physically_present:
+        by_edition[(release.effective_edition or "").strip().casefold()].append(release)
+
+    duplicate_groups = [group for group in by_edition.values() if len(group) > 1]
+    duplicate_ids = {release.id for group in duplicate_groups for release in group}
+
+    # Keep release state consistent with the evidence used to drive Problems.
+    # A formerly duplicated release becomes current once it is the sole
+    # physical release in its edition slot; an absent duplicate becomes
+    # missing rather than remaining permanently tagged as DUPLICATE.
+    for release in releases:
+        present = release in physically_present
+        if release.id in duplicate_ids:
+            if release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}:
+                release.release_state = ReleaseState.DUPLICATE
+        elif release.release_state == ReleaseState.DUPLICATE:
+            release.release_state = ReleaseState.CURRENT if present else ReleaseState.MISSING
+
+    if duplicate_groups:
+        release_ids = sorted((str(release.id) for group in duplicate_groups for release in group))
+        movie = await db.get(Movie, movie_id)
+        title = movie.title if movie is not None else "movie"
+        await open_problem(
+            db,
+            reason="DUPLICATE_PHYSICAL_RELEASE",
+            entity_type="movie",
+            entity_id=movie_id,
+            message=f"Duplicate physical release detected for {title}.",
+            details={"release_ids": release_ids},
+            severity=Severity.WARNING,
+        )
+    else:
+        await resolve_problem(db, "DUPLICATE_PHYSICAL_RELEASE", "movie", movie_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,6 +701,12 @@ async def reconcile_movie_directory(
         confidence = 1.0
 
     if root.media_type != MediaType.MOVIES or not title or year is None or (confidence < 0.90 and not manual_identity):
+        # Parser uncertainty supersedes downstream identity/integration
+        # conclusions for this same directory. Do not leave older TMDB/Plex
+        # Problems open when their prerequisite identity is no longer valid.
+        await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
+        await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
+        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         await open_problem(
             db,
             reason="LOW_CONFIDENCE_MATCH",
@@ -569,6 +716,10 @@ async def reconcile_movie_directory(
             details={"path": observation.path, "confidence": confidence, "parse": folder_parse.to_dict()},
         )
         return "review"
+
+    # The same directory may have been uncertain on an earlier pass. Healthy
+    # parser evidence must close that stale row before later checks continue.
+    await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "media_directory", directory.id)
 
     plex_evidence = await _plex_evidence_for_candidate(db, movie.title if movie else title, movie.year if movie else year, observation)
 
@@ -580,6 +731,9 @@ async def reconcile_movie_directory(
         tmdb_match, tmdb_reason = await resolve_movie_identity(db, title, year)
         if tmdb_match is None:
             reason = "TMDB_MATCH_REQUIRED" if tmdb_reason in {"not_configured", "unavailable"} else "TMDB_IDENTITY_UNRESOLVED"
+            alternate = "TMDB_IDENTITY_UNRESOLVED" if reason == "TMDB_MATCH_REQUIRED" else "TMDB_MATCH_REQUIRED"
+            await resolve_problem(db, alternate, "media_directory", directory.id)
+            await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
             await open_problem(
                 db,
                 reason=reason,
@@ -594,6 +748,8 @@ async def reconcile_movie_directory(
                 severity=Severity.ERROR if tmdb_reason == "unavailable" else Severity.WARNING,
             )
             return "review"
+        await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
+        await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         if plex_evidence.state is PlexState.CONFLICT:
             await open_problem(
                 db,
@@ -611,6 +767,7 @@ async def reconcile_movie_directory(
                 severity=Severity.ERROR,
             )
             return "review"
+        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         movie = Movie(
             title=tmdb_match.title,
             sort_title=_sort_title(tmdb_match.title),
@@ -624,6 +781,13 @@ async def reconcile_movie_directory(
         )
         db.add(movie)
         await db.flush()
+    else:
+        # A previously identified movie also proves any directory-level TMDB
+        # identity Problems from an older pass are no longer applicable.
+        await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
+        await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
+        if plex_evidence.state is not PlexState.CONFLICT:
+            await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
 
     # Keep all releases loaded before evaluating active slots. The in-process
     # lock prevents overlapping qBit/scan workers; FOR UPDATE protects DB
@@ -658,6 +822,9 @@ async def reconcile_movie_directory(
         ]
         decision = ReconciliationEngine().reconcile_candidate(candidate, existing_for_decision)
         if decision.kind is DecisionKind.PROBLEM:
+            for stale_reason in ("AMBIGUOUS_REPLACEMENT_TARGET", "ACTIVE_RELEASE_LIMIT_REACHED", "LOW_CONFIDENCE_MATCH"):
+                if stale_reason != decision.reason_code:
+                    await resolve_problem(db, stale_reason, "movie", movie.id)
             await open_problem(
                 db,
                 reason=decision.reason_code,
@@ -667,6 +834,8 @@ async def reconcile_movie_directory(
                 details={**decision.details, "path": observation.path},
             )
             return "review"
+        for stale_reason in ("AMBIGUOUS_REPLACEMENT_TARGET", "ACTIVE_RELEASE_LIMIT_REACHED", "LOW_CONFIDENCE_MATCH"):
+            await resolve_problem(db, stale_reason, "movie", movie.id)
         if decision.kind is DecisionKind.CONFLICT:
             state = ReleaseState.CONFLICT
             result = "conflicts"
@@ -738,6 +907,8 @@ async def reconcile_movie_directory(
                 details={"release_id": str(release.id), "path": observation.path, "manual_override": True},
                 severity=Severity.WARNING,
             )
+        elif plex_evidence.state is not PlexState.CONFLICT:
+            await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "movie", movie.id)
         if torrent is not None:
             assoc = await db.scalar(
                 select(MovieReleaseTorrent).where(
@@ -790,16 +961,7 @@ async def reconcile_movie_directory(
                 details={"release_id": str(release.id), "path": observation.path},
                 severity=Severity.ERROR,
             )
-        elif state == ReleaseState.DUPLICATE:
-            await open_problem(
-                db,
-                reason="DUPLICATE_PHYSICAL_RELEASE",
-                entity_type="movie",
-                entity_id=movie.id,
-                message=f"Duplicate physical release detected for {movie.title} ({movie.year}).",
-                details={"release_ids": [str(decision.old_release_id), str(release.id)]},
-            )
-        else:
+        elif state != ReleaseState.DUPLICATE:
             await create_event(
                 db,
                 "release.replaced" if decision.kind is DecisionKind.REPLACEMENT else "media.attached",
@@ -821,6 +983,7 @@ async def reconcile_movie_directory(
                     message=f"{movie.title} is present after replacement.",
                     details={"release_id": str(release.id), "old_release_id": decision.old_release_id},
                 )
+        await _refresh_movie_duplicate_problem(db, movie.id)
         return result
 
 
@@ -1036,6 +1199,7 @@ async def finalize_completed_torrent(
         return await _finalize_completed_show_torrent(db, torrent, resolved_path=resolved_path)
 
     if scope != MediaType.MOVIES or not resolved_path:
+        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1051,6 +1215,7 @@ async def finalize_completed_torrent(
     roots = (await db.scalars(select(StorageRoot).where(StorageRoot.enabled.is_(True), StorageRoot.media_type == MediaType.MOVIES))).all()
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
     if root is None or not Path(root.resolved_root_path).is_dir() or not path.exists():
+        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1065,6 +1230,7 @@ async def finalize_completed_torrent(
     try:
         observation = FilesystemObserver().inspect_directory(path, Path(root.resolved_root_path))
     except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1074,6 +1240,10 @@ async def finalize_completed_torrent(
             details={"resolved_path": str(path), "error": str(exc)},
         )
         return "problem"
+    # A successful directory inspection proves any previous path-not-found
+    # condition is over, even if later identity checks expose a different
+    # Problem such as LOW_CONFIDENCE_MATCH.
+    await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
     parsed = parse_release_name(observation.name)
     files = [parse_release_name(Path(name).stem) for name in observation.media_files]
     confidence = _confidence(parsed, files, has_disc_structure=observation.has_dvd_structure or observation.has_bluray_structure)
@@ -1102,6 +1272,7 @@ async def finalize_completed_torrent(
             details={"path": str(path), "confidence": confidence, "parse": parsed.to_dict()},
         )
         return "problem"
+    await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
     # Explicit Plex conflict is checked by reconcile_movie_directory and
     # blocks attach; pending/unavailable are valid high-confidence evidence.
     result = await reconcile_movie_directory(
@@ -1124,6 +1295,7 @@ async def _finalize_completed_show_torrent(
     resolved_path: str | None,
 ) -> str:
     if not resolved_path:
+        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1142,6 +1314,7 @@ async def _finalize_completed_show_torrent(
     ).all()
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
     if root is None or not Path(root.resolved_root_path).is_dir() or not path.exists():
+        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1159,6 +1332,7 @@ async def _finalize_completed_show_torrent(
     except ValueError:
         relative = None
     if relative is None or not relative.parts:
+        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1173,6 +1347,7 @@ async def _finalize_completed_show_torrent(
     # remain part of one canonical leave-in-place directory attachment.
     container = root_path / relative.parts[0]
     if not container.is_dir():
+        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_SHOW_CONTAINER_REQUIRED",
@@ -1185,6 +1360,7 @@ async def _finalize_completed_show_torrent(
     try:
         observation = FilesystemObserver().inspect_directory(container, root_path)
     except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1279,6 +1455,8 @@ async def reconcile_torrent_disagreements(db: AsyncSession, torrent: Torrent, *,
             reason = "TORRENT_PATH_NOT_FOUND"
             message = "qBittorrent still reports the torrent, but its attached media path is missing."
         if reason is not None:
+            alternate = "TORRENT_PATH_NOT_FOUND" if reason == "TORRENT_REMOVED_EXTERNALLY" else "TORRENT_REMOVED_EXTERNALLY"
+            await resolve_problem(db, alternate, "movie_release", release.id)
             await open_problem(
                 db,
                 reason=reason,
@@ -1315,6 +1493,8 @@ async def reconcile_torrent_disagreements(db: AsyncSession, torrent: Torrent, *,
             reason = "TORRENT_PATH_NOT_FOUND"
             message = "qBittorrent still reports the Show torrent, but none of its mapped media files are present."
         if reason is not None:
+            alternate = "TORRENT_PATH_NOT_FOUND" if reason == "TORRENT_REMOVED_EXTERNALLY" else "TORRENT_REMOVED_EXTERNALLY"
+            await resolve_problem(db, alternate, "show_release", release.id)
             await open_problem(
                 db,
                 reason=reason,

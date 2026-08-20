@@ -22,13 +22,12 @@ from app.models.domain import (
     PlexMatchMethod,
     PlexMatchState,
     PlexObservation,
-    Problem,
-    ProblemStatus,
     ReleaseState,
     Severity,
     Show,
 )
 from app.services.events import create_event
+from app.services.reconciliation import open_problem, resolve_problem
 
 PlexClientFactory = Callable[[str, str], PlexClient]
 
@@ -299,14 +298,6 @@ async def _upsert_observation(
 async def _open_conflict(
     db: AsyncSession, movie: Movie, release: MovieRelease, match: PlexMediaMatch
 ) -> None:
-    existing = await db.scalar(
-        select(Problem).where(
-            Problem.reason == "PLEX_IDENTITY_MISMATCH",
-            Problem.entity_type == "movie",
-            Problem.entity_id == movie.id,
-            Problem.status == ProblemStatus.OPEN,
-        )
-    )
     details = {
         "movie_release_id": str(release.id),
         "local_title": movie.title,
@@ -315,28 +306,15 @@ async def _open_conflict(
         "plex_year": match.year,
         "path": match.file_path,
     }
-    if existing is None:
-        problem = Problem(
-            reason="PLEX_IDENTITY_MISMATCH",
-            entity_type="movie",
-            entity_id=movie.id,
-            severity=Severity.ERROR,
-            message="Plex identifies the exact media path as a different movie.",
-            details=details,
-        )
-        db.add(problem)
-        await db.flush()
-        await create_event(
-            db,
-            "problem.created",
-            entity_type="movie",
-            entity_id=movie.id,
-            message=problem.message,
-            severity=Severity.ERROR,
-            details={"problem_id": str(problem.id), "reason": problem.reason, **details},
-        )
-    else:
-        existing.details = details
+    await open_problem(
+        db,
+        reason="PLEX_IDENTITY_MISMATCH",
+        entity_type="movie",
+        entity_id=movie.id,
+        severity=Severity.ERROR,
+        message="Plex identifies the exact media path as a different movie.",
+        details=details,
+    )
 
 
 async def _resolve_conflict(db: AsyncSession, movie_id) -> None:
@@ -353,25 +331,7 @@ async def _resolve_conflict(db: AsyncSession, movie_id) -> None:
     )
     if unresolved is not None:
         return
-    problem = await db.scalar(
-        select(Problem).where(
-            Problem.reason == "PLEX_IDENTITY_MISMATCH",
-            Problem.entity_type == "movie",
-            Problem.entity_id == movie_id,
-            Problem.status == ProblemStatus.OPEN,
-        )
-    )
-    if problem is not None:
-        problem.status = ProblemStatus.RESOLVED
-        problem.resolved_at = utcnow()
-        await create_event(
-            db,
-            "problem.resolved",
-            entity_type="movie",
-            entity_id=movie_id,
-            message="Plex identity conflict resolved after verification changed.",
-            details={"problem_id": str(problem.id), "reason": problem.reason, "resolution": "plex_evidence_changed"},
-        )
+    await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "movie", movie_id)
 
 
 async def recheck_show_plex(
@@ -458,48 +418,18 @@ async def recheck_show_plex(
                     severity=Severity.ERROR if state == PlexMatchState.CONFLICT else Severity.INFO,
                     details={"show_id": str(show.id), "path": path},
                 )
-        problem = await db.scalar(
-            select(Problem).where(
-                Problem.reason == "PLEX_IDENTITY_MISMATCH",
-                Problem.entity_type == "show",
-                Problem.entity_id == show.id,
-                Problem.status == ProblemStatus.OPEN,
-            )
-        )
         if conflicts:
-            if problem is None:
-                problem = Problem(
-                    reason="PLEX_IDENTITY_MISMATCH",
-                    entity_type="show",
-                    entity_id=show.id,
-                    severity=Severity.ERROR,
-                    message="Plex identifies one or more exact episode paths as another Show or episode.",
-                    details={"conflict_count": conflicts},
-                )
-                db.add(problem)
-                await db.flush()
-                await create_event(
-                    db,
-                    "problem.created",
-                    entity_type="show",
-                    entity_id=show.id,
-                    message=problem.message,
-                    severity=Severity.ERROR,
-                    details={"problem_id": str(problem.id), "reason": problem.reason, "conflict_count": conflicts},
-                )
-            else:
-                problem.details = {"conflict_count": conflicts}
-        elif problem is not None:
-            problem.status = ProblemStatus.RESOLVED
-            problem.resolved_at = utcnow()
-            await create_event(
+            await open_problem(
                 db,
-                "problem.resolved",
+                reason="PLEX_IDENTITY_MISMATCH",
                 entity_type="show",
                 entity_id=show.id,
-                message="Plex identity conflict resolved after verification changed.",
-                details={"problem_id": str(problem.id), "reason": problem.reason, "resolution": "plex_evidence_changed"},
+                severity=Severity.ERROR,
+                message="Plex identifies one or more exact episode paths as another Show or episode.",
+                details={"conflict_count": conflicts},
             )
+        else:
+            await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "show", show.id)
     except Exception as exc:
         # A snapshot-backed verification has already established Plex
         # connectivity. Keep local processing errors local to the sync job.

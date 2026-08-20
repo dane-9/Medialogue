@@ -44,6 +44,7 @@ from app.models.domain import (
     TorrentArchiveState,
     TorrentClientObservation,
 )
+from app.services.reconciliation import mark_absent_known_directories
 
 
 @pytest.fixture
@@ -147,6 +148,37 @@ async def seed_movie_duplicate(db, root_path: Path, *, access_mode=AccessMode.RE
     db.add(problem)
     await db.flush()
     return movie.id, releases[0].id, releases[1].id, problem.id
+
+
+def test_external_duplicate_disappearance_resolves_problem_on_reconciliation(client: TestClient) -> None:
+    login(client)
+    root_path = Path.cwd() / f"part15-duplicate-disappears-{uuid.uuid4().hex}"
+    root_path.mkdir()
+    try:
+        movie_id, first_id, second_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root_path))
+
+        async def reconcile_one_missing(db):
+            root = await db.scalar(select(StorageRoot).where(StorageRoot.resolved_root_path == str(root_path)))
+            first_path = await db.scalar(
+                select(MediaDirectory.resolved_path).where(MediaDirectory.movie_release_id == first_id)
+            )
+            assert root is not None and first_path is not None
+            # Missing grace records the first miss, then commits it on the
+            # second successful root scan. The duplicate Problem should then
+            # be recomputed from current physical evidence and close itself.
+            await mark_absent_known_directories(db, root, {first_path}, grace_checks=1)
+            await mark_absent_known_directories(db, root, {first_path}, grace_checks=1)
+            problem = await db.get(Problem, problem_id)
+            first = await db.get(MovieRelease, first_id)
+            second = await db.get(MovieRelease, second_id)
+            return problem.status, first.release_state, second.release_state
+
+        status, first_state, second_state = db_run(reconcile_one_missing)
+        assert status == ProblemStatus.RESOLVED
+        assert first_state == ReleaseState.CURRENT
+        assert second_state == ReleaseState.MISSING
+    finally:
+        shutil.rmtree(root_path, ignore_errors=True)
 
 
 def test_duplicate_preview_lists_entire_folder_and_commit_deletes_only_loser(client: TestClient) -> None:

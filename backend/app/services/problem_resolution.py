@@ -41,8 +41,8 @@ from app.models.domain import (
     TorrentClientObservation,
     utcnow,
 )
-from app.services.events import create_event
-from app.services.reconciliation import reconcile_movie_directory
+from app.services.events import create_event, queue_live_event
+from app.services.reconciliation import open_problem, reconcile_movie_directory, resolve_problem
 from app.services.shows import add_show_from_tmdb, reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration
 
@@ -54,22 +54,22 @@ def available_actions(problem: Problem) -> list[str]:
         return []
     reason = problem.reason
     if reason == "DUPLICATE_PHYSICAL_RELEASE" and problem.entity_type == "movie":
-        return ["compare_duplicates"]
+        return ["compare_duplicates", "recheck"]
     if reason == "DUPLICATE_EPISODE_RELEASE" and problem.entity_type == "episode":
-        return ["choose_episode_winner"]
+        return ["choose_episode_winner", "recheck"]
     if problem.entity_type in {"media_directory", "movie"} and reason in {
         "LOW_CONFIDENCE_MATCH",
         "TMDB_MATCH_REQUIRED",
         "TMDB_IDENTITY_UNRESOLVED",
         "PLEX_IDENTITY_MISMATCH",
     }:
-        return ["confirm_movie_match"]
+        return ["confirm_movie_match", "recheck"]
     if problem.entity_type in {"media_directory", "show"} and reason in {
         "TMDB_SHOW_MATCH_REQUIRED",
         "TMDB_SHOW_IDENTITY_UNRESOLVED",
         "PLEX_IDENTITY_MISMATCH",
     }:
-        return ["confirm_show_match"]
+        return ["confirm_show_match", "recheck"]
     if reason in {"PATH_MAPPING_FAILED", "TORRENT_PATH_NOT_FOUND", "ROOT_UNREACHABLE"}:
         return ["recheck"]
     if reason in {"QBIT_REMOVE_FAILED"}:
@@ -99,6 +99,13 @@ async def resolve_explicit_problem_action(
 
     if action == "recheck":
         problem.resolution = {"action": "recheck_requested", "requested_at": utcnow().isoformat()}
+        queue_live_event(
+            db,
+            "problem.updated",
+            entity_type=problem.entity_type,
+            entity_id=problem.entity_id,
+            data={"problem_id": str(problem.id), "reason": problem.reason},
+        )
         await create_event(
             db,
             "problem.recheck_requested",
@@ -137,6 +144,13 @@ async def resolve_explicit_problem_action(
             "winner_media_file_id": str(payload["winner_media_file_id"]),
             "physical_duplicate_remains": True,
         }
+        queue_live_event(
+            db,
+            "problem.updated",
+            entity_type=problem.entity_type,
+            entity_id=problem.entity_id,
+            data={"problem_id": str(problem.id), "reason": problem.reason},
+        )
         await create_event(
             db,
             "duplicate.episode_winner_selected",
@@ -634,6 +648,7 @@ async def commit_duplicate_resolution(
                 observation.is_present = False
                 observation.removed_at = utcnow()
                 removed_torrents.append(torrent.info_hash)
+                await resolve_problem(db, "QBIT_REMOVE_FAILED", "torrent", torrent.id)
                 await create_event(
                     db,
                     "torrent.removed_by_user",
@@ -645,40 +660,15 @@ async def commit_duplicate_resolution(
             except Exception as exc:
                 qbit_removal_failed = True
                 warnings.append(f"Could not remove {torrent.info_hash} from {client.name}: {exc}")
-                existing = await db.scalar(
-                    select(Problem).where(
-                        Problem.reason == "QBIT_REMOVE_FAILED",
-                        Problem.entity_type == "torrent",
-                        Problem.entity_id == torrent.id,
-                        Problem.status == ProblemStatus.OPEN,
-                    )
+                await open_problem(
+                    db,
+                    reason="QBIT_REMOVE_FAILED",
+                    entity_type="torrent",
+                    entity_id=torrent.id,
+                    severity=Severity.WARNING,
+                    message="qBittorrent removal failed during duplicate resolution.",
+                    details={"client": client.name, "error": str(exc), "archive_retained": True},
                 )
-                if existing is None:
-                    failure_problem = Problem(
-                        reason="QBIT_REMOVE_FAILED",
-                        entity_type="torrent",
-                        entity_id=torrent.id,
-                        severity=Severity.WARNING,
-                        message="qBittorrent removal failed during duplicate resolution.",
-                        details={"client": client.name, "error": str(exc), "archive_retained": True},
-                    )
-                    db.add(failure_problem)
-                    await db.flush()
-                    await create_event(
-                        db,
-                        "problem.created",
-                        entity_type="torrent",
-                        entity_id=torrent.id,
-                        message=failure_problem.message,
-                        severity=Severity.WARNING,
-                        details={
-                            "problem_id": str(failure_problem.id),
-                            "reason": failure_problem.reason,
-                            "client": client.name,
-                            "error": str(exc),
-                            "archive_retained": True,
-                        },
-                    )
             finally:
                 if adapter is not None:
                     await adapter.close()
@@ -739,12 +729,26 @@ async def commit_duplicate_resolution(
             message=f"Resolved duplicate releases for {movie.title}; selected the retained copy explicitly.",
             details=problem.resolution,
         )
+        queue_live_event(
+            db,
+            "problem.resolved",
+            entity_type=problem.entity_type,
+            entity_id=problem.entity_id,
+            data={"problem_id": str(problem.id), "reason": problem.reason},
+        )
     else:
         problem.details = {
             **dict(problem.details or {}),
             "preferred_release_id": str(winner.id),
             "physical_duplicate_remains": True,
         }
+        queue_live_event(
+            db,
+            "problem.updated",
+            entity_type=problem.entity_type,
+            entity_id=problem.entity_id,
+            data={"problem_id": str(problem.id), "reason": problem.reason},
+        )
         await create_event(
             db,
             "duplicate.winner_selected",

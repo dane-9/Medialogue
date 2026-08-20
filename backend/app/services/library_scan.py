@@ -211,6 +211,15 @@ async def execute_storage_root_scan(
             "plex_library_sync",
             summary={"scope": "storage_root", "storage_root_id": str(root.id)},
         )
+        # Expose evidence-producing follow-up work to callers waiting on this
+        # scan. The Problems UI follows these IDs recursively before declaring
+        # a refresh complete, so Plex conflicts cannot disappear/reappear after
+        # the button has already reported completion.
+        await update_job(
+            db,
+            job,
+            summary={**dict(job.summary or {}), "followup_job_ids": [str(plex_job.id)]},
+        )
     await db.commit()
     publish_job_status(job)
     if plex_job is not None:

@@ -32,7 +32,7 @@ from app.models.domain import (
 )
 from app.services.events import create_event, subscribe, unsubscribe
 from app.services.jobs import create_job, update_job
-from app.services.reconciliation import mark_root_available, mark_root_unavailable
+from app.services.reconciliation import mark_root_available, mark_root_unavailable, open_problem
 
 
 @pytest.fixture
@@ -90,6 +90,87 @@ def test_job_status_is_persisted_and_published_live(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "running"
     assert response.json()["progress"]["percent"] == 25
+
+
+def test_problem_live_events_are_commit_bound_and_rollback_safe(client: TestClient) -> None:
+    login_headers(client)
+
+    async def scenario():
+        queue = subscribe()
+        try:
+            async with db_session.async_session_factory() as db:
+                rolled_back_id = uuid.uuid4()
+                await open_problem(
+                    db,
+                    reason="ROLLBACK_ONLY",
+                    entity_type="test",
+                    entity_id=rolled_back_id,
+                    message="This Problem must never reach SSE.",
+                )
+                assert queue.empty()
+                await db.rollback()
+                await asyncio.sleep(0)
+                assert queue.empty()
+
+            async with db_session.async_session_factory() as db:
+                committed_id = uuid.uuid4()
+                await open_problem(
+                    db,
+                    reason="COMMIT_ONLY",
+                    entity_type="test",
+                    entity_id=committed_id,
+                    message="This Problem becomes visible after commit.",
+                )
+                assert queue.empty()
+                await db.commit()
+                queued = await asyncio.wait_for(queue.get(), timeout=1)
+                assert queued["event"] == "problem.created"
+                assert queued["entity_id"] == str(committed_id)
+                assert queue.empty()
+        finally:
+            unsubscribe(queue)
+
+    asyncio.run(scenario())
+
+
+def test_open_problem_updates_one_canonical_row(client: TestClient) -> None:
+    login_headers(client)
+
+    async def scenario():
+        entity_id = uuid.uuid4()
+        async with db_session.async_session_factory() as db:
+            first = await open_problem(
+                db,
+                reason="CANONICAL_PROBLEM",
+                entity_type="test",
+                entity_id=entity_id,
+                message="First evidence",
+                details={"affected_count": 1},
+            )
+            second = await open_problem(
+                db,
+                reason="CANONICAL_PROBLEM",
+                entity_type="test",
+                entity_id=entity_id,
+                message="Updated evidence",
+                details={"affected_count": 2},
+            )
+            await db.commit()
+            rows = (
+                await db.scalars(
+                    select(Problem).where(
+                        Problem.reason == "CANONICAL_PROBLEM",
+                        Problem.entity_type == "test",
+                        Problem.entity_id == entity_id,
+                    )
+                )
+            ).all()
+            assert first.id == second.id
+            assert len(rows) == 1
+            assert rows[0].message == "Updated evidence"
+            assert rows[0].details == {"affected_count": 2}
+
+    asyncio.run(scenario())
 
 
 def test_cancelled_queued_job_is_not_resurrected_and_restart_interrupts_running_work(client: TestClient) -> None:

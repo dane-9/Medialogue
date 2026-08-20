@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import false, or_, select
+from sqlalchemy import event, false, or_, select
+from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.domain import (
@@ -21,6 +22,76 @@ from app.models.domain import (
 
 
 _subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
+_PENDING_LIVE_EVENTS_KEY = "_medialogue_pending_live_events"
+_PENDING_NESTED_LIVE_EVENTS_KEY = "_medialogue_pending_nested_live_events"
+
+
+def _live_payload(
+    event_type: str,
+    *,
+    entity_type: str,
+    entity_id: UUID | str | None = None,
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "event": event_type,
+        "entity_type": entity_type,
+        "entity_id": str(entity_id) if entity_id else None,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "data": data or {},
+    }
+
+
+def queue_live_event(
+    db: AsyncSession,
+    event_type: str,
+    *,
+    entity_type: str,
+    entity_id: UUID | str | None = None,
+    data: dict[str, Any] | None = None,
+) -> None:
+    """Broadcast a durable-state invalidation only after the transaction commits.
+
+    A browser must never observe a Problem/Event transition that later rolls
+    back. AsyncSession exposes its underlying synchronous Session, whose info
+    mapping survives until SQLAlchemy's after_commit/after_rollback hooks run.
+    """
+
+    payload = _live_payload(event_type, entity_type=entity_type, entity_id=entity_id, data=data)
+    nested = db.sync_session.get_nested_transaction()
+    if nested is None:
+        db.sync_session.info.setdefault(_PENDING_LIVE_EVENTS_KEY, []).append(payload)
+        return
+    groups = db.sync_session.info.setdefault(_PENDING_NESTED_LIVE_EVENTS_KEY, {})
+    groups.setdefault(id(nested), []).append(payload)
+
+
+@event.listens_for(Session, "after_commit")
+def _publish_committed_live_events(session: Session) -> None:
+    nested = session.get_nested_transaction()
+    if nested is not None:
+        groups = session.info.setdefault(_PENDING_NESTED_LIVE_EVENTS_KEY, {})
+        payloads = groups.pop(id(nested), [])
+        parent = nested.parent
+        if parent is not None and parent.nested:
+            groups.setdefault(id(parent), []).extend(payloads)
+        else:
+            session.info.setdefault(_PENDING_LIVE_EVENTS_KEY, []).extend(payloads)
+        return
+    for payload in session.info.pop(_PENDING_LIVE_EVENTS_KEY, []):
+        _publish_payload(payload)
+    session.info.pop(_PENDING_NESTED_LIVE_EVENTS_KEY, None)
+
+
+@event.listens_for(Session, "after_rollback")
+def _discard_rolled_back_live_events(session: Session) -> None:
+    nested = session.get_nested_transaction()
+    if nested is not None:
+        groups = session.info.get(_PENDING_NESTED_LIVE_EVENTS_KEY, {})
+        groups.pop(id(nested), None)
+        return
+    session.info.pop(_PENDING_LIVE_EVENTS_KEY, None)
+    session.info.pop(_PENDING_NESTED_LIVE_EVENTS_KEY, None)
 
 
 async def create_event(
@@ -49,7 +120,8 @@ async def create_event(
     )
     db.add(event)
     await db.flush()
-    publish_live_event(
+    queue_live_event(
+        db,
         event_type,
         entity_type=entity_type,
         entity_id=entity_id,
@@ -66,14 +138,10 @@ def publish_live_event(
     data: dict[str, Any] | None = None,
 ) -> None:
     """Publish transient SSE state without adding Event-history noise."""
+    _publish_payload(_live_payload(event_type, entity_type=entity_type, entity_id=entity_id, data=data))
 
-    payload = {
-        "event": event_type,
-        "entity_type": entity_type,
-        "entity_id": str(entity_id) if entity_id else None,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "data": data or {},
-    }
+
+def _publish_payload(payload: dict[str, Any]) -> None:
     for queue in list(_subscribers):
         try:
             queue.put_nowait(payload)

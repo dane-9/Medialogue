@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -68,3 +68,59 @@ async def ensure_quality_definitions(session: AsyncSession) -> None:
     for name, item in existing.items():
         if name not in canonical_names:
             item.enabled = False
+
+
+async def ensure_problem_integrity(session: AsyncSession) -> None:
+    """Repair legacy duplicate OPEN Problems and enforce one-row identity.
+
+    The v9 baseline is model-driven, so an already-created v9 database does
+    not automatically receive indexes added to the SQLAlchemy model later.
+    This startup repair is deliberately idempotent and limited to the Problems
+    table so existing TrueNAS/PostgreSQL volumes gain the same invariant as
+    fresh installations.
+    """
+
+    from datetime import datetime, timezone
+
+    from app.models.domain import Problem, ProblemStatus
+
+    rows = (
+        await session.scalars(
+            select(Problem)
+            .where(Problem.status == ProblemStatus.OPEN)
+            .order_by(Problem.created_at.asc(), Problem.id.asc())
+        )
+    ).all()
+    canonical: dict[tuple[str, str, object | None], Problem] = {}
+    now = datetime.now(timezone.utc)
+    for problem in rows:
+        key = (problem.reason, problem.entity_type, problem.entity_id)
+        retained = canonical.get(key)
+        if retained is None:
+            canonical[key] = problem
+            continue
+        problem.status = ProblemStatus.RESOLVED
+        problem.resolved_at = now
+        problem.resolution = {
+            "action": "deduplicated_on_startup",
+            "canonical_problem_id": str(retained.id),
+        }
+    await session.flush()
+
+    # SQLAlchemy metadata creates these on fresh databases. CREATE IF NOT
+    # EXISTS brings already-initialized databases to the same invariant. The
+    # enum is persisted by SQLAlchemy using member names (OPEN/RESOLVED/etc.).
+    await session.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_problems_open_entity "
+            "ON problems (reason, entity_type, entity_id) "
+            "WHERE status = 'OPEN' AND entity_id IS NOT NULL"
+        )
+    )
+    await session.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_problems_open_global "
+            "ON problems (reason, entity_type) "
+            "WHERE status = 'OPEN' AND entity_id IS NULL"
+        )
+    )
