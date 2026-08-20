@@ -12,7 +12,8 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from uuid import UUID
+from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -152,6 +153,30 @@ def _install_fake(client: TestClient, behavior: FakeQBitBehavior) -> None:
     from app.api import downloads as downloads_api
 
     client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
+
+
+def test_qbit_remote_mapping_preserves_local_path_case() -> None:
+    from app.services.qbittorrent import _inside_local_root, resolve_remote_path
+
+    mapping_id = uuid4()
+    mapping = SimpleNamespace(
+        id=mapping_id,
+        remote_prefix="/Movies",
+        local_prefix="/movies",
+        enabled=True,
+    )
+
+    resolved, used_mapping = resolve_remote_path(
+        "/Movies/Cartoons/The.Movie.2026/The.Movie.2026.mkv",
+        [mapping],
+    )
+
+    assert resolved == "/movies/Cartoons/The.Movie.2026/The.Movie.2026.mkv"
+    assert used_mapping == mapping_id
+
+    # An unmatched remote qBit path must not be mistaken for the Linux-local
+    # /movies mount merely because the comparison used to case-fold both.
+    assert _inside_local_root("/Movies/Movies/Unmanaged.Movie.2026", "/movies") is False
 
 
 def test_download_client_crud_redacts_password_and_preserves_multiple_scopes(client: TestClient) -> None:
@@ -340,6 +365,87 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
             assert historical.status_code == 200, historical.text
             assert historical.json()["items"][0]["is_present"] is False
             assert historical.json()["items"][0]["removed_at"] is not None
+        finally:
+            client.app.dependency_overrides.clear()
+    finally:
+        if root.exists():
+            root.rmdir()
+
+
+def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resolves(client: TestClient) -> None:
+    """A qBit path outside enabled roots is not a Medialogue filesystem fault.
+
+    This covers the production case where a client also contains torrents for
+    e.g. /Movies/Movies while this Medialogue instance is configured only for
+    /Movies/Cartoons.  Historically-known torrents must not bypass the scope
+    boundary and manufacture TORRENT_PATH_NOT_FOUND rows.
+    """
+
+    headers = _login(client)
+    _enable_operations(client, headers)
+    root = Path.cwd() / f"qbit-cartoons-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    try:
+        configured_root = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": "cartoons only", "path": str(root), "media_type": "movies"},
+        )
+        assert configured_root.status_code == 201, configured_root.text
+        configured = _create_client(client, headers, tags=[])
+        missing_inside_root = root / "Missing.Movie.2026"
+        behavior = FakeQBitBehavior(
+            torrents=[
+                _torrent(
+                    "scopedhash",
+                    "Missing Movie 2026 1080p WEB-DL",
+                    progress=1,
+                    state="uploading",
+                    save_path=str(root),
+                    content_path=str(missing_inside_root),
+                    tags=(),
+                )
+            ]
+        )
+        _install_fake(client, behavior)
+        try:
+            first = client.post(
+                f"/api/v1/download-clients/{configured['id']}/poll",
+                headers=headers,
+            )
+            assert first.status_code == 200, first.text
+            assert first.json()["relevant"] == 1
+
+            open_paths = client.get(
+                "/api/v1/problems?status=open&reason=TORRENT_PATH_NOT_FOUND",
+            )
+            assert open_paths.status_code == 200, open_paths.text
+            assert open_paths.json()["total"] == 1
+
+            behavior.torrents = [
+                _torrent(
+                    "scopedhash",
+                    "Missing Movie 2026 1080p WEB-DL",
+                    progress=1,
+                    state="uploading",
+                    save_path="/Movies/Movies",
+                    content_path="/Movies/Movies/Missing.Movie.2026",
+                    tags=(),
+                )
+            ]
+            second = client.post(
+                f"/api/v1/download-clients/{configured['id']}/poll",
+                headers=headers,
+            )
+            assert second.status_code == 200, second.text
+            assert second.json()["relevant"] == 0
+            assert second.json()["ignored"] == 1
+
+            open_paths = client.get(
+                "/api/v1/problems?status=open&reason=TORRENT_PATH_NOT_FOUND",
+            )
+            assert open_paths.status_code == 200, open_paths.text
+            assert open_paths.json()["total"] == 0
         finally:
             client.app.dependency_overrides.clear()
     finally:

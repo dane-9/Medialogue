@@ -1214,7 +1214,18 @@ async def finalize_completed_torrent(
     # matches `/movies`.  This query also works for mapped nested paths.
     roots = (await db.scalars(select(StorageRoot).where(StorageRoot.enabled.is_(True), StorageRoot.media_type == MediaType.MOVIES))).all()
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
-    if root is None or not Path(root.resolved_root_path).is_dir() or not path.exists():
+    if root is None:
+        # qBittorrent may manage many libraries that are intentionally outside
+        # Medialogue's configured storage roots.  Such a path is out of scope,
+        # not missing.  Never manufacture a filesystem-access Problem for it.
+        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
+        return "ignored"
+    if not Path(root.resolved_root_path).is_dir():
+        # Root health is represented once by ROOT_UNREACHABLE.  Avoid a
+        # torrent-per-file Problem storm while the mount itself is offline.
+        return "deferred"
+    if not path.exists():
         await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         await open_problem(
             db,
@@ -1313,7 +1324,13 @@ async def _finalize_completed_show_torrent(
         )
     ).all()
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
-    if root is None or not Path(root.resolved_root_path).is_dir() or not path.exists():
+    if root is None:
+        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
+        return "ignored"
+    if not Path(root.resolved_root_path).is_dir():
+        return "deferred"
+    if not path.exists():
         await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
@@ -1434,8 +1451,20 @@ async def _finalize_completed_show_torrent(
     return result
 
 
-async def reconcile_torrent_disagreements(db: AsyncSession, torrent: Torrent, *, qbit_present: bool) -> None:
-    """Surface qBit/media disagreement without changing logical media state."""
+async def reconcile_torrent_disagreements(
+    db: AsyncSession,
+    torrent: Torrent,
+    *,
+    qbit_present: bool | None,
+) -> None:
+    """Surface qBit/media disagreement without changing logical media state.
+
+    ``qbit_present=None`` means qBittorrent still reports the torrent but its
+    resolved path is outside every enabled Medialogue storage root.  In that
+    state qBittorrent is deliberately out of scope, so stale disagreement
+    Problems are cleared rather than reclassified as a removal/missing-path
+    fault.
+    """
 
     movie_links = (await db.scalars(select(MovieReleaseTorrent).where(MovieReleaseTorrent.torrent_id == torrent.id))).all()
     for link in movie_links:
@@ -1448,10 +1477,10 @@ async def reconcile_torrent_disagreements(db: AsyncSession, torrent: Torrent, *,
         media_present = any(directory.exists for directory in directories)
         reason = None
         message = ""
-        if not qbit_present and media_present:
+        if qbit_present is False and media_present:
             reason = "TORRENT_REMOVED_EXTERNALLY"
             message = "The attached media is present but its qBittorrent torrent was removed externally."
-        elif qbit_present and not media_present:
+        elif qbit_present is True and not media_present:
             reason = "TORRENT_PATH_NOT_FOUND"
             message = "qBittorrent still reports the torrent, but its attached media path is missing."
         if reason is not None:
@@ -1486,10 +1515,10 @@ async def reconcile_torrent_disagreements(db: AsyncSession, torrent: Torrent, *,
         )
         reason = None
         message = ""
-        if not qbit_present and media_present:
+        if qbit_present is False and media_present:
             reason = "TORRENT_REMOVED_EXTERNALLY"
             message = "The Show media is present but its qBittorrent torrent was removed externally."
-        elif qbit_present and not media_present:
+        elif qbit_present is True and not media_present:
             reason = "TORRENT_PATH_NOT_FOUND"
             message = "qBittorrent still reports the Show torrent, but none of its mapped media files are present."
         if reason is not None:
@@ -1508,8 +1537,17 @@ async def reconcile_torrent_disagreements(db: AsyncSession, torrent: Torrent, *,
             await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "show_release", release.id)
 
 
-async def cancel_incoming_torrent(db: AsyncSession, torrent: Torrent) -> int:
-    """Deactivate provisional Incoming links when qBit removes a torrent."""
+async def cancel_incoming_torrent(
+    db: AsyncSession,
+    torrent: Torrent,
+    *,
+    emit_event: bool = True,
+) -> int:
+    """Deactivate provisional Incoming links.
+
+    ``emit_event`` is disabled when a still-present torrent merely leaves the
+    configured Medialogue storage scope; that is not a qBittorrent removal.
+    """
 
     movie_links = (
         await db.scalars(
@@ -1553,7 +1591,7 @@ async def cancel_incoming_torrent(db: AsyncSession, torrent: Torrent) -> int:
             release.release_state = ReleaseState.REMOVED
         cancelled += 1
 
-    if cancelled:
+    if cancelled and emit_event:
         await create_event(
             db,
             "download.cancelled",

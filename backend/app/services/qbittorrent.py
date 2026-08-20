@@ -12,7 +12,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from time import perf_counter
 from typing import Callable
 from uuid import UUID
@@ -56,6 +56,17 @@ def utcnow() -> datetime:
 def _normal_path(value: str | None) -> str:
     """Normalize path separators for prefix comparisons without touching FS."""
 
+    return _clean_path(value).casefold()
+
+
+def _clean_path(value: str | None) -> str:
+    """Normalize separators while preserving the path's original casing.
+
+    qBittorrent paths are compared case-insensitively because the remote
+    client may be Windows, but the mapped local path can be a case-sensitive
+    Linux filesystem.  Never derive the local suffix from a case-folded path.
+    """
+
     if not value:
         return ""
     normalized = value.replace("\\", "/")
@@ -66,13 +77,28 @@ def _normal_path(value: str | None) -> str:
         normalized = normalized.replace("//", "/")
     if len(normalized) > 1:
         normalized = normalized.rstrip("/")
-    return normalized.casefold()
+    return normalized
 
 
-def _inside(path: str, root: str) -> bool:
-    child = _normal_path(path)
-    parent = _normal_path(root)
-    return bool(child and parent and (child == parent or child.startswith(parent + "/")))
+def _inside_local_root(path: str | None, root: str) -> bool:
+    """Check a resolved *local* path against a local storage root.
+
+    Remote qBittorrent prefixes are matched case-insensitively, but after
+    mapping Medialogue is operating in a Linux container.  The local mount
+    namespace is case-sensitive.  Treating ``/Movies/...`` as if it were under
+    the local root ``/movies`` lets an unmatched remote path masquerade as a
+    valid local path and creates false TORRENT_PATH_NOT_FOUND Problems.
+    """
+
+    if not path or not root:
+        return False
+    try:
+        Path(_clean_path(path)).resolve(strict=False).relative_to(
+            Path(_clean_path(root)).resolve(strict=False)
+        )
+        return True
+    except ValueError:
+        return False
 
 
 def _join_prefix(local_prefix: str, suffix: str) -> str:
@@ -90,18 +116,22 @@ def resolve_remote_path(
 
     if not reported_path:
         return None, None
-    reported_normalized = _normal_path(reported_path)
+    reported_clean = _clean_path(reported_path)
+    reported_normalized = reported_clean.casefold()
     candidates = sorted(
         mappings,
         key=lambda mapping: len(_normal_path(mapping.remote_prefix)),
         reverse=True,
     )
     for mapping in candidates:
-        remote_prefix = _normal_path(mapping.remote_prefix)
+        remote_clean = _clean_path(mapping.remote_prefix)
+        remote_prefix = remote_clean.casefold()
         if reported_normalized == remote_prefix or reported_normalized.startswith(remote_prefix + "/"):
-            # Calculate suffix from normalized values only for mapping.  The
-            # actual reported spelling remains in the observation field.
-            suffix = reported_normalized[len(remote_prefix) :].lstrip("/")
+            # Comparison is case-insensitive, but preserve the remote path's
+            # original suffix casing when constructing the Linux-local path.
+            # Lower-casing this suffix makes valid mapped paths fail exists()
+            # checks on case-sensitive filesystems.
+            suffix = reported_clean[len(remote_clean) :].lstrip("/")
             return _join_prefix(mapping.local_prefix, suffix), mapping.id
     # No mapping is needed when qBit and the app share a mount path.  It is
     # still checked against configured roots before being persisted.
@@ -219,6 +249,25 @@ async def _poll_download_client(
             )
         )
     ).all()
+    root_by_id = {root.id: root for root in roots}
+    # A mapping explicitly attached to a storage root must not remain active
+    # for a different/disabled root.  Unscoped mappings remain available, but
+    # the translated result is still checked against enabled roots below.
+    mappings = [
+        mapping
+        for mapping in mappings
+        if (
+            mapping.storage_root_id is None
+            or (
+                mapping.storage_root_id in root_by_id
+                and _inside_local_root(
+                    mapping.local_prefix,
+                    root_by_id[mapping.storage_root_id].resolved_root_path,
+                )
+            )
+        )
+    ]
+    mapping_by_id = {mapping.id: mapping for mapping in mappings}
     prior_rows = (
         await db.scalars(
             select(TorrentClientObservation)
@@ -247,12 +296,50 @@ async def _poll_download_client(
         current_hashes.add(info_hash)
         reported_content = observed.content_path or observed.save_path
         resolved_content, mapping_id = resolve_remote_path(reported_content, mappings)
-        in_scope = any(_inside(resolved_content, root.resolved_root_path) for root in roots)
+        matched_mapping = mapping_by_id.get(mapping_id) if mapping_id else None
+        if matched_mapping is not None and matched_mapping.storage_root_id is not None:
+            mapped_root = root_by_id.get(matched_mapping.storage_root_id)
+            in_scope = bool(
+                mapped_root
+                and _inside_local_root(resolved_content, mapped_root.resolved_root_path)
+            )
+        else:
+            in_scope = any(
+                _inside_local_root(resolved_content, root.resolved_root_path)
+                for root in roots
+            )
         previously_known = info_hash in prior_by_hash
-        # A known association remains observable after a move or root outage;
-        # an unrelated torrent outside configured roots is never imported.
-        if not in_scope and not previously_known:
+        # Configured storage roots are the hard boundary for reconciliation.
+        # qBittorrent often contains torrents for libraries Medialogue cannot
+        # and should not see.  Even a historically-known torrent must not
+        # generate path/parser Problems after it moves outside those roots.
+        # Keep its durable qBit observation for history, but stop treating it
+        # as managed media and clear Problems whose premise was in-scope
+        # filesystem access.
+        if not in_scope:
             ignored += 1
+            if previously_known:
+                prior = prior_by_hash[info_hash]
+                torrent = await db.get(Torrent, prior.torrent_id)
+                if torrent is not None:
+                    async with db.begin_nested():
+                        prior.reported_save_path = reported_content
+                        prior.resolved_save_path = resolved_content
+                        prior.state = observed.state
+                        prior.progress = observed.progress
+                        prior.category = observed.category or None
+                        prior.tags = list(observed.tags)
+                        prior.is_present = True
+                        prior.last_seen_at = utcnow()
+                        prior.removed_at = None
+                        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+                        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
+                        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
+                        await cancel_incoming_torrent(db, torrent, emit_event=False)
+                        # None means qBit still has the torrent, but its path is
+                        # outside Medialogue's configured storage scope.  That
+                        # is neither "removed externally" nor "path missing".
+                        await reconcile_torrent_disagreements(db, torrent, qbit_present=None)
             continue
 
         relevant_count += 1
