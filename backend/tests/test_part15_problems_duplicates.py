@@ -624,6 +624,45 @@ def test_remote_path_mapping_can_be_managed_through_api(client: TestClient) -> N
     assert all(item["id"] != mapping_id for item in client.get("/api/v1/remote-path-mappings").json()["items"])
 
 
+def test_root_scoped_remote_mapping_cannot_translate_outside_selected_root(client: TestClient) -> None:
+    headers = login(client)
+
+    async def seed(db):
+        root = StorageRoot(
+            name="Cartoons mapping root",
+            resolved_root_path="/media/movies/Cartoons",
+            media_type=MediaType.MOVIES,
+            access_mode=AccessMode.READ_ONLY,
+            enabled=True,
+        )
+        qbit = DownloadClient(
+            name="qbit-cartoons",
+            url="http://qbit.test",
+            scope=MediaType.MOVIES,
+            enabled=True,
+        )
+        db.add_all([root, qbit])
+        await db.flush()
+        return root.id, qbit.id
+
+    root_id, client_id = db_run(seed)
+    response = client.post(
+        "/api/v1/remote-path-mappings",
+        headers=headers,
+        json={
+            "name": "Too broad",
+            "integration_type": "qbittorrent",
+            "integration_id": str(client_id),
+            "remote_prefix": "/Movies",
+            "local_prefix": "/media/movies",
+            "storage_root_id": str(root_id),
+            "enabled": True,
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "PATH_MAPPING_OUTSIDE_ROOT"
+
+
 def test_duplicate_commit_refuses_to_delete_loser_if_winner_disappears(client: TestClient) -> None:
     headers = login(client)
     root = Path.cwd() / f"part15-winner-gone-{uuid.uuid4().hex}"

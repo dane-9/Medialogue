@@ -185,7 +185,26 @@ async def list_mappings(
 
 @router.post("/remote-path-mappings", response_model=RemotePathMappingResponse, status_code=status.HTTP_201_CREATED)
 async def create_mapping(payload: RemotePathMappingCreate, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> RemotePathMappingResponse:
-    mapping = RemotePathMapping(**payload.model_dump())
+    values = payload.model_dump()
+    if payload.storage_root_id is not None:
+        root = await db.get(StorageRoot, payload.storage_root_id)
+        if root is None:
+            raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected storage root was not found.", status_code=404)
+        local_prefix = Path(payload.local_prefix).expanduser().resolve(strict=False)
+        root_path = Path(root.resolved_root_path).expanduser().resolve(strict=False)
+        try:
+            local_prefix.relative_to(root_path)
+        except ValueError as exc:
+            raise AppError(
+                "PATH_MAPPING_OUTSIDE_ROOT",
+                (
+                    "A mapping assigned to a storage root must translate into that root. "
+                    f"Local prefix {local_prefix} is outside {root_path}."
+                ),
+                status_code=422,
+            ) from exc
+        values["local_prefix"] = str(local_prefix)
+    mapping = RemotePathMapping(**values)
     db.add(mapping)
     await db.commit()
     return RemotePathMappingResponse.model_validate(mapping)
