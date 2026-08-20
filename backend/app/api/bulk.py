@@ -76,7 +76,7 @@ async def bulk_movies(
         configuration = await get_plex_configuration(db)
         if configuration is None or not configuration.enabled:
             raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
-        checked_releases = matched_releases = conflict_releases = 0
+        checked_releases = matched_releases = not_found_releases = multiple_version_releases = conflict_releases = 0
         for movie in movies:
             result = await recheck_movie_plex(
                 db,
@@ -86,11 +86,15 @@ async def bulk_movies(
             )
             checked_releases += int(result.get("checked_releases", 0))
             matched_releases += int(result.get("matched_releases", 0))
+            not_found_releases += int(result.get("not_found_releases", 0))
+            multiple_version_releases += int(result.get("multiple_version_releases", 0))
             conflict_releases += int(result.get("conflict_releases", 0))
         updated = len(movies)
         details.update(
             checked_releases=checked_releases,
             matched_releases=matched_releases,
+            not_found_releases=not_found_releases,
+            multiple_version_releases=multiple_version_releases,
             conflict_releases=conflict_releases,
         )
     else:  # pragma: no cover - Enum validation prevents this branch.

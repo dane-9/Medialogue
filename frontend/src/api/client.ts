@@ -92,8 +92,10 @@ function normalizedMovieState(value: unknown): Movie['status'] {
 function normalizedPlexState(value: unknown): Movie['plex'] {
   const state = textValue(value, 'unknown').toLowerCase()
   if (state.includes('match') || state === 'verified' || state === 'healthy') return 'Verified'
+  if (state.includes('multiple_versions') || state.includes('multiple versions')) return 'Multiple versions'
   if (state.includes('conflict')) return 'Conflict'
   if (state.includes('unavailable') || state.includes('offline')) return 'Unavailable'
+  if (state.includes('not_found') || state.includes('not found') || state.includes('not-in-plex')) return 'Not in Plex'
   return 'Pending'
 }
 
@@ -925,7 +927,7 @@ export const api = {
   updateEpisode: (episodeId: string, payload: { monitored?: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/episodes/${encodeURIComponent(episodeId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeEpisode),
   correctEpisodeMapping: (mediaFileId: string, episodeIds: string[]) => request<{ media_file_id: string; show_release_id: string; episode_ids: string[]; episode_numbers: number[]; manual_override: boolean }>(`/api/v1/media-files/${encodeURIComponent(mediaFileId)}/episode-mappings`, { method: 'PUT', body: JSON.stringify({ episode_ids: episodeIds }) }),
   refreshShowMetadata: (resourceId: string) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}/metadata/refresh`, { method: 'POST' }).then(normalizeShow),
-  recheckShowPlex: (resourceId: string) => request<{ state: string; checked_releases: number; matched_releases: number; conflict_releases: number }>(`/api/v1/shows/${encodeURIComponent(resourceId)}/actions/recheck-plex`, { method: 'POST' }),
+  recheckShowPlex: (resourceId: string) => request<{ state: string; checked_releases: number; matched_releases: number; not_found_releases: number; multiple_version_releases: number; conflict_releases: number }>(`/api/v1/shows/${encodeURIComponent(resourceId)}/actions/recheck-plex`, { method: 'POST' }),
   startEpisodeSearch: (episodeId: string) => request<{ job_id: string }>(`/api/v1/episodes/${encodeURIComponent(episodeId)}/interactive-search`, { method: 'POST' }),
   startSeasonSearch: (seasonId: string) => request<{ job_id: string }>(`/api/v1/seasons/${encodeURIComponent(seasonId)}/interactive-search`, { method: 'POST' }),
   remotePathMappings: async () => {
@@ -951,7 +953,7 @@ export const api = {
   saveTmdb: (configuration: { api_key?: string; enabled: boolean; expected_revision?: number }) => request<{ configured: boolean; api_key_configured: boolean; enabled: boolean; health: string; latency_ms?: number; last_error?: string; revision?: number }>('/api/v1/integrations/tmdb', { method: 'PUT', body: JSON.stringify(configuration) }),
   testTmdb: (configuration: { api_key?: string }) => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/test', { method: 'POST', body: JSON.stringify(configuration) }),
   refreshTmdbHealth: () => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/health/refresh', { method: 'POST' }),
-  recheckMoviePlex: (id: string) => request<{ movie_id: string; state: string; checked_releases: number; matched_releases: number; conflict_releases: number }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
+  recheckMoviePlex: (id: string) => request<{ movie_id: string; state: string; checked_releases: number; matched_releases: number; not_found_releases: number; multiple_version_releases: number; conflict_releases: number }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
   reconcileMovie: (_id: string) => request<unknown>('/api/v1/reconciliation/refresh', { method: 'POST' }),
   reconcileAll: async () => {
     const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })

@@ -25,6 +25,7 @@ from app.models.domain import (
     ReleaseState,
     Severity,
     Show,
+    StorageRoot,
 )
 from app.services.events import create_event
 from app.services.reconciliation import open_problem, resolve_problem
@@ -102,6 +103,20 @@ async def _record_health_change(
     )
 
 
+
+
+async def _client_library_snapshot(client: object) -> PlexLibrarySnapshot | None:
+    """Use the optimized snapshot API when the concrete Plex adapter supports it.
+
+    Test doubles and older adapters can omit ``library_snapshot``; callers then
+    fall back to the legacy per-path read methods.
+    """
+
+    loader = getattr(client, "library_snapshot", None)
+    if not callable(loader):
+        return None
+    return await loader()
+
 async def recheck_movie_plex(
     db: AsyncSession,
     movie: Movie,
@@ -124,7 +139,8 @@ async def recheck_movie_plex(
         and any(directory.exists for directory in release.directories)
     ]
     client = None if snapshot is not None else client_factory(configuration.url, configuration.token)
-    checked = matched = conflicts = 0
+    effective_snapshot = snapshot
+    checked = matched = conflicts = not_found = 0
     overall = PlexMatchState.PENDING
     multiple_versions = 0
     previous_health = configuration.health
@@ -139,9 +155,12 @@ async def recheck_movie_plex(
             configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
             configuration.latency_ms = round((perf_counter() - health_started) * 1000)
             configuration.last_error = None
+            effective_snapshot = await _client_library_snapshot(client)
         for release in releases:
             checked += 1
-            exact = await _find_release_exact_match(client, release, snapshot=snapshot)
+            exact, checked_path = await _find_release_exact_match(
+                db, client, release, snapshot=effective_snapshot
+            )
             if exact is not None:
                 title_agrees = not exact.title or exact.title.casefold() == movie.title.casefold()
                 year_agrees = movie.year is None or exact.year is None or exact.year == movie.year
@@ -154,15 +173,17 @@ async def recheck_movie_plex(
                     state = PlexMatchState.CONFLICT
                     method = PlexMatchMethod.EXACT_PATH
                     conflicts += 1
-                await _upsert_observation(db, movie, release, state, method, exact=exact)
+                await _upsert_observation(
+                    db, movie, release, state, method, exact=exact, resolved_path=checked_path
+                )
                 if state == PlexMatchState.CONFLICT:
                     await _open_conflict(db, movie, release, exact)
                 else:
                     await _resolve_conflict(db, movie.id)
                 continue
 
-            if snapshot is not None:
-                title_matches = snapshot.search_title_year(movie.title, movie.year)
+            if effective_snapshot is not None:
+                title_matches = effective_snapshot.search_title_year(movie.title, movie.year)
             else:
                 assert client is not None
                 title_matches = await client.search_title_year(movie.title, movie.year)
@@ -180,28 +201,36 @@ async def recheck_movie_plex(
                     year=title_match.year,
                     rating_key=title_match.rating_key,
                     edition=title_match.edition,
+                    resolved_path=checked_path,
                 )
             elif len(title_matches) > 1:
                 state = PlexMatchState.MULTIPLE_VERSIONS
                 multiple_versions += 1
-                await _upsert_observation(db, movie, release, state, PlexMatchMethod.TITLE_YEAR)
+                await _upsert_observation(
+                    db, movie, release, state, PlexMatchMethod.TITLE_YEAR, resolved_path=checked_path
+                )
             else:
-                state = PlexMatchState.PENDING
-                await _upsert_observation(db, movie, release, state, None)
+                # Plex answered successfully and this media was absent. This is
+                # a completed observation, not a job that is still pending.
+                state = PlexMatchState.NOT_FOUND
+                not_found += 1
+                await _upsert_observation(db, movie, release, state, None, resolved_path=checked_path)
 
         if conflicts:
             overall = PlexMatchState.CONFLICT
         elif multiple_versions:
             overall = PlexMatchState.MULTIPLE_VERSIONS
+        elif not_found:
+            # A movie is only fully verified when every eligible active release
+            # is accounted for in Plex. Keep a missing release visible.
+            overall = PlexMatchState.NOT_FOUND
         elif matched:
             overall = PlexMatchState.MATCHED
-        elif releases:
-            overall = PlexMatchState.PENDING
     except Exception as exc:
-        # When a caller supplied a pre-fetched library snapshot, Plex already
-        # answered successfully. A local parser/database failure must not be
-        # misreported as a Plex outage. Let the sync worker isolate that title.
-        if snapshot is not None:
+        # When a caller supplied (or this function loaded) a Plex snapshot,
+        # Plex already answered successfully. Local parser/database failures
+        # must not be misreported as a Plex outage.
+        if effective_snapshot is not None:
             raise
         configuration.health = "unavailable"
         configuration.last_checked_at = utcnow()
@@ -219,16 +248,25 @@ async def recheck_movie_plex(
         "state": overall.value,
         "checked_releases": checked,
         "matched_releases": matched,
+        "not_found_releases": not_found,
+        "multiple_version_releases": multiple_versions,
         "conflict_releases": conflicts,
     }
 
 
 async def _find_release_exact_match(
+    db: AsyncSession,
     client: PlexClient | None,
     release: MovieRelease,
     *,
     snapshot: PlexLibrarySnapshot | None = None,
-) -> PlexMediaMatch | None:
+) -> tuple[PlexMediaMatch | None, str | None]:
+    root_ids = {directory.storage_root_id for directory in release.directories if directory.storage_root_id}
+    roots = (
+        await db.scalars(select(StorageRoot).where(StorageRoot.id.in_(root_ids)))
+    ).all() if root_ids else []
+    root_paths = {root.id: root.resolved_root_path for root in roots}
+    first_checked_path: str | None = None
     for directory in release.directories:
         if not directory.exists:
             continue
@@ -236,14 +274,19 @@ async def _find_release_exact_match(
             if not media_file.exists or media_file.media_role.value not in {"movie_video", "other_media"}:
                 continue
             path = str(PurePosixPath(directory.resolved_path) / media_file.relative_path)
+            first_checked_path = first_checked_path or path
             if snapshot is not None:
-                match = snapshot.find_exact_path(path)
+                match = snapshot.find_exact_path(
+                    path,
+                    local_root=root_paths.get(directory.storage_root_id),
+                    media_type="movies",
+                )
             else:
                 assert client is not None
                 match = await client.find_exact_path(path)
             if match is not None:
-                return match
-    return None
+                return match, path
+    return None, first_checked_path
 
 
 async def _upsert_observation(
@@ -258,6 +301,7 @@ async def _upsert_observation(
     year: int | None = None,
     rating_key: str | None = None,
     edition: str | None = None,
+    resolved_path: str | None = None,
 ) -> PlexObservation:
     observation = await db.scalar(
         select(PlexObservation).where(PlexObservation.movie_release_id == release.id)
@@ -279,7 +323,9 @@ async def _upsert_observation(
     observation.plex_year = exact.year if exact else year
     observation.plex_edition = exact.edition if exact else edition
     observation.plex_reported_path = exact.file_path if exact else None
-    observation.resolved_path = exact.file_path if exact else None
+    # Keep the path in Medialogue's namespace here. The Plex-side path is
+    # already preserved separately in plex_reported_path.
+    observation.resolved_path = resolved_path
     observation.last_seen_at = utcnow()
     await db.flush()
     if previous != state:
@@ -342,7 +388,7 @@ async def recheck_show_plex(
     client_factory: PlexClientFactory = PlexClient,
     snapshot: PlexLibrarySnapshot | None = None,
 ) -> dict[str, int | str]:
-    """Verify mapped episode files by exact Plex path without triggering scans."""
+    """Verify mapped episode files by Plex path without triggering Plex scans."""
 
     rows = (
         await db.execute(
@@ -353,8 +399,15 @@ async def recheck_show_plex(
             .where(Episode.show_id == show.id, MediaFile.exists.is_(True), MediaDirectory.exists.is_(True))
         )
     ).all()
+    root_ids = {directory.storage_root_id for _, _, _, directory in rows if directory.storage_root_id}
+    roots = (
+        await db.scalars(select(StorageRoot).where(StorageRoot.id.in_(root_ids)))
+    ).all() if root_ids else []
+    root_paths = {root.id: root.resolved_root_path for root in roots}
+
     client = None if snapshot is not None else client_factory(configuration.url, configuration.token)
-    checked = matched = conflicts = 0
+    effective_snapshot = snapshot
+    checked = matched = conflicts = not_found = 0
     previous_health = configuration.health
     try:
         if snapshot is None:
@@ -367,16 +420,23 @@ async def recheck_show_plex(
             configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
             configuration.latency_ms = round((perf_counter() - started) * 1000)
             configuration.last_error = None
+            effective_snapshot = await _client_library_snapshot(client)
         for episode, mapping, media_file, directory in rows:
+            del mapping
             checked += 1
             path = str(PurePosixPath(directory.resolved_path) / media_file.relative_path)
-            if snapshot is not None:
-                exact = snapshot.find_exact_path(path)
+            if effective_snapshot is not None:
+                exact = effective_snapshot.find_exact_path(
+                    path,
+                    local_root=root_paths.get(directory.storage_root_id),
+                    media_type="shows",
+                )
             else:
                 assert client is not None
                 exact = await client.find_exact_path(path)
             if exact is None:
-                state = PlexMatchState.PENDING
+                state = PlexMatchState.NOT_FOUND
+                not_found += 1
             else:
                 title_agrees = not exact.show_title or exact.show_title.casefold() == show.title.casefold()
                 season_agrees = exact.season_number is None or exact.season_number == episode.season_number
@@ -431,14 +491,13 @@ async def recheck_show_plex(
         else:
             await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "show", show.id)
     except Exception as exc:
-        # A snapshot-backed verification has already established Plex
-        # connectivity. Keep local processing errors local to the sync job.
-        if snapshot is not None:
+        if effective_snapshot is not None:
             raise
         configuration.health = "unavailable"
         configuration.last_checked_at = utcnow()
         configuration.last_error = str(exc)
         for episode, mapping, media_file, directory in rows:
+            del mapping, directory
             observation = await db.scalar(select(PlexObservation).where(PlexObservation.media_file_id == media_file.id))
             if observation is None:
                 observation = PlexObservation(
@@ -456,7 +515,20 @@ async def recheck_show_plex(
         if client is not None:
             await client.close()
     await _record_health_change(db, configuration, previous_health)
-    overall = "conflict" if conflicts else "matched" if matched else "pending" if rows else "pending"
+    overall = (
+        "conflict" if conflicts else
+        "not_found" if not_found else
+        "matched" if matched else
+        "pending"
+    )
     if configuration.health == "unavailable":
         overall = "unavailable"
-    return {"state": overall, "checked_releases": checked, "matched_releases": matched, "conflict_releases": conflicts}
+    return {
+        "state": overall,
+        "checked_releases": checked,
+        "matched_releases": matched,
+        "not_found_releases": not_found,
+        "multiple_version_releases": 0,
+        "conflict_releases": conflicts,
+    }
+

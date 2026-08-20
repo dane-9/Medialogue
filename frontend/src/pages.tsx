@@ -9,7 +9,7 @@ import type { CustomFormat, Download, DownloadClient, IncomingDownload, Indexer,
 
 
 
-const statusTone = (status: string) => status === 'Present' || status === 'Verified' || status === 'Completed' || status === 'Archived' ? 'green' : status === 'Missing' || status === 'Pending' || status === 'Downloading' || status === 'Active' ? 'amber' : status === 'Conflict' || status === 'Duplicate' || status === 'Error' ? 'red' : 'neutral'
+const statusTone = (status: string) => status === 'Present' || status === 'Verified' || status === 'Completed' || status === 'Archived' ? 'green' : status === 'Missing' || status === 'Pending' || status === 'Multiple versions' || status === 'Downloading' || status === 'Active' ? 'amber' : status === 'Conflict' || status === 'Duplicate' || status === 'Error' ? 'red' : 'neutral'
 
 function tmdbPosterUrl(reference?: string) {
   if (!reference) return undefined
@@ -21,6 +21,50 @@ function PosterImage({ reference, title }: { reference?: string; title: string }
   const src = tmdbPosterUrl(reference)
   if (!src) return null
   return <img className="poster-image" src={src} alt={`${title} poster`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} />
+}
+
+const libraryInvalidationEvents = [
+  'scan.progress', 'scan.completed', 'scan.failed',
+  'media.present', 'media.missing', 'media.reappeared',
+  'plex.matched', 'plex.verified', 'plex.not_found', 'plex.pending', 'plex.conflict', 'plex.multiple_versions', 'plex.unavailable', 'plex.sync_completed',
+  'problem.created', 'problem.updated', 'problem.resolved', 'problem.deleted',
+  'show.metadata_refreshed', 'movie.monitoring_updated', 'movie.tags_updated',
+] as const
+
+function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000) {
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  useEffect(() => {
+    let refreshTimer: number | undefined
+    let stopped = false
+    const run = () => {
+      if (!stopped && document.visibilityState !== 'hidden') void refreshRef.current()
+    }
+    // Throttle high-frequency scan progress to at most a couple of REST reads
+    // per second while still making newly discovered rows appear during a scan.
+    const invalidate = () => {
+      if (refreshTimer !== undefined) return
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined
+        run()
+      }, 500)
+    }
+
+    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    libraryInvalidationEvents.forEach((name) => stream.addEventListener(name, invalidate))
+    const poll = window.setInterval(run, pollIntervalMs)
+    const onVisibility = () => { if (document.visibilityState === 'visible') invalidate() }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      stopped = true
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
+      window.clearInterval(poll)
+      document.removeEventListener('visibilitychange', onVisibility)
+      stream.close()
+    }
+  }, [pollIntervalMs])
 }
 
 export function MoviesPage() {
@@ -49,6 +93,8 @@ export function MoviesPage() {
       setError(reason instanceof Error ? reason.message : 'Could not load movies.')
     } finally { setLoading(false) }
   }
+
+  useLiveLibraryRefresh(loadMovies)
 
   useEffect(() => {
     let alive = true
@@ -299,10 +345,15 @@ export function MovieDetailPage({ id }: { id: string }) {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { let alive = true; api.movie(id).then((item) => { if (alive) setMovie(item) }).catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Movie not found.') }); return () => { alive = false } }, [id])
+  const load = async (reportError = true) => {
+    try { setMovie(await api.movie(id)); if (reportError) setError('') }
+    catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Movie not found.') }
+  }
+  useEffect(() => { void load() }, [id])
+  useLiveLibraryRefresh(() => load(false))
   const recheckPlex = async () => {
     setBusy(true); setMessage('')
-    try { const result = await api.recheckMoviePlex(id); setMovie(await api.movie(id)); setMessage(`Plex recheck complete: ${result.matched_releases} matched, ${result.conflict_releases} conflicts.`) }
+    try { const result = await api.recheckMoviePlex(id); setMovie(await api.movie(id)); setMessage(`Plex recheck complete: ${result.matched_releases} matched, ${result.not_found_releases} not in Plex, ${result.multiple_version_releases} multiple-version matches, ${result.conflict_releases} conflicts.`) }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not recheck Plex.') }
     finally { setBusy(false) }
   }
@@ -347,12 +398,13 @@ export function ShowsPage() {
   const [lookupQuery, setLookupQuery] = useState('')
   const [lookupResults, setLookupResults] = useState<TMDBShowLookup[]>([])
   const [lookupBusy, setLookupBusy] = useState(false)
-  const load = async () => {
-    setLoading(true)
+  const load = async (foreground = true) => {
+    if (foreground) setLoading(true)
     try { setItems(await api.shows(query)); setError('') }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load shows.') }
-    finally { setLoading(false) }
+    finally { if (foreground) setLoading(false) }
   }
+  useLiveLibraryRefresh(() => load(false))
   useEffect(() => { const timer = window.setTimeout(() => { void load() }, 150); return () => window.clearTimeout(timer) }, [query])
   const lookup = async () => {
     if (!lookupQuery.trim()) return
@@ -393,10 +445,11 @@ export function ShowDetailPage({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const [mappingEditor, setMappingEditor] = useState<{ media: EpisodeMedia; season: Season } | null>(null)
   const [mappingEpisodeIds, setMappingEpisodeIds] = useState<string[]>([])
-  const load = async () => { try { setShow(await api.show(id)); setError('') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Show not found.') } }
+  const load = async (reportError = true) => { try { setShow(await api.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
   useEffect(() => { void load() }, [id])
+  useLiveLibraryRefresh(() => load(false))
   const refreshMetadata = async () => { setBusy(true); try { setShow(await api.refreshShowMetadata(id)); setMessage('TMDB metadata refreshed. Existing media mappings were preserved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Metadata refresh failed.') } finally { setBusy(false) } }
-  const recheckPlex = async () => { setBusy(true); try { const result = await api.recheckShowPlex(id); await load(); setMessage(`Plex checked ${result.checked_releases} episode files: ${result.matched_releases} matched, ${result.conflict_releases} conflicts.`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Plex recheck failed.') } finally { setBusy(false) } }
+  const recheckPlex = async () => { setBusy(true); try { const result = await api.recheckShowPlex(id); await load(); setMessage(`Plex checked ${result.checked_releases} episode files: ${result.matched_releases} matched, ${result.not_found_releases} not in Plex, ${result.multiple_version_releases} multiple-version matches, ${result.conflict_releases} conflicts.`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Plex recheck failed.') } finally { setBusy(false) } }
   const setSeasonMonitored = async (season: Season, monitored: boolean) => { try { await api.updateSeason(season.id, { monitored, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season monitoring.') } }
   const setEpisodeMonitored = async (episode: Episode, monitored: boolean) => { try { await api.updateEpisode(episode.id, { monitored, expected_revision: episode.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update episode monitoring.') } }
   const searchSeason = async (season: Season) => { try { const result = await api.startSeasonSearch(season.id); setMessage(`Season search started · job ${result.job_id.slice(0, 8)}…`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start season search.') } }
@@ -1212,7 +1265,7 @@ function PlexSettings() {
   }
   const healthTone = configuration?.health === 'healthy' ? 'green' : configuration?.health === 'unavailable' ? 'red' : configuration?.health === 'degraded' ? 'amber' : 'neutral'
   return <>
-    <div className="integration-hero"><div className="integration-icon"><Icon name="tv" size={21} /></div><div><h3>Plex connection</h3><p>Read-only library verification uses exact media paths before title fallback.</p></div><Badge tone={healthTone}>{loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health}</Badge></div>
+    <div className="integration-hero"><div className="integration-icon"><Icon name="tv" size={21} /></div><div><h3>Plex connection</h3><p>Read-only verification uses exact paths, then storage-root-relative paths across Docker mount prefixes, before Movie title/year fallback.</p></div><Badge tone={healthTone}>{loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health}</Badge></div>
     <div className="settings-form"><label><span className="field-label">URL</span><Input placeholder="http://plex:32400" value={url} onChange={(event) => setUrl(event.target.value)} /></label><label><span className="field-label">API token</span><Input type="password" placeholder={configuration?.token_configured ? 'Stored server-side · leave blank to preserve' : 'Required'} value={token} onChange={(event) => setToken(event.target.value)} /></label><label className="setting-control"><span className="field-label">Enabled</span><button type="button" aria-pressed={enabled} className={`toggle ${enabled ? 'is-on' : ''}`} onClick={() => setEnabled((value) => !value)}><span /></button></label></div>
     {configuration?.last_error && <div className="settings-note"><Icon name="alert" size={16} /><span>{configuration.last_error}</span></div>}
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}

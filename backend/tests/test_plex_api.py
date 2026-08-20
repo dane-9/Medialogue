@@ -284,6 +284,8 @@ def test_plex_recheck_exact_path_match(client: TestClient, movie_context) -> Non
         "state": "matched",
         "checked_releases": 1,
         "matched_releases": 1,
+        "not_found_releases": 0,
+        "multiple_version_releases": 0,
         "conflict_releases": 0,
     }
     assert behavior.seen_paths
@@ -407,22 +409,36 @@ def test_plex_identity_conflict_resolves_on_agreement_and_reopens_on_later_disag
 
 
 @pytest.mark.parametrize(
-    ("title_matches", "expected_state", "expected_matched"),
+    ("title_matches", "expected_state", "expected_matched", "expected_not_found", "expected_multiple"),
     [
         (
             [PlexTitleMatch(rating_key="plex-11", title="Inception", year=2010, edition=None)],
             "matched",
             1,
+            0,
+            0,
         ),
-        ([], "pending", 0),
+        ([], "not_found", 0, 1, 0),
+        (
+            [
+                PlexTitleMatch(rating_key="plex-11", title="Inception", year=2010, edition=None),
+                PlexTitleMatch(rating_key="plex-12", title="Inception", year=2010, edition="IMAX"),
+            ],
+            "multiple_versions",
+            0,
+            0,
+            1,
+        ),
     ],
 )
-def test_plex_recheck_falls_back_to_title_year_or_pending(
+def test_plex_recheck_falls_back_to_title_year_with_explicit_completed_states(
     client: TestClient,
     movie_context,
     title_matches: list[PlexTitleMatch],
     expected_state: str,
     expected_matched: int,
+    expected_not_found: int,
+    expected_multiple: int,
 ) -> None:
     client, headers, movie = movie_context
     _configure_plex(client, headers)
@@ -439,6 +455,8 @@ def test_plex_recheck_falls_back_to_title_year_or_pending(
     assert response.status_code == 200, response.text
     assert response.json()["state"] == expected_state
     assert response.json()["matched_releases"] == expected_matched
+    assert response.json()["not_found_releases"] == expected_not_found
+    assert response.json()["multiple_version_releases"] == expected_multiple
     assert behavior.searches == [("Inception", 2010)]
     assert client.get(f"/api/v1/movies/{movie['id']}").json()["plex_state"] == expected_state
 

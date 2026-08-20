@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import posixpath
+from pathlib import PurePosixPath
 from xml.etree import ElementTree
 
 import httpx
@@ -42,13 +43,17 @@ class PlexLibrarySnapshot:
 
     items: tuple[PlexMediaMatch, ...]
     _by_path: dict[str, PlexMediaMatch] = field(init=False, repr=False)
+    _by_basename: dict[str, tuple[PlexMediaMatch, ...]] = field(init=False, repr=False)
     _movies_by_title: dict[str, tuple[PlexTitleMatch, ...]] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         by_path: dict[str, PlexMediaMatch] = {}
+        by_basename: dict[str, list[PlexMediaMatch]] = {}
         movies_by_title: dict[str, list[PlexTitleMatch]] = {}
         for item in self.items:
-            by_path.setdefault(_canonical_path(item.file_path), item)
+            canonical = _canonical_path(item.file_path)
+            by_path.setdefault(canonical, item)
+            by_basename.setdefault(PurePosixPath(canonical).name.casefold(), []).append(item)
             # Episodes use grandparentTitle for the Show and must not be
             # treated as Movie title matches.
             if item.show_title is None:
@@ -61,14 +66,56 @@ class PlexLibrarySnapshot:
                     )
                 )
         object.__setattr__(self, "_by_path", by_path)
+        object.__setattr__(self, "_by_basename", {key: tuple(values) for key, values in by_basename.items()})
         object.__setattr__(
             self,
             "_movies_by_title",
             {key: tuple(values) for key, values in movies_by_title.items()},
         )
 
-    def find_exact_path(self, file_path: str) -> PlexMediaMatch | None:
-        return self._by_path.get(_canonical_path(file_path))
+    def find_exact_path(
+        self,
+        file_path: str,
+        *,
+        local_root: str | None = None,
+        media_type: str | None = None,
+    ) -> PlexMediaMatch | None:
+        """Find the same physical media even when Docker mount prefixes differ.
+
+        Plex reports the path visible inside the Plex container, while Medialogue
+        stores the path visible inside its own container.  Exact absolute paths
+        are preferred.  If those differ and the caller supplies the configured
+        Medialogue storage root, compare the root-relative path instead.  A
+        relative match is accepted only when it is unique in Plex, so two Plex
+        libraries with the same tail path remain unresolved instead of being
+        guessed.
+        """
+
+        canonical = _canonical_path(file_path)
+        exact = self._by_path.get(canonical)
+        if exact is not None or not local_root:
+            return exact
+
+        try:
+            relative = PurePosixPath(canonical).relative_to(PurePosixPath(_canonical_path(local_root)))
+        except ValueError:
+            return None
+        if not relative.parts:
+            return None
+
+        expected_parts = tuple(part.casefold() for part in relative.parts)
+        candidates: list[PlexMediaMatch] = []
+        for item in self._by_basename.get(relative.name.casefold(), ()):
+            if media_type == "movies" and item.show_title is not None:
+                continue
+            if media_type == "shows" and item.show_title is None:
+                continue
+            remote_parts = tuple(part.casefold() for part in PurePosixPath(_canonical_path(item.file_path)).parts)
+            if len(remote_parts) >= len(expected_parts) and remote_parts[-len(expected_parts):] == expected_parts:
+                candidates.append(item)
+
+        unique = {_canonical_path(item.file_path): item for item in candidates}
+        return next(iter(unique.values())) if len(unique) == 1 else None
 
     def search_title_year(self, title: str, year: int | None) -> list[PlexTitleMatch]:
         matches = self._movies_by_title.get(title.casefold(), ())

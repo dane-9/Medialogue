@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app.integrations.plex import PlexClient
+from app.integrations.plex import PlexClient, PlexLibrarySnapshot, PlexMediaMatch
 from app.integrations.qbittorrent import QBittorrentClient
 from app.integrations.torznab import TorznabClient
 
@@ -125,6 +125,55 @@ async def test_plex_exact_path_match_is_strong_evidence():
     assert match is not None
     assert match.rating_key == "10"
     assert match.year == 2010
+
+
+def test_plex_snapshot_matches_storage_root_relative_path_across_container_mounts():
+    snapshot = PlexLibrarySnapshot(items=(
+        PlexMediaMatch(
+            rating_key="movie-1",
+            title="Inception",
+            year=2010,
+            edition=None,
+            file_path="/plex-media/movies/Inception 2010/movie.mkv",
+        ),
+        PlexMediaMatch(
+            rating_key="episode-1",
+            title="Episode One",
+            year=2019,
+            edition=None,
+            file_path="/plex-media/tv/Dollface 2019/Season 01/Dollface S01E01.mkv",
+            show_title="Dollface",
+            season_number=1,
+            episode_number=1,
+        ),
+    ))
+
+    movie = snapshot.find_exact_path(
+        "/movies/Inception 2010/movie.mkv",
+        local_root="/movies",
+        media_type="movies",
+    )
+    episode = snapshot.find_exact_path(
+        "/shows/Dollface 2019/Season 01/Dollface S01E01.mkv",
+        local_root="/shows",
+        media_type="shows",
+    )
+
+    assert movie is not None and movie.rating_key == "movie-1"
+    assert episode is not None and episode.rating_key == "episode-1"
+
+
+def test_plex_snapshot_refuses_ambiguous_relative_path_match():
+    snapshot = PlexLibrarySnapshot(items=(
+        PlexMediaMatch("a", "Same", 2020, None, "/library-a/Same 2020/movie.mkv"),
+        PlexMediaMatch("b", "Same", 2020, None, "/library-b/Same 2020/movie.mkv"),
+    ))
+
+    assert snapshot.find_exact_path(
+        "/movies/Same 2020/movie.mkv",
+        local_root="/movies",
+        media_type="movies",
+    ) is None
 
 
 @pytest.mark.asyncio

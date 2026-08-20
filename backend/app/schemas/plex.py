@@ -52,4 +52,6 @@ class PlexRecheckResponse(BaseModel):
     state: str
     checked_releases: int
     matched_releases: int
+    not_found_releases: int
+    multiple_version_releases: int
     conflict_releases: int

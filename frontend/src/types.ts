@@ -60,7 +60,7 @@ export interface Movie {
   quality: string
   edition?: string
   status: 'Present' | 'Missing' | 'Conflict' | 'Duplicate'
-  plex: 'Verified' | 'Pending' | 'Conflict' | 'Unavailable'
+  plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
   confidence: number
   location: string
   tmdbId?: number
@@ -210,7 +210,7 @@ export interface Episode {
   status: 'Present' | 'Missing' | 'Conflict' | 'Unmatched'
   revision: number
   quality?: string
-  plex: 'Verified' | 'Pending' | 'Conflict' | 'Unavailable'
+  plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
   media: EpisodeMedia[]
 }
 
@@ -237,7 +237,7 @@ export interface Show {
   episodesTotal: number
   episodesMissing?: number
   status: 'Present' | 'Missing' | 'Conflict'
-  plex: 'Verified' | 'Pending' | 'Conflict' | 'Unavailable'
+  plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
   tmdbId?: number
   tvdbId?: number
   monitored?: boolean
