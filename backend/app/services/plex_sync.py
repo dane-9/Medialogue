@@ -74,7 +74,7 @@ async def run_plex_library_sync(job_id: UUID, storage_root_id: UUID | None = Non
         show_ids = await _show_ids(db, storage_root_id)
         work = [("movie", item) for item in movie_ids] + [("show", item) for item in show_ids]
         total = len(work)
-        matched = pending = conflicts = unavailable = errors = 0
+        matched = not_found = multiple_versions = pending = conflicts = unavailable = errors = 0
 
         for index, (kind, entity_id) in enumerate(work, start=1):
             await db.refresh(job)
@@ -98,6 +98,10 @@ async def run_plex_library_sync(job_id: UUID, storage_root_id: UUID | None = Non
                 state = str(result.get("state") or "pending")
                 if state == "matched":
                     matched += 1
+                elif state == "not_found":
+                    not_found += 1
+                elif state == "multiple_versions":
+                    multiple_versions += 1
                 elif state == "conflict":
                     conflicts += 1
                 elif state == "unavailable":
@@ -116,6 +120,8 @@ async def run_plex_library_sync(job_id: UUID, storage_root_id: UUID | None = Non
             }
             summary = {
                 "matched": matched,
+                "not_found": not_found,
+                "multiple_versions": multiple_versions,
                 "pending": pending,
                 "conflicts": conflicts,
                 "unavailable": unavailable,
@@ -128,6 +134,8 @@ async def run_plex_library_sync(job_id: UUID, storage_root_id: UUID | None = Non
 
         summary = {
             "matched": matched,
+            "not_found": not_found,
+            "multiple_versions": multiple_versions,
             "pending": pending,
             "conflicts": conflicts,
             "unavailable": unavailable,
