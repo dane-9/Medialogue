@@ -37,11 +37,18 @@ jobs:
       - name: Run fast regression suite
         working-directory: backend
         run: pytest -q --ignore=tests/test_postgres_integration.py
-      - name: Apply migrations to PostgreSQL 16 through asyncpg
+      - name: Reproduce production upgrade through PostgreSQL 16
         working-directory: backend
         env:
           MEDIALOGUE_DATABASE_URL: postgresql+asyncpg://medialogue:medialogue-test@127.0.0.1:5432/medialogue_test
-        run: alembic upgrade head
+        run: |
+          # TrueNAS v6/v7 installations are currently at revision 0010 because
+          # revision 0011 could not fit Alembic's default VARCHAR(32). Exercise
+          # that exact upgrade path before running PostgreSQL integration tests.
+          alembic upgrade 0010_torrent_size_bigint
+          alembic current
+          alembic upgrade head
+          alembic current
       - name: Run PostgreSQL-specific integration tests
         working-directory: backend
         env:

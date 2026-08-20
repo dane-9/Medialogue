@@ -12,7 +12,7 @@ import os
 import random
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -110,5 +110,30 @@ async def test_postgres_torrent_total_size_supports_large_season_packs() -> None
             assert loaded.total_size == 96_122_540_555
             await db.delete(loaded)
             await db.commit()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgres_alembic_version_column_supports_descriptive_revisions() -> None:
+    """Production PostgreSQL must accept revision identifiers longer than 32 chars."""
+
+    assert POSTGRES_URL is not None
+    engine = create_async_engine(POSTGRES_URL, pool_pre_ping=True)
+    try:
+        async with engine.connect() as connection:
+            maximum_length = await connection.scalar(
+                text(
+                    """
+                    SELECT character_maximum_length
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'alembic_version'
+                      AND column_name = 'version_num'
+                    """
+                )
+            )
+        assert maximum_length is not None
+        assert int(maximum_length) >= 128
     finally:
         await engine.dispose()

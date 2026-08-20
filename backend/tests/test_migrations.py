@@ -182,6 +182,33 @@ def test_online_postgres_migrations_use_installed_asyncpg_driver() -> None:
     assert "await connection.run_sync" in source
 
 
+
+def test_revision_identifiers_fit_widened_postgres_version_table() -> None:
+    """Long descriptive revisions must fit the version table used in production."""
+
+    import ast
+
+    backend_dir = Path(__file__).parents[1]
+    versions_dir = backend_dir / "alembic" / "versions"
+    revisions: list[str] = []
+    for migration in versions_dir.glob("*.py"):
+        tree = ast.parse(migration.read_text(encoding="utf-8"), filename=str(migration))
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(isinstance(target, ast.Name) and target.id == "revision" for target in node.targets):
+                continue
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                revisions.append(node.value.value)
+                break
+
+    assert revisions
+    assert max(map(len, revisions)) <= 128
+
+    health_source = (versions_dir / "0011_download_client_health_diagnostics.py").read_text(encoding="utf-8")
+    assert '"alembic_version"' in health_source
+    assert 'type_=sa.String(length=128)' in health_source
+
 def test_upgrade_existing_v6_database_adds_qbit_health_diagnostics() -> None:
     """The TrueNAS v6 database upgrades in place without being recreated."""
 

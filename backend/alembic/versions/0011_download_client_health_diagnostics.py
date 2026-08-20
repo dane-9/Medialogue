@@ -9,7 +9,34 @@ branch_labels = None
 depends_on = None
 
 
+def _widen_alembic_version_column() -> None:
+    """Allow descriptive revision identifiers longer than Alembic's default 32 chars.
+
+    PostgreSQL enforces VARCHAR lengths, unlike SQLite.  The revision identifier for
+    this migration is 39 characters, so the version table must be widened before
+    Alembic records this migration as current.  Keeping the widening here also
+    repairs databases that repeatedly failed while upgrading from revision 0010.
+    """
+
+    if context.is_offline_mode():
+        # Offline generation is used with SQLite in the local regression suite.
+        # SQLite does not enforce VARCHAR lengths, so there is nothing to repair.
+        return
+
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.alter_column(
+            "alembic_version",
+            "version_num",
+            existing_type=sa.String(length=32),
+            type_=sa.String(length=128),
+            existing_nullable=False,
+        )
+
+
 def upgrade() -> None:
+    _widen_alembic_version_column()
+
     if context.is_offline_mode():
         op.add_column("download_clients", sa.Column("last_health_checked_at", sa.DateTime(timezone=True), nullable=True))
         op.add_column("download_clients", sa.Column("last_success_at", sa.DateTime(timezone=True), nullable=True))
