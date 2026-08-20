@@ -370,7 +370,7 @@ class MediaDirectory(Base):
     __table_args__ = (Index("ix_media_directories_resolved_path", "resolved_path"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    storage_root_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("storage_roots.id", ondelete="RESTRICT"), nullable=False)
+    storage_root_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("storage_roots.id", ondelete="SET NULL"))
     reported_path: Mapped[str | None] = mapped_column(Text)
     resolved_path: Mapped[str] = mapped_column(Text, nullable=False)
     path_mapping_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("remote_path_mappings.id", ondelete="SET NULL"))
@@ -385,7 +385,7 @@ class MediaDirectory(Base):
     source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType, native_enum=False), default=SourceType.FILESYSTEM, nullable=False)
     source_integration_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
 
-    storage_root: Mapped[StorageRoot] = relationship(back_populates="directories")
+    storage_root: Mapped[StorageRoot | None] = relationship(back_populates="directories")
     movie_release: Mapped[MovieRelease | None] = relationship(back_populates="directories")
     show_release: Mapped[ShowRelease | None] = relationship(back_populates="directories")
     files: Mapped[list["MediaFile"]] = relationship(back_populates="media_directory", cascade="all, delete-orphan")

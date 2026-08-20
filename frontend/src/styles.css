@@ -331,3 +331,15 @@ a { color: inherit; text-decoration: none; }
 .security-form { margin: 22px 21px 0; }
 .default-password-pill { height: 26px; padding: 0 9px; border: 1px solid rgba(242,189,112,.3); border-radius: 999px; color: var(--amber); background: rgba(242,189,112,.08); font: 500 9px ui-monospace, monospace; }
 .default-password-pill:hover { background: rgba(242,189,112,.14); }
+
+/* v9 real TMDB artwork */
+.poster-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+.poster .poster-image, .detail-poster .poster-image { filter: saturate(.92) contrast(1.02); }
+.table-poster { position: relative; overflow: hidden; }
+.table-poster .poster-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.detail-poster .poster-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+
+/* v9 maintenance and pagination controls */
+.page-actions, .row-actions, .pagination-bar { display: flex; align-items: center; gap: 8px; }
+.pagination-bar { justify-content: center; margin-top: 14px; color: var(--muted); font-size: 11px; }
+.row-actions { justify-content: flex-end; }

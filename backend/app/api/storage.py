@@ -2,8 +2,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import delete, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
@@ -126,13 +125,21 @@ async def delete_storage_root(
     root = await db.get(StorageRoot, root_id)
     if root is None:
         raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
-    # Removing a configuration record never removes media files.
+    # Removing a configured root never removes media files or historical
+    # inventory. Existing MediaDirectory rows are detached from the root so
+    # their observed paths remain available as recovery evidence.
+    await db.execute(
+        update(MediaDirectory)
+        .where(MediaDirectory.storage_root_id == root.id)
+        .values(storage_root_id=None)
+    )
+    await db.execute(
+        update(RemotePathMapping)
+        .where(RemotePathMapping.storage_root_id == root.id)
+        .values(storage_root_id=None)
+    )
     await db.delete(root)
-    try:
-        await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise AppError("STORAGE_ROOT_IN_USE", "Storage root still has attached media directories.", status_code=409) from exc
+    await db.commit()
     return DeleteResponse(id=root_id)
 
 

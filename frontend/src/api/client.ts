@@ -881,6 +881,14 @@ export const api = {
       page: payload.page,
     }
   },
+  deleteEvent: (id: string) => request<{ id: string }>(`/api/v1/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  clearEvents: (filters: { eventType?: string; severity?: string; entityType?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (filters.eventType) params.set('event_type', filters.eventType)
+    if (filters.severity) params.set('severity', filters.severity)
+    if (filters.entityType) params.set('entity_type', filters.entityType)
+    return request<{ deleted: number }>(`/api/v1/events${params.size ? `?${params.toString()}` : ''}`, { method: 'DELETE' })
+  },
   operations: () => request<{ enabled: boolean }>('/api/v1/operations'),
   setOperations: (enabled: boolean) => request<{ enabled: boolean }>('/api/v1/operations', { method: 'PUT', body: JSON.stringify({ enabled }) }),
   movies: async (query = '', tag = '') => {
@@ -932,11 +940,13 @@ export const api = {
     return items.map(normalizeStorageRoot)
   },
   createStorageRoot: (root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write' }) => request<StorageRoot>('/api/v1/storage-roots', { method: 'POST', body: JSON.stringify(root) }),
+  deleteStorageRoot: (rootId: string) => request<{ id: string }>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'DELETE' }),
   startScan: (rootId: string) => request<{ job_id: string }>(`/api/v1/storage-roots/${rootId}/scan`, { method: 'POST' }),
   plexConfiguration: () => request<PlexConfiguration>('/api/v1/integrations/plex'),
   savePlex: (configuration: { url: string; token?: string; enabled: boolean; expected_revision?: number }) => request<PlexConfiguration>('/api/v1/integrations/plex', { method: 'PUT', body: JSON.stringify(configuration) }),
   testPlex: (configuration: { url?: string; token?: string }) => request<PlexTestResult>('/api/v1/integrations/plex/test', { method: 'POST', body: JSON.stringify(configuration) }),
   refreshPlexHealth: () => request<PlexTestResult>('/api/v1/integrations/plex/health/refresh', { method: 'POST' }),
+  syncPlexLibrary: () => request<{ job_id: string }>('/api/v1/integrations/plex/sync', { method: 'POST' }),
   tmdbConfiguration: () => request<{ configured: boolean; api_key_configured: boolean; enabled: boolean; health: string; latency_ms?: number; last_error?: string; revision?: number }>('/api/v1/integrations/tmdb'),
   saveTmdb: (configuration: { api_key?: string; enabled: boolean; expected_revision?: number }) => request<{ configured: boolean; api_key_configured: boolean; enabled: boolean; health: string; latency_ms?: number; last_error?: string; revision?: number }>('/api/v1/integrations/tmdb', { method: 'PUT', body: JSON.stringify(configuration) }),
   testTmdb: (configuration: { api_key?: string }) => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/test', { method: 'POST', body: JSON.stringify(configuration) }),
@@ -1029,10 +1039,23 @@ export const api = {
     const payload = await request<{ count: number }>(`/api/v1/problems/count?status=${encodeURIComponent(status)}`)
     return numberValue(payload.count)
   },
-  problems: async (status?: string) => {
-    const payload = await request<{ items?: unknown[] } | unknown[]>(`/api/v1/problems${status ? `?status=${encodeURIComponent(status)}` : ''}`)
-    const items = Array.isArray(payload) ? payload : payload.items ?? []
-    return items.map(normalizeProblem)
+  problemsPage: async (filters: { status?: string; page?: number; pageSize?: number; category?: string; severity?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (filters.status) params.set('status', filters.status)
+    if (filters.category && filters.category !== 'all') params.set('category', filters.category)
+    if (filters.severity && filters.severity !== 'all') params.set('severity', filters.severity)
+    params.set('page', String(filters.page ?? 1))
+    params.set('page_size', String(filters.pageSize ?? 100))
+    const payload = await request<{ items: unknown[]; total: number; pages: number; page: number; page_size: number }>(`/api/v1/problems?${params.toString()}`)
+    return { items: payload.items.map(normalizeProblem), total: payload.total, pages: payload.pages, page: payload.page, pageSize: payload.page_size }
+  },
+  deleteProblem: (id: string) => request<{ id: string }>(`/api/v1/problems/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  clearProblems: (filters: { status?: string; category?: string; severity?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (filters.status) params.set('status', filters.status)
+    if (filters.category && filters.category !== 'all') params.set('category', filters.category)
+    if (filters.severity && filters.severity !== 'all') params.set('severity', filters.severity)
+    return request<{ deleted: number }>(`/api/v1/problems${params.size ? `?${params.toString()}` : ''}`, { method: 'DELETE' })
   },
   resolveProblem: (id: string, action: string, payload: Record<string, unknown> = {}) => request<unknown>(`/api/v1/problems/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify({ action, payload }) }).then(normalizeProblem),
 }

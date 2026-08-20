@@ -489,6 +489,12 @@ async def reconcile_movie_directory(
         .where(MediaDirectory.resolved_path == observation.path)
     )
     if existing_directory is not None:
+        # A storage root can be removed from configuration while its durable
+        # path inventory is intentionally retained. Re-adding/scanning the
+        # same container path should reattach that evidence instead of
+        # creating a second logical directory.
+        if existing_directory.storage_root_id is None:
+            existing_directory.storage_root_id = root.id
         was_missing = not existing_directory.exists
         existing_directory.exists = True
         existing_directory.last_seen_at = utcnow()

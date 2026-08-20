@@ -115,25 +115,14 @@ async def test_postgres_torrent_total_size_supports_large_season_packs() -> None
 
 
 @pytest.mark.asyncio
-async def test_postgres_alembic_version_column_supports_descriptive_revisions() -> None:
-    """Production PostgreSQL must accept revision identifiers longer than 32 chars."""
+async def test_postgres_uses_fresh_baseline_revision() -> None:
+    """The clean-install schema must be stamped at the single v9 baseline."""
 
     assert POSTGRES_URL is not None
     engine = create_async_engine(POSTGRES_URL, pool_pre_ping=True)
     try:
         async with engine.connect() as connection:
-            maximum_length = await connection.scalar(
-                text(
-                    """
-                    SELECT character_maximum_length
-                    FROM information_schema.columns
-                    WHERE table_schema = current_schema()
-                      AND table_name = 'alembic_version'
-                      AND column_name = 'version_num'
-                    """
-                )
-            )
-        assert maximum_length is not None
-        assert int(maximum_length) >= 128
+            revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
+        assert revision == "0001"
     finally:
         await engine.dispose()

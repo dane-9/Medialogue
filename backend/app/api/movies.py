@@ -450,6 +450,7 @@ def _summary(movie: Movie, problem_count: int) -> MovieSummaryResponse:
         location=directory.resolved_path if directory else None,
         release_count=len(active),
         problem_count=problem_count,
+        poster_ref=movie.poster_ref,
         tags=sorted(movie.tags, key=lambda item: item.name.casefold()),
     )
 

@@ -546,3 +546,41 @@ def test_plex_recheck_show_exact_episode_path_match(client: TestClient) -> None:
     assert response.json()["state"] == "matched"
     assert response.json()["matched_releases"] == 1
     assert "movie_id" not in response.json()
+
+
+def test_plex_library_snapshot_indexes_movies_and_episodes_without_scanning() -> None:
+    import httpx
+    from app.integrations.plex import PlexClient
+
+    requests: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.url.path, request.url.query.decode()))
+        if request.url.path == "/library/sections":
+            return httpx.Response(200, content=b'<MediaContainer><Directory key="1" type="movie"/><Directory key="2" type="show"/></MediaContainer>')
+        if request.url.path == "/library/sections/1/all":
+            return httpx.Response(200, content=b'''<MediaContainer><Video ratingKey="m1" title="Inception" year="2010"><Media><Part file="/movies/Inception/movie.mkv"/></Media></Video></MediaContainer>''')
+        if request.url.path == "/library/sections/2/all":
+            return httpx.Response(200, content=b'''<MediaContainer><Video ratingKey="e1" title="Episode One" grandparentTitle="Dollface" year="2019" parentIndex="1" index="1"><Media><Part file="/shows/Dollface/S01E01.mkv"/></Media></Video></MediaContainer>''')
+        return httpx.Response(404)
+
+    async def scenario():
+        client = PlexClient("http://plex.test:32400", "token", transport=httpx.MockTransport(handler))
+        try:
+            snapshot = await client.library_snapshot()
+        finally:
+            await client.close()
+        return snapshot
+
+    snapshot = asyncio.run(scenario())
+    movie = snapshot.find_exact_path("/movies/Inception/movie.mkv")
+    episode = snapshot.find_exact_path("/shows/Dollface/S01E01.mkv")
+    assert movie is not None and movie.title == "Inception" and movie.show_title is None
+    assert episode is not None and episode.show_title == "Dollface"
+    assert episode.season_number == 1 and episode.episode_number == 1
+    assert [item.title for item in snapshot.search_title_year("Inception", 2010)] == ["Inception"]
+    assert requests == [
+        ("/library/sections", ""),
+        ("/library/sections/1/all", "type=1"),
+        ("/library/sections/2/all", "type=4"),
+    ]
