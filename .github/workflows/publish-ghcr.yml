@@ -65,8 +65,15 @@ jobs:
 
       - name: Validate image before publishing
         run: |
-          docker run --rm --entrypoint /bin/sh "${{ steps.image.outputs.image }}:${{ inputs.tag }}" -ec \
-            "test -x /usr/local/bin/medialogue-entrypoint && python -c 'import alembic; from alembic.config import main; print(alembic.__version__)' && alembic --version"
+          docker run --rm --entrypoint /bin/sh "${{ steps.image.outputs.image }}:${{ inputs.tag }}" -ec '
+            test -x /usr/local/bin/medialogue-entrypoint
+            python -c "import alembic; from alembic.config import main; print(alembic.__version__)"
+            alembic --version
+            cd /app/backend
+            test "$(find alembic/versions -maxdepth 1 -type f -name "*.py" ! -name "__init__.py" | wc -l)" -eq 1
+            test "$(alembic heads | grep -c "(head)")" -eq 1
+            alembic heads | grep -q "^0001 (head)$"
+          '
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
