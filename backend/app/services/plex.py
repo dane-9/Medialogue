@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.integrations.plex import PlexClient, PlexMediaMatch
+from app.integrations.plex import PlexClient, PlexLibrarySnapshot, PlexMediaMatch
 from app.models.domain import (
     Episode,
     EpisodeMediaMap,
@@ -109,6 +109,7 @@ async def recheck_movie_plex(
     configuration: PlexConfiguration,
     *,
     client_factory: PlexClientFactory = PlexClient,
+    snapshot: PlexLibrarySnapshot | None = None,
 ) -> dict[str, int | str]:
     loaded_releases = (
         await db.scalars(
@@ -123,27 +124,26 @@ async def recheck_movie_plex(
         if release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
         and any(directory.exists for directory in release.directories)
     ]
-    client = client_factory(configuration.url, configuration.token)
+    client = None if snapshot is not None else client_factory(configuration.url, configuration.token)
     checked = matched = conflicts = 0
     overall = PlexMatchState.PENDING
     multiple_versions = 0
     previous_health = configuration.health
     try:
-        health_started = perf_counter()
-        health = await client.health()
-        configuration.health = "healthy"
-        configuration.last_checked_at = utcnow()
-        configuration.last_success_at = utcnow()
-        configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
-        configuration.latency_ms = round((perf_counter() - health_started) * 1000)
-        configuration.last_error = None
+        if snapshot is None:
+            assert client is not None
+            health_started = perf_counter()
+            health = await client.health()
+            configuration.health = "healthy"
+            configuration.last_checked_at = utcnow()
+            configuration.last_success_at = utcnow()
+            configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
+            configuration.latency_ms = round((perf_counter() - health_started) * 1000)
+            configuration.last_error = None
         for release in releases:
             checked += 1
-            exact = await _find_release_exact_match(client, release)
+            exact = await _find_release_exact_match(client, release, snapshot=snapshot)
             if exact is not None:
-                # An absent Plex year is inconclusive; only an explicit
-                # disagreement should become an identity conflict.  The same
-                # rule applies to a malformed/empty Plex title.
                 title_agrees = not exact.title or exact.title.casefold() == movie.title.casefold()
                 year_agrees = movie.year is None or exact.year is None or exact.year == movie.year
                 agrees = title_agrees and year_agrees
@@ -162,7 +162,11 @@ async def recheck_movie_plex(
                     await _resolve_conflict(db, movie.id)
                 continue
 
-            title_matches = await client.search_title_year(movie.title, movie.year)
+            if snapshot is not None:
+                title_matches = snapshot.search_title_year(movie.title, movie.year)
+            else:
+                assert client is not None
+                title_matches = await client.search_title_year(movie.title, movie.year)
             if len(title_matches) == 1:
                 title_match = title_matches[0]
                 state = PlexMatchState.MATCHED
@@ -195,19 +199,21 @@ async def recheck_movie_plex(
         elif releases:
             overall = PlexMatchState.PENDING
     except Exception as exc:
+        # When a caller supplied a pre-fetched library snapshot, Plex already
+        # answered successfully. A local parser/database failure must not be
+        # misreported as a Plex outage. Let the sync worker isolate that title.
+        if snapshot is not None:
+            raise
         configuration.health = "unavailable"
         configuration.last_checked_at = utcnow()
         configuration.last_error = str(exc)
         overall = PlexMatchState.UNAVAILABLE
-        # A failed Plex poll is a global availability result, not a failed
-        # identity match.  Every release was part of the attempted poll and
-        # therefore receives the unavailable state, even when the exception
-        # occurred after an earlier release had already been processed.
         checked = len(releases)
         for release in releases:
             await _upsert_observation(db, movie, release, PlexMatchState.UNAVAILABLE, None)
     finally:
-        await client.close()
+        if client is not None:
+            await client.close()
     await _record_health_change(db, configuration, previous_health)
 
     return {
@@ -218,7 +224,12 @@ async def recheck_movie_plex(
     }
 
 
-async def _find_release_exact_match(client: PlexClient, release: MovieRelease) -> PlexMediaMatch | None:
+async def _find_release_exact_match(
+    client: PlexClient | None,
+    release: MovieRelease,
+    *,
+    snapshot: PlexLibrarySnapshot | None = None,
+) -> PlexMediaMatch | None:
     for directory in release.directories:
         if not directory.exists:
             continue
@@ -226,7 +237,11 @@ async def _find_release_exact_match(client: PlexClient, release: MovieRelease) -
             if not media_file.exists or media_file.media_role.value not in {"movie_video", "other_media"}:
                 continue
             path = str(PurePosixPath(directory.resolved_path) / media_file.relative_path)
-            match = await client.find_exact_path(path)
+            if snapshot is not None:
+                match = snapshot.find_exact_path(path)
+            else:
+                assert client is not None
+                match = await client.find_exact_path(path)
             if match is not None:
                 return match
     return None
@@ -365,6 +380,7 @@ async def recheck_show_plex(
     configuration: PlexConfiguration,
     *,
     client_factory: PlexClientFactory = PlexClient,
+    snapshot: PlexLibrarySnapshot | None = None,
 ) -> dict[str, int | str]:
     """Verify mapped episode files by exact Plex path without triggering scans."""
 
@@ -377,22 +393,28 @@ async def recheck_show_plex(
             .where(Episode.show_id == show.id, MediaFile.exists.is_(True), MediaDirectory.exists.is_(True))
         )
     ).all()
-    client = client_factory(configuration.url, configuration.token)
+    client = None if snapshot is not None else client_factory(configuration.url, configuration.token)
     checked = matched = conflicts = 0
     previous_health = configuration.health
     try:
-        started = perf_counter()
-        health = await client.health()
-        configuration.health = "healthy"
-        configuration.last_checked_at = utcnow()
-        configuration.last_success_at = utcnow()
-        configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
-        configuration.latency_ms = round((perf_counter() - started) * 1000)
-        configuration.last_error = None
+        if snapshot is None:
+            assert client is not None
+            started = perf_counter()
+            health = await client.health()
+            configuration.health = "healthy"
+            configuration.last_checked_at = utcnow()
+            configuration.last_success_at = utcnow()
+            configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
+            configuration.latency_ms = round((perf_counter() - started) * 1000)
+            configuration.last_error = None
         for episode, mapping, media_file, directory in rows:
             checked += 1
             path = str(PurePosixPath(directory.resolved_path) / media_file.relative_path)
-            exact = await client.find_exact_path(path)
+            if snapshot is not None:
+                exact = snapshot.find_exact_path(path)
+            else:
+                assert client is not None
+                exact = await client.find_exact_path(path)
             if exact is None:
                 state = PlexMatchState.PENDING
             else:
@@ -479,6 +501,10 @@ async def recheck_show_plex(
                 details={"problem_id": str(problem.id), "reason": problem.reason, "resolution": "plex_evidence_changed"},
             )
     except Exception as exc:
+        # A snapshot-backed verification has already established Plex
+        # connectivity. Keep local processing errors local to the sync job.
+        if snapshot is not None:
+            raise
         configuration.health = "unavailable"
         configuration.last_checked_at = utcnow()
         configuration.last_error = str(exc)
@@ -497,7 +523,8 @@ async def recheck_show_plex(
                 observation.match_state = PlexMatchState.UNAVAILABLE
                 observation.last_seen_at = utcnow()
     finally:
-        await client.close()
+        if client is not None:
+            await client.close()
     await _record_health_change(db, configuration, previous_health)
     overall = "conflict" if conflicts else "matched" if matched else "pending" if rows else "pending"
     if configuration.health == "unavailable":

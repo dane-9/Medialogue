@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.integrations.plex import PlexClient
 from app.models.auth import AdminUser
 from app.models.domain import MediaDirectory, Movie, MovieRelease, PlexConfiguration, Show
+from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.plex import (
     PlexConfigurationResponse,
     PlexConfigurationUpdate,
@@ -22,6 +23,7 @@ from app.schemas.plex import (
     PlexTestRequest,
     PlexTestResponse,
 )
+from app.services.jobs import create_job, publish_job_status
 from app.services.plex import (
     get_plex_configuration,
     recheck_movie_plex,
@@ -29,6 +31,8 @@ from app.services.plex import (
     refresh_plex_health,
     test_plex_connection,
 )
+from app.services.plex_sync import run_plex_library_sync
+from app.services.runtime_jobs import launch_runtime_job
 
 router = APIRouter(tags=["plex"])
 
@@ -148,6 +152,29 @@ async def refresh_health(
     result = await refresh_plex_health(db, configuration, client_factory=client_factory)
     await db.commit()
     return PlexTestResponse(**result)
+
+
+@router.post("/integrations/plex/sync", response_model=JobAcceptedResponse, status_code=202)
+async def sync_library(
+    _: object = Depends(require_csrf),
+    admin: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> JobAcceptedResponse:
+    del admin
+    if not active_operations_enabled():
+        raise AppError(
+            "ACTIVE_OPERATIONS_LOCKED",
+            "Enable Active Operations before syncing Plex verification.",
+            status_code=423,
+        )
+    configuration = await get_plex_configuration(db)
+    if configuration is None or not configuration.enabled:
+        raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
+    job = await create_job(db, "plex_library_sync", summary={"scope": "all"})
+    await db.commit()
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_plex_library_sync(job.id))
+    return JobAcceptedResponse(job_id=job.id)
 
 
 @router.post("/movies/{resource_id}/actions/recheck-plex", response_model=PlexRecheckResponse, response_model_exclude_none=True)

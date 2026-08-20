@@ -152,7 +152,7 @@ def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(r
         "server_version": "16.10",
         "server_version_num": "160010",
         "server_major": 16,
-        "migration_revision": "0009_shows_seasons_episodes",
+        "migration_revision": "0001",
         "custom_tablespaces": [],
     }
     asyncio.run(
@@ -197,7 +197,7 @@ def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(r
         assert any(path["resolved_path"].startswith("/media/movies/Inception") for path in inventory["media_directories"])
         backup_meta = json.loads(bundle.read("backup-metadata.json"))
         assert backup_meta["postgresql"]["major_version"] == 16
-        assert backup_meta["schema_migration_revision"] == "0009_shows_seasons_episodes"
+        assert backup_meta["schema_migration_revision"] == "0001"
         assert backup_meta["torrent_manifest_schema_version"] == 1
         assert backup_meta["sensitive"] is True
 
@@ -287,7 +287,7 @@ def test_recovery_export_api_creates_persistent_job_and_prevents_overlap(recover
             "pg_basebackup_available": True,
             "pg_basebackup_version": "pg_basebackup (PostgreSQL) 16.10",
             "pg_basebackup_major": 16,
-            "migration_revision": "0009_shows_seasons_episodes",
+            "migration_revision": "0001",
             "custom_tablespaces": [],
             "torrent_archive_readable": True,
             "export_directory_writable": True,

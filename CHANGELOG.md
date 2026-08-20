@@ -1,3 +1,13 @@
+## v9 fresh baseline and library usability
+
+- Squash development database history to one clean-install Alembic revision (`0001`); incompatible pre-v9 databases are intentionally not supported.
+- Add safe storage-root removal. Removing a configured root detaches retained inventory evidence and never deletes media.
+- Add individual and bulk Problem deletion plus server-side Problem pagination/filtering, fixing the UI's first-50-only behavior on large queues; deletion updates the sidebar count live.
+- Add individual and bulk Event History deletion plus pagination.
+- Add read-only Plex library snapshot verification, including correct Plex Episode (`type=4`) enumeration for TV libraries, an explicit full-library sync job, and automatic root-scoped verification after manual storage scans. Medialogue still never triggers Plex scans.
+- Render TMDB poster artwork on Movie/Show cards, tables, and detail views; Movie list responses now retain `poster_ref`.
+- Add regression coverage for fresh-schema creation, root removal, large Problem queues, history deletion, and Plex library snapshots.
+
 ## v8 runtime migration hotfix
 
 - Widen PostgreSQL `alembic_version.version_num` from 32 to 128 characters before applying revision 0011.

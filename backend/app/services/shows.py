@@ -303,8 +303,15 @@ async def reconcile_show_directory(
     directory = await db.scalar(
         select(MediaDirectory)
         .options(selectinload(MediaDirectory.files).selectinload(MediaFile.episode_maps))
-        .where(MediaDirectory.storage_root_id == root.id, MediaDirectory.resolved_path == observation.path)
+        .where(
+            MediaDirectory.resolved_path == observation.path,
+            (MediaDirectory.storage_root_id == root.id) | MediaDirectory.storage_root_id.is_(None),
+        )
     )
+    if directory is not None and directory.storage_root_id is None:
+        # Reattach durable inventory retained after a configured root was
+        # removed, rather than duplicating the same physical path.
+        directory.storage_root_id = root.id
     if directory is None:
         directory = MediaDirectory(
             storage_root_id=root.id,

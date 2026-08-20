@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import posixpath
 from xml.etree import ElementTree
 
@@ -31,6 +31,52 @@ class PlexTitleMatch:
     edition: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class PlexLibrarySnapshot:
+    """Read-only in-memory view of Plex library paths for one sync cycle.
+
+    The lookup indexes are built once so verifying a large library remains
+    effectively O(local media) instead of repeatedly scanning every Plex Part
+    for every Movie and Episode.
+    """
+
+    items: tuple[PlexMediaMatch, ...]
+    _by_path: dict[str, PlexMediaMatch] = field(init=False, repr=False)
+    _movies_by_title: dict[str, tuple[PlexTitleMatch, ...]] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        by_path: dict[str, PlexMediaMatch] = {}
+        movies_by_title: dict[str, list[PlexTitleMatch]] = {}
+        for item in self.items:
+            by_path.setdefault(_canonical_path(item.file_path), item)
+            # Episodes use grandparentTitle for the Show and must not be
+            # treated as Movie title matches.
+            if item.show_title is None:
+                movies_by_title.setdefault(item.title.casefold(), []).append(
+                    PlexTitleMatch(
+                        rating_key=item.rating_key,
+                        title=item.title,
+                        year=item.year,
+                        edition=item.edition,
+                    )
+                )
+        object.__setattr__(self, "_by_path", by_path)
+        object.__setattr__(
+            self,
+            "_movies_by_title",
+            {key: tuple(values) for key, values in movies_by_title.items()},
+        )
+
+    def find_exact_path(self, file_path: str) -> PlexMediaMatch | None:
+        return self._by_path.get(_canonical_path(file_path))
+
+    def search_title_year(self, title: str, year: int | None) -> list[PlexTitleMatch]:
+        matches = self._movies_by_title.get(title.casefold(), ())
+        if year is None:
+            return list(matches)
+        return [item for item in matches if item.year == year]
+
+
 class PlexClient:
     """Read-only Plex adapter; no mutation or scan methods are exposed."""
 
@@ -57,6 +103,67 @@ class PlexClient:
         root = ElementTree.fromstring(response.content)
         return {"status": "healthy", "machine_identifier": root.attrib.get("machineIdentifier", "")}
 
+    async def _section_media(self, key: str, section_type: str | None) -> httpx.Response | None:
+        """Fetch physical Movie or Episode rows for a Plex library section.
+
+        A Plex Show section's plain ``/all`` endpoint enumerates Show
+        directories, not Episode ``Video`` rows with ``Media/Part`` paths.
+        Requesting metadata type 4 is therefore required for exact-path TV
+        verification. Movie sections use type 1. Other library types are not
+        relevant to Medialogue and are skipped.
+        """
+
+        normalized = (section_type or "").casefold()
+        if normalized == "show":
+            return await self._get(f"/library/sections/{key}/all", params={"type": 4})
+        if normalized == "movie":
+            return await self._get(f"/library/sections/{key}/all", params={"type": 1})
+        # Some test/minimal Plex responses omit section type. Keeping the
+        # default request makes those servers usable while real Plex responses
+        # use the explicit Movie/Episode filters above.
+        if not normalized:
+            return await self._get(f"/library/sections/{key}/all")
+        return None
+
+    async def library_snapshot(self) -> PlexLibrarySnapshot:
+        """Fetch each Plex library section once and index every physical Part.
+
+        This is intentionally read-only and does not request a Plex library
+        scan. A Medialogue-wide verification cycle can therefore compare
+        thousands of local paths without re-downloading every Plex section for
+        every individual title.
+        """
+
+        sections = ElementTree.fromstring((await self._get("/library/sections")).content)
+        items: list[PlexMediaMatch] = []
+        for directory in sections.findall("Directory"):
+            key = directory.attrib.get("key")
+            if not key:
+                continue
+            response = await self._section_media(key, directory.attrib.get("type"))
+            if response is None:
+                continue
+            for video in ElementTree.fromstring(response.content).findall(".//Video"):
+                year = video.attrib.get("year")
+                parsed_year = int(year) if year and year.isdigit() else None
+                for part in video.findall("./Media/Part"):
+                    path = part.attrib.get("file")
+                    if not path:
+                        continue
+                    items.append(
+                        PlexMediaMatch(
+                            rating_key=video.attrib.get("ratingKey", ""),
+                            title=video.attrib.get("title", ""),
+                            year=parsed_year,
+                            edition=video.attrib.get("editionTitle"),
+                            file_path=path,
+                            show_title=video.attrib.get("grandparentTitle"),
+                            season_number=_safe_int(video.attrib.get("parentIndex")),
+                            episode_number=_safe_int(video.attrib.get("index")),
+                        )
+                    )
+        return PlexLibrarySnapshot(items=tuple(items))
+
     async def find_exact_path(self, file_path: str) -> PlexMediaMatch | None:
         requested = _canonical_path(file_path)
         sections = ElementTree.fromstring((await self._get("/library/sections")).content)
@@ -64,8 +171,10 @@ class PlexClient:
             key = directory.attrib.get("key")
             if not key:
                 continue
-            response = await self._get(f"/library/sections/{key}/all")
-            for video in ElementTree.fromstring(response.content).findall("Video"):
+            response = await self._section_media(key, directory.attrib.get("type"))
+            if response is None:
+                continue
+            for video in ElementTree.fromstring(response.content).findall(".//Video"):
                 for part in video.findall("./Media/Part"):
                     path = part.attrib.get("file")
                     if path and _canonical_path(path) == requested:

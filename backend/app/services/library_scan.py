@@ -13,7 +13,7 @@ from app.db import session as db_session
 from app.integrations.filesystem import FilesystemObserver
 from app.models.domain import Job, JobStatus, MediaType, StorageRoot
 from app.services.events import create_event, publish_live_event
-from app.services.jobs import publish_job_status, update_job
+from app.services.jobs import create_job, publish_job_status, update_job
 from app.services.reconciliation import (
     mark_absent_known_directories,
     mark_root_available,
@@ -21,6 +21,9 @@ from app.services.reconciliation import (
     reconcile_movie_directory,
 )
 from app.services.shows import mark_absent_show_directories, reconcile_show_directory
+from app.services.plex import get_plex_configuration
+from app.services.plex_sync import run_plex_library_sync
+from app.services.runtime_jobs import launch_runtime_job
 
 
 _root_locks: defaultdict[UUID, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -197,6 +200,20 @@ async def execute_storage_root_scan(
         message=f"Scan of {root.name} completed.",
         details=summary,
     )
+    # A manual root scan also schedules a read-only Plex verification pass for
+    # media observed under that root when Plex is configured. This queries
+    # Plex's existing library state only; it never triggers a Plex library scan.
+    plex_configuration = await get_plex_configuration(db)
+    plex_job = None
+    if plex_configuration is not None and plex_configuration.enabled and plex_configuration.token:
+        plex_job = await create_job(
+            db,
+            "plex_library_sync",
+            summary={"scope": "storage_root", "storage_root_id": str(root.id)},
+        )
     await db.commit()
     publish_job_status(job)
+    if plex_job is not None:
+        publish_job_status(plex_job)
+        launch_runtime_job(plex_job.id, lambda: run_plex_library_sync(plex_job.id, root.id))
     return summary

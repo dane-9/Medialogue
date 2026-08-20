@@ -107,7 +107,7 @@ Medialogue does not perform an automatic in-place database restore from the web 
 3. Restore `database/physical-base-backup/` into an empty PostgreSQL data directory/volume, preserving the files and assigning them to the PostgreSQL service account. Do not merge the backup into a running or non-empty cluster.
 4. Recreate/adapt deployment environment values from `config/application-config-export.json`. Hostnames/paths may need to change on the new host.
 5. Restore archived torrents to the configured archive mount by copying `torrent-archive/torrents/` into `/torrent-archive/torrents/` and `manifests/` into `/torrent-archive/manifests/`.
-6. Start PostgreSQL, verify it is healthy, then start Medialogue. Normal startup migrations may upgrade an older restored schema to the application version being run.
+6. Start PostgreSQL, verify it is healthy, then start Medialogue. During the current clean-baseline development phase, restore only a database created by the same compatible Medialogue schema; older schemas are not upgraded in place.
 7. Recreate the media bind mounts and remote-path mappings appropriate to the new host before scanning. Medialogue will not relocate media automatically.
 
 For a Docker volume restore, use a temporary container or other controlled administrative method to populate the empty PostgreSQL volume while the database service is stopped. Exact commands depend on the deployment host and volume driver.

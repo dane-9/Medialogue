@@ -55,10 +55,21 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     const jobListener = () => void refreshJobs()
     const problemCreatedListener = () => { if (alive) setProblemCount((count) => count + 1) }
     const problemResolvedListener = () => { if (alive) setProblemCount((count) => Math.max(0, count - 1)) }
+    const problemDeletedListener = (event: MessageEvent) => {
+      if (!alive) return
+      try {
+        const payload = JSON.parse(event.data) as { data?: { count?: number } }
+        const removed = Math.max(1, Number(payload.data?.count ?? 1))
+        setProblemCount((count) => Math.max(0, count - removed))
+      } catch {
+        void refreshProblemCount()
+      }
+    }
     const healthListener = () => void refreshHealth()
     stream.addEventListener('job.status', jobListener)
     stream.addEventListener('problem.created', problemCreatedListener)
     stream.addEventListener('problem.resolved', problemResolvedListener)
+    stream.addEventListener('problem.deleted', problemDeletedListener)
     stream.addEventListener('plex.health', healthListener)
     stream.addEventListener('storage_root.health', healthListener)
     stream.addEventListener('qbittorrent.health', healthListener)

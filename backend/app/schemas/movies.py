@@ -47,6 +47,7 @@ class MovieSummaryResponse(BaseModel):
     location: str | None
     release_count: int
     problem_count: int = 0
+    poster_ref: str | None = None
     tags: list[TagResponse] = Field(default_factory=list)
 
 
