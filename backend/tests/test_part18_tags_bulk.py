@@ -1,6 +1,7 @@
 import asyncio
 import os
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -69,6 +70,19 @@ def db_run(fn):
             return value
 
     return asyncio.run(run())
+
+
+def wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"job did not reach a terminal state within {timeout}s: {payload}")
 
 
 async def seed_movies(db):
@@ -231,8 +245,10 @@ def test_bulk_parser_reparse_updates_technical_fields_but_preserves_manual_editi
         headers=headers,
         json={"movie_ids": ["27205"], "action": "reevaluate_parser"},
     )
-    assert response.status_code == 200, response.text
-    assert response.json()["details"]["release_count"] == 1
+    assert response.status_code == 202, response.text
+    job = wait_job(client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["summary"]["details"]["release_count"] == 1
 
     async def read(db):
         release = await db.get(MovieRelease, release_id)
@@ -271,7 +287,9 @@ def test_bulk_custom_format_reevaluation_refreshes_current_score(client: TestCli
         headers=headers,
         json={"movie_ids": ["27205"], "action": "reevaluate_custom_formats"},
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text
+    job = wait_job(client, response.json()["job_id"])
+    assert job["status"] == "completed", job
     release = db_run(lambda db: db.get(MovieRelease, release_id))
     assert release.current_custom_format_score == 0
     assert release.parse_snapshot["current_score_snapshot"]["total_score"] == 0
@@ -355,9 +373,11 @@ def test_bulk_plex_recheck_runs_without_operations_toggle(client: TestClient) ->
             headers=headers,
             json={"movie_ids": ["27205"], "action": "recheck_plex"},
         )
-        assert checked.status_code == 200, checked.text
-        assert checked.json()["updated"] == 1
-        assert checked.json()["details"]["checked_releases"] == 1
+        assert checked.status_code == 202, checked.text
+        job = wait_job(client, checked.json()["job_id"])
+        assert job["status"] == "completed", job
+        assert job["summary"]["updated"] == 1
+        assert job["summary"]["details"]["checked_releases"] == 1
     finally:
         client.app.dependency_overrides.pop(bulk_api.get_plex_client_factory, None)
         try:

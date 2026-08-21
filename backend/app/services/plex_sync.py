@@ -161,6 +161,136 @@ async def run_plex_library_sync(job_id: UUID, storage_root_id: UUID | None = Non
         publish_job_status(job)
 
 
+async def run_plex_movie_recheck(
+    job_id: UUID,
+    movie_id: UUID,
+    *,
+    client_factory=PlexClient,
+) -> None:
+    """Run one movie Plex verification as a durable background Job."""
+
+    async with db_session.async_session_factory() as db:
+        job = await db.get(Job, job_id)
+        movie = await db.get(Movie, movie_id)
+        if job is None or movie is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
+            return
+
+        configuration = await get_plex_configuration(db)
+        if configuration is None or not configuration.enabled or not configuration.token:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                error={"code": "PLEX_NOT_CONFIGURED", "message": "Plex is not configured and enabled."},
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Plex is not configured and enabled."},
+            )
+            await db.commit()
+            publish_job_status(job)
+            return
+
+        await update_job(
+            db,
+            job,
+            status=JobStatus.RUNNING,
+            progress={"current": 0, "total": 1, "percent": 0, "stage": "checking_plex", "detail": f"Checking Plex for {movie.title}…"},
+        )
+        await db.commit()
+        publish_job_status(job)
+
+        try:
+            result = await recheck_movie_plex(db, movie, configuration, client_factory=client_factory)
+            summary = {
+                "movie_id": str(movie.id),
+                "movie_title": movie.title,
+                **result,
+                "message": f"Plex recheck completed for {movie.title}.",
+            }
+            await update_job(
+                db,
+                job,
+                status=JobStatus.COMPLETED,
+                progress={"current": 1, "total": 1, "percent": 100, "stage": "completed", "detail": summary["message"]},
+                summary=summary,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={"current": 1, "total": 1, "percent": 100, "stage": "failed", "detail": f"Plex recheck failed for {movie.title}."},
+                error={"code": "PLEX_RECHECK_FAILED", "message": str(exc)},
+            )
+        await db.commit()
+        publish_job_status(job)
+
+
+async def run_plex_show_recheck(
+    job_id: UUID,
+    show_id: UUID,
+    *,
+    client_factory=PlexClient,
+) -> None:
+    """Run one Show Plex verification as a durable background Job."""
+
+    async with db_session.async_session_factory() as db:
+        job = await db.get(Job, job_id)
+        show = await db.get(Show, show_id)
+        if job is None or show is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
+            return
+
+        configuration = await get_plex_configuration(db)
+        if configuration is None or not configuration.enabled or not configuration.token:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                error={"code": "PLEX_NOT_CONFIGURED", "message": "Plex is not configured and enabled."},
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Plex is not configured and enabled."},
+            )
+            await db.commit()
+            publish_job_status(job)
+            return
+
+        await update_job(
+            db,
+            job,
+            status=JobStatus.RUNNING,
+            progress={"current": 0, "total": 1, "percent": 0, "stage": "checking_plex", "detail": f"Checking Plex for {show.title}…"},
+        )
+        await db.commit()
+        publish_job_status(job)
+
+        try:
+            result = await recheck_show_plex(db, show, configuration, client_factory=client_factory)
+            summary = {
+                "show_id": str(show.id),
+                "show_title": show.title,
+                **result,
+                "message": f"Plex recheck completed for {show.title}.",
+            }
+            await update_job(
+                db,
+                job,
+                status=JobStatus.COMPLETED,
+                progress={"current": 1, "total": 1, "percent": 100, "stage": "completed", "detail": summary["message"]},
+                summary=summary,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={"current": 1, "total": 1, "percent": 100, "stage": "failed", "detail": f"Plex recheck failed for {show.title}."},
+                error={"code": "PLEX_RECHECK_FAILED", "message": str(exc)},
+            )
+        await db.commit()
+        publish_job_status(job)
+
+
 async def _movie_ids(db, storage_root_id: UUID | None) -> list[UUID]:
     statement = select(Movie.id)
     if storage_root_id is not None:

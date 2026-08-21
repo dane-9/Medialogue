@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
@@ -13,13 +12,12 @@ from app.core.integration_config import get_integration_config_store
 from app.db.session import get_db
 from app.integrations.plex import PlexClient
 from app.models.auth import AdminUser
-from app.models.domain import MediaDirectory, Movie, MovieRelease, Show
+from app.models.domain import Movie, Show
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.plex import (
     PlexConfigurationResponse,
     PlexConfigurationUpdate,
     PlexHealthResponse,
-    PlexRecheckResponse,
     PlexTestRequest,
     PlexTestResponse,
 )
@@ -27,12 +25,10 @@ from app.services.integration_state import ConfiguredPlex, get_configured_plex
 from app.services.jobs import create_job, publish_job_status
 from app.services.plex import (
     get_plex_configuration,
-    recheck_movie_plex,
-    recheck_show_plex,
     refresh_plex_health,
     test_plex_connection,
 )
-from app.services.plex_sync import run_plex_library_sync
+from app.services.plex_sync import run_plex_library_sync, run_plex_movie_recheck, run_plex_show_recheck
 from app.services.runtime_jobs import launch_runtime_job
 
 router = APIRouter(tags=["plex"])
@@ -177,23 +173,19 @@ async def sync_library(
     return JobAcceptedResponse(job_id=job.id)
 
 
-@router.post("/movies/{resource_id}/actions/recheck-plex", response_model=PlexRecheckResponse, response_model_exclude_none=True)
+@router.post("/movies/{resource_id}/actions/recheck-plex", response_model=JobAcceptedResponse, status_code=202)
 async def recheck_movie(
     resource_id: str,
     _: object = Depends(require_csrf),
     admin: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_plex_client_factory),
-) -> PlexRecheckResponse:
+) -> JobAcceptedResponse:
     del admin
     configuration = await get_plex_configuration(db)
     if configuration is None or not configuration.enabled:
         raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
-    statement = select(Movie).options(
-        selectinload(Movie.releases)
-        .selectinload(MovieRelease.directories)
-        .selectinload(MediaDirectory.files)
-    )
+    statement = select(Movie)
     if resource_id.isdigit():
         statement = statement.where(Movie.tmdb_id == int(resource_id))
     else:
@@ -205,19 +197,29 @@ async def recheck_movie(
     movie = (await db.scalars(statement)).unique().one_or_none()
     if movie is None:
         raise AppError("NOT_FOUND", "Movie was not found.", status_code=404)
-    result = await recheck_movie_plex(db, movie, configuration, client_factory=client_factory)
+    job = await create_job(
+        db,
+        "plex_movie_recheck",
+        summary={
+            "movie_id": str(movie.id),
+            "movie_title": movie.title,
+            "message": f"Checking Plex for {movie.title}…",
+        },
+    )
     await db.commit()
-    return PlexRecheckResponse(movie_id=str(movie.id), **result)
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_plex_movie_recheck(job.id, movie.id, client_factory=client_factory))
+    return JobAcceptedResponse(job_id=job.id)
 
 
-@router.post("/shows/{resource_id}/actions/recheck-plex", response_model=PlexRecheckResponse, response_model_exclude_none=True)
+@router.post("/shows/{resource_id}/actions/recheck-plex", response_model=JobAcceptedResponse, status_code=202)
 async def recheck_show(
     resource_id: str,
     _: object = Depends(require_csrf),
     admin: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_plex_client_factory),
-) -> PlexRecheckResponse:
+) -> JobAcceptedResponse:
     del admin
     configuration = await get_plex_configuration(db)
     if configuration is None or not configuration.enabled:
@@ -232,6 +234,16 @@ async def recheck_show(
         show = await db.get(Show, show_id)
     if show is None:
         raise AppError("NOT_FOUND", "Show was not found.", status_code=404)
-    result = await recheck_show_plex(db, show, configuration, client_factory=client_factory)
+    job = await create_job(
+        db,
+        "plex_show_recheck",
+        summary={
+            "show_id": str(show.id),
+            "show_title": show.title,
+            "message": f"Checking Plex for {show.title}…",
+        },
+    )
     await db.commit()
-    return PlexRecheckResponse(show_id=str(show.id), **result)
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_plex_show_recheck(job.id, show.id, client_factory=client_factory))
+    return JobAcceptedResponse(job_id=job.id)

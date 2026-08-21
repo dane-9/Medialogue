@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
 from app.core.security import sign_confirmation_payload, verify_confirmation_payload
+from app.db import session as db_session
 from app.integrations.filesystem import FilesystemObserver
 from app.models.domain import (
     AccessMode,
@@ -24,6 +25,8 @@ from app.models.domain import (
     Episode,
     EpisodeMediaMap,
     IdentityState,
+    Job,
+    JobStatus,
     MediaDirectory,
     MediaFile,
     MediaType,
@@ -42,6 +45,7 @@ from app.models.domain import (
     utcnow,
 )
 from app.services.events import create_event, queue_live_event
+from app.services.jobs import publish_job_status, update_job
 from app.services.reconciliation import open_problem, reconcile_movie_directory, resolve_problem
 from app.services.shows import add_show_from_tmdb, reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration
@@ -779,3 +783,112 @@ async def commit_duplicate_resolution(
         "warnings": warnings,
         "problem_status": problem.status.value,
     }
+
+
+async def run_duplicate_resolution(
+    job_id: UUID,
+    resource_id: str,
+    confirmation_token: str,
+    *,
+    qbit_client_factory: Callable[..., Any],
+    active_operations: bool,
+) -> None:
+    """Run the explicitly confirmed duplicate decision as a durable Job."""
+
+    async with db_session.async_session_factory() as db:
+        job = await db.get(Job, job_id)
+        if job is None or job.status in {
+            JobStatus.CANCELLED,
+            JobStatus.INTERRUPTED,
+            JobStatus.COMPLETED,
+            JobStatus.FAILED,
+        }:
+            return
+
+        await update_job(
+            db,
+            job,
+            status=JobStatus.RUNNING,
+            progress={
+                "current": 0,
+                "total": 1,
+                "percent": 0,
+                "stage": "duplicate_resolution",
+                "detail": "Applying the confirmed duplicate resolution…",
+            },
+        )
+        await db.commit()
+        publish_job_status(job)
+
+        try:
+            result = await commit_duplicate_resolution(
+                db,
+                resource_id,
+                confirmation_token,
+                qbit_client_factory=qbit_client_factory,
+                active_operations=active_operations,
+            )
+            summary = {
+                "movie_id": str(result["movie_id"]),
+                "winner_release_id": str(result["winner_release_id"]),
+                "losing_release_ids": [str(item) for item in result["losing_release_ids"]],
+                "duplicate_resolved": bool(result["duplicate_resolved"]),
+                "deleted_directories": [str(item) for item in result["deleted_directories"]],
+                "removed_torrents": [str(item) for item in result["removed_torrents"]],
+                "warnings": [str(item) for item in result["warnings"]],
+                "problem_status": str(result["problem_status"]),
+                "message": "Duplicate resolution completed.",
+            }
+            await update_job(
+                db,
+                job,
+                status=JobStatus.COMPLETED,
+                progress={
+                    "current": 1,
+                    "total": 1,
+                    "percent": 100,
+                    "stage": "completed",
+                    "detail": summary["message"],
+                },
+                summary=summary,
+            )
+        except asyncio.CancelledError:
+            raise
+        except AppError as exc:
+            await db.rollback()
+            job = await db.get(Job, job_id)
+            if job is None:
+                return
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={
+                    "current": 0,
+                    "total": 1,
+                    "percent": 0,
+                    "stage": "failed",
+                    "detail": "Duplicate resolution could not be applied.",
+                },
+                error={"code": exc.code, "message": exc.message, "details": exc.details},
+            )
+        except Exception as exc:
+            await db.rollback()
+            job = await db.get(Job, job_id)
+            if job is None:
+                return
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={
+                    "current": 0,
+                    "total": 1,
+                    "percent": 0,
+                    "stage": "failed",
+                    "detail": "Duplicate resolution failed.",
+                },
+                error={"code": "DUPLICATE_RESOLUTION_FAILED", "message": str(exc)},
+            )
+        await db.commit()
+        publish_job_status(job)

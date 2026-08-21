@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 from sqlalchemy import select
@@ -7,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.errors import AppError
+from app.db import session as db_session
 from app.models.domain import (
+    Job,
+    JobStatus,
     MediaProfileOverride,
     MediaType,
     Movie,
@@ -20,6 +24,8 @@ from app.models.domain import (
 )
 from app.parser import parse_release_name
 from app.services.events import create_event
+from app.services.jobs import publish_job_status, update_job
+from app.services.plex import get_plex_configuration, recheck_movie_plex
 from app.services.quality_profiles import refresh_movie_release_scores
 
 
@@ -290,3 +296,121 @@ async def create_bulk_summary_event(
             **(details or {}),
         },
     )
+
+
+async def run_long_bulk_movie_action(
+    job_id: UUID,
+    movie_ids: list[str],
+    action: str,
+    *,
+    plex_client_factory,
+) -> None:
+    """Run the multi-title bulk actions that can take longer than one request."""
+
+    async with db_session.async_session_factory() as db:
+        job = await db.get(Job, job_id)
+        if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
+            return
+
+        try:
+            movies = await resolve_movies(db, movie_ids)
+            if action == "recheck_plex":
+                configuration = await get_plex_configuration(db)
+                if configuration is None or not configuration.enabled or not configuration.token:
+                    raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
+
+            total = len(movies)
+            updated = 0
+            details: dict[str, object] = {
+                "release_count": 0,
+                "checked_releases": 0,
+                "matched_releases": 0,
+                "not_found_releases": 0,
+                "multiple_version_releases": 0,
+                "conflict_releases": 0,
+                "failed_movies": [],
+            }
+            await update_job(
+                db,
+                job,
+                status=JobStatus.RUNNING,
+                progress={"current": 0, "total": total, "percent": 0, "stage": "processing_movies", "detail": f"Starting {action.replace('_', ' ')} for {total} movie{'s' if total != 1 else ''}…"},
+                summary={"action": action, "requested": total, "updated": 0, "details": details},
+            )
+            await db.commit()
+            publish_job_status(job)
+
+            for index, movie in enumerate(movies, start=1):
+                await db.refresh(job)
+                if job.status == JobStatus.CANCELLED:
+                    return
+                try:
+                    async with db.begin_nested():
+                        if action == "reevaluate_parser":
+                            details["release_count"] = int(details["release_count"]) + await reparse_movie_releases(db, movie)
+                        elif action == "reevaluate_custom_formats":
+                            details["release_count"] = int(details["release_count"]) + await reevaluate_movie_custom_formats(db, movie)
+                        elif action == "recheck_plex":
+                            result = await recheck_movie_plex(db, movie, configuration, client_factory=plex_client_factory)
+                            for key in ("checked_releases", "matched_releases", "not_found_releases", "multiple_version_releases", "conflict_releases"):
+                                details[key] = int(details[key]) + int(result.get(key, 0))
+                        else:  # pragma: no cover - API only queues supported actions.
+                            raise AppError("INVALID_BULK_ACTION", "Unsupported long-running Movie action.", status_code=422)
+                    updated += 1
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    failed_movies = details["failed_movies"]
+                    assert isinstance(failed_movies, list)
+                    if len(failed_movies) < 10:
+                        failed_movies.append({"movie_id": str(movie.id), "title": movie.title, "error": str(exc)})
+
+                progress = {
+                    "current": index,
+                    "total": total,
+                    "percent": round(index * 100 / total, 1) if total else 100,
+                    "stage": "processing_movies",
+                    "detail": f"Processed {movie.title} ({index}/{total}).",
+                }
+                await update_job(
+                    db,
+                    job,
+                    progress=progress,
+                    summary={"action": action, "requested": total, "updated": updated, "details": details},
+                )
+                await db.commit()
+                publish_job_status(job)
+
+            await create_bulk_summary_event(
+                db,
+                action=action,
+                movies=movies,
+                updated=updated,
+                details=details,
+            )
+            summary = {
+                "action": action,
+                "requested": total,
+                "updated": updated,
+                "details": details,
+                "message": f"Bulk {action.replace('_', ' ')} completed for {updated} of {total} movie{'s' if total != 1 else ''}.",
+            }
+            await update_job(
+                db,
+                job,
+                status=JobStatus.COMPLETED,
+                progress={"current": total, "total": total, "percent": 100, "stage": "completed", "detail": summary["message"]},
+                summary=summary,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={"current": 0, "total": 0, "percent": 0, "stage": "failed", "detail": f"Bulk {action.replace('_', ' ')} failed."},
+                error={"code": "BULK_MOVIE_ACTION_FAILED", "message": str(exc)},
+            )
+        await db.commit()
+        publish_job_status(job)

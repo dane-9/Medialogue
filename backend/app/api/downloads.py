@@ -27,6 +27,7 @@ from app.models.domain import (
     TorrentClientObservation,
 )
 from app.schemas.common import Collection, DeleteResponse
+from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.downloads import (
     DownloadClientCreate,
     DownloadClientResponse,
@@ -34,15 +35,17 @@ from app.schemas.downloads import (
     DownloadClientTestResponse,
     DownloadClientTestRequest,
     DownloadClientUpdate,
-    DownloadPollResponse,
     DownloadResponse,
     DownloadScope,
 )
 from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
 from app.services.qbittorrent import (
-    poll_download_client,
+    run_all_download_client_polls,
+    run_download_client_poll,
     test_download_client_connection,
 )
+from app.services.jobs import create_job, publish_job_status
+from app.services.runtime_jobs import launch_runtime_job
 
 
 router = APIRouter(tags=["downloads"])
@@ -385,37 +388,47 @@ async def refresh_download_client_health(
     return DownloadClientTestResponse(**result)
 
 
-@router.post("/download-clients/{client_id}/poll", response_model=DownloadPollResponse)
+@router.post("/download-clients/{client_id}/poll", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def poll_client(
     client_id: UUID,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_qbittorrent_client_factory),
-) -> DownloadPollResponse:
+) -> JobAcceptedResponse:
     client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     if not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_DISABLED", "Download client is disabled.", status_code=409)
-    result = await poll_download_client(db, client, client_factory=client_factory)
+    job = await create_job(
+        db,
+        "qbittorrent_poll",
+        summary={"client_id": str(client.id), "client_name": client.name, "message": f"Polling qBittorrent client {client.name}…"},
+    )
     await db.commit()
-    return DownloadPollResponse(**result)
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_download_client_poll(job.id, client.id, client_factory=client_factory))
+    return JobAcceptedResponse(job_id=job.id)
 
 
-@router.post("/downloads/poll", response_model=list[DownloadPollResponse])
+@router.post("/downloads/poll", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def poll_all_clients(
     _: object = Depends(require_csrf),
     admin: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_qbittorrent_client_factory),
-) -> list[DownloadPollResponse]:
+) -> JobAcceptedResponse:
     del admin
     clients = [client for client in await list_configured_download_clients(db) if client.enabled]
-    results = []
-    for client in clients:
-        results.append(await poll_download_client(db, client, client_factory=client_factory))
+    job = await create_job(
+        db,
+        "qbittorrent_poll_all",
+        summary={"client_count": len(clients), "message": f"Polling {len(clients)} qBittorrent client{'s' if len(clients) != 1 else ''}…"},
+    )
     await db.commit()
-    return [DownloadPollResponse(**result) for result in results]
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_all_download_client_polls(job.id, client_factory=client_factory))
+    return JobAcceptedResponse(job_id=job.id)
 
 
 @router.get("/downloads", response_model=Collection[DownloadResponse])

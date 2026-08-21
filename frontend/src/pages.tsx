@@ -145,7 +145,16 @@ export function MoviesPage() {
     try {
       const result = await api.bulkMovies({ movie_ids: ids, action, quality_profile_id: options.profileId, tag_ids: options.tagIds })
       const label = action.replaceAll('_', ' ')
-      setMessage(`${label}: ${result.updated} of ${result.requested} selected movie${result.requested === 1 ? '' : 's'} updated.`)
+      if ('job_id' in result) {
+        setMessage(`${label} queued as job ${result.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+        const [job] = await api.waitForJobs([result.job_id])
+        const summary = job?.summary ?? {}
+        const requested = Number(summary.requested ?? ids.length)
+        const updated = Number(summary.updated ?? 0)
+        if (job?.state === 'completed') setMessage(`${label}: ${updated} of ${requested} selected movie${requested === 1 ? '' : 's'} processed. Check Jobs for any per-title failures.`)
+        else if (job?.state === 'cancelled') setMessage(`${label} cancelled after processing ${updated} of ${requested} selected movies.`)
+        else setMessage(`${label} failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+      } else setMessage(`${label}: ${result.updated} of ${result.requested} selected movie${result.requested === 1 ? '' : 's'} updated.`)
       await loadMovies()
       setContext(null)
     } catch (reason) {
@@ -384,17 +393,33 @@ export function MovieDetailPage({ id }: { id: string }) {
   useEffect(() => { void load() }, [id])
   useLiveLibraryRefresh(() => load(false))
   const recheckPlex = async () => {
-    setBusy(true); setMessage('')
-    try { const result = await api.recheckMoviePlex(id); setMovie(await api.movie(id)); setMessage(`Plex recheck complete: ${result.matched_releases} matched, ${result.not_found_releases} not in Plex, ${result.multiple_version_releases} multiple-version matches, ${result.conflict_releases} conflicts.`) }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not recheck Plex.') }
+    setBusy(true); setMessage('Starting Plex recheck…')
+    try {
+      const accepted = await api.recheckMoviePlex(id)
+      setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+      const [job] = await api.waitForJobs([accepted.job_id])
+      await load()
+      const summary = job?.summary ?? {}
+      const count = (key: string) => Number(summary[key] ?? 0)
+      if (job?.state === 'completed') setMessage(`Plex recheck complete: ${count('matched_releases')} matched, ${count('not_found_releases')} not in Plex, ${count('multiple_version_releases')} multiple-version matches, ${count('conflict_releases')} conflicts.`)
+      else if (job?.state === 'cancelled') setMessage('Plex recheck cancelled. No further Plex verification was performed.')
+      else setMessage(`Plex recheck failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+    }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start Plex recheck.') }
     finally { setBusy(false) }
   }
   const refreshEvidence = async () => {
     setBusy(true); setMessage('Refreshing reconciliation evidence…')
     try {
-      await api.reconcileMovie(id)
-      setMovie(await api.movie(id))
-      setMessage('Reconciliation refresh complete. No filesystem changes were made.')
+      const refresh = await api.reconcileMovie(id)
+      const jobIds = [...new Set([...(refresh.job_ids ?? []), ...(refresh.active_job_ids ?? [])].map(String))]
+      const jobs = jobIds.length ? await api.waitForJobs(jobIds) : []
+      await load()
+      const failures = jobs.filter((job) => job.state !== 'completed')
+      if (failures.length) setMessage(`Reconciliation finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`)
+      else if (refresh.uninitialized_root_ids?.length) setMessage(`Reconciliation refresh complete. ${refresh.uninitialized_root_ids.length} storage root${refresh.uninitialized_root_ids.length === 1 ? ' was' : 's were'} skipped until initialized.`)
+      else if (!jobs.length) setMessage('No reconciliation job was needed. No filesystem changes were made.')
+      else setMessage('Reconciliation refresh complete. No filesystem changes were made.')
     } catch (reason) {
       // Older servers do not expose the optional rescan action; a GET still refreshes persisted evidence.
       if (reason instanceof ApiError && (reason.status === 404 || reason.status === 405)) {
@@ -411,7 +436,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   const historyReleases = releases.filter((release) => ['replaced', 'removed', 'missing', 'degraded'].includes(release.state.toLowerCase()))
   const history = movie.recentEvents ?? []
   const currentSummary = <div className="release-row"><div className="release-icon"><Icon name="film" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
-  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>Recheck Plex</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
+  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Storage Root Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the root is reachable.</span></div></div>}
     <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster poster-inception"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'The filesystem remains the source of truth. Reconciliation preserves old paths and release evidence without moving or deleting media.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><MovieTagsPanel resourceId={id} assigned={movie.tags ?? []} onChanged={(tags) => setMovie((current) => current ? { ...current, tags } : current)} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
@@ -480,8 +505,36 @@ export function ShowDetailPage({ id }: { id: string }) {
   const load = async (reportError = true) => { try { setShow(await api.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
   useEffect(() => { void load() }, [id])
   useLiveLibraryRefresh(() => load(false))
-  const refreshMetadata = async () => { setBusy(true); try { setShow(await api.refreshShowMetadata(id)); setMessage('TMDB metadata refreshed. Existing media mappings were preserved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Metadata refresh failed.') } finally { setBusy(false) } }
-  const recheckPlex = async () => { setBusy(true); try { const result = await api.recheckShowPlex(id); await load(); setMessage(`Plex checked ${result.checked_releases} episode files: ${result.matched_releases} matched, ${result.not_found_releases} not in Plex, ${result.multiple_version_releases} multiple-version matches, ${result.conflict_releases} conflicts.`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Plex recheck failed.') } finally { setBusy(false) } }
+  const refreshMetadata = async () => {
+    setBusy(true); setMessage('Starting TMDB metadata refresh…')
+    try {
+      const accepted = await api.refreshShowMetadata(id)
+      setMessage(`TMDB metadata refresh queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+      const [job] = await api.waitForJobs([accepted.job_id])
+      await load()
+      if (job?.state === 'completed') {
+        const summary = job.summary ?? {}
+        setMessage(`TMDB metadata refreshed: ${Number(summary.seasons ?? 0)} season${Number(summary.seasons ?? 0) === 1 ? '' : 's'} and ${Number(summary.episodes ?? 0)} episode${Number(summary.episodes ?? 0) === 1 ? '' : 's'} updated. Existing media mappings were preserved.`)
+      } else if (job?.state === 'cancelled') setMessage('TMDB metadata refresh cancelled.')
+      else setMessage(`TMDB metadata refresh failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Metadata refresh failed.') }
+    finally { setBusy(false) }
+  }
+  const recheckPlex = async () => {
+    setBusy(true); setMessage('Starting Plex recheck…')
+    try {
+      const accepted = await api.recheckShowPlex(id)
+      setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+      const [job] = await api.waitForJobs([accepted.job_id])
+      await load()
+      const summary = job?.summary ?? {}
+      const count = (key: string) => Number(summary[key] ?? 0)
+      if (job?.state === 'completed') setMessage(`Plex recheck complete: ${count('matched_releases')} matched, ${count('not_found_releases')} not in Plex, ${count('conflict_releases')} conflicts.`)
+      else if (job?.state === 'cancelled') setMessage('Plex recheck cancelled. No further Plex verification was performed.')
+      else setMessage(`Plex recheck failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Plex recheck failed.') }
+    finally { setBusy(false) }
+  }
   const setSeasonMonitored = async (season: Season, monitored: boolean) => { try { await api.updateSeason(season.id, { monitored, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season monitoring.') } }
   const setEpisodeMonitored = async (episode: Episode, monitored: boolean) => { try { await api.updateEpisode(episode.id, { monitored, expected_revision: episode.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update episode monitoring.') } }
   const searchSeason = async (season: Season) => { try { const result = await api.startSeasonSearch(season.id); setMessage(`Season search started · job ${result.job_id.slice(0, 8)}…`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start season search.') } }
@@ -491,7 +544,7 @@ export function ShowDetailPage({ id }: { id: string }) {
   if (error) return <Page title="Show unavailable" subtitle={error} back="Back to Shows" backTo="/shows"><EmptyState title="Could not load this Show" detail={error} /></Page>
   if (!show) return <Page title="Loading Show" subtitle="Retrieving seasons and episode inventory." back="Back to Shows" backTo="/shows"><EmptyState title="Loading…" detail="Reading the persisted Show record." /></Page>
   const seasons = show.seasonDetail ?? []
-  return <Page title={show.title} subtitle={`${show.year || 'Year unknown'} · ${show.tmdbId ? `TMDB ${show.tmdbId}` : show.id}${show.tvdbId ? ` · TVDB ${show.tvdbId}` : ''}`} back="Back to Shows" backTo="/shows" action={<><Button variant="ghost" icon="refresh" onClick={() => void refreshMetadata()} disabled={busy}>Refresh metadata</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckPlex()} disabled={busy}>Recheck Plex</Button></>}>
+  return <Page title={show.title} subtitle={`${show.year || 'Year unknown'} · ${show.tmdbId ? `TMDB ${show.tmdbId}` : show.id}${show.tvdbId ? ` · TVDB ${show.tvdbId}` : ''}`} back="Back to Shows" backTo="/shows" action={<><Button variant="ghost" icon="refresh" onClick={() => void refreshMetadata()} disabled={busy}>{busy ? 'Working…' : 'Refresh metadata'}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckPlex()} disabled={busy}>{busy ? 'Working…' : 'Recheck Plex'}</Button></>}>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {mappingEditor && <Panel title="Correct episode mapping" eyebrow="LOGICAL MAPPING ONLY"><div className="settings-note"><Icon name="shield" size={15} /><span>This changes only Medialogue's episode mapping. The file is not renamed, moved, copied, or modified.</span></div><div className="mapping-path">{mappingEditor.media.path}</div><div className="mapping-grid">{mappingEditor.season.episodes.map((episode) => <label className="inline-check" key={episode.id}><input type="checkbox" checked={mappingEpisodeIds.includes(episode.id)} onChange={(event) => setMappingEpisodeIds((current) => event.target.checked ? [...current, episode.id] : current.filter((item) => item !== episode.id))} />S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</label>)}</div><div className="settings-footer"><Button variant="ghost" onClick={() => setMappingEditor(null)}>Cancel</Button><Button variant="primary" onClick={() => void saveMapping()} disabled={busy || !mappingEpisodeIds.length}>{busy ? 'Saving…' : 'Save mapping'}</Button></div></Panel>}
     <Panel className="detail-hero"><div className={`detail-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /><span className="poster-title">{show.title}</span><span className="poster-year">{show.year || ''}</span></div><div className="detail-intro"><div className="eyebrow">SHOW {show.tmdbId ? `· TMDB ${show.tmdbId}` : ''}</div><h2>{show.title} {show.year ? <span className="detail-year">({show.year})</span> : null}</h2><div className="badge-row"><Badge tone={statusTone(show.status)}>{show.status}</Badge><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge><Badge tone={show.monitored === false ? 'neutral' : 'blue'}>{show.monitored === false ? 'Unmonitored' : 'Monitored'}</Badge></div><p className="detail-description">{show.overview ?? 'Episode presence is tracked independently while every file stays at its existing path.'}</p></div></Panel>
@@ -904,12 +957,20 @@ export function ProblemsPage() {
     if (!current?.entityId || !duplicatePreview) return
     setLoading(true); setMessage('')
     try {
-      const result = await api.resolveMovieDuplicate(current.entityId, duplicatePreview.confirmationToken)
+      const accepted = await api.resolveMovieDuplicate(current.entityId, duplicatePreview.confirmationToken)
       setDuplicatePreview(null)
+      const [job] = await api.waitForJobs([accepted.job_id])
       await load()
-      setMessage(result.duplicateResolved
-        ? `Duplicate resolved. ${result.deletedDirectories.length ? `${result.deletedDirectories.length} losing director${result.deletedDirectories.length === 1 ? 'y' : 'ies'} deleted.` : 'No media was deleted.'}`
-        : 'Preferred release recorded. The duplicate remains open until the losing copy is actually gone.')
+      if (!job || job.state !== 'completed') {
+        setMessage(`Duplicate resolution ${job?.state ?? 'failed'}. Review Jobs for details.`)
+      } else {
+        const summary = job.summary ?? {}
+        const deleted = Array.isArray(summary.deleted_directories) ? summary.deleted_directories : []
+        const warnings = Array.isArray(summary.warnings) ? summary.warnings : []
+        setMessage(Boolean(summary.duplicate_resolved)
+          ? `Duplicate resolved. ${deleted.length ? `${deleted.length} losing director${deleted.length === 1 ? 'y' : 'ies'} deleted.` : 'No media was deleted.'}${warnings.length ? ` ${warnings.length} warning${warnings.length === 1 ? '' : 's'} recorded.` : ''}`
+          : `Preferred release recorded. The duplicate remains open until the losing copy is actually gone.${warnings.length ? ` ${warnings.length} warning${warnings.length === 1 ? '' : 's'} recorded.` : ''}`)
+      }
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not commit duplicate resolution.') }
     finally { setLoading(false) }
   }
@@ -970,16 +1031,17 @@ export function ProblemsPage() {
     setLoading(true); setMessage('')
     try {
       const result = await api.resolveProblem(current.id, 'recheck')
-      const jobIds = Array.isArray(result.resolution?.recheck_job_ids) ? result.resolution.recheck_job_ids.map(String) : []
-      const jobs = jobIds.length ? await api.waitForJobs(jobIds) : []
+      const parentJobId = typeof result.resolution?.recheck_parent_job_id === 'string' ? result.resolution.recheck_parent_job_id : ''
+      const [job] = parentJobId ? await api.waitForJobs([parentJobId]) : []
       await load(page, true)
-      const recheckError = typeof result.resolution?.recheck_error === 'string' ? result.resolution.recheck_error : ''
-      const failures = jobs.filter((job) => job.state !== 'completed')
-      setMessage(recheckError
-        ? `Evidence recheck could not complete: ${recheckError}`
-        : failures.length
-          ? `Evidence recheck finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`
-          : 'Evidence recheck complete. The Problem remains open only if the condition is still present.')
+      const summary = job?.summary ?? {}
+      const directErrors = Array.isArray(summary.direct_errors) ? summary.direct_errors.map(String) : []
+      const qbitErrors = Array.isArray(summary.qbit_errors) ? summary.qbit_errors.map(String) : []
+      const errors = [...directErrors, ...qbitErrors]
+      setMessage(job?.state === 'completed'
+        ? errors.length ? `Evidence recheck completed with warnings: ${errors.join('; ')}` : 'Evidence recheck complete. The Problem remains open only if the condition is still present.'
+        : job?.state === 'cancelled' ? 'Evidence recheck cancelled.'
+        : `Evidence recheck failed${job?.error ? `: ${job.error}` : '.'} Review Jobs for details.`)
     }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not request a recheck.') }
     finally { setLoading(false) }
@@ -1219,7 +1281,12 @@ export function TorrentArchivePage() {
     setBusy(true); setMessage('')
     try {
       const result = await api.restoreTorrentArchive(restoreItem.id, { download_client_id: restoreClientId, save_path: restorePath.trim() })
-      setMessage(`Submitted ${restoreItem.torrentName} to ${result.client_name}. qBittorrent will be observed on the next poll.`)
+      const [job] = await api.waitForJobs([result.job_id])
+      if (!job || job.state !== 'completed') {
+        setMessage(`Restore ${job?.state ?? 'failed'}. Review Jobs for details.`)
+      } else {
+        setMessage(`Submitted ${restoreItem.torrentName} to qBittorrent. It will be observed on the next poll.`)
+      }
       setRestoreItem(null)
       await load()
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Restore failed.') }
@@ -1228,8 +1295,10 @@ export function TorrentArchivePage() {
   const retryArchive = async (item: TorrentArchiveItem) => {
     setBusy(true); setMessage('')
     try {
-      const result = await api.retryTorrentArchive(item.id)
-      setMessage(result.archive_state === 'archived' ? `Recovery archive completed for ${item.torrentName}.` : (result.message ?? 'Archive retry failed.'))
+      const accepted = await api.retryTorrentArchive(item.id)
+      const [job] = await api.waitForJobs([accepted.job_id])
+      if (!job || job.state !== 'completed') setMessage(`Archive retry ${job?.state ?? 'failed'}. Review Jobs for details.`)
+      else setMessage(`Recovery archive completed for ${item.torrentName}.`)
       await load()
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Archive retry failed.') }
     finally { setBusy(false) }

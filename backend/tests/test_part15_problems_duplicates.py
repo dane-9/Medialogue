@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from uuid import UUID
@@ -72,6 +73,29 @@ def login(client: TestClient) -> dict[str, str]:
     response = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
     assert response.status_code == 200, response.text
     return {"X-CSRF-Token": response.json()["csrf_token"]}
+
+
+def wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"Job did not finish: {payload}")
+
+
+def commit_duplicate(client: TestClient, movie_id: UUID, headers: dict[str, str], token: str) -> dict:
+    response = client.post(
+        f"/api/v1/movies/{movie_id}/duplicates/resolve",
+        headers=headers,
+        json={"confirmation_token": token},
+    )
+    assert response.status_code == 202, response.text
+    return wait_job(client, response.json()["job_id"])
 
 
 def db_run(fn):
@@ -211,13 +235,9 @@ def test_duplicate_preview_lists_entire_folder_and_commit_deletes_only_loser(cli
         loser_path = Path(payload["losers"][0]["directories"][0]["path"])
         stale_file = loser_path / "new-after-preview.txt"
         stale_file.write_text("changed", encoding="utf-8")
-        stale = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": payload["confirmation_token"]},
-        )
-        assert stale.status_code == 409
-        assert stale.json()["error"]["code"] == "DELETE_PREVIEW_STALE"
+        stale = commit_duplicate(client, movie_id, headers, payload["confirmation_token"])
+        assert stale["status"] == "failed", stale
+        assert stale["error"]["code"] == "DELETE_PREVIEW_STALE"
         stale_file.unlink()
 
         preview = client.post(
@@ -230,14 +250,10 @@ def test_duplicate_preview_lists_entire_folder_and_commit_deletes_only_loser(cli
                 "remove_torrents": False,
             },
         ).json()
-        committed = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": preview["confirmation_token"]},
-        )
-        assert committed.status_code == 200, committed.text
-        assert committed.json()["duplicate_resolved"] is True
-        assert committed.json()["problem_status"] == "resolved"
+        committed = commit_duplicate(client, movie_id, headers, preview["confirmation_token"])
+        assert committed["status"] == "completed", committed
+        assert committed["summary"]["duplicate_resolved"] is True
+        assert committed["summary"]["problem_status"] == "resolved"
         assert not loser_path.exists()
 
         async def states(db):
@@ -266,14 +282,10 @@ def test_selecting_winner_without_deleting_keeps_duplicate_problem_open(client: 
             headers=headers,
             json={"winner_release_id": str(winner_id), "losing_release_ids": [str(loser_id)]},
         ).json()
-        committed = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": preview["confirmation_token"]},
-        )
-        assert committed.status_code == 200, committed.text
-        assert committed.json()["duplicate_resolved"] is False
-        assert committed.json()["problem_status"] == "open"
+        committed = commit_duplicate(client, movie_id, headers, preview["confirmation_token"])
+        assert committed["status"] == "completed", committed
+        assert committed["summary"]["duplicate_resolved"] is False
+        assert committed["summary"]["problem_status"] == "open"
         assert Path(preview["losers"][0]["directories"][0]["path"]).exists()
         problem = db_run(lambda db: db.get(Problem, problem_id))
         assert problem.status == ProblemStatus.OPEN
@@ -329,6 +341,10 @@ def test_problem_actions_are_explicit_and_recheck_does_not_fake_resolution(clien
     )
     assert result.status_code == 200
     assert result.json()["status"] == "open"
+    parent_job_id = result.json()["resolution"]["recheck_parent_job_id"]
+    parent_job = wait_job(client, parent_job_id)
+    assert parent_job["status"] == "completed", parent_job
+    assert parent_job["summary"]["problem_id"] == str(problem_id)
 
     invalid = client.post(
         f"/api/v1/problems/{problem_id}/resolve",
@@ -511,17 +527,13 @@ def test_duplicate_torrent_removal_requires_archive_and_never_deletes_qbit_data(
         )
         assert preview.status_code == 200, preview.text
         assert preview.json()["torrent_backups_will_be_kept"] is True
-        committed = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": preview.json()["confirmation_token"]},
-        )
-        assert committed.status_code == 200, committed.text
+        committed = commit_duplicate(client, movie_id, headers, preview.json()["confirmation_token"])
+        assert committed["status"] == "completed", committed
         assert calls == [(info_hash, False)]
         # The media still exists, so selecting a winner does not pretend that
         # the physical duplicate is gone merely because qBittorrent was cleaned up.
-        assert committed.json()["duplicate_resolved"] is False
-        assert committed.json()["problem_status"] == "open"
+        assert committed["summary"]["duplicate_resolved"] is False
+        assert committed["summary"]["problem_status"] == "open"
 
         async def state(db):
             torrent = await db.get(Torrent, torrent_id)
@@ -702,13 +714,9 @@ def test_duplicate_commit_refuses_to_delete_loser_if_winner_disappears(client: T
         loser_path = Path(payload["losers"][0]["directories"][0]["path"])
         shutil.rmtree(winner_path)
 
-        committed = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": payload["confirmation_token"]},
-        )
-        assert committed.status_code == 409, committed.text
-        assert committed.json()["error"]["code"] == "DUPLICATE_WINNER_NOT_PRESENT"
+        committed = commit_duplicate(client, movie_id, headers, payload["confirmation_token"])
+        assert committed["status"] == "failed", committed
+        assert committed["error"]["code"] == "DUPLICATE_WINNER_NOT_PRESENT"
         assert loser_path.exists(), "the losing copy must not be deleted when the selected winner vanished"
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -746,13 +754,9 @@ def test_qbit_failure_skips_requested_media_deletion(client: TestClient) -> None
         )
         assert preview.status_code == 200, preview.text
         loser_path = Path(preview.json()["losers"][0]["directories"][0]["path"])
-        committed = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": preview.json()["confirmation_token"]},
-        )
-        assert committed.status_code == 200, committed.text
-        payload = committed.json()
+        committed = commit_duplicate(client, movie_id, headers, preview.json()["confirmation_token"])
+        assert committed["status"] == "completed", committed
+        payload = committed["summary"]
         assert payload["duplicate_resolved"] is False
         assert payload["deleted_directories"] == []
         assert any("Media deletion was skipped" in warning for warning in payload["warnings"])
@@ -794,13 +798,9 @@ def test_duplicate_confirmation_rejects_tampering(client: TestClient) -> None:
         token = preview["confirmation_token"]
         replacement = "A" if token[-1] != "A" else "B"
         tampered = f"{token[:-1]}{replacement}"
-        committed = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": tampered},
-        )
-        assert committed.status_code == 409
-        assert committed.json()["error"]["code"] == "INVALID_CONFIRMATION"
+        committed = commit_duplicate(client, movie_id, headers, tampered)
+        assert committed["status"] == "failed", committed
+        assert committed["error"]["code"] == "INVALID_CONFIRMATION"
         assert Path(preview["losers"][0]["directories"][0]["path"]).exists()
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -827,13 +827,9 @@ def test_duplicate_confirmation_expires_before_any_destructive_action(client: Te
         loser_path = Path(preview["losers"][0]["directories"][0]["path"])
         future = problem_resolution_service.time.time() + problem_resolution_service.CONFIRMATION_TTL_SECONDS + 2
         monkeypatch.setattr(problem_resolution_service.time, "time", lambda: future)
-        committed = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve",
-            headers=headers,
-            json={"confirmation_token": preview["confirmation_token"]},
-        )
-        assert committed.status_code == 409
-        assert committed.json()["error"]["code"] == "CONFIRMATION_EXPIRED"
+        committed = commit_duplicate(client, movie_id, headers, preview["confirmation_token"])
+        assert committed["status"] == "failed", committed
+        assert committed["error"]["code"] == "CONFIRMATION_EXPIRED"
         assert loser_path.exists()
     finally:
         shutil.rmtree(root, ignore_errors=True)

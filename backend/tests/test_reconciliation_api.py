@@ -197,6 +197,14 @@ def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
     raise AssertionError(f"job did not reach a terminal state within {timeout}s: {payload}")
 
 
+def _poll_job(client: TestClient, url: str, headers: dict[str, str]) -> dict:
+    response = client.post(url, headers=headers)
+    assert response.status_code == 202, response.text
+    job = _wait_job(client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    return job["summary"]
+
+
 def _scan(client: TestClient, headers: dict[str, str], root_id: str, *, timeout: float = 5.0) -> dict:
     response = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
     assert response.status_code == 202, response.text
@@ -261,9 +269,8 @@ def test_incoming_replacement_is_provisional_and_cancellation_is_historical(clie
         _install_qbit_fake(client, behavior)
         qbit = _create_qbit(client, headers)
         try:
-            observed = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-            assert observed.status_code == 200, observed.text
-            assert observed.json()["added"] == 1
+            observed = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
+            assert observed["added"] == 1
             status = client.get("/api/v1/reconciliation/status")
             assert status.status_code == 200, status.text
             assert status.json()["incoming_count"] == 1
@@ -278,9 +285,8 @@ def test_incoming_replacement_is_provisional_and_cancellation_is_historical(clie
             assert release_state.release_state is ReleaseState.MISSING
 
             behavior.torrents = []
-            cancelled = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-            assert cancelled.status_code == 200, cancelled.text
-            assert cancelled.json()["removed"] == 1
+            cancelled = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
+            assert cancelled["removed"] == 1
             assert client.get("/api/v1/reconciliation/status").json()["incoming_count"] == 0
             assert client.get(f"/api/v1/movies/{movie['id']}").json()["state"] == "Missing"
 
@@ -325,14 +331,12 @@ def test_completed_inception_replacement_promotes_same_release_and_is_idempotent
         _install_qbit_fake(client, behavior)
         qbit = _create_qbit(client, headers)
         try:
-            incoming = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-            assert incoming.status_code == 200, incoming.text
+            incoming = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
             new_dir.mkdir()
             (new_dir / f"{new_name}.mkv").write_bytes(b"new-media")
             behavior.torrents = [_torrent("replacement-hash", new_name, progress=1, state="uploading", root=root)]
-            completed = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-            assert completed.status_code == 200, completed.text
-            assert completed.json()["completed"] == 1
+            completed = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
+            assert completed["completed"] == 1
 
             detail = client.get(f"/api/v1/movies/{movie['id']}").json()
             assert detail["state"] == "Present"
@@ -351,8 +355,7 @@ def test_completed_inception_replacement_promotes_same_release_and_is_idempotent
             replaced_before = [event for event in events_before if event["event_type"] == "release.replaced"]
             present_before = [event for event in events_before if event["event_type"] == "media.present"]
             assert len(replaced_before) == len(present_before) == 1
-            repeated = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-            assert repeated.status_code == 200, repeated.text
+            _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
             events_after = client.get(f"/api/v1/events?entity_type=movie&entity_id={movie['id']}").json()["items"]
             assert len([event for event in events_after if event["event_type"] == "release.replaced"]) == 1
             assert len([event for event in events_after if event["event_type"] == "media.present"]) == 1
@@ -373,8 +376,7 @@ def test_completed_torrent_reusing_current_directory_is_not_an_incoming_release(
         _install_qbit_fake(client, behavior)
         qbit = _create_qbit(client, headers)
         try:
-            observed = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-            assert observed.status_code == 200, observed.text
+            _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
 
             detail = client.get(f"/api/v1/movies/{movie['id']}").json()
             assert detail["incoming_downloads"] == []
@@ -416,8 +418,7 @@ def test_legacy_plex_metadata_conflict_no_longer_blocks_completed_replacement(cl
             new_dir.mkdir()
             (new_dir / f"{new_name}.mkv").write_bytes(b"wrong-media")
             behavior.torrents = [_torrent("conflict-hash", new_name, progress=1, state="uploading", root=root)]
-            completed = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-            assert completed.status_code == 200, completed.text
+            _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
             detail = client.get(f"/api/v1/movies/{movie['id']}").json()
             assert detail["state"] == "Present"
             assert "current" in {release["state"] for release in detail["releases"]}
@@ -558,6 +559,8 @@ def test_completed_in_scope_manual_qbit_torrent_can_create_tmdb_backed_movie(cli
         json={"name": "qBit new movies", "path": str(root), "media_type": "movies"},
     )
     assert configured.status_code == 201, configured.text
+    initialized = _scan(client, headers, configured.json()["id"])
+    assert initialized["status"] == "completed", initialized
 
     behavior = FakeQBitBehavior(
         torrents=[_torrent("brand-new-hash", release_name, progress=1.0, state="pausedUP", root=root)]
@@ -565,9 +568,8 @@ def test_completed_in_scope_manual_qbit_torrent_can_create_tmdb_backed_movie(cli
     _install_qbit_fake(client, behavior)
     qbit = _create_qbit(client, headers)
     try:
-        observed = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
-        assert observed.status_code == 200, observed.text
-        assert observed.json()["completed"] == 1
+        observed = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
+        assert observed["completed"] == 1
         movies = client.get("/api/v1/movies").json()
         assert movies["total"] == 1
         assert movies["items"][0]["tmdb_id"] == 27205

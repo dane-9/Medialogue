@@ -135,8 +135,43 @@ def detail(client: TestClient) -> dict:
     return response.json()
 
 
+def wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"job did not reach a terminal state within {timeout}s: {payload}")
+
+
 def episode_by_number(show: dict, number: int) -> dict:
     return next(item for season in show["seasons"] for item in season["episodes"] if item["episode_number"] == number)
+
+
+def test_show_metadata_refresh_is_a_job(client: TestClient) -> None:
+    headers = login(client)
+    configure(client, headers)
+    created = client.post("/api/v1/shows", headers=headers, json={"tmdb_id": 194764, "monitored": True})
+    assert created.status_code == 201, created.text
+
+    accepted = client.post(
+        f"/api/v1/shows/{created.json()['id']}/metadata/refresh",
+        headers=headers,
+    )
+    assert accepted.status_code == 202, accepted.text
+    job = wait_job(client, accepted.json()["job_id"])
+
+    assert job["status"] == "completed", job
+    assert job["job_type"] == "tmdb_show_metadata_refresh"
+    assert job["summary"]["seasons"] == 1
+    assert job["summary"]["episodes"] == 3
+    refreshed = client.get(f"/api/v1/shows/{created.json()['id']}")
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["seasons"][0]["episodes"][0]["title"] == "Episode One"
 
 
 def test_filesystem_season_pack_uses_one_release_for_many_episode_files(client: TestClient) -> None:
@@ -294,9 +329,10 @@ def test_completed_qbittorrent_season_pack_attaches_one_release_without_moving_f
     try:
         headers = login(client)
         configure(client, headers)
-        create_show_root(client, headers, root, name="qBit Shows")
+        configured_root = create_show_root(client, headers, root, name="qBit Shows")
         added_show = client.post("/api/v1/shows", headers=headers, json={"tmdb_id": 194764, "monitored": True})
         assert added_show.status_code == 201, added_show.text
+        assert scan(client, headers, configured_root["id"])["status"] == "completed"
         qbit = client.post(
             "/api/v1/download-clients",
             headers=headers,
@@ -332,9 +368,11 @@ def test_completed_qbittorrent_season_pack_attaches_one_release_without_moving_f
         client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
         try:
             polled = client.post(f"/api/v1/download-clients/{qbit.json()['id']}/poll", headers=headers)
-            assert polled.status_code == 200, polled.text
-            assert polled.json()["added"] == 1
-            assert polled.json()["completed"] == 1
+            assert polled.status_code == 202, polled.text
+            poll_job = wait_job(client, polled.json()["job_id"])
+            assert poll_job["status"] == "completed", poll_job
+            assert poll_job["summary"]["added"] == 1, poll_job
+            assert poll_job["summary"]["completed"] == 1, poll_job
         finally:
             client.app.dependency_overrides.clear()
 
@@ -391,9 +429,10 @@ def test_nested_qbittorrent_season_pack_only_claims_its_own_members(client: Test
     try:
         headers = login(client)
         configure(client, headers)
-        create_show_root(client, headers, root, name="Nested qBit Shows")
+        configured_root = create_show_root(client, headers, root, name="Nested qBit Shows")
         added_show = client.post("/api/v1/shows", headers=headers, json={"tmdb_id": 194764, "monitored": True})
         assert added_show.status_code == 201, added_show.text
+        assert scan(client, headers, configured_root["id"])["status"] == "completed"
         qbit = client.post(
             "/api/v1/download-clients",
             headers=headers,
@@ -429,8 +468,10 @@ def test_nested_qbittorrent_season_pack_only_claims_its_own_members(client: Test
         client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
         try:
             polled = client.post(f"/api/v1/download-clients/{qbit.json()['id']}/poll", headers=headers)
-            assert polled.status_code == 200, polled.text
-            assert polled.json()["completed"] == 1
+            assert polled.status_code == 202, polled.text
+            poll_job = wait_job(client, polled.json()["job_id"])
+            assert poll_job["status"] == "completed", poll_job
+            assert poll_job["summary"]["completed"] == 1
         finally:
             client.app.dependency_overrides.clear()
 

@@ -1,3 +1,5 @@
+import asyncio
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -9,12 +11,14 @@ from app.api.downloads import get_qbittorrent_client_factory
 from app.api.plex import get_plex_client_factory
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
+from app.db import session as db_session
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
     Episode,
     EpisodeMediaMap,
     Job,
+    JobStatus,
     MediaDirectory,
     MediaFile,
     Movie,
@@ -34,7 +38,7 @@ from app.schemas.common import Collection
 from app.services.integration_state import get_configured_download_client
 from app.schemas.problems import ProblemResolveRequest, ProblemResponse
 from app.services.events import publish_live_event
-from app.services.jobs import create_job, publish_job_status
+from app.services.jobs import create_job, publish_job_status, update_job
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan, storage_root_scan_running
 from app.services.plex import get_plex_configuration, recheck_movie_plex, recheck_show_plex
 from app.services.problem_resolution import available_actions, resolve_explicit_problem_action
@@ -238,6 +242,163 @@ async def _queue_root_rechecks(db: AsyncSession, root_ids: set[UUID]) -> tuple[l
         )
         new_job_ids.append(job.id)
     return new_job_ids, active_job_ids
+
+
+async def run_problem_recheck(
+    job_id: UUID,
+    problem_id: UUID,
+    *,
+    tmdb_client_factory,
+    qbit_client_factory,
+    plex_client_factory,
+) -> None:
+    """Run all evidence checks belonging to one Problem as a parent Job."""
+
+    terminal_states = {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}
+    async with db_session.async_session_factory() as db:
+        job = await db.get(Job, job_id)
+        problem = await db.get(Problem, problem_id)
+        if job is None or problem is None or job.status in terminal_states:
+            return
+
+        try:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.RUNNING,
+                progress={"current": 0, "total": 1, "percent": 5, "stage": "checking_direct_evidence", "detail": "Checking the Problem's direct evidence sources…"},
+            )
+            await db.commit()
+            publish_job_status(job)
+
+            metadata_error = await _recheck_show_metadata_problem(
+                db,
+                problem,
+                tmdb_client_factory=tmdb_client_factory,
+            )
+            plex_handled, plex_error = await _recheck_plex_problem(
+                db,
+                problem,
+                plex_client_factory=plex_client_factory,
+            )
+            direct_recheck = problem.reason == "TMDB_SHOW_METADATA_UNAVAILABLE" or plex_handled
+            root_ids = set() if direct_recheck else await _problem_root_ids(db, problem)
+            download_client_ids = await _problem_download_client_ids(db, problem)
+            new_job_ids, active_job_ids = await _queue_root_rechecks(db, root_ids)
+            child_job_ids = [*new_job_ids, *active_job_ids]
+            direct_errors = [item for item in (metadata_error, plex_error) if item]
+            problem.resolution = {
+                **dict(problem.resolution or {}),
+                "recheck_job_ids": [str(item) for item in child_job_ids],
+                "recheck_download_client_ids": [str(item) for item in sorted(download_client_ids, key=str)],
+                **({"recheck_error": "; ".join(direct_errors)} if direct_errors else {}),
+            }
+            await db.commit()
+            for child_id in new_job_ids:
+                child = await db.get(Job, child_id)
+                if child is not None:
+                    publish_job_status(child)
+                    root_id = UUID(str(child.summary["storage_root_id"]))
+                    launch_runtime_job(child.id, lambda child_id=child.id, root_id=root_id: run_storage_root_scan(child_id, root_id))
+
+            qbit_errors: list[str] = []
+            if download_client_ids:
+                await update_job(
+                    db,
+                    job,
+                    progress={"current": 0, "total": 1, "percent": 20, "stage": "checking_download_clients", "detail": f"Checking {len(download_client_ids)} qBittorrent client{'s' if len(download_client_ids) != 1 else ''}…"},
+                )
+                await db.commit()
+                publish_job_status(job)
+            for client_id in download_client_ids:
+                client = await get_configured_download_client(db, client_id)
+                if client is None or not client.enabled:
+                    continue
+                try:
+                    await poll_download_client(db, client, client_factory=qbit_client_factory)
+                    await db.commit()
+                except Exception as exc:
+                    await db.rollback()
+                    qbit_errors.append(f"{client.name}: {exc}")
+
+            failed_child_ids: list[str] = []
+            pending = set(child_job_ids)
+            seen = set(child_job_ids)
+            while pending:
+                await asyncio.sleep(0.05)
+                await db.refresh(job)
+                if job.status == JobStatus.CANCELLED:
+                    return
+                for child_id in list(pending):
+                    child = await db.get(Job, child_id)
+                    if child is None or child.status not in terminal_states:
+                        continue
+                    pending.remove(child_id)
+                    if child.status != JobStatus.COMPLETED:
+                        failed_child_ids.append(str(child.id))
+                    followups = [UUID(str(item)) for item in (child.summary or {}).get("followup_job_ids", [])]
+                    for followup_id in followups:
+                        if followup_id not in seen:
+                            seen.add(followup_id)
+                            pending.add(followup_id)
+                completed = len(seen) - len(pending)
+                await update_job(
+                    db,
+                    job,
+                    progress={"current": completed, "total": max(len(seen), 1), "percent": round(completed * 100 / max(len(seen), 1), 1), "stage": "waiting_for_evidence", "detail": f"Waiting for {len(pending)} evidence job{'s' if len(pending) != 1 else ''}…"},
+                )
+                await db.commit()
+                publish_job_status(job)
+
+            refreshed = await db.get(Problem, problem_id)
+            if refreshed is not None:
+                problem = refreshed
+                all_errors = [*direct_errors, *qbit_errors]
+                problem.resolution = {
+                    **dict(problem.resolution or {}),
+                    "recheck_job_ids": [str(item) for item in sorted(seen, key=str)],
+                    **({"recheck_error": "; ".join(all_errors)} if all_errors else {}),
+                }
+                await db.commit()
+
+            summary = {
+                "problem_id": str(problem_id),
+                "reason": problem.reason,
+                "child_job_ids": [str(item) for item in sorted(seen, key=str)],
+                "failed_child_job_ids": failed_child_ids,
+                "direct_errors": direct_errors,
+                "qbit_errors": qbit_errors,
+                "message": "Problem evidence recheck completed." if not (failed_child_ids or direct_errors or qbit_errors) else "Problem evidence recheck completed with errors.",
+            }
+            if failed_child_ids or direct_errors or qbit_errors:
+                await update_job(
+                    db,
+                    job,
+                    status=JobStatus.FAILED,
+                    progress={"current": 1, "total": 1, "percent": 100, "stage": "failed", "detail": summary["message"]},
+                    summary=summary,
+                    error={"code": "PROBLEM_RECHECK_PARTIAL", "message": summary["message"]},
+                )
+            else:
+                await update_job(
+                    db,
+                    job,
+                    status=JobStatus.COMPLETED,
+                    progress={"current": 1, "total": 1, "percent": 100, "stage": "completed", "detail": summary["message"]},
+                    summary=summary,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Problem evidence recheck failed."},
+                error={"code": "PROBLEM_RECHECK_FAILED", "message": str(exc)},
+            )
+        await db.commit()
+        publish_job_status(job)
 
 
 def _parse_severity(value: str) -> Severity:
@@ -489,64 +650,34 @@ async def resolve_problem(
         payload.payload,
         tmdb_client_factory=tmdb_client_factory,
     )
-    new_job_ids: list[UUID] = []
-    active_job_ids: list[UUID] = []
-    download_client_ids: set[UUID] = set()
     if payload.action == "recheck":
-        metadata_error = await _recheck_show_metadata_problem(
+        parent_job = await create_job(
             db,
-            problem,
-            tmdb_client_factory=tmdb_client_factory,
+            "problem_recheck",
+            cancellable=False,
+            summary={
+                "problem_id": str(problem.id),
+                "reason": problem.reason,
+                "message": "Checking all evidence sources for this Problem…",
+            },
         )
-        plex_handled, plex_error = await _recheck_plex_problem(
-            db,
-            problem,
-            plex_client_factory=plex_client_factory,
-        )
-        # Integration-specific Problems query their evidence source directly.
-        # Everything else uses only the storage roots that can affect the
-        # Problem instead of starting a global reconciliation.
-        direct_recheck = problem.reason == "TMDB_SHOW_METADATA_UNAVAILABLE" or plex_handled
-        root_ids = set() if direct_recheck else await _problem_root_ids(db, problem)
-        download_client_ids = await _problem_download_client_ids(db, problem)
-        new_job_ids, active_job_ids = await _queue_root_rechecks(db, root_ids)
-        direct_errors = [item for item in (metadata_error, plex_error) if item]
         problem.resolution = {
             **dict(problem.resolution or {}),
-            "recheck_job_ids": [str(item) for item in [*new_job_ids, *active_job_ids]],
-            "recheck_download_client_ids": [str(item) for item in sorted(download_client_ids, key=str)],
-            **({"recheck_error": "; ".join(direct_errors)} if direct_errors else {}),
+            "recheck_parent_job_id": str(parent_job.id),
         }
-    await db.commit()
-    for job_id in new_job_ids:
-        committed_job = await db.get(Job, job_id)
-        if committed_job is not None:
-            publish_job_status(committed_job)
-            root_id = UUID(str(committed_job.summary["storage_root_id"]))
-            launch_runtime_job(job_id, lambda job_id=job_id, root_id=root_id: run_storage_root_scan(job_id, root_id))
-    # Torrent-specific Problems need fresh qBittorrent evidence rather than a
-    # global filesystem scan. Poll only the clients that have observed it.
-    qbit_errors: list[str] = []
-    for client_id in download_client_ids:
-        client = await get_configured_download_client(db, client_id)
-        if client is None or not client.enabled:
-            continue
-        try:
-            await poll_download_client(db, client, client_factory=qbit_client_factory)
-            await db.commit()
-        except Exception as exc:
-            await db.rollback()
-            qbit_errors.append(f"{client.name}: {exc}")
-    if payload.action == "recheck":
-        refreshed = await db.get(Problem, problem_id)
-        if refreshed is not None:
-            problem = refreshed
-            if qbit_errors:
-                existing_error = str((problem.resolution or {}).get("recheck_error") or "").strip()
-                problem.resolution = {
-                    **dict(problem.resolution or {}),
-                    "recheck_error": "; ".join([item for item in (existing_error, *qbit_errors) if item]),
-                }
-                await db.commit()
+        await db.commit()
+        publish_job_status(parent_job)
+        launch_runtime_job(
+            parent_job.id,
+            lambda: run_problem_recheck(
+                parent_job.id,
+                problem.id,
+                tmdb_client_factory=tmdb_client_factory,
+                qbit_client_factory=qbit_client_factory,
+                plex_client_factory=plex_client_factory,
+            ),
+        )
+    else:
+        await db.commit()
     subjects = await _problem_subjects(db, [problem])
     return _response(problem, subjects)
