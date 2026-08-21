@@ -157,6 +157,24 @@ def _scan(client: TestClient, headers: dict[str, str], root_id: str) -> dict:
     return _wait_job(client, response.json()["job_id"])
 
 
+def _recheck_movie(client: TestClient, headers: dict[str, str], movie_id: str) -> dict:
+    response = client.post(
+        f"/api/v1/movies/{movie_id}/actions/recheck-plex",
+        headers=headers,
+    )
+    assert response.status_code == 202, response.text
+    return _wait_job(client, response.json()["job_id"])
+
+
+def _recheck_show(client: TestClient, headers: dict[str, str], show_id: str) -> dict:
+    response = client.post(
+        f"/api/v1/shows/{show_id}/actions/recheck-plex",
+        headers=headers,
+    )
+    assert response.status_code == 202, response.text
+    return _wait_job(client, response.json()["job_id"])
+
+
 def _login(client: TestClient) -> dict[str, str]:
     response = client.post(
         "/api/v1/auth/login",
@@ -272,23 +290,13 @@ def test_plex_recheck_exact_path_match(client: TestClient, movie_context) -> Non
     )
     client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
     try:
-        response = client.post(
-            f"/api/v1/movies/{movie['id']}/actions/recheck-plex",
-            headers=headers,
-        )
+        job = _recheck_movie(client, headers, movie["id"])
     finally:
         client.app.dependency_overrides.clear()
 
-    assert response.status_code == 200, response.text
-    assert response.json() == {
-        "movie_id": movie["id"],
-        "state": "matched",
-        "checked_releases": 1,
-        "matched_releases": 1,
-        "not_found_releases": 0,
-        "multiple_version_releases": 0,
-        "conflict_releases": 0,
-    }
+    assert job["status"] == "completed"
+    assert job["summary"]["state"] == "matched"
+    assert job["summary"]["matched_releases"] == 1
     assert behavior.seen_paths
     detail = client.get(f"/api/v1/movies/{movie['id']}")
     assert detail.status_code == 200
@@ -310,17 +318,14 @@ def test_plex_recheck_exact_path_ignores_plex_title_and_year_metadata(client: Te
     )
     client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
     try:
-        response = client.post(
-            f"/api/v1/movies/{movie['id']}/actions/recheck-plex",
-            headers=headers,
-        )
+        job = _recheck_movie(client, headers, movie["id"])
     finally:
         client.app.dependency_overrides.clear()
 
-    assert response.status_code == 200, response.text
-    assert response.json()["state"] == "matched"
-    assert response.json()["matched_releases"] == 1
-    assert response.json()["conflict_releases"] == 0
+    assert job["status"] == "completed"
+    assert job["summary"]["state"] == "matched"
+    assert job["summary"]["matched_releases"] == 1
+    assert job["summary"]["conflict_releases"] == 0
     detail = client.get(f"/api/v1/movies/{movie['id']}").json()
     assert detail["plex_state"] == "matched"
     assert detail["problem_count"] == 0
@@ -345,12 +350,8 @@ def test_plex_exact_path_stays_matched_when_plex_metadata_changes(
     )
     client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
     try:
-        first = client.post(
-            f"/api/v1/movies/{movie['id']}/actions/recheck-plex",
-            headers=headers,
-        )
-        assert first.status_code == 200, first.text
-        assert first.json()["state"] == "matched"
+        first = _recheck_movie(client, headers, movie["id"])
+        assert first["summary"]["state"] == "matched"
 
         behavior.exact_match = PlexMediaMatch(
             rating_key="plex-second",
@@ -359,12 +360,8 @@ def test_plex_exact_path_stays_matched_when_plex_metadata_changes(
             edition=None,
             file_path="/plex/movies/Inception/movie.mkv",
         )
-        second = client.post(
-            f"/api/v1/movies/{movie['id']}/actions/recheck-plex",
-            headers=headers,
-        )
-        assert second.status_code == 200, second.text
-        assert second.json()["state"] == "matched"
+        second = _recheck_movie(client, headers, movie["id"])
+        assert second["summary"]["state"] == "matched"
         detail = client.get(f"/api/v1/movies/{movie['id']}").json()
         assert detail["plex_state"] == "matched"
         assert detail["problem_count"] == 0
@@ -414,18 +411,15 @@ def test_plex_recheck_falls_back_to_title_year_with_explicit_completed_states(
     behavior = FakePlexBehavior(title_matches=title_matches)
     client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
     try:
-        response = client.post(
-            f"/api/v1/movies/{movie['id']}/actions/recheck-plex",
-            headers=headers,
-        )
+        job = _recheck_movie(client, headers, movie["id"])
     finally:
         client.app.dependency_overrides.clear()
 
-    assert response.status_code == 200, response.text
-    assert response.json()["state"] == expected_state
-    assert response.json()["matched_releases"] == expected_matched
-    assert response.json()["not_found_releases"] == expected_not_found
-    assert response.json()["multiple_version_releases"] == expected_multiple
+    assert job["status"] == "completed"
+    assert job["summary"]["state"] == expected_state
+    assert job["summary"]["matched_releases"] == expected_matched
+    assert job["summary"]["not_found_releases"] == expected_not_found
+    assert job["summary"]["multiple_version_releases"] == expected_multiple
     assert behavior.searches == [("Inception", 2010)]
     assert client.get(f"/api/v1/movies/{movie['id']}").json()["plex_state"] == expected_state
 
@@ -438,17 +432,14 @@ def test_plex_recheck_marks_observation_unavailable_when_health_fails(
     behavior = FakePlexBehavior(health_error="Plex is offline")
     client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
     try:
-        response = client.post(
-            f"/api/v1/movies/{movie['id']}/actions/recheck-plex",
-            headers=headers,
-        )
+        job = _recheck_movie(client, headers, movie["id"])
     finally:
         client.app.dependency_overrides.clear()
 
-    assert response.status_code == 200, response.text
-    assert response.json()["state"] == "unavailable"
-    assert response.json()["checked_releases"] == 1
-    assert response.json()["matched_releases"] == 0
+    assert job["status"] == "completed"
+    assert job["summary"]["state"] == "unavailable"
+    assert job["summary"]["checked_releases"] == 1
+    assert job["summary"]["matched_releases"] == 0
     assert client.get(f"/api/v1/movies/{movie['id']}").json()["plex_state"] == "unavailable"
 
     health = client.get("/api/v1/integrations/plex", headers=headers)
@@ -524,15 +515,15 @@ def test_plex_recheck_show_exact_episode_path_match(client: TestClient) -> None:
     )
     client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
     try:
-        response = client.post(f"/api/v1/shows/{show['resource_id']}/actions/recheck-plex", headers=headers)
+        job = _recheck_show(client, headers, show["resource_id"])
     finally:
         client.app.dependency_overrides.clear()
         shutil.rmtree(fixture_root, ignore_errors=True)
-    assert response.status_code == 200, response.text
-    assert response.json()["show_id"] == show["id"]
-    assert response.json()["state"] == "matched"
-    assert response.json()["matched_releases"] == 1
-    assert "movie_id" not in response.json()
+    assert job["status"] == "completed"
+    assert job["summary"]["show_id"] == show["id"]
+    assert job["summary"]["state"] == "matched"
+    assert job["summary"]["matched_releases"] == 1
+    assert "movie_id" not in job["summary"]
 
 
 def test_plex_recheck_show_ignores_show_title_metadata_when_episode_numbers_match(client: TestClient) -> None:
@@ -562,13 +553,13 @@ def test_plex_recheck_show_ignores_show_title_metadata_when_episode_numbers_matc
     )
     client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
     try:
-        response = client.post(f"/api/v1/shows/{show['resource_id']}/actions/recheck-plex", headers=headers)
+        job = _recheck_show(client, headers, show["resource_id"])
     finally:
         client.app.dependency_overrides.clear()
         shutil.rmtree(fixture_root, ignore_errors=True)
-    assert response.status_code == 200, response.text
-    assert response.json()["state"] == "matched"
-    assert response.json()["conflict_releases"] == 0
+    assert job["status"] == "completed"
+    assert job["summary"]["state"] == "matched"
+    assert job["summary"]["conflict_releases"] == 0
     problems = client.get("/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH&status=open")
     assert problems.status_code == 200
     assert problems.json()["total"] == 0

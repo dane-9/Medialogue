@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
@@ -9,10 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.identity import normalize_identity_title
+from app.db import session as db_session
 from app.integrations.tmdb import TMDBClient, TMDBMovieMatch, TMDBShowDetails, TMDBShowMatch
-from app.models.domain import Episode, PresenceState, Season, Severity, Show
+from app.models.domain import Episode, Job, JobStatus, PresenceState, Season, Severity, Show
 from app.services.events import create_event
 from app.services.integration_state import ConfiguredTMDB, get_configured_tmdb
+from app.services.jobs import publish_job_status, update_job
 
 TMDBClientFactory = Callable[[str], TMDBClient]
 
@@ -432,3 +435,81 @@ async def sync_show_metadata(
         raise
     finally:
         await client.close()
+
+
+async def run_show_metadata_refresh(
+    job_id,
+    show_id,
+    *,
+    client_factory=TMDBClient,
+) -> None:
+    """Refresh one Show's TMDB metadata as a durable background Job."""
+
+    async with db_session.async_session_factory() as db:
+        job = await db.get(Job, job_id)
+        show = await db.get(Show, show_id)
+        if job is None or show is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
+            return
+
+        configuration = await get_tmdb_configuration(db)
+        if configuration is None or not configuration.enabled or not configuration.api_key:
+            message = "TMDB is not configured and enabled."
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": message},
+                error={"code": "TMDB_NOT_CONFIGURED", "message": message},
+            )
+            await db.commit()
+            publish_job_status(job)
+            return
+
+        await update_job(
+            db,
+            job,
+            status=JobStatus.RUNNING,
+            progress={"current": 0, "total": 1, "percent": 0, "stage": "refreshing_metadata", "detail": f"Refreshing TMDB metadata for {show.title}…"},
+        )
+        await db.commit()
+        publish_job_status(job)
+
+        try:
+            from app.services.reconciliation import resolve_problem
+
+            counts = await sync_show_metadata(db, show, client_factory=client_factory)
+            await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
+            show.revision += 1
+            await create_event(
+                db,
+                "show.metadata_refreshed",
+                entity_type="show",
+                entity_id=show.id,
+                message=f"Refreshed metadata for {show.title}.",
+                details=counts,
+            )
+            summary = {
+                "show_id": str(show.id),
+                "show_title": show.title,
+                **counts,
+                "message": f"TMDB metadata refreshed for {show.title}.",
+            }
+            await update_job(
+                db,
+                job,
+                status=JobStatus.COMPLETED,
+                progress={"current": 1, "total": 1, "percent": 100, "stage": "completed", "detail": summary["message"]},
+                summary=summary,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await update_job(
+                db,
+                job,
+                status=JobStatus.FAILED,
+                progress={"current": 1, "total": 1, "percent": 100, "stage": "failed", "detail": f"TMDB metadata refresh failed for {show.title}."},
+                error={"code": "TMDB_SHOW_METADATA_FAILED", "message": str(exc)},
+            )
+        await db.commit()
+        publish_job_status(job)

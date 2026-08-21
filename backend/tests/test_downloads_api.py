@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -100,6 +101,34 @@ def _login(client: TestClient) -> dict[str, str]:
 def _enable_operations(client: TestClient, headers: dict[str, str]) -> None:
     response = client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     assert response.status_code == 200, response.text
+
+
+def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"job did not finish: {payload}")
+
+
+def _poll_job(client: TestClient, url: str, headers: dict[str, str]) -> dict:
+    response = client.post(url, headers=headers)
+    assert response.status_code == 202, response.text
+    job = _wait_job(client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    return job["summary"]
+
+
+def _initialize_root(client: TestClient, headers: dict[str, str], root_id: str) -> None:
+    response = client.post(f"/api/v1/storage-roots/{root_id}/scan", headers=headers)
+    assert response.status_code == 202, response.text
+    job = _wait_job(client, response.json()["job_id"])
+    assert job["status"] == "completed", job
 
 
 def _torrent(
@@ -314,6 +343,7 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
             json={"name": "qbit movies", "path": str(root), "media_type": "movies"},
         )
         assert configured_root.status_code == 201, configured_root.text
+        _initialize_root(client, headers, configured_root.json()["id"])
         configured = _create_client(client, headers, tags=["managed"])
         behavior = FakeQBitBehavior(
             torrents=[
@@ -335,15 +365,11 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
         )
         _install_fake(client, behavior)
         try:
-            first = client.post(
-                f"/api/v1/download-clients/{configured['id']}/poll",
-                headers=headers,
-            )
-            assert first.status_code == 200, first.text
-            assert first.json()["observed"] == 2
-            assert first.json()["relevant"] == 1
-            assert first.json()["added"] == 1
-            assert first.json()["ignored"] == 1
+            first = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert first["observed"] == 2
+            assert first["relevant"] == 1
+            assert first["added"] == 1
+            assert first["ignored"] == 1
 
             downloads = client.get("/api/v1/downloads")
             assert downloads.status_code == 200, downloads.text
@@ -363,23 +389,15 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
                     content_path=str(root / "Inception 2010 2160p WEB-DL"),
                 ),
             ]
-            second = client.post(
-                f"/api/v1/download-clients/{configured['id']}/poll",
-                headers=headers,
-            )
-            assert second.status_code == 200, second.text
-            assert second.json()["added"] == 0
-            assert second.json()["removed"] == 0
+            second = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert second["added"] == 0
+            assert second["removed"] == 0
             current = client.get("/api/v1/downloads").json()["items"]
             assert current[0]["progress"] == pytest.approx(0.85)
 
             behavior.torrents = []
-            third = client.post(
-                f"/api/v1/download-clients/{configured['id']}/poll",
-                headers=headers,
-            )
-            assert third.status_code == 200, third.text
-            assert third.json()["removed"] == 1
+            third = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert third["removed"] == 1
             historical = client.get("/api/v1/downloads")
             assert historical.status_code == 200, historical.text
             assert historical.json()["items"] == []
@@ -414,6 +432,7 @@ def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resol
             json={"name": "cartoons only", "path": str(root), "media_type": "movies"},
         )
         assert configured_root.status_code == 201, configured_root.text
+        _initialize_root(client, headers, configured_root.json()["id"])
         configured = _create_client(client, headers, tags=[])
         missing_inside_root = root / "Missing.Movie.2026"
         behavior = FakeQBitBehavior(
@@ -431,12 +450,8 @@ def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resol
         )
         _install_fake(client, behavior)
         try:
-            first = client.post(
-                f"/api/v1/download-clients/{configured['id']}/poll",
-                headers=headers,
-            )
-            assert first.status_code == 200, first.text
-            assert first.json()["relevant"] == 1
+            first = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert first["relevant"] == 1
 
             open_paths = client.get(
                 "/api/v1/problems?status=open&reason=TORRENT_PATH_NOT_FOUND",
@@ -455,13 +470,9 @@ def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resol
                     tags=(),
                 )
             ]
-            second = client.post(
-                f"/api/v1/download-clients/{configured['id']}/poll",
-                headers=headers,
-            )
-            assert second.status_code == 200, second.text
-            assert second.json()["relevant"] == 0
-            assert second.json()["ignored"] == 1
+            second = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert second["relevant"] == 0
+            assert second["ignored"] == 1
 
             open_paths = client.get(
                 "/api/v1/problems?status=open&reason=TORRENT_PATH_NOT_FOUND",
@@ -489,6 +500,7 @@ def test_manual_externally_added_torrent_is_observed_without_touching_media(clie
             json={"name": "qbit manual movies", "path": str(root), "media_type": "movies"},
         )
         assert configured_root.status_code == 201, configured_root.text
+        _initialize_root(client, headers, configured_root.json()["id"])
         configured = _create_client(client, headers, category=None, tags=[])
         behavior = FakeQBitBehavior(
             torrents=[
@@ -506,12 +518,8 @@ def test_manual_externally_added_torrent_is_observed_without_touching_media(clie
         )
         _install_fake(client, behavior)
         try:
-            polled = client.post(
-                f"/api/v1/download-clients/{configured['id']}/poll",
-                headers=headers,
-            )
-            assert polled.status_code == 200, polled.text
-            assert polled.json()["added"] == 1
+            polled = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert polled["added"] == 1
             observed = client.get("/api/v1/downloads").json()["items"]
             assert len(observed) == 1
             assert observed[0]["name"] == "Arrival 2016 1080p BluRay REMUX"
@@ -543,6 +551,7 @@ def test_qbit_connectivity_health_survives_internal_processing_failure(client: T
             json={"name": f"Health-{os.urandom(5).hex()}", "path": str(root), "media_type": "movies"},
         )
         assert root_response.status_code == 201, root_response.text
+        _initialize_root(client, headers, root_response.json()["id"])
         configured = _create_client(client, headers)
         behavior = FakeQBitBehavior(
             torrents=[

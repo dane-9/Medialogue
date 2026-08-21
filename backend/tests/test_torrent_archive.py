@@ -4,7 +4,8 @@ import asyncio
 import json
 import os
 import shutil
-import tempfile
+import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,7 +24,8 @@ from app.models.domain import IdentityState, Movie
 
 @pytest.fixture
 def archive_client():
-    base = Path(tempfile.mkdtemp(prefix="medialogue-archive-test-", dir=os.getcwd()))
+    base = Path.cwd() / f"medialogue-archive-test-{uuid.uuid4().hex}"
+    base.mkdir()
     db_path = base / "test.db"
     archive_dir = base / "torrent-archive"
     archive_dir.mkdir()
@@ -95,6 +97,19 @@ def _install_fake(client: TestClient, behavior: ArchiveQBitBehavior) -> None:
     client.app.dependency_overrides[archive_api.get_torrent_archive_qbit_factory] = lambda: behavior.factory
 
 
+def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    payload: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"job did not reach a terminal state within {timeout}s: {payload}")
+
+
 def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(archive_client) -> None:
     client, base, archive_dir = archive_client
     headers = _login(client)
@@ -106,6 +121,9 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         headers=headers,
         json={"name": "Movies", "path": str(media_root), "media_type": "movies"},
     ).json()
+    scan = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
+    assert scan.status_code == 202, scan.text
+    assert _wait_job(client, scan.json()["job_id"])["status"] == "completed"
     configured = client.post(
         "/api/v1/download-clients",
         headers=headers,
@@ -151,8 +169,10 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
     _install_fake(client, behavior)
     try:
         polled = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
-        assert polled.status_code == 200, polled.text
-        assert polled.json()["relevant"] == 1
+        assert polled.status_code == 202, polled.text
+        poll_job = _wait_job(client, polled.json()["job_id"])
+        assert poll_job["status"] == "completed", poll_job
+        assert poll_job["summary"]["relevant"] == 1
 
         listing = client.get("/api/v1/torrent-archive")
         assert listing.status_code == 200, listing.text
@@ -190,7 +210,9 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         torrent_path.unlink()
         assert not torrent_path.exists()
         refreshed = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
-        assert refreshed.status_code == 200, refreshed.text
+        assert refreshed.status_code == 202, refreshed.text
+        refreshed_job = _wait_job(client, refreshed.json()["job_id"])
+        assert refreshed_job["status"] == "completed", refreshed_job
         assert torrent_path.read_bytes() == behavior.torrent_bytes
         preserved_manifest = json.loads(manifest_path.read_text())
         assert preserved_manifest["media_title"] == "Inception"
@@ -200,8 +222,10 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         # Removing the live qBit row does not touch recovery evidence.
         behavior.torrents = []
         removed = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
-        assert removed.status_code == 200, removed.text
-        assert removed.json()["removed"] == 1
+        assert removed.status_code == 202, removed.text
+        removed_job = _wait_job(client, removed.json()["job_id"])
+        assert removed_job["status"] == "completed", removed_job
+        assert removed_job["summary"]["removed"] == 1
         after = client.get(f"/api/v1/torrent-archive/{item['id']}").json()
         assert after["archive_state"] == "archived"
         assert after["qbit_present"] is False
@@ -214,7 +238,9 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
             json={"download_client_id": configured["id"], "save_path": str(media_root)},
         )
         assert restored.status_code == 202, restored.text
-        assert restored.json()["resolved_save_path"] == str(media_root)
+        restored_job = _wait_job(client, restored.json()["job_id"])
+        assert restored_job["status"] == "completed", restored_job
+        assert restored_job["summary"]["resolved_save_path"] == str(media_root)
         assert behavior.added[-1]["torrent"] == behavior.torrent_bytes
         assert behavior.added[-1]["save_path"] == str(media_root)
         assert behavior.added[-1]["category"] == "movies"
@@ -228,11 +254,14 @@ def test_restore_rejects_destination_outside_configured_roots(archive_client) ->
     headers = _login(client)
     media_root = base / "movies"
     media_root.mkdir()
-    client.post(
+    root = client.post(
         "/api/v1/storage-roots",
         headers=headers,
         json={"name": "Movies", "path": str(media_root), "media_type": "movies"},
-    )
+    ).json()
+    scan = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
+    assert scan.status_code == 202, scan.text
+    assert _wait_job(client, scan.json()["job_id"])["status"] == "completed"
     configured = client.post(
         "/api/v1/download-clients",
         headers=headers,
@@ -260,7 +289,9 @@ def test_restore_rejects_destination_outside_configured_roots(archive_client) ->
     _install_fake(client, behavior)
     try:
         client.put("/api/v1/operations", headers=headers, json={"enabled": True})
-        client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
+        polled = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
+        assert polled.status_code == 202, polled.text
+        assert _wait_job(client, polled.json()["job_id"])["status"] == "completed"
         item = client.get("/api/v1/torrent-archive").json()["items"][0]
         response = client.post(
             f"/api/v1/torrent-archive/{item['id']}/restore",
@@ -280,11 +311,14 @@ def test_failed_archive_is_visible_and_manual_retry_can_recover(archive_client) 
     client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     media_root = base / "movies"
     media_root.mkdir()
-    client.post(
+    root = client.post(
         "/api/v1/storage-roots",
         headers=headers,
         json={"name": "Movies", "path": str(media_root), "media_type": "movies"},
-    )
+    ).json()
+    scan = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
+    assert scan.status_code == 202, scan.text
+    assert _wait_job(client, scan.json()["job_id"])["status"] == "completed"
     configured = client.post(
         "/api/v1/download-clients",
         headers=headers,
@@ -312,7 +346,8 @@ def test_failed_archive_is_visible_and_manual_retry_can_recover(archive_client) 
     _install_fake(client, behavior)
     try:
         response = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
-        assert response.status_code == 200, response.text
+        assert response.status_code == 202, response.text
+        assert _wait_job(client, response.json()["job_id"])["status"] == "completed"
         item = client.get("/api/v1/torrent-archive").json()["items"][0]
         assert item["archive_state"] == "failed"
         assert item["manifest_path"]
@@ -320,8 +355,10 @@ def test_failed_archive_is_visible_and_manual_retry_can_recover(archive_client) 
 
         behavior.torrent_bytes = b"d4:infod4:name7:exampleee"
         retried = client.post(f"/api/v1/torrent-archive/{item['id']}/retry", headers=headers)
-        assert retried.status_code == 200, retried.text
-        assert retried.json()["archive_state"] == "archived"
-        assert Path(retried.json()["archive_path"]).read_bytes() == behavior.torrent_bytes
+        assert retried.status_code == 202, retried.text
+        retried_job = _wait_job(client, retried.json()["job_id"])
+        assert retried_job["status"] == "completed", retried_job
+        assert retried_job["summary"]["archive_state"] == "archived"
+        assert Path(retried_job["summary"]["archive_path"]).read_bytes() == behavior.torrent_bytes
     finally:
         client.app.dependency_overrides.clear()

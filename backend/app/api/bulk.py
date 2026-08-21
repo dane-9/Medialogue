@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
@@ -9,6 +9,7 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.schemas.bulk import MovieBulkAction, MovieBulkRequest, MovieBulkResponse
+from app.schemas.jobs import JobAcceptedResponse
 from app.services.bulk import (
     add_movie_tags,
     change_movie_profile,
@@ -18,16 +19,19 @@ from app.services.bulk import (
     remove_movie_tags,
     reparse_movie_releases,
     resolve_movies,
+    run_long_bulk_movie_action,
     set_movie_monitoring,
 )
-from app.services.plex import get_plex_configuration, recheck_movie_plex
+from app.services.jobs import create_job, publish_job_status
+from app.services.runtime_jobs import launch_runtime_job
 
 router = APIRouter(tags=["bulk operations"])
 
 
-@router.post("/movies/bulk", response_model=MovieBulkResponse)
+@router.post("/movies/bulk", response_model=MovieBulkResponse | JobAcceptedResponse)
 async def bulk_movies(
     payload: MovieBulkRequest,
+    response: Response,
     _: object = Depends(require_csrf),
     admin: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -35,6 +39,35 @@ async def bulk_movies(
 ) -> MovieBulkResponse:
     del admin
     movies = await resolve_movies(db, payload.movie_ids)
+    if payload.action in {
+        MovieBulkAction.RECHECK_PLEX,
+        MovieBulkAction.REEVALUATE_PARSER,
+        MovieBulkAction.REEVALUATE_CUSTOM_FORMATS,
+    }:
+        job = await create_job(
+            db,
+            "bulk_movie_operation",
+            summary={
+                "action": payload.action.value,
+                "requested": len(movies),
+                "movie_titles": [movie.title for movie in movies[:20]],
+                "message": f"Starting bulk {payload.action.value.replace('_', ' ')} for {len(movies)} movie{'s' if len(movies) != 1 else ''}…",
+            },
+        )
+        await db.commit()
+        response.status_code = status.HTTP_202_ACCEPTED
+        publish_job_status(job)
+        launch_runtime_job(
+            job.id,
+            lambda: run_long_bulk_movie_action(
+                job.id,
+                [str(movie.id) for movie in movies],
+                payload.action.value,
+                plex_client_factory=plex_client_factory,
+            ),
+        )
+        return JobAcceptedResponse(job_id=job.id)
+
     updated = 0
     details: dict[str, object] = {}
 
@@ -65,31 +98,6 @@ async def bulk_movies(
             release_count += await reevaluate_movie_custom_formats(db, movie)
         updated = len(movies)
         details["release_count"] = release_count
-    elif payload.action is MovieBulkAction.RECHECK_PLEX:
-        configuration = await get_plex_configuration(db)
-        if configuration is None or not configuration.enabled:
-            raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
-        checked_releases = matched_releases = not_found_releases = multiple_version_releases = conflict_releases = 0
-        for movie in movies:
-            result = await recheck_movie_plex(
-                db,
-                movie,
-                configuration,
-                client_factory=plex_client_factory,
-            )
-            checked_releases += int(result.get("checked_releases", 0))
-            matched_releases += int(result.get("matched_releases", 0))
-            not_found_releases += int(result.get("not_found_releases", 0))
-            multiple_version_releases += int(result.get("multiple_version_releases", 0))
-            conflict_releases += int(result.get("conflict_releases", 0))
-        updated = len(movies)
-        details.update(
-            checked_releases=checked_releases,
-            matched_releases=matched_releases,
-            not_found_releases=not_found_releases,
-            multiple_version_releases=multiple_version_releases,
-            conflict_releases=conflict_releases,
-        )
     else:  # pragma: no cover - Enum validation prevents this branch.
         raise AppError("INVALID_BULK_ACTION", "Unsupported bulk Movie action.", status_code=422)
 

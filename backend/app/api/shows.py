@@ -29,7 +29,7 @@ from app.models.domain import (
     StorageRoot,
 )
 from app.schemas.common import Collection
-from app.schemas.jobs import EventResponse
+from app.schemas.jobs import EventResponse, JobAcceptedResponse
 from app.schemas.shows import (
     EpisodeMediaResponse,
     EpisodeMappingResponse,
@@ -44,10 +44,11 @@ from app.schemas.shows import (
     ShowUpdate,
     TMDBShowLookupResponse,
 )
-from app.services.events import create_event, scope_predicate, show_event_scope
-from app.services.reconciliation import resolve_problem
+from app.services.events import scope_predicate, show_event_scope
 from app.services.shows import add_show_from_tmdb, resolve_show_resource, set_media_file_episode_mappings, show_plex_state, show_problem_count
-from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
+from app.services.jobs import create_job, publish_job_status
+from app.services.runtime_jobs import launch_runtime_job
+from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh
 
 router = APIRouter(tags=["shows"])
 
@@ -205,26 +206,29 @@ async def update_show(
     return await _summary(db, loaded)
 
 
-@router.post("/shows/{resource_id}/metadata/refresh", response_model=ShowDetailResponse)
+@router.post("/shows/{resource_id}/metadata/refresh", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def refresh_show_metadata(
     resource_id: str,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_tmdb_client_factory),
-) -> ShowDetailResponse:
+) -> JobAcceptedResponse:
     show = await resolve_show_resource(db, resource_id)
     if show is None:
         raise AppError("NOT_FOUND", "Show was not found.", status_code=404)
-    try:
-        counts = await sync_show_metadata(db, show, client_factory=client_factory)
-    except Exception as exc:
-        await db.rollback()
-        raise AppError("TMDB_SHOW_METADATA_FAILED", f"Could not refresh Show metadata: {exc}", status_code=503) from exc
-    await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
-    show.revision += 1
-    await create_event(db, "show.metadata_refreshed", entity_type="show", entity_id=show.id, message=f"Refreshed metadata for {show.title}.", details=counts)
+    job = await create_job(
+        db,
+        "tmdb_show_metadata_refresh",
+        summary={
+            "show_id": str(show.id),
+            "show_title": show.title,
+            "message": f"Refreshing TMDB metadata for {show.title}…",
+        },
+    )
     await db.commit()
-    return await _detail(db, resource_id)
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_show_metadata_refresh(job.id, show.id, client_factory=client_factory))
+    return JobAcceptedResponse(job_id=job.id)
 
 
 @router.patch("/seasons/{season_id}", response_model=SeasonResponse)

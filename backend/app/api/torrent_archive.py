@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -12,29 +11,21 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.auth import AdminUser
-from app.models.domain import (
-    IntegrationType,
-    MediaType,
-    RemotePathMapping,
-    StorageRoot,
-    Torrent,
-    TorrentArchiveState,
-    TorrentClientObservation,
-)
+from app.models.domain import Torrent, TorrentArchiveState, TorrentClientObservation
 from app.schemas.common import Collection
+from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.torrent_archive import (
     TorrentArchiveDetail,
-    TorrentArchiveRetryResponse,
     TorrentArchiveSummary,
     TorrentRestoreRequest,
-    TorrentRestoreResponse,
 )
-from app.services.events import create_event
-from app.services.integration_state import get_configured_download_client
-from app.services.qbittorrent import resolve_remote_path
+from app.services.jobs import create_job, publish_job_status
+from app.services.runtime_jobs import launch_runtime_job
 from app.services.torrent_archive import (
-    ensure_torrent_archived,
+    prepare_torrent_restore,
     read_manifest,
+    run_torrent_archive_restore,
+    run_torrent_archive_retry,
     select_archive_client,
 )
 
@@ -44,14 +35,6 @@ router = APIRouter(tags=["torrent-archive"])
 
 def get_torrent_archive_qbit_factory():
     return QBittorrentClient
-
-
-def _inside(path: str, root: str) -> bool:
-    try:
-        Path(path).resolve(strict=False).relative_to(Path(root).resolve(strict=False))
-        return True
-    except ValueError:
-        return False
 
 
 def _manifest_primary(manifest: dict) -> dict:
@@ -160,13 +143,17 @@ async def get_torrent_archive_item(
     )
 
 
-@router.post("/torrent-archive/{torrent_id}/retry", response_model=TorrentArchiveRetryResponse)
+@router.post(
+    "/torrent-archive/{torrent_id}/retry",
+    response_model=JobAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def retry_torrent_archive(
     torrent_id: UUID,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_torrent_archive_qbit_factory),
-) -> TorrentArchiveRetryResponse:
+) -> JobAcceptedResponse:
     torrent = await db.get(Torrent, torrent_id)
     if torrent is None:
         raise AppError("NOT_FOUND", "Torrent archive record was not found.", status_code=404)
@@ -177,20 +164,27 @@ async def retry_torrent_archive(
             "No enabled qBittorrent client currently has this torrent, so its .torrent file cannot be re-exported.",
             status_code=409,
         )
-    success = await ensure_torrent_archived(db, torrent, client, client_factory=client_factory)
-    await db.commit()
-    return TorrentArchiveRetryResponse(
-        torrent_id=torrent.id,
-        archive_state=torrent.archive_state.value,
-        archive_path=torrent.archive_path,
-        manifest_path=torrent.manifest_path,
-        message=None if success else str((torrent.metadata_json or {}).get("archive_error") or "Archive failed."),
+    job = await create_job(
+        db,
+        "torrent_archive_retry",
+        summary={
+            "torrent_id": str(torrent.id),
+            "client_name": client.name,
+            "message": f"Retrying recovery archive for {torrent.name}…",
+        },
     )
+    await db.commit()
+    publish_job_status(job)
+    launch_runtime_job(
+        job.id,
+        lambda: run_torrent_archive_retry(job.id, torrent.id, client_factory=client_factory),
+    )
+    return JobAcceptedResponse(job_id=job.id)
 
 
 @router.post(
     "/torrent-archive/{torrent_id}/restore",
-    response_model=TorrentRestoreResponse,
+    response_model=JobAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def restore_archived_torrent(
@@ -199,91 +193,33 @@ async def restore_archived_torrent(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_torrent_archive_qbit_factory),
-) -> TorrentRestoreResponse:
-    torrent = await db.get(Torrent, torrent_id)
-    if torrent is None:
-        raise AppError("NOT_FOUND", "Torrent archive record was not found.", status_code=404)
-    if torrent.archive_state != TorrentArchiveState.ARCHIVED or not torrent.archive_path:
-        raise AppError("TORRENT_NOT_ARCHIVED", "This torrent does not have a complete recovery archive.", status_code=409)
-    archive_path = Path(torrent.archive_path)
-    if not archive_path.is_file():
-        raise AppError("TORRENT_ARCHIVE_FILE_MISSING", "The archived .torrent file is missing from the archive mount.", status_code=409)
-
-    client = await get_configured_download_client(db, payload.download_client_id)
-    if client is None or not client.enabled:
-        raise AppError("DOWNLOAD_CLIENT_NOT_FOUND", "The selected qBittorrent client is unavailable or disabled.", status_code=404)
-
-    manifest = read_manifest(torrent)
-    raw_media_type = str(manifest.get("media_type") or "").lower()
-    if raw_media_type in {"movie", "movies"}:
-        media_type = MediaType.MOVIES
-    elif raw_media_type in {"show", "shows", "tv"}:
-        media_type = MediaType.SHOWS
-    else:
-        media_type = client.scope
-    if client.scope != media_type:
-        raise AppError(
-            "DOWNLOAD_CLIENT_SCOPE_MISMATCH",
-            f"This archive belongs to {media_type.value}, but the selected client is scoped to {client.scope.value}.",
-            status_code=409,
-        )
-
-    mappings = (
-        await db.scalars(
-            select(RemotePathMapping).where(
-                RemotePathMapping.enabled.is_(True),
-                RemotePathMapping.integration_type == IntegrationType.QBITTORRENT,
-                (RemotePathMapping.integration_id == client.id) | RemotePathMapping.integration_id.is_(None),
-            )
-        )
-    ).all()
-    resolved_save_path, _ = resolve_remote_path(payload.save_path, mappings)
-    roots = (
-        await db.scalars(
-            select(StorageRoot).where(StorageRoot.enabled.is_(True), StorageRoot.media_type == client.scope)
-        )
-    ).all()
-    if not resolved_save_path or not any(_inside(resolved_save_path, root.resolved_root_path) for root in roots):
-        raise AppError(
-            "RESTORE_PATH_OUTSIDE_CONFIGURED_ROOTS",
-            "The restore destination must resolve inside an enabled storage root for this qBittorrent client scope.",
-            status_code=422,
-        )
-
-    adapter = client_factory(client.url, client.username or "", client.password or "")
-    try:
-        await adapter.add_torrent(
-            archive_path.read_bytes(),
-            filename=f"{torrent.info_hash}.torrent",
-            save_path=payload.save_path,
-            category=payload.category if payload.category is not None else client.category,
-            tags=tuple(payload.tags if payload.tags is not None else (client.tags or [])),
-        )
-    except Exception as exc:
-        raise AppError("QBITTORRENT_RESTORE_FAILED", f"qBittorrent rejected the archived torrent: {exc}", status_code=503) from exc
-    finally:
-        await adapter.close()
-
-    await create_event(
+) -> JobAcceptedResponse:
+    prepared = await prepare_torrent_restore(db, torrent_id, payload.download_client_id, payload.save_path)
+    torrent = prepared["torrent"]
+    client = prepared["client"]
+    job = await create_job(
         db,
-        "torrent.restored",
-        entity_type="torrent",
-        entity_id=torrent.id,
-        message=f"Archived torrent submitted to qBittorrent client {client.name}.",
-        details={
-            "download_client_id": str(client.id),
-            "download_client_name": client.name,
-            "reported_save_path": payload.save_path,
-            "resolved_save_path": resolved_save_path,
-            "info_hash": torrent.info_hash,
+        "torrent_restore",
+        summary={
+            "torrent_id": str(torrent.id),
+            "client_name": client.name,
+            "save_path": payload.save_path,
+            "resolved_save_path": prepared["resolved_save_path"],
+            "message": f"Submitting {torrent.name} to qBittorrent…",
         },
     )
     await db.commit()
-    return TorrentRestoreResponse(
-        torrent_id=torrent.id,
-        download_client_id=client.id,
-        client_name=client.name,
-        info_hash=torrent.info_hash,
-        save_path=payload.save_path,
-        resolved_save_path=resolved_save_path,
+    publish_job_status(job)
+    launch_runtime_job(
+        job.id,
+        lambda: run_torrent_archive_restore(
+            job.id,
+            torrent_id,
+            payload.download_client_id,
+            payload.save_path,
+            category=payload.category,
+            tags=payload.tags,
+            client_factory=client_factory,
+        ),
     )
+    return JobAcceptedResponse(job_id=job.id)
