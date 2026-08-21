@@ -10,10 +10,6 @@ on:
         required: true
         default: 'latest'
         type: string
-      confirm:
-        description: 'Type PUBLISH to confirm that you want to push an image'
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -21,7 +17,6 @@ permissions:
 
 jobs:
   publish:
-    if: ${{ inputs.confirm == 'PUBLISH' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

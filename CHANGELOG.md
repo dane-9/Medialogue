@@ -1,3 +1,9 @@
+## v9 movie-detail and publishing hotfix
+
+- Fix every Movie detail request failing with HTTP 500 because `poster_ref` was passed twice while constructing `MovieDetailResponse`.
+- Remove the typed `PUBLISH` confirmation input from the manual GHCR workflow; clicking **Run workflow** remains the explicit publish action.
+- Keep Show detail unchanged after regression coverage confirmed it does not share the Movie response-construction bug.
+
 ## v9 fresh baseline and library usability
 
 - Squash development database history to one clean-install Alembic revision (`0001`); incompatible pre-v9 databases are intentionally not supported.
