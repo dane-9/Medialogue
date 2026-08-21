@@ -14,9 +14,7 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
-    DownloadClient,
     Episode,
-    Indexer,
     InteractiveSearchResult,
     Job,
     JobStatus,
@@ -34,6 +32,7 @@ from app.schemas.search import (
     SearchResultResponse,
 )
 from app.services.events import create_event
+from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.services.jobs import create_job
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
 
@@ -281,7 +280,7 @@ async def download_search_result(
     expires_at = result.expires_at if result.expires_at.tzinfo else result.expires_at.replace(tzinfo=timezone.utc)
     if result.selected_at is None and expires_at < now:
         raise AppError("SEARCH_RESULT_EXPIRED", "This search result has expired. Run a new search.", status_code=410)
-    client = await db.get(DownloadClient, payload.download_client_id)
+    client = await get_configured_download_client(db, payload.download_client_id)
     if client is None or not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", "Download client is not available.", status_code=404)
     if client.scope != result.media_type:
@@ -306,7 +305,7 @@ async def download_search_result(
         )
     if not result.download_url:
         raise AppError("SEARCH_RESULT_NOT_DOWNLOADABLE", "Indexer did not provide a download URL.", status_code=409)
-    indexer = await db.get(Indexer, result.indexer_id) if result.indexer_id else None
+    indexer = await get_configured_indexer(db, result.indexer_id) if result.indexer_id else None
     if indexer is None or not indexer.api_key:
         raise AppError("INDEXER_UNAVAILABLE", "The indexer configuration for this result no longer exists.", status_code=409)
 

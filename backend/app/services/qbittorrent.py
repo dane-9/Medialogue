@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import QBittorrentClient, QBittorrentError, TorrentObservation
 from app.models.domain import (
-    DownloadClient,
     IntegrationType,
     MediaType,
     RemotePathMapping,
@@ -32,6 +31,7 @@ from app.models.domain import (
     TorrentClientObservation,
 )
 from app.services.events import create_event, publish_live_event
+from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
 from app.services.torrent_archive import ensure_torrent_archived, refresh_torrent_manifest, torrent_archive_complete
 from app.services.reconciliation import (
     associate_incoming_torrent,
@@ -147,12 +147,12 @@ def _timestamp(value: int | None) -> datetime | None:
         return None
 
 
-async def get_download_client(db: AsyncSession, client_id: UUID) -> DownloadClient | None:
-    return await db.get(DownloadClient, client_id)
+async def get_download_client(db: AsyncSession, client_id: UUID) -> ConfiguredDownloadClient | None:
+    return await get_configured_download_client(db, client_id)
 
 
 async def test_download_client_connection(
-    client: DownloadClient,
+    client: ConfiguredDownloadClient,
     *,
     client_factory: QBitClientFactory = QBittorrentClient,
 ) -> dict[str, object]:
@@ -171,7 +171,7 @@ async def test_download_client_connection(
 
 async def _poll_download_client(
     db: AsyncSession,
-    client: DownloadClient,
+    client: ConfiguredDownloadClient,
     *,
     client_factory: QBitClientFactory = QBittorrentClient,
 ) -> dict[str, object]:
@@ -575,7 +575,7 @@ async def _poll_download_client(
 
 async def poll_download_client(
     db: AsyncSession,
-    client: DownloadClient,
+    client: ConfiguredDownloadClient,
     *,
     client_factory: QBitClientFactory = QBittorrentClient,
 ) -> dict[str, object]:
@@ -593,7 +593,7 @@ async def poll_due_download_clients(
     """Poll enabled clients whose configured interval has elapsed."""
 
     now = utcnow()
-    clients = (await db.scalars(select(DownloadClient).where(DownloadClient.enabled.is_(True)))).all()
+    clients = [client for client in await list_configured_download_clients(db) if client.enabled]
     results: list[dict[str, object]] = []
     for client in clients:
         client_id = client.id
@@ -619,7 +619,7 @@ async def poll_due_download_clients(
             # A parser/reconciliation/archive bug for one client must neither mark
             # qBittorrent offline nor prevent the remaining clients from polling.
             await db.rollback()
-            fresh = await db.get(DownloadClient, client_id)
+            fresh = await get_configured_download_client(db, client_id)
             logger.exception(
                 "qBittorrent client processing failed after connectivity succeeded",
                 extra={"entity_type": "download_client", "entity_id": str(client_id)},

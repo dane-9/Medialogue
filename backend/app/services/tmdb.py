@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.identity import normalize_identity_title
 from app.integrations.tmdb import TMDBClient, TMDBMovieMatch, TMDBShowDetails, TMDBShowMatch
-from app.models.domain import Episode, PresenceState, Season, Severity, Show, TMDBConfiguration
+from app.models.domain import Episode, PresenceState, Season, Severity, Show
 from app.services.events import create_event
+from app.services.integration_state import ConfiguredTMDB, get_configured_tmdb
 
 TMDBClientFactory = Callable[[str], TMDBClient]
 
@@ -94,8 +95,8 @@ async def _select_movie_by_alternative_title(
     return None, None
 
 
-async def get_tmdb_configuration(db: AsyncSession) -> TMDBConfiguration | None:
-    return await db.scalar(select(TMDBConfiguration).order_by(TMDBConfiguration.created_at).limit(1))
+async def get_tmdb_configuration(db: AsyncSession) -> ConfiguredTMDB | None:
+    return await get_configured_tmdb(db)
 
 
 async def test_tmdb_connection(
@@ -115,7 +116,7 @@ async def test_tmdb_connection(
 
 async def refresh_tmdb_health(
     db: AsyncSession,
-    configuration: TMDBConfiguration,
+    configuration: ConfiguredTMDB,
     *,
     client_factory: TMDBClientFactory | None = None,
 ) -> dict[str, object]:

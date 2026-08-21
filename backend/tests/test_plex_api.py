@@ -26,6 +26,7 @@ def client():
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(
         database_url=database_url,
+        config_dir=f"{db_path}.config",
         bootstrap_admin=True,
         secret_key="test-secret-key-123456",
     )

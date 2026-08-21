@@ -30,6 +30,7 @@ def archive_client():
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(
         database_url=database_url,
+        config_dir=str(base / "config"),
         bootstrap_admin=True,
         secret_key="test-secret-key-123456",
         torrent_archive_dir=str(archive_dir),

@@ -497,24 +497,17 @@ class ShowReleaseTorrent(Base):
 
 
 class DownloadClient(TimestampMixin, Base):
+    """Runtime state for a file-configured qBittorrent client.
+
+    Connection settings and credentials are persisted under ``/config``; this
+    table retains only health/observation state and a stable UUID referenced by
+    torrent observations and search history.
+    """
+
     __tablename__ = "download_clients"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(256), nullable=False)
-    url: Mapped[str] = mapped_column(Text, nullable=False)
-    username: Mapped[str | None] = mapped_column(String(256))
-    password: Mapped[str | None] = mapped_column(Text)
-    scope: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
-    category: Mapped[str | None] = mapped_column(String(256))
-    tags: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     health: Mapped[str | None] = mapped_column(String(32))
-    # Incremented whenever configuration changes so clients can safely edit
-    # settings without silently overwriting a concurrent update.
-    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    # Persist the intended reconciliation cadence even though this milestone
-    # exposes manual polling only; a later scheduler can consume this value.
-    poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
     last_polled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_health_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -737,21 +730,16 @@ class Problem(Base):
 
 
 class Indexer(TimestampMixin, Base):
+    """Runtime health state for an indexer configured under ``/config``."""
+
     __tablename__ = "indexers"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(256), nullable=False)
-    torznab_url: Mapped[str] = mapped_column(Text, nullable=False)
-    api_key: Mapped[str | None] = mapped_column(Text)
-    scope: Mapped[MediaScope] = mapped_column(SAEnum(MediaScope, native_enum=False), nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    timeout_seconds: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
     health: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
-    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
 class InteractiveSearchResult(Base):
@@ -809,30 +797,27 @@ class Schedule(TimestampMixin, Base):
 
 
 class TMDBConfiguration(TimestampMixin, Base):
+    """TMDB runtime health state; API key/settings live under ``/config``."""
+
     __tablename__ = "tmdb_configurations"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    api_key: Mapped[str] = mapped_column(Text, nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     health: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
-    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
 class PlexConfiguration(TimestampMixin, Base):
+    """Plex runtime health state; URL/token/settings live under ``/config``."""
+
     __tablename__ = "plex_configurations"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    url: Mapped[str] = mapped_column(Text, nullable=False)
-    token: Mapped[str] = mapped_column(Text, nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     health: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
     machine_identifier: Mapped[str | None] = mapped_column(String(256))
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
-    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

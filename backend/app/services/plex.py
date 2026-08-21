@@ -18,7 +18,6 @@ from app.models.domain import (
     MediaType,
     Movie,
     MovieRelease,
-    PlexConfiguration,
     PlexMatchMethod,
     PlexMatchState,
     PlexObservation,
@@ -28,6 +27,7 @@ from app.models.domain import (
     StorageRoot,
 )
 from app.services.events import create_event
+from app.services.integration_state import ConfiguredPlex, get_configured_plex
 from app.services.reconciliation import open_problem, resolve_problem
 
 PlexClientFactory = Callable[[str, str], PlexClient]
@@ -37,8 +37,8 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def get_plex_configuration(db: AsyncSession) -> PlexConfiguration | None:
-    return await db.scalar(select(PlexConfiguration).order_by(PlexConfiguration.created_at).limit(1))
+async def get_plex_configuration(db: AsyncSession) -> ConfiguredPlex | None:
+    return await get_configured_plex(db)
 
 
 async def test_plex_connection(
@@ -62,7 +62,7 @@ async def test_plex_connection(
 
 async def refresh_plex_health(
     db: AsyncSession,
-    configuration: PlexConfiguration,
+    configuration: ConfiguredPlex,
     *,
     client_factory: PlexClientFactory = PlexClient,
 ) -> dict[str, object]:
@@ -88,7 +88,7 @@ async def refresh_plex_health(
 
 
 async def _record_health_change(
-    db: AsyncSession, configuration: PlexConfiguration, previous_health: str
+    db: AsyncSession, configuration: ConfiguredPlex, previous_health: str
 ) -> None:
     if configuration.health == previous_health:
         return
@@ -120,7 +120,7 @@ async def _client_library_snapshot(client: object) -> PlexLibrarySnapshot | None
 async def recheck_movie_plex(
     db: AsyncSession,
     movie: Movie,
-    configuration: PlexConfiguration,
+    configuration: ConfiguredPlex,
     *,
     client_factory: PlexClientFactory = PlexClient,
     snapshot: PlexLibrarySnapshot | None = None,
@@ -338,7 +338,7 @@ async def _upsert_observation(
 async def recheck_show_plex(
     db: AsyncSession,
     show: Show,
-    configuration: PlexConfiguration,
+    configuration: ConfiguredPlex,
     *,
     client_factory: PlexClientFactory = PlexClient,
     snapshot: PlexLibrarySnapshot | None = None,

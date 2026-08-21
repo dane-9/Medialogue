@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.domain import (
-    DownloadClient,
     MediaDirectory,
     MediaType,
     Movie,
@@ -38,7 +37,9 @@ from app.models.domain import (
     TorrentArchiveState,
     TorrentClientObservation,
 )
+from app.core.integration_config import get_integration_config_store
 from app.services.events import create_event
+from app.services.integration_state import ConfiguredDownloadClient
 
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -232,31 +233,34 @@ async def _show_associations(db: AsyncSession, torrent: Torrent) -> list[dict[st
 
 async def _client_observations(db: AsyncSession, torrent: Torrent) -> list[dict[str, Any]]:
     rows = (
-        await db.execute(
-            select(TorrentClientObservation, DownloadClient)
-            .join(DownloadClient, DownloadClient.id == TorrentClientObservation.download_client_id)
+        await db.scalars(
+            select(TorrentClientObservation)
             .where(TorrentClientObservation.torrent_id == torrent.id)
             .order_by(TorrentClientObservation.first_seen_at.asc())
         )
     ).all()
-    return [
-        {
-            "download_client_id": str(client.id),
-            "download_client_name": client.name,
-            "scope": client.scope.value,
-            "reported_save_path": observation.reported_save_path,
-            "resolved_save_path": observation.resolved_save_path,
-            "state": observation.state,
-            "progress": float(observation.progress) if observation.progress is not None else None,
-            "category": observation.category,
-            "tags": list(observation.tags or []),
-            "is_present": observation.is_present,
-            "first_seen_at": _iso(observation.first_seen_at),
-            "last_seen_at": _iso(observation.last_seen_at),
-            "removed_at": _iso(observation.removed_at),
-        }
-        for observation, client in rows
-    ]
+    result: list[dict[str, Any]] = []
+    store = get_integration_config_store()
+    for observation in rows:
+        client = store.get_download_client(observation.download_client_id)
+        result.append(
+            {
+                "download_client_id": str(observation.download_client_id),
+                "download_client_name": client.name if client else "Removed client",
+                "scope": client.scope if client else None,
+                "reported_save_path": observation.reported_save_path,
+                "resolved_save_path": observation.resolved_save_path,
+                "state": observation.state,
+                "progress": float(observation.progress) if observation.progress is not None else None,
+                "category": observation.category,
+                "tags": list(observation.tags or []),
+                "is_present": observation.is_present,
+                "first_seen_at": _iso(observation.first_seen_at),
+                "last_seen_at": _iso(observation.last_seen_at),
+                "removed_at": _iso(observation.removed_at),
+            }
+        )
+    return result
 
 
 async def build_recovery_manifest(
@@ -383,7 +387,7 @@ async def write_recovery_manifest(
 async def ensure_torrent_archived(
     db: AsyncSession,
     torrent: Torrent,
-    download_client: DownloadClient,
+    download_client: ConfiguredDownloadClient,
     *,
     client_factory: QBitClientFactory = QBittorrentClient,
 ) -> bool:
@@ -504,20 +508,23 @@ def archive_mount_health(archive_root: str | Path | None = None) -> dict[str, An
     }
 
 
-async def select_archive_client(db: AsyncSession, torrent: Torrent) -> DownloadClient | None:
-    """Pick the most recently observed live client for a manual archive retry."""
+async def select_archive_client(db: AsyncSession, torrent: Torrent) -> ConfiguredDownloadClient | None:
+    """Pick the most recently observed live configured client for a manual archive retry."""
 
-    row = (
-        await db.execute(
-            select(DownloadClient, TorrentClientObservation)
-            .join(TorrentClientObservation, TorrentClientObservation.download_client_id == DownloadClient.id)
+    observations = (
+        await db.scalars(
+            select(TorrentClientObservation)
             .where(
                 TorrentClientObservation.torrent_id == torrent.id,
                 TorrentClientObservation.is_present.is_(True),
-                DownloadClient.enabled.is_(True),
             )
             .order_by(TorrentClientObservation.last_seen_at.desc())
-            .limit(1)
         )
-    ).first()
-    return row[0] if row else None
+    ).all()
+    from app.services.integration_state import get_configured_download_client
+
+    for observation in observations:
+        client = await get_configured_download_client(db, observation.download_client_id)
+        if client is not None and client.enabled:
+            return client
+    return None

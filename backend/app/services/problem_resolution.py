@@ -15,12 +15,12 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.integration_config import get_integration_config_store
 from app.core.security import sign_confirmation_payload, verify_confirmation_payload
 from app.integrations.filesystem import FilesystemObserver
 from app.models.domain import (
     AccessMode,
     AssociationType,
-    DownloadClient,
     Episode,
     EpisodeMediaMap,
     IdentityState,
@@ -414,13 +414,16 @@ async def _release_preview(db: AsyncSession, release: MovieRelease, *, inventory
     torrents: list[dict[str, Any]] = []
     for torrent, _association in torrent_rows:
         observation_rows = (
-            await db.execute(
-                select(TorrentClientObservation, DownloadClient)
-                .join(DownloadClient, DownloadClient.id == TorrentClientObservation.download_client_id)
-                .where(TorrentClientObservation.torrent_id == torrent.id)
+            await db.scalars(
+                select(TorrentClientObservation).where(TorrentClientObservation.torrent_id == torrent.id)
             )
         ).all()
-        present = [(obs, client) for obs, client in observation_rows if obs.is_present]
+        present = [
+            (obs, client)
+            for obs in observation_rows
+            if obs.is_present
+            if (client := get_integration_config_store().get_download_client(obs.download_client_id)) is not None
+        ]
         torrents.append(
             {
                 "torrent_id": torrent.id,
@@ -628,10 +631,9 @@ async def commit_duplicate_resolution(
     if remove_torrents:
         torrent_rows = (
             await db.execute(
-                select(Torrent, TorrentClientObservation, DownloadClient)
+                select(Torrent, TorrentClientObservation)
                 .join(MovieReleaseTorrent, MovieReleaseTorrent.torrent_id == Torrent.id)
                 .join(TorrentClientObservation, TorrentClientObservation.torrent_id == Torrent.id)
-                .join(DownloadClient, DownloadClient.id == TorrentClientObservation.download_client_id)
                 .where(
                     MovieReleaseTorrent.movie_release_id.in_([item.id for item in losers]),
                     TorrentClientObservation.is_present.is_(True),
@@ -639,10 +641,15 @@ async def commit_duplicate_resolution(
             )
         ).all()
         # Validate every archive before producing any external side effect.
-        for torrent, _observation, _client in torrent_rows:
+        for torrent, _observation in torrent_rows:
             if torrent.archive_state != TorrentArchiveState.ARCHIVED:
                 raise AppError("TORRENT_ARCHIVE_REQUIRED", "A selected torrent is no longer safely archived.", status_code=409)
-        for torrent, observation, client in torrent_rows:
+        for torrent, observation in torrent_rows:
+            client = get_integration_config_store().get_download_client(observation.download_client_id)
+            if client is None or not client.enabled:
+                warnings.append(f"qBittorrent client {observation.download_client_id} is no longer configured; torrent was not removed.")
+                qbit_removal_failed = True
+                continue
             adapter = None
             try:
                 adapter = qbit_client_factory(client.url, client.username or "", client.password or "")

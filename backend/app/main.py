@@ -12,10 +12,10 @@ from sqlalchemy import select
 from app.api import auth, bulk, custom_formats, downloads, duplicates, health, indexers, jobs, movies, operations, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tmdb, torrent_archive
 from app.core.config import Settings, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
+from app.core.integration_config import get_integration_config_store
 from app.core.logging import configure_logging
 from app.db.bootstrap import (
     ensure_default_admin,
-    ensure_plex_movie_metadata_is_advisory,
     ensure_problem_integrity,
     ensure_quality_definitions,
     mark_running_jobs_interrupted,
@@ -24,6 +24,7 @@ from app.db import session as db_session
 from app.db.session import configure_database
 from app.models.auth import AdminUser
 from app.api.dependencies import require_admin
+from app.services.integration_state import ensure_configured_integration_states
 from app.services.qbittorrent import poll_due_download_clients
 from app.services.recovery import cleanup_expired_recovery_exports
 from app.services.runtime_jobs import cancel_all_runtime_jobs
@@ -59,6 +60,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
+    # /config is the source of truth for integration configuration. Fresh
+    # installs intentionally start empty; there is no legacy DB import path.
+    get_integration_config_store().ensure_initialized()
     try:
         async with db_session.async_session_factory() as db:
             if settings.bootstrap_admin:
@@ -66,7 +70,7 @@ async def lifespan(_: FastAPI):
             await ensure_quality_definitions(db)
             await mark_running_jobs_interrupted(db)
             await ensure_problem_integrity(db)
-            await ensure_plex_movie_metadata_is_advisory(db)
+            await ensure_configured_integration_states(db)
             await db.commit()
     except Exception:
         # Migrations may be run after the process is started in local

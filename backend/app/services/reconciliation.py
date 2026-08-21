@@ -44,7 +44,6 @@ from app.models.domain import (
     PlexMatchMethod,
     PlexMatchState,
     PlexObservation,
-    PlexConfiguration,
     Problem,
     ProblemStatus,
     QualityDefinition,
@@ -65,6 +64,7 @@ from app.reconciliation.types import (
     PlexState,
 )
 from app.services.events import create_event, publish_live_event, queue_live_event
+from app.services.integration_state import get_configured_plex
 from app.services.tmdb import resolve_movie_identity, resolve_movie_identity_detailed
 from app.services.quality_profiles import evaluate_current_release_score
 
@@ -546,9 +546,9 @@ async def _plex_evidence_for_candidate(
             )
         return PlexCandidateEvidence(state=state, match=match, checked_path=observation.resolved_path)
 
-    configuration = await db.scalar(
-        select(PlexConfiguration).where(PlexConfiguration.enabled.is_(True)).limit(1)
-    )
+    configuration = await get_configured_plex(db)
+    if configuration is not None and not configuration.enabled:
+        configuration = None
     if configuration is None:
         return PlexCandidateEvidence(PlexState.PENDING)
     client = PlexClient(configuration.url, configuration.token)

@@ -13,7 +13,6 @@ from app.db.session import get_db
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.auth import AdminUser
 from app.models.domain import (
-    DownloadClient,
     IntegrationType,
     MediaType,
     RemotePathMapping,
@@ -31,6 +30,7 @@ from app.schemas.torrent_archive import (
     TorrentRestoreResponse,
 )
 from app.services.events import create_event
+from app.services.integration_state import get_configured_download_client
 from app.services.qbittorrent import resolve_remote_path
 from app.services.torrent_archive import (
     ensure_torrent_archived,
@@ -209,7 +209,7 @@ async def restore_archived_torrent(
     if not archive_path.is_file():
         raise AppError("TORRENT_ARCHIVE_FILE_MISSING", "The archived .torrent file is missing from the archive mount.", status_code=409)
 
-    client = await db.get(DownloadClient, payload.download_client_id)
+    client = await get_configured_download_client(db, payload.download_client_id)
     if client is None or not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_NOT_FOUND", "The selected qBittorrent client is unavailable or disabled.", status_code=404)
 

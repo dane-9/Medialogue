@@ -16,6 +16,14 @@ docker compose logs postgres
 
 Confirm `PUID`/`PGID` in `.env`. The startup entrypoint prepares these two application-owned mounts automatically. If the host filesystem prevents ownership changes, pre-create the directories with permissions appropriate for that identity.
 
+## Medialogue cannot decrypt `/config/secrets.enc`
+
+Keep the same `MEDIALOGUE_SECRET_KEY` that was used when the file was written. Medialogue intentionally refuses to start with silently unreadable credentials. If you deliberately want a completely fresh configuration, stop the container and remove both `medialogue.json` and `secrets.enc`, then start Medialogue and configure integrations again.
+
+## Only one qBittorrent instance fails authentication
+
+Treat each qBittorrent client independently. If another configured instance works, the common Medialogue networking/auth path is functioning and the failing instance should be checked for its own credentials, WebUI failed-login/IP-ban state, reverse-proxy base path, and host access rules. Medialogue distinguishes rejected credentials from qBittorrent's HTTP 403 temporary IP ban and stops automatic retries after a confirmed auth failure.
+
 ## Media scans work but Delete Media fails
 
 The root must be both:

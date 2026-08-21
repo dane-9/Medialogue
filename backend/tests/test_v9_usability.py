@@ -21,7 +21,7 @@ from app.models.domain import Event, MediaDirectory, MediaFile, MediaRole, Media
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-v9-usability-", suffix=".db", dir=os.getcwd())
     database_url = f"sqlite+aiosqlite:///{db_path}"
-    settings = Settings(database_url=database_url, bootstrap_admin=True, secret_key="test-secret-key-123456")
+    settings = Settings(database_url=database_url, bootstrap_admin=True, config_dir=f"{db_path}.config", secret_key="test-secret-key-123456")
     engine = create_async_engine(database_url)
 
     async def create_schema():

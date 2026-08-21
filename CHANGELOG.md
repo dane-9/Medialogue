@@ -1,3 +1,11 @@
+## v9 file-backed integration configuration
+
+- Make `/config/medialogue.json` the source of truth for Plex, TMDB, qBittorrent-client, and indexer settings.
+- Store Plex tokens, TMDB/indexer API keys, and qBittorrent passwords only in `/config/secrets.enc`, encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`.
+- Reduce the corresponding PostgreSQL tables to runtime health/reference state only; connection URLs, usernames, scopes, enabled flags, polling intervals, and credentials are no longer database columns.
+- Intentionally provide **no legacy database import/migration path** for these settings. This build targets a fresh PostgreSQL database; configure integrations normally through the UI.
+- Include both the file-backed configuration and encrypted live config files in Recovery Bundles.
+
 ## v9 operations/root initialization hotfix
 
 - Remove the global **Active Operations** toggle. Existing compatibility endpoints remain hidden and always report enabled, while explicit destructive preview/confirmation safeguards remain unchanged.

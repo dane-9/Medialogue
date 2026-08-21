@@ -62,8 +62,10 @@ Medialogue is designed to run as a Docker Compose stack with one application con
 
 ## Persistent data
 
-- PostgreSQL volume: authoritative application/library state.
-- `/config`: setup marker, temporary Recovery Bundle exports, and application-owned configuration material.
+- PostgreSQL volume: authoritative library/application state plus integration runtime health. Plex/TMDB/qBittorrent/indexer connection settings and credentials are not stored there.
+- `/config/medialogue.json`: file-backed Plex, TMDB, qBittorrent-client, and indexer settings without secrets.
+- `/config/secrets.enc`: AES-GCM encrypted integration credentials. It can only be decrypted with the same `MEDIALOGUE_SECRET_KEY`.
+- `/config`: also contains the setup marker and temporary Recovery Bundle exports.
 - `/torrent-archive`: permanent archived `.torrent` files and versioned recovery manifests.
 - Media mounts: user-owned data. Medialogue does not reorganize them.
 

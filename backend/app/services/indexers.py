@@ -7,8 +7,8 @@ from typing import Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.torznab import TorznabClient
-from app.models.domain import Indexer
 from app.services.events import create_event
+from app.services.integration_state import ConfiguredIndexer
 
 TorznabClientFactory = Callable[..., TorznabClient]
 
@@ -39,7 +39,7 @@ async def test_indexer_connection(
 
 async def refresh_indexer_health(
     db: AsyncSession,
-    indexer: Indexer,
+    indexer: ConfiguredIndexer,
     *,
     client_factory: TorznabClientFactory = TorznabClient,
 ) -> dict[str, object]:

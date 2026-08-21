@@ -9,10 +9,11 @@ from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
+from app.core.integration_config import get_integration_config_store
 from app.db.session import get_db
 from app.integrations.plex import PlexClient
 from app.models.auth import AdminUser
-from app.models.domain import MediaDirectory, Movie, MovieRelease, PlexConfiguration, Show
+from app.models.domain import MediaDirectory, Movie, MovieRelease, Show
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.plex import (
     PlexConfigurationResponse,
@@ -22,6 +23,7 @@ from app.schemas.plex import (
     PlexTestRequest,
     PlexTestResponse,
 )
+from app.services.integration_state import ConfiguredPlex, get_configured_plex
 from app.services.jobs import create_job, publish_job_status
 from app.services.plex import (
     get_plex_configuration,
@@ -40,7 +42,7 @@ def get_plex_client_factory():
     return PlexClient
 
 
-def _response(configuration: PlexConfiguration | None) -> PlexConfigurationResponse:
+def _response(configuration: ConfiguredPlex | None) -> PlexConfigurationResponse:
     if configuration is None:
         return PlexConfigurationResponse(configured=False)
     return PlexConfigurationResponse(
@@ -58,7 +60,7 @@ def _response(configuration: PlexConfiguration | None) -> PlexConfigurationRespo
     )
 
 
-def _health_response(configuration: PlexConfiguration | None) -> PlexHealthResponse:
+def _health_response(configuration: ConfiguredPlex | None) -> PlexHealthResponse:
     if configuration is None:
         return PlexHealthResponse()
     return PlexHealthResponse(
@@ -87,24 +89,29 @@ async def save_configuration(
     db: AsyncSession = Depends(get_db),
 ) -> PlexConfigurationResponse:
     del admin
-    configuration = await get_plex_configuration(db)
-    if configuration is None:
-        if not payload.token:
-            raise AppError("PLEX_TOKEN_REQUIRED", "A Plex token is required.", status_code=422)
-        configuration = PlexConfiguration(
-            url=str(payload.url).rstrip("/"), token=payload.token, enabled=payload.enabled
+    current = await get_plex_configuration(db)
+    if current is None and not payload.token:
+        raise AppError("PLEX_TOKEN_REQUIRED", "A Plex token is required.", status_code=422)
+    try:
+        config = get_integration_config_store().save_plex(
+            id=(current.id if current else None),
+            url=str(payload.url).rstrip("/"),
+            token=payload.token,
+            enabled=payload.enabled,
+            expected_revision=payload.expected_revision,
         )
-        db.add(configuration)
-    else:
-        if payload.expected_revision is not None and payload.expected_revision != configuration.revision:
-            raise AppError("REVISION_CONFLICT", "Plex settings changed; refresh and try again.", status_code=409)
-        configuration.url = str(payload.url).rstrip("/")
-        if payload.token:
-            configuration.token = payload.token
-        configuration.enabled = payload.enabled
-        configuration.health = "unknown"
-        configuration.last_error = None
-        configuration.revision += 1
+    except ValueError as exc:
+        if str(exc) == "revision_conflict":
+            raise AppError("REVISION_CONFLICT", "Plex settings changed; refresh and try again.", status_code=409) from exc
+        if str(exc) == "secret_required":
+            raise AppError("PLEX_TOKEN_REQUIRED", "A Plex token is required.", status_code=422) from exc
+        raise
+    configuration = await get_configured_plex(db)
+    assert configuration is not None and configuration.id == config.id
+    configuration.health = "unknown"
+    configuration.last_error = None
+    configuration.last_checked_at = None
+    configuration.latency_ms = None
     await db.commit()
     return _response(configuration)
 
