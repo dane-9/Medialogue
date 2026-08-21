@@ -176,7 +176,7 @@ export function MoviesPage() {
   const missing = movies.filter((movie) => movie.status === 'Missing').length
   const review = movies.filter((movie) => movie.status === 'Conflict' || movie.status === 'Duplicate').length
   return <Page title="Movies" subtitle="Your library, exactly where it was downloaded." action={<Button variant="primary" icon="plus">Add movie</Button>}>
-    <div className="stats-row stats-row-three"><Stat label="Movies" value={String(movies.length)} detail="Registered titles" tone="blue" /><Stat label="Missing" value={String(missing)} detail="History preserved" tone="amber" /><Stat label="Needs review" value={String(review)} detail="Conflicts and duplicates" tone="red" /></div>
+    <div className="stats-row stats-row-three"><Stat label="Movies" value={String(movies.length)} tone="blue" /><Stat label="Missing" value={String(missing)} tone="amber" /><Stat label="Needs review" value={String(review)} tone="red" /></div>
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search movies…" /></div><Select value={filter} onChange={(event) => setFilter(event.target.value)}><option>All movies</option><option>Present</option><option>Missing</option><option>Conflict</option><option>Duplicate</option></Select><Select value={tagFilter} onChange={(event) => updateTagFilter(event.target.value)}><option value="">All tags</option>{tags.map((tag) => <option value={tag.name} key={tag.id}>{tag.name}</option>)}</Select>{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')}><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')}><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void loadMovies()}>Refresh</Button></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
@@ -1600,7 +1600,8 @@ function StorageSettings() {
       </div>
     })}{!mappings.length && <EmptyState title="No remote path mappings" detail="Only add one when qBittorrent reports a path that differs from the media path visible inside Medialogue." />}</div>
 
-    {addingMapping && <div className="settings-form">
+    {addingMapping && <>
+    <div className="settings-form">
       <Field label="Name" help="Shown in Medialogue only.">
         <Input value={mappingName} onChange={(event) => setMappingName(event.target.value)} />
       </Field>
@@ -1616,8 +1617,9 @@ function StorageSettings() {
       <Field label="Storage root" badge="optional" wide help="Optionally pin the rewritten path to one root. Leave unset to let Medialogue resolve it against every matching root.">
         <Select value={mappingRootId} onChange={(event) => setMappingRootId(event.target.value)}><option value="">No explicit root</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
       </Field>
-      <div className="settings-footer" style={{ gridColumn: '1 / -1' }}><Button variant="primary" onClick={addMapping}>Save mapping</Button></div>
-    </div>}
+    </div>
+    <div className="settings-footer"><Button variant="primary" onClick={addMapping}>Save mapping</Button></div>
+    </>}
 
     {message && <Note message={{ tone: message.includes('Could not') || message.includes('failed') ? 'error' : 'ok', text: message }} />}
     <div className="settings-note"><Icon name="shield" size={15} /><span>Scans and path mappings never move or rename media. Removing a root never touches the files on it — only Medialogue's index of that root is cleared.</span></div>
@@ -1908,7 +1910,7 @@ function QBittorrentSettings() {
         {!clients.length && !loading && <EmptyState icon="download" title="No qBittorrent clients" detail="Add a client to observe downloads." />}
       </div>
 
-      <div className="qbit-editor" style={{ padding: 0 }}>
+      <div className="qbit-editor">
         <SectionHead icon="download" title={selected ? selected.name : 'Add qBittorrent client'}
           description="Medialogue reads every torrent in this client. It only ever adds torrents you explicitly grab, and never moves or renames what is already there."
           status={loading ? 'Loading' : selected ? selected.health : 'New client'} statusTone={selected ? healthTone : 'neutral'}
@@ -2094,7 +2096,7 @@ function IndexerSettings() {
         {!indexers.length && !loading && <EmptyState icon="search" title="No indexers configured" detail="Add a Torznab endpoint to run interactive searches." />}
       </div>
 
-      <div className="qbit-editor" style={{ padding: 0 }}>
+      <div className="qbit-editor">
         <SectionHead icon="search" title={selected ? selected.name : 'Add indexer'}
           description="A single Torznab endpoint. Medialogue does not import Prowlarr configuration automatically — each endpoint is added here by hand."
           status={loading ? 'Loading' : selected ? selected.health : 'New indexer'} statusTone={selected ? healthTone : 'neutral'}
