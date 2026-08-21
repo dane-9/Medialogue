@@ -23,11 +23,6 @@ a { color: inherit; text-decoration: none; }
 .nav-item.active svg { color: #8da9ff; }
 .nav-count { margin-left: auto; min-width: 19px; height: 19px; display: grid; place-items: center; border-radius: 10px; color: var(--red); background: rgba(239,124,136,.14); font-size: 11px; }
 .sidebar-footer { padding: 14px 12px 18px; border-top: 1px solid #222934; }
-.safe-card { display: flex; align-items: center; gap: 9px; padding: 11px 10px; margin-bottom: 13px; border: 1px solid rgba(86,215,162,.18); border-radius: 7px; background: rgba(86,215,162,.055); }
-.safe-card-icon { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 6px; color: var(--green); background: rgba(86,215,162,.12); }
-.safe-card strong, .safe-card span { display: block; }
-.safe-card strong { color: #d5efe5; font-size: 11px; }
-.safe-card span { margin-top: 2px; color: #82958f; font-size: 10px; }
 .user-row { display: flex; align-items: center; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; }
 .user-row:hover { background: #1a1f28; }
 .avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #cbd7ff; background: #354777; font-size: 11px; font-weight: 700; }
@@ -74,6 +69,7 @@ a { color: inherit; text-decoration: none; }
 .button-danger { color: #ffc8cc; border-color: rgba(239,124,136,.35); background: rgba(239,124,136,.1); }
 .button:disabled { cursor: wait; opacity: .55; }
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 24px; }
+.stats-row-three { grid-template-columns: repeat(3, 1fr); }
 .stat { padding: 16px 18px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--panel); }
 .stat-label { color: #8994a5; font-size: 11px; }
 .stat-value { margin: 7px 0 3px; font: 600 25px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: -.025em; }
@@ -324,8 +320,6 @@ a { color: inherit; text-decoration: none; }
 .setup-return { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 10px 13px; border: 1px solid rgba(115,152,255,.22); border-radius: 7px; color: #a9b9e8; background: rgba(115,152,255,.06); font-size: 11px; }
 .setup-return a { margin-left: auto; color: #c7d3ff; font-weight: 600; }
 .security-form { margin: 22px 21px 0; }
-.default-password-pill { height: 26px; padding: 0 9px; border: 1px solid rgba(242,189,112,.3); border-radius: 999px; color: var(--amber); background: rgba(242,189,112,.08); font: 500 9px ui-monospace, monospace; }
-.default-password-pill:hover { background: rgba(242,189,112,.14); }
 
 /* v9 real TMDB artwork */
 .poster-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
@@ -357,3 +351,21 @@ a { color: inherit; text-decoration: none; }
 .problem-evidence-fact span { color: #6f7b8c; font: 9px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; text-transform: uppercase; }
 .problem-evidence-fact strong { color: #bcc6d4; font-size: 10px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
 @media (max-width: 860px) { .problem-evidence-grid, .problem-evidence-facts { grid-template-columns: 1fr; } }
+.torrent-history-group { border-bottom: 1px solid #222a35; }.torrent-history-group:last-child { border-bottom: 0; }.torrent-history-summary { display: flex; align-items: center; gap: 13px; padding: 16px 20px; cursor: pointer; list-style: none; }.torrent-history-summary::-webkit-details-marker { display: none; }.torrent-history-summary::after { content: '▾'; color: #71809a; font-size: 12px; transition: transform .15s ease; }.torrent-history-group[open] .torrent-history-summary::after { transform: rotate(180deg); }.torrent-history-summary > div { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }.torrent-history-summary strong, .torrent-history-member strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.torrent-history-summary span:not(.history-line), .torrent-history-summary small { color: #6e7a8a; font-size: 11px; }.torrent-history-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.torrent-history-members { background: rgba(8,12,19,.2); }.torrent-history-member { padding-left: 52px; border-bottom-color: #1b2430; }.torrent-history-member:last-child { border-bottom: 0; }
+.tmdb-candidate-grid { display: grid; gap: 8px; }
+.tmdb-candidate-card { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: stretch; gap: 11px; width: 100%; padding: 9px; border: 1px solid #29323e; border-radius: 7px; color: inherit; background: #151b23; text-align: left; }
+.tmdb-candidate-card:hover, .tmdb-candidate-card.selected { border-color: #6d8bea; background: rgba(115,152,255,.08); }
+.tmdb-candidate-poster { display: grid; place-items: center; width: 48px; height: 68px; flex-shrink: 0; overflow: hidden; border-radius: 4px; color: #7895ed; background: #283247; }
+.tmdb-candidate-poster img { width: 100%; height: 100%; object-fit: cover; }
+.tmdb-candidate-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.tmdb-candidate-copy strong { color: #dce3ee; font-size: 11px; }
+.tmdb-candidate-copy span { color: #7f8b9c; font: 10px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+.tmdb-candidate-copy small { display: -webkit-box; overflow: hidden; color: #7b8798; font-size: 10px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.tmdb-candidate-state { align-self: center; color: #8fa8ff; font: 10px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+.tmdb-selection-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; }
+.tmdb-selection-bar > span { color: #8c98a9; font-size: 11px; }
+.tmdb-problem-candidate { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: stretch; gap: 11px; }
+.tmdb-problem-candidate .tmdb-candidate-poster { min-height: 68px; }
+.tmdb-problem-candidate:where(button) { width: 100%; color: inherit; cursor: pointer; text-align: left; }
+.tmdb-problem-candidate:where(button):hover, .tmdb-problem-candidate.selected { border-color: #6d8bea; background: rgba(115,152,255,.08); }
+@media (max-width: 640px) { .tmdb-candidate-card { grid-template-columns: 48px minmax(0, 1fr); }.tmdb-candidate-state { grid-column: 2; justify-self: start; }.tmdb-selection-bar { align-items: flex-start; flex-direction: column; } }

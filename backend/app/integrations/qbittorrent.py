@@ -55,7 +55,7 @@ class QBittorrentClient:
         username: str,
         password: str,
         *,
-        timeout: float = 15.0,
+        timeout: float = 60.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.username = username

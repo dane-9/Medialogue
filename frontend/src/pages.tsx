@@ -160,11 +160,10 @@ export function MoviesPage() {
   }
 
   const filtered = useMemo(() => movies.filter((movie) => (filter === 'All movies' || movie.status === filter) && movie.title.toLowerCase().includes(query.toLowerCase())), [movies, filter, query])
-  const present = movies.filter((movie) => movie.status === 'Present').length
   const missing = movies.filter((movie) => movie.status === 'Missing').length
   const review = movies.filter((movie) => movie.status === 'Conflict' || movie.status === 'Duplicate').length
   return <Page title="Movies" subtitle="Your library, exactly where it was downloaded." action={<Button variant="primary" icon="plus">Add movie</Button>}>
-    <div className="stats-row"><Stat label="Movies" value={String(movies.length)} detail="Registered titles" tone="blue" /><Stat label="Present" value={String(present)} detail="Observed on disk" tone="green" /><Stat label="Missing" value={String(missing)} detail="History preserved" tone="amber" /><Stat label="Needs review" value={String(review)} detail="Conflicts and duplicates" tone="red" /></div>
+    <div className="stats-row stats-row-three"><Stat label="Movies" value={String(movies.length)} detail="Registered titles" tone="blue" /><Stat label="Missing" value={String(missing)} detail="History preserved" tone="amber" /><Stat label="Needs review" value={String(review)} detail="Conflicts and duplicates" tone="red" /></div>
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search movies…" /></div><Select value={filter} onChange={(event) => setFilter(event.target.value)}><option>All movies</option><option>Present</option><option>Missing</option><option>Conflict</option><option>Duplicate</option></Select><Select value={tagFilter} onChange={(event) => updateTagFilter(event.target.value)}><option value="">All tags</option>{tags.map((tag) => <option value={tag.name} key={tag.id}>{tag.name}</option>)}</Select>{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')}><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')}><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void loadMovies()}>Refresh</Button></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
@@ -231,6 +230,40 @@ function ReleaseEvidenceRow({ release }: { release: MovieRelease }) {
 function IncomingReplacement({ incoming }: { incoming: IncomingDownload }) {
   const label = incoming.kind === 'replacement' ? 'INCOMING REPLACEMENT' : 'INCOMING RELEASE'
   return <div className="incoming-replacement"><div className="incoming-icon"><Icon name="download" size={18} /></div><div className="incoming-copy"><div className="eyebrow">{label}</div><strong>{incoming.quality || incoming.name}</strong><span>{incoming.name}{incoming.edition ? ` · ${incoming.edition}` : ''}</span><div className="incoming-meta"><span>{incoming.client}</span>{incoming.state && <span>{incoming.state}</span>}{incoming.eta && <span>ETA {incoming.eta}</span>}</div><Progress value={incoming.progress} tone="blue" /></div><strong className="incoming-percent">{Math.round(incoming.progress)}%</strong></div>
+}
+
+function torrentTrackerLabel(tracker?: string) {
+  if (!tracker) return undefined
+  try { return new URL(tracker).hostname }
+  catch { return tracker }
+}
+
+function torrentHistoryGroups(items: TorrentArchiveItem[]) {
+  const groups = new Map<string, TorrentArchiveItem[]>()
+  items.forEach((item) => {
+    const key = item.releaseId || `${item.releaseName || item.torrentName}|${item.quality || ''}|${item.edition || ''}`
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  })
+  return [...groups.values()]
+}
+
+function TorrentHistoryEntry({ torrent, nested = false }: { torrent: TorrentArchiveItem; nested?: boolean }) {
+  const tracker = torrentTrackerLabel(torrent.tracker)
+  return <div className={`history-row ${nested ? 'torrent-history-member' : ''}`}><span className="history-line" /><div><strong>{torrent.releaseName ?? torrent.torrentName}</strong><span>{tracker ? `${tracker} · ` : ''}{torrent.infoHash.slice(0, 12)}… · {torrent.originalDownloadClient ?? 'Unknown client'} · qBit {torrent.qbitPresent ? 'present' : 'removed'}</span></div><Badge tone={torrent.archiveState === 'archived' ? 'green' : torrent.archiveState === 'failed' ? 'red' : 'amber'}>{torrent.archiveState.replaceAll('_', ' ')}</Badge></div>
+}
+
+function TorrentHistoryPanel({ items }: { items?: TorrentArchiveItem[] }) {
+  const groups = torrentHistoryGroups(items ?? [])
+  return <Panel title="Torrent history" eyebrow="RECOVERY EVIDENCE">{groups.length ? groups.map((group) => {
+    const first = group[0]
+    if (group.length === 1) return <TorrentHistoryEntry key={first.id} torrent={first} />
+    const presentCount = group.filter((item) => item.qbitPresent).length
+    const trackers = [...new Set(group.map((item) => torrentTrackerLabel(item.tracker)).filter(Boolean))]
+    return <details className="torrent-history-group" key={first.releaseId || first.id}>
+      <summary className="torrent-history-summary"><span className="history-line" /><div><strong>{first.releaseName ?? first.torrentName}</strong><span>Cross-seeded · {group.length} torrents · {presentCount} qBit present</span>{trackers.length > 0 && <small>{trackers.join(' · ')}</small>}</div><Badge tone="blue">{group.length} torrents</Badge></summary>
+      <div className="torrent-history-members">{group.map((torrent) => <TorrentHistoryEntry key={torrent.id} torrent={torrent} nested />)}</div>
+    </details>
+  }) : <div className="history-empty">No torrent recovery history is associated with this movie yet.</div>}</Panel>
 }
 
 function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
@@ -381,7 +414,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>Recheck Plex</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Storage Root Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the root is reachable.</span></div></div>}
-    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster poster-inception"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'The filesystem remains the source of truth. Reconciliation preserves old paths and release evidence without moving or deleting media.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><MovieTagsPanel resourceId={id} assigned={movie.tags ?? []} onChanged={(tags) => setMovie((current) => current ? { ...current, tags } : current)} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><Panel title="Torrent history" eyebrow="RECOVERY EVIDENCE">{movie.torrentHistory?.length ? movie.torrentHistory.map((torrent) => <div className="history-row" key={torrent.id}><span className="history-line" /><div><strong>{torrent.releaseName ?? torrent.torrentName}</strong><span>{torrent.originalDownloadClient ?? 'Unknown client'} · {torrent.infoHash.slice(0, 12)}… · qBit {torrent.qbitPresent ? 'present' : 'removed'}</span></div><Badge tone={torrent.archiveState === 'archived' ? 'green' : torrent.archiveState === 'failed' ? 'red' : 'amber'}>{torrent.archiveState.replaceAll('_', ' ')}</Badge></div>) : <div className="history-empty">No torrent recovery history is associated with this movie yet.</div>}</Panel></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
+    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster poster-inception"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'The filesystem remains the source of truth. Reconciliation preserves old paths and release evidence without moving or deleting media.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><MovieTagsPanel resourceId={id} assigned={movie.tags ?? []} onChanged={(tags) => setMovie((current) => current ? { ...current, tags } : current)} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -637,7 +670,33 @@ function tmdbReasonLabel(reason?: string) {
   return reason ? reason.replaceAll('_', ' ') : 'TMDB did not establish a unique identity.'
 }
 
-function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
+type TMDBCandidate = TMDBMovieLookup | TMDBShowLookup
+
+function problemTMDBCandidateLookup(candidate: Record<string, unknown>): TMDBCandidate | undefined {
+  const tmdbId = Number(candidate.tmdb_id)
+  const title = problemText(candidate.title)
+  if (!Number.isInteger(tmdbId) || !title) return undefined
+  const yearValue = Number(candidate.year)
+  return {
+    tmdbId,
+    title,
+    originalTitle: problemText(candidate.original_title),
+    year: Number.isInteger(yearValue) ? yearValue : undefined,
+    overview: problemText(candidate.overview),
+    posterRef: problemText(candidate.poster_path ?? candidate.poster_ref),
+  }
+}
+
+function ProblemTMDBCandidate({ candidate, selected = false, onSelect }: { candidate: Record<string, unknown>; selected?: boolean; onSelect?: () => void }) {
+  const title = problemText(candidate.title) ?? 'Untitled candidate'
+  const year = problemText(candidate.year)
+  const poster = problemText(candidate.poster_path ?? candidate.poster_ref)
+  const overview = problemText(candidate.overview)
+  const content = <><div className="tmdb-candidate-poster">{poster ? <img src={tmdbPosterUrl(poster)} alt={`${title} poster`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : <Icon name="film" size={22} />}</div><div className="tmdb-candidate-copy"><strong>{problemIdentity(title, year) ?? title}</strong><span>TMDB {problemText(candidate.tmdb_id) ?? 'unknown'}{problemText(candidate.original_title) && problemText(candidate.original_title) !== title ? ` · original: ${problemText(candidate.original_title)}` : ''}</span>{overview && <small>{overview}</small>}</div>{onSelect && <span className="tmdb-candidate-state">{selected ? 'Selected' : 'Select'}</span>}</>
+  return onSelect ? <button type="button" className={`problem-candidate tmdb-problem-candidate ${selected ? 'selected' : ''}`} onClick={onSelect}>{content}</button> : <div className="problem-candidate tmdb-problem-candidate">{content}</div>
+}
+
+function ProblemEvidenceDetails({ problem, selectedTmdbId, onSelectTmdbCandidate }: { problem: Problem; selectedTmdbId?: number; onSelectTmdbCandidate?: (candidate: Record<string, unknown>) => void }) {
   const details = problem.details ?? {}
   if (problem.code === 'PLEX_IDENTITY_MISMATCH') {
     const localIdentity = problemText(details.local_identity) ?? problemIdentity(details.local_title ?? details.medialogue_title, details.local_year ?? details.medialogue_year)
@@ -672,7 +731,7 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
         <div className="problem-evidence-side"><span className="eyebrow">PARSER CANDIDATE</span><strong>{parsed.identity ?? 'No usable title/year extracted'}</strong><code>{problemText(details.path) ?? problem.subject}</code></div>
         <div className="problem-evidence-side"><span className="eyebrow">TMDB RESULT</span><strong>{tmdbReasonLabel(reason)}</strong><span>{queries.length ? `Queries tried: ${queries.join(' · ')}` : 'Recheck evidence to record the exact TMDB queries/candidates with the updated resolver.'}</span></div>
       </div>
-      {candidates.length > 0 && <div className="problem-candidate-list"><span className="eyebrow">CANDIDATES RETURNED BY TMDB</span>{candidates.map((candidate, index) => <div className="problem-candidate" key={`${problem.id}-tmdb-${problemText(candidate.tmdb_id) ?? index}`}><strong>{problemIdentity(candidate.title, candidate.year) ?? 'Untitled candidate'}</strong><span>TMDB {problemText(candidate.tmdb_id) ?? 'unknown'}{problemText(candidate.original_title) && problemText(candidate.original_title) !== problemText(candidate.title) ? ` · original: ${problemText(candidate.original_title)}` : ''}</span></div>)}</div>}
+      {candidates.length > 0 && <div className="problem-candidate-list"><span className="eyebrow">CANDIDATES RETURNED BY TMDB</span>{candidates.map((candidate, index) => <ProblemTMDBCandidate key={`${problem.id}-tmdb-${problemText(candidate.tmdb_id) ?? index}`} candidate={candidate} selected={selectedTmdbId === Number(candidate.tmdb_id)} onSelect={onSelectTmdbCandidate ? () => onSelectTmdbCandidate(candidate) : undefined} />)}</div>}
     </div>
   }
 
@@ -693,6 +752,18 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
   return <div className="problem-evidence-block problem-evidence-facts">{entries.map(([key, value]) => <div className="problem-evidence-fact" key={key}><span>{key.replaceAll('_', ' ')}</span><strong>{readableEvidenceValue(value)}</strong></div>)}</div>
 }
 
+function TMDBCandidateCard({ match, selected, onSelect }: { match: TMDBCandidate; selected: boolean; onSelect: () => void }) {
+  return <button type="button" className={`tmdb-candidate-card ${selected ? 'selected' : ''}`} onClick={onSelect}>
+    <div className="tmdb-candidate-poster">{match.posterRef ? <img src={tmdbPosterUrl(match.posterRef)} alt={`${match.title} poster`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : <Icon name="film" size={22} />}</div>
+    <div className="tmdb-candidate-copy"><strong>{match.title}{match.year ? ` (${match.year})` : ''}</strong><span>TMDB {match.tmdbId}{match.originalTitle && match.originalTitle !== match.title ? ` · original: ${match.originalTitle}` : ''}</span>{match.overview && <small>{match.overview}</small>}</div>
+    <span className="tmdb-candidate-state">{selected ? 'Selected' : 'Select'}</span>
+  </button>
+}
+
+function TMDBMatchPicker({ kind, query, matches, selected, loading, onQueryChange, onSearch, onSelect, onApply }: { kind: 'Movie' | 'Show'; query: string; matches: TMDBCandidate[]; selected?: TMDBCandidate; loading: boolean; onQueryChange: (value: string) => void; onSearch: () => void; onSelect: (match: TMDBCandidate) => void; onApply: () => void }) {
+  return <div className="resolution-block"><div className="eyebrow">MANUAL {kind.toUpperCase()} MATCH</div><p>Search TMDB, select the exact {kind.toLowerCase()}, then apply the match. The filesystem is not renamed or moved.</p><div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={`Search TMDB ${kind}s…`} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} /></div><Button variant="ghost" onClick={onSearch} disabled={loading || !query.trim()}>Search</Button></div>{matches.length > 0 && <div className="tmdb-candidate-grid">{matches.map((match) => <TMDBCandidateCard key={match.tmdbId} match={match} selected={selected?.tmdbId === match.tmdbId} onSelect={() => onSelect(match)} />)}</div>}{selected && <div className="tmdb-selection-bar"><span>Selected: <strong>{selected.title}{selected.year ? ` (${selected.year})` : ''}</strong> · TMDB {selected.tmdbId}</span><Button variant="primary" onClick={onApply} disabled={loading}>Apply selected {kind}</Button></div>}</div>
+}
+
 export function ProblemsPage() {
   const [items, setItems] = useState<Problem[]>([])
   const [selected, setSelected] = useState<string | undefined>()
@@ -706,6 +777,8 @@ export function ProblemsPage() {
   const [tmdbQuery, setTmdbQuery] = useState('')
   const [tmdbMatches, setTmdbMatches] = useState<TMDBMovieLookup[]>([])
   const [tmdbShowMatches, setTmdbShowMatches] = useState<TMDBShowLookup[]>([])
+  const [selectedTmdbMatch, setSelectedTmdbMatch] = useState<TMDBMovieLookup | undefined>()
+  const [selectedTmdbShowMatch, setSelectedTmdbShowMatch] = useState<TMDBShowLookup | undefined>()
   const [duplicateMovie, setDuplicateMovie] = useState<Movie | null>(null)
   const [reasonFilter, setReasonFilter] = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
@@ -763,6 +836,12 @@ export function ProblemsPage() {
   const sourceProblems = items
   const visible = sourceProblems
   const current = visible.find((problem) => problem.id === selected) ?? visible[0]
+  const selectTmdbCandidate = (candidate: Record<string, unknown>) => {
+    const match = problemTMDBCandidateLookup(candidate)
+    if (!match) return
+    if (current?.availableActions?.includes('confirm_movie_match')) setSelectedTmdbMatch(match as TMDBMovieLookup)
+    if (current?.availableActions?.includes('confirm_show_match')) setSelectedTmdbShowMatch(match as TMDBShowLookup)
+  }
   useEffect(() => {
     setDuplicatePreview(null)
     setWinnerReleaseId('')
@@ -770,6 +849,8 @@ export function ProblemsPage() {
     setRemoveTorrents(false)
     setTmdbMatches([])
     setTmdbShowMatches([])
+    setSelectedTmdbMatch(undefined)
+    setSelectedTmdbShowMatch(undefined)
     setTmdbQuery('')
     setDuplicateMovie(null)
   }, [current?.id])
@@ -836,7 +917,7 @@ export function ProblemsPage() {
   const searchTmdb = async () => {
     if (!tmdbQuery.trim()) return
     setLoading(true); setMessage('')
-    try { setTmdbMatches(await api.lookupMovies(tmdbQuery.trim())) }
+    try { setTmdbMatches(await api.lookupMovies(tmdbQuery.trim())); setSelectedTmdbMatch(undefined) }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
     finally { setLoading(false) }
   }
@@ -847,6 +928,7 @@ export function ProblemsPage() {
     try {
       await api.resolveProblem(current.id, 'confirm_movie_match', { tmdb_id: match.tmdbId })
       await load()
+      setSelectedTmdbMatch(undefined)
       setMessage(`Manually matched to ${match.title}${match.year ? ` (${match.year})` : ''}. No media was renamed or moved.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the manual Movie match.') }
     finally { setLoading(false) }
@@ -855,7 +937,7 @@ export function ProblemsPage() {
   const searchTmdbShows = async () => {
     if (!tmdbQuery.trim()) return
     setLoading(true); setMessage('')
-    try { setTmdbShowMatches(await api.lookupShows(tmdbQuery.trim())) }
+    try { setTmdbShowMatches(await api.lookupShows(tmdbQuery.trim())); setSelectedTmdbShowMatch(undefined) }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB Show lookup failed.') }
     finally { setLoading(false) }
   }
@@ -866,6 +948,7 @@ export function ProblemsPage() {
     try {
       await api.resolveProblem(current.id, 'confirm_show_match', { tmdb_id: match.tmdbId })
       await load()
+      setSelectedTmdbShowMatch(undefined)
       setMessage(`Manually matched to ${match.title}${match.year ? ` (${match.year})` : ''}. No media was renamed or moved.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the manual Show match.') }
     finally { setLoading(false) }
@@ -945,7 +1028,7 @@ export function ProblemsPage() {
   }
 
   return <Page title="Problems" subtitle="A single queue for identity conflicts, duplicates, root outages, and low-confidence matches.">
-    <div className="problem-summary"><div className="problem-summary-icon"><Icon name="alert" size={22} /></div><div><strong>{!loaded ? 'Loading Problems…' : `${openTotal} open Problem${openTotal === 1 ? '' : 's'}`}</strong><span>Deleting a Problem only removes its database record; media and torrents remain untouched.</span></div><div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void reEvaluate()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="danger" onClick={() => void clearOpenProblems()} disabled={loading || !total}>Clear {reasonFilter !== 'all' || severityFilter !== 'all' ? 'filtered' : 'all open'}</Button></div></div>
+    <div className="problem-summary"><div className="problem-summary-icon"><Icon name="alert" size={22} /></div><div><strong>{!loaded ? 'Loading Problems…' : `${openTotal} open Problem${openTotal === 1 ? '' : 's'}`}</strong><span>Deleting a Problem removes only its record. Media and torrents stay untouched.</span></div><div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void reEvaluate()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="danger" onClick={() => void clearOpenProblems()} disabled={loading || !total}>Clear {reasonFilter !== 'all' || severityFilter !== 'all' ? 'filtered' : 'all open'}</Button></div></div>
     <div className="toolbar"><Select value={reasonFilter} onChange={(event) => { setReasonFilter(event.target.value); setSelected(undefined); setPage(1) }}><option value="all">All problem types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value); setSelected(undefined); setPage(1) }}><option value="all">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></Select><span className="muted">Showing {visible.length} of {total} matching · {openTotal} open total · page {pages ? page : 0} of {pages}</span></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     <div className="problem-layout"><Panel className="problem-list-panel"><div className="problem-filter"><span className="eyebrow">OPEN PROBLEMS</span><span className="muted">{total} matching</span></div>{visible.map((problem, index) => <button key={problem.id || `${problem.code}-${index}`} className={`problem-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)}><div className={`problem-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></div><div className="problem-row-copy"><strong>{problem.title}</strong><span>{problem.subject}</span><small>{problem.created}</small></div><Icon name="chevron" size={16} /></button>)}</Panel>
@@ -953,15 +1036,15 @@ export function ProblemsPage() {
         <div className="issue-banner"><Badge tone={current.severity === 'high' ? 'red' : current.severity === 'low' ? 'neutral' : 'amber'}>{current.severity} priority</Badge><span>{current.code}</span></div>
         <p className="issue-detail">{current.detail}</p>
         <div className="compare-card"><div><span className="eyebrow">AFFECTED MEDIA</span><strong>{current.subject}</strong><span>{current.entityType ? `${current.entityType} · ` : ''}{current.entityId ?? 'Persisted reconciliation evidence'}</span></div><Icon name="arrow" size={20} /><div><span className="eyebrow">PROBLEM SOURCE</span><strong>{current.code === 'PLEX_IDENTITY_MISMATCH' ? 'Plex compared with Medialogue' : current.code.includes('DUPLICATE') ? 'Physical filesystem evidence' : current.code.startsWith('TMDB_') ? 'Parser candidate compared with TMDB' : 'Parser / integration observation'}</strong><span>The detailed evidence below shows the values on each side instead of truncating raw JSON fields.</span></div></div>
-        <ProblemEvidenceDetails problem={current} />
+        <ProblemEvidenceDetails problem={current} selectedTmdbId={selectedTmdbMatch?.tmdbId ?? selectedTmdbShowMatch?.tmdbId} onSelectTmdbCandidate={selectTmdbCandidate} />
 
         {current.code === 'DUPLICATE_PHYSICAL_RELEASE' && releaseIds.length > 1 && <div className="resolution-block"><div className="eyebrow">DUPLICATE RESOLVER</div><p>Select the copy to keep. Medialogue will not delete the loser unless you explicitly request deletion and review a fresh inventory first.</p><div className="history-list">{releaseIds.map((releaseId) => { const release = duplicateMovie?.releasesDetail?.find((item) => item.id === releaseId); const path = release?.directories?.find((directory) => directory.exists)?.path ?? release?.directories?.[0]?.path; return <label className="inline-check" key={releaseId}><input type="radio" name="duplicate-winner" checked={winnerReleaseId === releaseId} onChange={() => { setWinnerReleaseId(releaseId); setDuplicatePreview(null) }} /><span><strong>{release?.name ?? `Release ${releaseId}`}</strong><small>{[release?.quality, release?.edition, release?.releaseGroup].filter(Boolean).join(' · ') || 'Release details unavailable'}{path ? ` · ${path}` : ''}</small></span></label> })}</div><label className="inline-check"><input type="checkbox" checked={deleteMedia} onChange={(event) => { setDeleteMedia(event.target.checked); setDuplicatePreview(null) }} />Delete the losing media director{loserIds.length === 1 ? 'y' : 'ies'} after preview</label><label className="inline-check"><input type="checkbox" checked={removeTorrents} onChange={(event) => { setRemoveTorrents(event.target.checked); setDuplicatePreview(null) }} />Remove losing torrent(s) from qBittorrent; archived .torrent files remain</label><div className="detail-actions"><Button variant="primary" disabled={!winnerReleaseId || loading} onClick={() => void previewDuplicate()}>Preview resolution</Button></div></div>}
 
         {duplicatePreview && <div className="resolution-block destructive-preview"><div className="eyebrow">FRESH DESTRUCTIVE PREVIEW</div><strong>{duplicatePreview.movieTitle}</strong><div className="settings-note"><Icon name="shield" size={15} /><span>Torrent backups are retained. The confirmation expires at {new Date(duplicatePreview.expiresAt).toLocaleTimeString()}.</span></div><div className="compare-card"><div><span className="eyebrow">KEEP</span><strong>{duplicatePreview.winner.releaseName}</strong><span>{[duplicatePreview.winner.quality, duplicatePreview.winner.edition, duplicatePreview.winner.releaseGroup].filter(Boolean).join(' · ')}</span></div><Icon name="arrow" size={20} /><div><span className="eyebrow">LOSING COPY</span><strong>{duplicatePreview.losers.map((item) => item.releaseName).join(' / ')}</strong><span>{deleteMedia ? 'Entire associated media directory will be deleted.' : 'Media will remain untouched; duplicate stays open.'}</span></div></div>{duplicatePreview.losers.flatMap((release) => release.directories).map((directory) => <div className="duplicate-directory-preview" key={directory.directoryId}><strong>{directory.path}</strong><span>{directory.storageRoot} · {directory.accessMode} · {directory.files.length} files inventoried</span>{deleteMedia && <div className="expert-code">{directory.files.map((file) => file.relativePath).join('\n') || '(directory is already empty)'}</div>}</div>)}{duplicatePreview.warnings.map((warning) => <div className="settings-note" key={warning}><Icon name="alert" size={15} /><span>{warning}</span></div>)}<div className="detail-actions"><Button variant="ghost" onClick={() => setDuplicatePreview(null)}>Cancel</Button><Button variant={deleteMedia || removeTorrents ? 'danger' : 'primary'} disabled={loading} onClick={() => void commitDuplicate()}>{deleteMedia || removeTorrents ? 'Commit destructive resolution' : 'Record preferred copy'}</Button></div></div>}
 
-        {current.availableActions?.includes('confirm_movie_match') && <div className="resolution-block"><div className="eyebrow">MANUAL MOVIE MATCH</div><p>Search TMDB and choose the exact Movie. This changes logical identity only; the filesystem is not renamed or moved.</p><div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={tmdbQuery} onChange={(event) => setTmdbQuery(event.target.value)} placeholder="Search TMDB…" onKeyDown={(event) => { if (event.key === 'Enter') void searchTmdb() }} /></div><Button variant="ghost" onClick={() => void searchTmdb()} disabled={loading || !tmdbQuery.trim()}>Search</Button></div>{tmdbMatches.length > 0 && <div className="history-list">{tmdbMatches.map((match) => <div className="history-row" key={match.tmdbId}><span className="history-line" /><div><strong>{match.title} {match.year ? `(${match.year})` : ''}</strong><span>TMDB {match.tmdbId}{match.originalTitle && match.originalTitle !== match.title ? ` · ${match.originalTitle}` : ''}</span></div><Button variant="primary" onClick={() => void confirmMovie(match)} disabled={loading}>Select</Button></div>)}</div>}</div>}
+        {current.availableActions?.includes('confirm_movie_match') && <TMDBMatchPicker kind="Movie" query={tmdbQuery} matches={tmdbMatches} selected={selectedTmdbMatch} loading={loading} onQueryChange={setTmdbQuery} onSearch={() => void searchTmdb()} onSelect={(match) => setSelectedTmdbMatch(match as TMDBMovieLookup)} onApply={() => { if (selectedTmdbMatch) void confirmMovie(selectedTmdbMatch) }} />}
 
-        {current.availableActions?.includes('confirm_show_match') && <div className="resolution-block"><div className="eyebrow">MANUAL SHOW MATCH</div><p>Search TMDB and choose the exact Show. This changes logical identity only; episode files and folders remain exactly where they are.</p><div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={tmdbQuery} onChange={(event) => setTmdbQuery(event.target.value)} placeholder="Search TMDB Shows…" onKeyDown={(event) => { if (event.key === 'Enter') void searchTmdbShows() }} /></div><Button variant="ghost" onClick={() => void searchTmdbShows()} disabled={loading || !tmdbQuery.trim()}>Search</Button></div>{tmdbShowMatches.length > 0 && <div className="history-list">{tmdbShowMatches.map((match) => <div className="history-row" key={match.tmdbId}><span className="history-line" /><div><strong>{match.title} {match.year ? `(${match.year})` : ''}</strong><span>TMDB {match.tmdbId}{match.originalTitle && match.originalTitle !== match.title ? ` · ${match.originalTitle}` : ''}</span></div><Button variant="primary" onClick={() => void confirmShow(match)} disabled={loading}>Select</Button></div>)}</div>}</div>}
+        {current.availableActions?.includes('confirm_show_match') && <TMDBMatchPicker kind="Show" query={tmdbQuery} matches={tmdbShowMatches} selected={selectedTmdbShowMatch} loading={loading} onQueryChange={setTmdbQuery} onSearch={() => void searchTmdbShows()} onSelect={(match) => setSelectedTmdbShowMatch(match as TMDBShowLookup)} onApply={() => { if (selectedTmdbShowMatch) void confirmShow(selectedTmdbShowMatch) }} />}
 
         {current.code === 'PATH_MAPPING_FAILED' && <div className="resolution-block"><div className="eyebrow">PATH MAPPING</div><p>Add or adjust the qBittorrent remote path mapping under Settings → Storage Roots, then recheck this Problem. Medialogue will never guess a filesystem translation.</p></div>}
 
@@ -1187,7 +1270,7 @@ export function SettingsPage() {
   </Page>
 }
 
-function GeneralSettings() { return <><div className="settings-section"><div><h3>Application behavior</h3><p>Medialogue opens to Movies. Background integration observations run automatically, while storage roots require one explicit initialization scan before they participate in reconciliation.</p></div><div><Link className="button button-secondary" to="/setup">Open setup checklist</Link></div></div><div className="settings-section safeguard"><div className="setting-icon"><Icon name="shield" size={18} /></div><div><h3>Leave-in-place safeguard</h3><p>Scanning never moves, renames, copies, hardlinks, imports, or creates sidecars. Filesystem deletion exists only behind the explicit destructive preview/commit workflow.</p><Badge tone="green">Always enforced</Badge></div></div></> }
+function GeneralSettings() { return <><div className="settings-section"><div><h3>Application behavior</h3><p>Medialogue opens to Movies. Integrations observe automatically, while storage roots stay idle until you initialize their first scan.</p></div><div><Link className="button button-secondary" to="/setup">Open setup checklist</Link></div></div><div className="settings-section safeguard"><div className="setting-icon"><Icon name="shield" size={18} /></div><div><h3>Leave-in-place safeguard</h3><p>Scans never move or rename media. Deletion requires an explicit preview and confirmation.</p><Badge tone="green">Always enforced</Badge></div></div></> }
 
 function SecuritySettings() {
   const [security, setSecurity] = useState<{ default_password_warning: boolean; session_expires_at?: string } | null>(null)

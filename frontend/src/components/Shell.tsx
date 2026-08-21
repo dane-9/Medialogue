@@ -34,7 +34,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [problemCount, setProblemCount] = useState(0)
-  const [defaultPassword, setDefaultPassword] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -43,10 +42,8 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     const refreshProblemCount = () => api.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
     const refreshHealth = () => api.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
     const refreshJobs = () => api.jobs().then((payload) => { if (alive) setJobs(payload) }).catch(() => undefined)
-    const refreshSecurity = () => api.security().then((payload) => { if (alive) setDefaultPassword(payload.default_password_warning) }).catch(() => undefined)
     void refreshHealth()
     void refreshJobs()
-    void refreshSecurity()
     void refreshProblemCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
@@ -70,14 +67,12 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
     const jobTimer = window.setInterval(refreshJobs, 30000)
     const healthTimer = window.setInterval(refreshHealth, 60000)
-    const securityTimer = window.setInterval(refreshSecurity, 30000)
     return () => {
       alive = false
       stream.close()
       window.clearInterval(problemTimer)
       window.clearInterval(jobTimer)
       window.clearInterval(healthTimer)
-      window.clearInterval(securityTimer)
     }
   }, [])
 
@@ -87,7 +82,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     <aside className="sidebar">
       <div className="brand" onClick={() => navigate('/movies')} role="button" tabIndex={0}>
         <div className="brand-mark"><Icon name="spark" size={18} /></div>
-        <div><div className="brand-name">MEDIA<span>LOGUE</span></div><div className="brand-caption">LEAVE-IN-PLACE LIBRARY</div></div>
+        <div><div className="brand-name">MEDIA<span>LOGUE</span></div></div>
       </div>
       <div className="sidebar-scroll">
         <NavSection label="Library" items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item)} />
@@ -95,7 +90,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <NavSection label="System" items={system} />
       </div>
       <div className="sidebar-footer">
-        <div className="safe-card"><div className="safe-card-icon"><Icon name="shield" size={17} /></div><div><strong>Leave-in-place</strong><span>Your files stay untouched</span></div></div>
         <button className="user-row" onClick={onLogout}><span className="avatar">A</span><span className="user-copy"><strong>admin</strong><span>Administrator</span></span><Icon name="logout" size={15} /></button>
       </div>
     </aside>
@@ -103,7 +97,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       <header className="topbar">
         <div className="crumb"><span className="crumb-muted">Workspace</span><Icon name="chevron" size={13} /><strong>{currentTitle}</strong></div>
         <div className="topbar-actions">
-          <div className="health-strip">{defaultPassword && <button className="default-password-pill" onClick={() => navigate('/settings?tab=Security')}>Default password active</button>}{health.map((item) => <HealthPill key={item.name} item={item} />)}</div>
+          <div className="health-strip">{health.map((item) => <HealthPill key={item.name} item={item} />)}</div>
           <button className="jobs-button" onClick={() => setJobsOpen(true)} aria-label="Open jobs drawer"><Icon name="activity" size={17} /><span>Jobs</span>{jobs.filter((job) => job.state === 'running' || job.state === 'queued').length > 0 && <b>{jobs.filter((job) => job.state === 'running' || job.state === 'queued').length}</b>}</button>
         </div>
       </header>

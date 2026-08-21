@@ -298,6 +298,7 @@ function normalizeTorrentArchiveItem(value: unknown): TorrentArchiveItem {
   const item = record(value)
   return {
     id: textValue(item.id || item.torrent_id),
+    releaseId: textValue(item.release_id || item.releaseId) || undefined,
     infoHash: textValue(item.info_hash),
     torrentName: textValue(item.torrent_name || item.name, 'Unnamed torrent'),
     releaseName: textValue(item.release_name) || undefined,
@@ -308,6 +309,7 @@ function normalizeTorrentArchiveItem(value: unknown): TorrentArchiveItem {
     quality: textValue(item.quality) || undefined,
     edition: textValue(item.edition) || undefined,
     releaseGroup: textValue(item.release_group) || undefined,
+    tracker: textValue(item.tracker) || undefined,
     totalSize: optionalNumber(item.total_size),
     archiveState: textValue(item.archive_state, 'not_archived'),
     archivePath: textValue(item.archive_path) || undefined,
