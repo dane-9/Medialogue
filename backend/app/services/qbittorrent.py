@@ -596,6 +596,16 @@ async def poll_due_download_clients(
         client_id = client.id
         last = client.last_polled_at
         interval = max(5, client.poll_interval_seconds or 15)
+        # Repeated credential retries are actively harmful: qBittorrent can
+        # ban the caller IP after only a few failed logins. Once an auth error
+        # is confirmed, leave recovery to an explicit Test/Refresh or config
+        # update instead of retrying every poll interval.
+        if client.health == "unavailable" and client.last_error and (
+            "rejected the configured username/password" in client.last_error
+            or "temporarily banned Medialogue's IP" in client.last_error
+            or "rejected WebAPI authentication" in client.last_error
+        ):
+            continue
         if last is not None and (now - last).total_seconds() < interval:
             continue
         try:

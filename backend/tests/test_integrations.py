@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from app.integrations.plex import PlexClient, PlexLibrarySnapshot, PlexMediaMatch
-from app.integrations.qbittorrent import QBittorrentClient
+from app.integrations.qbittorrent import QBittorrentAuthError, QBittorrentClient
 from app.integrations.torznab import TorznabClient
 
 
@@ -32,6 +32,66 @@ async def test_qbittorrent_observation_and_completion():
     assert values[0].info_hash == "abc"
     assert values[0].complete
     assert values[0].tags == ("managed", "archive")
+
+
+@pytest.mark.asyncio
+async def test_qbittorrent_auth_errors_distinguish_bad_credentials_from_ip_ban():
+    def rejected_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v2/auth/login"
+        return httpx.Response(200, text="Fails.")
+
+    rejected = QBittorrentClient(
+        "http://qbit", "user", "wrong", transport=httpx.MockTransport(rejected_handler)
+    )
+    try:
+        with pytest.raises(QBittorrentAuthError, match="rejected the configured username/password") as exc_info:
+            await rejected.health()
+        assert exc_info.value.reason == "credentials_rejected"
+    finally:
+        await rejected.close()
+
+    def banned_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v2/auth/login"
+        return httpx.Response(
+            403,
+            text="Your IP address has been banned after too many failed authentication attempts.",
+        )
+
+    banned = QBittorrentClient(
+        "http://qbit", "user", "correct", transport=httpx.MockTransport(banned_handler)
+    )
+    try:
+        with pytest.raises(QBittorrentAuthError, match="temporarily banned Medialogue's IP") as exc_info:
+            await banned.health()
+        assert exc_info.value.reason == "ip_banned"
+    finally:
+        await banned.close()
+
+
+@pytest.mark.asyncio
+async def test_qbittorrent_preserves_reverse_proxy_base_path():
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, text="Ok.")
+        if request.url.path.endswith("/app/version"):
+            return httpx.Response(200, text="v5.2.0")
+        raise AssertionError(request.url.path)
+
+    client = QBittorrentClient(
+        "http://qbit.example/qbit",
+        "user",
+        "pass",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert await client.health() == {"status": "healthy", "version": "v5.2.0"}
+    finally:
+        await client.close()
+
+    assert paths == ["/qbit/api/v2/auth/login", "/qbit/api/v2/app/version"]
 
 
 @pytest.mark.asyncio

@@ -1463,9 +1463,16 @@ function QBittorrentSettings() {
     finally { setBusy(false) }
   }
   const test = async () => {
+    if (!draft.url.trim()) { setError('URL is required.'); return }
+    if (!selectedId && !draft.password) { setError('Password is required to test a new client.'); return }
     setBusy(true); setError(''); setMessage('Testing qBittorrent connection…')
     try {
-      const result = selectedId ? await api.testDownloadClient(selectedId) : await api.testDownloadClient(undefined, payload())
+      const testConfiguration = {
+        url: draft.url.trim(),
+        username: draft.username,
+        ...(draft.password ? { password: draft.password } : {}),
+      }
+      const result = await api.testDownloadClient(selectedId ?? undefined, testConfiguration)
       setMessage(result.status === 'healthy' ? `qBittorrent is reachable${result.version ? ` · ${result.version}` : ''}${result.latency_ms ? ` · ${result.latency_ms} ms` : ''}.` : result.message ?? `qBittorrent status: ${result.status}.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not test qBittorrent.'); setMessage('') }
     finally { setBusy(false) }

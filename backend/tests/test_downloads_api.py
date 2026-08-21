@@ -253,6 +253,27 @@ def test_download_client_test_and_health_refresh_use_read_only_fake(client: Test
         assert tested.json()["latency_ms"] is not None
         assert behavior.instances[-1].password == "super-secret-qbit-password"
 
+        # Existing-client tests can exercise unsaved form edits while keeping
+        # the write-only stored password when the password field is blank.
+        edited = client.post(
+            f"/api/v1/download-clients/{configured['id']}/test",
+            headers=headers,
+            json={"url": "http://edited-qbit.test:8081", "username": "edited-user"},
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["status"] == "healthy"
+        assert behavior.instances[-1].url == "http://edited-qbit.test:8081"
+        assert behavior.instances[-1].username == "edited-user"
+        assert behavior.instances[-1].password == "super-secret-qbit-password"
+
+        new_password = client.post(
+            f"/api/v1/download-clients/{configured['id']}/test",
+            headers=headers,
+            json={"password": "unsaved-new-password"},
+        )
+        assert new_password.status_code == 200, new_password.text
+        assert behavior.instances[-1].password == "unsaved-new-password"
+
         refreshed = client.post(
             f"/api/v1/download-clients/{configured['id']}/test",
             headers=headers,

@@ -10,6 +10,14 @@ class QBittorrentError(RuntimeError):
     pass
 
 
+class QBittorrentAuthError(QBittorrentError):
+    """Authentication failure with enough detail for safe retry decisions."""
+
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 @dataclass(frozen=True, slots=True)
 class TorrentObservation:
     info_hash: str
@@ -44,8 +52,10 @@ class QBittorrentClient:
     ) -> None:
         self.username = username
         self.password = password
+        # Keep a trailing slash and use relative API paths so a configured
+        # reverse-proxy prefix (for example https://host/qbit/) is preserved.
         self._client = httpx.AsyncClient(
-            base_url=base_url.rstrip("/"), timeout=timeout, transport=transport
+            base_url=f"{base_url.rstrip('/')}/", timeout=timeout, transport=transport
         )
         self._authenticated = False
 
@@ -61,11 +71,38 @@ class QBittorrentClient:
 
     async def login(self) -> None:
         response = await self._client.post(
-            "/api/v2/auth/login", data={"username": self.username, "password": self.password}
+            "api/v2/auth/login", data={"username": self.username, "password": self.password}
         )
-        if response.status_code != 200 or response.text.strip() != "Ok.":
-            raise QBittorrentError("qBittorrent authentication failed")
-        self._authenticated = True
+        body = response.text.strip()
+        if response.status_code == 200 and body == "Ok.":
+            self._authenticated = True
+            return
+
+        body_lower = body.lower()
+        if response.status_code == 403 and "banned" in body_lower:
+            raise QBittorrentAuthError(
+                "qBittorrent temporarily banned Medialogue's IP after too many failed login attempts. "
+                "Wait for the qBittorrent WebUI ban duration (or clear/restart the ban), then test the client again.",
+                reason="ip_banned",
+            )
+        if response.status_code == 200 and body_lower in {"fails.", "fails"}:
+            raise QBittorrentAuthError(
+                "qBittorrent rejected the configured username/password.",
+                reason="credentials_rejected",
+            )
+        if response.status_code in {401, 403}:
+            raise QBittorrentAuthError(
+                f"qBittorrent rejected WebAPI authentication (HTTP {response.status_code}).",
+                reason="authentication_rejected",
+            )
+
+        detail = f"HTTP {response.status_code}"
+        if response.status_code == 404:
+            detail += "; check that the configured URL points to the qBittorrent WebUI/API base URL"
+        raise QBittorrentAuthError(
+            f"qBittorrent login returned an unexpected response ({detail}).",
+            reason="unexpected_login_response",
+        )
 
     async def health(self) -> dict[str, Any]:
         response = await self._request("GET", "/api/v2/app/version")
@@ -152,11 +189,11 @@ class QBittorrentClient:
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         if not self._authenticated:
             await self.login()
-        response = await self._client.request(method, path, **kwargs)
+        response = await self._client.request(method, path.lstrip("/"), **kwargs)
         if response.status_code in {401, 403}:
             self._authenticated = False
             await self.login()
-            response = await self._client.request(method, path, **kwargs)
+            response = await self._client.request(method, path.lstrip("/"), **kwargs)
         try:
             response.raise_for_status()
         except httpx.HTTPError as exc:
