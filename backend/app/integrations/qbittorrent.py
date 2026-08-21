@@ -74,7 +74,10 @@ class QBittorrentClient:
             "api/v2/auth/login", data={"username": self.username, "password": self.password}
         )
         body = response.text.strip()
-        if response.status_code == 200 and body == "Ok.":
+        # qBittorrent <= 5.1 returns HTTP 200 with ``Ok.`` on a successful
+        # login. qBittorrent 5.2+ uses HTTP 204 No Content for the same
+        # successful empty response. Accept both wire formats.
+        if (response.status_code == 200 and body == "Ok.") or response.status_code == 204:
             self._authenticated = True
             return
 
