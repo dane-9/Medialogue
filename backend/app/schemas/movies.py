@@ -66,6 +66,11 @@ class MovieDetailResponse(MovieSummaryResponse):
     last_observed_at: datetime | None = None
 
 
+class MovieCreate(BaseModel):
+    tmdb_id: int
+    monitored: bool = True
+
+
 class TMDBMovieLookupResponse(BaseModel):
     tmdb_id: int
     title: str

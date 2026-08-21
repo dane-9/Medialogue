@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.dependencies import require_admin
+from app.api.dependencies import require_admin, require_csrf
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
@@ -33,12 +33,14 @@ from app.schemas.common import Collection
 from app.schemas.jobs import EventResponse
 from app.schemas.movies import (
     MediaDirectoryResponse,
+    MovieCreate,
     MovieDetailResponse,
     MovieReleaseResponse,
     MovieSummaryResponse,
     TMDBMovieLookupResponse,
 )
 
+from app.services.movies import add_movie_from_tmdb
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
 
@@ -98,6 +100,43 @@ async def list_movies(
     )
 
 
+
+
+@router.post("", response_model=MovieDetailResponse, status_code=status.HTTP_201_CREATED)
+async def create_movie(
+    payload: MovieCreate,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_tmdb_client_factory),
+) -> MovieDetailResponse:
+    """Add a Movie to the library from a TMDB id.
+
+    Mirrors POST /shows. Interactive search resolves its target against the
+    movies table, so a title has to exist here before it can be searched for or
+    grabbed. The new record has no releases and no directory: it reads as
+    Missing until a grabbed release is discovered on disk.
+    """
+    existing = await db.scalar(select(Movie).where(Movie.tmdb_id == payload.tmdb_id))
+    if existing is not None:
+        raise AppError("MOVIE_ALREADY_EXISTS", "That TMDB Movie is already in the library.", status_code=409)
+    configuration = await get_tmdb_configuration(db)
+    if configuration is None or not configuration.enabled or not configuration.api_key:
+        raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before adding Movies.", status_code=409)
+    try:
+        movie = await add_movie_from_tmdb(
+            db,
+            payload.tmdb_id,
+            monitored=payload.monitored,
+            client_factory=client_factory,
+            api_key=configuration.api_key,
+        )
+    except AppError:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise AppError("TMDB_MOVIE_METADATA_FAILED", f"Could not add Movie from TMDB: {exc}", status_code=503) from exc
+    await db.commit()
+    return await get_movie(resource_id=str(movie.id), _=None, db=db)
 
 
 @router.get("/lookup", response_model=list[TMDBMovieLookupResponse])
