@@ -260,6 +260,7 @@ async def get_movie(
                 "release_id": str(release.id),
                 "release_name": release.raw_release_name,
                 "info_hash": torrent.info_hash,
+                "tracker": (torrent.tracker_summary or {}).get("tracker"),
                 "archive_state": torrent.archive_state.value,
                 "archive_path": torrent.archive_path,
                 "manifest_path": torrent.manifest_path,

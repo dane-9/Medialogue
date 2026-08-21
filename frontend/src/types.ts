@@ -372,6 +372,7 @@ export interface EventHistoryItem {
 
 export interface TorrentArchiveItem {
   id: string
+  releaseId?: string
   infoHash: string
   torrentName: string
   releaseName?: string
@@ -382,6 +383,7 @@ export interface TorrentArchiveItem {
   quality?: string
   edition?: string
   releaseGroup?: string
+  tracker?: string
   totalSize?: number
   archiveState: 'not_archived' | 'archived' | 'failed' | string
   archivePath?: string

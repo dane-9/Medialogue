@@ -847,6 +847,8 @@ async def reconcile_movie_directory(
                             "title": item.title,
                             "original_title": item.original_title,
                             "year": item.year,
+                            "overview": item.overview,
+                            "poster_path": item.poster_path,
                         }
                         for item in tmdb_resolution.candidates[:10]
                     ],
