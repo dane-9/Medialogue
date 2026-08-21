@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ActiveJobs } from './components/ActiveJobs'
+import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
+import type { Message, StatusTone } from './components/settings'
 import { Icon } from './components/Icon'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select, Stat } from './components/ui'
 import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, duplicateLoserIds, normalizeMediaView, problemMatchesFilter, searchResultNeedsWarning, toggleIdSelection } from './lib/uiState'
+import { useUrlNumber, useUrlState } from './lib/urlState'
 import type { CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchJob, InteractiveSearchResult, MediaProfileSettings, Movie, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
 
 
@@ -176,7 +180,7 @@ export function MoviesPage() {
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search movies…" /></div><Select value={filter} onChange={(event) => setFilter(event.target.value)}><option>All movies</option><option>Present</option><option>Missing</option><option>Conflict</option><option>Duplicate</option></Select><Select value={tagFilter} onChange={(event) => updateTagFilter(event.target.value)}><option value="">All tags</option>{tags.map((tag) => <option value={tag.name} key={tag.id}>{tag.name}</option>)}</Select>{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')}><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')}><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void loadMovies()}>Refresh</Button></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <div className="media-grid">{filtered.map((movie) => <MovieCard key={movie.id} movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}</div> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
+    {!error && !loading && (view === 'cards' ? <div className="media-grid">{filtered.map((movie) => <MovieCard key={movie.id} movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} />)}</div> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
     {!error && !loading && !filtered.length && <EmptyState title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Configure a Movie storage root, then press Scan once to initialize it.'} />}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><MovieBulkContextMenu position={context} count={selected.size} profiles={profiles} tags={tags} busy={bulkBusy} onRun={runBulk} onCreateTag={createTag} onClear={() => { setSelected(new Set()); setContext(null) }} /></>}
   </Page>
@@ -187,8 +191,26 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
   return <div className="tag-chip-row">{movie.tags.map((tag) => <span key={tag.id} className="tag-chip" role={onTagClick ? 'button' : undefined} tabIndex={onTagClick ? 0 : undefined} onClick={(event) => { if (!onTagClick) return; event.preventDefault(); event.stopPropagation(); onTagClick(tag.name) }} onKeyDown={(event) => { if (onTagClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onTagClick(tag.name) } }}>{tag.name}</span>)}</div>
 }
 
-function MovieCard({ movie, selected, onToggle, onContext, onTagClick }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) {
-  return <Link className={`media-card ${selected ? 'media-selected' : ''}`} to={`/movies/${movie.id}`} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><div className={`poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /><div className="poster-noise" /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span><span className="poster-mark">MM</span>{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div><div className="media-card-body"><div className="media-card-title"><strong>{movie.title}</strong><span>{movie.year}</span></div><div className="media-card-meta"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div><MovieTagChips movie={movie} onTagClick={onTagClick} /><div className="media-card-quality"><span>{movie.quality}</span>{movie.edition && <span>{movie.edition}</span>}</div><div className="media-card-path"><Icon name="folder" size={13} />{movie.location}</div></div></Link>
+// The quality mark on the artwork is the card's only statement of what the
+// file actually is, so it reads resolution first, then the source or the
+// modifier that distinguishes it: "2160p REMUX", "1080p WEB-DL".
+const sourceLabels: Record<string, string> = { WEBDL: 'WEB-DL', WEBRIP: 'WEBRIP', BLURAY: 'BLURAY', HDTV: 'HDTV', DVD: 'DVD', SDTV: 'SDTV' }
+
+export function qualityMark(quality?: string, edition?: string): string {
+  if (!quality) return ''
+  const parts = quality.split('-').map((part) => part.trim()).filter(Boolean)
+  const resolution = parts.find((part) => /^\d{3,4}[pi]$/i.test(part))
+  const source = parts.find((part) => part !== resolution)
+  // An edition such as Remux or Hybrid describes the file more precisely than
+  // the source it came from, so it wins the second slot when present.
+  const modifier = edition?.split('·')[0].trim()
+  const tail = modifier || (source ? sourceLabels[source.toUpperCase()] ?? source.toUpperCase() : '')
+  return [resolution?.toLowerCase(), tail?.toUpperCase()].filter(Boolean).join(' ')
+}
+
+function MovieCard({ movie, selected, onToggle, onContext }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void }) {
+  const mark = qualityMark(movie.quality, movie.edition)
+  return <Link className={`media-card ${selected ? 'media-selected' : ''}`} to={`/movies/${movie.id}`} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><div className={`poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span>{mark && <span className="poster-mark">{mark}</span>}{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div><div className="media-card-body"><div className="media-card-meta"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div><div className="media-card-path"><Icon name="folder" size={13} />{movie.location}</div></div></Link>
 }
 
 function MovieTable({ items, selected, onToggle, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) { return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Title</th><th>State</th><th>Current release</th><th>Plex</th><th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody>{items.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /></span>{movie.title}<span className="muted">{movie.year}</span>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td><td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td>{selected.has(movie.id) ? <Icon name="check" size={15} /> : <Icon name="chevron" size={15} />}</td></tr>)}</tbody></table></Panel> }
@@ -439,7 +461,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Storage Root Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the root is reachable.</span></div></div>}
-    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster poster-inception"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'The filesystem remains the source of truth. Reconciliation preserves old paths and release evidence without moving or deleting media.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><MovieTagsPanel resourceId={id} assigned={movie.tags ?? []} onChanged={(tags) => setMovie((current) => current ? { ...current, tags } : current)} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
+    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'The filesystem remains the source of truth. Reconciliation preserves old paths and release evidence without moving or deleting media.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><MovieTagsPanel resourceId={id} assigned={movie.tags ?? []} onChanged={(tags) => setMovie((current) => current ? { ...current, tags } : current)} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -491,7 +513,7 @@ export function ShowsPage() {
 
 function ShowCard({ show }: { show: Show }) {
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
-  return <Link className="media-card show-card" to={`/shows/${show.id}`}><div className={`poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /><div className="poster-noise" /><span className="poster-title">{show.title}</span><span className="poster-year">{show.year || ''}</span><span className="poster-mark">TV</span></div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || ''}</span></div><div className="media-card-meta"><Badge tone={statusTone(show.status)}>{show.status}</Badge><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></div><div className="episode-progress"><div><span>Episodes</span><strong>{show.episodesPresent} / {show.episodesTotal}</strong></div><Progress value={percent} tone={percent === 100 ? 'green' : 'amber'} /></div><div className="media-card-path"><Icon name="tv" size={13} />{show.seasons} seasons · {show.problemCount ?? 0} problems</div></div></Link>
+  return <Link className="media-card" to={`/shows/${show.id}`}><div className={`poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /><span className="poster-title">{show.title}</span><span className="poster-year">{show.year || ''}</span><span className="poster-mark">{show.seasons === 1 ? '1 SEASON' : `${show.seasons} SEASONS`}</span></div><div className="media-card-body"><div className="media-card-meta"><Badge tone={statusTone(show.status)}>{show.status}</Badge><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></div><div className="episode-progress"><div><span>Episodes</span><strong>{show.episodesPresent} / {show.episodesTotal}</strong></div><Progress value={percent} tone={percent === 100 ? 'green' : 'amber'} /></div><div className="media-card-path"><Icon name="tv" size={13} />{(show.problemCount ?? 0) === 1 ? '1 problem' : `${show.problemCount ?? 0} problems`}</div></div></Link>
 }
 
 export function ShowDetailPage({ id }: { id: string }) {
@@ -597,7 +619,7 @@ export function DownloadsPage() {
     <div className="toolbar"><div className="filter-tabs">{(['Downloading', 'Seeding', 'Completed', 'Paused', 'Error', 'All'] as const).map((item) => <button key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>{item}</button>)}</div><div className="toolbar-spacer" /><Link className="button button-ghost" to="/settings"><Icon name="settings" size={16} />Client settings</Link></div>
     {error && <EmptyState icon="download" title="Could not load downloads" detail={error} action={<Button variant="ghost" icon="refresh" onClick={() => void load()}>Try again</Button>} />}
     {!error && !loading && !filtered.length && <EmptyState icon="download" title={items.length ? 'No downloads match this filter' : 'No downloads observed'} detail={items.length ? 'Try another state filter or refresh qBittorrent.' : 'Configure an enabled qBittorrent client to begin read-only polling.'} />}
-    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>{sortLabel('client', 'Client')}</th><th>{sortLabel('kind', 'Scope')}</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('size', 'Size')}</th><th>{sortLabel('eta', 'ETA')}</th><th>{sortLabel('path', 'Save path')}</th><th>Media evidence</th><th /></tr></thead><tbody>{loading ? <tr><td colSpan={9} className="table-loading">Reading qBittorrent observations…</td></tr> : filtered.map((download) => <tr key={download.id}><td><div className="release-cell"><span className={`state-icon state-${download.state.toLowerCase()}`}><Icon name={download.state === 'Downloading' ? 'download' : download.state === 'Seeding' ? 'activity' : download.state === 'Error' ? 'alert' : 'check'} size={14} /></span><strong>{download.name}</strong>{(download.quality || download.edition) && <small>{[download.quality, download.edition].filter(Boolean).join(' · ')}</small>}</div></td><td><span className="client-name"><span className="client-dot" />{download.client}</span></td><td><Badge tone="neutral">{download.kind}</Badge></td><td><div className="download-progress"><Progress value={download.progress} tone={download.state === 'Seeding' || download.state === 'Completed' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span>{Math.round(download.progress)}%</span></div></td><td>{download.size}</td><td className="muted">{download.eta}</td><td className="path-cell">{download.path}</td><td>{download.reconciliationState || download.mediaState ? <Badge tone={download.reconciliationState?.toLowerCase().includes('disagree') || download.mediaState?.toLowerCase().includes('missing') || download.mediaState?.toLowerCase().includes('conflict') ? 'red' : 'neutral'}>{download.reconciliationState || download.mediaState}</Badge> : <span className="muted">Observed only</span>}</td><td><button className="icon-button" aria-label={`Open ${download.name}`}><Icon name="chevron" size={15} /></button></td></tr>)}</tbody></table></Panel>}
+    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>{sortLabel('client', 'Client')}</th><th>{sortLabel('kind', 'Scope')}</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('size', 'Size')}</th><th>{sortLabel('eta', 'ETA')}</th><th>{sortLabel('path', 'Save path')}</th><th>Media evidence</th><th /></tr></thead><tbody>{loading ? <tr><td colSpan={9} className="table-loading">Reading qBittorrent observations…</td></tr> : filtered.map((download) => <tr key={download.id}><td><div className="release-cell"><span className={`state-icon state-${download.state.toLowerCase()}`}><Icon name={download.state === 'Downloading' ? 'download' : download.state === 'Seeding' ? 'activity' : download.state === 'Error' ? 'alert' : 'check'} size={14} /></span><strong>{download.name}</strong>{(download.quality || download.edition) && <small>{[download.quality, download.edition].filter(Boolean).join(' · ')}</small>}</div></td><td><span className="client-name"><span className="client-dot" />{download.client}</span></td><td><Badge tone="neutral">{download.kind}</Badge></td><td><div className="download-progress"><Progress value={download.progress} tone={download.state === 'Seeding' || download.state === 'Completed' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span>{Math.round(download.progress)}%</span></div></td><td>{download.size}</td><td className="muted">{download.eta}</td><td className="path-cell">{download.path}</td><td>{download.reconciliationState || download.mediaState ? <Badge tone={download.reconciliationState?.toLowerCase().includes('disagree') || download.mediaState?.toLowerCase().includes('missing') || download.mediaState?.toLowerCase().includes('conflict') ? 'red' : 'neutral'}>{download.reconciliationState || download.mediaState}</Badge> : <span className="muted">Observed only</span>}</td><td>{download.movieId && <Link className="icon-button" to={`/movies/${download.movieId}`} aria-label={`Open ${download.name}`}><Icon name="chevron" size={15} /></Link>}</td></tr>)}</tbody></table></Panel>}
   </Page>
 }
 
@@ -606,10 +628,10 @@ export function EventHistoryPage() {
   const [events, setEvents] = useState<EventHistoryItem[]>([])
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(0)
-  const [page, setPage] = useState(1)
-  const [eventType, setEventType] = useState('')
-  const [severity, setSeverity] = useState('')
-  const [entityType, setEntityType] = useState('')
+  const [page, setPage] = useUrlNumber('page', 1)
+  const [eventType, setEventType] = useUrlState('type')
+  const [severity, setSeverity] = useUrlState('severity')
+  const [entityType, setEntityType] = useUrlState('entity')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const pageSize = 100
@@ -668,6 +690,7 @@ export function EventHistoryPage() {
   }
 
   return <Page title="Event History" subtitle="Durable state changes and decisions. High-frequency progress stays live-only and does not flood this history." action={<div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void load()}>Refresh</Button><Button variant="danger" onClick={() => void clearHistory()}>Clear history</Button></div>}>
+    <ActiveJobs />
     <div className="toolbar event-toolbar">
       <Select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">All severities</option><option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option></Select>
       <Select value={entityType} onChange={(event) => setEntityType(event.target.value)}><option value="">All entities</option><option value="movie">Movies</option><option value="show">Shows</option><option value="episode">Episodes</option><option value="movie_release">Movie releases</option><option value="show_release">Show releases</option><option value="torrent">Torrents</option><option value="storage_root">Storage roots</option><option value="download_client">Download clients</option><option value="tag">Tags</option><option value="bulk_operation">Bulk operations</option></Select>
@@ -819,7 +842,7 @@ function TMDBMatchPicker({ kind, query, matches, selected, loading, onQueryChang
 
 export function ProblemsPage() {
   const [items, setItems] = useState<Problem[]>([])
-  const [selected, setSelected] = useState<string | undefined>()
+  const [selected, setSelected] = useUrlState('problem')
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -833,9 +856,9 @@ export function ProblemsPage() {
   const [selectedTmdbMatch, setSelectedTmdbMatch] = useState<TMDBMovieLookup | undefined>()
   const [selectedTmdbShowMatch, setSelectedTmdbShowMatch] = useState<TMDBShowLookup | undefined>()
   const [duplicateMovie, setDuplicateMovie] = useState<Movie | null>(null)
-  const [reasonFilter, setReasonFilter] = useState('all')
-  const [severityFilter, setSeverityFilter] = useState('all')
-  const [page, setPage] = useState(1)
+  const [reasonFilter, setReasonFilter] = useUrlState('reason', 'all')
+  const [severityFilter, setSeverityFilter] = useUrlState('severity', 'all')
+  const [page, setPage] = useUrlNumber('page', 1)
   const [pages, setPages] = useState(0)
   const [total, setTotal] = useState(0)
   const [openTotal, setOpenTotal] = useState(0)
@@ -1052,7 +1075,7 @@ export function ProblemsPage() {
     setLoading(true); setMessage('')
     try {
       await api.resolveProblem(current.id, 'dismiss')
-      setSelected(undefined)
+      setSelected('')
       await load(page, true)
       setMessage('Problem dismissed after manual review.')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not dismiss Problem.') }
@@ -1065,7 +1088,7 @@ export function ProblemsPage() {
     setLoading(true); setMessage('')
     try {
       await api.deleteProblem(current.id)
-      setSelected(undefined)
+      setSelected('')
       const targetPage = visible.length === 1 && page > 1 ? page - 1 : page
       if (targetPage !== page) setPage(targetPage)
       else await load(targetPage)
@@ -1081,7 +1104,7 @@ export function ProblemsPage() {
     setLoading(true); setMessage('')
     try {
       const result = await api.clearProblems({ status: 'open', category: reasonFilter, severity: severityFilter })
-      setSelected(undefined)
+      setSelected('')
       setPage(1)
       await load(1)
       setMessage(`${result.deleted} Problem record${result.deleted === 1 ? '' : 's'} deleted.`)
@@ -1091,7 +1114,7 @@ export function ProblemsPage() {
 
   return <Page title="Problems" subtitle="A single queue for identity conflicts, duplicates, root outages, and low-confidence matches.">
     <div className="problem-summary"><div className="problem-summary-icon"><Icon name="alert" size={22} /></div><div><strong>{!loaded ? 'Loading Problems…' : `${openTotal} open Problem${openTotal === 1 ? '' : 's'}`}</strong><span>Deleting a Problem removes only its record. Media and torrents stay untouched.</span></div><div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void reEvaluate()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="danger" onClick={() => void clearOpenProblems()} disabled={loading || !total}>Clear {reasonFilter !== 'all' || severityFilter !== 'all' ? 'filtered' : 'all open'}</Button></div></div>
-    <div className="toolbar"><Select value={reasonFilter} onChange={(event) => { setReasonFilter(event.target.value); setSelected(undefined); setPage(1) }}><option value="all">All problem types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value); setSelected(undefined); setPage(1) }}><option value="all">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></Select><span className="muted">Showing {visible.length} of {total} matching · {openTotal} open total · page {pages ? page : 0} of {pages}</span></div>
+    <div className="toolbar"><Select value={reasonFilter} onChange={(event) => { setReasonFilter(event.target.value); setSelected(''); setPage(1) }}><option value="all">All problem types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value); setSelected(''); setPage(1) }}><option value="all">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></Select><span className="muted">Showing {visible.length} of {total} matching · {openTotal} open total · page {pages ? page : 0} of {pages}</span></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     <div className="problem-layout"><Panel className="problem-list-panel"><div className="problem-filter"><span className="eyebrow">OPEN PROBLEMS</span><span className="muted">{total} matching</span></div>{visible.map((problem, index) => <button key={problem.id || `${problem.code}-${index}`} className={`problem-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)}><div className={`problem-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></div><div className="problem-row-copy"><strong>{problem.title}</strong><span>{problem.subject}</span><small>{problem.created}</small></div><Icon name="chevron" size={16} /></button>)}</Panel>
       <Panel className="problem-detail-panel" title={current?.title ?? 'Select a problem'} eyebrow={current?.code ?? 'REVIEW QUEUE'}>{current ? <>
@@ -1326,20 +1349,54 @@ export function TorrentArchivePage() {
 export function CustomFormatsPage() { return <CustomFormatsPageView /> }
 
 
+// The rail is grouped because nine destinations need the structure, and the
+// old General tab is gone: it held no settings at all, yet it was the tab you
+// landed on, so opening Settings showed you nothing you could change. Its
+// safeguard notice now lives on Storage Roots, beside the access controls it
+// describes.
+const settingsGroups: Array<{ group: string; items: Array<{ name: string; icon: Parameters<typeof Icon>[0]['name'] }> }> = [
+  { group: 'Connections', items: [
+    { name: 'Plex', icon: 'server' },
+    { name: 'qBittorrent', icon: 'server' },
+    { name: 'Indexers', icon: 'server' },
+    { name: 'Metadata', icon: 'search' },
+  ] },
+  { group: 'Library', items: [
+    { name: 'Storage Roots', icon: 'folder' },
+    { name: 'Schedules', icon: 'clock' },
+  ] },
+  { group: 'System', items: [
+    { name: 'Security', icon: 'shield' },
+    { name: 'Backup / Recovery', icon: 'shield' },
+  ] },
+]
+const settingsTabs = settingsGroups.flatMap((section) => section.items.map((item) => item.name))
+
 export function SettingsPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tabs = ['General', 'Storage Roots', 'Metadata', 'Plex', 'qBittorrent', 'Indexers', 'Schedules', 'Security', 'Backup / Recovery']
-  const requested = searchParams.get('tab')
-  const [tab, setTab] = useState(requested && tabs.includes(requested) ? requested : 'General')
-  useEffect(() => { const value = searchParams.get('tab'); if (value && tabs.includes(value)) setTab(value) }, [searchParams])
-  const chooseTab = (item: string) => { setTab(item); const next = new URLSearchParams(searchParams); next.set('tab', item); setSearchParams(next, { replace: true }) }
+  const [tab, setTab] = useUrlState('tab', 'Plex')
+  const [searchParams] = useSearchParams()
+  const current = settingsTabs.includes(tab) ? tab : 'Plex'
   return <Page title="Settings" subtitle="Configure integrations, storage boundaries, and safe operating defaults.">
     {searchParams.get('setup') === '1' && <div className="setup-return"><Icon name="activity" size={16} /><span>You are configuring first-run setup.</span><Link to="/setup">Back to setup checklist</Link></div>}
-    <div className="settings-layout"><nav className="settings-nav">{tabs.map((item) => <button className={tab === item ? 'active' : ''} onClick={() => chooseTab(item)} key={item}><Icon name={item === 'Storage Roots' ? 'folder' : item === 'Security' || item === 'Backup / Recovery' ? 'shield' : item === 'General' ? 'settings' : 'server'} size={16} />{item}<Icon name="chevron" size={14} /></button>)}</nav><Panel className="settings-panel" eyebrow="SETTINGS" title={tab}>{tab === 'General' ? <GeneralSettings /> : tab === 'Storage Roots' ? <StorageSettings /> : tab === 'Metadata' ? <MetadataSettings /> : tab === 'Plex' ? <PlexSettings /> : tab === 'qBittorrent' ? <QBittorrentSettings /> : tab === 'Indexers' ? <IndexerSettings /> : tab === 'Schedules' ? <ScheduleSettings /> : tab === 'Security' ? <SecuritySettings /> : <BackupRecoverySettings />}</Panel></div>
+    <div className="split split-narrow">
+      <nav className="settings-nav">{settingsGroups.map((section) => <div key={section.group}>
+        <div className="nav-group">{section.group}</div>
+        {section.items.map((item) => <button className={current === item.name ? 'active' : ''} onClick={() => setTab(item.name)} key={item.name}><Icon name={item.icon} size={16} />{item.name}<Icon name="chevron" size={14} /></button>)}
+      </div>)}</nav>
+      <section className="panel settings-panel">
+        {current === 'Storage Roots' ? <StorageSettings />
+          : current === 'Metadata' ? <MetadataSettings />
+          : current === 'Plex' ? <PlexSettings />
+          : current === 'qBittorrent' ? <QBittorrentSettings />
+          : current === 'Indexers' ? <IndexerSettings />
+          : current === 'Schedules' ? <ScheduleSettings />
+          : current === 'Security' ? <SecuritySettings />
+          : <BackupRecoverySettings />}
+      </section>
+    </div>
   </Page>
 }
 
-function GeneralSettings() { return <><div className="settings-section"><div><h3>Application behavior</h3><p>Medialogue opens to Movies. Integrations observe automatically, while storage roots stay idle until you initialize their first scan.</p></div><div><Link className="button button-secondary" to="/setup">Open setup checklist</Link></div></div><div className="settings-section safeguard"><div className="setting-icon"><Icon name="shield" size={18} /></div><div><h3>Leave-in-place safeguard</h3><p>Scans never move or rename media. Deletion requires an explicit preview and confirmation.</p><Badge tone="green">Always enforced</Badge></div></div></> }
 
 function SecuritySettings() {
   const [security, setSecurity] = useState<{ default_password_warning: boolean; session_expires_at?: string } | null>(null)
@@ -1357,9 +1414,35 @@ function SecuritySettings() {
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not change password.') }
     finally { setBusy(false) }
   }
-  return <><div className="integration-hero"><div className="integration-icon"><Icon name="shield" size={21} /></div><div><h3>Administrator security</h3><p>Medialogue uses one local administrator account and secure session cookies.</p></div><Badge tone={security?.default_password_warning ? 'amber' : 'green'}>{security?.default_password_warning ? 'Default password active' : 'Password changed'}</Badge></div><div className="settings-form security-form"><label><span className="field-label">Current password</span><Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" /></label><label><span className="field-label">New password</span><Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" /></label><label><span className="field-label">Confirm new password</span><Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" /></label></div>{message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={change} disabled={busy || !currentPassword || !newPassword}>{busy ? 'Changing…' : 'Change password'}</Button></div><div className="settings-note"><Icon name="shield" size={16} /><span>The default admin/adminadmin login remains allowed until you change it; Medialogue keeps the warning visible rather than forcing a password change.</span></div></>
+  const tooShort = newPassword.length > 0 && newPassword.length < 12
+  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword
+  return <>
+    <SectionHead icon="shield" title="Administrator security"
+      description="Medialogue uses a single local administrator account and secure session cookies. There is no self-service recovery — a lost password is reset from the server."
+      status={security?.default_password_warning ? 'Default password active' : 'Password changed'}
+      statusTone={security?.default_password_warning ? 'amber' : 'green'}
+      detail={security?.default_password_warning ? 'change this before exposing the host' : undefined}
+      detailTone={security?.default_password_warning ? 'err' : undefined} />
+    <div className="settings-form security-form">
+      <Field label="Current password" help="Required to prove this session belongs to you.">
+        <Secret value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" />
+      </Field>
+      <div />
+      <Field label="New password" error={tooShort ? 'Must contain at least 12 characters.' : undefined}
+        help={<><strong>At least 12 characters.</strong> Length matters more than symbols — a passphrase of four uncommon words beats a short complex string.</>}>
+        <Secret value={newPassword} onChange={(event) => setNewPassword(event.target.value)} aria-invalid={tooShort} />
+      </Field>
+      <Field label="Confirm new password" error={mismatch ? 'Does not match the new password.' : undefined} help="Must match exactly.">
+        <Secret value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} aria-invalid={mismatch} />
+      </Field>
+    </div>
+    <div className="settings-note"><Icon name="shield" size={15} /><span>Changing the password revokes every other active session immediately. You stay signed in on this device.</span></div>
+    {message && <Note message={{ tone: message.includes('Could not') || message.includes('must') || message.includes('does not match') ? 'error' : message.endsWith('…') ? 'busy' : 'ok', text: message }} />}
+    <div className="settings-footer">
+      <Button variant="primary" onClick={() => void change()} disabled={busy || !currentPassword || tooShort || mismatch || !newPassword}>{busy ? 'Changing…' : 'Change password'}</Button>
+    </div>
+  </>
 }
-
 function ScheduleSettings() {
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [message, setMessage] = useState('')
@@ -1371,9 +1454,18 @@ function ScheduleSettings() {
       setClients((items) => items.map((item) => item.id === updated.id ? updated : item)); setMessage(`${client.name} polling interval updated.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update polling interval.') }
   }
-  return <><div className="settings-section"><div><h3>qBittorrent reconciliation</h3><p>Polling is lightweight and configured independently per qBittorrent instance. This is the schedule that drives incoming-download and completion observations.</p></div></div>{clients.length ? <div className="root-list">{clients.map((client) => <div className="root-row" key={client.id}><div className="root-icon"><Icon name="download" size={16} /></div><div><strong>{client.name}</strong><span>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</span></div><Select value={String(client.pollIntervalSeconds ?? 30)} onChange={(event) => void updateInterval(client, Number(event.target.value))}><option value="5">Every 5 seconds</option><option value="10">Every 10 seconds</option><option value="15">Every 15 seconds</option><option value="30">Every 30 seconds</option><option value="60">Every minute</option><option value="300">Every 5 minutes</option></Select></div>)}</div> : <EmptyState icon="download" title="No polling schedules yet" detail="Add a qBittorrent client first; each client owns its actual reconciliation interval." />}<div className="settings-section"><div><h3>Full library scans</h3><p>Full storage-root scans are intentionally manual in v1. Medialogue does not create a cron scan merely because a root exists. This keeps a fresh install inactive and prevents unexpected large NAS scans.</p></div><Badge tone="green">Manual by design</Badge></div><div className="settings-note"><Icon name="activity" size={16} /><span>Advanced cron scheduling is not attached to any hidden automatic scan job in v1. Future scheduled job types must be explicit and observable.</span></div>{message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}</>
+  return <>
+    <SectionHead icon="clock" title="Schedules"
+      description="How often each qBittorrent instance is polled for incoming downloads and completions. Polling is lightweight and set per instance."
+      autosave />
+    {clients.length ? <div className="root-list">{clients.map((client) => <div className="root-row" key={client.id}><div className="root-icon"><Icon name="download" size={16} /></div><div><strong>{client.name}</strong><span>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</span></div><Select value={String(client.pollIntervalSeconds ?? 30)} onChange={(event) => void updateInterval(client, Number(event.target.value))}><option value="5">Every 5 seconds</option><option value="10">Every 10 seconds</option><option value="15">Every 15 seconds</option><option value="30">Every 30 seconds</option><option value="60">Every minute</option><option value="300">Every 5 minutes</option></Select></div>)}</div> : <EmptyState icon="download" title="No polling schedules yet" detail="Add a qBittorrent client first; each client owns its actual reconciliation interval." />}
+    <div className="settings-note"><Icon name="clock" size={15} /><span>A shorter interval detects completions sooner and costs one lightweight Web UI call per instance per tick. It has no effect on download speed.</span></div>
+    <SectionHead icon="folder" title="Full library scans" divided
+      description="Full storage-root scans are deliberately manual. Medialogue never creates a scheduled scan just because a root exists, so a fresh install stays idle and no unexpected large NAS scan can start on its own."
+      status="Manual by design" statusTone="green" />
+    {message && <Note message={{ tone: message.includes('Could not') ? 'error' : 'ok', text: message }} />}
+  </>
 }
-
 function StorageSettings() {
   const [roots, setRoots] = useState<StorageRoot[]>([])
   const [mappings, setMappings] = useState<RemotePathMapping[]>([])
@@ -1448,16 +1540,87 @@ function StorageSettings() {
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not remove remote path mapping.') }
   }
 
-  return <>
-    <div className="storage-head"><div><h3>Configured storage roots</h3><p>New roots remain uninitialized and are ignored by automatic reconciliation until you explicitly scan them once. Offline initialized roots preserve known media as degraded instead of flooding the Missing queue.</p></div><Button variant="primary" icon="plus" onClick={() => setAdding((value) => !value)}>{adding ? 'Cancel' : 'Add root'}</Button></div>
-    {adding && <div className="settings-form"><label><span className="field-label">Name</span><Input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span className="field-label">Container path</span><Input value={path} onChange={(event) => setPath(event.target.value)} /></label><label><span className="field-label">Media type</span><Select value={mediaType} onChange={(event) => setMediaType(event.target.value as 'movies' | 'shows')}><option value="movies">Movies</option><option value="shows">Shows</option></Select></label><label><span className="field-label">Access</span><Select value={accessMode} onChange={(event) => setAccessMode(event.target.value as 'read_only' | 'read_write')}><option value="read_only">Read-only — detection only</option><option value="read_write">Read/write — allow explicit confirmed deletion</option></Select></label><div className="settings-footer"><Button variant="primary" onClick={addRoot}>Save root</Button></div></div>}
-    <div className="root-list">{roots.map((root) => { const initialized = Boolean(root.last_scan_at); const health = (root.last_health ?? 'unchecked').toLowerCase(); const offline = initialized && (health === 'offline' || health === 'unavailable'); const affected = root.affected_media_count ?? root.media_affected ?? 0; return <div className={`root-row ${offline ? 'root-row-offline' : ''}`} key={root.id}><div className="root-icon"><Icon name="folder" size={17} /></div><div><strong>{root.name}</strong><span>{root.resolved_root_path}</span>{!initialized && <small className="root-outage-copy">Not initialized · Medialogue will not scan or reconcile this root automatically</small>}{offline && <small className="root-outage-copy">Storage Root Offline · {affected} media affected</small>}</div><Badge tone={!initialized ? 'amber' : health === 'available' || health === 'healthy' ? 'green' : offline ? 'red' : health === 'degraded' ? 'amber' : 'neutral'}>{!initialized ? 'Not initialized' : root.last_health ?? 'Unchecked'}</Badge><Badge tone="neutral">{root.access_mode === 'read_only' ? 'Read-only' : 'Read/write'}</Badge><span className="root-items">{root.media_type}{root.missing_media_count !== undefined ? ` · ${root.missing_media_count} missing` : ''}</span><Button variant={initialized ? 'ghost' : 'primary'} icon="play" onClick={() => scan(root)}>{initialized ? 'Scan now' : 'Initialize & scan'}</Button><Button variant="danger" onClick={() => void removeRoot(root)}>Remove</Button></div>})}{!roots.length && <EmptyState title="No storage roots configured" detail="Add an explicit container-visible Movie or Show root. It will remain idle until you initialize it with its first scan." />}</div>
+  const rootRows = roots.map((root) => {
+    const initialized = Boolean(root.last_scan_at)
+    const health = (root.last_health ?? 'unchecked').toLowerCase()
+    const offline = initialized && (health === 'offline' || health === 'unavailable')
+    const affected = root.affected_media_count ?? root.media_affected ?? 0
+    return <div className={`root-row ${offline ? 'root-row-offline' : ''}`} key={root.id}>
+      <div className="root-icon"><Icon name="folder" size={17} /></div>
+      <div><strong>{root.name}</strong><span>{root.resolved_root_path}</span>
+        {!initialized && <small className="root-outage-copy">Not initialized · Medialogue will not scan or reconcile this root automatically</small>}
+        {offline && <small className="root-outage-copy">Storage Root Offline · {affected} media affected</small>}
+      </div>
+      <Badge tone={!initialized ? 'amber' : health === 'available' || health === 'healthy' ? 'green' : offline ? 'red' : health === 'degraded' ? 'amber' : 'neutral'}>{!initialized ? 'Not initialized' : root.last_health ?? 'Unchecked'}</Badge>
+      <Badge tone="neutral">{root.access_mode === 'read_only' ? 'Read-only' : 'Read/write'}</Badge>
+      <span className="root-items">{root.media_type}{root.missing_media_count !== undefined ? ` · ${root.missing_media_count} missing` : ''}</span>
+      <Button variant={initialized ? 'ghost' : 'primary'} icon="play" onClick={() => scan(root)}>{initialized ? 'Scan now' : 'Initialize & scan'}</Button>
+      <Button variant="danger" onClick={() => void removeRoot(root)}>Remove</Button>
+    </div>
+  })
 
-    <div className="storage-head"><div><h3>Remote path mappings</h3><p>Translate paths reported by qBittorrent into the container-visible paths above. Use the exact remote prefix that corresponds to the selected storage root; do not map a parent path that also contains libraries Medialogue cannot access.</p></div><Button variant="ghost" icon="plus" onClick={() => setAddingMapping((value) => !value)}>{addingMapping ? 'Cancel' : 'Add mapping'}</Button></div>
-    {addingMapping && <div className="settings-form"><label><span className="field-label">Name</span><Input value={mappingName} onChange={(event) => setMappingName(event.target.value)} /></label><label><span className="field-label">qBittorrent client</span><Select value={mappingClientId} onChange={(event) => setMappingClientId(event.target.value)}><option value="">All qBittorrent clients</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select></label><label><span className="field-label">Remote prefix reported by qBittorrent</span><Input value={remotePrefix} onChange={(event) => setRemotePrefix(event.target.value)} placeholder="/downloads/movies" /></label><label><span className="field-label">Local/container prefix</span><Input value={localPrefix} onChange={(event) => setLocalPrefix(event.target.value)} placeholder="/media/movies" /></label><label><span className="field-label">Storage root</span><Select value={mappingRootId} onChange={(event) => setMappingRootId(event.target.value)}><option value="">No explicit root</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select></label><div className="settings-footer"><Button variant="primary" onClick={addMapping}>Save mapping</Button></div></div>}
-    <div className="root-list">{mappings.map((mapping) => { const client = clients.find((item) => item.id === mapping.integration_id); const root = roots.find((item) => item.id === mapping.storage_root_id); return <div className="root-row" key={mapping.id}><div className="root-icon"><Icon name="arrow" size={17} /></div><div><strong>{mapping.name}</strong><span>{mapping.remote_prefix} → {mapping.local_prefix}</span><small>{client?.name ?? 'All qBittorrent clients'} · {root ? `root: ${root.name}` : 'all matching roots'}</small></div><Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'Enabled' : 'Disabled'}</Badge><span className="root-items">qBittorrent</span><Button variant="ghost" onClick={() => void removeMapping(mapping)}>Remove</Button></div>})}{!mappings.length && <EmptyState title="No remote path mappings" detail="Only add one when qBittorrent reports a path that differs from the media path visible inside Medialogue." />}</div>
-    {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
-    <div className="settings-note"><Icon name="shield" size={16} /><span>Root scans and path mappings never move or rename media. Read/write roots only permit deletion through an explicit destructive preview and confirmation.</span></div>
+  return <>
+    <SectionHead icon="folder" title="Storage roots"
+      description="The paths Medialogue is allowed to read. Media is never moved or renamed — a root only tells Medialogue where to look. A new root stays idle until you scan it once."
+      action={<Button variant={adding ? 'ghost' : 'primary'} icon="plus" onClick={() => setAdding((value) => !value)}>{adding ? 'Cancel' : 'Add root'}</Button>} />
+    <div className="root-list">{rootRows}{!roots.length && <EmptyState title="No storage roots configured" detail="Add an explicit container-visible Movie or Show root. It will remain idle until you initialize it with its first scan." />}</div>
+
+    {adding && <>
+      <SectionHead icon="plus" title="Add a storage root" divided
+        description="Adding a root does not scan it. You initialize the first scan explicitly, so a fresh install never starts a large NAS walk on its own." />
+      <div className="settings-form">
+        <Field label="Name" help="Shown in Medialogue only. Has no effect on the filesystem.">
+          <Input value={name} onChange={(event) => setName(event.target.value)} />
+        </Field>
+        <Field label="Container path" help={<>The path <strong>as Medialogue sees it</strong>. Inside Docker this is the container-side mount, not the host path. Example: <code>/media/movies</code></>}>
+          <Input value={path} onChange={(event) => setPath(event.target.value)} />
+        </Field>
+        <Field label="Media type" help="Which library titles discovered under this root belong to.">
+          <Select value={mediaType} onChange={(event) => setMediaType(event.target.value as 'movies' | 'shows')}><option value="movies">Movies</option><option value="shows">Shows</option></Select>
+        </Field>
+        <Field label="Access" help={<><strong>Read-only</strong> detects and reports but can never delete. <strong>Read/write</strong> additionally permits deletion, and only after an explicit preview and confirmation.</>}>
+          <Select value={accessMode} onChange={(event) => setAccessMode(event.target.value as 'read_only' | 'read_write')}><option value="read_only">Read-only — detection only</option><option value="read_write">Read/write — allow explicit confirmed deletion</option></Select>
+        </Field>
+      </div>
+      <div className="settings-footer"><Button variant="primary" onClick={addRoot}>Save root</Button></div>
+    </>}
+
+    <SectionHead icon="arrow" title="Remote path mappings" divided
+      description="Only needed when qBittorrent reports a path that does not exist from Medialogue's point of view — typically a different container, or a different host entirely."
+      action={<Button variant="ghost" icon="plus" onClick={() => setAddingMapping((value) => !value)}>{addingMapping ? 'Cancel' : 'Add mapping'}</Button>} />
+    <div className="root-list">{mappings.map((mapping) => {
+      const client = clients.find((item) => item.id === mapping.integration_id)
+      const root = roots.find((item) => item.id === mapping.storage_root_id)
+      return <div className="root-row" key={mapping.id}>
+        <div className="root-icon"><Icon name="arrow" size={17} /></div>
+        <div><strong>{mapping.name}</strong><span>{mapping.remote_prefix} → {mapping.local_prefix}</span><small>{client?.name ?? 'All qBittorrent clients'} · {root ? `root: ${root.name}` : 'all matching roots'}</small></div>
+        <Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'Enabled' : 'Disabled'}</Badge>
+        <span className="root-items">qBittorrent</span>
+        <Button variant="ghost" onClick={() => void removeMapping(mapping)}>Remove</Button>
+      </div>
+    })}{!mappings.length && <EmptyState title="No remote path mappings" detail="Only add one when qBittorrent reports a path that differs from the media path visible inside Medialogue." />}</div>
+
+    {addingMapping && <div className="settings-form">
+      <Field label="Name" help="Shown in Medialogue only.">
+        <Input value={mappingName} onChange={(event) => setMappingName(event.target.value)} />
+      </Field>
+      <Field label="qBittorrent client" help="Which client's reported paths this mapping rewrites. Leave as all clients when every instance uses the same layout.">
+        <Select value={mappingClientId} onChange={(event) => setMappingClientId(event.target.value)}><option value="">All qBittorrent clients</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select>
+      </Field>
+      <Field label="Remote prefix reported by qBittorrent" help="The path prefix exactly as qBittorrent reports it. Copy it from a download's save path. Do not map a parent path that also contains libraries Medialogue cannot reach.">
+        <Input value={remotePrefix} onChange={(event) => setRemotePrefix(event.target.value)} placeholder="/downloads/movies" />
+      </Field>
+      <Field label="Local/container prefix" help="What that prefix corresponds to from Medialogue's point of view.">
+        <Input value={localPrefix} onChange={(event) => setLocalPrefix(event.target.value)} placeholder="/media/movies" />
+      </Field>
+      <Field label="Storage root" badge="optional" wide help="Optionally pin the rewritten path to one root. Leave unset to let Medialogue resolve it against every matching root.">
+        <Select value={mappingRootId} onChange={(event) => setMappingRootId(event.target.value)}><option value="">No explicit root</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
+      </Field>
+      <div className="settings-footer" style={{ gridColumn: '1 / -1' }}><Button variant="primary" onClick={addMapping}>Save mapping</Button></div>
+    </div>}
+
+    {message && <Note message={{ tone: message.includes('Could not') || message.includes('failed') ? 'error' : 'ok', text: message }} />}
+    <div className="settings-note"><Icon name="shield" size={15} /><span>Scans and path mappings never move or rename media. Removing a root never touches the files on it — only Medialogue's index of that root is cleared.</span></div>
   </>
 }
 
@@ -1465,72 +1628,141 @@ function MetadataSettings() {
   const [configuration, setConfiguration] = useState<{ configured: boolean; api_key_configured: boolean; enabled: boolean; health: string; latency_ms?: number; last_error?: string; revision?: number } | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [enabled, setEnabled] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
-  useEffect(() => { api.tmdbConfiguration().then((value) => { setConfiguration(value); setEnabled(value.enabled) }).catch((reason) => setMessage(reason instanceof Error ? reason.message : 'Could not load TMDB settings.')) }, [])
-  const save = async () => { setBusy(true); setMessage('Saving TMDB settings…'); try { const value = await api.saveTmdb({ api_key: apiKey || undefined, enabled, expected_revision: configuration?.revision }); setConfiguration(value); setApiKey(''); setMessage('TMDB settings saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save TMDB settings.') } finally { setBusy(false) } }
-  const test = async () => { setBusy(true); setMessage('Testing TMDB connection…'); try { const value = await api.testTmdb({ api_key: apiKey || undefined }); setMessage(value.status === 'healthy' ? `TMDB is reachable${value.latency_ms ? ` in ${value.latency_ms} ms` : ''}.` : value.message ?? `TMDB status: ${value.status}.`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not test TMDB.') } finally { setBusy(false) } }
-  const healthTone = configuration?.health === 'healthy' ? 'green' : configuration?.health === 'unavailable' ? 'red' : 'neutral'
-  return <><div className="integration-hero"><div className="integration-icon"><Icon name="search" size={21} /></div><div><h3>TMDB metadata</h3><p>TMDB is the primary identity source for newly discovered movies. Local parsing alone does not create a matched title.</p></div><Badge tone={healthTone}>{!configuration?.configured ? 'Not configured' : configuration.health}</Badge></div><div className="settings-form"><label><span className="field-label">API key</span><Input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={configuration?.api_key_configured ? 'Stored server-side · leave blank to preserve' : 'Required for automatic matching'} /></label><label className="setting-control"><span className="field-label">Enabled</span><button type="button" aria-pressed={enabled} className={`toggle ${enabled ? 'is-on' : ''}`} onClick={() => setEnabled((value) => !value)}><span /></button></label></div>{configuration?.last_error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{configuration.last_error}</span></div>}{message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={test} disabled={busy}>Test connection</Button><Button variant="primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save TMDB'}</Button></div><div className="settings-note"><Icon name="shield" size={16} /><span>The API key is stored server-side and is never returned to the browser after saving.</span></div></>
-}
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<Message>(null)
+  const [tested, setTested] = useState<{ text: string; tone: 'ok' | 'err' } | null>(null)
 
+  const load = () => api.tmdbConfiguration().then((value) => { setConfiguration(value); setEnabled(value.enabled); setApiKey(''); setDirty(false) })
+  useEffect(() => { load().catch((reason) => setMessage(failed(reason, 'Could not load TMDB settings.'))) }, [])
+
+  const save = async () => {
+    setSaving(true); setMessage(pending('Saving TMDB settings…'))
+    try {
+      const value = await api.saveTmdb({ api_key: apiKey || undefined, enabled, expected_revision: configuration?.revision })
+      setConfiguration(value); setApiKey(''); setDirty(false); setMessage(ok('TMDB settings saved.'))
+    } catch (reason) { setMessage(failed(reason, 'Could not save TMDB settings.')) } finally { setSaving(false) }
+  }
+  const test = async () => {
+    setTested(null); setMessage(pending('Testing TMDB connection…'))
+    try {
+      const value = await api.testTmdb({ api_key: apiKey || undefined })
+      const reachable = value.status === 'healthy'
+      setTested({ tone: reachable ? 'ok' : 'err', text: reachable ? `tested just now${value.latency_ms ? ` · ${value.latency_ms} ms` : ''}` : value.message ?? value.status })
+      setMessage(null)
+    } catch (reason) { setTested({ tone: 'err', text: 'test failed' }); setMessage(failed(reason, 'Could not test TMDB.')) }
+  }
+
+  const healthTone: StatusTone = configuration?.health === 'healthy' ? 'green' : configuration?.health === 'unavailable' ? 'red' : 'neutral'
+  return <>
+    <SectionHead icon="search" title="TMDB metadata"
+      description="TMDB is the primary identity source for newly discovered titles. Local filename parsing alone never creates a matched title — without TMDB, discoveries stay unmatched."
+      status={!configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
+      detail={tested?.text} detailTone={tested?.tone}
+      action={<Button variant="secondary" onClick={() => void test()} disabled={saving}>Test connection</Button>} />
+    <div className="settings-form">
+      <Field label="API key" badge={configuration?.api_key_configured ? 'stored' : undefined}
+        help={<>Your TMDB API Read Access Token. Held server-side and never sent back to the browser. {configuration?.api_key_configured ? 'Leave blank to keep the current one.' : 'Required for automatic matching.'}</>}>
+        <Secret value={apiKey} onChange={(event) => { setApiKey(event.target.value); setDirty(true) }} placeholder={configuration?.api_key_configured ? 'Stored server-side · leave blank to preserve' : 'Required for automatic matching'} />
+      </Field>
+      <Field label="Enabled" help="When off, no new title is matched automatically and discoveries queue as Problems for manual matching. Existing matches are kept.">
+        <div className="setting-control">
+          <button type="button" aria-pressed={enabled} className="toggle" onClick={() => { setEnabled((value) => !value); setDirty(true) }}><span /></button>
+          <span className="toggle-label">{enabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+      </Field>
+    </div>
+    {configuration?.last_error && <Note message={{ tone: 'error', text: configuration.last_error }} />}
+    <Note message={message} />
+    <SaveFooter dirty={dirty} saving={saving} onSave={() => void save()} onRevert={() => void load()} />
+  </>
+}
 function PlexSettings() {
   const [configuration, setConfiguration] = useState<import('./types').PlexConfiguration | null>(null)
   const [url, setUrl] = useState('http://plex:32400')
   const [token, setToken] = useState('')
   const [enabled, setEnabled] = useState(true)
-  const [message, setMessage] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [message, setMessage] = useState<Message>(null)
+  const [working, setWorking] = useState(false)
   const [loading, setLoading] = useState(true)
-  useEffect(() => {
-    api.plexConfiguration().then((value) => {
-      setConfiguration(value)
-      if (value.url) setUrl(value.url)
-      setEnabled(value.enabled)
-    }).catch((reason) => setMessage(reason instanceof Error ? reason.message : 'Could not load Plex settings.')).finally(() => setLoading(false))
-  }, [])
+  const [tested, setTested] = useState<{ text: string; tone: 'ok' | 'err' } | null>(null)
+
+  const load = () => api.plexConfiguration().then((value) => {
+    setConfiguration(value)
+    if (value.url) setUrl(value.url)
+    setEnabled(value.enabled)
+    setToken(''); setDirty(false)
+  })
+  useEffect(() => { load().catch((reason) => setMessage(failed(reason, 'Could not load Plex settings.'))).finally(() => setLoading(false)) }, [])
+
   const test = async () => {
-    setBusy(true); setMessage('Testing Plex connection…')
+    setWorking(true); setTested(null); setMessage(pending('Testing Plex connection…'))
     try {
       const result = await api.testPlex({ url: url || undefined, token: token || undefined })
-      setMessage(result.status === 'healthy' ? `Plex is reachable${result.latency_ms ? ` in ${result.latency_ms} ms` : ''}.` : result.message ?? `Plex status: ${result.status}.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not test Plex.') }
-    finally { setBusy(false) }
+      const reachable = result.status === 'healthy'
+      setTested({ tone: reachable ? 'ok' : 'err', text: reachable ? `tested just now${result.latency_ms ? ` · ${result.latency_ms} ms` : ''}` : result.message ?? result.status })
+      setMessage(null)
+    } catch (reason) { setTested({ tone: 'err', text: 'test failed' }); setMessage(failed(reason, 'Could not test Plex.')) }
+    finally { setWorking(false) }
   }
   const save = async () => {
-    if (!url.trim()) { setMessage('Enter a Plex server URL.'); return }
-    setBusy(true); setMessage('Saving Plex settings…')
+    if (!url.trim()) { setMessage({ tone: 'error', text: 'Enter a Plex server URL.' }); return }
+    setWorking(true); setMessage(pending('Saving Plex settings…'))
     try {
       const value = await api.savePlex({ url: url.trim(), token: token || undefined, enabled, expected_revision: configuration?.revision })
-      setConfiguration(value); setToken(''); setMessage('Plex settings saved.')
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Plex settings.') }
-    finally { setBusy(false) }
+      setConfiguration(value); setToken(''); setDirty(false); setMessage(ok('Plex settings saved.'))
+    } catch (reason) { setMessage(failed(reason, 'Could not save Plex settings.')) }
+    finally { setWorking(false) }
   }
   const refreshHealth = async () => {
-    setBusy(true); setMessage('Refreshing Plex health…')
+    setWorking(true); setMessage(pending('Refreshing Plex health…'))
     try {
       const result = await api.refreshPlexHealth()
       setConfiguration((value) => value ? { ...value, health: result.status, machine_identifier: result.machine_identifier, latency_ms: result.latency_ms, last_error: result.message } : value)
-      setMessage(result.status === 'healthy' ? 'Plex health is healthy.' : result.message ?? `Plex status: ${result.status}.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not refresh Plex health.') }
-    finally { setBusy(false) }
+      setMessage(result.status === 'healthy' ? ok('Plex health is healthy.') : { tone: 'error', text: result.message ?? `Plex status: ${result.status}.` })
+    } catch (reason) { setMessage(failed(reason, 'Could not refresh Plex health.')) }
+    finally { setWorking(false) }
   }
   const syncLibrary = async () => {
-    setBusy(true); setMessage('Starting Plex library verification…')
+    setWorking(true); setMessage(pending('Starting Plex library verification…'))
     try {
       const result = await api.syncPlexLibrary()
-      setMessage(`Plex verification queued as job ${result.job_id.slice(0, 8)}…. It reads Plex's existing library; it does not trigger a Plex scan.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start Plex verification.') }
-    finally { setBusy(false) }
+      setMessage(ok(`Plex verification queued as job ${result.job_id.slice(0, 8)}…. It reads Plex's existing library; it does not trigger a Plex scan.`))
+    } catch (reason) { setMessage(failed(reason, 'Could not start Plex verification.')) }
+    finally { setWorking(false) }
   }
-  const healthTone = configuration?.health === 'healthy' ? 'green' : configuration?.health === 'unavailable' ? 'red' : configuration?.health === 'degraded' ? 'amber' : 'neutral'
+
+  const healthTone: StatusTone = configuration?.health === 'healthy' ? 'green' : configuration?.health === 'unavailable' ? 'red' : configuration?.health === 'degraded' ? 'amber' : 'neutral'
+  const live = configuration?.configured && configuration.enabled
   return <>
-    <div className="integration-hero"><div className="integration-icon"><Icon name="tv" size={21} /></div><div><h3>Plex connection</h3><p>Read-only verification uses exact paths, then storage-root-relative paths across Docker mount prefixes, before Movie title/year fallback.</p></div><Badge tone={healthTone}>{loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health}</Badge></div>
-    <div className="settings-form"><label><span className="field-label">URL</span><Input placeholder="http://plex:32400" value={url} onChange={(event) => setUrl(event.target.value)} /></label><label><span className="field-label">API token</span><Input type="password" placeholder={configuration?.token_configured ? 'Stored server-side · leave blank to preserve' : 'Required'} value={token} onChange={(event) => setToken(event.target.value)} /></label><label className="setting-control"><span className="field-label">Enabled</span><button type="button" aria-pressed={enabled} className={`toggle ${enabled ? 'is-on' : ''}`} onClick={() => setEnabled((value) => !value)}><span /></button></label></div>
-    {configuration?.last_error && <div className="settings-note"><Icon name="alert" size={16} /><span>{configuration.last_error}</span></div>}
-    {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
-    <div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test connection'}</Button>{configuration?.configured && configuration.enabled && <Button variant="ghost" onClick={refreshHealth} disabled={busy}>Refresh health</Button>}{configuration?.configured && configuration.enabled && <Button variant="primary" onClick={syncLibrary} disabled={busy}>Sync library verification</Button>}<Button variant="primary" onClick={save} disabled={busy}>Save changes</Button></div>
-    <div className="settings-note"><Icon name="tv" size={16} /><span>A manual storage-root scan now automatically queues a read-only Plex verification job for that root. “Sync library verification” checks everything immediately without asking Plex to rescan.</span></div>
+    <SectionHead icon="tv" title="Plex connection"
+      description="Read-only verification. Medialogue checks exact paths first, then storage-root-relative paths across Docker mount prefixes, and only then falls back to matching on title and year."
+      status={loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
+      detail={tested?.text} detailTone={tested?.tone}
+      action={<Button variant="secondary" onClick={() => void test()} disabled={working}>{working ? 'Working…' : 'Test connection'}</Button>} />
+    <div className="settings-form">
+      <Field label="URL" help={<>Base address of your Plex Media Server, including port. Example: <code>http://plex:32400</code></>}>
+        <Input placeholder="http://plex:32400" value={url} onChange={(event) => { setUrl(event.target.value); setDirty(true) }} />
+      </Field>
+      <Field label="API token" badge={configuration?.token_configured ? 'stored' : undefined}
+        help={<>Your <code>X-Plex-Token</code>. Held server-side and never sent back to the browser. {configuration?.token_configured ? 'Leave blank to keep the current one.' : 'Required.'}</>}>
+        <Secret placeholder={configuration?.token_configured ? 'Stored server-side · leave blank to preserve' : 'Required'} value={token} onChange={(event) => { setToken(event.target.value); setDirty(true) }} />
+      </Field>
+      <Field label="Enabled" wide help="When off, Plex is never contacted and Plex state on every title reads as unknown. Nothing inside Plex is modified either way.">
+        <div className="setting-control">
+          <button type="button" aria-pressed={enabled} className="toggle" onClick={() => { setEnabled((value) => !value); setDirty(true) }}><span /></button>
+          <span className="toggle-label">{enabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+      </Field>
+    </div>
+    {configuration?.last_error && <Note message={{ tone: 'error', text: configuration.last_error }} />}
+    <Note message={message} />
+    <div className="settings-note"><Icon name="tv" size={15} /><span>A manual storage-root scan automatically queues a read-only Plex verification for that root. “Sync library verification” checks everything immediately without asking Plex to rescan.</span></div>
+    <SaveFooter dirty={dirty} saving={working} onSave={() => void save()} onRevert={() => void load()}>
+      {live && <Button variant="ghost" onClick={() => void refreshHealth()} disabled={working}>Refresh health</Button>}
+      {live && <Button variant="secondary" onClick={() => void syncLibrary()} disabled={working}>Sync library verification</Button>}
+    </SaveFooter>
   </>
 }
 
@@ -1574,22 +1806,24 @@ function draftFromDownloadClient(client: DownloadClient): DownloadClientDraft {
 
 function QBittorrentSettings() {
   const [clients, setClients] = useState<DownloadClient[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useUrlState('client')
   const [draft, setDraft] = useState<DownloadClientDraft>(emptyDownloadClient)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [dirty, setDirty] = useState(false)
 
   const loadClients = async (keepSelection = true) => {
     setLoading(true)
     try {
       const items = await api.downloadClients()
       setClients(items)
-      const nextId = keepSelection && selectedId && items.some((item) => item.id === selectedId) ? selectedId : items[0]?.id ?? null
+      const nextId = keepSelection && selectedId && items.some((item) => item.id === selectedId) ? selectedId : items[0]?.id ?? ''
       setSelectedId(nextId)
       const selected = items.find((item) => item.id === nextId)
       setDraft(selected ? draftFromDownloadClient(selected) : emptyDownloadClient)
+      setDirty(false)
       setError('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load qBittorrent clients.')
@@ -1602,9 +1836,9 @@ function QBittorrentSettings() {
     const client = clients.find((item) => item.id === id)
     setSelectedId(id)
     setDraft(client ? draftFromDownloadClient(client) : emptyDownloadClient)
-    setMessage('')
+    setMessage(''); setDirty(false)
   }
-  const updateDraft = <K extends keyof DownloadClientDraft>(key: K, value: DownloadClientDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
+  const updateDraft = <K extends keyof DownloadClientDraft>(key: K, value: DownloadClientDraft[K]) => { setDirty(true); setDraft((current) => ({ ...current, [key]: value })) }
   const payload = () => ({
     name: draft.name.trim(),
     url: draft.url.trim(),
@@ -1623,7 +1857,7 @@ function QBittorrentSettings() {
     try {
       const value = selectedId ? await api.updateDownloadClient(selectedId, { ...payload(), expected_revision: clients.find((item) => item.id === selectedId)?.revision }) : await api.createDownloadClient(payload())
       setClients((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value])
-      setSelectedId(value.id); setDraft(draftFromDownloadClient(value)); setMessage(`${value.name} saved. Password is stored server-side and never returned to the browser.`)
+      setSelectedId(value.id); setDraft(draftFromDownloadClient(value)); setDirty(false); setMessage(`${value.name} saved. Password is stored server-side and never returned to the browser.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save qBittorrent client.'); setMessage('') }
     finally { setBusy(false) }
   }
@@ -1659,21 +1893,74 @@ function QBittorrentSettings() {
       await api.deleteDownloadClient(selectedId)
       const remaining = clients.filter((item) => item.id !== selectedId)
       setClients(remaining); const next = remaining[0]
-      setSelectedId(next?.id ?? null); setDraft(next ? draftFromDownloadClient(next) : emptyDownloadClient); setMessage('Client configuration removed; torrent history was not changed.')
+      setSelectedId(next?.id ?? ''); setDraft(next ? draftFromDownloadClient(next) : emptyDownloadClient); setMessage('Client configuration removed; torrent history was not changed.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove qBittorrent client.') }
     finally { setBusy(false) }
   }
   const selected = clients.find((item) => item.id === selectedId)
-  const healthTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
+  const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
+  const connectionDetail = selected ? `${selected.health}${selected.latency_ms !== undefined ? ` · ${selected.latency_ms} ms` : ''}${selected.last_success_at ? ` · last success ${formatEvidenceDate(selected.last_success_at)}` : selected.last_checked_at ? ` · checked ${formatEvidenceDate(selected.last_checked_at)}` : ''}` : undefined
   return <div className="qbit-settings">
-    <div className="integration-hero"><div className="integration-icon"><Icon name="download" size={21} /></div><div><h3>qBittorrent clients</h3><p>Observe multiple qBittorrent instances without importing, moving, or changing downloaded media.</p></div><Badge tone={selected ? healthTone : 'neutral'}>{loading ? 'Loading' : selected ? selected.health : `${clients.length} configured`}</Badge></div>
-    <div className="qbit-layout">
-      <div className="qbit-client-list"><div className="qbit-list-head"><span className="eyebrow">DOWNLOAD CLIENTS</span><Button variant="ghost" icon="plus" onClick={() => { setSelectedId(null); setDraft(emptyDownloadClient); setMessage(''); setError('') }}>Add client</Button></div>{clients.map((client) => <button className={`qbit-client-item ${selectedId === client.id ? 'selected' : ''}`} key={client.id} onClick={() => selectClient(client.id)}><span className={`health-dot ${client.health === 'healthy' ? 'green' : client.health === 'unavailable' ? 'red' : 'amber'}`} /><span><strong>{client.name}</strong><small>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</small></span><Badge tone={client.enabled ? 'green' : 'neutral'}>{client.enabled ? 'On' : 'Off'}</Badge></button>)}{!clients.length && !loading && <EmptyState icon="download" title="No qBittorrent clients" detail="Add a client to observe downloads." />}</div>
-      <div className="qbit-editor"><div className="qbit-editor-head"><div><div className="eyebrow">{selected ? 'CLIENT CONFIGURATION' : 'NEW CLIENT'}</div><h3>{selected ? selected.name : 'Add qBittorrent client'}</h3></div>{selected && <Badge tone={healthTone}>{selected.health}</Badge>}</div><div className="settings-form"><label><span className="field-label">Display name</span><Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="qbit-movies-1" /></label><label><span className="field-label">URL</span><Input value={draft.url} onChange={(event) => updateDraft('url', event.target.value)} placeholder="http://qbittorrent:8080" /></label><label><span className="field-label">Username</span><Input value={draft.username} onChange={(event) => updateDraft('username', event.target.value)} autoComplete="off" /></label><label><span className="field-label">Password</span><Input type="password" value={draft.password} onChange={(event) => updateDraft('password', event.target.value)} autoComplete="new-password" placeholder={selected?.password_configured ? 'Stored server-side · leave blank to preserve' : 'Required for authenticated clients'} /></label><label><span className="field-label">Scope</span><Select value={draft.scope} onChange={(event) => updateDraft('scope', event.target.value as DownloadClientDraft['scope'])}><option value="movies">Movies</option><option value="shows">Shows</option></Select></label><label><span className="field-label">Category</span><Input value={draft.category} onChange={(event) => updateDraft('category', event.target.value)} placeholder="media" /></label><label><span className="field-label">Tags <span>comma separated</span></span><Input value={draft.tags} onChange={(event) => updateDraft('tags', event.target.value)} placeholder="movies, managed" /></label><label><span className="field-label">Polling interval</span><Select value={String(draft.pollIntervalSeconds)} onChange={(event) => updateDraft('pollIntervalSeconds', Number(event.target.value))}><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></Select></label><label className="setting-control"><span className="field-label">Enabled</span><button type="button" aria-pressed={draft.enabled} className={`toggle ${draft.enabled ? 'is-on' : ''}`} onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button></label></div>{selected && <div className="settings-note"><Icon name="activity" size={16} /><span>Connection: {selected.health}{selected.latency_ms !== undefined ? ` · ${selected.latency_ms} ms` : ''}{selected.last_success_at ? ` · last success ${formatEvidenceDate(selected.last_success_at)}` : selected.last_checked_at ? ` · checked ${formatEvidenceDate(selected.last_checked_at)}` : ''}</span></div>}{selected?.last_error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>Last connection error: {selected.last_error}</span></div>}{error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}{message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test connection'}</Button>{selected && <Button variant="ghost" onClick={refresh} disabled={busy}>Refresh health</Button>}{selected && <Button variant="danger" onClick={remove} disabled={busy}>Remove</Button>}<Button variant="primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save client'}</Button></div><div className="settings-note"><Icon name="shield" size={16} /><span>Credentials are write-only in the UI. Leaving Password blank on an existing client preserves its stored secret.</span></div></div>
+    <div className="split split-flush">
+      <div className="qbit-client-list">
+        <div className="qbit-list-head"><span className="eyebrow">DOWNLOAD CLIENTS</span><Button variant="ghost" icon="plus" onClick={() => { setSelectedId(''); setDraft(emptyDownloadClient); setDirty(false); setMessage(''); setError('') }}>Add client</Button></div>
+        {clients.map((client) => <button className={`qbit-client-item ${selectedId === client.id ? 'selected' : ''}`} key={client.id} onClick={() => selectClient(client.id)}><span className={`health-dot ${client.health === 'healthy' ? 'green' : client.health === 'unavailable' ? 'red' : 'amber'}`} /><span><strong>{client.name}</strong><small>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</small></span><Badge tone={client.enabled ? 'green' : 'neutral'}>{client.enabled ? 'On' : 'Off'}</Badge></button>)}
+        {!clients.length && !loading && <EmptyState icon="download" title="No qBittorrent clients" detail="Add a client to observe downloads." />}
+      </div>
+
+      <div className="qbit-editor" style={{ padding: 0 }}>
+        <SectionHead icon="download" title={selected ? selected.name : 'Add qBittorrent client'}
+          description="Medialogue reads every torrent in this client. It only ever adds torrents you explicitly grab, and never moves or renames what is already there."
+          status={loading ? 'Loading' : selected ? selected.health : 'New client'} statusTone={selected ? healthTone : 'neutral'}
+          detail={connectionDetail} detailTone={selected?.health === 'healthy' ? 'ok' : selected?.last_error ? 'err' : undefined}
+          action={<Button variant="secondary" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test connection'}</Button>} />
+
+        <div className="settings-form">
+          <Field label="Display name" help="Shown in Medialogue only. Has no effect on qBittorrent.">
+            <Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="qbit-movies-1" />
+          </Field>
+          <Field label="URL" help={<>Base address of the qBittorrent Web UI, including port. Example: <code>http://qbittorrent:8080</code></>}>
+            <Input value={draft.url} onChange={(event) => updateDraft('url', event.target.value)} placeholder="http://qbittorrent:8080" />
+          </Field>
+          <Field label="Username" help="Web UI account. Leave blank if this host bypasses authentication for your network.">
+            <Input value={draft.username} onChange={(event) => updateDraft('username', event.target.value)} autoComplete="off" />
+          </Field>
+          <Field label="Password" badge={selected?.password_configured ? 'stored' : undefined}
+            help={selected?.password_configured ? 'Held server-side and never sent back to the browser. Leave blank to keep the current one.' : 'Held server-side and never sent back to the browser.'}>
+            <Secret value={draft.password} onChange={(event) => updateDraft('password', event.target.value)} placeholder={selected?.password_configured ? 'Stored server-side · leave blank to preserve' : 'Required for authenticated clients'} />
+          </Field>
+          <Field label="Scope" help="Which library this client receives grabs for. Observation is unaffected — every client is always read.">
+            <Select value={draft.scope} onChange={(event) => updateDraft('scope', event.target.value as DownloadClientDraft['scope'])}><option value="movies">Movies</option><option value="shows">Shows</option></Select>
+          </Field>
+          <Field label="Category" badge="optional" help={<>Category assigned to torrents Medialogue adds. It does <strong>not</strong> filter what Medialogue observes — every torrent in this client is read regardless.</>}>
+            <Input value={draft.category} onChange={(event) => updateDraft('category', event.target.value)} placeholder="media" />
+          </Field>
+          <Field label="Tags" badge="optional" help="qBittorrent tags applied to torrents Medialogue adds. Comma-separated.">
+            <Input value={draft.tags} onChange={(event) => updateDraft('tags', event.target.value)} placeholder="movies, managed" />
+          </Field>
+          <Field label="Polling interval" help={<>How often this client is polled for progress and completions. A shorter interval notices completions sooner and costs one lightweight Web UI call per tick. It has no effect on download speed.</>}>
+            <Select value={String(draft.pollIntervalSeconds)} onChange={(event) => updateDraft('pollIntervalSeconds', Number(event.target.value))}><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></Select>
+          </Field>
+          <Field label="Enabled" wide help="When off, this client is neither polled nor offered as a grab target. Existing torrents are left untouched.">
+            <div className="setting-control">
+              <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button>
+              <span className="toggle-label">{draft.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          </Field>
+        </div>
+
+        {selected?.last_error && <Note message={{ tone: 'error', text: `Last connection error: ${selected.last_error}` }} />}
+        {error && <Note message={{ tone: 'error', text: error }} />}
+        {message && <Note message={{ tone: 'ok', text: message }} />}
+
+        <SaveFooter dirty={dirty} saving={busy} onSave={save} onRevert={() => void loadClients(true)}>
+          {selected && <Button variant="ghost" onClick={refresh} disabled={busy}>Refresh health</Button>}
+          {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
+        </SaveFooter>
+      </div>
     </div>
   </div>
 }
-
 
 type IndexerDraft = {
   name: string
@@ -1706,12 +1993,13 @@ function draftFromIndexer(indexer: Indexer): IndexerDraft {
 
 function IndexerSettings() {
   const [indexers, setIndexers] = useState<Indexer[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useUrlState('indexer')
   const [draft, setDraft] = useState<IndexerDraft>(emptyIndexer)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [dirty, setDirty] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -1719,11 +2007,10 @@ function IndexerSettings() {
       const items = await api.indexers()
       setIndexers(items)
       setError('')
-      setSelectedId((current) => {
-        const selected = items.find((item) => item.id === current) ?? items[0]
-        setDraft(selected ? draftFromIndexer(selected) : emptyIndexer)
-        return selected?.id ?? null
-      })
+      const selected = items.find((item) => item.id === selectedId) ?? items[0]
+      setDraft(selected ? draftFromIndexer(selected) : emptyIndexer)
+      setDirty(false)
+      setSelectedId(selected?.id ?? '')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load indexers.')
     } finally { setLoading(false) }
@@ -1736,10 +2023,11 @@ function IndexerSettings() {
     const item = indexers.find((candidate) => candidate.id === id)
     setSelectedId(id)
     setDraft(item ? draftFromIndexer(item) : emptyIndexer)
+    setDirty(false)
     setMessage('')
     setError('')
   }
-  const updateDraft = <K extends keyof IndexerDraft>(key: K, value: IndexerDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
+  const updateDraft = <K extends keyof IndexerDraft>(key: K, value: IndexerDraft[K]) => { setDirty(true); setDraft((current) => ({ ...current, [key]: value })) }
 
   const save = async () => {
     if (!draft.name.trim() || !draft.torznabUrl.trim()) { setError('Name and Torznab URL are required.'); return }
@@ -1789,23 +2077,66 @@ function IndexerSettings() {
       const remaining = indexers.filter((item) => item.id !== selectedId)
       setIndexers(remaining)
       const next = remaining[0]
-      setSelectedId(next?.id ?? null)
+      setSelectedId(next?.id ?? '')
       setDraft(next ? draftFromIndexer(next) : emptyIndexer)
       setMessage('Indexer configuration removed.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove indexer.') }
     finally { setBusy(false) }
   }
 
-  const healthTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
+  const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
+  const indexerDetail = selected ? `${selected.health}${selected.latencyMs !== undefined ? ` · ${selected.latencyMs} ms` : ''}` : undefined
   return <div className="qbit-settings indexer-settings">
-    <div className="integration-hero"><div className="integration-icon"><Icon name="search" size={21} /></div><div><h3>Prowlarr-backed indexers</h3><p>Add individual Torznab endpoints manually. Medialogue does not import all Prowlarr configuration automatically.</p></div><Badge tone={selected ? healthTone : 'neutral'}>{loading ? 'Loading' : selected ? selected.health : `${indexers.length} configured`}</Badge></div>
-    <div className="qbit-layout">
-      <div className="qbit-client-list"><div className="qbit-list-head"><span className="eyebrow">INDEXERS</span><Button variant="ghost" icon="plus" onClick={() => { setSelectedId(null); setDraft(emptyIndexer); setMessage(''); setError('') }}>Add indexer</Button></div>{indexers.map((item) => <button className={`qbit-client-item ${selectedId === item.id ? 'selected' : ''}`} key={item.id} onClick={() => selectIndexer(item.id)}><span className={`health-dot ${item.health === 'healthy' ? 'green' : item.health === 'unavailable' || item.health === 'offline' ? 'red' : 'amber'}`} /><span><strong>{item.name}</strong><small>{item.scope === 'both' ? 'Movies + Shows' : item.scope === 'movies' ? 'Movies' : 'Shows'} · {item.torznabUrl}</small></span><Badge tone={item.enabled ? 'green' : 'neutral'}>{item.enabled ? 'On' : 'Off'}</Badge></button>)}{!indexers.length && !loading && <EmptyState icon="search" title="No indexers configured" detail="Add a Prowlarr/Torznab endpoint to enable Interactive Search." />}</div>
-      <div className="qbit-editor"><div className="qbit-editor-head"><div><div className="eyebrow">{selected ? 'INDEXER CONFIGURATION' : 'NEW INDEXER'}</div><h3>{selected ? selected.name : 'Add indexer'}</h3></div>{selected && <Badge tone={healthTone}>{selected.health}</Badge>}</div><div className="settings-form"><label><span className="field-label">Display name</span><Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="PTP" /></label><label><span className="field-label">Torznab URL</span><Input value={draft.torznabUrl} onChange={(event) => updateDraft('torznabUrl', event.target.value)} placeholder="http://prowlarr:9696/1/api" /></label><label><span className="field-label">API key</span><Input type="password" value={draft.apiKey} onChange={(event) => updateDraft('apiKey', event.target.value)} autoComplete="new-password" placeholder={selected?.apiKeyConfigured ? 'Stored server-side · leave blank to preserve' : 'Prowlarr API key'} /></label><label><span className="field-label">Scope</span><Select value={draft.scope} onChange={(event) => updateDraft('scope', event.target.value as IndexerScope)}><option value="movies">Movies</option><option value="shows">Shows</option><option value="both">Movies + Shows</option></Select></label><label><span className="field-label">Timeout</span><Select value={String(draft.timeoutSeconds)} onChange={(event) => updateDraft('timeoutSeconds', Number(event.target.value))}><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></Select></label><label className="setting-control"><span className="field-label">Enabled</span><button type="button" aria-pressed={draft.enabled} className={`toggle ${draft.enabled ? 'is-on' : ''}`} onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button></label></div>{selected?.lastError && <div className="settings-note"><Icon name="alert" size={16} /><span>{selected.lastError}</span></div>}{error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}{message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={() => void test()} disabled={busy}>{busy ? 'Working…' : 'Test connection'}</Button>{selected && <Button variant="danger" onClick={() => void remove()} disabled={busy}>Remove</Button>}<Button variant="primary" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save indexer'}</Button></div><div className="settings-note"><Icon name="shield" size={16} /><span>API keys are write-only in the UI. Leaving the field blank on an existing indexer preserves the stored key.</span></div></div>
+    <div className="split split-flush">
+      <div className="qbit-client-list">
+        <div className="qbit-list-head"><span className="eyebrow">INDEXERS</span><Button variant="ghost" icon="plus" onClick={() => { setSelectedId(''); setDraft(emptyIndexer); setDirty(false); setMessage(''); setError('') }}>Add indexer</Button></div>
+        {indexers.map((indexer) => <button className={`qbit-client-item ${selectedId === indexer.id ? 'selected' : ''}`} key={indexer.id} onClick={() => selectIndexer(indexer.id)}><span className={`health-dot ${indexer.health === 'healthy' ? 'green' : indexer.health === 'unavailable' ? 'red' : 'amber'}`} /><span><strong>{indexer.name}</strong><small>{indexer.torznabUrl}</small></span><Badge tone={indexer.enabled ? 'green' : 'neutral'}>{indexer.enabled ? 'On' : 'Off'}</Badge></button>)}
+        {!indexers.length && !loading && <EmptyState icon="search" title="No indexers configured" detail="Add a Torznab endpoint to run interactive searches." />}
+      </div>
+
+      <div className="qbit-editor" style={{ padding: 0 }}>
+        <SectionHead icon="search" title={selected ? selected.name : 'Add indexer'}
+          description="A single Torznab endpoint. Medialogue does not import Prowlarr configuration automatically — each endpoint is added here by hand."
+          status={loading ? 'Loading' : selected ? selected.health : 'New indexer'} statusTone={selected ? healthTone : 'neutral'}
+          detail={indexerDetail} detailTone={selected?.health === 'healthy' ? 'ok' : selected?.lastError ? 'err' : undefined}
+          action={<Button variant="secondary" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test connection'}</Button>} />
+
+        <div className="settings-form">
+          <Field label="Display name" help="Shown in Medialogue and on every search result from this indexer.">
+            <Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="TorrentLeech" />
+          </Field>
+          <Field label="Scope" help="Which searches query this indexer. A movie search never contacts a Shows-only indexer.">
+            <Select value={draft.scope} onChange={(event) => updateDraft('scope', event.target.value as IndexerScope)}><option value="both">Movies + Shows</option><option value="movies">Movies</option><option value="shows">Shows</option></Select>
+          </Field>
+          <Field label="Torznab URL" wide help={<>Full Torznab endpoint, <strong>including the trailing <code>/api</code></strong>. In Prowlarr this is the per-indexer URL, not the base address. Example: <code>https://prowlarr.host/1/api</code></>}>
+            <Input value={draft.torznabUrl} onChange={(event) => updateDraft('torznabUrl', event.target.value)} placeholder="https://prowlarr.host/1/api" />
+          </Field>
+          <Field label="API key" badge={selected?.apiKeyConfigured ? 'stored' : undefined}
+            help={selected?.apiKeyConfigured ? 'The indexer API key from Prowlarr. Held server-side and never sent back to the browser. Leave blank to keep the current one.' : 'The indexer API key from Prowlarr. Held server-side and never sent back to the browser.'}>
+            <Secret value={draft.apiKey} onChange={(event) => updateDraft('apiKey', event.target.value)} placeholder={selected?.apiKeyConfigured ? 'Stored server-side · leave blank to preserve' : 'Required'} />
+          </Field>
+          <Field label="Timeout" help="How long to wait for a search response before this indexer is skipped. The remaining indexers still return their results.">
+            <Select value={String(draft.timeoutSeconds)} onChange={(event) => updateDraft('timeoutSeconds', Number(event.target.value))}><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></Select>
+          </Field>
+          <Field label="Enabled" wide help="When off, this indexer is excluded from every search. Its configuration is kept.">
+            <div className="setting-control">
+              <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button>
+              <span className="toggle-label">{draft.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          </Field>
+        </div>
+
+        {selected?.lastError && <Note message={{ tone: 'error', text: `Last connection error: ${selected.lastError}` }} />}
+        {error && <Note message={{ tone: 'error', text: error }} />}
+        {message && <Note message={{ tone: 'ok', text: message }} />}
+
+        <SaveFooter dirty={dirty} saving={busy} onSave={save} onRevert={() => void load()}>
+          {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
+        </SaveFooter>
+      </div>
     </div>
   </div>
 }
-
 
 function BackupRecoverySettings() {
   const [capabilities, setCapabilities] = useState<RecoveryCapabilities | null>(null)
@@ -1852,16 +2183,52 @@ function BackupRecoverySettings() {
   const stateTone = job?.state === 'completed' ? 'green' : job?.state === 'failed' ? 'red' : job ? 'amber' : 'neutral'
 
   return <div className="recovery-settings">
-    <div className="integration-hero"><div className="integration-icon"><Icon name="shield" size={21} /></div><div><h3>Recovery Bundle</h3><p>Export the database, torrent recovery evidence, application configuration, and a human-readable library inventory as one ZIP.</p></div><Badge tone={capabilities?.supported ? 'green' : capabilities ? 'red' : 'neutral'}>{capabilities?.supported ? 'Ready' : capabilities ? 'Unavailable' : 'Checking'}</Badge></div>
-    <div className="settings-section safeguard"><div className="setting-icon"><Icon name="alert" size={18} /></div><div><h3>Sensitive backup</h3><p>The bundle contains a physical PostgreSQL base backup and integration credentials. Anyone with the ZIP should be treated as having access to your Medialogue configuration and database.</p><Badge tone="amber">Store securely</Badge></div></div>
-    {capabilities && <div className="settings-section"><div><h3>Backup compatibility</h3><p>Medialogue uses PostgreSQL-supported physical backup tooling. It never recursively copies a live PGDATA directory.</p></div><div className="settings-form"><label><span className="field-label">PostgreSQL server</span><Input readOnly value={capabilities.postgresServerVersion ?? capabilities.databaseBackend} /></label><label><span className="field-label">pg_basebackup</span><Input readOnly value={capabilities.pgBasebackupVersion ?? 'Unavailable'} /></label><label><span className="field-label">Migration revision</span><Input readOnly value={capabilities.migrationRevision ?? 'Unknown'} /></label><label><span className="field-label">Temporary download retention</span><Input readOnly value={`${capabilities.retentionHours} hours`} /></label></div></div>}
-    {capabilities?.reasons.length ? <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{capabilities.reasons.join(' ')}</span></div> : null}
-    <div className="settings-section"><div><h3>Bundle contents</h3><p>The export is intended for disaster recovery and manual verification, not automatic mass redownload.</p></div><div className="recovery-content-list"><span>database/physical-base-backup/</span><span>torrent-archive/</span><span>manifests/</span><span>config/application-config-export.json</span><span>inventory/library-inventory.json</span><span>inventory/torrent-archive-inventory.json</span><span>backup-metadata.json</span></div></div>
-    {job && <div className="settings-section"><div><h3>Latest export</h3><p>{job.error || job.detail || 'Recovery export job is persisted in the Jobs history.'}</p></div><div className="recovery-job"><div className="button-row"><Badge tone={stateTone}>{job.state}</Badge>{job.stage && <Badge tone="neutral">{job.stage.replaceAll('_', ' ')}</Badge>}</div>{job.progress !== undefined && <div className="job-progress-line"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div>}{bundleSize && <span className="muted">Bundle size: {bundleSize}</span>}{expiresAt && <span className="muted">Temporary download available until {expiresAt}</span>}{sha && <code className="recovery-hash">SHA-256: {sha}</code>}{job.state === 'completed' && <Button variant="primary" icon="download" onClick={() => { window.location.href = api.recoveryDownloadUrl(job.id) }}>Download Recovery Bundle</Button>}</div></div>}
-    {message && <div className="settings-note"><Icon name="shield" size={16} /><span>{message}</span></div>}
+    <SectionHead icon="shield" title="Recovery Bundle"
+      description="Exports the database, torrent recovery evidence, application configuration, and a human-readable library inventory as a single ZIP."
+      status={capabilities?.supported ? 'Ready' : capabilities ? 'Unavailable' : 'Checking'}
+      statusTone={capabilities?.supported ? 'green' : capabilities ? 'red' : 'neutral'} />
+
+    <div className="settings-section">
+      <div><h3>What the bundle contains</h3><p>Enough to rebuild this installation on a new host. Your media is <strong>not</strong> included — the bundle describes your library, it does not copy it. Intended for disaster recovery and manual verification, not automatic mass redownload.</p></div>
+      <div className="recovery-content-list"><span>database/physical-base-backup/</span><span>torrent-archive/</span><span>manifests/</span><span>config/application-config-export.json</span><span>inventory/library-inventory.json</span><span>inventory/torrent-archive-inventory.json</span><span>backup-metadata.json</span></div>
+    </div>
+
+    <Note message={{ tone: 'error', text: 'The bundle contains a physical PostgreSQL base backup and integration credentials. Treat anyone holding the ZIP as having full access to your Medialogue configuration and database.' }} />
+
+    {capabilities && <div className="settings-section">
+      <div><h3>Backup compatibility</h3><p>Medialogue uses PostgreSQL-supported physical backup tooling. It never recursively copies a live PGDATA directory.</p></div>
+      <div className="settings-form">
+        <Field label="PostgreSQL server" help="Detected server version the bundle will be restorable against."><Input readOnly value={capabilities.postgresServerVersion ?? capabilities.databaseBackend} /></Field>
+        <Field label="pg_basebackup" help="Version of the tool used to take the physical backup. Must be present for export to run."><Input readOnly value={capabilities.pgBasebackupVersion ?? 'Unavailable'} /></Field>
+        <Field label="Migration revision" help="Schema revision captured in the bundle. Restore onto this revision or later."><Input readOnly value={capabilities.migrationRevision ?? 'Unknown'} /></Field>
+        <Field label="Temporary download retention" help="How long a finished bundle stays downloadable before it is deleted from the server."><Input readOnly value={`${capabilities.retentionHours} hours`} /></Field>
+      </div>
+    </div>}
+    {capabilities?.reasons.length ? <Note message={{ tone: 'error', text: capabilities.reasons.join(' ') }} /> : null}
+
+    {job && <div className="settings-section">
+      <div><h3>Latest export</h3><p>{job.error || job.detail || 'Recovery export runs as a background job and is recorded in Event History.'}</p></div>
+      <div className="recovery-job">
+        <div className="button-row"><Badge tone={stateTone}>{job.state}</Badge>{job.stage && <Badge tone="neutral">{job.stage.replaceAll('_', ' ')}</Badge>}</div>
+        {job.progress !== undefined && <div className="job-progress-line"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div>}
+        {bundleSize && <span className="muted">Bundle size: {bundleSize}</span>}
+        {expiresAt && <span className="muted">Temporary download available until {expiresAt}</span>}
+        {sha && <code className="recovery-hash">SHA-256: {sha}</code>}
+        {job.state === 'completed' && <Button variant="primary" icon="download" onClick={() => { window.location.href = api.recoveryDownloadUrl(job.id) }}>Download Recovery Bundle</Button>}
+      </div>
+    </div>}
+    {message && <Note message={{ tone: message.includes('Could not') || message.includes('failed') ? 'error' : message.endsWith('…') ? 'busy' : 'ok', text: message }} />}
     <div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={() => void loadCapabilities()}>Recheck</Button><Button variant="primary" icon="download" disabled={busy || !capabilities?.supported || job?.state === 'running' || job?.state === 'queued'} onClick={() => void start()}>{busy ? 'Starting…' : 'Export Recovery Bundle'}</Button></div>
   </div>
 }
 
 
-function Page({ title, subtitle, action, back, backTo = '/movies', children }: { title: string; subtitle: string; action?: React.ReactNode; back?: string; backTo?: string; children: React.ReactNode }) { const navigate = useNavigate(); return <div className="page"><div className="page-heading">{back && <button className="back-link" onClick={() => navigate(backTo)}><Icon name="arrow" size={15} />{back}</button>}<div className="heading-copy"><div className="eyebrow">MEDIALOGUE / {title.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>{action && <div className="heading-actions">{action}</div>}</div>{children}</div> }
+// Back returns to wherever you actually came from — a Problem, a search result,
+// a download row — and only falls back to the hardcoded list route when this
+// page was opened cold (deep link, refresh, new tab) and there is no history to
+// return to. The label follows suit so it never promises the wrong destination.
+function Page({ title, subtitle, action, back, backTo = '/movies', children }: { title: string; subtitle: string; action?: React.ReactNode; back?: string; backTo?: string; children: React.ReactNode }) {
+  const navigate = useNavigate()
+  const cameFromApp = typeof window !== 'undefined' && window.history.state?.idx > 0
+  const goBack = () => { if (cameFromApp) navigate(-1); else navigate(backTo) }
+  return <div className="page"><div className="page-heading">{back && <button className="back-link" onClick={goBack}><Icon name="arrow" size={15} />{cameFromApp ? 'Back' : back}</button>}<div className="heading-copy"><div className="eyebrow">MEDIALOGUE / {title.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>{action && <div className="heading-actions">{action}</div>}</div>{children}</div> }

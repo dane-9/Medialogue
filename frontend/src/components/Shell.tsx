@@ -3,7 +3,6 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { HealthIndicator, Job } from '../types'
 import { Icon } from './Icon'
-import { Badge, Button, Progress } from './ui'
 
 const primary = [
   { to: '/movies', label: 'Movies', icon: 'film' as const },
@@ -30,7 +29,6 @@ const fallbackHealth: HealthIndicator[] = [
 ]
 
 export function AppShell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
-  const [jobsOpen, setJobsOpen] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [problemCount, setProblemCount] = useState(0)
@@ -76,6 +74,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     }
   }, [])
 
+  const activeJobs = jobs.filter((job) => job.state === 'running' || job.state === 'queued').length
   const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Workspace'
 
   return <div className="app-shell">
@@ -85,9 +84,9 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <div><div className="brand-name">MEDIA<span>LOGUE</span></div></div>
       </div>
       <div className="sidebar-scroll">
-        <NavSection label="Library" items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item)} />
-        <NavSection label="Tools" items={tools} />
-        <NavSection label="System" items={system} />
+        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item)} />
+        <NavSection items={tools} />
+        <NavSection items={system} />
       </div>
       <div className="sidebar-footer">
         <button className="user-row" onClick={onLogout}><span className="avatar">A</span><span className="user-copy"><strong>admin</strong><span>Administrator</span></span><Icon name="logout" size={15} /></button>
@@ -98,41 +97,21 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <div className="crumb"><span className="crumb-muted">Workspace</span><Icon name="chevron" size={13} /><strong>{currentTitle}</strong></div>
         <div className="topbar-actions">
           <div className="health-strip">{health.map((item) => <HealthPill key={item.name} item={item} />)}</div>
-          <button className="jobs-button" onClick={() => setJobsOpen(true)} aria-label="Open jobs drawer"><Icon name="activity" size={17} /><span>Jobs</span>{jobs.filter((job) => job.state === 'running' || job.state === 'queued').length > 0 && <b>{jobs.filter((job) => job.state === 'running' || job.state === 'queued').length}</b>}</button>
+          <button className="jobs-button" onClick={() => navigate('/events')} aria-label="Open event history"><Icon name="activity" size={17} /><span>Jobs</span>{activeJobs > 0 && <b>{activeJobs}</b>}</button>
         </div>
       </header>
       <div className="page-content">{children}</div>
     </main>
-    {jobsOpen && <JobsDrawer jobs={jobs} onClose={() => setJobsOpen(false)} onChanged={(next) => setJobs(next)} onOpenEvents={() => { setJobsOpen(false); navigate('/events') }} />}
   </div>
 }
 
-function NavSection({ label, items }: { label: string; items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number }> }) {
-  return <div className="nav-section"><div className="nav-label">{label}</div>{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count && <span className="nav-count">{item.count}</span>}</NavLink>)}</div>
+// Groups are separated by space alone. With ten destinations the headings were
+// labelling what the icons and the gap already make obvious.
+function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number }> }) {
+  return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count && <span className="nav-count">{item.count}</span>}</NavLink>)}</div>
 }
 
 function HealthPill({ item }: { item: HealthIndicator }) {
   const tone = item.state === 'healthy' ? 'green' : item.state === 'offline' ? 'red' : item.state === 'degraded' ? 'amber' : 'neutral'
   return <div className="health-pill" title={item.detail}><span className={`health-dot ${tone}`} />{item.name}</div>
-}
-
-function JobsDrawer({ jobs, onClose, onChanged, onOpenEvents }: { jobs: Job[]; onClose: () => void; onChanged: (jobs: Job[]) => void; onOpenEvents: () => void }) {
-  const [cancelError, setCancelError] = useState('')
-  const cancel = async (job: Job) => {
-    setCancelError('')
-    try {
-      const cancelled = await api.cancelJob(job.id)
-      onChanged(jobs.map((item) => item.id === cancelled.id ? cancelled : item))
-      onChanged(await api.jobs())
-    } catch (reason) {
-      setCancelError(reason instanceof Error ? reason.message : 'Could not cancel the job.')
-    }
-  }
-  return <div className="drawer-backdrop" onClick={onClose}><aside className="jobs-drawer" onClick={(event) => event.stopPropagation()}>
-    <div className="drawer-header"><div><div className="eyebrow">BACKGROUND ACTIVITY</div><h2>Jobs</h2></div><button className="icon-button" onClick={onClose}><Icon name="close" size={18} /></button></div>
-    <div className="drawer-note"><Icon name="shield" size={16} /><span>Jobs persist across navigation and browser refresh. Interrupted work is preserved after an application restart instead of silently resuming.</span></div>
-    {cancelError && <div className="drawer-note error-note"><Icon name="alert" size={16} /><span>{cancelError}</span></div>}
-    <div className="job-list">{jobs.length ? jobs.map((job) => <div className="job-item" key={job.id}><div className="job-item-top"><span className={`job-state job-${job.state}`}><span />{job.state}</span><span className="muted">{job.updated}</span></div><strong>{job.title}</strong><span className="job-detail">{job.error || job.detail || 'Persisted background operation'}</span>{job.progress !== undefined && <div className="job-progress-line"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div>}{job.cancellable && (job.state === 'running' || job.state === 'queued') && <div className="job-actions"><Button variant="ghost" onClick={() => void cancel(job)}>Cancel</Button></div>}</div>) : <div className="drawer-note"><Icon name="check" size={16} /><span>No background jobs have been recorded yet.</span></div>}</div>
-    <div className="drawer-footer"><Button variant="ghost" icon="external" onClick={onOpenEvents}>Open event history</Button></div>
-  </aside></div>
 }
