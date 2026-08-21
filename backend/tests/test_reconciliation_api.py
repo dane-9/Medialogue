@@ -370,7 +370,7 @@ async def _attached_for_hash(db, info_hash: str):
     )
 
 
-def test_plex_conflict_blocks_completed_replacement(client: TestClient) -> None:
+def test_legacy_plex_metadata_conflict_no_longer_blocks_completed_replacement(client: TestClient) -> None:
     headers, root, old_dir, root_payload, movie = _movie_setup(client)
     new_name = "Inception 2010 Directors Cut 2160p UHD BluRay REMUX HEVC TrueHD-K"
     new_dir = root / new_name
@@ -391,12 +391,11 @@ def test_plex_conflict_blocks_completed_replacement(client: TestClient) -> None:
             completed = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
             assert completed.status_code == 200, completed.text
             detail = client.get(f"/api/v1/movies/{movie['id']}").json()
-            assert detail["state"] == "Conflict"
-            assert "current" not in {release["state"] for release in detail["releases"]}
-            problems = client.get("/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH")
+            assert detail["state"] == "Present"
+            assert "current" in {release["state"] for release in detail["releases"]}
+            problems = client.get("/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH&status=open")
             assert problems.status_code == 200, problems.text
-            assert problems.json()["total"] == 1
-            assert problems.json()["items"][0]["status"] == "open"
+            assert problems.json()["total"] == 0
         finally:
             client.app.dependency_overrides.clear()
     finally:
@@ -547,5 +546,55 @@ def test_completed_in_scope_manual_qbit_torrent_can_create_tmdb_backed_movie(cli
         assert movies["items"][0]["state"] == "Present"
     finally:
         client.app.dependency_overrides.clear()
+        if root.exists():
+            shutil.rmtree(root)
+
+
+def test_new_storage_root_requires_explicit_initialization_scan_before_reconciliation(client: TestClient) -> None:
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    root = Path.cwd() / f"uninitialized-root-{os.urandom(8).hex()}"
+    release_name = "Inception 2010 1080p BluRay REMUX AVC DTS-HD MA 5.1-TEST"
+    release_dir = root / release_name
+    release_dir.mkdir(parents=True)
+    (release_dir / f"{release_name}.mkv").write_bytes(b"movie")
+    try:
+        configured = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": f"Uninitialized-{os.urandom(8).hex()}", "path": str(root), "media_type": "movies"},
+        )
+        assert configured.status_code == 201, configured.text
+        root_payload = configured.json()
+        assert root_payload["last_scan_at"] is None
+
+        refresh = client.post(
+            "/api/v1/reconciliation/run",
+            headers=headers,
+            json={"root_id": root_payload["id"]},
+        )
+        assert refresh.status_code == 202, refresh.text
+        assert refresh.json()["job_ids"] == []
+        assert refresh.json()["active_job_ids"] == []
+        assert refresh.json()["uninitialized_root_ids"] == [root_payload["id"]]
+        assert client.get("/api/v1/movies").json()["total"] == 0
+
+        first_scan = _scan(client, headers, root_payload["id"])
+        assert first_scan["status"] == "completed", first_scan
+        refreshed_root = client.get(f"/api/v1/storage-roots/{root_payload['id']}")
+        assert refreshed_root.status_code == 200, refreshed_root.text
+        assert refreshed_root.json()["last_scan_at"] is not None
+        assert client.get("/api/v1/movies").json()["total"] == 1
+
+        refresh_after_init = client.post(
+            "/api/v1/reconciliation/run",
+            headers=headers,
+            json={"root_id": root_payload["id"]},
+        )
+        assert refresh_after_init.status_code == 202, refresh_after_init.text
+        assert refresh_after_init.json()["uninitialized_root_ids"] == []
+        assert len(refresh_after_init.json()["job_ids"]) == 1
+        assert _wait_job(client, refresh_after_init.json()["job_ids"][0])["status"] == "completed"
+    finally:
         if root.exists():
             shutil.rmtree(root)

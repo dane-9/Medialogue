@@ -26,7 +26,7 @@ Medialogue runs Alembic database migrations automatically when the application c
    curl -fsS http://HOST:8000/readyz
    ```
 
-7. Sign in and verify Integration Health and Storage Root status before enabling Active Operations.
+7. Sign in, verify Integration Health, and initialize any newly added Storage Root with one explicit scan.
 
 ## Migration behavior
 

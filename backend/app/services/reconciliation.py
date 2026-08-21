@@ -102,38 +102,6 @@ async def _find_movie_by_identity(db: AsyncSession, title: str, year: int) -> Mo
     return matches[0] if len(matches) == 1 else None
 
 
-def _plex_conflict_details(
-    *,
-    local_title: str | None,
-    local_year: int | None,
-    local_path: str | None,
-    plex_match: PlexMediaMatch | None,
-    **extra: Any,
-) -> dict[str, Any]:
-    plex_title = plex_match.title if plex_match else None
-    plex_year = plex_match.year if plex_match else None
-    plex_path = plex_match.file_path if plex_match else None
-    differences: list[str] = []
-    if local_title and plex_title and not identity_titles_equivalent(local_title, plex_title):
-        differences.append("title")
-    if local_year is not None and plex_year is not None and local_year != plex_year:
-        differences.append("year")
-    if local_path and plex_path and local_path != plex_path:
-        differences.append("path")
-    return {
-        "local_title": local_title,
-        "local_year": local_year,
-        "local_identity": _identity_label(local_title, local_year),
-        "local_path": local_path,
-        "plex_title": plex_title,
-        "plex_year": plex_year,
-        "plex_identity": _identity_label(plex_title, plex_year),
-        "plex_path": plex_path,
-        "differences": differences,
-        **extra,
-    }
-
-
 def _confidence(
     folder: ReleaseParseResult,
     files: list[ReleaseParseResult],
@@ -554,6 +522,12 @@ async def _plex_evidence_for_candidate(
         .order_by(PlexObservation.last_seen_at.desc())
     )
     if observation is not None:
+        if observation.match_state == PlexMatchState.CONFLICT and observation.media_type == MediaType.MOVIES:
+            # Legacy builds treated Plex title/year metadata as authoritative.
+            # Movie identity belongs to TMDB/manual matching, so heal that old
+            # observation in-place instead of blocking reconciliation.
+            observation.match_state = PlexMatchState.MATCHED
+            observation.match_method = observation.match_method or PlexMatchMethod.EXACT_PATH
         state = {
             PlexMatchState.MATCHED: PlexState.MATCHED,
             PlexMatchState.PENDING: PlexState.PENDING,
@@ -589,10 +563,11 @@ async def _plex_evidence_for_candidate(
             match = await client.find_exact_path(checked_path)
             if match is None:
                 continue
-            title_agrees = not match.title or identity_titles_equivalent(match.title, title)
-            year_agrees = year is None or match.year is None or match.year == year
+            # Exact physical path is sufficient Plex evidence. Plex's own
+            # title/year metadata is intentionally not compared with the TMDB
+            # identity owned by Medialogue.
             return PlexCandidateEvidence(
-                PlexState.MATCHED if title_agrees and year_agrees else PlexState.CONFLICT,
+                PlexState.MATCHED,
                 match=match,
                 checked_path=checked_path,
             )
@@ -691,18 +666,24 @@ async def reconcile_movie_directory(
         existing_directory.missing_check_count = 0
         _sync_files(existing_directory, observation)
         if existing_directory.movie_release is not None:
-            if existing_directory.movie_release.release_state == ReleaseState.MISSING:
-                existing_directory.movie_release.release_state = ReleaseState.CURRENT
-                if was_missing:
-                    await create_event(
-                        db,
-                        "media.reappeared",
-                        entity_type="movie_release",
-                        entity_id=existing_directory.movie_release.id,
-                        message="A missing release reappeared at its known path.",
-                        details={"path": observation.path},
-                    )
-            return "matched"
+            if existing_directory.movie_release.release_state == ReleaseState.CONFLICT:
+                # CONFLICT was historically only produced by Plex metadata
+                # disagreement. Re-run normal reconciliation so old blocked
+                # releases heal under the TMDB-authoritative model.
+                incoming_release = incoming_release or existing_directory.movie_release
+            else:
+                if existing_directory.movie_release.release_state == ReleaseState.MISSING:
+                    existing_directory.movie_release.release_state = ReleaseState.CURRENT
+                    if was_missing:
+                        await create_event(
+                            db,
+                            "media.reappeared",
+                            entity_type="movie_release",
+                            entity_id=existing_directory.movie_release.id,
+                            message="A missing release reappeared at its known path.",
+                            details={"path": observation.path},
+                        )
+                return "matched"
 
     folder_parse = parse_release_name(observation.name)
     file_parses = [parse_release_name(Path(name).stem) for name in observation.media_files]
@@ -791,7 +772,7 @@ async def reconcile_movie_directory(
     # A brand-new logical Movie may be discovered by either an explicit root
     # scan or an in-scope completed qBittorrent torrent, but the filename alone
     # is never sufficient authority. TMDB must establish the external identity
-    # and an explicit Plex disagreement blocks automatic creation.
+    # and Plex is used only as read-only presence/path evidence.
     if movie is None:
         tmdb_resolution = await resolve_movie_identity_detailed(db, title, year)
         tmdb_match, tmdb_reason = tmdb_resolution.match, tmdb_resolution.reason
@@ -836,28 +817,6 @@ async def reconcile_movie_directory(
         # Exact TMDB identity evidence upgrades a folder-only 0.80 parse to the
         # automatic-attachment threshold without weakening the no-guess rule.
         confidence = max(confidence, 0.95)
-        if plex_evidence.state is PlexState.CONFLICT:
-            conflict_details = _plex_conflict_details(
-                local_title=tmdb_match.title,
-                local_year=tmdb_match.year or year,
-                local_path=plex_evidence.checked_path or observation.path,
-                plex_match=plex_evidence.match,
-                parsed_title=title,
-                parsed_year=year,
-            )
-            await open_problem(
-                db,
-                reason="PLEX_IDENTITY_MISMATCH",
-                entity_type="media_directory",
-                entity_id=directory.id,
-                message=(
-                    f"Medialogue identifies this as {_identity_label(tmdb_match.title, tmdb_match.year or year)}, "
-                    f"but Plex reports {_identity_label(plex_evidence.match.title, plex_evidence.match.year) if plex_evidence.match else 'a different identity'}."
-                ),
-                details=conflict_details,
-                severity=Severity.ERROR,
-            )
-            return "review"
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         movie = Movie(
             title=tmdb_match.title,
@@ -877,8 +836,7 @@ async def reconcile_movie_directory(
         # identity Problems from an older pass are no longer applicable.
         await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
         await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
-        if plex_evidence.state is not PlexState.CONFLICT:
-            await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
+        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
 
     # Keep all releases loaded before evaluating active slots. The in-process
     # lock prevents overlapping qBit/scan workers; FOR UPDATE protects DB
@@ -900,7 +858,7 @@ async def reconcile_movie_directory(
             inside_allowed_root=True,
             identity_matches=True,
             download_complete=True,
-            plex_state=PlexState.PENDING if manual_identity and plex_evidence.state is PlexState.CONFLICT else plex_evidence.state,
+            plex_state=PlexState.MATCHED if plex_evidence.state is PlexState.CONFLICT else plex_evidence.state,
             confidence=confidence,
             edition=folder_parse.edition,
             directory_exists=True,
@@ -988,29 +946,8 @@ async def reconcile_movie_directory(
             }
         directory.movie_release_id = release.id
         await _persist_plex_candidate_evidence(db, movie, release, plex_evidence)
-        if manual_identity and plex_evidence.state is PlexState.CONFLICT:
-            conflict_details = _plex_conflict_details(
-                local_title=movie.title,
-                local_year=movie.year,
-                local_path=plex_evidence.checked_path or observation.path,
-                plex_match=plex_evidence.match,
-                release_id=str(release.id),
-                manual_override=True,
-            )
-            await open_problem(
-                db,
-                reason="PLEX_IDENTITY_MISMATCH",
-                entity_type="movie",
-                entity_id=movie.id,
-                message=(
-                    f"Medialogue is manually matched to {_identity_label(movie.title, movie.year)}, "
-                    f"but Plex reports {_identity_label(plex_evidence.match.title, plex_evidence.match.year) if plex_evidence.match else 'a different identity'}."
-                ),
-                details=conflict_details,
-                severity=Severity.WARNING,
-            )
-        elif plex_evidence.state is not PlexState.CONFLICT:
-            await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "movie", movie.id)
+        # Plex metadata cannot dispute a TMDB/manual movie identity.
+        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "movie", movie.id)
         if torrent is not None:
             assoc = await db.scalar(
                 select(MovieReleaseTorrent).where(
@@ -1053,27 +990,7 @@ async def reconcile_movie_directory(
         release.current_custom_format_score = current_score
         release.parse_snapshot = {**dict(release.parse_snapshot or {}), "current_score_snapshot": current_score_snapshot}
 
-        if state == ReleaseState.CONFLICT:
-            conflict_details = _plex_conflict_details(
-                local_title=movie.title,
-                local_year=movie.year,
-                local_path=plex_evidence.checked_path or observation.path,
-                plex_match=plex_evidence.match,
-                release_id=str(release.id),
-            )
-            await open_problem(
-                db,
-                reason="PLEX_IDENTITY_MISMATCH",
-                entity_type="movie",
-                entity_id=movie.id,
-                message=(
-                    f"Medialogue identifies the completed media as {_identity_label(movie.title, movie.year)}, "
-                    f"but Plex reports {_identity_label(plex_evidence.match.title, plex_evidence.match.year) if plex_evidence.match else 'a different identity'}."
-                ),
-                details=conflict_details,
-                severity=Severity.ERROR,
-            )
-        elif state != ReleaseState.DUPLICATE:
+        if state != ReleaseState.DUPLICATE:
             await create_event(
                 db,
                 "release.replaced" if decision.kind is DecisionKind.REPLACEMENT else "media.attached",
@@ -1324,7 +1241,11 @@ async def finalize_completed_torrent(
     path = Path(resolved_path)
     # Prefix-safe root lookup is done in Python so `/movies-evil` never
     # matches `/movies`.  This query also works for mapped nested paths.
-    roots = (await db.scalars(select(StorageRoot).where(StorageRoot.enabled.is_(True), StorageRoot.media_type == MediaType.MOVIES))).all()
+    roots = (await db.scalars(select(StorageRoot).where(
+        StorageRoot.enabled.is_(True),
+        StorageRoot.last_scan_at.is_not(None),
+        StorageRoot.media_type == MediaType.MOVIES,
+    ))).all()
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
     if root is None:
         # qBittorrent may manage many libraries that are intentionally outside
@@ -1396,8 +1317,8 @@ async def finalize_completed_torrent(
         )
         return "problem"
     await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
-    # Explicit Plex conflict is checked by reconcile_movie_directory and
-    # blocks attach; pending/unavailable are valid high-confidence evidence.
+    # Plex metadata never blocks a TMDB-backed movie attachment. Presence/path
+    # evidence is retained, while pending/unavailable remain non-authoritative.
     result = await reconcile_movie_directory(
         db,
         root,
@@ -1432,7 +1353,11 @@ async def _finalize_completed_show_torrent(
     path = Path(resolved_path)
     roots = (
         await db.scalars(
-            select(StorageRoot).where(StorageRoot.enabled.is_(True), StorageRoot.media_type == MediaType.SHOWS)
+            select(StorageRoot).where(
+                StorageRoot.enabled.is_(True),
+                StorageRoot.last_scan_at.is_not(None),
+                StorageRoot.media_type == MediaType.SHOWS,
+            )
         )
     ).all()
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)

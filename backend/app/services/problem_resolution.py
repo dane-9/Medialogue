@@ -559,8 +559,10 @@ async def commit_duplicate_resolution(
     qbit_client_factory: Callable[..., Any],
     active_operations: bool,
 ) -> dict[str, Any]:
-    if not active_operations:
-        raise AppError("OPERATIONS_LOCKED", "Enable Active Operations before committing destructive duplicate resolution.", status_code=409)
+    # Kept in the signature for compatibility with older callers.  Duplicate
+    # deletion safety comes from the signed preview token and explicit commit,
+    # not from a global runtime toggle.
+    del active_operations
     payload = verify_confirmation_payload(confirmation_token, get_settings().secret_key)
     if payload is None or payload.get("purpose") != "resolve_movie_duplicate":
         raise AppError("INVALID_CONFIRMATION", "Duplicate confirmation token is invalid.", status_code=409)

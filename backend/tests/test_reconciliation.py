@@ -205,9 +205,10 @@ def test_download_must_complete_before_attachment():
     assert result.kind is DecisionKind.INCOMING
 
 
-def test_explicit_plex_disagreement_blocks_attachment():
+def test_plex_metadata_conflict_does_not_block_tmdb_backed_attachment():
     result = ReconciliationEngine().reconcile_candidate(candidate(plex_state=PlexState.CONFLICT), [])
-    assert result.kind is DecisionKind.CONFLICT
+    assert result.kind is DecisionKind.ATTACH_NEW
+    assert result.reason_code == "NEW_LIBRARY_ITEM"
 
 
 def test_plex_pending_does_not_block_high_confidence_local_match():

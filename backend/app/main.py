@@ -13,7 +13,13 @@ from app.api import auth, bulk, custom_formats, downloads, duplicates, health, i
 from app.core.config import Settings, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.logging import configure_logging
-from app.db.bootstrap import ensure_default_admin, ensure_problem_integrity, ensure_quality_definitions, mark_running_jobs_interrupted
+from app.db.bootstrap import (
+    ensure_default_admin,
+    ensure_plex_movie_metadata_is_advisory,
+    ensure_problem_integrity,
+    ensure_quality_definitions,
+    mark_running_jobs_interrupted,
+)
 from app.db import session as db_session
 from app.db.session import configure_database
 from app.models.auth import AdminUser
@@ -26,16 +32,13 @@ from app.services.runtime_jobs import cancel_all_runtime_jobs
 async def _qbit_poll_loop(stop_event: asyncio.Event) -> None:
     """Cancellable, non-overlapping qBit observer loop.
 
-    It intentionally does nothing while Active Operations is locked and when
-    no clients exist.  Manual scans and all filesystem mutations remain
-    explicit actions; this loop only refreshes qBit observations.
+    qBittorrent observations run whenever configured.  Destructive filesystem
+    actions remain protected by their explicit preview/confirmation workflows.
     """
-
-    from app.api.operations import active_operations_enabled
 
     running = False
     while not stop_event.is_set():
-        if active_operations_enabled() and not running:
+        if not running:
             running = True
             try:
                 async with db_session.async_session_factory() as db:
@@ -56,19 +59,20 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
-    if settings.bootstrap_admin:
-        try:
-            async with db_session.async_session_factory() as db:
+    try:
+        async with db_session.async_session_factory() as db:
+            if settings.bootstrap_admin:
                 await ensure_default_admin(db, settings)
-                await ensure_quality_definitions(db)
-                await mark_running_jobs_interrupted(db)
-                await ensure_problem_integrity(db)
-                await db.commit()
-        except Exception:
-            # Migrations may be run after the process is started in local
-            # development.  Liveness remains useful while the DB is offline;
-            # readiness reports the actual database state.
-            logger.warning("database bootstrap skipped", exc_info=True)
+            await ensure_quality_definitions(db)
+            await mark_running_jobs_interrupted(db)
+            await ensure_problem_integrity(db)
+            await ensure_plex_movie_metadata_is_advisory(db)
+            await db.commit()
+    except Exception:
+        # Migrations may be run after the process is started in local
+        # development. Liveness remains useful while the DB is offline;
+        # readiness reports the actual database state.
+        logger.warning("database bootstrap skipped", exc_info=True)
     cleanup_expired_recovery_exports(settings)
     stop_event = asyncio.Event()
     poll_task = asyncio.create_task(_qbit_poll_loop(stop_event))

@@ -21,7 +21,6 @@ from app.schemas.storage import (
 )
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
-from app.api.operations import active_operations_enabled
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
 
 router = APIRouter(tags=["storage"])
@@ -154,12 +153,6 @@ async def scan_storage_root(
         raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
     if not root.enabled:
         raise AppError("STORAGE_ROOT_DISABLED", "Storage root is disabled.", status_code=409)
-    if not active_operations_enabled():
-        raise AppError(
-            "ACTIVE_OPERATIONS_LOCKED",
-            "Enable Active Operations before starting a storage scan.",
-            status_code=423,
-        )
     existing = await active_storage_root_scan_job(db, root.id)
     if existing is not None:
         return JobAcceptedResponse(job_id=existing.id)

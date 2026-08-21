@@ -8,7 +8,7 @@ Each qBittorrent client has its own polling interval. Settings → Schedules exp
 
 Polling observes torrent state and feeds reconciliation. It does not move, rename, copy, hardlink, or delete media.
 
-The observer only performs active qBittorrent reconciliation while **Active Operations** is enabled. A fresh application process always starts with Active Operations off.
+The observer performs qBittorrent reconciliation whenever an enabled client is due. Newly added storage roots are excluded until their first explicit successful scan.
 
 ## Full storage-root scans
 
@@ -18,4 +18,4 @@ The Settings → Schedules page deliberately does not present a cron control for
 
 ## Future scheduled jobs
 
-The database contains a generic schedule model so additional opt-in interval/cron jobs can be added without changing the core leave-in-place model. A future scheduled scan feature must remain explicit, configurable, non-overlapping, and subject to Active Operations rather than silently enabling itself after upgrade.
+The database contains a generic schedule model so additional opt-in interval/cron jobs can be added without changing the core leave-in-place model. A future scheduled scan feature must remain explicit, configurable, and non-overlapping. It must also continue to exclude uninitialized roots rather than silently scanning a newly configured path.

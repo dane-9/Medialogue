@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
-from app.api.operations import active_operations_enabled
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.integrations.filesystem import FilesystemObserver
@@ -104,14 +103,19 @@ async def run_reconciliation(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> ReconciliationRunResponse:
-    if not active_operations_enabled():
-        raise AppError("ACTIVE_OPERATIONS_LOCKED", "Enable Active Operations before reconciling.", status_code=423)
     query = select(StorageRoot).where(StorageRoot.enabled.is_(True))
     if payload.root_id is not None:
         query = query.where(StorageRoot.id == payload.root_id)
-    roots = (await db.scalars(query.order_by(StorageRoot.name))).all()
-    if payload.root_id is not None and not roots:
+    candidate_roots = (await db.scalars(query.order_by(StorageRoot.name))).all()
+    if payload.root_id is not None and not candidate_roots:
         raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
+
+    # A newly configured root is inert until its first explicit Scan action
+    # succeeds.  last_scan_at is durable and only set at the end of a
+    # successful manual/root scan, so a failed initialization attempt leaves
+    # the root safely excluded from automatic/global reconciliation.
+    uninitialized_root_ids = [root.id for root in candidate_roots if root.last_scan_at is None]
+    roots = [root for root in candidate_roots if root.last_scan_at is not None]
     job_ids: list[UUID] = []
     skipped_root_ids: list[UUID] = []
     active_job_ids: list[UUID] = []
@@ -137,6 +141,7 @@ async def run_reconciliation(
         job_ids=job_ids,
         skipped_root_ids=skipped_root_ids,
         active_job_ids=active_job_ids,
+        uninitialized_root_ids=uninitialized_root_ids,
     )
 
 
@@ -147,8 +152,6 @@ async def manual_attach(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> ReconciliationActionResponse:
-    if not active_operations_enabled():
-        raise AppError("ACTIVE_OPERATIONS_LOCKED", "Enable Active Operations before attaching media.", status_code=423)
     movie = await db.get(Movie, movie_id)
     root = await db.get(StorageRoot, payload.root_id)
     if movie is None or root is None:

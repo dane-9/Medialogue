@@ -2,15 +2,15 @@
 
 Configure one Plex server under Settings → Plex.
 
-Medialogue uses Plex read-only as secondary evidence. It does not trigger Plex scans and it does not edit Plex metadata.
+Medialogue uses Plex read-only as secondary presence/path evidence. TMDB/manual matching owns Movie identity; Plex titles and years are never treated as authoritative. Medialogue does not trigger Plex scans and it does not edit Plex metadata.
 
 Verification states include:
 
-- Plex Verified — Plex was checked and the local media identity was verified.
+- Plex Verified — Plex was checked and the physical media path was found. Plex's display title/year do not need to match Medialogue.
 - Plex Not in Plex — Plex was checked successfully, but no unique matching media was found.
 - Plex Pending — the media has not been checked yet, or no eligible local media is available to verify.
 - Plex Multiple versions — title/year fallback found more than one Plex version and cannot choose one safely.
-- Plex Conflict — Plex matched the path but reports a different title/episode identity.
+- Plex Conflict — Shows only: Plex matched the same physical file but reports different season/episode numbers. Movie title/year differences never create a conflict.
 - Plex Unavailable — the Plex server could not be queried.
 
 ## Docker path handling

@@ -6,34 +6,39 @@ from app.models.auth import AdminUser
 
 router = APIRouter(tags=["operations"])
 
-# Safe by construction: every process/restart begins locked. A future durable
-# settings service may persist an explicit choice, but must retain OFF as the
-# fresh-install default.
-_active_operations = False
-
 
 class OperationsState(BaseModel):
     enabled: bool
 
 
 def active_operations_enabled() -> bool:
-    return _active_operations
+    """Compatibility shim: operations are always available.
+
+    Older clients and internal call sites still query this helper.  Keeping it
+    always true removes the global kill-switch without forcing a flag-day API
+    change across existing installations.
+    """
+
+    return True
 
 
 def reset_active_operations() -> None:
-    global _active_operations
-    _active_operations = False
+    """Retained for compatibility with application/test startup."""
+
+    return None
 
 
-@router.get("/operations", response_model=OperationsState)
+@router.get("/operations", response_model=OperationsState, include_in_schema=False)
 async def get_operations(_: AdminUser = Depends(require_admin)) -> OperationsState:
-    return OperationsState(enabled=_active_operations)
+    return OperationsState(enabled=True)
 
 
-@router.put("/operations", response_model=OperationsState)
+@router.put("/operations", response_model=OperationsState, include_in_schema=False)
 async def set_operations(
     payload: OperationsState, _: object = Depends(require_csrf)
 ) -> OperationsState:
-    global _active_operations
-    _active_operations = payload.enabled
-    return OperationsState(enabled=_active_operations)
+    # Deprecated compatibility endpoint.  The former global toggle no longer
+    # changes runtime behaviour, so old frontends can call it safely while new
+    # frontends simply omit the control.
+    del payload
+    return OperationsState(enabled=True)

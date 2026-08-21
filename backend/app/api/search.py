@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api import downloads as downloads_api
 from app.api import indexers as indexers_api
 from app.api.dependencies import require_admin, require_csrf
-from app.api.operations import active_operations_enabled
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
@@ -271,12 +270,6 @@ async def download_search_result(
     torznab_factory=Depends(indexers_api.get_torznab_client_factory),
     qbit_factory=Depends(downloads_api.get_qbit_client_factory),
 ) -> SearchResultDownloadResponse:
-    if not active_operations_enabled():
-        raise AppError(
-            "OPERATIONS_DISABLED",
-            "Active Operations is off. Enable it before submitting a download.",
-            status_code=409,
-        )
     result = await db.scalar(
         select(InteractiveSearchResult)
         .where(InteractiveSearchResult.id == result_id)

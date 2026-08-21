@@ -295,7 +295,7 @@ def test_plex_recheck_exact_path_match(client: TestClient, movie_context) -> Non
     assert any(event["type"] == "plex.matched" for event in detail.json()["recent_events"])
 
 
-def test_plex_recheck_exact_path_identity_conflict_opens_problem(client: TestClient, movie_context) -> None:
+def test_plex_recheck_exact_path_ignores_plex_title_and_year_metadata(client: TestClient, movie_context) -> None:
     client, headers, movie = movie_context
     _configure_plex(client, headers)
     behavior = FakePlexBehavior(
@@ -317,27 +317,27 @@ def test_plex_recheck_exact_path_identity_conflict_opens_problem(client: TestCli
         client.app.dependency_overrides.clear()
 
     assert response.status_code == 200, response.text
-    assert response.json()["state"] == "conflict"
-    assert response.json()["conflict_releases"] == 1
+    assert response.json()["state"] == "matched"
+    assert response.json()["matched_releases"] == 1
+    assert response.json()["conflict_releases"] == 0
     detail = client.get(f"/api/v1/movies/{movie['id']}").json()
-    assert detail["plex_state"] == "conflict"
-    assert detail["problem_count"] == 1
-    problems = client.get("/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH")
+    assert detail["plex_state"] == "matched"
+    assert detail["problem_count"] == 0
+    problems = client.get("/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH&status=open")
     assert problems.status_code == 200
-    assert problems.json()["total"] == 1
-    assert problems.json()["items"][0]["status"] == "open"
+    assert problems.json()["total"] == 0
 
 
-def test_plex_identity_conflict_resolves_on_agreement_and_reopens_on_later_disagreement(
+def test_plex_exact_path_stays_matched_when_plex_metadata_changes(
     client: TestClient, movie_context
 ) -> None:
     client, headers, movie = movie_context
     _configure_plex(client, headers)
     behavior = FakePlexBehavior(
         exact_match=PlexMediaMatch(
-            rating_key="plex-wrong",
-            title="The Wrong Movie",
-            year=2001,
+            rating_key="plex-first",
+            title="Completely Different Plex Title",
+            year=1970,
             edition=None,
             file_path="/plex/movies/Inception/movie.mkv",
         )
@@ -349,17 +349,12 @@ def test_plex_identity_conflict_resolves_on_agreement_and_reopens_on_later_disag
             headers=headers,
         )
         assert first.status_code == 200, first.text
-        assert first.json()["state"] == "conflict"
-        first_detail = client.get(f"/api/v1/movies/{movie['id']}").json()
-        assert first_detail["plex_state"] == "conflict"
-        assert first_detail["problem_count"] == 1
+        assert first.json()["state"] == "matched"
 
-        # A later exact-path agreement must update the observation and resolve
-        # the identity problem without changing the local release attachment.
         behavior.exact_match = PlexMediaMatch(
-            rating_key="plex-correct",
-            title="Inception",
-            year=2010,
+            rating_key="plex-second",
+            title="Yet Another Plex Name",
+            year=1999,
             edition=None,
             file_path="/plex/movies/Inception/movie.mkv",
         )
@@ -369,41 +364,14 @@ def test_plex_identity_conflict_resolves_on_agreement_and_reopens_on_later_disag
         )
         assert second.status_code == 200, second.text
         assert second.json()["state"] == "matched"
-        second_detail = client.get(f"/api/v1/movies/{movie['id']}").json()
-        assert second_detail["plex_state"] == "matched"
-        assert second_detail["problem_count"] == 0
-        resolved = client.get(
-            "/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH&status=resolved"
-        )
-        assert resolved.status_code == 200
-        assert resolved.json()["total"] == 1
-        assert resolved.json()["items"][0]["status"] == "resolved"
-
-        # If Plex later reports a different identity for the same exact path,
-        # the matched observation must become a conflict again and a new open
-        # problem must be created.
-        behavior.exact_match = PlexMediaMatch(
-            rating_key="plex-wrong-again",
-            title="Another Wrong Movie",
-            year=1999,
-            edition=None,
-            file_path="/plex/movies/Inception/movie.mkv",
-        )
-        third = client.post(
-            f"/api/v1/movies/{movie['id']}/actions/recheck-plex",
-            headers=headers,
-        )
-        assert third.status_code == 200, third.text
-        assert third.json()["state"] == "conflict"
-        third_detail = client.get(f"/api/v1/movies/{movie['id']}").json()
-        assert third_detail["plex_state"] == "conflict"
-        assert third_detail["problem_count"] == 1
+        detail = client.get(f"/api/v1/movies/{movie['id']}").json()
+        assert detail["plex_state"] == "matched"
+        assert detail["problem_count"] == 0
         open_problems = client.get(
             "/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH&status=open"
         )
         assert open_problems.status_code == 200
-        assert open_problems.json()["total"] == 1
-        assert open_problems.json()["items"][0]["status"] == "open"
+        assert open_problems.json()["total"] == 0
     finally:
         client.app.dependency_overrides.clear()
 
@@ -564,6 +532,45 @@ def test_plex_recheck_show_exact_episode_path_match(client: TestClient) -> None:
     assert response.json()["state"] == "matched"
     assert response.json()["matched_releases"] == 1
     assert "movie_id" not in response.json()
+
+
+def test_plex_recheck_show_ignores_show_title_metadata_when_episode_numbers_match(client: TestClient) -> None:
+    fixture_root = Path.cwd() / f"plex-show-title-fixture-{os.urandom(8).hex()}"
+    show_dir = fixture_root / "Dollface 2019" / "Season 01"
+    show_dir.mkdir(parents=True)
+    episode = show_dir / "Dollface S01E01 2160p DSNP WEB-DL DD+ 5.1 H.265-HONE.mkv"
+    episode.write_bytes(b"plex-show-title-test")
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
+    root_response = client.post(
+        "/api/v1/storage-roots", headers=headers,
+        json={"name": "Plex Shows title advisory", "path": str(fixture_root), "media_type": "shows"},
+    )
+    assert root_response.status_code == 201, root_response.text
+    job = _scan(client, headers, root_response.json()["id"])
+    assert job["status"] == "completed", job
+    show = client.get("/api/v1/shows").json()["items"][0]
+    _configure_plex(client, headers)
+    behavior = FakePlexBehavior(
+        exact_match=PlexMediaMatch(
+            rating_key="plex-show-title-different", title="Episode One", year=2019, edition=None,
+            file_path=str(episode), show_title="A Completely Different Plex Show Name",
+            season_number=1, episode_number=1,
+        )
+    )
+    client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
+    try:
+        response = client.post(f"/api/v1/shows/{show['resource_id']}/actions/recheck-plex", headers=headers)
+    finally:
+        client.app.dependency_overrides.clear()
+        shutil.rmtree(fixture_root, ignore_errors=True)
+    assert response.status_code == 200, response.text
+    assert response.json()["state"] == "matched"
+    assert response.json()["conflict_releases"] == 0
+    problems = client.get("/api/v1/problems?reason=PLEX_IDENTITY_MISMATCH&status=open")
+    assert problems.status_code == 200
+    assert problems.json()["total"] == 0
 
 
 def test_plex_library_snapshot_indexes_movies_and_episodes_without_scanning() -> None:

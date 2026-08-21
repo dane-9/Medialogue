@@ -213,8 +213,8 @@ async def execute_storage_root_scan(
         )
         # Expose evidence-producing follow-up work to callers waiting on this
         # scan. The Problems UI follows these IDs recursively before declaring
-        # a refresh complete, so Plex conflicts cannot disappear/reappear after
-        # the button has already reported completion.
+        # a refresh complete, so Plex presence/episode evidence is settled before
+        # the button reports completion.
         await update_job(
             db,
             job,

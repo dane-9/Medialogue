@@ -26,9 +26,9 @@ Extract this source release (or clone the repository) into one directory; the su
 
 5. Open `http://localhost:8000` and sign in with `admin` / `adminadmin`. The first-run checklist appears automatically.
 6. Configure only the integrations you use. TMDB is recommended before the first scan because it establishes external identity for newly discovered titles.
-7. Finish or skip optional setup items, enable Active Operations when ready, then explicitly start the first storage-root scan. Setup never starts it automatically.
+7. Finish or skip optional setup items, then explicitly start the first storage-root scan. A newly added root remains uninitialized and is ignored by automatic reconciliation until that first scan succeeds.
 
-The top-bar **Active operations** control is SAFE/OFF on a fresh install. Health checks may still run while it is off, but scans, searches, download submission, and destructive operations remain explicit user actions.
+There is no global Active Operations switch. Integration observations can run automatically, while root discovery remains opt-in: every newly added storage root requires one explicit successful scan before automatic reconciliation can use it.
 
 ## Local frontend development
 
@@ -124,7 +124,7 @@ Interactive Search is deliberately manual:
 4. Release names are run through the same shared parser used by scanning and qBittorrent reconciliation. Every enabled, scope-eligible Custom Format is evaluated immediately. The target title's effective Quality Profile, per-title overrides, signed score contributions, and minimum-quality warning state are frozen with the result as immutable search-time evidence.
 5. Choosing **Download** submits only that result. If exactly one eligible Movie qBittorrent client exists it is used immediately; with multiple eligible clients the UI asks which one to use.
 
-Searching itself is read-only and is allowed while Active Operations is off. Actual qBittorrent submission requires **Active Operations: ON**.
+Searching is read-only. Actual qBittorrent submission remains an explicit user action.
 
 Medialogue does **not** pass a save path when a normal Interactive Search result is submitted. The selected qBittorrent instance, its category/tags, and qBittorrent's own configuration decide where the torrent downloads. Medialogue later observes and reconciles the completed data in place; it never imports or relocates it.
 
@@ -222,7 +222,7 @@ DUPLICATE_PHYSICAL_RELEASE
 DUPLICATE_EPISODE_RELEASE
 ```
 
-The Problems page supports filtering, explicit TMDB Movie/Show matching, episode duplicate preference, path-mapping guidance, and direct duplicate comparison. Manual identity selection is authoritative, but conflicting Plex evidence remains visible rather than being silently erased. Identity correction changes database metadata only; it never renames or relocates media.
+The Problems page supports filtering, explicit TMDB Movie/Show matching, episode duplicate preference, path-mapping guidance, and direct duplicate comparison. TMDB/manual matching is authoritative for Movie identity. Plex movie titles and years are advisory metadata and never create or block a Problem; Plex only verifies physical presence/path. For Shows, an exact-file season/episode-number disagreement can still surface because it indicates a real episode-mapping issue. Identity correction changes database metadata only; it never renames or relocates media.
 
 ### Movie physical duplicates
 
@@ -235,7 +235,7 @@ Optional deletion follows a two-stage destructive workflow:
 3. **Commit** re-inventories the targets. If anything changed after preview, the request fails with `DELETE_PREVIEW_STALE` and a new preview is required.
 4. Only a configured `read_write` storage root can be deleted. The entire explicitly selected losing media directory is removed; Medialogue does not selectively reorganize its contents.
 
-The global **Active Operations** toggle must be on before a duplicate commit. Paths are checked again against the configured storage root and directory symlink targets are refused.
+Duplicate commits remain explicit confirmed actions. Paths are checked again against the configured storage root and directory symlink targets are refused.
 
 If the user also chooses to remove the losing torrent from qBittorrent, Medialogue first requires that torrent to be safely archived. qBittorrent is then called with **delete data = false** because filesystem deletion is controlled independently by the reviewed directory operation. The archived `.torrent` and manifest remain in `/torrent-archive`. A qBittorrent removal failure is preserved as its own Problem rather than discarding recovery evidence.
 
@@ -266,7 +266,7 @@ re-evaluate Custom Formats/current score
 
 Bulk Quality Profile changes preserve each title's existing minimum-quality and Custom Format score overrides. Parser re-evaluation updates current structured parser fields while preserving manual edition authority and durable prior parse evidence. Custom Format re-evaluation changes only the **current** score/evidence; immutable download-time search/selection snapshots remain untouched.
 
-Bulk Plex rechecks require **Active Operations: ON** because they perform live integration work. Tag/profile/monitoring edits and parser/Custom Format re-evaluation are logical database operations and do not mutate the filesystem. No bulk action can move, rename, copy, import, hardlink, or reorganize media.
+Bulk Plex rechecks perform live read-only integration work without a global operations switch. Tag/profile/monitoring edits and parser/Custom Format re-evaluation are logical database operations and do not mutate the filesystem. No bulk action can move, rename, copy, import, hardlink, or reorganize media.
 
 ## Jobs, live updates, and Event History
 
@@ -346,4 +346,4 @@ Frontend
 
 PostgreSQL-specific CI is important because production uses PostgreSQL rather than SQLite. The Alembic environment now uses SQLAlchemy's asynchronous migration path when the configured URL uses `asyncpg`, so the supplied production dependency set does not require an undeclared synchronous PostgreSQL driver merely to run migrations. Plain SQLite migration URLs remain supported for the migration regression tests.
 
-The critical state-engine regression matrix continues to cover Missing detection, root outage/recovery, qBittorrent disappearance, incoming/cancelled torrents, replacements (including edition changes and different-path reappearance), physical duplicates, Plex unavailable/conflict behavior, torrent-archive retention, destructive confirmation safety, season packs, and multi-episode mappings.
+The critical state-engine regression matrix continues to cover Missing detection, root outage/recovery, qBittorrent disappearance, incoming/cancelled torrents, replacements (including edition changes and different-path reappearance), physical duplicates, Plex unavailable/presence and Show episode-number conflict behavior, torrent-archive retention, destructive confirmation safety, season packs, and multi-episode mappings.
