@@ -17,7 +17,15 @@ def test_model_defaults_are_callable() -> None:
 
 
 def test_tmdb_ids_are_unique_and_scope_supports_both() -> None:
-    from app.models.domain import CustomFormat, Indexer, MediaScope, Show
+    from app.models.domain import (
+        CustomFormat,
+        DownloadClient,
+        Indexer,
+        MediaScope,
+        PlexConfiguration,
+        Show,
+        TMDBConfiguration,
+    )
 
     movie_unique = {
         tuple(column.name for column in constraint.columns)
@@ -33,7 +41,24 @@ def test_tmdb_ids_are_unique_and_scope_supports_both() -> None:
     assert ("tmdb_id",) in show_unique
     assert MediaScope.BOTH.value == "both"
     assert CustomFormat.__table__.c.media_scope is not None
-    assert Indexer.__table__.c.scope is not None
+    # Integration settings are file-backed; the PostgreSQL Indexer row is
+    # runtime health/reference state only.
+    assert set(Indexer.__table__.c.keys()) == {
+        "id", "health", "last_checked_at", "last_success_at", "latency_ms",
+        "last_error", "created_at", "updated_at",
+    }
+    assert set(DownloadClient.__table__.c.keys()) == {
+        "id", "health", "last_polled_at", "last_health_checked_at",
+        "last_success_at", "latency_ms", "last_error", "created_at", "updated_at",
+    }
+    assert set(PlexConfiguration.__table__.c.keys()) == {
+        "id", "health", "machine_identifier", "last_checked_at", "last_success_at",
+        "latency_ms", "last_error", "created_at", "updated_at",
+    }
+    assert set(TMDBConfiguration.__table__.c.keys()) == {
+        "id", "health", "last_checked_at", "last_success_at", "latency_ms",
+        "last_error", "created_at", "updated_at",
+    }
     assert "score" not in CustomFormat.__table__.c
     assert "enabled" in CustomFormat.__table__.c
 

@@ -138,6 +138,10 @@ SHOWS_HOST_PATH=/mnt/tank/media/shows
 
 The values in Dockge stay on your TrueNAS stack. They are not committed to GitHub.
 
+Medialogue writes integration configuration to `CONFIG_HOST_PATH`: `medialogue.json` contains non-secret Plex/TMDB/qBittorrent/indexer settings and `secrets.enc` contains the corresponding encrypted credentials. PostgreSQL stores library/runtime state rather than those connection settings. Keep the same `MEDIALOGUE_SECRET_KEY` whenever you retain `secrets.enc`.
+
+This development build does not import integration configuration from an older PostgreSQL database. If you are adopting this build from the older DB-backed configuration layout, start it with a fresh Medialogue PostgreSQL data directory as intended and configure integrations from the UI (or retain file-backed `/config` files from a later build).
+
 Generate safe random values, for example:
 
 ```sh

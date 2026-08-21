@@ -44,8 +44,10 @@ Vite proxies `/api` to `http://localhost:8000`. Run `npm run build` to create th
 
 Medialogue only scans storage roots explicitly configured in Settings.
 
-- PostgreSQL is the authoritative persistent store for application/library state and history.
-- `/config` stores non-database application configuration/cache/log material and temporary Recovery Bundle ZIPs under `/config/recovery-exports`.
+- PostgreSQL is the authoritative persistent store for library state, history, jobs, Problems, observations, and integration **runtime health**.
+- `/config/medialogue.json` is the source of truth for Plex, TMDB, qBittorrent-client, and indexer configuration. It contains no passwords/tokens/API keys.
+- `/config/secrets.enc` stores those integration secrets encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`. Keep the same secret key with the config volume; changing it makes the encrypted secrets unreadable.
+- `/config` also stores the setup marker and temporary Recovery Bundle ZIPs under `/config/recovery-exports`.
 - `/torrent-archive` stores archived `.torrent` files and versioned recovery manifests independently from live qBittorrent state.
 - Media roots are user-owned filesystem state. Medialogue never renames, moves, copies, hardlinks, reorganizes, or creates metadata sidecars beside media.
 
@@ -86,7 +88,11 @@ medialogue-recovery-<job-id>.zip
 │   └── torrents/...
 ├── manifests/...
 ├── config/
-│   └── application-config-export.json
+│   ├── application-config-export.json
+│   └── live/
+│       ├── medialogue.json
+│       ├── secrets.enc
+│       └── setup-state.json (when present)
 └── inventory/
     ├── library-inventory.json
     └── torrent-archive-inventory.json
@@ -94,7 +100,7 @@ medialogue-recovery-<job-id>.zip
 
 The database backup is a **PostgreSQL physical base backup created with `pg_basebackup`**. Medialogue does not recursively copy a live PostgreSQL data directory. The production image includes PostgreSQL 16 `pg_basebackup`, matching the PostgreSQL 16 service in the supplied Compose stack. Before export, Medialogue verifies the database backend, client/server major-version compatibility, the torrent-archive mount, the export directory, and rejects custom PostgreSQL tablespaces until explicit tablespace mapping is implemented.
 
-`backup-metadata.json` records the application version, PostgreSQL version/major, Alembic migration revision, torrent-manifest schema version, export timestamp, and temporary-download expiry. The human-readable configuration export includes integration credentials plus the runtime database URL and application secret key because the goal is disaster recovery. **The Recovery Bundle is therefore highly sensitive and should be protected like a database/password backup.**
+`backup-metadata.json` records the application version, PostgreSQL version/major, Alembic schema revision, torrent-manifest schema version, export timestamp, and temporary-download expiry. Recovery Bundles include the live file-backed integration configuration (`config/live/medialogue.json` and `config/live/secrets.enc`) plus a human-readable sensitive configuration export, the runtime database URL, and the application secret key. **The Recovery Bundle is therefore highly sensitive and should be protected like a database/password backup.**
 
 The library inventory is deliberately readable without PostgreSQL and records Movies, Shows, releases, Episodes, paths, media files, torrent associations, Plex observations, parse evidence, and Problems. It is secondary evidence; the physical PostgreSQL backup remains the authoritative application-state backup.
 
@@ -107,8 +113,9 @@ Medialogue does not perform an automatic in-place database restore from the web 
 3. Restore `database/physical-base-backup/` into an empty PostgreSQL data directory/volume, preserving the files and assigning them to the PostgreSQL service account. Do not merge the backup into a running or non-empty cluster.
 4. Recreate/adapt deployment environment values from `config/application-config-export.json`. Hostnames/paths may need to change on the new host.
 5. Restore archived torrents to the configured archive mount by copying `torrent-archive/torrents/` into `/torrent-archive/torrents/` and `manifests/` into `/torrent-archive/manifests/`.
-6. Start PostgreSQL, verify it is healthy, then start Medialogue. During the current clean-baseline development phase, restore only a database created by the same compatible Medialogue schema; older schemas are not upgraded in place.
-7. Recreate the media bind mounts and remote-path mappings appropriate to the new host before scanning. Medialogue will not relocate media automatically.
+6. Restore `config/live/medialogue.json` and `config/live/secrets.enc` to the configured `/config` volume and use the same `MEDIALOGUE_SECRET_KEY` recorded/protected with the backup.
+7. Start PostgreSQL, verify it is healthy, then start Medialogue. During the current clean-baseline development phase, restore only a database created by the same compatible Medialogue schema; older schemas and DB-backed integration settings are not upgraded/imported in place.
+8. Recreate the media bind mounts and remote-path mappings appropriate to the new host before scanning. Medialogue will not relocate media automatically.
 
 For a Docker volume restore, use a temporary container or other controlled administrative method to populate the empty PostgreSQL volume while the database service is stopped. Exact commands depend on the deployment host and volume driver.
 

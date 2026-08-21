@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import Settings
+from app.core.integration_config import DownloadClientConfig, get_integration_config_store
 from app.db.base import Base
 from app.db import session as db_session
 from app.main import create_app
@@ -49,6 +50,7 @@ def recovery_env():
     archive.mkdir(parents=True)
     settings = Settings(
         database_url=f"sqlite+aiosqlite:///{db_path}",
+        config_dir=str(root / "config"),
         bootstrap_admin=True,
         secret_key="test-secret-key-123456",
         torrent_archive_dir=str(archive),
@@ -92,13 +94,17 @@ def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(r
         async with db_session.async_session_factory() as db:
             root = StorageRoot(name="Movies", resolved_root_path="/media/movies", media_type=MediaType.MOVIES)
             movie = Movie(title="Inception", sort_title="inception", year=2010, tmdb_id=27205)
-            client_row = DownloadClient(
-                name="qbit-movies",
-                url="http://qbittorrent:8080",
-                username="admin",
-                password="super-secret-qbit-password",
-                scope=MediaType.MOVIES,
+            client_config = get_integration_config_store().save_download_client(
+                DownloadClientConfig(
+                    id=uuid.uuid4(),
+                    name="qbit-movies",
+                    url="http://qbittorrent:8080",
+                    username="admin",
+                    password="super-secret-qbit-password",
+                    scope=MediaType.MOVIES.value,
+                )
             )
+            client_row = DownloadClient(id=client_config.id)
             db.add_all([root, movie, client_row])
             await db.flush()
             release = MovieRelease(
@@ -191,7 +197,10 @@ def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(r
         assert config["contains_sensitive_values"] is True
         assert config["runtime_sensitive"]["secret_key"] == "test-secret-key-123456"
         assert config["runtime_sensitive"]["database_url"].startswith("sqlite+aiosqlite:///")
-        assert config["download_clients"][0]["password"] == "super-secret-qbit-password"
+        passwords = config["integration_configuration"]["secrets"]["download_client_passwords"]
+        assert "super-secret-qbit-password" in passwords.values()
+        assert "config/live/medialogue.json" in names
+        assert "config/live/secrets.enc" in names
         inventory = json.loads(bundle.read("inventory/library-inventory.json"))
         assert any(movie["tmdb_id"] == 27205 for movie in inventory["movies"])
         assert any(path["resolved_path"].startswith("/media/movies/Inception") for path in inventory["media_directories"])

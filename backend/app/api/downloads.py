@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from time import perf_counter
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
+from app.core.integration_config import DownloadClientConfig, get_integration_config_store
 from app.db.session import get_db
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.auth import AdminUser
@@ -37,6 +38,7 @@ from app.schemas.downloads import (
     DownloadResponse,
     DownloadScope,
 )
+from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
 from app.services.qbittorrent import (
     poll_download_client,
     test_download_client_connection,
@@ -57,7 +59,7 @@ def get_qbittorrent_client_factory():
 get_qbit_client_factory = get_qbittorrent_client_factory
 
 
-def _client_response(client: DownloadClient) -> DownloadClientResponse:
+def _client_response(client: ConfiguredDownloadClient) -> DownloadClientResponse:
     return DownloadClientResponse(
         id=client.id,
         name=client.name,
@@ -84,7 +86,7 @@ async def _download_response(
     db: AsyncSession,
     observation: TorrentClientObservation,
     torrent: Torrent,
-    client: DownloadClient,
+    client: ConfiguredDownloadClient,
 ) -> DownloadResponse:
     association_row = (
         await db.execute(
@@ -158,15 +160,10 @@ async def list_download_clients(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[DownloadClientResponse]:
-    total = await db.scalar(select(func.count()).select_from(DownloadClient)) or 0
-    rows = (
-        await db.scalars(
-            select(DownloadClient)
-            .order_by(DownloadClient.name)
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-    ).all()
+    rows = sorted(await list_configured_download_clients(db), key=lambda item: item.name.casefold())
+    total = len(rows)
+    start = (page - 1) * page_size
+    rows = rows[start : start + page_size]
     return Collection(
         items=[_client_response(row) for row in rows],
         page=page,
@@ -203,19 +200,24 @@ async def create_download_client(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> DownloadClientResponse:
-    client = DownloadClient(
-        name=payload.name,
-        url=str(payload.url).rstrip("/"),
-        username=payload.username,
-        password=payload.password,
-        scope=MediaType(payload.scope.value),
-        category=payload.category,
-        tags=payload.tags,
-        enabled=payload.enabled,
-        poll_interval_seconds=payload.poll_interval_seconds,
+    config = get_integration_config_store().save_download_client(
+        DownloadClientConfig(
+            id=uuid4(),
+            name=payload.name,
+            url=str(payload.url).rstrip("/"),
+            username=payload.username,
+            password=payload.password,
+            scope=payload.scope.value,
+            category=payload.category,
+            tags=list(payload.tags),
+            enabled=payload.enabled,
+            poll_interval_seconds=payload.poll_interval_seconds,
+        )
     )
-    db.add(client)
+    db.add(DownloadClient(id=config.id))
     await db.commit()
+    client = await get_configured_download_client(db, config.id)
+    assert client is not None
     return _client_response(client)
 
 
@@ -225,7 +227,7 @@ async def get_download_client(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> DownloadClientResponse:
-    client = await db.get(DownloadClient, client_id)
+    client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     return _client_response(client)
@@ -239,23 +241,32 @@ async def update_download_client(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> DownloadClientResponse:
-    client = await db.get(DownloadClient, client_id)
+    client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
-    if payload.expected_revision is not None and payload.expected_revision != client.revision:
-        raise AppError("REVISION_CONFLICT", "Download client changed; refresh and try again.", status_code=409)
+    current = client.config
     values = payload.model_dump(exclude_unset=True)
     values.pop("expected_revision", None)
-    if "url" in values and values["url"] is not None:
-        values["url"] = str(values["url"]).rstrip("/")
-    if "scope" in values and values["scope"] is not None:
-        values["scope"] = MediaType(values["scope"].value if hasattr(values["scope"], "value") else values["scope"])
     password = values.pop("password", None)
-    if password:
-        client.password = password
-    for key, value in values.items():
-        setattr(client, key, value)
-    client.revision += 1
+    updated = DownloadClientConfig(
+        id=current.id,
+        name=values.get("name", current.name),
+        url=(str(values["url"]).rstrip("/") if values.get("url") is not None else current.url),
+        username=values.get("username", current.username),
+        password=(password or current.password),
+        scope=(values["scope"].value if values.get("scope") is not None else current.scope),
+        category=values.get("category", current.category),
+        tags=(list(values["tags"]) if values.get("tags") is not None else list(current.tags)),
+        enabled=(values["enabled"] if values.get("enabled") is not None else current.enabled),
+        revision=current.revision,
+        poll_interval_seconds=(values["poll_interval_seconds"] if values.get("poll_interval_seconds") is not None else current.poll_interval_seconds),
+    )
+    try:
+        get_integration_config_store().save_download_client(updated, expected_revision=payload.expected_revision)
+    except ValueError as exc:
+        if str(exc) == "revision_conflict":
+            raise AppError("REVISION_CONFLICT", "Download client changed; refresh and try again.", status_code=409) from exc
+        raise
     client.health = "unknown"
     client.last_polled_at = None
     client.last_health_checked_at = None
@@ -263,7 +274,9 @@ async def update_download_client(
     client.latency_ms = None
     client.last_error = None
     await db.commit()
-    return _client_response(client)
+    refreshed = await get_configured_download_client(db, client_id)
+    assert refreshed is not None
+    return _client_response(refreshed)
 
 
 @router.delete("/download-clients/{client_id}", response_model=DeleteResponse)
@@ -272,11 +285,12 @@ async def delete_download_client(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> DeleteResponse:
-    client = await db.get(DownloadClient, client_id)
+    client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     # Cascade removes only observation rows; durable Torrent history remains.
-    await db.delete(client)
+    get_integration_config_store().delete_download_client(client_id)
+    await db.delete(client.state)
     await db.commit()
     return DeleteResponse(id=client_id)
 
@@ -289,7 +303,7 @@ async def test_download_client(
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_qbittorrent_client_factory),
 ) -> DownloadClientTestResponse:
-    client = await db.get(DownloadClient, client_id)
+    client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     client.last_health_checked_at = utcnow()
@@ -338,7 +352,7 @@ async def download_client_health(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> DownloadClientTestResponse:
-    client = await db.get(DownloadClient, client_id)
+    client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     return DownloadClientTestResponse(status=client.health or "unknown")
@@ -351,7 +365,7 @@ async def refresh_download_client_health(
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_qbittorrent_client_factory),
 ) -> DownloadClientTestResponse:
-    client = await db.get(DownloadClient, client_id)
+    client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     client.last_health_checked_at = utcnow()
@@ -378,7 +392,7 @@ async def poll_client(
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_qbittorrent_client_factory),
 ) -> DownloadPollResponse:
-    client = await db.get(DownloadClient, client_id)
+    client = await get_configured_download_client(db, client_id)
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     if not client.enabled:
@@ -396,7 +410,7 @@ async def poll_all_clients(
     client_factory=Depends(get_qbittorrent_client_factory),
 ) -> list[DownloadPollResponse]:
     del admin
-    clients = (await db.scalars(select(DownloadClient).where(DownloadClient.enabled.is_(True)))).all()
+    clients = [client for client in await list_configured_download_clients(db) if client.enabled]
     results = []
     for client in clients:
         results.append(await poll_download_client(db, client, client_factory=client_factory))
@@ -423,11 +437,13 @@ async def list_downloads(
     if state:
         conditions.append(TorrentClientObservation.state == state)
     if scope:
-        conditions.append(DownloadClient.scope == MediaType(scope.value))
+        eligible_ids = [item.id for item in get_integration_config_store().list_download_clients() if item.scope == scope.value]
+        if not eligible_ids:
+            return Collection(items=[], page=page, page_size=page_size, total=0, pages=0)
+        conditions.append(TorrentClientObservation.download_client_id.in_(eligible_ids))
     query = (
-        select(TorrentClientObservation, Torrent, DownloadClient)
+        select(TorrentClientObservation, Torrent)
         .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
-        .join(DownloadClient, DownloadClient.id == TorrentClientObservation.download_client_id)
         .where(*conditions)
         .order_by(TorrentClientObservation.last_seen_at.desc())
     )
@@ -435,7 +451,6 @@ async def list_downloads(
         select(func.count())
         .select_from(TorrentClientObservation)
         .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
-        .join(DownloadClient, DownloadClient.id == TorrentClientObservation.download_client_id)
         .where(*conditions)
     )
     total = await db.scalar(count_query) or 0
@@ -443,7 +458,11 @@ async def list_downloads(
         await db.execute(query.offset((page - 1) * page_size).limit(page_size))
     ).all()
     return Collection(
-        items=[await _download_response(db, observation, torrent, client) for observation, torrent, client in rows],
+        items=[
+            await _download_response(db, observation, torrent, configured)
+            for observation, torrent in rows
+            if (configured := await get_configured_download_client(db, observation.download_client_id)) is not None
+        ],
         page=page,
         page_size=page_size,
         total=total,

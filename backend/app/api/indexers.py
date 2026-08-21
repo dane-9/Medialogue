@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
+from app.core.integration_config import IndexerConfig, get_integration_config_store
 from app.db.session import get_db
 from app.integrations.torznab import TorznabClient
 from app.models.auth import AdminUser
-from app.models.domain import Indexer, MediaScope
+from app.models.domain import Indexer
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.indexers import (
     IndexerCreate,
@@ -22,6 +22,7 @@ from app.schemas.indexers import (
     IndexerUpdate,
 )
 from app.services.indexers import refresh_indexer_health, test_indexer_connection
+from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
 
 router = APIRouter(prefix="/indexers", tags=["indexers"])
 
@@ -30,7 +31,7 @@ def get_torznab_client_factory():
     return TorznabClient
 
 
-def _response(indexer: Indexer) -> IndexerResponse:
+def _response(indexer: ConfiguredIndexer) -> IndexerResponse:
     return IndexerResponse(
         id=indexer.id,
         name=indexer.name,
@@ -59,15 +60,10 @@ async def list_indexers(
 ) -> Collection[IndexerResponse]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 250)
-    total = int(await db.scalar(select(func.count()).select_from(Indexer)) or 0)
-    rows = (
-        await db.scalars(
-            select(Indexer)
-            .order_by(Indexer.name)
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-    ).all()
+    rows = sorted(await list_configured_indexers(db), key=lambda item: item.name.casefold())
+    total = len(rows)
+    start = (page - 1) * page_size
+    rows = rows[start : start + page_size]
     return Collection(
         items=[_response(row) for row in rows],
         page=page,
@@ -83,16 +79,23 @@ async def create_indexer(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> IndexerResponse:
-    indexer = Indexer(
-        name=payload.name.strip(),
-        torznab_url=str(payload.torznab_url).rstrip("/"),
-        api_key=payload.api_key,
-        scope=MediaScope(payload.scope.value),
-        enabled=payload.enabled,
-        timeout_seconds=payload.timeout_seconds,
+    store = get_integration_config_store()
+    config = store.save_indexer(
+        IndexerConfig(
+            id=uuid4(),
+            name=payload.name.strip(),
+            torznab_url=str(payload.torznab_url).rstrip("/"),
+            api_key=payload.api_key,
+            scope=payload.scope.value,
+            enabled=payload.enabled,
+            timeout_seconds=payload.timeout_seconds,
+        )
     )
-    db.add(indexer)
+    state = Indexer(id=config.id)
+    db.add(state)
     await db.commit()
+    indexer = await get_configured_indexer(db, config.id)
+    assert indexer is not None
     return _response(indexer)
 
 
@@ -102,7 +105,7 @@ async def get_indexer(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> IndexerResponse:
-    indexer = await db.get(Indexer, indexer_id)
+    indexer = await get_configured_indexer(db, indexer_id)
     if indexer is None:
         raise AppError("NOT_FOUND", "Indexer was not found.", status_code=404)
     return _response(indexer)
@@ -116,29 +119,33 @@ async def update_indexer(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> IndexerResponse:
-    indexer = await db.get(Indexer, indexer_id)
+    indexer = await get_configured_indexer(db, indexer_id)
     if indexer is None:
         raise AppError("NOT_FOUND", "Indexer was not found.", status_code=404)
-    if payload.expected_revision is not None and payload.expected_revision != indexer.revision:
-        raise AppError("REVISION_CONFLICT", "Indexer changed; refresh and try again.", status_code=409)
-    values = payload.model_dump(exclude_unset=True)
-    values.pop("expected_revision", None)
-    api_key = values.pop("api_key", None)
-    if api_key:
-        indexer.api_key = api_key
-    if "torznab_url" in values and values["torznab_url"] is not None:
-        values["torznab_url"] = str(values["torznab_url"]).rstrip("/")
-    if "scope" in values and values["scope"] is not None:
-        scope = values["scope"]
-        values["scope"] = MediaScope(scope.value if hasattr(scope, "value") else str(scope))
-    for key, value in values.items():
-        setattr(indexer, key, value)
-    indexer.revision += 1
+    current = indexer.config
+    updated = IndexerConfig(
+        id=current.id,
+        name=(payload.name.strip() if payload.name is not None else current.name),
+        torznab_url=(str(payload.torznab_url).rstrip("/") if payload.torznab_url is not None else current.torznab_url),
+        api_key=(payload.api_key or current.api_key),
+        scope=(payload.scope.value if payload.scope is not None else current.scope),
+        enabled=(payload.enabled if payload.enabled is not None else current.enabled),
+        timeout_seconds=(payload.timeout_seconds if payload.timeout_seconds is not None else current.timeout_seconds),
+        revision=current.revision,
+    )
+    try:
+        get_integration_config_store().save_indexer(updated, expected_revision=payload.expected_revision)
+    except ValueError as exc:
+        if str(exc) == "revision_conflict":
+            raise AppError("REVISION_CONFLICT", "Indexer changed; refresh and try again.", status_code=409) from exc
+        raise
     indexer.health = "unknown"
     indexer.last_error = None
     indexer.latency_ms = None
     await db.commit()
-    return _response(indexer)
+    refreshed = await get_configured_indexer(db, indexer_id)
+    assert refreshed is not None
+    return _response(refreshed)
 
 
 @router.delete("/{indexer_id}", response_model=DeleteResponse)
@@ -147,10 +154,11 @@ async def delete_indexer(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> DeleteResponse:
-    indexer = await db.get(Indexer, indexer_id)
+    indexer = await get_configured_indexer(db, indexer_id)
     if indexer is None:
         raise AppError("NOT_FOUND", "Indexer was not found.", status_code=404)
-    await db.delete(indexer)
+    get_integration_config_store().delete_indexer(indexer_id)
+    await db.delete(indexer.state)
     await db.commit()
     return DeleteResponse(id=indexer_id)
 
@@ -181,7 +189,7 @@ async def test_saved_indexer(
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_torznab_client_factory),
 ) -> IndexerTestResponse:
-    indexer = await db.get(Indexer, indexer_id)
+    indexer = await get_configured_indexer(db, indexer_id)
     if indexer is None:
         raise AppError("NOT_FOUND", "Indexer was not found.", status_code=404)
     result = await refresh_indexer_health(db, indexer, client_factory=client_factory)

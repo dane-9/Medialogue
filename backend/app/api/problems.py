@@ -12,7 +12,6 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
-    DownloadClient,
     Episode,
     EpisodeMediaMap,
     Job,
@@ -32,6 +31,7 @@ from app.models.domain import (
     TorrentClientObservation,
 )
 from app.schemas.common import Collection
+from app.services.integration_state import get_configured_download_client
 from app.schemas.problems import ProblemResolveRequest, ProblemResponse
 from app.services.events import publish_live_event
 from app.services.jobs import create_job, publish_job_status
@@ -528,7 +528,7 @@ async def resolve_problem(
     # global filesystem scan. Poll only the clients that have observed it.
     qbit_errors: list[str] = []
     for client_id in download_client_ids:
-        client = await db.get(DownloadClient, client_id)
+        client = await get_configured_download_client(db, client_id)
         if client is None or not client.enabled:
             continue
         try:

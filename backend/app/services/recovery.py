@@ -31,6 +31,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.integration_config import get_integration_config_store
 from app.db import session as db_session
 from app.models.domain import (
     CustomFormat,
@@ -371,10 +372,16 @@ async def build_configuration_export(db: AsyncSession, settings: Settings | None
         },
         "storage_roots": await _model_rows(db, StorageRoot),
         "remote_path_mappings": await _model_rows(db, RemotePathMapping),
-        "download_clients": await _model_rows(db, DownloadClient),
-        "indexers": await _model_rows(db, Indexer),
-        "plex": await _model_rows(db, PlexConfiguration),
-        "tmdb": await _model_rows(db, TMDBConfiguration),
+        # Integration settings and credentials are file-backed. This recovery
+        # export is already explicitly sensitive, so include a decrypted
+        # logical snapshot in addition to copying the original /config files.
+        "integration_configuration": get_integration_config_store().export_for_recovery(),
+        "integration_runtime_state": {
+            "download_clients": await _model_rows(db, DownloadClient),
+            "indexers": await _model_rows(db, Indexer),
+            "plex": await _model_rows(db, PlexConfiguration),
+            "tmdb": await _model_rows(db, TMDBConfiguration),
+        },
         "schedules": await _model_rows(db, Schedule),
         "custom_formats": await _model_rows(db, CustomFormat),
         "quality_profiles": await _model_rows(db, QualityProfile),
@@ -558,6 +565,12 @@ async def run_recovery_export(
         await _job_progress(job_id, 58, "inventory", "Writing configuration and library inventory")
 
         _write_json(temp_root / "config" / "application-config-export.json", configuration)
+        config_store = get_integration_config_store()
+        for source in (config_store.config_path, config_store.secrets_path, Path(settings.config_dir) / "setup-state.json"):
+            if source.is_file():
+                destination = temp_root / "config" / "live" / source.name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
         _write_json(temp_root / "inventory" / "library-inventory.json", inventory)
 
         torrent_root = Path(settings.torrent_archive_dir)

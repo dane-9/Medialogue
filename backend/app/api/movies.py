@@ -10,11 +10,11 @@ from sqlalchemy.orm import selectinload
 from app.api.dependencies import require_admin
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
+from app.core.integration_config import get_integration_config_store
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
     AssociationType,
-    DownloadClient,
     Event,
     MediaDirectory,
     Movie,
@@ -187,19 +187,20 @@ async def get_movie(
     ).all()
     incoming: list[dict[str, object]] = []
     for association, release, torrent in incoming_rows:
-        observation_row = (
-            await db.execute(
-                select(TorrentClientObservation, DownloadClient)
-                .join(DownloadClient, DownloadClient.id == TorrentClientObservation.download_client_id)
-                .where(
-                    TorrentClientObservation.torrent_id == torrent.id,
-                    TorrentClientObservation.is_present.is_(True),
-                )
-                .order_by(TorrentClientObservation.last_seen_at.desc())
-                .limit(1)
+        observation = await db.scalar(
+            select(TorrentClientObservation)
+            .where(
+                TorrentClientObservation.torrent_id == torrent.id,
+                TorrentClientObservation.is_present.is_(True),
             )
-        ).first()
-        observation, client = observation_row if observation_row else (None, None)
+            .order_by(TorrentClientObservation.last_seen_at.desc())
+            .limit(1)
+        )
+        client = (
+            get_integration_config_store().get_download_client(observation.download_client_id)
+            if observation is not None
+            else None
+        )
         incoming.append(
             {
                 "id": str(association.id),
@@ -232,16 +233,17 @@ async def get_movie(
         if torrent.id in seen_torrents:
             continue
         seen_torrents.add(torrent.id)
-        observation_row = (
-            await db.execute(
-                select(TorrentClientObservation, DownloadClient)
-                .join(DownloadClient, DownloadClient.id == TorrentClientObservation.download_client_id)
-                .where(TorrentClientObservation.torrent_id == torrent.id)
-                .order_by(TorrentClientObservation.first_seen_at.asc())
-                .limit(1)
-            )
-        ).first()
-        observation, history_client = observation_row if observation_row else (None, None)
+        observation = await db.scalar(
+            select(TorrentClientObservation)
+            .where(TorrentClientObservation.torrent_id == torrent.id)
+            .order_by(TorrentClientObservation.first_seen_at.asc())
+            .limit(1)
+        )
+        history_client = (
+            get_integration_config_store().get_download_client(observation.download_client_id)
+            if observation is not None
+            else None
+        )
         qbit_present = bool(
             await db.scalar(
                 select(func.count())

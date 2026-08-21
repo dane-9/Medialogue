@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.api import duplicates as duplicates_api
 from app.api import problems as problems_api
 from app.core.config import Settings
+from app.core.integration_config import DownloadClientConfig, get_integration_config_store
 from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.tmdb import TMDBMovieMatch
@@ -51,7 +52,7 @@ from app.services.reconciliation import mark_absent_known_directories
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-part15-", suffix=".db", dir=os.getcwd())
     database_url = f"sqlite+aiosqlite:///{db_path}"
-    settings = Settings(database_url=database_url, bootstrap_admin=True, secret_key="part15-secret-key-123456789")
+    settings = Settings(database_url=database_url, bootstrap_admin=True, config_dir=f"{db_path}.config", secret_key="part15-secret-key-123456789")
     engine = create_async_engine(database_url)
 
     async def create_schema():
@@ -414,14 +415,18 @@ async def seed_duplicate_torrent(
     *,
     archived: bool,
 ) -> tuple[UUID, UUID, str]:
-    client = DownloadClient(
-        name="qbit-movies",
-        url="http://qbit.test",
-        username="user",
-        password="pass",
-        scope=MediaType.MOVIES,
-        enabled=True,
+    client_config = get_integration_config_store().save_download_client(
+        DownloadClientConfig(
+            id=uuid.uuid4(),
+            name="qbit-movies",
+            url="http://qbit.test",
+            username="user",
+            password="pass",
+            scope=MediaType.MOVIES.value,
+            enabled=True,
+        )
     )
+    client = DownloadClient(id=client_config.id)
     info_hash = uuid.uuid4().hex
     torrent = Torrent(
         info_hash=info_hash,
@@ -585,12 +590,18 @@ def test_remote_path_mapping_can_be_managed_through_api(client: TestClient) -> N
             access_mode=AccessMode.READ_ONLY,
             enabled=True,
         )
-        qbit = DownloadClient(
-            name="qbit-movies",
-            url="http://qbit.test",
-            scope=MediaType.MOVIES,
-            enabled=True,
+        qbit_config = get_integration_config_store().save_download_client(
+            DownloadClientConfig(
+                id=uuid.uuid4(),
+                name="qbit-movies",
+                url="http://qbit.test",
+                username="",
+                password="pass",
+                scope=MediaType.MOVIES.value,
+                enabled=True,
+            )
         )
+        qbit = DownloadClient(id=qbit_config.id)
         db.add_all([root, qbit])
         await db.flush()
         return root.id, qbit.id
@@ -635,12 +646,18 @@ def test_root_scoped_remote_mapping_cannot_translate_outside_selected_root(clien
             access_mode=AccessMode.READ_ONLY,
             enabled=True,
         )
-        qbit = DownloadClient(
-            name="qbit-cartoons",
-            url="http://qbit.test",
-            scope=MediaType.MOVIES,
-            enabled=True,
+        qbit_config = get_integration_config_store().save_download_client(
+            DownloadClientConfig(
+                id=uuid.uuid4(),
+                name="qbit-cartoons",
+                url="http://qbit.test",
+                username="",
+                password="pass",
+                scope=MediaType.MOVIES.value,
+                enabled=True,
+            )
         )
+        qbit = DownloadClient(id=qbit_config.id)
         db.add_all([root, qbit])
         await db.flush()
         return root.id, qbit.id

@@ -8,8 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.integration_config import get_integration_config_store
 from app.models.auth import AdminUser
-from app.models.domain import DownloadClient, Indexer, PlexConfiguration, StorageRoot, TMDBConfiguration
+from app.models.domain import StorageRoot
 from app.schemas.setup import SetupStatusResponse, SetupStep
 
 
@@ -43,11 +44,12 @@ def write_setup_complete(complete: bool) -> None:
 
 
 async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusResponse:
-    tmdb = await db.scalar(select(TMDBConfiguration).limit(1))
-    plex = await db.scalar(select(PlexConfiguration).limit(1))
-    qbit_count = int(await db.scalar(select(func.count()).select_from(DownloadClient)) or 0)
+    store = get_integration_config_store()
+    tmdb = store.get_tmdb()
+    plex = store.get_plex()
+    qbit_count = len(store.list_download_clients())
     root_count = int(await db.scalar(select(func.count()).select_from(StorageRoot)) or 0)
-    indexer_count = int(await db.scalar(select(func.count()).select_from(Indexer)) or 0)
+    indexer_count = len(store.list_indexers())
     scanned_count = int(
         await db.scalar(select(func.count()).select_from(StorageRoot).where(StorageRoot.last_scan_at.is_not(None))) or 0
     )

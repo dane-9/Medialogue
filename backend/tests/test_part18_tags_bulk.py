@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api import bulk as bulk_api
 from app.core.config import Settings
+from app.core.integration_config import get_integration_config_store
 from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.plex import PlexMediaMatch
@@ -38,7 +39,7 @@ from app.models.domain import (
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-part18-", suffix=".db", dir=os.getcwd())
     database_url = f"sqlite+aiosqlite:///{db_path}"
-    settings = Settings(database_url=database_url, bootstrap_admin=True, secret_key="part18-secret-key-123456789")
+    settings = Settings(database_url=database_url, bootstrap_admin=True, config_dir=f"{db_path}.config", secret_key="part18-secret-key-123456789")
     engine = create_async_engine(database_url)
 
     async def create_schema():
@@ -320,7 +321,10 @@ def test_bulk_plex_recheck_runs_without_operations_toggle(client: TestClient) ->
             raw_release_name="Inception 2010 1080p BluRay REMUX AVC DTS-HD MA 5.1-LM",
             release_state=ReleaseState.CURRENT,
         )
-        plex = PlexConfiguration(url="http://plex.local:32400", token="token", enabled=True)
+        plex_config = get_integration_config_store().save_plex(
+            url="http://plex.local:32400", token="token", enabled=True
+        )
+        plex = PlexConfiguration(id=plex_config.id)
         db.add_all([storage, release, plex])
         await db.flush()
         directory = MediaDirectory(

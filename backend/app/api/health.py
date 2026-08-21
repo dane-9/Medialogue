@@ -8,8 +8,9 @@ from app.api.dependencies import require_admin
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import DownloadClient, Indexer, PlexConfiguration, StorageRoot, TMDBConfiguration, Torrent, TorrentArchiveState
+from app.models.domain import StorageRoot, Torrent, TorrentArchiveState
 
+from app.services.integration_state import get_configured_plex, get_configured_tmdb, list_configured_download_clients, list_configured_indexers
 from app.services.torrent_archive import archive_mount_health
 
 router = APIRouter(tags=["health"])
@@ -38,10 +39,10 @@ async def readiness(db: AsyncSession = Depends(get_db)) -> dict[str, object]:
 @router.get("/api/v1/integrations/health")
 async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict[str, object]:
     roots = (await db.scalars(select(StorageRoot))).all()
-    plex = await db.scalar(select(PlexConfiguration).limit(1))
-    tmdb = await db.scalar(select(TMDBConfiguration).limit(1))
-    clients = (await db.scalars(select(DownloadClient).order_by(DownloadClient.name))).all()
-    indexers = (await db.scalars(select(Indexer).order_by(Indexer.name))).all()
+    plex = await get_configured_plex(db)
+    tmdb = await get_configured_tmdb(db)
+    clients = sorted(await list_configured_download_clients(db), key=lambda item: item.name.casefold())
+    indexers = sorted(await list_configured_indexers(db), key=lambda item: item.name.casefold())
     archive_health = archive_mount_health()
     archive_total = int(await db.scalar(select(func.count()).select_from(Torrent)) or 0)
     archive_complete = int(

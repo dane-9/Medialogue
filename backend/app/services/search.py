@@ -16,7 +16,6 @@ from app.integrations.torznab import SearchResult as TorznabSearchResult
 from app.integrations.torznab import TorznabClient
 from app.models.domain import (
     CustomFormat as CustomFormatModel,
-    Indexer,
     InteractiveSearchResult,
     Job,
     JobStatus,
@@ -26,6 +25,7 @@ from app.models.domain import (
 from app.parser import parse_release_name
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
 from app.services.events import publish_live_event
+from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
 from app.services.jobs import update_job
 from app.services.quality_profiles import load_effective_profile, minimum_quality_status
 
@@ -105,14 +105,13 @@ async def run_search_job(
             if target.media_type == MediaType.MOVIES
             else {MediaScope.SHOWS, MediaScope.BOTH}
         )
-        indexers = list(
-            (
-                await db.scalars(
-                    select(Indexer)
-                    .where(Indexer.enabled.is_(True), Indexer.scope.in_(scope_values))
-                    .order_by(Indexer.name)
-                )
-            ).all()
+        indexers = sorted(
+            [
+                indexer
+                for indexer in await list_configured_indexers(db)
+                if indexer.enabled and indexer.scope in scope_values
+            ],
+            key=lambda item: item.name.casefold(),
         )
         # Freeze both the profile scores/overrides and Custom Format
         # definitions at search start. Every indexer result in this job is
@@ -226,7 +225,7 @@ async def run_search_job(
                         data={"job_id": str(job.id)},
                     )
                     return
-                indexer = await db.get(Indexer, indexer_id)
+                indexer = await get_configured_indexer(db, indexer_id)
                 summary = dict(job.summary or {})
                 indexer_states = dict(summary.get("indexers") or {})
                 current = dict(indexer_states.get(str(indexer_id)) or {})
@@ -350,7 +349,7 @@ async def run_search_job(
 
 
 async def _query_indexer(
-    indexer: Indexer,
+    indexer: ConfiguredIndexer,
     target: SearchTarget,
     *,
     client_factory: TorznabClientFactory,
