@@ -169,7 +169,7 @@ export function MoviesPage() {
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid">{filtered.map((movie) => <MovieCard key={movie.id} movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}</div> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
-    {!error && !loading && !filtered.length && <EmptyState title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Configure a Movie storage root, enable Active Operations, and start a scan.'} />}
+    {!error && !loading && !filtered.length && <EmptyState title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Configure a Movie storage root, then press Scan once to initialize it.'} />}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><MovieBulkContextMenu position={context} count={selected.size} profiles={profiles} tags={tags} busy={bulkBusy} onRun={runBulk} onCreateTag={createTag} onClear={() => { setSelected(new Set()); setContext(null) }} /></>}
   </Page>
 }
@@ -237,7 +237,6 @@ function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
   const evidence = [...(movie.problems ?? [])]
   const aggregate = movie.reconciliation
   if (aggregate?.qbitMediaDisagreement && !evidence.some((item) => item.code === 'QBIT_MEDIA_DISAGREEMENT')) evidence.push({ code: 'QBIT_MEDIA_DISAGREEMENT', title: 'qBittorrent / media disagreement', detail: aggregate.qbitMediaDetail ?? 'qBittorrent reports a completed item but the expected media path is not present.', severity: 'high', source: 'qBittorrent + filesystem' })
-  if ((aggregate?.plexBlocked || movie.plex === 'Conflict') && !evidence.some((item) => item.code === 'PLEX_IDENTITY_MISMATCH')) evidence.push({ code: 'PLEX_IDENTITY_MISMATCH', title: 'Plex identity conflict blocks replacement', detail: aggregate?.plexBlockDetail ?? 'The replacement remains blocked until Plex and local path identity agree.', severity: 'high', source: 'Plex + filesystem' })
   if ((aggregate?.rootOffline || movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable') && !evidence.some((item) => item.code === 'ROOT_OFFLINE')) evidence.push({ code: 'ROOT_OFFLINE', title: 'Storage root offline', detail: `${aggregate?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media items are affected; absence is not treated as Missing while the root is offline.`, severity: 'high', source: 'Storage root' })
   return evidence
 }
@@ -648,14 +647,18 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
     const legacyPath = problemText(details.path)
     const differences = Array.isArray(details.differences) ? details.differences.map((value) => problemText(value)).filter((value): value is string => Boolean(value)) : []
     const conflicts = Array.isArray(details.conflicts) ? details.conflicts.map(problemRecord) : []
+    if (problem.entityType === 'show' && conflicts.length > 0) return <div className="problem-evidence-block">
+      <div className="problem-evidence-note">Plex show titles are advisory. This Problem exists only because Plex mapped the same physical file to different season/episode numbers.</div>
+      <div className="problem-candidate-list">{conflicts.map((conflict, index) => <div className="problem-candidate" key={`${problem.id}-plex-${index}`}><strong>{problemText(conflict.local_episode) ?? 'Medialogue episode'} → {problemText(conflict.plex_episode) ?? 'Plex episode'}</strong><span>{problemText(conflict.local_show_title) ?? 'Show'} · Medialogue: {problemText(conflict.local_path) ?? 'unknown path'}</span><span>Plex metadata: {problemText(conflict.plex_show_title) ?? 'unknown show title'}{problemText(conflict.plex_episode_title) ? ` · ${problemText(conflict.plex_episode_title)}` : ''} · {problemText(conflict.plex_path) ?? 'unknown path'}</span><span>Different: {Array.isArray(conflict.differences) ? conflict.differences.map(readableEvidenceValue).join(', ') : 'episode numbering'}</span></div>)}</div>
+    </div>
     return <div className="problem-evidence-block">
       <div className="problem-evidence-grid">
         <div className="problem-evidence-side"><span className="eyebrow">MEDIALOGUE</span><strong>{localIdentity ?? 'Local identity not stored'}</strong><code>{localPath ?? (legacyPath && problem.entityType === 'media_directory' ? legacyPath : 'Local path not stored in this older Problem')}</code></div>
         <div className="problem-evidence-side"><span className="eyebrow">PLEX</span><strong>{plexIdentity ?? 'Plex identity not stored'}</strong><code>{plexPath ?? (legacyPath && problem.entityType === 'movie' ? legacyPath : 'Plex path not stored in this older Problem')}</code></div>
       </div>
       {differences.length > 0 && <div className="problem-difference"><strong>Different:</strong> {differences.join(', ')}</div>}
-      {!localPath && !plexPath && legacyPath && <div className="problem-evidence-note">This Problem was created by an older build that stored only one path. Recheck evidence to persist both the Medialogue path and Plex path.</div>}
-      {conflicts.length > 0 && <div className="problem-candidate-list">{conflicts.map((conflict, index) => <div className="problem-candidate" key={`${problem.id}-plex-${index}`}><strong>{problemIdentity(conflict.local_show_title, undefined) ?? 'Local show'} {problemText(conflict.local_episode) ?? ''} → {problemIdentity(conflict.plex_show_title, undefined) ?? 'Plex show'} {problemText(conflict.plex_episode) ?? ''}</strong><span>Medialogue: {problemText(conflict.local_path) ?? 'unknown path'}</span><span>Plex: {problemText(conflict.plex_path) ?? 'unknown path'}</span></div>)}</div>}
+      <div className="problem-evidence-note">Movie title/year conflicts from older builds are obsolete. Restart on the current build or recheck Plex to resolve this legacy row.</div>
+      {!localPath && !plexPath && legacyPath && <div className="problem-evidence-note">This older Problem stored only one path.</div>}
     </div>
   }
 
@@ -786,6 +789,7 @@ export function ProblemsPage() {
       await load(page, true)
       const failures = jobs.filter((job) => job.state !== 'completed')
       if (failures.length) setMessage(`Reconciliation finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`)
+      else if (refresh.uninitializedRootIds.length) setMessage(`Reconciliation refresh complete. ${refresh.uninitializedRootIds.length} new storage root${refresh.uninitializedRootIds.length === 1 ? ' was' : 's were'} skipped until you press Scan once in Storage settings.`)
       else if (refresh.skippedRootIds.length && !refresh.activeJobIds.length) setMessage('Problems refreshed. A storage-root scan was already running and could not be tracked from this request.')
       else setMessage('Reconciliation refresh complete. No filesystem changes were made.')
     }
@@ -1183,7 +1187,7 @@ export function SettingsPage() {
   </Page>
 }
 
-function GeneralSettings() { return <><div className="settings-section"><div><h3>Application behavior</h3><p>Medialogue opens to Movies and remains observational until you explicitly enable Active Operations or choose an action.</p></div><div><Link className="button button-secondary" to="/setup">Open setup checklist</Link></div></div><div className="settings-section safeguard"><div className="setting-icon"><Icon name="shield" size={18} /></div><div><h3>Leave-in-place safeguard</h3><p>Scanning never moves, renames, copies, hardlinks, imports, or creates sidecars. Filesystem deletion exists only behind the explicit destructive preview/commit workflow.</p><Badge tone="green">Always enforced</Badge></div></div><div className="settings-section"><div><h3>Operations mode</h3><p>The global toggle in the top bar resets to SAFE/OFF whenever Medialogue starts.</p></div><div className="setting-control"><Badge tone="amber">Off after restart</Badge></div></div></> }
+function GeneralSettings() { return <><div className="settings-section"><div><h3>Application behavior</h3><p>Medialogue opens to Movies. Background integration observations run automatically, while storage roots require one explicit initialization scan before they participate in reconciliation.</p></div><div><Link className="button button-secondary" to="/setup">Open setup checklist</Link></div></div><div className="settings-section safeguard"><div className="setting-icon"><Icon name="shield" size={18} /></div><div><h3>Leave-in-place safeguard</h3><p>Scanning never moves, renames, copies, hardlinks, imports, or creates sidecars. Filesystem deletion exists only behind the explicit destructive preview/commit workflow.</p><Badge tone="green">Always enforced</Badge></div></div></> }
 
 function SecuritySettings() {
   const [security, setSecurity] = useState<{ default_password_warning: boolean; session_expires_at?: string } | null>(null)
@@ -1244,13 +1248,22 @@ function StorageSettings() {
   }
   useEffect(() => { void load() }, [])
   const scan = async (root: StorageRoot) => {
-    try { const job = await api.startScan(root.id); setMessage(`Scan queued: ${job.job_id}`) }
+    try {
+      const initializing = !root.last_scan_at
+      const job = await api.startScan(root.id)
+      setMessage(`${initializing ? 'Initialization scan' : 'Scan'} queued: ${job.job_id}`)
+      void api.waitForJobs([job.job_id]).then(async ([finished]) => {
+        await load()
+        if (finished?.state === 'completed') setMessage(initializing ? `${root.name} initialized. Automatic reconciliation may now use this root.` : `${root.name} scan completed.`)
+        else if (finished) setMessage(`${initializing ? 'Initialization scan' : 'Scan'} ${finished.state}. The root ${initializing ? 'remains uninitialized' : 'was not fully refreshed'}.`)
+      }).catch((reason) => setMessage(reason instanceof Error ? reason.message : 'Could not track scan completion.'))
+    }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start scan.') }
   }
   const addRoot = async () => {
     try {
       const created = await api.createStorageRoot({ name, path, media_type: mediaType, access_mode: accessMode })
-      setRoots((items) => [...items, created]); setAdding(false); setMappingRootId((value) => value || created.id); setMessage(`${created.name} added.`)
+      setRoots((items) => [...items, created]); setAdding(false); setMappingRootId((value) => value || created.id); setMessage(`${created.name} added. Press Initialize & scan once before Medialogue will include this root in automatic reconciliation.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not add root.') }
   }
   const removeRoot = async (root: StorageRoot) => {
@@ -1284,9 +1297,9 @@ function StorageSettings() {
   }
 
   return <>
-    <div className="storage-head"><div><h3>Configured storage roots</h3><p>Only these explicit roots may be scanned by the application. Offline roots preserve known media as degraded instead of flooding the Missing queue.</p></div><Button variant="primary" icon="plus" onClick={() => setAdding((value) => !value)}>{adding ? 'Cancel' : 'Add root'}</Button></div>
+    <div className="storage-head"><div><h3>Configured storage roots</h3><p>New roots remain uninitialized and are ignored by automatic reconciliation until you explicitly scan them once. Offline initialized roots preserve known media as degraded instead of flooding the Missing queue.</p></div><Button variant="primary" icon="plus" onClick={() => setAdding((value) => !value)}>{adding ? 'Cancel' : 'Add root'}</Button></div>
     {adding && <div className="settings-form"><label><span className="field-label">Name</span><Input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span className="field-label">Container path</span><Input value={path} onChange={(event) => setPath(event.target.value)} /></label><label><span className="field-label">Media type</span><Select value={mediaType} onChange={(event) => setMediaType(event.target.value as 'movies' | 'shows')}><option value="movies">Movies</option><option value="shows">Shows</option></Select></label><label><span className="field-label">Access</span><Select value={accessMode} onChange={(event) => setAccessMode(event.target.value as 'read_only' | 'read_write')}><option value="read_only">Read-only — detection only</option><option value="read_write">Read/write — allow explicit confirmed deletion</option></Select></label><div className="settings-footer"><Button variant="primary" onClick={addRoot}>Save root</Button></div></div>}
-    <div className="root-list">{roots.map((root) => { const health = (root.last_health ?? 'unchecked').toLowerCase(); const offline = health === 'offline' || health === 'unavailable'; const affected = root.affected_media_count ?? root.media_affected ?? 0; return <div className={`root-row ${offline ? 'root-row-offline' : ''}`} key={root.id}><div className="root-icon"><Icon name="folder" size={17} /></div><div><strong>{root.name}</strong><span>{root.resolved_root_path}</span>{offline && <small className="root-outage-copy">Storage Root Offline · {affected} media affected</small>}</div><Badge tone={health === 'available' || health === 'healthy' ? 'green' : offline ? 'red' : health === 'degraded' ? 'amber' : 'neutral'}>{root.last_health ?? 'Unchecked'}</Badge><Badge tone="neutral">{root.access_mode === 'read_only' ? 'Read-only' : 'Read/write'}</Badge><span className="root-items">{root.media_type}{root.missing_media_count !== undefined ? ` · ${root.missing_media_count} missing` : ''}</span><Button variant="ghost" icon="play" onClick={() => scan(root)}>Scan now</Button><Button variant="danger" onClick={() => void removeRoot(root)}>Remove</Button></div>})}{!roots.length && <EmptyState title="No storage roots configured" detail="Add an explicit container-visible Movie or Show root to begin discovery." />}</div>
+    <div className="root-list">{roots.map((root) => { const initialized = Boolean(root.last_scan_at); const health = (root.last_health ?? 'unchecked').toLowerCase(); const offline = initialized && (health === 'offline' || health === 'unavailable'); const affected = root.affected_media_count ?? root.media_affected ?? 0; return <div className={`root-row ${offline ? 'root-row-offline' : ''}`} key={root.id}><div className="root-icon"><Icon name="folder" size={17} /></div><div><strong>{root.name}</strong><span>{root.resolved_root_path}</span>{!initialized && <small className="root-outage-copy">Not initialized · Medialogue will not scan or reconcile this root automatically</small>}{offline && <small className="root-outage-copy">Storage Root Offline · {affected} media affected</small>}</div><Badge tone={!initialized ? 'amber' : health === 'available' || health === 'healthy' ? 'green' : offline ? 'red' : health === 'degraded' ? 'amber' : 'neutral'}>{!initialized ? 'Not initialized' : root.last_health ?? 'Unchecked'}</Badge><Badge tone="neutral">{root.access_mode === 'read_only' ? 'Read-only' : 'Read/write'}</Badge><span className="root-items">{root.media_type}{root.missing_media_count !== undefined ? ` · ${root.missing_media_count} missing` : ''}</span><Button variant={initialized ? 'ghost' : 'primary'} icon="play" onClick={() => scan(root)}>{initialized ? 'Scan now' : 'Initialize & scan'}</Button><Button variant="danger" onClick={() => void removeRoot(root)}>Remove</Button></div>})}{!roots.length && <EmptyState title="No storage roots configured" detail="Add an explicit container-visible Movie or Show root. It will remain idle until you initialize it with its first scan." />}</div>
 
     <div className="storage-head"><div><h3>Remote path mappings</h3><p>Translate paths reported by qBittorrent into the container-visible paths above. Use the exact remote prefix that corresponds to the selected storage root; do not map a parent path that also contains libraries Medialogue cannot access.</p></div><Button variant="ghost" icon="plus" onClick={() => setAddingMapping((value) => !value)}>{addingMapping ? 'Cancel' : 'Add mapping'}</Button></div>
     {addingMapping && <div className="settings-form"><label><span className="field-label">Name</span><Input value={mappingName} onChange={(event) => setMappingName(event.target.value)} /></label><label><span className="field-label">qBittorrent client</span><Select value={mappingClientId} onChange={(event) => setMappingClientId(event.target.value)}><option value="">All qBittorrent clients</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select></label><label><span className="field-label">Remote prefix reported by qBittorrent</span><Input value={remotePrefix} onChange={(event) => setRemotePrefix(event.target.value)} placeholder="/downloads/movies" /></label><label><span className="field-label">Local/container prefix</span><Input value={localPrefix} onChange={(event) => setLocalPrefix(event.target.value)} placeholder="/media/movies" /></label><label><span className="field-label">Storage root</span><Select value={mappingRootId} onChange={(event) => setMappingRootId(event.target.value)}><option value="">No explicit root</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select></label><div className="settings-footer"><Button variant="primary" onClick={addMapping}>Save mapping</Button></div></div>}

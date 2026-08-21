@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
-from app.api.operations import active_operations_enabled
 from app.api.plex import get_plex_client_factory
 from app.core.errors import AppError
 from app.db.session import get_db
@@ -67,12 +66,6 @@ async def bulk_movies(
         updated = len(movies)
         details["release_count"] = release_count
     elif payload.action is MovieBulkAction.RECHECK_PLEX:
-        if not active_operations_enabled():
-            raise AppError(
-                "ACTIVE_OPERATIONS_LOCKED",
-                "Enable Active Operations before rechecking Plex.",
-                status_code=423,
-            )
         configuration = await get_plex_configuration(db)
         if configuration is None or not configuration.enabled:
             raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)

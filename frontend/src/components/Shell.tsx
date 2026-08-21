@@ -30,7 +30,6 @@ const fallbackHealth: HealthIndicator[] = [
 ]
 
 export function AppShell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
-  const [operations, setOperations] = useState(false)
   const [jobsOpen, setJobsOpen] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
@@ -48,7 +47,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     void refreshHealth()
     void refreshJobs()
     void refreshSecurity()
-    api.operations().then((payload) => { if (alive) setOperations(payload.enabled) }).catch(() => undefined)
     void refreshProblemCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
@@ -83,16 +81,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     }
   }, [])
 
-  const toggleOperations = async () => {
-    const next = !operations
-    try {
-      const state = await api.setOperations(next)
-      setOperations(state.enabled)
-    } catch {
-      // Keep the last server-confirmed state when the write fails.
-    }
-  }
-
   const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Workspace'
 
   return <div className="app-shell">
@@ -116,11 +104,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <div className="crumb"><span className="crumb-muted">Workspace</span><Icon name="chevron" size={13} /><strong>{currentTitle}</strong></div>
         <div className="topbar-actions">
           <div className="health-strip">{defaultPassword && <button className="default-password-pill" onClick={() => navigate('/settings?tab=Security')}>Default password active</button>}{health.map((item) => <HealthPill key={item.name} item={item} />)}</div>
-          <div className={`operations-toggle ${operations ? 'is-on' : ''}`}>
-            <span className="operations-label"><span className="live-dot" />Active operations</span>
-            <button aria-label="Toggle active operations" aria-pressed={operations} className="toggle" onClick={toggleOperations}><span /></button>
-            <span className="operations-state">{operations ? 'ON' : 'SAFE'}</span>
-          </div>
           <button className="jobs-button" onClick={() => setJobsOpen(true)} aria-label="Open jobs drawer"><Icon name="activity" size={17} /><span>Jobs</span>{jobs.filter((job) => job.state === 'running' || job.state === 'queued').length > 0 && <b>{jobs.filter((job) => job.state === 'running' || job.state === 'queued').length}</b>}</button>
         </div>
       </header>

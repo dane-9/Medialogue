@@ -35,7 +35,7 @@ Sign in with the initial `admin` / `adminadmin` credentials and use the first-ru
 
 ## Safety checks
 
-Before enabling Active Operations:
+Before using write-capable actions:
 
 - confirm every Storage Root points at the intended container-visible path;
 - confirm each root is marked Movies or Shows correctly;
@@ -44,7 +44,7 @@ Before enabling Active Operations:
 - confirm remote path mappings when qBittorrent reports paths different from container paths;
 - run the first full library scan explicitly.
 
-A fresh process always starts with Active Operations off.
+There is no global operations toggle. New storage roots remain inert until their first explicit successful scan.
 
 ## Backup before upgrade
 

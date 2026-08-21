@@ -48,11 +48,6 @@ a { color: inherit; text-decoration: none; }
 .health-dot.green, .live-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(86,215,162,.08); }
 .health-dot.red { background: var(--red); box-shadow: 0 0 0 3px rgba(239,124,136,.08); }
 .health-dot.amber { background: var(--amber); box-shadow: 0 0 0 3px rgba(242,189,112,.08); }
-.operations-toggle { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #313948; border-radius: 6px; background: #141922; }
-.operations-toggle.is-on { border-color: rgba(86,215,162,.46); background: rgba(86,215,162,.07); }
-.operations-label { display: flex; align-items: center; gap: 6px; color: #b3bac5; font-size: 11px; white-space: nowrap; }
-.operations-state { width: 26px; color: #7d8797; font: 500 9px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; text-align: right; }
-.operations-toggle.is-on .operations-state { color: var(--green); }
 .toggle { width: 30px; height: 17px; padding: 2px; border: 1px solid #485265; border-radius: 12px; background: #252d38; }
 .toggle span { display: block; width: 11px; height: 11px; border-radius: 50%; background: #8994a5; transition: transform .18s, background .18s; }
 .toggle[aria-pressed=true] { border-color: #50bd92; background: #27795f; }

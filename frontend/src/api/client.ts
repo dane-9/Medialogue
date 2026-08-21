@@ -891,8 +891,6 @@ export const api = {
     if (filters.entityType) params.set('entity_type', filters.entityType)
     return request<{ deleted: number }>(`/api/v1/events${params.size ? `?${params.toString()}` : ''}`, { method: 'DELETE' })
   },
-  operations: () => request<{ enabled: boolean }>('/api/v1/operations'),
-  setOperations: (enabled: boolean) => request<{ enabled: boolean }>('/api/v1/operations', { method: 'PUT', body: JSON.stringify({ enabled }) }),
   movies: async (query = '', tag = '') => {
     const params = new URLSearchParams({ page_size: '250' })
     if (query) params.set('query', query)
@@ -956,11 +954,12 @@ export const api = {
   recheckMoviePlex: (id: string) => request<{ movie_id: string; state: string; checked_releases: number; matched_releases: number; not_found_releases: number; multiple_version_releases: number; conflict_releases: number }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
   reconcileMovie: (_id: string) => request<unknown>('/api/v1/reconciliation/refresh', { method: 'POST' }),
   reconcileAll: async () => {
-    const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })
+    const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })
     return {
       jobIds: (payload.job_ids ?? []).map(String),
       activeJobIds: (payload.active_job_ids ?? []).map(String),
       skippedRootIds: (payload.skipped_root_ids ?? []).map(String),
+      uninitializedRootIds: (payload.uninitialized_root_ids ?? []).map(String),
     }
   },
   waitForJobs: async (jobIds: string[]) => {

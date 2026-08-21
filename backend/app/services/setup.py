@@ -121,7 +121,7 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
             detail=(
                 f"{scanned_count} root(s) have been scanned."
                 if scanned_count
-                else "Enable Active Operations, then explicitly choose Scan now on a storage root. Setup never starts a scan automatically."
+                else "Explicitly choose Scan now on each new storage root once. Setup never starts the initialization scan automatically."
             ),
             settings_tab="Storage Roots",
         ),

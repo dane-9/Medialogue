@@ -124,3 +124,56 @@ async def ensure_problem_integrity(session: AsyncSession) -> None:
             "WHERE status = 'OPEN' AND entity_id IS NULL"
         )
     )
+
+
+async def ensure_plex_movie_metadata_is_advisory(session: AsyncSession) -> None:
+    """Heal legacy movie conflicts created from Plex title/year metadata.
+
+    Medialogue's movie identity is TMDB/manual authority. Plex verifies physical
+    presence/path only, so old movie/media-directory PLEX_IDENTITY_MISMATCH rows
+    and movie CONFLICT observations are obsolete after this upgrade.
+    """
+
+    from datetime import datetime, timezone
+
+    from app.models.domain import (
+        MediaType,
+        PlexMatchMethod,
+        PlexMatchState,
+        PlexObservation,
+        Problem,
+        ProblemStatus,
+    )
+
+    now = datetime.now(timezone.utc)
+    problems = (
+        await session.scalars(
+            select(Problem).where(
+                Problem.status == ProblemStatus.OPEN,
+                Problem.reason == "PLEX_IDENTITY_MISMATCH",
+                Problem.entity_type.in_(["movie", "media_directory"]),
+            )
+        )
+    ).all()
+    for problem in problems:
+        problem.status = ProblemStatus.RESOLVED
+        problem.resolved_at = now
+        problem.resolution = {
+            "action": "obsolete_plex_movie_metadata_conflict",
+            "reason": "Plex title/year metadata is advisory; TMDB/manual matching owns movie identity.",
+        }
+
+    observations = (
+        await session.scalars(
+            select(PlexObservation).where(
+                PlexObservation.media_type == MediaType.MOVIES,
+                PlexObservation.match_state == PlexMatchState.CONFLICT,
+            )
+        )
+    ).all()
+    for observation in observations:
+        observation.match_state = PlexMatchState.MATCHED
+        observation.match_method = observation.match_method or PlexMatchMethod.EXACT_PATH
+        observation.last_seen_at = now
+
+    await session.flush()

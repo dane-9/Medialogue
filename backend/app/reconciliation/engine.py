@@ -7,7 +7,6 @@ from .types import (
     Decision,
     DecisionKind,
     ExistingRelease,
-    PlexState,
     PresenceDecision,
     ReleaseState,
 )
@@ -67,8 +66,9 @@ class ReconciliationEngine:
                 "LOW_CONFIDENCE_MATCH",
                 details={"confidence": candidate.confidence},
             )
-        if candidate.plex_state is PlexState.CONFLICT:
-            return Decision(DecisionKind.CONFLICT, "PLEX_IDENTITY_MISMATCH")
+        # Plex is a presence/path observer, not an identity authority. Movie
+        # identity is established by TMDB/manual matching, so Plex metadata
+        # differences must never block attachment or replacement.
         if not candidate.download_complete:
             return Decision(DecisionKind.INCOMING, "INCOMING_DOWNLOAD", events=("torrent.incoming",))
 

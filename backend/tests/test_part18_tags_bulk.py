@@ -299,7 +299,7 @@ class FakePlexClient:
         return None
 
 
-def test_bulk_plex_recheck_requires_active_operations_and_then_runs(client: TestClient) -> None:
+def test_bulk_plex_recheck_runs_without_operations_toggle(client: TestClient) -> None:
     headers = login(client)
     movie = db_run(seed_movies)[0]
     root = Path.cwd() / f"part18-plex-{uuid.uuid4().hex}"
@@ -346,13 +346,6 @@ def test_bulk_plex_recheck_requires_active_operations_and_then_runs(client: Test
     db_run(seed_plex)
     client.app.dependency_overrides[bulk_api.get_plex_client_factory] = lambda: FakePlexClient
     try:
-        locked = client.post(
-            "/api/v1/movies/bulk",
-            headers=headers,
-            json={"movie_ids": ["27205"], "action": "recheck_plex"},
-        )
-        assert locked.status_code == 423
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         checked = client.post(
             "/api/v1/movies/bulk",
             headers=headers,

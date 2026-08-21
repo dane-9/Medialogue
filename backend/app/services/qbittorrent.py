@@ -236,7 +236,9 @@ async def _poll_download_client(
     roots = (
         await db.scalars(
             select(StorageRoot).where(
-                StorageRoot.enabled.is_(True), StorageRoot.media_type == MediaType(client.scope.value)
+                StorageRoot.enabled.is_(True),
+                StorageRoot.last_scan_at.is_not(None),
+                StorageRoot.media_type == MediaType(client.scope.value),
             )
         )
     ).all()
@@ -482,7 +484,8 @@ async def _poll_download_client(
 
                 # Persist an Incoming association while downloading. Completion is
                 # authoritative, but attachment additionally requires shared path,
-                # directory, filename, identity, and Plex-conflict verification.
+                # directory, filename, and TMDB/manual identity verification. Plex
+                # remains read-only presence/path evidence and never overrides identity.
                 await associate_incoming_torrent(
                     db,
                     torrent,

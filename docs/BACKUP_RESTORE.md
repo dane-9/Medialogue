@@ -29,6 +29,6 @@ The bundle contains credentials and database contents. Store it as sensitive bac
 5. Recreate deployment secrets/paths from the configuration export, adapting host-specific paths where necessary.
 6. Recreate media mounts and remote path mappings for the new host.
 7. Start PostgreSQL, then Medialogue. Startup migrations may advance an older restored schema.
-8. Verify storage/integration health before enabling Active Operations.
+8. Verify storage/integration health; newly added roots still require one explicit initialization scan.
 
 Medialogue deliberately does not offer a one-click in-place database restore in the web UI.

@@ -1,3 +1,10 @@
+## v9 operations/root initialization hotfix
+
+- Remove the global **Active Operations** toggle. Existing compatibility endpoints remain hidden and always report enabled, while explicit destructive preview/confirmation safeguards remain unchanged.
+- Require every newly added storage root to complete one explicit **Initialize & scan** before global reconciliation or qBittorrent filesystem reconciliation can use it.
+- Use the existing durable `last_scan_at` marker, so a failed or cancelled first scan leaves the root uninitialized and inert.
+- Surface uninitialized roots in Storage settings and refresh their state automatically when the initialization job finishes.
+
 ## v9 movie-detail and publishing hotfix
 
 - Fix every Movie detail request failing with HTTP 500 because `poster_ref` was passed twice while constructing `MovieDetailResponse`.

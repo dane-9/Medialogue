@@ -209,7 +209,7 @@ Recommended:
 7. Add /media/shows as Show Storage Root
 8. Configure indexers
 9. Test integrations
-10. Enable Active Operations when ready
+10. Initialize each storage root by pressing Scan once when ready
 11. Start first scan manually
 ```
 

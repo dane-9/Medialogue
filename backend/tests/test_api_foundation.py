@@ -146,13 +146,13 @@ def test_error_envelope_serializes_validation_context(client: TestClient) -> Non
     assert invalid.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_parser_endpoint_and_operations_default_safe(client: TestClient) -> None:
+def test_parser_endpoint_and_operations_are_always_available(client: TestClient) -> None:
     login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
     csrf = login.json()["csrf_token"]
 
     operations = client.get("/api/v1/operations")
     assert operations.status_code == 200
-    assert operations.json() == {"enabled": False}
+    assert operations.json() == {"enabled": True}
 
     parsed = client.post(
         "/api/v1/parser/test",

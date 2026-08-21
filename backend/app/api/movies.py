@@ -298,7 +298,8 @@ async def get_movie(
             item.reason in {"TORRENT_REMOVED_EXTERNALLY", "TORRENT_PATH_NOT_FOUND"}
             for item in open_problems
         ),
-        "plex_blocked": any(item.reason == "PLEX_IDENTITY_MISMATCH" for item in open_problems),
+        # Plex movie metadata is advisory and never blocks TMDB-backed identity.
+        "plex_blocked": False,
         "root_offline": bool(root and root.last_health == "unavailable"),
         "root_affected_count": root_affected_count,
     }

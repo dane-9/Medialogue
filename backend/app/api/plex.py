@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
-from app.api.operations import active_operations_enabled
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.integrations.plex import PlexClient
@@ -161,12 +160,6 @@ async def sync_library(
     db: AsyncSession = Depends(get_db),
 ) -> JobAcceptedResponse:
     del admin
-    if not active_operations_enabled():
-        raise AppError(
-            "ACTIVE_OPERATIONS_LOCKED",
-            "Enable Active Operations before syncing Plex verification.",
-            status_code=423,
-        )
     configuration = await get_plex_configuration(db)
     if configuration is None or not configuration.enabled:
         raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
@@ -186,12 +179,6 @@ async def recheck_movie(
     client_factory=Depends(get_plex_client_factory),
 ) -> PlexRecheckResponse:
     del admin
-    if not active_operations_enabled():
-        raise AppError(
-            "ACTIVE_OPERATIONS_LOCKED",
-            "Enable Active Operations before rechecking Plex.",
-            status_code=423,
-        )
     configuration = await get_plex_configuration(db)
     if configuration is None or not configuration.enabled:
         raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
@@ -225,12 +212,6 @@ async def recheck_show(
     client_factory=Depends(get_plex_client_factory),
 ) -> PlexRecheckResponse:
     del admin
-    if not active_operations_enabled():
-        raise AppError(
-            "ACTIVE_OPERATIONS_LOCKED",
-            "Enable Active Operations before rechecking Plex.",
-            status_code=423,
-        )
     configuration = await get_plex_configuration(db)
     if configuration is None or not configuration.enabled:
         raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
