@@ -1,3 +1,9 @@
+## v9 qBittorrent connection stability hotfix
+
+- Prevent the qBittorrent authentication socket from being reused for the first API read, avoiding stale post-login keep-alive sockets after HTTP 204 login responses.
+- Retry idempotent qBittorrent GET/HEAD requests once on transient protocol/network disconnects such as `Server disconnected without sending a response`; mutating POST actions are never automatically retried.
+- Change the default polling interval for newly created qBittorrent clients from 15 seconds to 30 seconds. Explicitly configured existing intervals remain unchanged.
+
 ## v9 file-backed integration configuration
 
 - Fixed qBittorrent 5.2+ authentication: HTTP 204 No Content is now accepted as a successful WebAPI login, while retaining legacy 200/`Ok.` support.

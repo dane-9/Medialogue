@@ -50,7 +50,7 @@ class DownloadClientConfig:
     tags: list[str] = field(default_factory=list)
     enabled: bool = True
     revision: int = 1
-    poll_interval_seconds: int = 15
+    poll_interval_seconds: int = 30
     password: str | None = None
 
 
@@ -324,7 +324,7 @@ class IntegrationConfigStore:
                 tags=list(row.get("tags") or []),
                 enabled=bool(row.get("enabled", True)),
                 revision=int(row.get("revision", 1)),
-                poll_interval_seconds=int(row.get("poll_interval_seconds", 15)),
+                poll_interval_seconds=int(row.get("poll_interval_seconds", 30)),
                 password=passwords.get(str(item_id)) or None,
             ))
         return items

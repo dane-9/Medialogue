@@ -41,6 +41,14 @@ class TorrentObservation:
 class QBittorrentClient:
     """Small async adapter that only exposes explicitly allowed qBit actions."""
 
+    _SAFE_RETRY_METHODS = {"GET", "HEAD"}
+    _TRANSIENT_READ_ERRORS = (
+        httpx.RemoteProtocolError,
+        httpx.ReadError,
+        httpx.WriteError,
+        httpx.ConnectError,
+    )
+
     def __init__(
         self,
         base_url: str,
@@ -70,8 +78,17 @@ class QBittorrentClient:
         await self._client.aclose()
 
     async def login(self) -> None:
+        # Do not leave the authentication socket in the connection pool. Some
+        # qBittorrent/proxy combinations close the connection immediately after
+        # the login response (especially the 204 response used by qBittorrent
+        # 5.2+). Keeping that socket eligible for reuse can make the next GET fail
+        # with ``Server disconnected without sending a response`` even though
+        # authentication succeeded. The cookie jar is independent of the socket,
+        # so the SID is still sent on the following fresh connection.
         response = await self._client.post(
-            "api/v2/auth/login", data={"username": self.username, "password": self.password}
+            "api/v2/auth/login",
+            data={"username": self.username, "password": self.password},
+            headers={"Connection": "close"},
         )
         body = response.text.strip()
         # qBittorrent <= 5.1 returns HTTP 200 with ``Ok.`` on a successful
@@ -189,14 +206,39 @@ class QBittorrentClient:
             data={"hashes": info_hash.lower(), "deleteFiles": str(delete_files).lower()},
         )
 
+    async def _request_once_with_safe_retry(
+        self, method: str, path: str, **kwargs: Any
+    ) -> httpx.Response:
+        method_upper = method.upper()
+        request_path = path.lstrip("/")
+        try:
+            return await self._client.request(method_upper, request_path, **kwargs)
+        except self._TRANSIENT_READ_ERRORS as exc:
+            if method_upper not in self._SAFE_RETRY_METHODS:
+                raise QBittorrentError(
+                    f"qBittorrent connection failed during {method_upper}: {exc}"
+                ) from exc
+            # Read-only WebAPI calls are safe to repeat. HTTPX evicts a broken
+            # connection after these transport errors, so this second attempt
+            # naturally uses another socket. One retry is enough to absorb a
+            # stale keep-alive connection without masking an actual outage.
+            try:
+                return await self._client.request(method_upper, request_path, **kwargs)
+            except self._TRANSIENT_READ_ERRORS as retry_exc:
+                raise QBittorrentError(
+                    f"qBittorrent connection dropped twice while reading {path}: {retry_exc}"
+                ) from retry_exc
+
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         if not self._authenticated:
             await self.login()
-        response = await self._client.request(method, path.lstrip("/"), **kwargs)
+
+        method_upper = method.upper()
+        response = await self._request_once_with_safe_retry(method_upper, path, **kwargs)
         if response.status_code in {401, 403}:
             self._authenticated = False
             await self.login()
-            response = await self._client.request(method, path.lstrip("/"), **kwargs)
+            response = await self._request_once_with_safe_retry(method_upper, path, **kwargs)
         try:
             response.raise_for_status()
         except httpx.HTTPError as exc:
