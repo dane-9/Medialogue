@@ -363,6 +363,33 @@ def test_completed_inception_replacement_promotes_same_release_and_is_idempotent
             shutil.rmtree(root)
 
 
+def test_completed_torrent_reusing_current_directory_is_not_an_incoming_release(client: TestClient) -> None:
+    headers, root, old_dir, root_payload, movie = _movie_setup(client)
+    try:
+        release_name = old_dir.name
+        behavior = FakeQBitBehavior(
+            torrents=[_torrent("existing-media-hash", release_name, progress=1, state="stalledUP", root=root)]
+        )
+        _install_qbit_fake(client, behavior)
+        qbit = _create_qbit(client, headers)
+        try:
+            observed = client.post(f"/api/v1/download-clients/{qbit['id']}/poll", headers=headers)
+            assert observed.status_code == 200, observed.text
+
+            detail = client.get(f"/api/v1/movies/{movie['id']}").json()
+            assert detail["incoming_downloads"] == []
+            assert detail["reconciliation"]["incoming_count"] == 0
+            assert {release["state"] for release in detail["releases"]} == {"current", "removed"}
+
+            association = _db_read(lambda db: _attached_for_hash(db, "existing-media-hash"))
+            assert association.association_type is AssociationType.ATTACHED
+        finally:
+            client.app.dependency_overrides.clear()
+    finally:
+        if root.exists():
+            shutil.rmtree(root)
+
+
 async def _attached_for_hash(db, info_hash: str):
     return await db.scalar(
         select(MovieReleaseTorrent)
