@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { HealthIndicator, Job } from '../types'
+import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
 import { Icon } from './Icon'
 
 const primary = [
@@ -29,6 +30,7 @@ const fallbackHealth: HealthIndicator[] = [
 ]
 
 export function AppShell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
+  const [searchOpen, setSearchOpen] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [problemCount, setProblemCount] = useState(0)
@@ -79,9 +81,12 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand" onClick={() => navigate('/movies')} role="button" tabIndex={0}>
-        <div className="brand-mark"><Icon name="spark" size={18} /></div>
-        <div><div className="brand-name">MEDIA<span>LOGUE</span></div></div>
+      <div className="brand">
+        <div className="brand-identity" onClick={() => navigate('/movies')} role="button" tabIndex={0}>
+          <div className="brand-mark"><Icon name="spark" size={18} /></div>
+          <div className="brand-name">MEDIA<span>LOGUE</span></div>
+        </div>
+        <GlobalSearchButton onOpen={() => setSearchOpen(true)} />
       </div>
       <div className="sidebar-scroll">
         <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item)} />
@@ -102,6 +107,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       </header>
       <div className="page-content">{children}</div>
     </main>
+    {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
   </div>
 }
 

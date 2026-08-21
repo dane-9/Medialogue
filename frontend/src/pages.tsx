@@ -1141,21 +1141,59 @@ export function ProblemsPage() {
   </Page>
 }
 
+type SearchCandidate = {
+  tmdbId?: number
+  movieId?: string
+  title: string
+  year?: number
+  poster?: string
+  status?: string
+}
+
+function SearchPickPoster({ candidate }: { candidate: SearchCandidate }) {
+  const reference = candidate.poster
+  const source = reference ? (reference.startsWith('http') ? reference : `https://image.tmdb.org/t/p/w92${reference.startsWith('/') ? reference : `/${reference}`}`) : undefined
+  return <span className="search-pick-poster">{source ? <img src={source} alt="" loading="lazy" /> : <Icon name="film" size={16} />}</span>
+}
+
 export function SearchPage() {
-  const [query, setQuery] = useState('')
-  const [candidates, setCandidates] = useState<Movie[]>([])
-  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null)
+  const [query, setQuery] = useUrlState('q')
+  const [candidates, setCandidates] = useState<SearchCandidate[]>([])
+  const [selectedMovie, setSelectedMovie] = useState<SearchCandidate | null>(null)
+  const [looking, setLooking] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
   const [job, setJob] = useState<InteractiveSearchJob | null>(null)
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  // TMDB is the search index; the library is an annotation on the results.
+  // Titles you already own are still returned, marked with their real state.
   useEffect(() => {
+    const term = query.trim()
+    if (!term) { setCandidates([]); setLooking(false); return }
     let alive = true
-    const timer = window.setTimeout(() => {
-      api.movies(query).then((items) => { if (alive) setCandidates(items.slice(0, 12)) }).catch(() => { if (alive) setCandidates([]) })
-    }, 180)
+    setLooking(true)
+    const timer = window.setTimeout(async () => {
+      try {
+        const [library, matches] = await Promise.all([
+          api.movies(term).catch(() => [] as Movie[]),
+          api.lookupMovies(term).catch(() => [] as TMDBMovieLookup[]),
+        ])
+        if (!alive) return
+        const owned = new Map<number, Movie>()
+        library.forEach((movie) => { if (movie.tmdbId) owned.set(movie.tmdbId, movie) })
+        const rows: SearchCandidate[] = matches.slice(0, 12).map((match) => {
+          const held = owned.get(match.tmdbId)
+          return { tmdbId: match.tmdbId, movieId: held?.id, title: held?.title ?? match.title, year: held?.year ?? match.year, poster: held?.poster ?? match.posterRef, status: held?.status }
+        })
+        library.forEach((movie) => {
+          if (movie.tmdbId && rows.some((row) => row.tmdbId === movie.tmdbId)) return
+          rows.unshift({ tmdbId: movie.tmdbId, movieId: movie.id, title: movie.title, year: movie.year, poster: movie.poster, status: movie.status })
+        })
+        setCandidates(rows)
+      } finally { if (alive) setLooking(false) }
+    }, 260)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [query])
 
@@ -1187,7 +1225,17 @@ export function SearchPage() {
     if (!selectedMovie) { setError('Choose a movie from your library first.'); return }
     setBusy(true); setError(''); setJob(null)
     try {
-      const started = await api.startMovieSearch(selectedMovie.id)
+      // A TMDB-only pick has to become a library Movie before it can be
+      // searched: the endpoint resolves its target against the movies table,
+      // and a grab needs something to attach to.
+      let movieId = selectedMovie.movieId
+      if (!movieId) {
+        if (!selectedMovie.tmdbId) throw new Error('This title has no TMDB id, so it cannot be searched.')
+        const added = await api.addMovie(selectedMovie.tmdbId)
+        movieId = added.id
+        setSelectedMovie((current) => current ? { ...current, movieId: added.id, status: added.status } : current)
+      }
+      const started = await api.startMovieSearch(movieId)
       setJobId(started.job_id)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not start the interactive search.') }
     finally { setBusy(false) }
@@ -1199,14 +1247,24 @@ export function SearchPage() {
   return <Page title="Interactive Search" subtitle="Search configured Prowlarr-backed indexers and choose exactly what to download.">
     <Panel className="search-hero">
       <div className="search-hero-icon"><Icon name="search" size={23} /></div>
-      <div className="search-hero-copy"><div className="eyebrow">MANUAL WORKFLOW</div><h2>Find a release for a library title</h2><p>Search is read-only. A torrent is submitted only when you explicitly choose a result; the selected qBittorrent client keeps control of its destination.</p></div>
+      <div className="search-hero-copy"><div className="eyebrow">MANUAL WORKFLOW</div><h2>Find a release for any title</h2><p>Search TMDB for the film you want, then query your indexers for it. A title you do not own yet is added to your library as Missing when the search starts, so the grab has somewhere to land. Nothing is downloaded until you choose a result.</p></div>
       <div className="search-form">
-        <Select value="Movie" disabled><option>Movie</option></Select>
-        <Input placeholder="Find a movie in your library…" value={query} onChange={(event) => { setQuery(event.target.value); setSelectedMovie(null) }} />
-        <Button variant="primary" icon="search" onClick={() => void start()} disabled={busy || !selectedMovie}>{busy ? 'Starting…' : 'Search indexers'}</Button>
+        <Input placeholder="Search TMDB for a movie…" value={query} onChange={(event) => { setQuery(event.target.value); setSelectedMovie(null) }} />
+        <Button variant="primary" icon="search" onClick={() => void start()} disabled={busy || !selectedMovie}>{busy ? 'Starting…' : selectedMovie && !selectedMovie.movieId ? 'Add & search indexers' : 'Search indexers'}</Button>
       </div>
-      <div className="search-targets">
-        {selectedMovie ? <button className="search-target selected" onClick={() => setSelectedMovie(null)}><strong>{selectedMovie.title}</strong><span>{selectedMovie.year}</span><Badge tone={statusTone(selectedMovie.status)}>{selectedMovie.status}</Badge></button> : candidates.slice(0, 6).map((movie) => <button className="search-target" key={movie.id} onClick={() => { setSelectedMovie(movie); setQuery(`${movie.title} (${movie.year})`) }}><strong>{movie.title}</strong><span>{movie.year}</span><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></button>)}
+      <div className="search-picks">
+        {selectedMovie
+          ? <button className="search-pick selected" onClick={() => setSelectedMovie(null)}>
+              <SearchPickPoster candidate={selectedMovie} />
+              <span className="search-pick-copy"><strong>{selectedMovie.title}</strong><span>{[selectedMovie.year || 'Year unknown', selectedMovie.tmdbId ? `TMDB ${selectedMovie.tmdbId}` : null].filter(Boolean).join(' · ')}</span></span>
+              <Badge tone={selectedMovie.status ? statusTone(selectedMovie.status) : 'neutral'}>{selectedMovie.status ?? 'Not in library'}</Badge>
+            </button>
+          : candidates.slice(0, 8).map((candidate) => <button className="search-pick" key={candidate.tmdbId ?? candidate.movieId} onClick={() => setSelectedMovie(candidate)}>
+              <SearchPickPoster candidate={candidate} />
+              <span className="search-pick-copy"><strong>{candidate.title}</strong><span>{candidate.year || 'Year unknown'}</span></span>
+              <Badge tone={candidate.status ? statusTone(candidate.status) : 'neutral'}>{candidate.status ?? 'Not in library'}</Badge>
+            </button>)}
+        {!selectedMovie && !candidates.length && <span className="muted">{looking ? 'Searching TMDB…' : query.trim() ? 'No TMDB matches.' : 'Type a film title to begin.'}</span>}
       </div>
     </Panel>
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
@@ -1423,7 +1481,7 @@ function SecuritySettings() {
       statusTone={security?.default_password_warning ? 'amber' : 'green'}
       detail={security?.default_password_warning ? 'change this before exposing the host' : undefined}
       detailTone={security?.default_password_warning ? 'err' : undefined} />
-    <div className="settings-form security-form">
+    <div className="settings-form">
       <Field label="Current password" help="Required to prove this session belongs to you.">
         <Secret value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" />
       </Field>
