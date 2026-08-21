@@ -86,6 +86,18 @@ class DownloadClientTestRequest(BaseModel):
     password: str = Field(min_length=1, max_length=4096)
 
 
+class DownloadClientSavedTestRequest(BaseModel):
+    """Optional unsaved edits to test against an existing stored client.
+
+    Omitting/blanking password intentionally preserves the write-only stored
+    secret, so users can test URL/username edits without retyping it.
+    """
+
+    url: AnyHttpUrl | None = None
+    username: str | None = None
+    password: str | None = Field(default=None, max_length=4096)
+
+
 class DownloadPollResponse(BaseModel):
     client_id: UUID
     status: str

@@ -29,6 +29,7 @@ from app.schemas.common import Collection, DeleteResponse
 from app.schemas.downloads import (
     DownloadClientCreate,
     DownloadClientResponse,
+    DownloadClientSavedTestRequest,
     DownloadClientTestResponse,
     DownloadClientTestRequest,
     DownloadClientUpdate,
@@ -283,6 +284,7 @@ async def delete_download_client(
 @router.post("/download-clients/{client_id}/test", response_model=DownloadClientTestResponse)
 async def test_download_client(
     client_id: UUID,
+    payload: DownloadClientSavedTestRequest | None = None,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_qbittorrent_client_factory),
@@ -291,18 +293,41 @@ async def test_download_client(
     if client is None:
         raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
     client.last_health_checked_at = utcnow()
+    test_url = str(payload.url).rstrip("/") if payload and payload.url is not None else client.url
+    test_username = payload.username if payload and payload.username is not None else (client.username or "")
+    test_password = payload.password if payload and payload.password else (client.password or "")
+    testing_saved_configuration = (
+        test_url == client.url
+        and test_username == (client.username or "")
+        and test_password == (client.password or "")
+    )
     try:
-        result = await test_download_client_connection(client, client_factory=client_factory)
+        started = perf_counter()
+        adapter = client_factory(test_url, test_username, test_password)
+        try:
+            health = await adapter.health()
+            result = {
+                "status": "healthy",
+                "version": health.get("version"),
+                "latency_ms": round((perf_counter() - started) * 1000),
+            }
+        finally:
+            await adapter.close()
     except Exception as exc:
-        client.health = "unavailable"
-        client.last_error = str(exc)
-        client.latency_ms = None
+        # Only persist health against the stored configuration. A test using
+        # unsaved overrides is diagnostic and must not make the saved client
+        # appear broken.
+        if testing_saved_configuration:
+            client.health = "unavailable"
+            client.last_error = str(exc)
+            client.latency_ms = None
         await db.commit()
         return DownloadClientTestResponse(status="unavailable", message=str(exc))
-    client.health = "healthy"
-    client.last_success_at = utcnow()
-    client.last_error = None
-    client.latency_ms = int(result.get("latency_ms") or 0)
+    if testing_saved_configuration:
+        client.health = "healthy"
+        client.last_success_at = utcnow()
+        client.last_error = None
+        client.latency_ms = int(result.get("latency_ms") or 0)
     await db.commit()
     return DownloadClientTestResponse(**result)
 
