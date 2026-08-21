@@ -153,6 +153,8 @@ _KNOWN_NON_TITLE = {
     "576",
     "480",
     "uhd",
+    "uhd-bluray",
+    "uhdbluray",
     "bluray",
     "blu-ray",
     "web-dl",
@@ -171,6 +173,8 @@ _KNOWN_NON_TITLE = {
     "avc",
     "hevc",
     "av1",
+    "vc-1",
+    "vc1",
     "mpeg-2",
     "mpeg2",
     "h",
@@ -336,7 +340,7 @@ def _technical_boundary(normalized: str, *, start: int = 0) -> int | None:
         r"\b(?:576|480)i\b",
         r"\b(?:S\d{1,2}(?:E\d{1,3})?|\d{1,2}x\d{1,3})\b",
         r"\b(?:WEB[- ]?DL|WEB[- ]?Rip|HDTV|Blu[- ]?Ray|DVD(?:5|9)?|REMUX)\b",
-        r"\b(?:x26[45]|AVC|HEVC|H\.26[45]|MPEG[- ]?2|TrueHD|DTS[- ]?HD|DD\+?|FLAC|AAC)\b",
+        r"\b(?:x26[45]|AVC|HEVC|H\.26[45]|MPEG[- ]?2|VC[- ]?1|TrueHD|DTS[- ]?HD|DD\+?|FLAC|AAC)\b",
     )
     candidates: list[int] = []
     for pattern in patterns:
@@ -497,6 +501,7 @@ def _hdr(normalized: str) -> HDRInfo:
 def _video(raw: str, normalized: str) -> VideoInfo:
     patterns = (
         (r"(?<![A-Za-z0-9])MPEG[- .]?2(?![A-Za-z0-9])", "MPEG-2"),
+        (r"(?<![A-Za-z0-9])VC[- .]?1(?![A-Za-z0-9])", "VC-1"),
         (r"(?<![A-Za-z0-9])x264(?![A-Za-z0-9])", "x264"),
         (r"(?<![A-Za-z0-9])x265(?![A-Za-z0-9])", "x265"),
         (r"(?<![A-Za-z0-9])H[. -]?264(?![A-Za-z0-9])", "H.264"),
@@ -670,9 +675,27 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
     else:
         boundary_for_technical = 0
         if year_match:
-            title_part = normalized[: year_match.start()].strip(" -")
-            identity = IdentityInfo(title_part or None, year, None, (), None)
-            boundary_for_technical = year_match.end()
+            # Some libraries are organized as ``YEAR Title`` rather than
+            # ``Title YEAR``.  A leading four-digit year used to produce an
+            # empty title candidate (e.g. ``2000 The Emperor's New Groove``).
+            # Treat it as metadata only when meaningful title text follows it
+            # before the technical release suffix. Numeric movie titles such
+            # as ``1917 2019 ...`` still use the later release year because
+            # ``_year_match`` deliberately selects the final year token.
+            if year_match.start() == 0:
+                leading_tech = _technical_boundary(normalized, start=year_match.end())
+                title_end = leading_tech if leading_tech is not None else len(normalized)
+                leading_title = normalized[year_match.end() : title_end].strip(" -")
+            else:
+                leading_tech = None
+                leading_title = ""
+            if leading_title and re.search(r"[A-Za-z]", leading_title):
+                identity = IdentityInfo(leading_title, year, None, (), None)
+                boundary_for_technical = leading_tech if leading_tech is not None else len(normalized)
+            else:
+                title_part = normalized[: year_match.start()].strip(" -")
+                identity = IdentityInfo(title_part or None, year, None, (), None)
+                boundary_for_technical = year_match.end()
         else:
             technical_start = _technical_boundary(normalized)
             title_part = normalized[:technical_start].strip(" -") if technical_start is not None else normalized

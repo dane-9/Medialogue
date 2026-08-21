@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Callable
@@ -8,6 +8,7 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.identity import normalize_identity_title
 from app.integrations.tmdb import TMDBClient, TMDBMovieMatch, TMDBShowDetails, TMDBShowMatch
 from app.models.domain import Episode, PresenceState, Season, Severity, Show, TMDBConfiguration
 from app.services.events import create_event
@@ -19,8 +20,78 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _normalized_title(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+@dataclass(frozen=True, slots=True)
+class TMDBMovieIdentityResolution:
+    match: TMDBMovieMatch | None
+    reason: str
+    candidates: tuple[TMDBMovieMatch, ...] = ()
+    queries: tuple[str, ...] = ()
+
+
+def _title_query_variants(title: str) -> tuple[str, ...]:
+    """Return conservative query spellings for punctuation/ampersand variants."""
+
+    variants = [title]
+    if " & " in title:
+        variants.append(title.replace(" & ", " and "))
+    if " and " in title.casefold():
+        variants.append(title.replace(" and ", " & ").replace(" And ", " & "))
+    # Preserve order while avoiding duplicate API calls.
+    return tuple(dict.fromkeys(value.strip() for value in variants if value.strip()))
+
+
+def _select_movie_identity(
+    title: str,
+    year: int | None,
+    matches: list[TMDBMovieMatch] | tuple[TMDBMovieMatch, ...],
+) -> tuple[TMDBMovieMatch | None, str, tuple[TMDBMovieMatch, ...]]:
+    target = normalize_identity_title(title)
+    exact = tuple(
+        item
+        for item in matches
+        if target in {
+            normalize_identity_title(item.title),
+            normalize_identity_title(item.original_title),
+        }
+        and (year is None or item.year is None or item.year == year)
+    )
+    if len(exact) == 1:
+        return exact[0], "matched", exact
+    if len(exact) > 1:
+        with_year = tuple(item for item in exact if year is not None and item.year == year)
+        if len(with_year) == 1:
+            return with_year[0], "matched", exact
+        return None, "ambiguous", exact
+    return None, "not_found", tuple(matches)
+
+
+async def _select_movie_by_alternative_title(
+    client: object,
+    title: str,
+    year: int | None,
+    matches: list[TMDBMovieMatch],
+) -> tuple[TMDBMovieMatch | None, str | None]:
+    """Use TMDB-owned alternate-title evidence without fuzzy guessing."""
+
+    loader = getattr(client, "get_movie_alternative_titles", None)
+    if not callable(loader):
+        return None, None
+    target = normalize_identity_title(title)
+    alias_matches: list[TMDBMovieMatch] = []
+    for item in matches[:8]:
+        if year is not None and item.year is not None and item.year != year:
+            continue
+        aliases = await loader(item.tmdb_id)
+        if any(normalize_identity_title(alias) == target for alias in aliases):
+            alias_matches.append(item)
+    if len(alias_matches) == 1:
+        return alias_matches[0], "matched"
+    if len(alias_matches) > 1:
+        with_year = [item for item in alias_matches if year is not None and item.year == year]
+        if len(with_year) == 1:
+            return with_year[0], "matched"
+        return None, "ambiguous"
+    return None, None
 
 
 async def get_tmdb_configuration(db: AsyncSession) -> TMDBConfiguration | None:
@@ -98,39 +169,97 @@ async def resolve_movie_identity(
     authority for a newly discovered title.
     """
 
+    resolution = await resolve_movie_identity_detailed(
+        db,
+        title,
+        year,
+        client_factory=client_factory,
+    )
+    return resolution.match, resolution.reason
+
+
+async def resolve_movie_identity_detailed(
+    db: AsyncSession,
+    title: str,
+    year: int | None,
+    *,
+    client_factory: TMDBClientFactory | None = None,
+) -> TMDBMovieIdentityResolution:
+    """Resolve a Movie and retain useful failure evidence for the Problems UI.
+
+    TMDB's ``year`` filter and punctuation handling are useful but not
+    authoritative.  We first search the parsed title/year, then retry harmless
+    title variants and finally the same query without the year filter when no
+    exact identity was returned. A candidate is still accepted only when its
+    normalized title and year evidence agree; fallback searches never lower
+    that identity requirement.
+    """
+
     configuration = await get_tmdb_configuration(db)
     if configuration is None or not configuration.enabled or not configuration.api_key:
-        return None, "not_configured"
+        return TMDBMovieIdentityResolution(None, "not_configured")
     factory = client_factory or TMDBClient
     client = factory(configuration.api_key)
     configuration.last_checked_at = utcnow()
+    queries: list[str] = []
+    collected: dict[int, TMDBMovieMatch] = {}
     try:
-        matches = await client.search_movie(title, year)
+        for query_title in _title_query_variants(title):
+            query_label = f"{query_title} ({year})" if year is not None else query_title
+            queries.append(query_label)
+            for item in await client.search_movie(query_title, year):
+                collected[item.tmdb_id] = item
+            match, reason, evidence = _select_movie_identity(title, year, list(collected.values()))
+            if match is not None or reason == "ambiguous":
+                configuration.health = "healthy"
+                configuration.last_success_at = utcnow()
+                configuration.last_error = None
+                return TMDBMovieIdentityResolution(match, reason, evidence, tuple(queries))
+
+        # A TMDB year filter can occasionally exclude a valid result when its
+        # release-date metadata differs from the filename convention. Retry
+        # without the filter, but still require the returned candidate's year
+        # to agree before it can be selected automatically.
+        if year is not None:
+            for query_title in _title_query_variants(title):
+                queries.append(query_title)
+                for item in await client.search_movie(query_title, None):
+                    collected[item.tmdb_id] = item
+                match, reason, evidence = _select_movie_identity(title, year, list(collected.values()))
+                if match is not None or reason == "ambiguous":
+                    configuration.health = "healthy"
+                    configuration.last_success_at = utcnow()
+                    configuration.last_error = None
+                    return TMDBMovieIdentityResolution(match, reason, evidence, tuple(queries))
+
+        alias_match, alias_reason = await _select_movie_by_alternative_title(
+            client,
+            title,
+            year,
+            list(collected.values()),
+        )
+        if alias_match is not None or alias_reason == "ambiguous":
+            configuration.health = "healthy"
+            configuration.last_success_at = utcnow()
+            configuration.last_error = None
+            return TMDBMovieIdentityResolution(
+                alias_match,
+                alias_reason or "matched",
+                tuple(collected.values()),
+                tuple(queries),
+            )
+
         configuration.health = "healthy"
         configuration.last_success_at = utcnow()
         configuration.last_error = None
     except Exception as exc:
         configuration.health = "unavailable"
         configuration.last_error = str(exc)
-        return None, "unavailable"
+        return TMDBMovieIdentityResolution(None, "unavailable", tuple(collected.values()), tuple(queries))
     finally:
         await client.close()
-
-    target = _normalized_title(title)
-    exact = [
-        item
-        for item in matches
-        if target in {_normalized_title(item.title), _normalized_title(item.original_title or "")}
-        and (year is None or item.year is None or item.year == year)
-    ]
-    if len(exact) == 1:
-        return exact[0], "matched"
-    if len(exact) > 1:
-        with_year = [item for item in exact if year is not None and item.year == year]
-        if len(with_year) == 1:
-            return with_year[0], "matched"
-        return None, "ambiguous"
-    return None, "not_found"
+    match, reason, evidence = _select_movie_identity(title, year, list(collected.values()))
+    return TMDBMovieIdentityResolution(match, reason, evidence, tuple(queries))
 
 
 async def resolve_show_identity(
@@ -160,11 +289,11 @@ async def resolve_show_identity(
     finally:
         await client.close()
 
-    target = _normalized_title(title)
+    target = normalize_identity_title(title)
     exact = [
         item
         for item in matches
-        if target in {_normalized_title(item.title), _normalized_title(item.original_title or "")}
+        if target in {normalize_identity_title(item.title), normalize_identity_title(item.original_title)}
         and (year is None or item.year is None or item.year == year)
     ]
     if len(exact) == 1:

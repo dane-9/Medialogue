@@ -93,3 +93,47 @@ def test_tmdb_show_search_details_and_episode_metadata() -> None:
     assert details.seasons[0].episode_count == 2
     assert episodes[0].episode_number == 1
     assert episodes[0].title == "Guy's Girl"
+
+
+def test_identity_title_normalization_treats_common_punctuation_variants_as_equal() -> None:
+    from app.core.identity import normalize_identity_title
+
+    assert normalize_identity_title("Oliver & Company") == normalize_identity_title("Oliver and Company")
+    assert normalize_identity_title("Wallace & Gromit: The Curse of the Were-Rabbit") == normalize_identity_title(
+        "Wallace and Gromit The Curse of the Were-Rabbit"
+    )
+    assert normalize_identity_title("The Adventures of Ichabod and Mr. Toad") == normalize_identity_title(
+        "The Adventures of Ichabod and Mr Toad"
+    )
+
+
+def test_movie_identity_selection_accepts_ampersand_and_punctuation_variants() -> None:
+    from app.integrations.tmdb import TMDBMovieMatch
+    from app.services.tmdb import _select_movie_identity
+
+    match, reason, evidence = _select_movie_identity(
+        "Oliver and Company",
+        1988,
+        [TMDBMovieMatch(12233, "Oliver & Company", "Oliver & Company", 1988, None, None)],
+    )
+
+    assert reason == "matched"
+    assert match is not None and match.tmdb_id == 12233
+    assert len(evidence) == 1
+
+
+def test_movie_alternative_title_can_resolve_home_video_alias() -> None:
+    from app.integrations.tmdb import TMDBMovieMatch
+    from app.services.tmdb import _select_movie_by_alternative_title
+
+    class FakeClient:
+        async def get_movie_alternative_titles(self, tmdb_id: int):
+            assert tmdb_id == 36972
+            return ("Scooby-Doo Goes Hollywood",)
+
+    candidate = TMDBMovieMatch(36972, "Scooby Goes Hollywood", "Scooby Goes Hollywood", 1979, None, None)
+    match, reason = asyncio.run(
+        _select_movie_by_alternative_title(FakeClient(), "Scooby Doo Goes Hollywood", 1979, [candidate])
+    )
+    assert reason == "matched"
+    assert match is candidate

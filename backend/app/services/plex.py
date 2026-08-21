@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.identity import identity_titles_equivalent
 from app.integrations.plex import PlexClient, PlexLibrarySnapshot, PlexMediaMatch
 from app.models.domain import (
     Episode,
@@ -162,7 +163,7 @@ async def recheck_movie_plex(
                 db, client, release, snapshot=effective_snapshot
             )
             if exact is not None:
-                title_agrees = not exact.title or exact.title.casefold() == movie.title.casefold()
+                title_agrees = not exact.title or identity_titles_equivalent(exact.title, movie.title)
                 year_agrees = movie.year is None or exact.year is None or exact.year == movie.year
                 agrees = title_agrees and year_agrees
                 if agrees:
@@ -177,7 +178,7 @@ async def recheck_movie_plex(
                     db, movie, release, state, method, exact=exact, resolved_path=checked_path
                 )
                 if state == PlexMatchState.CONFLICT:
-                    await _open_conflict(db, movie, release, exact)
+                    await _open_conflict(db, movie, release, exact, local_path=checked_path)
                 else:
                     await _resolve_conflict(db, movie.id)
                 continue
@@ -342,15 +343,31 @@ async def _upsert_observation(
 
 
 async def _open_conflict(
-    db: AsyncSession, movie: Movie, release: MovieRelease, match: PlexMediaMatch
+    db: AsyncSession,
+    movie: Movie,
+    release: MovieRelease,
+    match: PlexMediaMatch,
+    *,
+    local_path: str | None,
 ) -> None:
+    differences: list[str] = []
+    if movie.title and match.title and not identity_titles_equivalent(movie.title, match.title):
+        differences.append("title")
+    if movie.year is not None and match.year is not None and movie.year != match.year:
+        differences.append("year")
+    if local_path and match.file_path and local_path != match.file_path:
+        differences.append("path")
     details = {
         "movie_release_id": str(release.id),
         "local_title": movie.title,
         "local_year": movie.year,
+        "local_identity": f"{movie.title} ({movie.year})" if movie.year is not None else movie.title,
+        "local_path": local_path,
         "plex_title": match.title,
         "plex_year": match.year,
-        "path": match.file_path,
+        "plex_identity": f"{match.title} ({match.year})" if match.year is not None else match.title,
+        "plex_path": match.file_path,
+        "differences": differences,
     }
     await open_problem(
         db,
@@ -358,7 +375,10 @@ async def _open_conflict(
         entity_type="movie",
         entity_id=movie.id,
         severity=Severity.ERROR,
-        message="Plex identifies the exact media path as a different movie.",
+        message=(
+            f"Medialogue identifies this media as {details['local_identity']}, "
+            f"but Plex reports {details['plex_identity']}."
+        ),
         details=details,
     )
 
@@ -408,6 +428,7 @@ async def recheck_show_plex(
     client = None if snapshot is not None else client_factory(configuration.url, configuration.token)
     effective_snapshot = snapshot
     checked = matched = conflicts = not_found = 0
+    conflict_evidence: list[dict[str, object]] = []
     previous_health = configuration.health
     try:
         if snapshot is None:
@@ -438,7 +459,7 @@ async def recheck_show_plex(
                 state = PlexMatchState.NOT_FOUND
                 not_found += 1
             else:
-                title_agrees = not exact.show_title or exact.show_title.casefold() == show.title.casefold()
+                title_agrees = not exact.show_title or identity_titles_equivalent(exact.show_title, show.title)
                 season_agrees = exact.season_number is None or exact.season_number == episode.season_number
                 episode_agrees = exact.episode_number is None or exact.episode_number == episode.episode_number
                 state = PlexMatchState.MATCHED if title_agrees and season_agrees and episode_agrees else PlexMatchState.CONFLICT
@@ -446,6 +467,31 @@ async def recheck_show_plex(
                     matched += 1
                 else:
                     conflicts += 1
+                    differences: list[str] = []
+                    if exact.show_title and not identity_titles_equivalent(exact.show_title, show.title):
+                        differences.append("show title")
+                    if exact.season_number is not None and exact.season_number != episode.season_number:
+                        differences.append("season")
+                    if exact.episode_number is not None and exact.episode_number != episode.episode_number:
+                        differences.append("episode")
+                    if exact.file_path and exact.file_path != path:
+                        differences.append("path")
+                    conflict_evidence.append(
+                        {
+                            "local_show_title": show.title,
+                            "local_episode": f"S{episode.season_number:02d}E{episode.episode_number:02d}",
+                            "local_path": path,
+                            "plex_show_title": exact.show_title,
+                            "plex_episode_title": exact.title,
+                            "plex_episode": (
+                                f"S{exact.season_number:02d}E{exact.episode_number:02d}"
+                                if exact.season_number is not None and exact.episode_number is not None
+                                else None
+                            ),
+                            "plex_path": exact.file_path,
+                            "differences": differences,
+                        }
+                    )
             observation = await db.scalar(select(PlexObservation).where(PlexObservation.media_file_id == media_file.id))
             previous = observation.match_state if observation else None
             if observation is None:
@@ -485,8 +531,8 @@ async def recheck_show_plex(
                 entity_type="show",
                 entity_id=show.id,
                 severity=Severity.ERROR,
-                message="Plex identifies one or more exact episode paths as another Show or episode.",
-                details={"conflict_count": conflicts},
+                message=f"Plex disagrees with Medialogue for {conflicts} mapped episode path{'s' if conflicts != 1 else ''}.",
+                details={"conflict_count": conflicts, "conflicts": conflict_evidence[:20]},
             )
         else:
             await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "show", show.id)

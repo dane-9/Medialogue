@@ -123,6 +123,25 @@ class TMDBClient:
             poster_path=payload.get("poster_path") if isinstance(payload.get("poster_path"), str) else None,
         )
 
+    async def get_movie_alternative_titles(self, tmdb_id: int) -> tuple[str, ...]:
+        """Return TMDB's known alternate titles for a Movie.
+
+        This is used only as a conservative identity fallback after the normal
+        search result title/original-title comparison fails. It is especially
+        useful for releases whose home-video name differs from TMDB's primary
+        display title.
+        """
+
+        payload = (await self._get(f"/movie/{tmdb_id}/alternative_titles")).json()
+        titles: list[str] = []
+        for item in payload.get("titles", []):
+            if not isinstance(item, dict):
+                continue
+            title = item.get("title")
+            if isinstance(title, str) and title.strip() and title not in titles:
+                titles.append(title.strip())
+        return tuple(titles)
+
     async def search_show(self, title: str, year: int | None = None) -> list[TMDBShowMatch]:
         params: dict[str, object] = {"query": title, "include_adult": "false"}
         if year is not None:

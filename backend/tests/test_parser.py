@@ -179,3 +179,22 @@ def test_progressive_dvd_remux_qualities_are_canonical_supported_values():
 
     assert ntsc.quality.canonical in QUALITY_BY_NAME
     assert pal.quality.canonical in QUALITY_BY_NAME
+
+
+def test_leading_year_movie_directory_names_keep_the_title_candidate():
+    emperor = parse_release("2000 The Emperor's New Groove")
+    lilo = parse_release("2005 Lilo & Stitch 2 - Stitch Has a Glitch")
+
+    assert emperor.title == "The Emperor's New Groove"
+    assert emperor.year == 2000
+    assert lilo.title == "Lilo & Stitch 2 - Stitch Has a Glitch"
+    assert lilo.year == 2005
+
+
+def test_vc1_is_recognized_as_video_codec_not_unknown_release_text():
+    result = parse_release("9 2009 1080p BluRay REMUX VC-1 DTS-HD MA 5.1-Spark")
+
+    assert result.title == "9"
+    assert result.year == 2009
+    assert result.video.codec == "VC-1"
+    assert "VC-1" not in result.unknown_tokens
