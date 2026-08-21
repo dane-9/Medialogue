@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Medialogue — GUI overhaul preview</title>
+<link rel="stylesheet" href="/src/styles.css" />
+<style>
+  /* Preview harness only — not part of the app. */
+  .pv-bar { position: fixed; z-index: 99; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+  .pv-bar strong { font-size: 12px; margin-right: 8px; color: var(--faint); font-family: var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+  .pv-bar button { height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--raised); color: var(--muted); font-size: 12px; }
+  .pv-bar button.on { color: var(--text); background: var(--accent-soft); border-color: var(--accent-line); }
+  .app-shell { padding-bottom: 56px; }
+  .pv-screen { display: none; }
+  .pv-screen.on { display: block; }
+</style>
+</head>
+<body>
+
+<svg style="display:none">
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4"/></symbol>
+  <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m8 2 4 3 4-3M8 12h.01M12 12h.01M16 12h.01M8 16h8"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m12 3 9 17H3L12 3Z"/><path d="M12 9v4m0 3h.01"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="m4.9 4.9 1.4 1.4m11.4-1.4-1.4 1.4M12 2v2m0 16v2M2 12h2m16 0h2m-4.3 7.1-1.4-1.4M6.3 17.7l-1.4 1.4"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2-7 4 14 2-7h6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 1 4"/><path d="M20 5v6h-6"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 3v18"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="7" rx="1"/><rect x="4" y="14" width="16" height="7" rx="1"/><path d="M8 7h.01M8 18h.01"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3-1.5 5.5L5 10l5.5 1.5L12 17l1.5-5.5L19 10l-5.5-1.5L12 3Z"/><path d="m19 16-.6 2.4L16 19l2.4.6L19 22l.6-2.4L22 19l-2.4-.6L19 16Z"/></symbol>
+</svg>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-spark"/></svg></div>
+      <div><div class="brand-name">MEDIA<span>LOGUE</span></div></div>
+    </div>
+    <div class="sidebar-scroll">
+      <div class="nav-section">
+        <a class="nav-item active" data-go="movies"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-film"/></svg><span>Movies</span></a>
+        <a class="nav-item" data-go="shows"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tv"/></svg><span>Shows</span></a>
+        <a class="nav-item" data-go="downloads"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg><span>Downloads</span></a>
+        <a class="nav-item" data-go="problems"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg><span>Problems</span><span class="nav-count">7</span></a>
+      </div>
+      <div class="nav-section">
+        <a class="nav-item" data-go="search"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg><span>Interactive Search</span></a>
+        <a class="nav-item"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"/></svg><span>Torrent Archive</span></a>
+        <a class="nav-item" data-go="formats"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sliders"/></svg><span>Custom Formats</span></a>
+        <a class="nav-item"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-spark"/></svg><span>Quality Profiles</span></a>
+      </div>
+      <div class="nav-section">
+        <a class="nav-item"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg><span>Event History</span></a>
+        <a class="nav-item" data-go="settings"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-settings"/></svg><span>Settings</span></a>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="user-row"><span class="avatar">A</span><span class="user-copy"><strong>admin</strong><span>Administrator</span></span><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-logout"/></svg></button>
+    </div>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar">
+      <div class="crumb"><span class="crumb-muted">Workspace</span><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg><strong id="pv-crumb">Movies</strong></div>
+      <div class="topbar-actions">
+        <div class="health-strip">
+          <div class="health-pill"><span class="health-dot green"></span>Plex</div>
+          <div class="health-pill"><span class="health-dot green"></span>qBittorrent</div>
+          <div class="health-pill"><span class="health-dot amber"></span>Storage</div>
+          <div class="health-pill"><span class="health-dot red"></span>Indexers</div>
+        </div>
+        <button class="jobs-button"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-activity"/></svg><span>Jobs</span><b>2</b></button>
+      </div>
+    </header>
+
+    <div class="page-content">
+
+      <!-- ============ MOVIES ============ -->
+      <div class="pv-screen on" id="s-movies"><div class="page">
+        <div class="page-heading">
+          <div class="heading-copy">
+            <div class="eyebrow">MEDIALOGUE / MOVIES</div>
+            <h1>Movies</h1>
+            <p>Every film stays exactly where it lives on disk. Nothing is renamed or moved.</p>
+          </div>
+          <div class="heading-actions">
+            <button class="button button-secondary"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg>Rescan</button>
+            <button class="button button-primary"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg>Add movie</button>
+          </div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat stat-blue"><div class="stat-label">Tracked movies</div><div class="stat-value">1,284</div><div class="stat-detail">across 3 storage roots</div></div>
+          <div class="stat stat-green"><div class="stat-label">Present on disk</div><div class="stat-value">1,251</div><div class="stat-detail">97.4% of library</div></div>
+          <div class="stat stat-amber"><div class="stat-label">Missing media</div><div class="stat-value">26</div><div class="stat-detail">awaiting a release</div></div>
+          <div class="stat stat-red"><div class="stat-label">Open problems</div><div class="stat-value">7</div><div class="stat-detail">needs a decision</div></div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-field"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg><input class="input" placeholder="Filter movies…" /></div>
+          <select class="input select"><option>All quality profiles</option></select>
+          <div class="filter-tabs"><button class="active">All</button><button>Present</button><button>Missing</button><button>Problems</button></div>
+          <div class="toolbar-spacer"></div>
+          <span class="selection-count">2 selected</span>
+          <div class="view-toggle"><button class="selected"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-grid"/></svg></button><button><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-list"/></svg></button></div>
+        </div>
+
+        <div class="media-grid">
+          <a class="media-card media-selected"><div class="poster" style="background:linear-gradient(150deg,#33343d,#191a1e)"><div class="selection-mark"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg></div><span class="poster-title">Inception</span><span class="poster-year">2010</span><span class="poster-mark">2160p REMUX</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-green"><span class="badge-dot"></span>Present</span><span class="badge badge-blue"><span class="badge-dot"></span>Plex OK</span></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>/media/films/Inception (2010)</div></div></a>
+
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#3d3630,#1e1b18)"><span class="poster-title">Blade Runner 2049</span><span class="poster-year">2017</span><span class="poster-mark">2160p REMUX</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-green"><span class="badge-dot"></span>Present</span><span class="badge badge-blue"><span class="badge-dot"></span>Plex OK</span></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>/media/films/Blade Runner 2049</div></div></a>
+
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#2f3a3c,#181c1d)"><span class="poster-title">Arrival</span><span class="poster-year">2016</span><span class="poster-mark">1080p WEB-DL</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-amber"><span class="badge-dot"></span>Upgrade</span><span class="badge badge-blue"><span class="badge-dot"></span>Plex OK</span></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>/media/films/Arrival (2016)</div></div></a>
+
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#3b342a,#1d1a16)"><span class="poster-title">Dune: Part Two</span><span class="poster-year">2024</span><span class="poster-mark">2160p WEB-DL</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-red"><span class="badge-dot"></span>Missing</span><span class="badge"><span class="badge-dot"></span>No Plex</span></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>not on disk</div></div></a>
+
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#2b3138,#16181c)"><span class="poster-title">Interstellar</span><span class="poster-year">2014</span><span class="poster-mark">2160p REMUX</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-green"><span class="badge-dot"></span>Present</span><span class="badge badge-blue"><span class="badge-dot"></span>Plex OK</span></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>/media/films/Interstellar (2014)</div></div></a>
+
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#2d352e,#171a18)"><span class="poster-title">Parasite</span><span class="poster-year">2019</span><span class="poster-mark">1080p BLURAY</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-green"><span class="badge-dot"></span>Present</span><span class="badge badge-amber"><span class="badge-dot"></span>Plex stale</span></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>/media/films/Parasite (2019)</div></div></a>
+        </div>
+      </div></div>
+
+      <!-- ============ DOWNLOADS ============ -->
+      <div class="pv-screen" id="s-downloads"><div class="page">
+        <div class="page-heading">
+          <div class="heading-copy"><div class="eyebrow">MEDIALOGUE / DOWNLOADS</div><h1>Downloads</h1><p>Observed qBittorrent state. Medialogue never moves a completed torrent on your behalf.</p></div>
+          <div class="heading-actions"><button class="button button-secondary"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg>Refresh</button></div>
+        </div>
+
+        <div class="incoming-replacement">
+          <div class="incoming-icon"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg></div>
+          <div class="incoming-copy">
+            <strong>Incoming replacement — Arrival (2016)</strong>
+            <span>Arrival.2016.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.7.1-FraMeSToR</span>
+            <div class="incoming-meta"><span>54.2 GB</span><span>18 MB/s</span><span>ETA 41m</span></div>
+            <div class="progress"><span style="width:62%"></span></div>
+          </div>
+          <div class="incoming-percent">62%</div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-field"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg><input class="input" placeholder="Filter downloads…" /></div>
+          <select class="input select"><option>All clients</option></select>
+          <div class="filter-tabs"><button class="active">All</button><button>Downloading</button><button>Seeding</button></div>
+        </div>
+
+        <section class="panel table-panel">
+          <table class="data-table">
+            <thead><tr><th>Release</th><th>Client</th><th>Scope</th><th>Progress</th><th>Size</th><th>ETA</th><th>Save path</th><th>Media evidence</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><div class="release-cell"><span class="state-icon state-downloading"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"/></svg></span><strong>Arrival.2016.2160p.UHD.BluRay.REMUX-FraMeSToR</strong><small>Bluray-2160p · Remux</small></div></td><td><span class="client-name"><span class="client-dot"></span>qbit-main</span></td><td><span class="badge"><span class="badge-dot"></span>Movie</span></td><td><div class="download-progress"><div class="progress"><span style="width:62%"></span></div><span>62%</span></div></td><td>54.2 GB</td><td class="muted">41m</td><td class="path-cell">/downloads/complete/movies</td><td><span class="badge"><span class="badge-dot"></span>Matched</span></td><td><button class="icon-button"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></td></tr>
+              <tr><td><div class="release-cell"><span class="state-icon state-seeding"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-activity"/></svg></span><strong>Severance.S02.2160p.ATVP.WEB-DL-NTb</strong><small>WEBDL-2160p · NTb</small></div></td><td><span class="client-name"><span class="client-dot"></span>qbit-main</span></td><td><span class="badge"><span class="badge-dot"></span>Season</span></td><td><div class="download-progress"><div class="progress progress-green"><span style="width:100%"></span></div><span>100%</span></div></td><td>112 GB</td><td class="muted">—</td><td class="path-cell">/downloads/complete/tv</td><td><span class="badge"><span class="badge-dot"></span>Matched</span></td><td><button class="icon-button"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></td></tr>
+              <tr class="row-selected"><td><div class="release-cell"><span class="state-icon state-error"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></span><strong>Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos-FLUX</strong><small>WEBDL-2160p · FLUX</small></div></td><td><span class="client-name"><span class="client-dot"></span>qbit-seed</span></td><td><span class="badge"><span class="badge-dot"></span>Movie</span></td><td><div class="download-progress"><div class="progress progress-amber"><span style="width:8%"></span></div><span>8%</span></div></td><td>28.1 GB</td><td class="muted">stalled</td><td class="path-cell">/downloads/incomplete</td><td><span class="badge badge-red"><span class="badge-dot"></span>Path disagrees</span></td><td><button class="icon-button"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></td></tr>
+              <tr><td><div class="release-cell"><span class="state-icon state-completed"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg></span><strong>Shogun.S01.1080p.DSNP.WEB-DL-playWEB</strong><small>WEBDL-1080p · playWEB</small></div></td><td><span class="client-name"><span class="client-dot"></span>qbit-main</span></td><td><span class="badge"><span class="badge-dot"></span>Season</span></td><td><div class="download-progress"><div class="progress progress-green"><span style="width:100%"></span></div><span>100%</span></div></td><td>41.8 GB</td><td class="muted">—</td><td class="path-cell">/downloads/complete/tv</td><td><span class="muted">Observed only</span></td><td><button class="icon-button"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></td></tr>
+            </tbody>
+          </table>
+        </section>
+        <div class="pagination-bar"><button class="button button-ghost">Previous</button><span>Page 1 of 4</span><button class="button button-ghost">Next</button></div>
+      </div></div>
+
+      <!-- ============ PROBLEMS ============ -->
+      <div class="pv-screen" id="s-problems"><div class="page">
+        <div class="page-heading">
+          <div class="heading-copy"><div class="eyebrow">MEDIALOGUE / PROBLEMS</div><h1>Problems</h1><p>Every unresolved disagreement between the filesystem, Plex and qBittorrent.</p></div>
+          <div class="heading-actions"><button class="button button-secondary">Recheck all</button></div>
+        </div>
+
+        <div class="problem-summary">
+          <div class="problem-summary-icon"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></div>
+          <div><strong>7 problems are waiting on a decision</strong><span>Medialogue will not delete, rename or move anything until you explicitly confirm it.</span></div>
+          <button class="button button-secondary">Review oldest</button>
+        </div>
+
+        <div class="problem-layout">
+          <section class="panel problem-list-panel">
+            <div class="problem-filter"><div class="eyebrow">OPEN QUEUE</div><select class="input select"><option>All severities</option></select></div>
+            <button class="problem-row selected"><span class="problem-severity severity-high"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></span><span class="problem-row-copy"><strong>Duplicate physical release</strong><span>Inception (2010) — two directories hold a 2160p remux</span><small>OPENED 3 DAYS AGO</small></span></button>
+            <button class="problem-row"><span class="problem-severity severity-high"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></span><span class="problem-row-copy"><strong>Path mapping failed</strong><span>qbit-seed reports /data/torrents which is unknown here</span><small>OPENED 5 HOURS AGO</small></span></button>
+            <button class="problem-row"><span class="problem-severity severity-medium"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></span><span class="problem-row-copy"><strong>Ambiguous TMDB match</strong><span>The Bear — three candidates scored within 4 points</span><small>OPENED 1 DAY AGO</small></span></button>
+            <button class="problem-row"><span class="problem-severity severity-medium"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></span><span class="problem-row-copy"><strong>Plex library out of sync</strong><span>Parasite (2019) present on disk, absent in Plex</span><small>OPENED 2 DAYS AGO</small></span></button>
+            <button class="problem-row"><span class="problem-severity severity-low"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-alert"/></svg></span><span class="problem-row-copy"><strong>Storage root degraded</strong><span>/mnt/archive responded slowly on the last three probes</span><small>OPENED 6 DAYS AGO</small></span></button>
+          </section>
+
+          <section class="panel problem-detail-panel">
+            <div class="issue-banner"><span class="badge badge-red"><span class="badge-dot"></span>High</span><span>DUPLICATE_PHYSICAL_RELEASE</span><span class="badge"><span class="badge-dot"></span>Movie</span></div>
+            <p class="issue-detail">Two directories under different storage roots both contain a 2160p remux of Inception (2010). Both are referenced by an active torrent, so neither can be removed automatically.</p>
+
+            <div class="problem-evidence-block">
+              <div class="problem-evidence-grid">
+                <div class="problem-evidence-side"><span class="eyebrow">COPY A</span><strong>Inception.2010.2160p.UHD.BluRay.REMUX.HDR.HEVC-FraMeSToR</strong><span>54.2 GB · seeding · added 2023-04-11</span><code>/media/films/Inception (2010)</code></div>
+                <div class="problem-evidence-side"><span class="eyebrow">COPY B</span><strong>Inception.2010.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-TERMiNAL</strong><span>51.9 GB · seeding · added 2024-11-02</span><code>/mnt/archive/films/Inception 2010 UHD</code></div>
+              </div>
+              <div class="problem-difference"><strong>Difference:</strong> identical video track, different audio layout (7.1 vs 5.1) and 2.3 GB size delta.</div>
+              <div class="problem-evidence-note">Both copies are actively seeding. Removing either will affect your ratio on the originating tracker.</div>
+            </div>
+
+            <div class="resolution-block">
+              <div class="eyebrow">DUPLICATE RESOLVER</div>
+              <p>Select the copy to keep. Medialogue will not delete the loser unless you explicitly request deletion and review a fresh inventory first.</p>
+              <div class="history-list">
+                <label class="inline-check"><input type="radio" name="w" checked /><span><strong>Inception … -FraMeSToR</strong><small>Bluray-2160p · Remux · FraMeSToR · /media/films/Inception (2010)</small></span></label>
+                <label class="inline-check"><input type="radio" name="w" /><span><strong>Inception … -TERMiNAL</strong><small>Bluray-2160p · Remux · TERMiNAL · /mnt/archive/films/Inception 2010 UHD</small></span></label>
+              </div>
+              <label class="inline-check"><input type="checkbox" />Delete the losing media directory after preview</label>
+              <label class="inline-check"><input type="checkbox" />Remove losing torrent from qBittorrent; archived .torrent files remain</label>
+              <div class="detail-actions"><button class="button button-primary">Preview resolution</button></div>
+            </div>
+          </section>
+        </div>
+      </div></div>
+
+      <!-- ============ SETTINGS ============ -->
+      <div class="pv-screen" id="s-settings"><div class="page">
+        <div class="page-heading">
+          <div class="heading-copy"><div class="eyebrow">MEDIALOGUE / SETTINGS</div><h1>Settings</h1><p>Integrations, storage roots and safety rails.</p></div>
+        </div>
+
+        <div class="split split-narrow">
+          <nav class="settings-nav">
+            <button><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-settings"/></svg>General<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+            <button class="active"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg>Storage Roots<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+            <button><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-server"/></svg>Metadata<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+            <button><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-server"/></svg>Plex<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+            <button><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-server"/></svg>qBittorrent<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+            <button><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-server"/></svg>Indexers<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+            <button><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg>Schedules<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+            <button><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"/></svg>Security<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button>
+          </nav>
+
+          <section class="panel settings-panel">
+            <div class="panel-header"><div><div class="eyebrow">SETTINGS</div><h2>Storage Roots</h2></div><button class="button button-primary"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg>Add root</button></div>
+
+            <div class="storage-head"><div><h3>Configured roots</h3><p>Medialogue reads these paths. It never writes into them without an explicit confirmation.</p></div></div>
+            <div class="root-list">
+              <div class="root-row"><div class="root-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg></div><div><strong>/media/films</strong><span>read-write · 1,251 items inventoried</span></div><span class="badge badge-green"><span class="badge-dot"></span>Online</span><button class="icon-button"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></div>
+              <div class="root-row"><div class="root-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg></div><div><strong>/media/tv</strong><span>read-write · 418 items inventoried</span></div><span class="badge badge-green"><span class="badge-dot"></span>Online</span><button class="icon-button"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></div>
+              <div class="root-row root-row-offline"><div class="root-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg></div><div><strong>/mnt/archive</strong><span class="root-outage-copy">degraded · last probe took 8.4s</span></div><span class="badge badge-amber"><span class="badge-dot"></span>Degraded</span><button class="icon-button"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></div>
+            </div>
+            <div class="settings-note" style="margin:16px"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"/></svg><span>Removing a storage root never touches the files on it. Only Medialogue's index is cleared.</span></div>
+
+            <div class="settings-section">
+              <div><h3>Leave-in-place safeguards</h3><p>Medialogue is a catalogue, not a file manager. These switches gate every operation that could touch your filesystem.</p></div>
+              <div class="settings-form">
+                <label><span class="field-label">Allow directory deletion</span><div class="setting-control"><button class="toggle" aria-pressed="false"><span></span></button><span class="toggle-label">Disabled</span></div></label>
+                <label><span class="field-label">Allow torrent removal</span><div class="setting-control"><button class="toggle" aria-pressed="true"><span></span></button><span class="toggle-label">Enabled</span></div></label>
+                <label><span class="field-label">Confirmation window</span><input class="input" value="5 minutes" /></label>
+                <label><span class="field-label">Inventory freshness</span><input class="input" value="Require re-scan before delete" /></label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div><h3>Scan cadence</h3><p>How often the filesystem is re-inventoried. A manual rescan is always available from any library page.</p></div>
+              <div class="settings-form">
+                <label><span class="field-label">Full scan</span><select class="input"><option>Every 6 hours</option></select></label>
+                <label><span class="field-label">Quick scan</span><select class="input"><option>Every 15 minutes</option></select></label>
+              </div>
+            </div>
+
+            <div class="settings-footer"><button class="button button-ghost">Discard</button><button class="button button-primary">Save changes</button></div>
+          </section>
+        </div>
+      </div></div>
+
+      <!-- ============ CUSTOM FORMATS (split editor) ============ -->
+      <div class="pv-screen" id="s-formats"><div class="page">
+        <div class="page-heading">
+          <div class="heading-copy"><div class="eyebrow">MEDIALOGUE / CUSTOM FORMATS</div><h1>Custom Formats</h1><p>Matching rules only. Scores live on Quality Profiles, never on the format itself.</p></div>
+          <div class="heading-actions"><button class="button button-secondary">Import</button><button class="button button-primary"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg>New format</button></div>
+        </div>
+
+        <div class="split">
+          <section class="panel format-list">
+            <div class="qbit-list-head"><div class="eyebrow">FORMATS</div><span class="cf-dirty-state">12 total</span></div>
+            <div class="format-list-items">
+              <button class="selected"><span class="format-symbol">R</span><span><strong>Remux Tier</strong><small>3 conditions · release title</small></span><span class="format-score">+900</span></button>
+              <button><span class="format-symbol">H</span><span><strong>HDR10+ / DV</strong><small>2 conditions · release title</small></span><span class="format-score">+350</span></button>
+              <button><span class="format-symbol">A</span><span><strong>Atmos / TrueHD</strong><small>2 conditions · release title</small></span><span class="format-score">+200</span></button>
+              <button><span class="format-symbol">L</span><span><strong>Low Quality Groups</strong><small>5 conditions · release group</small></span><span class="format-score negative">−1000</span></button>
+              <button><span class="format-symbol">U</span><span><strong>Upscaled</strong><small>4 conditions · release title</small></span><span class="format-score negative">−800</span></button>
+            </div>
+            <div class="cf-list-actions"><button class="button button-ghost">Export all</button></div>
+          </section>
+
+          <section class="panel format-editor">
+            <div class="cf-editor-meta">
+              <label><span class="field-label">Name</span><input class="input" value="Remux Tier" /></label>
+              <label><span class="field-label">Applies to</span><select class="input"><option>Movies &amp; Shows</option></select></label>
+              <label class="cf-enabled-field"><span class="field-label">Enabled</span><input type="checkbox" checked /></label>
+              <label class="cf-description-field"><span class="field-label">Description</span><input class="input" value="Untouched disc remuxes — highest fidelity, largest files." /></label>
+            </div>
+
+            <div class="format-editor-grid">
+              <div class="cf-conditions-column">
+                <div class="section-title"><h3>Conditions</h3><button class="button button-secondary"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg>Add</button></div>
+                <div class="condition-card cf-condition-card">
+                  <div class="condition-top"><strong>Release title matches</strong><div class="cf-condition-badges"><span class="badge badge-blue"><span class="badge-dot"></span>Regex</span><button class="icon-button"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></div></div>
+                  <div class="cf-condition-grid">
+                    <label><span>Field</span><select class="input"><option>Release title</option></select></label>
+                    <label><span>Operator</span><select class="input"><option>Matches regex</option></select></label>
+                    <label class="cf-value-field"><span>Value</span><input class="input" value="\b(remux|bdremux)\b" /></label>
+                  </div>
+                  <div class="cf-condition-toggles"><label><input type="checkbox" checked />Required</label><label><input type="checkbox" />Negate</label><label><input type="checkbox" checked />Case insensitive</label></div>
+                </div>
+                <div class="condition-card cf-condition-card">
+                  <div class="condition-top"><strong>Source is Bluray</strong><div class="cf-condition-badges"><span class="badge"><span class="badge-dot"></span>Exact</span><button class="icon-button"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevron"/></svg></button></div></div>
+                  <div class="cf-condition-grid">
+                    <label><span>Field</span><select class="input"><option>Source</option></select></label>
+                    <label><span>Operator</span><select class="input"><option>Equals</option></select></label>
+                    <label class="cf-value-field"><span>Value</span><input class="input" value="Bluray" /></label>
+                  </div>
+                  <div class="cf-condition-toggles"><label><input type="checkbox" checked />Required</label><label><input type="checkbox" />Negate</label></div>
+                </div>
+                <div class="cf-definition-note">Conditions marked Required must all pass. Remaining conditions contribute to a partial match but never on their own.</div>
+              </div>
+
+              <div class="format-test">
+                <div class="section-title"><h3>Test against a release</h3></div>
+                <input class="input" value="Inception.2010.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.7.1-FraMeSToR" />
+                <div class="cf-test-actions"><button class="button button-secondary">Run test</button><button class="button button-ghost">Test all formats</button></div>
+                <div class="cf-evaluation">
+                  <div class="cf-evaluation-summary matched"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg><strong>Format matched</strong><span>2 / 2 CONDITIONS</span></div>
+                  <div class="cf-condition-result pass"><span class="cf-result-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg></span><span class="cf-result-copy"><strong>Release title matches</strong><span>Pattern found at offset 34</span><small>…BluRay.<b>REMUX</b>.HDR.HEVC…</small></span></div>
+                  <div class="cf-condition-result pass"><span class="cf-result-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg></span><span class="cf-result-copy"><strong>Source is Bluray</strong><span>Parser resolved source as Bluray</span><small>quality=Bluray-2160p</small></span></div>
+                </div>
+                <div class="cf-parser-block"><div class="field-label">Parser output</div><pre>title            Inception
+year             2010
+resolution       2160p
+source           Bluray
+modifier         Remux
+video_codec      HEVC
+audio            DTS-HD MA 7.1
+release_group    FraMeSToR</pre></div>
+              </div>
+            </div>
+
+            <div class="cf-editor-footer">
+              <div class="cf-export-actions"><button class="button button-ghost">Export</button><button class="button button-ghost">Duplicate</button></div>
+              <span class="cf-dirty-state">UNSAVED CHANGES</span>
+              <button class="button button-secondary">Revert</button>
+              <button class="button button-primary">Save format</button>
+            </div>
+          </section>
+        </div>
+      </div></div>
+
+      <!-- ============ SEARCH ============ -->
+      <div class="pv-screen" id="s-search"><div class="page">
+        <div class="page-heading"><div class="heading-copy"><div class="eyebrow">MEDIALOGUE / INTERACTIVE SEARCH</div><h1>Interactive Search</h1><p>Query your configured indexers directly and grab a release by hand.</p></div></div>
+
+        <section class="panel search-hero">
+          <div class="search-hero-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg></div>
+          <div class="search-hero-copy"><h2>Search indexers</h2><p>Results are never grabbed automatically. Nothing is sent to a download client until you click Grab.</p></div>
+          <div class="search-form"><input class="input" value="Inception 2010" /><select class="input select"><option>Movies</option></select><button class="button button-primary">Search</button></div>
+          <div class="search-targets">
+            <button class="search-target selected"><strong>TorrentLeech</strong><span>MOVIES</span><span class="badge badge-green"><span class="badge-dot"></span>OK</span></button>
+            <button class="search-target selected"><strong>IPTorrents</strong><span>MOVIES</span><span class="badge badge-green"><span class="badge-dot"></span>OK</span></button>
+            <button class="search-target"><strong>Prowlarr — aggregate</strong><span>ALL</span><span class="badge badge-red"><span class="badge-dot"></span>401</span></button>
+          </div>
+        </section>
+
+        <section class="panel table-panel">
+          <div class="indexer-strip"><span><span class="live-dot"></span>2 indexers queried</span><span>48 results</span><span>1.9s</span><span>3 filtered by profile</span></div>
+          <div class="search-table-wrap">
+            <table class="data-table search-results">
+              <thead><tr><th>Release</th><th>Indexer</th><th>Quality</th><th>Size</th><th>Seeds</th><th>Age</th><th>Score</th><th>Client</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><div class="release-result"><strong>Inception.2010.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.7.1-FraMeSToR</strong><span class="badge badge-blue"><span class="badge-dot"></span>Remux</span></div></td><td>TorrentLeech</td><td>Bluray-2160p</td><td>54.2 GB</td><td class="confidence">31</td><td class="muted">412d</td><td class="score-positive">+1250</td><td><div class="search-client-chooser"><select class="input select"><option>qbit-main</option></select></div></td><td><button class="button button-primary">Grab</button></td></tr>
+                <tr class="search-result-warning"><td><div class="release-result"><strong>Inception.2010.2160p.WEB-DL.DDP5.1.Atmos.HDR.H265-FLUX</strong><span class="badge badge-amber"><span class="badge-dot"></span>Unknown group</span></div></td><td>IPTorrents</td><td>WEBDL-2160p</td><td>18.4 GB</td><td class="confidence">12</td><td class="muted">180d</td><td class="score-positive">+400</td><td><div class="search-client-chooser"><select class="input select"><option>qbit-main</option></select></div></td><td><button class="button button-secondary">Grab</button></td></tr>
+                <tr><td><div class="release-result"><strong>Inception.2010.1080p.BluRay.x264.AC3-UPSCALED</strong><span class="badge badge-red"><span class="badge-dot"></span>Upscaled</span></div></td><td>IPTorrents</td><td>Bluray-1080p</td><td>8.1 GB</td><td class="confidence">4</td><td class="muted">920d</td><td class="score-negative">−800</td><td><div class="search-client-chooser"><select class="input select"><option>qbit-main</option></select></div></td><td><button class="button button-secondary">Grab</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div></div>
+
+      <!-- ============ EMPTY / SHOWS ============ -->
+      <div class="pv-screen" id="s-shows"><div class="page">
+        <div class="page-heading">
+          <div class="heading-copy"><div class="eyebrow">MEDIALOGUE / SHOWS</div><h1>Shows</h1><p>Seasons and episodes are created as Missing until media is discovered on disk.</p></div>
+          <div class="heading-actions"><button class="button button-primary"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg>Add show</button></div>
+        </div>
+        <div class="stats-row stats-row-three">
+          <div class="stat stat-blue"><div class="stat-label">Tracked shows</div><div class="stat-value">64</div><div class="stat-detail">418 episodes</div></div>
+          <div class="stat stat-green"><div class="stat-label">Episodes present</div><div class="stat-value">397</div><div class="stat-detail">95.0% complete</div></div>
+          <div class="stat stat-amber"><div class="stat-label">Episodes missing</div><div class="stat-value">21</div><div class="stat-detail">across 6 shows</div></div>
+        </div>
+        <div class="media-grid show-grid">
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#34363c,#1a1b1e)"><span class="poster-title">Severance</span><span class="poster-year">2022</span><span class="poster-mark">2 SEASONS</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-green"><span class="badge-dot"></span>Complete</span><span class="badge badge-blue"><span class="badge-dot"></span>Plex OK</span></div><div class="episode-progress"><div><span>Episodes</span><strong>19 / 19</strong></div><div class="progress progress-green"><span style="width:100%"></span></div></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tv"/></svg>0 problems</div></div></a>
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#3a332c,#1c1a17)"><span class="poster-title">The Bear</span><span class="poster-year">2022</span><span class="poster-mark">4 SEASONS</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-amber"><span class="badge-dot"></span>Incomplete</span><span class="badge badge-amber"><span class="badge-dot"></span>Ambiguous</span></div><div class="episode-progress"><div><span>Episodes</span><strong>28 / 38</strong></div><div class="progress progress-amber"><span style="width:74%"></span></div></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tv"/></svg>1 problem</div></div></a>
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#37312c,#1b1917)"><span class="poster-title">Shogun</span><span class="poster-year">2024</span><span class="poster-mark">1 SEASON</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-green"><span class="badge-dot"></span>Complete</span><span class="badge badge-blue"><span class="badge-dot"></span>Plex OK</span></div><div class="episode-progress"><div><span>Episodes</span><strong>10 / 10</strong></div><div class="progress progress-green"><span style="width:100%"></span></div></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tv"/></svg>1 season · 0 problems</div></div></a>
+          <a class="media-card"><div class="poster" style="background:linear-gradient(150deg,#2e3238,#171a1c)"><span class="poster-title">Slow Horses</span><span class="poster-year">2022</span><span class="poster-mark">4 SEASONS</span></div><div class="media-card-body"><div class="media-card-meta"><span class="badge badge-amber"><span class="badge-dot"></span>Incomplete</span><span class="badge badge-blue"><span class="badge-dot"></span>Plex OK</span></div><div class="episode-progress"><div><span>Episodes</span><strong>18 / 24</strong></div><div class="progress progress-amber"><span style="width:75%"></span></div></div><div class="media-card-path"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tv"/></svg>0 problems</div></div></a>
+        </div>
+        <div style="margin-top:24px"><div class="empty-state"><div class="empty-icon"><svg width="25" height="25" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tv"/></svg></div><h3>No shows match this filter</h3><p>Adjust the filter above, or add a show from TMDB to begin tracking its seasons and episodes.</p><button class="button button-primary">Add show from TMDB</button></div></div>
+      </div></div>
+
+    </div>
+  </main>
+</div>
+
+<div class="pv-bar">
+  <strong>Preview</strong>
+  <button class="on" data-s="movies">Movies</button>
+  <button data-s="shows">Shows + Empty</button>
+  <button data-s="downloads">Downloads</button>
+  <button data-s="problems">Problems</button>
+  <button data-s="search">Search</button>
+  <button data-s="formats">Custom Formats</button>
+  <button data-s="settings">Settings</button>
+</div>
+
+<script>
+  const titles = { movies:'Movies', shows:'Shows', downloads:'Downloads', problems:'Problems', search:'Interactive Search', formats:'Custom Formats', settings:'Settings' };
+  function go(name) {
+    document.querySelectorAll('.pv-screen').forEach(el => el.classList.toggle('on', el.id === 's' + '-' + name));
+    document.querySelectorAll('.pv-bar button').forEach(b => b.classList.toggle('on', b.dataset.s === name));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.go === name));
+    document.getElementById('pv-crumb').textContent = titles[name] || 'Workspace';
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll('.pv-bar button').forEach(b => b.onclick = () => go(b.dataset.s));
+  document.querySelectorAll('.nav-item[data-go]').forEach(n => n.onclick = () => go(n.dataset.go));
+  document.querySelectorAll('.toggle').forEach(t => t.onclick = () => {
+    const on = t.getAttribute('aria-pressed') === 'true';
+    t.setAttribute('aria-pressed', String(!on));
+    const label = t.parentElement.querySelector('.toggle-label');
+    if (label) label.textContent = on ? 'Disabled' : 'Enabled';
+  });
+  document.querySelectorAll('.problem-row, .format-list-items > button, .search-target, .settings-nav button, .filter-tabs button, .view-toggle button').forEach(el => {
+    el.onclick = () => {
+      const cls = el.matches('.filter-tabs button, .settings-nav button') ? 'active' : 'selected';
+      el.parentElement.querySelectorAll(':scope > button').forEach(s => s.classList.remove(cls));
+      el.classList.add(cls);
+    };
+  });
+</script>
+</body>
+</html>

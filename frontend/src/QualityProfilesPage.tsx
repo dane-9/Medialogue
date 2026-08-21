@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from './api/client'
 import { Icon } from './components/Icon'
 import { Badge, Button, EmptyState, Input, Panel, Select } from './components/ui'
+import { useUrlState } from './lib/urlState'
 import type { CustomFormat, QualityDefinition, QualityProfile } from './types'
 
 function scoreLabel(value: number) { return `${value > 0 ? '+' : ''}${value}` }
@@ -10,7 +11,7 @@ export default function QualityProfilesPage() {
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [qualities, setQualities] = useState<QualityDefinition[]>([])
   const [formats, setFormats] = useState<CustomFormat[]>([])
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedId, setSelectedId] = useUrlState('profile')
   const [name, setName] = useState('')
   const [minimumId, setMinimumId] = useState('')
   const [scores, setScores] = useState<Record<string, number>>({})
@@ -78,7 +79,7 @@ export default function QualityProfilesPage() {
 
   return <main className="page"><div className="page-header"><div><div className="eyebrow">SCORING</div><h1>Quality Profiles</h1><p>Set a warning-only minimum quality and signed Custom Format scores. Custom Formats themselves never own scores.</p></div><Button variant="primary" icon="plus" onClick={beginNew}>New profile</Button></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
-    <div className="profile-layout">
+    <div className="split">
       <Panel className="profile-list" title="Profiles" eyebrow={`${profiles.length} PROFILES`}>
         {profiles.map((profile) => <button className={`profile-item ${!creating && profile.id === selectedId ? 'selected' : ''}`} key={profile.id} onClick={() => { setCreating(false); setSelectedId(profile.id) }}><span className="profile-icon"><Icon name="sliders" size={16} /></span><span><strong>{profile.name}</strong><small>{profile.assignedTitles} titles assigned · {profile.customFormatScores.length} scored formats</small></span><Icon name="chevron" size={15} /></button>)}
         {!profiles.length && !creating && <EmptyState title="No Quality Profiles" detail="Create one when you want minimum-quality warnings or Custom Format scoring." />}

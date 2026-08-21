@@ -4,6 +4,7 @@ import { api } from './api/client'
 import { Icon } from './components/Icon'
 import { Badge, Button, EmptyState, Input, Panel, Select } from './components/ui'
 import { browserSafeId, isRegexConditionType } from './lib/uiState'
+import { useUrlState } from './lib/urlState'
 import type {
   CustomFormat,
   CustomFormatCondition,
@@ -124,7 +125,7 @@ function ConditionEvaluationRow({ condition }: { condition: CustomFormatConditio
 export default function CustomFormatsPageView() {
   const [formats, setFormats] = useState<CustomFormat[]>([])
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedId, setSelectedId] = useUrlState('format')
   const [draft, setDraft] = useState<CustomFormat>(() => freshFormat())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -282,7 +283,7 @@ export default function CustomFormatsPageView() {
     {error && <div className="cf-banner cf-banner-error"><Icon name="alert" size={15} /><span>{error}</span></div>}
     {message && <div className="cf-banner cf-banner-success"><Icon name="check" size={15} /><span>{message}</span></div>}
 
-    <div className="split-editor cf-split-editor">
+    <div className="split">
       <Panel className="format-list" title="Formats" eyebrow={`${formats.length} CONFIGURED`}>
         {loading ? <div className="cf-list-state">Loading Custom Formats…</div> : formats.length ? <div className="format-list-items">
           {formats.map((format) => <button key={format.id} className={selectedId === format.id ? 'selected' : ''} onClick={() => chooseFormat(format)}>

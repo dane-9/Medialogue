@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'film' | 'tv' | 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'shield' | 'clock' | 'arrow' | 'close' | 'spark'
+type IconName = 'film' | 'tv' | 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'shield' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off'
 
 const paths: Record<IconName, JSX.Element> = {
   film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4" /></>,
@@ -30,6 +30,8 @@ const paths: Record<IconName, JSX.Element> = {
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   close: <><path d="m6 6 12 12M18 6 6 18" /></>,
+  eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
+  'eye-off': <><path d="M3 3l18 18" /><path d="M10.6 6.2A9.9 9.9 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.4 4.3M6.5 7.6C3.9 9.2 2 12 2 12s3.6 7 10 7a9.9 9.9 0 0 0 4.1-.9" /><path d="M9.9 10.1a3 3 0 0 0 4.1 4.2" /></>,
   spark: <><path d="m12 3-1.5 5.5L5 10l5.5 1.5L12 17l1.5-5.5L19 10l-5.5-1.5L12 3Z" /><path d="m19 16-.6 2.4L16 19l2.4.6L19 22l.6-2.4L22 19l-2.4-.6L19 16Z" /></>,
 }
 
