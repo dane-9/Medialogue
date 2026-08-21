@@ -61,13 +61,9 @@ When YOU decide you want a Docker image:
 
    unless you deliberately want a different tag.
 
-6. In the confirmation field, type exactly:
+6. Click the green **Run workflow** button.
 
-   ```text
-   PUBLISH
-   ```
-
-7. Click the green **Run workflow** button.
+There is no typed confirmation phrase; choosing the publish workflow and clicking **Run workflow** is the confirmation.
 
 Only then does GitHub build and push:
 

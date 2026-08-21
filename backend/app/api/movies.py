@@ -305,7 +305,6 @@ async def get_movie(
     return MovieDetailResponse(
         **summary,
         overview=movie.overview,
-        poster_ref=movie.poster_ref,
         releases=[_release(item) for item in sorted(movie.releases, key=lambda item: item.first_seen_at, reverse=True)],
         torrent_history=torrent_history,
         recent_events=[
