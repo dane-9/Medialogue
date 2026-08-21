@@ -683,6 +683,49 @@ async def reconcile_movie_directory(
                             message="A missing release reappeared at its known path.",
                             details={"path": observation.path},
                         )
+                if torrent is not None:
+                    current_release = existing_directory.movie_release
+                    # qBittorrent is polled before completed media is
+                    # reconciled. If the torrent points at a directory that is
+                    # already registered, the provisional incoming release
+                    # must not remain visible as an incoming replacement.
+                    if incoming_release is not None and incoming_release.id != current_release.id:
+                        incoming_link = await db.scalar(
+                            select(MovieReleaseTorrent).where(
+                                MovieReleaseTorrent.movie_release_id == incoming_release.id,
+                                MovieReleaseTorrent.torrent_id == torrent.id,
+                                MovieReleaseTorrent.association_type == AssociationType.INCOMING,
+                            )
+                        )
+                        if incoming_link is not None:
+                            incoming_link.association_type = AssociationType.HISTORICAL
+                        has_directory = bool(
+                            await db.scalar(
+                                select(func.count())
+                                .select_from(MediaDirectory)
+                                .where(MediaDirectory.movie_release_id == incoming_release.id)
+                            )
+                        )
+                        if not has_directory:
+                            incoming_release.release_state = ReleaseState.REMOVED
+                            incoming_release.removed_at = utcnow()
+
+                    current_link = await db.scalar(
+                        select(MovieReleaseTorrent).where(
+                            MovieReleaseTorrent.movie_release_id == current_release.id,
+                            MovieReleaseTorrent.torrent_id == torrent.id,
+                        )
+                    )
+                    if current_link is None:
+                        db.add(
+                            MovieReleaseTorrent(
+                                movie_release_id=current_release.id,
+                                torrent_id=torrent.id,
+                                association_type=AssociationType.ATTACHED,
+                            )
+                        )
+                    else:
+                        current_link.association_type = AssociationType.ATTACHED
                 return "matched"
 
     folder_parse = parse_release_name(observation.name)
