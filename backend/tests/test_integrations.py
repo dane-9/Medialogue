@@ -35,6 +35,32 @@ async def test_qbittorrent_observation_and_completion():
 
 
 @pytest.mark.asyncio
+async def test_qbittorrent_accepts_v52_no_content_login_response():
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(204)
+        if request.url.path.endswith("/app/version"):
+            return httpx.Response(200, text="v5.2.0")
+        raise AssertionError(request.url.path)
+
+    client = QBittorrentClient(
+        "http://qbit",
+        "user",
+        "pass",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert await client.health() == {"status": "healthy", "version": "v5.2.0"}
+    finally:
+        await client.close()
+
+    assert paths == ["/api/v2/auth/login", "/api/v2/app/version"]
+
+
+@pytest.mark.asyncio
 async def test_qbittorrent_auth_errors_distinguish_bad_credentials_from_ip_ban():
     def rejected_handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v2/auth/login"

@@ -1,5 +1,7 @@
 ## v9 file-backed integration configuration
 
+- Fixed qBittorrent 5.2+ authentication: HTTP 204 No Content is now accepted as a successful WebAPI login, while retaining legacy 200/`Ok.` support.
+
 - Make `/config/medialogue.json` the source of truth for Plex, TMDB, qBittorrent-client, and indexer settings.
 - Store Plex tokens, TMDB/indexer API keys, and qBittorrent passwords only in `/config/secrets.enc`, encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`.
 - Reduce the corresponding PostgreSQL tables to runtime health/reference state only; connection URLs, usernames, scopes, enabled flags, polling intervals, and credentials are no longer database columns.
