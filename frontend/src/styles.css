@@ -343,3 +343,22 @@ a { color: inherit; text-decoration: none; }
 .page-actions, .row-actions, .pagination-bar { display: flex; align-items: center; gap: 8px; }
 .pagination-bar { justify-content: center; margin-top: 14px; color: var(--muted); font-size: 11px; }
 .row-actions { justify-content: flex-end; }
+
+.problem-evidence-block { display: grid; gap: 12px; margin: 14px 20px 0; }
+.problem-evidence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.problem-evidence-side { display: flex; min-width: 0; flex-direction: column; gap: 7px; padding: 14px 15px; border: 1px solid #2c3542; border-radius: 7px; background: #151b24; }
+.problem-evidence-side strong { color: #dbe2ed; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.problem-evidence-side span:not(.eyebrow) { color: #7e8999; font-size: 11px; line-height: 1.45; }
+.problem-evidence-side code { display: block; color: #8c9bb0; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; overflow-wrap: anywhere; white-space: normal; }
+.problem-difference { padding: 10px 12px; border-left: 2px solid var(--red); color: #aeb8c7; background: rgba(239,124,136,.055); font-size: 11px; }
+.problem-difference strong { color: #e5b8bc; }
+.problem-evidence-note { padding: 10px 12px; color: #9a8a70; border: 1px solid rgba(242,189,112,.18); border-radius: 6px; background: rgba(242,189,112,.045); font-size: 10px; line-height: 1.5; }
+.problem-candidate-list { display: grid; gap: 8px; }
+.problem-candidate { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid #29323e; border-radius: 6px; background: #151b23; }
+.problem-candidate strong { color: #cad3df; font-size: 11px; }
+.problem-candidate span { color: #768294; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.problem-evidence-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.problem-evidence-fact { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 10px 12px; border: 1px solid #29323e; border-radius: 6px; background: #151b23; }
+.problem-evidence-fact span { color: #6f7b8c; font: 9px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; text-transform: uppercase; }
+.problem-evidence-fact strong { color: #bcc6d4; font-size: 10px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+@media (max-width: 860px) { .problem-evidence-grid, .problem-evidence-facts { grid-template-columns: 1fr; } }

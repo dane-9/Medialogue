@@ -596,6 +596,100 @@ export function EventHistoryPage() {
   </Page>
 }
 
+function problemRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function problemText(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return undefined
+}
+
+function problemIdentity(title: unknown, year: unknown): string | undefined {
+  const name = problemText(title)
+  if (!name) return undefined
+  const releaseYear = typeof year === 'number' && Number.isFinite(year) ? year : problemText(year)
+  return releaseYear ? `${name} (${releaseYear})` : name
+}
+
+function parserIdentity(details: Record<string, unknown>): { title?: string; year?: string; identity?: string; warnings: string[] } {
+  const parse = problemRecord(details.parse)
+  const identity = problemRecord(parse.identity)
+  const title = problemText(details.parsed_title) ?? problemText(identity.title_candidate)
+  const year = problemText(details.parsed_year) ?? problemText(identity.year)
+  const warningsValue = Array.isArray(details.parser_warnings) ? details.parser_warnings : Array.isArray(parse.warnings) ? parse.warnings : []
+  const warnings = warningsValue.map((value) => problemText(value)).filter((value): value is string => Boolean(value))
+  return { title, year, identity: problemText(details.parsed_identity) ?? problemIdentity(title, year), warnings }
+}
+
+function readableEvidenceValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (Array.isArray(value)) return value.map(readableEvidenceValue).join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function tmdbReasonLabel(reason?: string) {
+  if (reason === 'not_found') return 'No exact title/year match was returned.'
+  if (reason === 'ambiguous') return 'More than one exact title/year candidate remained.'
+  if (reason === 'not_configured') return 'TMDB is not configured.'
+  if (reason === 'unavailable') return 'TMDB could not be reached.'
+  return reason ? reason.replaceAll('_', ' ') : 'TMDB did not establish a unique identity.'
+}
+
+function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
+  const details = problem.details ?? {}
+  if (problem.code === 'PLEX_IDENTITY_MISMATCH') {
+    const localIdentity = problemText(details.local_identity) ?? problemIdentity(details.local_title ?? details.medialogue_title, details.local_year ?? details.medialogue_year)
+    const plexIdentity = problemText(details.plex_identity) ?? problemIdentity(details.plex_title, details.plex_year)
+    const localPath = problemText(details.local_path ?? details.medialogue_path)
+    const plexPath = problemText(details.plex_path ?? details.plex_reported_path)
+    const legacyPath = problemText(details.path)
+    const differences = Array.isArray(details.differences) ? details.differences.map((value) => problemText(value)).filter((value): value is string => Boolean(value)) : []
+    const conflicts = Array.isArray(details.conflicts) ? details.conflicts.map(problemRecord) : []
+    return <div className="problem-evidence-block">
+      <div className="problem-evidence-grid">
+        <div className="problem-evidence-side"><span className="eyebrow">MEDIALOGUE</span><strong>{localIdentity ?? 'Local identity not stored'}</strong><code>{localPath ?? (legacyPath && problem.entityType === 'media_directory' ? legacyPath : 'Local path not stored in this older Problem')}</code></div>
+        <div className="problem-evidence-side"><span className="eyebrow">PLEX</span><strong>{plexIdentity ?? 'Plex identity not stored'}</strong><code>{plexPath ?? (legacyPath && problem.entityType === 'movie' ? legacyPath : 'Plex path not stored in this older Problem')}</code></div>
+      </div>
+      {differences.length > 0 && <div className="problem-difference"><strong>Different:</strong> {differences.join(', ')}</div>}
+      {!localPath && !plexPath && legacyPath && <div className="problem-evidence-note">This Problem was created by an older build that stored only one path. Recheck evidence to persist both the Medialogue path and Plex path.</div>}
+      {conflicts.length > 0 && <div className="problem-candidate-list">{conflicts.map((conflict, index) => <div className="problem-candidate" key={`${problem.id}-plex-${index}`}><strong>{problemIdentity(conflict.local_show_title, undefined) ?? 'Local show'} {problemText(conflict.local_episode) ?? ''} → {problemIdentity(conflict.plex_show_title, undefined) ?? 'Plex show'} {problemText(conflict.plex_episode) ?? ''}</strong><span>Medialogue: {problemText(conflict.local_path) ?? 'unknown path'}</span><span>Plex: {problemText(conflict.plex_path) ?? 'unknown path'}</span></div>)}</div>}
+    </div>
+  }
+
+  if (problem.code === 'TMDB_IDENTITY_UNRESOLVED' || problem.code === 'TMDB_MATCH_REQUIRED') {
+    const parsed = parserIdentity(details)
+    const reason = problemText(details.tmdb_reason)
+    const candidates = Array.isArray(details.tmdb_candidates) ? details.tmdb_candidates.map(problemRecord) : []
+    const queries = Array.isArray(details.tmdb_queries) ? details.tmdb_queries.map((value) => problemText(value)).filter((value): value is string => Boolean(value)) : []
+    return <div className="problem-evidence-block">
+      <div className="problem-evidence-grid">
+        <div className="problem-evidence-side"><span className="eyebrow">PARSER CANDIDATE</span><strong>{parsed.identity ?? 'No usable title/year extracted'}</strong><code>{problemText(details.path) ?? problem.subject}</code></div>
+        <div className="problem-evidence-side"><span className="eyebrow">TMDB RESULT</span><strong>{tmdbReasonLabel(reason)}</strong><span>{queries.length ? `Queries tried: ${queries.join(' · ')}` : 'Recheck evidence to record the exact TMDB queries/candidates with the updated resolver.'}</span></div>
+      </div>
+      {candidates.length > 0 && <div className="problem-candidate-list"><span className="eyebrow">CANDIDATES RETURNED BY TMDB</span>{candidates.map((candidate, index) => <div className="problem-candidate" key={`${problem.id}-tmdb-${problemText(candidate.tmdb_id) ?? index}`}><strong>{problemIdentity(candidate.title, candidate.year) ?? 'Untitled candidate'}</strong><span>TMDB {problemText(candidate.tmdb_id) ?? 'unknown'}{problemText(candidate.original_title) && problemText(candidate.original_title) !== problemText(candidate.title) ? ` · original: ${problemText(candidate.original_title)}` : ''}</span></div>)}</div>}
+    </div>
+  }
+
+  if (problem.code === 'LOW_CONFIDENCE_MATCH') {
+    const parsed = parserIdentity(details)
+    const confidenceRaw = typeof details.confidence === 'number' ? details.confidence : Number(details.confidence)
+    const confidence = Number.isFinite(confidenceRaw) ? `${Math.round((confidenceRaw <= 1 ? confidenceRaw * 100 : confidenceRaw) * 10) / 10}%` : 'unknown'
+    return <div className="problem-evidence-block">
+      <div className="problem-evidence-grid">
+        <div className="problem-evidence-side"><span className="eyebrow">PARSER RESULT</span><strong>{parsed.identity ?? 'No usable title/year extracted'}</strong><code>{problemText(details.path) ?? problem.subject}</code></div>
+        <div className="problem-evidence-side"><span className="eyebrow">WHY IT WAS BLOCKED</span><strong>Identity confidence {confidence}</strong><span>{parsed.warnings.length ? `Parser warnings: ${parsed.warnings.join(', ')}` : 'The title/year evidence did not reach the automatic-match threshold.'}</span></div>
+      </div>
+    </div>
+  }
+
+  const entries = Object.entries(details).filter(([key]) => key !== 'parse')
+  if (!entries.length) return null
+  return <div className="problem-evidence-block problem-evidence-facts">{entries.map(([key, value]) => <div className="problem-evidence-fact" key={key}><span>{key.replaceAll('_', ' ')}</span><strong>{readableEvidenceValue(value)}</strong></div>)}</div>
+}
+
 export function ProblemsPage() {
   const [items, setItems] = useState<Problem[]>([])
   const [selected, setSelected] = useState<string | undefined>()
@@ -854,7 +948,8 @@ export function ProblemsPage() {
       <Panel className="problem-detail-panel" title={current?.title ?? 'Select a problem'} eyebrow={current?.code ?? 'REVIEW QUEUE'}>{current ? <>
         <div className="issue-banner"><Badge tone={current.severity === 'high' ? 'red' : current.severity === 'low' ? 'neutral' : 'amber'}>{current.severity} priority</Badge><span>{current.code}</span></div>
         <p className="issue-detail">{current.detail}</p>
-        <div className="compare-card"><div><span className="eyebrow">AFFECTED MEDIA</span><strong>{current.subject}</strong><span>{current.entityType ? `${current.entityType} · ` : ''}{current.entityId ?? 'Persisted reconciliation evidence'}</span></div><Icon name="arrow" size={20} /><div><span className="eyebrow">EVIDENCE</span><strong>{current.code === 'PLEX_IDENTITY_MISMATCH' ? 'Plex + local identity' : current.code.includes('DUPLICATE') ? 'Physical filesystem evidence' : 'Parser / integration observation'}</strong><span>{current.details ? Object.entries(current.details).slice(0, 3).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`).join(' · ') : 'Review the persisted evidence before applying any action.'}</span></div></div>
+        <div className="compare-card"><div><span className="eyebrow">AFFECTED MEDIA</span><strong>{current.subject}</strong><span>{current.entityType ? `${current.entityType} · ` : ''}{current.entityId ?? 'Persisted reconciliation evidence'}</span></div><Icon name="arrow" size={20} /><div><span className="eyebrow">PROBLEM SOURCE</span><strong>{current.code === 'PLEX_IDENTITY_MISMATCH' ? 'Plex compared with Medialogue' : current.code.includes('DUPLICATE') ? 'Physical filesystem evidence' : current.code.startsWith('TMDB_') ? 'Parser candidate compared with TMDB' : 'Parser / integration observation'}</strong><span>The detailed evidence below shows the values on each side instead of truncating raw JSON fields.</span></div></div>
+        <ProblemEvidenceDetails problem={current} />
 
         {current.code === 'DUPLICATE_PHYSICAL_RELEASE' && releaseIds.length > 1 && <div className="resolution-block"><div className="eyebrow">DUPLICATE RESOLVER</div><p>Select the copy to keep. Medialogue will not delete the loser unless you explicitly request deletion and review a fresh inventory first.</p><div className="history-list">{releaseIds.map((releaseId) => { const release = duplicateMovie?.releasesDetail?.find((item) => item.id === releaseId); const path = release?.directories?.find((directory) => directory.exists)?.path ?? release?.directories?.[0]?.path; return <label className="inline-check" key={releaseId}><input type="radio" name="duplicate-winner" checked={winnerReleaseId === releaseId} onChange={() => { setWinnerReleaseId(releaseId); setDuplicatePreview(null) }} /><span><strong>{release?.name ?? `Release ${releaseId}`}</strong><small>{[release?.quality, release?.edition, release?.releaseGroup].filter(Boolean).join(' · ') || 'Release details unavailable'}{path ? ` · ${path}` : ''}</small></span></label> })}</div><label className="inline-check"><input type="checkbox" checked={deleteMedia} onChange={(event) => { setDeleteMedia(event.target.checked); setDuplicatePreview(null) }} />Delete the losing media director{loserIds.length === 1 ? 'y' : 'ies'} after preview</label><label className="inline-check"><input type="checkbox" checked={removeTorrents} onChange={(event) => { setRemoveTorrents(event.target.checked); setDuplicatePreview(null) }} />Remove losing torrent(s) from qBittorrent; archived .torrent files remain</label><div className="detail-actions"><Button variant="primary" disabled={!winnerReleaseId || loading} onClick={() => void previewDuplicate()}>Preview resolution</Button></div></div>}
 

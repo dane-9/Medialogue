@@ -7,6 +7,8 @@ from xml.etree import ElementTree
 
 import httpx
 
+from app.core.identity import normalize_identity_title
+
 
 class PlexError(RuntimeError):
     pass
@@ -57,7 +59,7 @@ class PlexLibrarySnapshot:
             # Episodes use grandparentTitle for the Show and must not be
             # treated as Movie title matches.
             if item.show_title is None:
-                movies_by_title.setdefault(item.title.casefold(), []).append(
+                movies_by_title.setdefault(normalize_identity_title(item.title), []).append(
                     PlexTitleMatch(
                         rating_key=item.rating_key,
                         title=item.title,
@@ -118,7 +120,7 @@ class PlexLibrarySnapshot:
         return next(iter(unique.values())) if len(unique) == 1 else None
 
     def search_title_year(self, title: str, year: int | None) -> list[PlexTitleMatch]:
-        matches = self._movies_by_title.get(title.casefold(), ())
+        matches = self._movies_by_title.get(normalize_identity_title(title), ())
         if year is None:
             return list(matches)
         return [item for item in matches if item.year == year]
@@ -244,7 +246,7 @@ class PlexClient:
         for video in ElementTree.fromstring(response.content).findall(".//Video"):
             plex_year = video.attrib.get("year")
             parsed_year = int(plex_year) if plex_year and plex_year.isdigit() else None
-            if video.attrib.get("title", "").casefold() != title.casefold():
+            if normalize_identity_title(video.attrib.get("title", "")) != normalize_identity_title(title):
                 continue
             if year is not None and parsed_year != year:
                 continue

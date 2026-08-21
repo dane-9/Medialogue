@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.identity import identity_titles_equivalent
 from app.integrations.filesystem import DirectoryObservation, FilesystemObserver
 from app.integrations.plex import PlexClient, PlexMediaMatch
 from app.models.domain import (
@@ -64,7 +65,7 @@ from app.reconciliation.types import (
     PlexState,
 )
 from app.services.events import create_event, publish_live_event, queue_live_event
-from app.services.tmdb import resolve_movie_identity
+from app.services.tmdb import resolve_movie_identity, resolve_movie_identity_detailed
 from app.services.quality_profiles import evaluate_current_release_score
 
 
@@ -85,6 +86,52 @@ def _sort_title(title: str) -> str:
 
 def _same_edition(left: str | None, right: str | None) -> bool:
     return (left or "").strip().casefold() == (right or "").strip().casefold()
+
+
+def _identity_label(title: str | None, year: int | None) -> str | None:
+    if not title:
+        return None
+    return f"{title} ({year})" if year is not None else title
+
+
+async def _find_movie_by_identity(db: AsyncSession, title: str, year: int) -> Movie | None:
+    """Find an existing Movie using the same punctuation-insensitive identity rules as TMDB/Plex."""
+
+    candidates = (await db.scalars(select(Movie).where(Movie.year == year))).all()
+    matches = [item for item in candidates if identity_titles_equivalent(item.title, title)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _plex_conflict_details(
+    *,
+    local_title: str | None,
+    local_year: int | None,
+    local_path: str | None,
+    plex_match: PlexMediaMatch | None,
+    **extra: Any,
+) -> dict[str, Any]:
+    plex_title = plex_match.title if plex_match else None
+    plex_year = plex_match.year if plex_match else None
+    plex_path = plex_match.file_path if plex_match else None
+    differences: list[str] = []
+    if local_title and plex_title and not identity_titles_equivalent(local_title, plex_title):
+        differences.append("title")
+    if local_year is not None and plex_year is not None and local_year != plex_year:
+        differences.append("year")
+    if local_path and plex_path and local_path != plex_path:
+        differences.append("path")
+    return {
+        "local_title": local_title,
+        "local_year": local_year,
+        "local_identity": _identity_label(local_title, local_year),
+        "local_path": local_path,
+        "plex_title": plex_title,
+        "plex_year": plex_year,
+        "plex_identity": _identity_label(plex_title, plex_year),
+        "plex_path": plex_path,
+        "differences": differences,
+        **extra,
+    }
 
 
 def _confidence(
@@ -542,7 +589,7 @@ async def _plex_evidence_for_candidate(
             match = await client.find_exact_path(checked_path)
             if match is None:
                 continue
-            title_agrees = not match.title or match.title.casefold() == title.casefold()
+            title_agrees = not match.title or identity_titles_equivalent(match.title, title)
             year_agrees = year is None or match.year is None or match.year == year
             return PlexCandidateEvidence(
                 PlexState.MATCHED if title_agrees and year_agrees else PlexState.CONFLICT,
@@ -668,7 +715,7 @@ async def reconcile_movie_directory(
     year = folder_parse.identity.year
     movie = movie_hint
     if movie is None and title and year is not None:
-        movie = await db.scalar(select(Movie).where(func.lower(Movie.title) == title.casefold(), Movie.year == year))
+        movie = await _find_movie_by_identity(db, title, year)
 
     directory = existing_directory
     if directory is None:
@@ -700,7 +747,13 @@ async def reconcile_movie_directory(
         year = movie.year
         confidence = 1.0
 
-    if root.media_type != MediaType.MOVIES or not title or year is None or (confidence < 0.90 and not manual_identity):
+    # Title + year is enough evidence to ask an authoritative identity source.
+    # A folder-only parse naturally scores 0.80; do not block it before TMDB or
+    # an already-identified Movie gets a chance to confirm the candidate.
+    if movie is not None and not manual_identity:
+        confidence = max(confidence, 0.95)
+
+    if root.media_type != MediaType.MOVIES or not title or year is None or (confidence < 0.80 and not manual_identity):
         # Parser uncertainty supersedes downstream identity/integration
         # conclusions for this same directory. Do not leave older TMDB/Plex
         # Problems open when their prerequisite identity is no longer valid.
@@ -712,8 +765,20 @@ async def reconcile_movie_directory(
             reason="LOW_CONFIDENCE_MATCH",
             entity_type="media_directory",
             entity_id=directory.id,
-            message=f"Could not confidently identify {observation.name}.",
-            details={"path": observation.path, "confidence": confidence, "parse": folder_parse.to_dict()},
+            message=(
+                f"Could not confidently identify {observation.name}. "
+                f"Parser candidate: {_identity_label(title, year) or 'no usable title/year'}."
+            ),
+            details={
+                "path": observation.path,
+                "parsed_title": title,
+                "parsed_year": year,
+                "parsed_identity": _identity_label(title, year),
+                "confidence": confidence,
+                "parser_warnings": list(folder_parse.warnings),
+                "unknown_tokens": list(folder_parse.unknown_tokens),
+                "parse": folder_parse.to_dict(),
+            },
         )
         return "review"
 
@@ -728,7 +793,8 @@ async def reconcile_movie_directory(
     # is never sufficient authority. TMDB must establish the external identity
     # and an explicit Plex disagreement blocks automatic creation.
     if movie is None:
-        tmdb_match, tmdb_reason = await resolve_movie_identity(db, title, year)
+        tmdb_resolution = await resolve_movie_identity_detailed(db, title, year)
+        tmdb_match, tmdb_reason = tmdb_resolution.match, tmdb_resolution.reason
         if tmdb_match is None:
             reason = "TMDB_MATCH_REQUIRED" if tmdb_reason in {"not_configured", "unavailable"} else "TMDB_IDENTITY_UNRESOLVED"
             alternate = "TMDB_IDENTITY_UNRESOLVED" if reason == "TMDB_MATCH_REQUIRED" else "TMDB_MATCH_REQUIRED"
@@ -742,28 +808,53 @@ async def reconcile_movie_directory(
                 message=(
                     "TMDB must confirm a newly discovered movie before it is added automatically."
                     if reason == "TMDB_MATCH_REQUIRED"
-                    else "TMDB could not uniquely identify this movie candidate."
+                    else f"TMDB could not uniquely identify {_identity_label(title, year) or 'this movie candidate'}."
                 ),
-                details={"path": observation.path, "tmdb_reason": tmdb_reason, "parse": folder_parse.to_dict()},
+                details={
+                    "path": observation.path,
+                    "parsed_title": title,
+                    "parsed_year": year,
+                    "parsed_identity": _identity_label(title, year),
+                    "tmdb_reason": tmdb_reason,
+                    "tmdb_queries": list(tmdb_resolution.queries),
+                    "tmdb_candidates": [
+                        {
+                            "tmdb_id": item.tmdb_id,
+                            "title": item.title,
+                            "original_title": item.original_title,
+                            "year": item.year,
+                        }
+                        for item in tmdb_resolution.candidates[:10]
+                    ],
+                    "parse": folder_parse.to_dict(),
+                },
                 severity=Severity.ERROR if tmdb_reason == "unavailable" else Severity.WARNING,
             )
             return "review"
         await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
         await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
+        # Exact TMDB identity evidence upgrades a folder-only 0.80 parse to the
+        # automatic-attachment threshold without weakening the no-guess rule.
+        confidence = max(confidence, 0.95)
         if plex_evidence.state is PlexState.CONFLICT:
+            conflict_details = _plex_conflict_details(
+                local_title=tmdb_match.title,
+                local_year=tmdb_match.year or year,
+                local_path=plex_evidence.checked_path or observation.path,
+                plex_match=plex_evidence.match,
+                parsed_title=title,
+                parsed_year=year,
+            )
             await open_problem(
                 db,
                 reason="PLEX_IDENTITY_MISMATCH",
                 entity_type="media_directory",
                 entity_id=directory.id,
-                message="Plex explicitly identifies this media path as another title.",
-                details={
-                    "path": observation.path,
-                    "local_title": title,
-                    "local_year": year,
-                    "plex_title": plex_evidence.match.title if plex_evidence.match else None,
-                    "plex_year": plex_evidence.match.year if plex_evidence.match else None,
-                },
+                message=(
+                    f"Medialogue identifies this as {_identity_label(tmdb_match.title, tmdb_match.year or year)}, "
+                    f"but Plex reports {_identity_label(plex_evidence.match.title, plex_evidence.match.year) if plex_evidence.match else 'a different identity'}."
+                ),
+                details=conflict_details,
                 severity=Severity.ERROR,
             )
             return "review"
@@ -898,13 +989,24 @@ async def reconcile_movie_directory(
         directory.movie_release_id = release.id
         await _persist_plex_candidate_evidence(db, movie, release, plex_evidence)
         if manual_identity and plex_evidence.state is PlexState.CONFLICT:
+            conflict_details = _plex_conflict_details(
+                local_title=movie.title,
+                local_year=movie.year,
+                local_path=plex_evidence.checked_path or observation.path,
+                plex_match=plex_evidence.match,
+                release_id=str(release.id),
+                manual_override=True,
+            )
             await open_problem(
                 db,
                 reason="PLEX_IDENTITY_MISMATCH",
                 entity_type="movie",
                 entity_id=movie.id,
-                message="Plex disagrees with the manually confirmed Movie identity.",
-                details={"release_id": str(release.id), "path": observation.path, "manual_override": True},
+                message=(
+                    f"Medialogue is manually matched to {_identity_label(movie.title, movie.year)}, "
+                    f"but Plex reports {_identity_label(plex_evidence.match.title, plex_evidence.match.year) if plex_evidence.match else 'a different identity'}."
+                ),
+                details=conflict_details,
                 severity=Severity.WARNING,
             )
         elif plex_evidence.state is not PlexState.CONFLICT:
@@ -952,13 +1054,23 @@ async def reconcile_movie_directory(
         release.parse_snapshot = {**dict(release.parse_snapshot or {}), "current_score_snapshot": current_score_snapshot}
 
         if state == ReleaseState.CONFLICT:
+            conflict_details = _plex_conflict_details(
+                local_title=movie.title,
+                local_year=movie.year,
+                local_path=plex_evidence.checked_path or observation.path,
+                plex_match=plex_evidence.match,
+                release_id=str(release.id),
+            )
             await open_problem(
                 db,
                 reason="PLEX_IDENTITY_MISMATCH",
                 entity_type="movie",
                 entity_id=movie.id,
-                message="Plex explicitly identifies the completed path as another title.",
-                details={"release_id": str(release.id), "path": observation.path},
+                message=(
+                    f"Medialogue identifies the completed media as {_identity_label(movie.title, movie.year)}, "
+                    f"but Plex reports {_identity_label(plex_evidence.match.title, plex_evidence.match.year) if plex_evidence.match else 'a different identity'}."
+                ),
+                details=conflict_details,
                 severity=Severity.ERROR,
             )
         elif state != ReleaseState.DUPLICATE:
@@ -1108,7 +1220,7 @@ async def associate_incoming_torrent(
     year = parsed.identity.year
     if not title or year is None:
         return None
-    movie = await db.scalar(select(Movie).where(func.lower(Movie.title) == title.casefold(), Movie.year == year))
+    movie = await _find_movie_by_identity(db, title, year)
     if movie is None:
         return None
     confidence = 0.95
@@ -1272,7 +1384,7 @@ async def finalize_completed_torrent(
             movie = await db.get(Movie, linked_release.movie_id)
             incoming_release = linked_release
     if movie is None and parsed.identity.title_candidate and parsed.identity.year is not None:
-        movie = await db.scalar(select(Movie).where(func.lower(Movie.title) == parsed.identity.title_candidate.casefold(), Movie.year == parsed.identity.year))
+        movie = await _find_movie_by_identity(db, parsed.identity.title_candidate, parsed.identity.year)
     if confidence < 0.90:
         await open_problem(
             db,

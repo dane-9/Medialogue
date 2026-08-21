@@ -190,3 +190,23 @@ async def test_torznab_result_parsing():
     assert results[0].guid == "g1"
     assert results[0].size == 123
     assert results[0].seeders == 42
+
+
+def test_plex_snapshot_title_lookup_ignores_punctuation_and_ampersand_variants() -> None:
+    from app.integrations.plex import PlexLibrarySnapshot, PlexMediaMatch
+
+    snapshot = PlexLibrarySnapshot(
+        items=(
+            PlexMediaMatch(
+                rating_key="1",
+                title="Oliver & Company",
+                year=1988,
+                edition=None,
+                file_path="/plex/movies/Oliver & Company/movie.mkv",
+            ),
+        )
+    )
+
+    matches = snapshot.search_title_year("Oliver and Company", 1988)
+    assert len(matches) == 1
+    assert matches[0].rating_key == "1"
