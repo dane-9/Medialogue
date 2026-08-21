@@ -1219,7 +1219,7 @@ function ScheduleSettings() {
       setClients((items) => items.map((item) => item.id === updated.id ? updated : item)); setMessage(`${client.name} polling interval updated.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update polling interval.') }
   }
-  return <><div className="settings-section"><div><h3>qBittorrent reconciliation</h3><p>Polling is lightweight and configured independently per qBittorrent instance. This is the schedule that drives incoming-download and completion observations.</p></div></div>{clients.length ? <div className="root-list">{clients.map((client) => <div className="root-row" key={client.id}><div className="root-icon"><Icon name="download" size={16} /></div><div><strong>{client.name}</strong><span>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</span></div><Select value={String(client.pollIntervalSeconds ?? 15)} onChange={(event) => void updateInterval(client, Number(event.target.value))}><option value="5">Every 5 seconds</option><option value="10">Every 10 seconds</option><option value="15">Every 15 seconds</option><option value="30">Every 30 seconds</option><option value="60">Every minute</option><option value="300">Every 5 minutes</option></Select></div>)}</div> : <EmptyState icon="download" title="No polling schedules yet" detail="Add a qBittorrent client first; each client owns its actual reconciliation interval." />}<div className="settings-section"><div><h3>Full library scans</h3><p>Full storage-root scans are intentionally manual in v1. Medialogue does not create a cron scan merely because a root exists. This keeps a fresh install inactive and prevents unexpected large NAS scans.</p></div><Badge tone="green">Manual by design</Badge></div><div className="settings-note"><Icon name="activity" size={16} /><span>Advanced cron scheduling is not attached to any hidden automatic scan job in v1. Future scheduled job types must be explicit and observable.</span></div>{message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}</>
+  return <><div className="settings-section"><div><h3>qBittorrent reconciliation</h3><p>Polling is lightweight and configured independently per qBittorrent instance. This is the schedule that drives incoming-download and completion observations.</p></div></div>{clients.length ? <div className="root-list">{clients.map((client) => <div className="root-row" key={client.id}><div className="root-icon"><Icon name="download" size={16} /></div><div><strong>{client.name}</strong><span>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</span></div><Select value={String(client.pollIntervalSeconds ?? 30)} onChange={(event) => void updateInterval(client, Number(event.target.value))}><option value="5">Every 5 seconds</option><option value="10">Every 10 seconds</option><option value="15">Every 15 seconds</option><option value="30">Every 30 seconds</option><option value="60">Every minute</option><option value="300">Every 5 minutes</option></Select></div>)}</div> : <EmptyState icon="download" title="No polling schedules yet" detail="Add a qBittorrent client first; each client owns its actual reconciliation interval." />}<div className="settings-section"><div><h3>Full library scans</h3><p>Full storage-root scans are intentionally manual in v1. Medialogue does not create a cron scan merely because a root exists. This keeps a fresh install inactive and prevents unexpected large NAS scans.</p></div><Badge tone="green">Manual by design</Badge></div><div className="settings-note"><Icon name="activity" size={16} /><span>Advanced cron scheduling is not attached to any hidden automatic scan job in v1. Future scheduled job types must be explicit and observable.</span></div>{message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}</>
 }
 
 function StorageSettings() {
@@ -1403,7 +1403,7 @@ const emptyDownloadClient: DownloadClientDraft = {
   category: '',
   tags: '',
   enabled: true,
-  pollIntervalSeconds: 15,
+  pollIntervalSeconds: 30,
 }
 
 function draftFromDownloadClient(client: DownloadClient): DownloadClientDraft {
@@ -1416,7 +1416,7 @@ function draftFromDownloadClient(client: DownloadClient): DownloadClientDraft {
     category: client.category ?? '',
     tags: client.tags.join(', '),
     enabled: client.enabled,
-    pollIntervalSeconds: client.pollIntervalSeconds ?? 15,
+    pollIntervalSeconds: client.pollIntervalSeconds ?? 30,
   }
 }
 

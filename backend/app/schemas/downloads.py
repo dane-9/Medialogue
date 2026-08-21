@@ -23,7 +23,7 @@ class DownloadClientCreate(BaseModel):
     category: str | None = Field(default=None, max_length=256)
     tags: list[str] = Field(default_factory=list, max_length=100)
     enabled: bool = True
-    poll_interval_seconds: int = Field(default=15, ge=5, le=3600)
+    poll_interval_seconds: int = Field(default=30, ge=5, le=3600)
 
     @field_validator("tags")
     @classmethod

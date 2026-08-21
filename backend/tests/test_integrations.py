@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from app.integrations.plex import PlexClient, PlexLibrarySnapshot, PlexMediaMatch
-from app.integrations.qbittorrent import QBittorrentAuthError, QBittorrentClient
+from app.integrations.qbittorrent import QBittorrentAuthError, QBittorrentClient, QBittorrentError
 from app.integrations.torznab import TorznabClient
 
 
@@ -58,6 +58,88 @@ async def test_qbittorrent_accepts_v52_no_content_login_response():
         await client.close()
 
     assert paths == ["/api/v2/auth/login", "/api/v2/app/version"]
+
+
+@pytest.mark.asyncio
+async def test_qbittorrent_login_closes_auth_socket_but_keeps_session_cookie():
+    calls: list[tuple[str, str | None, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path, request.headers.get("connection"), request.headers.get("cookie")))
+        if request.url.path.endswith("/auth/login"):
+            assert request.headers.get("connection") == "close"
+            return httpx.Response(204, headers={"set-cookie": "SID=session123; Path=/"})
+        if request.url.path.endswith("/app/version"):
+            assert "SID=session123" in (request.headers.get("cookie") or "")
+            return httpx.Response(200, text="v5.2.0")
+        raise AssertionError(request.url.path)
+
+    client = QBittorrentClient("http://qbit", "user", "pass", transport=httpx.MockTransport(handler))
+    try:
+        assert await client.health() == {"status": "healthy", "version": "v5.2.0"}
+    finally:
+        await client.close()
+
+    assert [path for path, _, _ in calls] == ["/api/v2/auth/login", "/api/v2/app/version"]
+
+
+@pytest.mark.asyncio
+async def test_qbittorrent_retries_one_transient_disconnect_for_read_only_request():
+    reads = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal reads
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(204, headers={"set-cookie": "SID=session123; Path=/"})
+        if request.url.path.endswith("/app/version"):
+            reads += 1
+            if reads == 1:
+                raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+            return httpx.Response(200, text="v5.2.0")
+        raise AssertionError(request.url.path)
+
+    client = QBittorrentClient("http://qbit", "user", "pass", transport=httpx.MockTransport(handler))
+    try:
+        assert await client.health() == {"status": "healthy", "version": "v5.2.0"}
+    finally:
+        await client.close()
+
+    assert reads == 2
+
+
+@pytest.mark.asyncio
+async def test_qbittorrent_does_not_retry_mutating_request_after_disconnect():
+    adds = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal adds
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(204, headers={"set-cookie": "SID=session123; Path=/"})
+        if request.url.path.endswith("/torrents/add"):
+            adds += 1
+            raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+        raise AssertionError(request.url.path)
+
+    client = QBittorrentClient("http://qbit", "user", "pass", transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(QBittorrentError, match="connection failed during POST"):
+            await client.add_url("magnet:?xt=urn:btih:abc")
+    finally:
+        await client.close()
+
+    assert adds == 1
+
+
+def test_qbittorrent_new_client_polling_default_is_30_seconds():
+    from app.schemas.downloads import DownloadClientCreate
+
+    payload = DownloadClientCreate(
+        name="qbit",
+        url="http://qbit:8080",
+        password="secret",
+        scope="movies",
+    )
+    assert payload.poll_interval_seconds == 30
 
 
 @pytest.mark.asyncio

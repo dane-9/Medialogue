@@ -598,7 +598,7 @@ async def poll_due_download_clients(
     for client in clients:
         client_id = client.id
         last = client.last_polled_at
-        interval = max(5, client.poll_interval_seconds or 15)
+        interval = max(5, client.poll_interval_seconds or 30)
         # Repeated credential retries are actively harmful: qBittorrent can
         # ban the caller IP after only a few failed logins. Once an auth error
         # is confirmed, leave recovery to an explicit Test/Refresh or config
