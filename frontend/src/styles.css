@@ -804,16 +804,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    pane, so the gap collapses and a divider takes its place. */
 .split-flush { gap: 0; }
 
-.split-rail, .profile-list, .qbit-client-list, .problem-list-panel {
+.split-rail, .qbit-client-list, .problem-list-panel {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
-.split-pane, .profile-editor, .qbit-editor, .settings-panel,
+.split-pane, .qbit-editor, .settings-panel,
 .problem-detail-panel { min-width: 0; }
 
 /* Rail item — the single selectable row used by every rail in the app. */
-.rail-item, .profile-item, .qbit-client-item, .problem-row {
+.rail-item, .qbit-client-item, .problem-row {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -825,16 +825,15 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: transparent;
   text-align: left;
 }
-.rail-item:hover, .profile-item:hover,
+.rail-item:hover:hover,
 .qbit-client-item:hover, .problem-row:hover { color: var(--text); background: var(--raised); }
-.rail-item.selected, .profile-item.selected,
+.rail-item.selected,
 .qbit-client-item.selected, .problem-row.selected {
   color: var(--text);
   background: var(--accent-soft);
   box-shadow: inset 2px 0 var(--accent);
 }
-.rail-item > span:nth-child(2), > span:nth-child(2),
-.profile-item > span:nth-child(2), .qbit-client-item > span:nth-child(2),
+.rail-item > span:nth-child(2), > span:nth-child(2) > span:nth-child(2), .qbit-client-item > span:nth-child(2),
 .problem-row-copy {
   display: flex;
   flex: 1;
@@ -842,7 +841,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   flex-direction: column;
   gap: 2px;
 }
-.rail-item strong, .profile-item strong,
+.rail-item strong strong,
 .qbit-client-item strong, .problem-row-copy strong {
   overflow: hidden;
   color: var(--text);
@@ -851,7 +850,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-item small, .profile-item small,
+.rail-item small small,
 .qbit-client-item small, .problem-row-copy small {
   overflow: hidden;
   color: var(--faint);
@@ -866,12 +865,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-item > svg, .profile-item > svg { flex: none; color: var(--faint); }
+.rail-item > svg > svg { flex: none; color: var(--faint); }
 .qbit-client-item .badge { flex: none; }
 
 /* Rail glyph — the small square icon that leads a rail item. */
-.rail-glyph, .profile-icon, .root-icon, .release-icon,
-.profile-hero-icon, .incoming-icon,
+.rail-glyph, .root-icon, .release-icon,
+.incoming-icon,
 .state-icon, .problem-severity, .search-hero-icon {
   display: grid;
   place-items: center;
@@ -1476,27 +1475,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .cf-test-all-row > span { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .cf-test-all-row small { color: var(--faint); font: var(--t-micro) var(--mono); }
-
-.profile-intro { display: flex; gap: var(--s3); margin: var(--s4); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raised); }
-.profile-intro > div:last-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.profile-intro strong { font-size: var(--t-sm); font-weight: 500; }
-.profile-intro span { color: var(--muted); font-size: var(--t-xs); }
-.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); margin: var(--s4); }
-.score-section { padding: var(--s4); border-top: 1px solid var(--line); }
-.score-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s2) 0;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: var(--t-xs);
-}
-.score-row > span:first-child { width: 170px; flex: none; }
-.score-bar { height: 4px; flex: 1; overflow: hidden; border-radius: var(--r-full); background: var(--raised-2); }
-.score-bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
-.score-row strong { width: 44px; flex: none; font: var(--t-xs) var(--mono); text-align: right; }
-
 /* --------------------------------------------------------------------------
    Settings
    -------------------------------------------------------------------------- */
@@ -2174,3 +2152,35 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-modal-note strong { color: var(--text); }
 .cf-condition-list { display: grid; gap: var(--s2); }
 .cf-condition-card .condition-top strong { color: var(--faint); font: 500 var(--t-micro) var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+/* Quality Profile scoring — a format, its score, and the sign made obvious. */
+.score-section { padding: var(--s4); border-top: 1px solid var(--line); }
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--t-xs);
+}
+.score-row > span:first-child { width: 170px; flex: none; }
+.score-bar { height: 4px; flex: 1; overflow: hidden; border-radius: var(--r-full); background: var(--raised-2); }
+.score-bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.score-row strong { width: 44px; flex: none; font: var(--t-xs) var(--mono); text-align: right; }
+.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); margin: var(--s4); }
+.qp-score-list { display: grid; gap: var(--s2); }
+.qp-score-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 60px var(--control-sm);
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+.qp-score-name { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.qp-score-name strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.qp-score-name small { color: var(--faint); font: var(--t-micro) var(--mono); }
+.qp-score-row > strong { font: var(--t-sm) var(--mono); text-align: right; }

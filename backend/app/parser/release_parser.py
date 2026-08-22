@@ -584,14 +584,23 @@ def _video(raw: str, normalized: str) -> VideoInfo:
 def _audio(raw: str, normalized: str) -> AudioInfo:
     # Longest/base-specific patterns precede DD, which is a substring of DD+.
     patterns = (
-        (r"(?<![A-Za-z0-9])TrueHD(?![A-Za-z0-9])", "TrueHD"),
-        (r"(?<![A-Za-z0-9])DTS[- .]?HD[- .]?MA(?![A-Za-z0-9])", "DTS-HD MA"),
-        (r"(?<![A-Za-z0-9])DTS[- .]?HD[- .]?HRA(?![A-Za-z0-9])", "DTS-HD HRA"),
+        (r"(?<![A-Za-z0-9])TrueHD(?=[0-9]|(?![A-Za-z0-9]))", "TrueHD"),
+        (r"(?<![A-Za-z0-9])DTS[- .]?HD[- .]?MA(?=[0-9]|(?![A-Za-z0-9]))", "DTS-HD MA"),
+        (r"(?<![A-Za-z0-9])DTS[- .]?HD[- .]?HRA(?=[0-9]|(?![A-Za-z0-9]))", "DTS-HD HRA"),
+        (r"(?<![A-Za-z0-9])DTS[- .]?HD(?![A-Za-z0-9])", "DTS-HD"),
         (r"(?<![A-Za-z0-9])DTS[: -]?X(?![A-Za-z0-9])", "DTS:X"),
-        (r"(?<![A-Za-z0-9])DD\+(?![A-Za-z0-9])", "DD+"),
-        (r"(?<![A-Za-z0-9])DD(?![A-Za-z0-9])", "DD"),
-        (r"(?<![A-Za-z0-9])FLAC(?![A-Za-z0-9])", "FLAC"),
-        (r"(?<![A-Za-z0-9])AAC(?![A-Za-z0-9])", "AAC"),
+        (r"(?<![A-Za-z0-9])DTS(?=[0-9]|(?![A-Za-z0-9]))", "DTS"),
+        # Dolby Digital Plus ships under four spellings; all mean the same codec.
+        (r"(?<![A-Za-z0-9])E[- .]?AC[- .]?3(?![A-Za-z0-9])", "DD+"),
+        (r"(?<![A-Za-z0-9])DDP(?=[0-9]|(?![A-Za-z0-9]))", "DD+"),
+        (r"(?<![A-Za-z0-9])DD\+(?=[0-9]|(?![A-Za-z0-9]))", "DD+"),
+        (r"(?<![A-Za-z0-9])AC[- .]?3(?![A-Za-z0-9])", "DD"),
+        (r"(?<![A-Za-z0-9])DD(?=[0-9]|(?![A-Za-z0-9+]))", "DD"),
+        (r"(?<![A-Za-z0-9])FLAC(?=[0-9]|(?![A-Za-z0-9]))", "FLAC"),
+        (r"(?<![A-Za-z0-9])L?PCM(?![A-Za-z0-9])", "PCM"),
+        (r"(?<![A-Za-z0-9])Opus(?![A-Za-z0-9])", "Opus"),
+        (r"(?<![A-Za-z0-9])MP3(?![A-Za-z0-9])", "MP3"),
+        (r"(?<![A-Za-z0-9])AAC(?=[0-9]|(?![A-Za-z0-9]))", "AAC"),
     )
     codec = None
     for pattern, canonical in patterns:
@@ -599,7 +608,16 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
         if match:
             codec = canonical
             break
-    channels_match = re.search(r"(?<![A-Za-z0-9])([1-9](?:\.[0-9]){1,2})(?![A-Za-z0-9])", raw)
+    # A channel layout attached directly to the codec (DDP5.1, DD+7.1) is read
+    # first; only then the standalone forms.
+    channels_match = re.search(
+        r"(?:TrueHD|DTS(?:[- .]?HD)?(?:[- .]?MA)?|DDP|DD\+|DD|E?[- .]?AC[- .]?3|FLAC|AAC|Opus|PCM)"
+        r"[- .]?([1-9](?:\.[0-9]){1,2})(?![A-Za-z0-9])",
+        raw,
+        re.IGNORECASE,
+    )
+    if channels_match is None:
+        channels_match = re.search(r"(?<![A-Za-z0-9])([1-9](?:\.[0-9]){1,2})(?![A-Za-z0-9])", raw)
     if channels_match is None:
         channels_match = re.search(r"(?<![A-Za-z0-9])([1-9](?:\s+[0-9]){1,2})(?![A-Za-z0-9])", normalized)
     channels = channels_match.group(1) if channels_match else None
