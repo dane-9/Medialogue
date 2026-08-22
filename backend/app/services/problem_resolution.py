@@ -27,6 +27,7 @@ from app.models.domain import (
     JobStatus,
     MediaDirectory,
     MediaFile,
+    MatchMethod,
     MediaType,
     Movie,
     MovieRelease,
@@ -138,12 +139,13 @@ async def resolve_explicit_problem_action(
         return problem
 
     if action == "choose_episode_winner":
-        await _choose_episode_winner(db, problem, payload)
+        override_applied = await _choose_episode_winner(db, problem, payload)
         # Physical evidence still contains a duplicate; retain the Problem as
         # OPEN until a later scan proves the losing file is gone.
         problem.resolution = {
             "action": action,
             "winner_media_file_id": str(payload["winner_media_file_id"]),
+            "winner_manual_override_applied": override_applied,
             "physical_duplicate_remains": True,
         }
         queue_live_event(
@@ -305,7 +307,7 @@ async def _confirm_show_match(
     show.revision += 1
 
 
-async def _choose_episode_winner(db: AsyncSession, problem: Problem, payload: dict[str, Any]) -> None:
+async def _choose_episode_winner(db: AsyncSession, problem: Problem, payload: dict[str, Any]) -> bool:
     if problem.reason != "DUPLICATE_EPISODE_RELEASE" or problem.entity_type != "episode" or problem.entity_id is None:
         raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "This action only applies to episode duplicates.", status_code=409)
     try:
@@ -320,15 +322,37 @@ async def _choose_episode_winner(db: AsyncSession, problem: Problem, payload: di
         )
     ).all()
     ids = {item.media_file_id for item in mapped}
-    if winner_id not in ids:
+    verified_ids: set[UUID] = set()
+    for value in (problem.details or {}).get("media_file_ids", []):
+        try:
+            verified_ids.add(UUID(str(value)))
+        except (TypeError, ValueError):
+            continue
+    if winner_id not in ids or (verified_ids and winner_id not in verified_ids):
         raise AppError("INVALID_DUPLICATE_WINNER", "The selected file is not one of the current physical duplicates.", status_code=409)
+    previous_id: UUID | None = None
+    try:
+        previous_id = UUID(str((problem.resolution or {}).get("winner_media_file_id")))
+    except (TypeError, ValueError):
+        pass
+    if (
+        previous_id is not None
+        and previous_id != winner_id
+        and bool((problem.resolution or {}).get("winner_manual_override_applied"))
+    ):
+        previous = next((item for item in mapped if item.media_file_id == previous_id), None)
+        if previous is not None:
+            previous.manual_override = False
+            previous.match_method = MatchMethod.PARSER
     # Mark the chosen mapping as manual authority but leave all physical maps
     # intact. This is intentionally not a fake resolution: the Problem stays
     # open until the losing file really disappears.
-    for item in mapped:
-        if item.media_file_id == winner_id:
-            item.manual_override = True
+    winner = next(item for item in mapped if item.media_file_id == winner_id)
+    override_applied = not winner.manual_override
+    winner.manual_override = True
+    winner.match_method = MatchMethod.MANUAL
     problem.details = {**dict(problem.details or {}), "preferred_media_file_id": str(winner_id)}
+    return override_applied
 
 
 async def _load_movie_for_duplicate(db: AsyncSession, resource_id: str) -> Movie:
