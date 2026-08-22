@@ -246,3 +246,41 @@ def test_episode_only_filenames_yield_episode_numbers() -> None:
     assert extract_episode_numbers("1917") == ()
     assert extract_episode_numbers("300") == ()
     assert extract_episode_numbers("Some Title") == ()
+
+
+def test_dolby_digital_plus_is_recognised_under_every_spelling() -> None:
+    from app.parser import parse_release_name
+
+    for name in (
+        "X 2024 1080p AMZN WEB-DL DDP5.1 H.264-NTb",
+        "X 2024 1080p WEB-DL DDP 5.1 x265",
+        "X 2024 1080p WEB-DL DD+5.1 x265",
+        "X 2024 1080p WEB-DL EAC3 5.1",
+        "X 2024 1080p WEB-DL E-AC-3 5.1",
+    ):
+        audio = parse_release_name(name).audio
+        assert audio.codec == "DD+", name
+        assert audio.channels == "5.1", name
+
+
+def test_channel_layout_attached_to_the_codec_is_read() -> None:
+    from app.parser import parse_release_name
+
+    for name, codec in (
+        ("X 2160p WEB-DL TrueHD7.1", "TrueHD"),
+        ("X 1080p BluRay DTS-HD MA5.1", "DTS-HD MA"),
+        ("X 1080p WEB AAC2.0", "AAC"),
+    ):
+        audio = parse_release_name(name).audio
+        assert audio.codec == codec, name
+        assert audio.channels is not None, name
+
+
+def test_plain_dts_and_ac3_are_distinguished_from_their_lossless_variants() -> None:
+    from app.parser import parse_release_name
+
+    assert parse_release_name("X 1080p BluRay DTS 5.1 x264").audio.codec == "DTS"
+    assert parse_release_name("X 1080p BluRay DTS-HD MA 5.1").audio.codec == "DTS-HD MA"
+    # AC3 is Dolby Digital; it must not be mistaken for Dolby Digital Plus.
+    assert parse_release_name("X 1080p BluRay AC3 2.0").audio.codec == "DD"
+    assert parse_release_name("X 1080p WEB-DL DD 5.1").audio.codec == "DD"

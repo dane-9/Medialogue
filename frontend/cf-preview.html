@@ -8,6 +8,7 @@
 <style>
   /* Preview harness only. Everything else is the real stylesheet. */
   .pv-bar { position: fixed; z-index: 120; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+  .pv-bar .button.on { color: var(--text); background: var(--accent-soft); border-color: var(--accent-line); }
   .pv-bar strong { font-size: 12px; margin-right: 8px; color: var(--faint); font-family: var(--mono); text-transform: uppercase; letter-spacing: .1em; }
   .pv-bar .pv-hint { margin-left: auto; color: var(--faint); font-size: 11px; }
   .page-content { padding-bottom: 72px; }
@@ -59,8 +60,10 @@ function ic(n,s){return '<svg width="'+s+'" height="'+s+'" fill="none" stroke="c
 <div id="modal-root"></div>
 
 <div class="pv-bar">
-  <strong>Custom Formats</strong>
-  <span class="pv-hint">Click any card to open the editor · Esc or the backdrop closes it</span>
+  <strong>Preview</strong>
+  <button class="button button-secondary on" id="pv-cf">Custom Formats</button>
+  <button class="button button-secondary" id="pv-qp">Quality Profiles</button>
+  <span class="pv-hint">Click any card to open the editor &middot; Esc or the backdrop closes it</span>
 </div>
 
 <script>
@@ -193,6 +196,102 @@ document.getElementById('b-new').innerHTML = ic('plus', 16) + 'New custom format
 document.getElementById('filter').addEventListener('input', render);
 document.getElementById('b-new').onclick = () => open({ name: 'New Custom Format', desc: '', on: true, scope: 'Movies & Shows', profiles: 0, conds: [] }, true);
 render();
+
+const PROFILES = [
+  { name: 'Remux First', min: 'Bluray-2160p', titles: 412, scores: [
+    ['Remux Tier', 900], ['HDR10+ / Dolby Vision', 350], ['Atmos / TrueHD', 200],
+    ['Low Quality Groups', -1000], ['Upscaled', -800], ['x265 Encode', -50] ] },
+  { name: 'Balanced 1080p', min: 'Bluray-1080p', titles: 690, scores: [
+    ['Atmos / TrueHD', 150], ['Low Quality Groups', -1000], ['Upscaled', -800] ] },
+  { name: 'Space Saver', min: null, titles: 128, scores: [
+    ['x265 Encode', 300], ['Remux Tier', -500] ] },
+  { name: 'Archive (no scoring)', min: 'Bluray-2160p', titles: 54, scores: [] },
+];
+
+function signClass(v) { return v < 0 ? 'score-negative' : v > 0 ? 'score-positive' : ''; }
+function signed(v) { return (v > 0 ? '+' : '') + v; }
+
+function qpCard(p, i) {
+  const ranked = p.scores.slice().sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const chips = ranked.slice(0, 5).map(function (e) {
+    return '<span class="cf-condition-chip">' + e[0] + '<code class="' + signClass(e[1]) + '">' + signed(e[1]) + '</code></span>';
+  }).join('');
+  const more = ranked.length > 5 ? '<span class="cf-condition-chip cf-condition-more">+' + (ranked.length - 5) + ' more</span>' : '';
+  const none = ranked.length ? '' : '<span class="cf-condition-chip cf-condition-more">No scored formats</span>';
+  return '<button class="cf-card" data-qp="' + i + '">'
+    + '<div class="cf-card-head"><strong>' + p.name + '</strong><span class="badge badge-' + (p.min ? 'blue' : 'neutral') + '"><span class="badge-dot"></span>' + (p.min || 'No minimum') + '</span></div>'
+    + '<div class="cf-card-conditions">' + chips + more + none + '</div>'
+    + '<div class="cf-card-foot"><span>' + p.titles + ' titles</span><span>' + p.scores.length + ' scored format' + (p.scores.length === 1 ? '' : 's') + '</span></div>'
+    + '</button>';
+}
+
+function qpRow(e) {
+  return '<div class="qp-score-row">'
+    + '<span class="qp-score-name"><strong>' + e[0] + '</strong><small>3 conditions</small></span>'
+    + '<input class="input" type="number" value="' + e[1] + '" />'
+    + '<strong class="' + (signClass(e[1]) || 'muted') + '">' + signed(e[1]) + '</strong>'
+    + '<button class="icon-button">' + ic('close', 15) + '</button></div>';
+}
+
+function openProfile(p, isNew) {
+  const rows = p.scores.length
+    ? '<div class="qp-score-list">' + p.scores.slice().sort(function (a, b) { return a[0].localeCompare(b[0]); }).map(qpRow).join('') + '</div>'
+    : '<div class="cf-test-placeholder">' + ic('sliders', 18) + '<strong>No scored formats</strong><span>This profile only warns on minimum quality. Add a Custom Format above to start ranking releases.</span></div>';
+  document.getElementById('modal-root').innerHTML =
+    '<div class="modal-backdrop" id="backdrop"><div class="modal modal-wide" role="dialog">'
+    + '<div class="modal-head"><div class="modal-head-copy"><div class="eyebrow">' + (isNew ? 'NEW QUALITY PROFILE' : 'EDIT QUALITY PROFILE') + '</div><h2>' + p.name + '</h2></div>'
+    + '<button class="icon-button" id="x">' + ic('close', 18) + '</button></div>'
+    + '<div class="modal-body"><div class="cf-modal-grid">'
+    + field('Profile name', 'Shown wherever this profile is assigned to a movie or show.', '<input class="input" value="' + p.name + '" />')
+    + field('Minimum quality', 'Releases below this are flagged with a warning. They are never hidden, and nothing is blocked from being grabbed.', '<select class="input"><option>' + (p.min || 'No minimum warning') + '</option></select>')
+    + '</div>'
+    + '<div class="cf-modal-section"><div class="section-title"><h3>Custom Format scores</h3>'
+    + '<div class="search-client-chooser"><select class="input select"><option>Add Custom Format…</option></select>'
+    + '<button class="button button-secondary">' + ic('plus', 16) + 'Add</button></div></div>'
+    + '<p class="cf-modal-note">A release scores the sum of every format it matches. Positive scores prefer a release and negative ones push it down the list — <strong>nothing is ever hidden or blocked</strong>. A matching format with no score here contributes 0 and still appears in search evidence.</p>'
+    + rows + '</div></div>'
+    + '<div class="modal-foot">' + (isNew ? '' : '<button class="button button-danger">Delete</button>')
+    + '<span class="footer-state clean" id="state">All changes saved</span>'
+    + '<button class="button button-secondary" id="cancel">Cancel</button>'
+    + '<button class="button button-primary">Save profile</button></div></div></div>';
+
+  const close = function () { document.getElementById('modal-root').innerHTML = ''; document.body.style.overflow = ''; };
+  document.body.style.overflow = 'hidden';
+  document.getElementById('x').onclick = close;
+  document.getElementById('cancel').onclick = close;
+  document.getElementById('backdrop').onclick = function (e) { if (e.target.id === 'backdrop') close(); };
+  document.onkeydown = function (e) { if (e.key === 'Escape') close(); };
+  document.querySelectorAll('.modal input, .modal select').forEach(function (el) {
+    el.addEventListener('input', function () {
+      const st = document.getElementById('state');
+      if (st) { st.textContent = 'Unsaved changes'; st.classList.remove('clean'); }
+    });
+  });
+}
+
+function renderQP() {
+  document.querySelector('.heading-copy .eyebrow').textContent = 'MEDIALOGUE / QUALITY PROFILES';
+  document.querySelector('.heading-copy h1').textContent = 'Quality Profiles';
+  document.querySelector('.heading-copy p').textContent = 'A warning-only minimum quality and signed Custom Format scores. Formats never carry a score themselves — a profile decides what each one is worth.';
+  document.querySelector('.heading-actions').innerHTML = '<button class="button button-primary">' + ic('plus', 16) + 'New profile</button>';
+  document.querySelector('.toolbar').style.display = 'none';
+  document.getElementById('grid').innerHTML = PROFILES.map(qpCard).join('')
+    + '<button class="cf-card cf-card-add" id="qadd">' + ic('plus', 22) + '<strong>New profile</strong><span>Score formats for a library</span></button>';
+  document.querySelectorAll('.cf-card[data-qp]').forEach(function (el) {
+    el.onclick = function () { openProfile(PROFILES[+el.dataset.qp]); };
+  });
+  document.getElementById('qadd').onclick = function () {
+    openProfile({ name: 'New Quality Profile', min: null, titles: 0, scores: [] }, true);
+  };
+}
+
+document.getElementById('pv-cf').onclick = function () { location.reload(); };
+document.getElementById('pv-qp').onclick = function () {
+  this.classList.add('on');
+  document.getElementById('pv-cf').classList.remove('on');
+  renderQP();
+};
+
 </script>
 </body>
 </html>
