@@ -2,10 +2,7 @@
 
 from .release_parser import (
     QUALITY_PRECEDENCE,
-    normalize,
     normalize_release_name,
-    parse,
-    parse_name,
     parse_release_name,
     parse_quality,
     parse_release,
@@ -40,10 +37,7 @@ __all__ = [
     "QUALITY_DEFINITIONS",
     "QualityDefinition",
     "list_quality_definitions",
-    "normalize",
     "normalize_release_name",
-    "parse",
-    "parse_name",
     "parse_release_name",
     "parse_season_folder",
     "extract_episode_numbers",

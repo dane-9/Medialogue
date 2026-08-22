@@ -244,7 +244,6 @@ def test_cancelled_queued_job_is_not_resurrected_and_restart_interrupts_running_
 def test_empty_root_scan_has_durable_history_and_survives_refresh(client: TestClient) -> None:
     headers = login_headers(client)
     client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
-    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     root_path = Path(tempfile.mkdtemp(prefix="medialogue-empty-root-", dir=os.getcwd()))
     try:
         created = client.post(
@@ -355,7 +354,6 @@ def test_storage_scan_job_is_runtime_visible_deduplicated_and_cancellable(client
 
     headers = login_headers(client)
     client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
-    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     root_path = Path(tempfile.mkdtemp(prefix="medialogue-cancellable-root-", dir=os.getcwd()))
     started = threading.Event()
     cancelled = threading.Event()

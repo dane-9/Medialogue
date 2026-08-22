@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_csrf
 from app.api.downloads import get_qbit_client_factory
-from app.api.operations import active_operations_enabled
 from app.db.session import get_db
 from app.schemas.duplicates import (
     DuplicateResolveCommitRequest,
@@ -71,7 +70,6 @@ async def resolve_movie_duplicate(
             resource_id,
             payload.confirmation_token,
             qbit_client_factory=qbit_client_factory,
-            active_operations=active_operations_enabled(),
         ),
     )
     return JobAcceptedResponse(job_id=job.id)

@@ -146,13 +146,9 @@ def test_error_envelope_serializes_validation_context(client: TestClient) -> Non
     assert invalid.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_parser_endpoint_and_operations_are_always_available(client: TestClient) -> None:
+def test_parser_endpoint_is_always_available(client: TestClient) -> None:
     login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
     csrf = login.json()["csrf_token"]
-
-    operations = client.get("/api/v1/operations")
-    assert operations.status_code == 200
-    assert operations.json() == {"enabled": True}
 
     parsed = client.post(
         "/api/v1/parser/test",
@@ -162,14 +158,6 @@ def test_parser_endpoint_and_operations_are_always_available(client: TestClient)
     assert parsed.json()["quality"]["canonical"] == "2160p BluRay REMUX"
     assert parsed.json()["edition"] is None
     assert parsed.json()["attributes"]["hybrid"] is True
-
-    enabled = client.put(
-        "/api/v1/operations",
-        headers={"X-CSRF-Token": csrf},
-        json={"enabled": True},
-    )
-    assert enabled.status_code == 200
-    assert enabled.json() == {"enabled": True}
 
 
 def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: TestClient) -> None:
@@ -183,7 +171,6 @@ def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: Tes
         csrf = login.json()["csrf_token"]
         headers = {"X-CSRF-Token": csrf}
         _configure_tmdb(client, headers)
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         created = client.post(
             "/api/v1/storage-roots",
             headers=headers,
@@ -252,7 +239,6 @@ def test_scan_flags_two_present_same_edition_releases_as_duplicate(client: TestC
         csrf = login.json()["csrf_token"]
         headers = {"X-CSRF-Token": csrf}
         _configure_tmdb(client, headers)
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         root = client.post(
             "/api/v1/storage-roots",
             headers=headers,
@@ -286,7 +272,6 @@ def test_scan_is_refused_until_tmdb_is_configured(client: TestClient) -> None:
     try:
         login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
         headers = {"X-CSRF-Token": login.json()["csrf_token"]}
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         root = client.post(
             "/api/v1/storage-roots",
             headers=headers,
@@ -316,7 +301,6 @@ def test_show_root_scan_tracks_episode_presence_independently(client: TestClient
         login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
         headers = {"X-CSRF-Token": login.json()["csrf_token"]}
         _configure_tmdb(client, headers)
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         root = client.post(
             "/api/v1/storage-roots",
             headers=headers,
@@ -398,7 +382,6 @@ def test_show_scan_maps_multi_episode_and_flags_episode_less_video(client: TestC
         login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
         headers = {"X-CSRF-Token": login.json()["csrf_token"]}
         _configure_tmdb(client, headers)
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         root = client.post(
             "/api/v1/storage-roots",
             headers=headers,

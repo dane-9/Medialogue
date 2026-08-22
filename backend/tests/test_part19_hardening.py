@@ -103,18 +103,18 @@ def test_csrf_token_is_bound_to_the_session_that_created_it(client: TestClient) 
     client.cookies.set("medialogue_session", session_two)
     client.cookies.set("medialogue_csrf", csrf_cookie_one)
     blocked = client.put(
-        "/api/v1/operations",
+        "/api/v1/integrations/tmdb",
         headers={"X-CSRF-Token": csrf_one},
-        json={"enabled": True},
+        json={"api_key": "test", "enabled": True},
     )
     assert blocked.status_code == 403
     assert blocked.json()["error"]["code"] == "CSRF_INVALID"
 
     client.cookies.set("medialogue_csrf", csrf_cookie_two)
     allowed = client.put(
-        "/api/v1/operations",
+        "/api/v1/integrations/tmdb",
         headers={"X-CSRF-Token": csrf_two},
-        json={"enabled": True},
+        json={"api_key": "test", "enabled": True},
     )
     assert allowed.status_code == 200
 

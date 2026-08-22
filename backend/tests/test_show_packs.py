@@ -95,8 +95,6 @@ def login(client: TestClient) -> dict[str, str]:
 def configure(client: TestClient, headers: dict[str, str]) -> None:
     tmdb = client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     assert tmdb.status_code == 200, tmdb.text
-    operations = client.put("/api/v1/operations", headers=headers, json={"enabled": True})
-    assert operations.status_code == 200, operations.text
 
 
 def create_show_root(client: TestClient, headers: dict[str, str], root: Path, name: str = "Shows") -> dict:

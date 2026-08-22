@@ -564,12 +564,7 @@ async def commit_duplicate_resolution(
     confirmation_token: str,
     *,
     qbit_client_factory: Callable[..., Any],
-    active_operations: bool,
 ) -> dict[str, Any]:
-    # Kept in the signature for compatibility with older callers.  Duplicate
-    # deletion safety comes from the signed preview token and explicit commit,
-    # not from a global runtime toggle.
-    del active_operations
     payload = verify_confirmation_payload(confirmation_token, get_settings().secret_key)
     if payload is None or payload.get("purpose") != "resolve_movie_duplicate":
         raise AppError("INVALID_CONFIRMATION", "Duplicate confirmation token is invalid.", status_code=409)
@@ -791,7 +786,6 @@ async def run_duplicate_resolution(
     confirmation_token: str,
     *,
     qbit_client_factory: Callable[..., Any],
-    active_operations: bool,
 ) -> None:
     """Run the explicitly confirmed duplicate decision as a durable Job."""
 
@@ -826,7 +820,6 @@ async def run_duplicate_resolution(
                 resource_id,
                 confirmation_token,
                 qbit_client_factory=qbit_client_factory,
-                active_operations=active_operations,
             )
             summary = {
                 "movie_id": str(result["movie_id"]),

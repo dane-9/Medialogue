@@ -779,7 +779,6 @@ function ProblemEvidenceDetails({ problem, selectedTmdbId, onSelectTmdbCandidate
     const plexIdentity = problemText(details.plex_identity) ?? problemIdentity(details.plex_title, details.plex_year)
     const localPath = problemText(details.local_path ?? details.medialogue_path)
     const plexPath = problemText(details.plex_path ?? details.plex_reported_path)
-    const legacyPath = problemText(details.path)
     const differences = Array.isArray(details.differences) ? details.differences.map((value) => problemText(value)).filter((value): value is string => Boolean(value)) : []
     const conflicts = Array.isArray(details.conflicts) ? details.conflicts.map(problemRecord) : []
     if (problem.entityType === 'show' && conflicts.length > 0) return <div className="problem-evidence-block">
@@ -788,16 +787,14 @@ function ProblemEvidenceDetails({ problem, selectedTmdbId, onSelectTmdbCandidate
     </div>
     return <div className="problem-evidence-block">
       <div className="problem-evidence-grid">
-        <div className="problem-evidence-side"><span className="eyebrow">MEDIALOGUE</span><strong>{localIdentity ?? 'Local identity not stored'}</strong><code>{localPath ?? (legacyPath && problem.entityType === 'media_directory' ? legacyPath : 'Local path not stored in this older Problem')}</code></div>
-        <div className="problem-evidence-side"><span className="eyebrow">PLEX</span><strong>{plexIdentity ?? 'Plex identity not stored'}</strong><code>{plexPath ?? (legacyPath && problem.entityType === 'movie' ? legacyPath : 'Plex path not stored in this older Problem')}</code></div>
+        <div className="problem-evidence-side"><span className="eyebrow">MEDIALOGUE</span><strong>{localIdentity ?? 'Local identity not stored'}</strong><code>{localPath ?? 'Local path not recorded'}</code></div>
+        <div className="problem-evidence-side"><span className="eyebrow">PLEX</span><strong>{plexIdentity ?? 'Plex identity not stored'}</strong><code>{plexPath ?? 'Plex path not recorded'}</code></div>
       </div>
       {differences.length > 0 && <div className="problem-difference"><strong>Different:</strong> {differences.join(', ')}</div>}
-      <div className="problem-evidence-note">Movie title/year conflicts from older builds are obsolete. Restart on the current build or recheck Plex to resolve this legacy row.</div>
-      {!localPath && !plexPath && legacyPath && <div className="problem-evidence-note">This older Problem stored only one path.</div>}
     </div>
   }
 
-  if (problem.code === 'TMDB_IDENTITY_UNRESOLVED' || problem.code === 'TMDB_MATCH_REQUIRED') {
+  if (problem.code === 'TMDB_IDENTITY_UNRESOLVED') {
     const parsed = parserIdentity(details)
     const reason = problemText(details.tmdb_reason)
     const candidates = Array.isArray(details.tmdb_candidates) ? details.tmdb_candidates.map(problemRecord) : []

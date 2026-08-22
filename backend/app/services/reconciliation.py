@@ -165,7 +165,6 @@ async def open_problem(
         query = query.where(Problem.entity_id == entity_id)
     existing_problems = (await db.scalars(query.order_by(Problem.created_at.asc()))).all()
     problem = existing_problems[0] if existing_problems else None
-    duplicate_problems = existing_problems[1:]
     created = False
     if problem is None:
         candidate = Problem(
@@ -188,34 +187,6 @@ async def open_problem(
             problem = await db.scalar(query.order_by(Problem.created_at.asc()).limit(1))
             if problem is None:
                 raise
-
-    # Older builds could race and leave more than one OPEN row for the same
-    # logical condition. Existing installations do not automatically gain the
-    # new partial indexes, so opportunistically collapse those rows whenever
-    # the condition is observed again.
-    if duplicate_problems:
-        resolved_at = utcnow()
-        for duplicate in duplicate_problems:
-            duplicate.status = ProblemStatus.RESOLVED
-            duplicate.resolved_at = resolved_at
-            duplicate.resolution = {
-                "action": "deduplicated",
-                "canonical_problem_id": str(problem.id),
-            }
-        await create_event(
-            db,
-            "problem.resolved",
-            entity_type=entity_type,
-            entity_id=entity_id,
-            message=f"Collapsed duplicate Problems for {reason}.",
-            details={
-                "problem_id": str(problem.id),
-                "problem_ids": [str(item.id) for item in duplicate_problems],
-                "count": len(duplicate_problems),
-                "reason": reason,
-                "resolution": "deduplicated",
-            },
-        )
 
     if not created:
         # Preserve creation/history, but keep affected counts and current
@@ -522,12 +493,6 @@ async def _plex_evidence_for_candidate(
         .order_by(PlexObservation.last_seen_at.desc())
     )
     if observation is not None:
-        if observation.match_state == PlexMatchState.CONFLICT and observation.media_type == MediaType.MOVIES:
-            # Legacy builds treated Plex title/year metadata as authoritative.
-            # Movie identity belongs to TMDB/manual matching, so heal that old
-            # observation in-place instead of blocking reconciliation.
-            observation.match_state = PlexMatchState.MATCHED
-            observation.match_method = observation.match_method or PlexMatchMethod.EXACT_PATH
         state = {
             PlexMatchState.MATCHED: PlexState.MATCHED,
             PlexMatchState.PENDING: PlexState.PENDING,
@@ -781,7 +746,6 @@ async def reconcile_movie_directory(
         # Parser uncertainty supersedes downstream identity/integration
         # conclusions for this same directory. Do not leave older TMDB/Plex
         # Problems open when their prerequisite identity is no longer valid.
-        await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
         await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         await open_problem(
@@ -830,7 +794,6 @@ async def reconcile_movie_directory(
                     "Check Settings -> Metadata, then run the scan again."
                 )
             reason = "TMDB_IDENTITY_UNRESOLVED"
-            await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
             await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
             await open_problem(
                 db,
@@ -861,7 +824,6 @@ async def reconcile_movie_directory(
                 severity=Severity.ERROR if tmdb_reason == "unavailable" else Severity.WARNING,
             )
             return "review"
-        await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
         await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         # Exact TMDB identity evidence upgrades a folder-only 0.80 parse to the
         # automatic-attachment threshold without weakening the no-guess rule.
@@ -883,7 +845,6 @@ async def reconcile_movie_directory(
     else:
         # A previously identified movie also proves any directory-level TMDB
         # identity Problems from an older pass are no longer applicable.
-        await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
         await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
 

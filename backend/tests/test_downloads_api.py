@@ -135,9 +135,10 @@ def _login(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": response.json()["csrf_token"]}
 
 
-def _enable_operations(client: TestClient, headers: dict[str, str]) -> None:
-    client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
-    response = client.put("/api/v1/operations", headers=headers, json={"enabled": True})
+def _configure_tmdb(client: TestClient, headers: dict[str, str]) -> None:
+    """Scanning requires TMDB, so every suite that scans has to configure it."""
+
+    response = client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     assert response.status_code == 200, response.text
 
 
@@ -371,7 +372,7 @@ def test_download_client_test_and_health_refresh_use_read_only_fake(client: Test
 
 def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance(client: TestClient) -> None:
     headers = _login(client)
-    _enable_operations(client, headers)
+    _configure_tmdb(client, headers)
     root = Path.cwd() / f"qbit-movies-{os.urandom(8).hex()}"
     root.mkdir(parents=True)
     try:
@@ -460,7 +461,7 @@ def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resol
     """
 
     headers = _login(client)
-    _enable_operations(client, headers)
+    _configure_tmdb(client, headers)
     root = Path.cwd() / f"qbit-cartoons-{os.urandom(8).hex()}"
     root.mkdir(parents=True)
     try:
@@ -526,7 +527,7 @@ def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resol
 
 def test_manual_externally_added_torrent_is_observed_without_touching_media(client: TestClient) -> None:
     headers = _login(client)
-    _enable_operations(client, headers)
+    _configure_tmdb(client, headers)
     root = Path.cwd() / f"qbit-manual-{os.urandom(8).hex()}"
     root.mkdir(parents=True)
     sentinel = root / "already-present.mkv"
@@ -579,7 +580,7 @@ def test_qbit_connectivity_health_survives_internal_processing_failure(client: T
     from app.services import qbittorrent as qbit_service
 
     headers = _login(client)
-    _enable_operations(client, headers)
+    _configure_tmdb(client, headers)
     root = Path.cwd() / f"qbit-health-separation-{os.urandom(8).hex()}"
     root.mkdir(parents=True)
     try:

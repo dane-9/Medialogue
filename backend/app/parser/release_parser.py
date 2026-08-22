@@ -842,10 +842,7 @@ def detect_release_group(name: str) -> str:
 
 
 # Public aliases used by adapters and older experiments.
-parse = parse_release
-parse_name = parse_release
 parse_release_name = parse_release
-normalize = normalize_release_name
 
 
 __all__ = [

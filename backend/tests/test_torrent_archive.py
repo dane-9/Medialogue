@@ -151,7 +151,6 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
     client, base, archive_dir = archive_client
     headers = _login(client)
     client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
-    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     media_root = base / "movies"
     media_root.mkdir()
     root = client.post(
@@ -328,7 +327,6 @@ def test_restore_rejects_destination_outside_configured_roots(archive_client) ->
     _install_fake(client, behavior)
     try:
         client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         polled = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
         assert polled.status_code == 202, polled.text
         assert _wait_job(client, polled.json()["job_id"])["status"] == "completed"
@@ -349,7 +347,6 @@ def test_failed_archive_is_visible_and_manual_retry_can_recover(archive_client) 
     client, base, _ = archive_client
     headers = _login(client)
     client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
-    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     media_root = base / "movies"
     media_root.mkdir()
     root = client.post(
