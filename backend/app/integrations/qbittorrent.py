@@ -34,8 +34,14 @@ class TorrentObservation:
     completed_at: int | None
 
     @property
+    def checking(self) -> bool:
+        """Whether qBittorrent is verifying payload or resume data."""
+
+        return self.state.casefold().startswith("checking")
+
+    @property
     def complete(self) -> bool:
-        return self.progress >= 1 and self.state not in {"checkingDL", "metaDL"}
+        return self.progress >= 1 and not self.checking and self.state != "metaDL"
 
 
 class QBittorrentClient:

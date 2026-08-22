@@ -436,7 +436,8 @@ function normalizeDownload(value: unknown): Download {
   const progressRaw = numberValue(item.progress ?? item.progress_percent, 0)
   const progress = progressRaw <= 1 ? progressRaw * 100 : progressRaw
   let state: Download['state'] = 'Downloading'
-  if (rawState.includes('error') || rawState.includes('missing')) state = 'Error'
+  if (rawState.startsWith('checking')) state = 'Checking'
+  else if (rawState.includes('error') || rawState.includes('missing')) state = 'Error'
   else if (rawState.includes('pause') || rawState.includes('stopped')) state = 'Paused'
   else if (rawState === 'completed' || rawState === 'complete') state = 'Completed'
   else if (rawState.includes('up') || rawState.includes('seed') || rawState.includes('upload')) state = 'Seeding'

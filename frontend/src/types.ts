@@ -280,7 +280,7 @@ export interface Download {
   name: string
   client: string
   kind: 'Movie' | 'Show'
-  state: 'Downloading' | 'Seeding' | 'Completed' | 'Paused' | 'Error'
+  state: 'Downloading' | 'Checking' | 'Seeding' | 'Completed' | 'Paused' | 'Error'
   progress: number
   size: string
   eta: string
