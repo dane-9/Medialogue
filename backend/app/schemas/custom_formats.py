@@ -107,6 +107,7 @@ class CustomFormatResponse(ORMModel):
     description: str | None
     media_scope: CustomFormatScope
     enabled: bool
+    builtin: bool = False
     schema_version: int
     conditions: list[CustomFormatConditionResponse]
     condition_count: int

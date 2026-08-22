@@ -284,3 +284,32 @@ def test_plain_dts_and_ac3_are_distinguished_from_their_lossless_variants() -> N
     # AC3 is Dolby Digital; it must not be mistaken for Dolby Digital Plus.
     assert parse_release_name("X 1080p BluRay AC3 2.0").audio.codec == "DD"
     assert parse_release_name("X 1080p WEB-DL DD 5.1").audio.codec == "DD"
+
+
+def test_dts_extended_surround_is_distinct_from_core_dts() -> None:
+    from app.parser import parse_release_name
+
+    for name in ("X 1080p BluRay DTS-ES 5.1", "X 1080p BluRay DTS-ES Discrete 6.1", "X 1080p BluRay DTS ES Matrix 6.1"):
+        assert parse_release_name(name).audio.codec == "DTS-ES", name
+    assert parse_release_name("X 1080p BluRay DTS 5.1").audio.codec == "DTS"
+    assert parse_release_name("X 1080p BluRay DTS-HD MA 5.1").audio.codec == "DTS-HD MA"
+    assert parse_release_name("X 2160p BluRay DTS-X 7.1").audio.codec == "DTS:X"
+
+
+def test_paramount_plus_is_recognised_under_its_scene_tag() -> None:
+    from app.parser import parse_release_name
+
+    for name in (
+        "Show S01E01 1080p PMTP WEB-DL DDP5.1 H.264-NTb",
+        "Show S01E01 1080p Paramount+ WEB-DL DDP5.1-NTb",
+    ):
+        assert parse_release_name(name).provider == "PMTP", name
+
+
+def test_short_provider_tags_are_bounded_by_the_web_dl_marker() -> None:
+    from app.parser import parse_release_name
+
+    assert parse_release_name("Show S01E01 1080p CR WEB-DL AAC2.0-NTb").provider == "CR"
+    assert parse_release_name("Show S01E01 1080p iP WEB-DL AAC2.0-NTb").provider == "iP"
+    # MA here is DTS-HD Master Audio, not the Movies Anywhere provider.
+    assert parse_release_name("Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP").provider is None

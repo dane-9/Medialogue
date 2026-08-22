@@ -89,8 +89,37 @@ _PROVIDERS: dict[str, str] = {
     "hmax": "HMAX",
     "max": "MAX",
     "hulu": "HULU",
-    "paramount+": "Paramount+",
+    "pmtp": "PMTP",
+    "paramount+": "PMTP",
+    "paramountplus": "PMTP",
     "pcok": "PCOK",
+    "peacock": "PCOK",
+    "hbomax": "HMAX",
+    "disneyplus": "DSNP",
+    "itunes": "iT",
+    # Services that were missing entirely. Detection only considers tokens
+    # between the resolution and the WEB-DL marker, so even short tags like CR
+    # and iP cannot be confused with words elsewhere in a release name.
+    "sho": "SHO",
+    "showtime": "SHO",
+    "stan": "STAN",
+    "crav": "CRAV",
+    "crave": "CRAV",
+    "cr": "CR",
+    "crunchyroll": "CR",
+    "funi": "FUNI",
+    "funimation": "FUNI",
+    "hidive": "HIDIVE",
+    "ip": "iP",
+    "all4": "ALL4",
+    "my5": "MY5",
+    "uktv": "UKTV",
+    "roku": "ROKU",
+    "tubi": "TUBI",
+    "pluto": "PLUTO",
+    "skst": "SKST",
+    "dcu": "DCU",
+    "viu": "VIU",
 }
 
 _REGIONS = {
@@ -589,6 +618,7 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
         (r"(?<![A-Za-z0-9])DTS[- .]?HD[- .]?HRA(?=[0-9]|(?![A-Za-z0-9]))", "DTS-HD HRA"),
         (r"(?<![A-Za-z0-9])DTS[- .]?HD(?![A-Za-z0-9])", "DTS-HD"),
         (r"(?<![A-Za-z0-9])DTS[: -]?X(?![A-Za-z0-9])", "DTS:X"),
+        (r"(?<![A-Za-z0-9])DTS[- .]?ES(?![A-Za-z0-9])", "DTS-ES"),
         (r"(?<![A-Za-z0-9])DTS(?=[0-9]|(?![A-Za-z0-9]))", "DTS"),
         # Dolby Digital Plus ships under four spellings; all mean the same codec.
         (r"(?<![A-Za-z0-9])E[- .]?AC[- .]?3(?![A-Za-z0-9])", "DD+"),

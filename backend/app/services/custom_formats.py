@@ -363,6 +363,12 @@ def _structured_evidence(
             values.append(parsed.audio.codec)
         if parsed.audio.atmos:
             values.append("Atmos")
+            # Atmos rides on a carrier codec, and the pair is what people
+            # actually rank: TrueHD Atmos is worth more than bare TrueHD. Emit
+            # the combination so a format can match it exactly, while the plain
+            # carrier value still matches its own format.
+            if parsed.audio.codec:
+                values.append(f"{parsed.audio.codec} Atmos")
         if parsed.audio.dts_x:
             values.append("DTS:X")
         return tuple(values), "audio codec"

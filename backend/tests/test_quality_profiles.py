@@ -35,6 +35,25 @@ from app.models.domain import (
 from app.services.reconciliation import reconcile_movie_directory
 
 
+def _format_named(payload: dict, name: str) -> dict:
+    """Pick one evaluated format by name.
+
+    Built-in formats share the evaluation list, so position is meaningless.
+    """
+
+    for item in payload.get("formats", []):
+        if item.get("custom_format_name") == name or item.get("name") == name:
+            return item
+    raise AssertionError(f"{name} not in {[i.get('custom_format_name') or i.get('name') for i in payload.get('formats', [])]}")
+
+
+def _user_formats(payload: dict) -> list[dict]:
+    """Only the formats a test created; built-ins are filtered out."""
+
+    return [item for item in payload.get("items", []) if not item.get("builtin")]
+
+
+
 @pytest.fixture
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-profiles-", suffix=".db", dir=os.getcwd())
@@ -196,7 +215,7 @@ def test_interactive_search_scores_warns_below_minimum_and_preserves_snapshot(cl
         assert result["minimum_quality"] == "2160p BluRay REMUX"
         assert result["minimum_quality_met"] is False
         assert any("Below minimum quality" in item for item in result["warnings"])
-        breakdown = result["custom_format_snapshot"]["formats"][0]
+        breakdown = _format_named(result["custom_format_snapshot"], "Hybrid")
         assert breakdown["matched"] is True
         assert breakdown["profile_score"] == 500
         assert breakdown["override_score"] == 750
@@ -211,7 +230,7 @@ def test_interactive_search_scores_warns_below_minimum_and_preserves_snapshot(cl
         assert changed.status_code == 200, changed.text
         same = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"][0]
         assert same["custom_format_score"] == 750
-        assert same["custom_format_snapshot"]["formats"][0]["effective_score"] == 750
+        assert _format_named(same["custom_format_snapshot"], "Hybrid")["effective_score"] == 750
     finally:
         client.app.dependency_overrides.clear()
 
@@ -357,7 +376,7 @@ def test_episode_search_uses_parent_show_profile(client: TestClient):
         result = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"][0]
         assert result["quality_profile_name"] == "Shows"
         assert result["custom_format_score"] == 222
-        assert result["custom_format_snapshot"]["formats"][0]["contribution"] == 222
+        assert _format_named(result["custom_format_snapshot"], "DSNP")["contribution"] == 222
     finally:
         client.app.dependency_overrides.clear()
 
@@ -378,9 +397,10 @@ def test_custom_format_test_all_can_explain_profile_score(client: TestClient):
     payload = tested.json()
     assert payload["quality_profile_name"] == "Tester"
     assert payload["total_score"] == -123
-    assert payload["formats"][0]["matched"] is True
-    assert payload["formats"][0]["profile_score"] == -123
-    assert payload["formats"][0]["contribution"] == -123
+    scored = _format_named(payload, "Hybrid")
+    assert scored["matched"] is True
+    assert scored["profile_score"] == -123
+    assert scored["contribution"] == -123
 
 
 def test_completed_selected_search_release_preserves_download_score_and_tracks_current_score(client: TestClient):

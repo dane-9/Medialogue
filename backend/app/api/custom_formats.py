@@ -123,6 +123,7 @@ async def _response(db: AsyncSession, row: CustomFormatModel) -> CustomFormatRes
         description=row.description,
         media_scope=CustomFormatScope(row.media_scope.value),
         enabled=row.enabled,
+        builtin=row.builtin,
         schema_version=int((row.condition_definition or {}).get("schema_version", CUSTOM_FORMAT_SCHEMA_VERSION)),
         conditions=conditions,
         condition_count=len(conditions),
@@ -391,6 +392,17 @@ async def update_custom_format(
         raise AppError("REVISION_CONFLICT", "Custom Format changed; refresh and try again.", status_code=409)
     values = payload.model_dump(exclude_unset=True)
     values.pop("expected_revision", None)
+    if row.builtin:
+        # Medialogue owns the definition of a built-in so pattern fixes can ship
+        # to existing installs. Enabling and disabling stays with the operator.
+        disallowed = sorted(key for key in values if key != "enabled")
+        if disallowed:
+            raise AppError(
+                "BUILTIN_CUSTOM_FORMAT_READ_ONLY",
+                f"{row.name} is a built-in Custom Format. Only 'enabled' can be changed; "
+                f"duplicate it if you need a version you can edit. Rejected: {', '.join(disallowed)}.",
+                status_code=409,
+            )
     if "name" in values and values["name"] is not None:
         name = str(values["name"]).strip()
         await _ensure_name_available(db, name, exclude_id=row.id)
@@ -431,6 +443,12 @@ async def delete_custom_format(
     row = await db.get(CustomFormatModel, custom_format_id)
     if row is None:
         raise AppError("NOT_FOUND", "Custom Format was not found.", status_code=404)
+    if row.builtin:
+        raise AppError(
+            "BUILTIN_CUSTOM_FORMAT_READ_ONLY",
+            f"{row.name} is a built-in Custom Format and cannot be deleted. Disable it instead.",
+            status_code=409,
+        )
     name = row.name
     await create_event(
         db,
