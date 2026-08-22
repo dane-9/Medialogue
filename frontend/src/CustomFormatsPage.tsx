@@ -337,27 +337,27 @@ export default function CustomFormatsPageView() {
       title={draft.name || 'Untitled Custom Format'}
       onClose={closeEditor}
       footer={<>
-        {draft.id ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
-        {draft.id ? <Button variant="ghost" onClick={duplicateFormat} disabled={saving}>Duplicate</Button> : null}
+        {draft.id && !draft.builtin ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
+        {draft.id ? <Button variant="ghost" onClick={duplicateFormat} disabled={saving}>{draft.builtin ? 'Duplicate as editable' : 'Duplicate'}</Button> : null}
         {draft.id ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
         <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty}>{saving ? 'Saving…' : 'Save format'}</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty}>{saving ? 'Saving…' : draft.builtin ? 'Save enabled state' : 'Save format'}</Button>
       </>}
     >
       <div className="cf-modal-grid">
         <Field label="Name" help="Shown wherever this format is referenced, including Quality Profile scores.">
-          <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
+          <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} readOnly={draft.builtin} />
         </Field>
         <Field label="Applies to" help="Which library a release must belong to for this format to be evaluated at all.">
-          <Select value={draft.mediaScope} onChange={(event) => setDraft((current) => ({ ...current, mediaScope: event.target.value as CustomFormatScope }))}>
+          <Select value={draft.mediaScope} onChange={(event) => setDraft((current) => ({ ...current, mediaScope: event.target.value as CustomFormatScope }))} disabled={draft.builtin}>
             <option value="both">Movies &amp; Shows</option>
             <option value="movies">Movies</option>
             <option value="shows">Shows</option>
           </Select>
         </Field>
         <Field label="Description" wide help="Optional note explaining what this format is for. Only ever shown to you.">
-          <Input value={draft.description ?? ''} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="What does this format capture?" />
+          <Input value={draft.description ?? ''} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="What does this format capture?" readOnly={draft.builtin} />
         </Field>
         <Field label="Enabled" wide help="When off, this format is skipped during evaluation and contributes no score anywhere.">
           <div className="setting-control">
@@ -370,9 +370,11 @@ export default function CustomFormatsPageView() {
       <div className="cf-modal-section">
         <div className="section-title">
           <h3>Conditions</h3>
-          <Button variant="secondary" icon="plus" onClick={() => setDraft((current) => ({ ...current, conditions: [...current.conditions, freshCondition()] }))}>Add condition</Button>
+          {!draft.builtin && <Button variant="secondary" icon="plus" onClick={() => setDraft((current) => ({ ...current, conditions: [...current.conditions, freshCondition()] }))}>Add condition</Button>}
         </div>
-        <p className="cf-modal-note">Every condition marked <strong>Required</strong> must pass. If none are required, any single match is enough.</p>
+        {draft.builtin
+          ? <div className="settings-note"><Icon name="shield" size={15} /><span>Medialogue maintains this format, so improvements to its matching reach you automatically. You can enable or disable it and score it in any Quality Profile. To change what it matches, use <strong>Duplicate as editable</strong> and disable this one.</span></div>
+          : <p className="cf-modal-note">Every condition marked <strong>Required</strong> must pass. If none are required, any single match is enough.</p>}
         {draft.conditions.length ? <div className="cf-condition-list">
           {draft.conditions.map((condition, index) => <div className="cf-condition-card" key={condition.id}>
             <div className="condition-top">
@@ -381,17 +383,17 @@ export default function CustomFormatsPageView() {
                 {condition.required && <Badge tone="blue">Required</Badge>}
                 {condition.negate && <Badge tone="amber">Negated</Badge>}
                 {isRegexType(condition.type) && <Badge tone="neutral">Regex</Badge>}
-                <button className="icon-button" aria-label={`Remove condition ${index + 1}`} onClick={() => setDraft((current) => ({ ...current, conditions: current.conditions.filter((item) => item.id !== condition.id) }))}><Icon name="close" size={15} /></button>
+                {!draft.builtin && <button className="icon-button" aria-label={`Remove condition ${index + 1}`} onClick={() => setDraft((current) => ({ ...current, conditions: current.conditions.filter((item) => item.id !== condition.id) }))}><Icon name="close" size={15} /></button>}
               </div>
             </div>
             <div className="cf-condition-grid">
-              <label><span>Field</span><Select value={condition.type} onChange={(event) => changeConditionType(condition.id, event.target.value as CustomFormatConditionType)}>{CONDITION_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>
-              <label className="cf-value-field"><span>{isRegexType(condition.type) ? 'Pattern' : 'Value'}</span><Input value={conditionValue(condition)} onChange={(event) => updateCondition(condition.id, isRegexType(condition.type) ? { pattern: event.target.value } : { value: event.target.value })} placeholder={isRegexType(condition.type) ? '\\b(remux|bdremux)\\b' : 'Bluray'} /></label>
+              <label><span>Field</span><Select value={condition.type} onChange={(event) => changeConditionType(condition.id, event.target.value as CustomFormatConditionType)} disabled={draft.builtin}>{CONDITION_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></label>
+              <label className="cf-value-field"><span>{isRegexType(condition.type) ? 'Pattern' : 'Value'}</span><Input value={conditionValue(condition)} onChange={(event) => updateCondition(condition.id, isRegexType(condition.type) ? { pattern: event.target.value } : { value: event.target.value })} placeholder={isRegexType(condition.type) ? '\\b(remux|bdremux)\\b' : 'Bluray'} readOnly={draft.builtin} /></label>
             </div>
             <div className="cf-condition-toggles">
-              <label><input type="checkbox" checked={condition.required} onChange={(event) => updateCondition(condition.id, { required: event.target.checked })} />Required</label>
-              <label><input type="checkbox" checked={condition.negate} onChange={(event) => updateCondition(condition.id, { negate: event.target.checked })} />Negate</label>
-              <label><input type="checkbox" checked={condition.caseSensitive} onChange={(event) => updateCondition(condition.id, { caseSensitive: event.target.checked })} />Case sensitive</label>
+              <label><input type="checkbox" checked={condition.required} onChange={(event) => updateCondition(condition.id, { required: event.target.checked })} disabled={draft.builtin} />Required</label>
+              <label><input type="checkbox" checked={condition.negate} onChange={(event) => updateCondition(condition.id, { negate: event.target.checked })} disabled={draft.builtin} />Negate</label>
+              <label><input type="checkbox" checked={condition.caseSensitive} onChange={(event) => updateCondition(condition.id, { caseSensitive: event.target.checked })} disabled={draft.builtin} />Case sensitive</label>
             </div>
           </div>)}
         </div> : <div className="cf-test-placeholder"><Icon name="sliders" size={18} /><strong>No conditions yet</strong><span>A format with no conditions never matches anything. Add at least one.</span></div>}
@@ -430,7 +432,10 @@ function FormatCard({ format, onOpen }: { format: CustomFormat; onOpen: () => vo
   return <button className={`cf-card ${format.enabled ? '' : 'cf-card-off'}`} onClick={onOpen}>
     <div className="cf-card-head">
       <strong>{format.name}</strong>
-      <Badge tone={format.enabled ? 'green' : 'neutral'}>{format.enabled ? 'On' : 'Off'}</Badge>
+      <span className="cf-card-badges">
+        {format.builtin && <Badge tone="blue">Built-in</Badge>}
+        <Badge tone={format.enabled ? 'green' : 'neutral'}>{format.enabled ? 'On' : 'Off'}</Badge>
+      </span>
     </div>
     {format.description && <p className="cf-card-description">{format.description}</p>}
     <div className="cf-card-conditions">

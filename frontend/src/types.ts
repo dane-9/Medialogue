@@ -443,6 +443,8 @@ export interface CustomFormat {
   revision: number
   createdAt?: string
   updatedAt?: string
+  /** Shipped and maintained by Medialogue: definition is read-only. */
+  builtin?: boolean
 }
 
 export interface CustomFormatConditionEvaluation {

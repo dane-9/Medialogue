@@ -19,6 +19,25 @@ from app.main import create_app
 from app.models.domain import IdentityState, Movie
 
 
+def _format_named(payload: dict, name: str) -> dict:
+    """Pick one evaluated format by name.
+
+    Built-in formats share the evaluation list, so position is meaningless.
+    """
+
+    for item in payload.get("formats", []):
+        if item.get("custom_format_name") == name or item.get("name") == name:
+            return item
+    raise AssertionError(f"{name} not in {[i.get('custom_format_name') or i.get('name') for i in payload.get('formats', [])]}")
+
+
+def _user_formats(payload: dict) -> list[dict]:
+    """Only the formats a test created; built-ins are filtered out."""
+
+    return [item for item in payload.get("items", []) if not item.get("builtin")]
+
+
+
 @pytest.fixture
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-search-", suffix=".db", dir=os.getcwd())
@@ -252,8 +271,8 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
         assert first["custom_format_score"] == 0
         assert first["custom_format_snapshot"]["score_evaluated"] is True
         assert first["quality_profile_id"] is None
-        assert first["custom_format_snapshot"]["matched_format_ids"] == [custom_format_id]
-        match = first["custom_format_snapshot"]["formats"][0]
+        assert custom_format_id in first["custom_format_snapshot"]["matched_format_ids"]
+        match = _format_named(first["custom_format_snapshot"], "Hybrid REMUX")
         assert match["matched"] is True
         assert "score" not in match
         assert "configured_score" not in match
@@ -274,7 +293,7 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
         assert edited.status_code == 200, edited.text
         unchanged = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"]
         same_first = next(item for item in unchanged if item["id"] == first["id"])
-        assert same_first["custom_format_snapshot"]["matched_format_ids"] == [custom_format_id]
+        assert custom_format_id in same_first["custom_format_snapshot"]["matched_format_ids"]
 
         health = client.get("/api/v1/integrations/health").json()["indexers"]
         assert health["status"] == "degraded"

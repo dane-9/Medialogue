@@ -563,6 +563,7 @@ class ParseEvidence(Base):
 
 class CustomFormat(TimestampMixin, Base):
     __tablename__ = "custom_formats"
+    __table_args__ = (UniqueConstraint("builtin_key", name="uq_custom_formats_builtin_key"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -571,6 +572,10 @@ class CustomFormat(TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     condition_definition: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Built-ins are owned by Medialogue: their definition is re-applied on every
+    # start, keyed by builtin_key. Only `enabled` belongs to the operator.
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    builtin_key: Mapped[str | None] = mapped_column(String(64))
 
 
 class QualityDefinition(TimestampMixin, Base):

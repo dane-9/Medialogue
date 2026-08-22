@@ -12,6 +12,25 @@ from app.db.base import Base
 from app.main import create_app
 
 
+def _format_named(payload: dict, name: str) -> dict:
+    """Pick one evaluated format by name.
+
+    Built-in formats share the evaluation list, so position is meaningless.
+    """
+
+    for item in payload.get("formats", []):
+        if item.get("custom_format_name") == name or item.get("name") == name:
+            return item
+    raise AssertionError(f"{name} not in {[i.get('custom_format_name') or i.get('name') for i in payload.get('formats', [])]}")
+
+
+def _user_formats(payload: dict) -> list[dict]:
+    """Only the formats a test created; built-ins are filtered out."""
+
+    return [item for item in payload.get("items", []) if not item.get("builtin")]
+
+
+
 @pytest.fixture
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-cf-", suffix=".db", dir=os.getcwd())
@@ -74,7 +93,7 @@ def test_custom_format_crud_has_no_intrinsic_score_and_uses_revision(client: Tes
 
     listed = client.get("/api/v1/custom-formats")
     assert listed.status_code == 200, listed.text
-    assert listed.json()["total"] == 1
+    assert len(_user_formats(listed.json())) == 1
 
     updated = client.patch(
         f"/api/v1/custom-formats/{created['id']}",
@@ -190,7 +209,9 @@ def test_test_all_respects_media_scope_and_enabled_state(client: TestClient) -> 
     assert movie["id"] in ids
     assert show["id"] not in ids
     assert disabled["id"] not in ids
-    assert tested.json()["matched_count"] == 1
+    # Built-in formats share the evaluation, so the total is not this test's
+    # to assert. What matters is that the movie-scoped format matched.
+    assert _format_named(tested.json(), "Movie Hybrid")["matched"] is True
 
 
 def test_application_owned_export_import_round_trip(client: TestClient) -> None:

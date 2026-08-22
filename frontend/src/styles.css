@@ -2184,3 +2184,5 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .qp-score-name strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .qp-score-name small { color: var(--faint); font: var(--t-micro) var(--mono); }
 .qp-score-row > strong { font: var(--t-sm) var(--mono); text-align: right; }
+.cf-card-badges { display: flex; flex: none; gap: var(--s1); }
+.input[readonly], .input:disabled, .cf-condition-toggles input:disabled { opacity: .7; cursor: default; }

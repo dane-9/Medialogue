@@ -69,3 +69,43 @@ async def ensure_quality_definitions(session: AsyncSession) -> None:
         if name not in canonical_names:
             item.enabled = False
 
+
+
+async def ensure_builtin_custom_formats(session: AsyncSession) -> None:
+    """Install and re-sync the Custom Formats Medialogue ships.
+
+    Keyed on ``builtin_key`` so a definition can be corrected in a later build
+    and reach existing installations. ``enabled`` is deliberately never
+    overwritten: whether a format is on is the operator's decision, and a
+    disabled built-in must stay disabled across restarts.
+    """
+
+    from app.models.domain import CustomFormat, MediaScope
+    from app.services.builtin_formats import BUILTIN_FORMATS, BUILTIN_KEYS, condition_definition
+
+    rows = (await session.scalars(select(CustomFormat).where(CustomFormat.builtin.is_(True)))).all()
+    existing = {row.builtin_key: row for row in rows}
+
+    for builtin in BUILTIN_FORMATS:
+        row = existing.get(builtin.key)
+        if row is None:
+            row = CustomFormat(
+                builtin=True,
+                builtin_key=builtin.key,
+                enabled=builtin.default_enabled,
+                revision=1,
+            )
+            session.add(row)
+        row.name = builtin.name
+        row.description = builtin.description
+        row.media_scope = MediaScope(builtin.media_scope)
+        row.condition_definition = condition_definition(builtin)
+        row.builtin = True
+
+    # A built-in withdrawn from the catalogue is disabled rather than deleted,
+    # because Quality Profiles may still carry a score referencing it.
+    for key, row in existing.items():
+        if key not in BUILTIN_KEYS:
+            row.enabled = False
+
+    await session.flush()

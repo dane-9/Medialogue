@@ -579,6 +579,7 @@ function normalizeCustomFormat(value: unknown): CustomFormat {
     description: textValue(item.description) || undefined,
     mediaScope,
     enabled: item.enabled !== false,
+    builtin: item.builtin === true,
     schemaVersion: numberValue(item.schema_version ?? item.schemaVersion, 1),
     conditions,
     conditionCount: numberValue(item.condition_count ?? item.conditionCount, conditions.length),
