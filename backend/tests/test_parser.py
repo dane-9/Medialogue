@@ -125,6 +125,11 @@ def test_tv_boundaries_and_multi_episode():
     assert ranged.season == 2
     assert ranged.episodes == (1, 2, 3)
 
+    multi_season = parse_release("Dexters.Laboratory.S01-S04.1080p.WEB-DL.H.264-squalor")
+    assert multi_season.season == 1
+    assert multi_season.identity.season_numbers == (1, 2, 3, 4)
+    assert multi_season.identity.to_dict()["seasons"] == [1, 2, 3, 4]
+
 
 def test_quality_precedence_and_encode_codec_preservation():
     remux = parse_release("Movie 2020 2160p UHD BluRay REMUX HEVC-G")

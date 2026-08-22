@@ -847,11 +847,15 @@ function ProblemEvidenceDetails({ problem, selectedTmdbId, onSelectTmdbCandidate
   if (problem.code === 'EPISODE_CONTAINER_MISMATCH') {
     const memberEpisodes = Array.isArray(details.member_episode_numbers) ? details.member_episode_numbers.map(String) : []
     const containerEpisodes = Array.isArray(details.container_episode_numbers) ? details.container_episode_numbers.map(String) : []
+    const containerSeasons = Array.isArray(details.container_seasons) ? details.container_seasons.map(String) : []
+    const containerSeasonLabel = containerSeasons.length > 1
+      ? `Seasons ${containerSeasons[0]}–${containerSeasons[containerSeasons.length - 1]}`
+      : `Season ${containerSeasons[0] ?? problemText(details.container_season) ?? '?'}`
     return <div className="problem-evidence-block">
       <div className="problem-evidence-note">The member filename controls episode identity. The conflicting folder or torrent is retained only as diagnostic context and is not allowed to remap the file.</div>
       <div className="problem-evidence-grid">
         <div className="problem-evidence-side"><span className="eyebrow">MEMBER FILENAME</span><strong>{problemText(details.filename) ?? 'Unknown media file'}</strong><code>{problemText(details.path) ?? 'Path not recorded'}</code><span>Season {problemText(details.member_season) ?? '?'}{memberEpisodes.length ? ` · episode${memberEpisodes.length === 1 ? '' : 's'} ${memberEpisodes.join(', ')}` : ''}</span></div>
-        <div className="problem-evidence-side"><span className="eyebrow">CONTAINER CONTEXT</span><strong>{problemText(details.container_name) ?? 'Unknown container'}</strong><span>{problemText(details.container_source) ?? 'folder/torrent'} · Season {problemText(details.container_season) ?? '?'}{containerEpisodes.length ? ` · episode${containerEpisodes.length === 1 ? '' : 's'} ${containerEpisodes.join(', ')}` : ''}</span></div>
+        <div className="problem-evidence-side"><span className="eyebrow">CONTAINER CONTEXT</span><strong>{problemText(details.container_name) ?? 'Unknown container'}</strong><span>{problemText(details.container_source) ?? 'folder/torrent'} · {containerSeasonLabel}{containerEpisodes.length ? ` · episode${containerEpisodes.length === 1 ? '' : 's'} ${containerEpisodes.join(', ')}` : ''}</span></div>
       </div>
     </div>
   }

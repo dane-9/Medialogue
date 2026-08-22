@@ -181,7 +181,12 @@ def _release_matches_member_identity(
     if release.show_id != show_id or release.season_id != season_id:
         return False
     release_identity = parse_release_name(release.raw_release_name).identity
-    if release_identity.season is not None and release_identity.season != season_number:
+    release_seasons = release_identity.season_numbers
+    if len(release_seasons) > 1:
+        # The schema deliberately binds a ShowRelease to one Season. A
+        # multi-season container must be represented by its member releases.
+        return False
+    if release_seasons and season_number not in release_seasons:
         return False
     if release_identity.episodes:
         return tuple(dict.fromkeys(release_identity.episodes)) == episode_numbers
@@ -531,7 +536,12 @@ async def reconcile_show_directory(
     )
     pack_parse = None
     for candidate in (torrent_parse, folder_parse):
-        if candidate is not None and candidate.identity.season is not None and not candidate.identity.episodes:
+        if (
+            candidate is not None
+            and len(candidate.identity.season_numbers) == 1
+            and candidate.identity.season is not None
+            and not candidate.identity.episodes
+        ):
             same_season_files = sum(
                 1
                 for item in parsed_by_path.values()
@@ -669,6 +679,7 @@ async def reconcile_show_directory(
         explicit_member_season = parsed.identity.season
         explicit_member_episodes = tuple(dict.fromkeys(parsed.identity.episodes))
         belongs_to_pack = torrent_member_paths is None or relative_path in torrent_member_paths
+        container_seasons = container_parse.identity.season_numbers if container_parse is not None else ()
         container_episodes = (
             tuple(dict.fromkeys(container_parse.identity.episodes))
             if container_parse is not None
@@ -677,11 +688,12 @@ async def reconcile_show_directory(
         season_disagrees = bool(
             container_parse is not None
             and explicit_member_season is not None
-            and explicit_member_season != container_parse.identity.season
+            and explicit_member_season not in container_seasons
         )
         episodes_disagree = bool(
             container_parse is not None
-            and explicit_member_season == container_parse.identity.season
+            and len(container_seasons) == 1
+            and explicit_member_season == container_seasons[0]
             and explicit_member_episodes
             and container_episodes
             and not set(explicit_member_episodes).issubset(container_episodes)
@@ -693,6 +705,11 @@ async def reconcile_show_directory(
         )
         if container_mismatch:
             container_name = torrent.name if torrent is not None else observation.name
+            container_identity = (
+                f"S{container_seasons[0]:02d}-S{container_seasons[-1]:02d}"
+                if len(container_seasons) > 1
+                else f"S{container_seasons[0]:02d}"
+            )
             await open_problem(
                 db,
                 reason="EPISODE_CONTAINER_MISMATCH",
@@ -703,7 +720,7 @@ async def reconcile_show_directory(
                     f"S{explicit_member_season:02d}"
                     f"{''.join(f'E{number:02d}' for number in explicit_member_episodes)}, "
                     f"but its containing release identifies "
-                    f"S{container_parse.identity.season:02d}"
+                    f"{container_identity}"
                     f"{''.join(f'E{number:02d}' for number in container_episodes)}."
                 ),
                 details={
@@ -712,6 +729,7 @@ async def reconcile_show_directory(
                     "member_season": explicit_member_season,
                     "member_episode_numbers": list(parsed.identity.episodes),
                     "container_season": container_parse.identity.season,
+                    "container_seasons": list(container_seasons),
                     "container_episode_numbers": list(container_episodes),
                     "container_name": container_name,
                     "container_source": "torrent" if torrent is not None and container_parse is torrent_parse else "folder",
