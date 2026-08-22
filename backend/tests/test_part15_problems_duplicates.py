@@ -382,6 +382,27 @@ def test_episode_winner_selection_keeps_physical_duplicate_open(client: TestClie
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "open"
         assert response.json()["details"]["preferred_media_file_id"] == str(winner_id)
+        assert response.json()["resolution"]["winner_manual_override_applied"] is True
+
+        other_id = next(
+            item for item in response.json()["details"]["media_file_ids"] if item != str(winner_id)
+        )
+        changed = client.post(
+            f"/api/v1/problems/{problem_id}/resolve",
+            headers=headers,
+            json={"action": "choose_episode_winner", "payload": {"winner_media_file_id": other_id}},
+        )
+        assert changed.status_code == 200, changed.text
+
+        async def mapping_state(db):
+            mappings = (
+                await db.scalars(
+                    select(EpisodeMediaMap).where(EpisodeMediaMap.episode_id == episode_id)
+                )
+            ).all()
+            return {str(item.media_file_id): item.manual_override for item in mappings}
+
+        assert db_run(mapping_state) == {str(winner_id): False, other_id: True}
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

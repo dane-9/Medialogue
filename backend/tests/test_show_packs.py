@@ -408,8 +408,40 @@ def test_duplicate_episode_files_are_flagged_and_left_untouched(client: TestClie
         problems = client.get("/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE")
         assert problems.status_code == 200, problems.text
         assert problems.json()["total"] == 1
+        details = problems.json()["items"][0]["details"]
+        assert details["verified_physical_file_count"] == 2
+        assert {item["path"] for item in details["media_files"] if item["physical_exists"]} == {
+            str(first),
+            str(second),
+        }
         assert first.exists() and first.read_bytes() == b"first"
         assert second.exists() and second.read_bytes() == b"second"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_renamed_episode_does_not_create_false_physical_duplicate_during_grace(client: TestClient) -> None:
+    root = Path.cwd() / f"renamed-episode-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    show_dir.mkdir(parents=True)
+    original = show_dir / "Dollface S01E01 1080p DSNP WEB-DL H.264-HONE.mkv"
+    renamed = show_dir / "Dollface S01E01 1080p DSNP WEB-DL H.264-HONE proper.mkv"
+    original.write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        original.rename(renamed)
+        # The original catalogue row remains exists=True for the configured
+        # missing grace period, but it is no longer physical evidence.
+        scan(client, headers, configured["id"])
+
+        problems = client.get("/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE")
+        assert problems.status_code == 200, problems.text
+        assert problems.json()["total"] == 0
+        assert renamed.exists() and renamed.read_bytes() == b"episode"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

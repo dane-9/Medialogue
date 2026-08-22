@@ -220,21 +220,74 @@ async def _prepare_show_release(
 
 async def _refresh_episode_duplicate_problem(db: AsyncSession, episode: Episode) -> None:
     rows = (
-        await db.scalars(
-            select(EpisodeMediaMap)
+        await db.execute(
+            select(EpisodeMediaMap, MediaFile, MediaDirectory, ShowRelease)
             .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
-            .where(EpisodeMediaMap.episode_id == episode.id, MediaFile.exists.is_(True))
+            .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+            .outerjoin(ShowRelease, ShowRelease.id == EpisodeMediaMap.show_release_id)
+            .where(EpisodeMediaMap.episode_id == episode.id)
         )
     ).all()
-    media_ids = {row.media_file_id for row in rows}
-    if len(media_ids) > 1:
+
+    # Catalogue presence intentionally survives the missing grace window. It is
+    # therefore not, by itself, proof that two files are on disk: after a rename
+    # the stale row and the newly observed row would otherwise manufacture a
+    # duplicate. Canonical paths also collapse duplicate directory records that
+    # happen to describe the same physical file.
+    evidence: list[dict[str, Any]] = []
+    verified_by_path: dict[str, dict[str, Any]] = {}
+    for mapping, media_file, directory, release in rows:
+        path = Path(directory.resolved_path) / media_file.relative_path
+        canonical_path = str(path.resolve(strict=False))
+        physically_present = bool(
+            media_file.exists
+            and directory.exists
+            and media_file.missing_since is None
+            and directory.missing_since is None
+            and path.is_file()
+        )
+        item = {
+            "media_file_id": str(media_file.id),
+            "filename": media_file.filename,
+            "path": str(path),
+            "canonical_path": canonical_path,
+            "catalogue_exists": bool(media_file.exists),
+            "physical_exists": physically_present,
+            "missing_since": media_file.missing_since.isoformat() if media_file.missing_since else None,
+            "show_release_id": str(mapping.show_release_id) if mapping.show_release_id else None,
+            "release_name": release.raw_release_name if release is not None else None,
+            "manual_mapping": bool(mapping.manual_override),
+        }
+        evidence.append(item)
+        if physically_present:
+            verified_by_path.setdefault(canonical_path, item)
+
+    verified = list(verified_by_path.values())
+    if len(verified) > 1:
+        existing_problem = await db.scalar(
+            select(Problem).where(
+                Problem.reason == "DUPLICATE_EPISODE_RELEASE",
+                Problem.entity_type == "episode",
+                Problem.entity_id == episode.id,
+                Problem.status == ProblemStatus.OPEN,
+            )
+        )
+        preferred_id = str((existing_problem.details or {}).get("preferred_media_file_id") or "") if existing_problem else ""
+        verified_ids = {item["media_file_id"] for item in verified}
+        details: dict[str, Any] = {
+            "media_file_ids": [item["media_file_id"] for item in verified],
+            "media_files": evidence,
+            "verified_physical_file_count": len(verified),
+        }
+        if preferred_id in verified_ids:
+            details["preferred_media_file_id"] = preferred_id
         await open_problem(
             db,
             reason="DUPLICATE_EPISODE_RELEASE",
             entity_type="episode",
             entity_id=episode.id,
             message=f"S{episode.season_number:02d}E{episode.episode_number:02d} has multiple physical media files.",
-            details={"media_file_ids": [str(item) for item in sorted(media_ids, key=str)]},
+            details=details,
             severity=Severity.WARNING,
         )
     else:

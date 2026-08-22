@@ -1513,6 +1513,23 @@ async def reconcile_torrent_disagreements(
     fault.
     """
 
+    observations = (
+        await db.scalars(
+            select(TorrentClientObservation).where(TorrentClientObservation.torrent_id == torrent.id)
+        )
+    ).all()
+    qbit_evidence = [
+        {
+            "reported_path": item.reported_save_path,
+            "resolved_path": item.resolved_save_path,
+            "state": item.state,
+            "progress": float(item.progress) if item.progress is not None else None,
+            "is_present": bool(item.is_present),
+            "last_seen_at": item.last_seen_at.isoformat() if item.last_seen_at else None,
+        }
+        for item in observations
+    ]
+
     movie_links = (await db.scalars(select(MovieReleaseTorrent).where(MovieReleaseTorrent.torrent_id == torrent.id))).all()
     for link in movie_links:
         if link.association_type == AssociationType.INCOMING:
@@ -1539,7 +1556,21 @@ async def reconcile_torrent_disagreements(
                 entity_type="movie_release",
                 entity_id=release.id,
                 message=message,
-                details={"torrent_id": str(torrent.id), "info_hash": torrent.info_hash},
+                details={
+                    "torrent_id": str(torrent.id),
+                    "torrent_name": torrent.name,
+                    "info_hash": torrent.info_hash,
+                    "qbit_observations": qbit_evidence,
+                    "mapped_directories": [
+                        {
+                            "path": directory.resolved_path,
+                            "catalogue_exists": bool(directory.exists),
+                            "physical_exists": Path(directory.resolved_path).is_dir(),
+                            "missing_since": directory.missing_since.isoformat() if directory.missing_since else None,
+                        }
+                        for directory in directories
+                    ],
+                },
             )
         else:
             await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "movie_release", release.id)
@@ -1560,6 +1591,14 @@ async def reconcile_torrent_disagreements(
                 .where(EpisodeMediaMap.show_release_id == release.id, MediaFile.exists.is_(True))
             )
         )
+        mapped_rows = (
+            await db.execute(
+                select(MediaFile, MediaDirectory)
+                .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
+                .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+                .where(EpisodeMediaMap.show_release_id == release.id)
+            )
+        ).all()
         reason = None
         message = ""
         if qbit_present is False and media_present:
@@ -1577,7 +1616,24 @@ async def reconcile_torrent_disagreements(
                 entity_type="show_release",
                 entity_id=release.id,
                 message=message,
-                details={"torrent_id": str(torrent.id), "info_hash": torrent.info_hash},
+                details={
+                    "torrent_id": str(torrent.id),
+                    "torrent_name": torrent.name,
+                    "info_hash": torrent.info_hash,
+                    "qbit_observations": qbit_evidence,
+                    "mapped_files": [
+                        {
+                            "media_file_id": str(media_file.id),
+                            "filename": media_file.filename,
+                            "path": str(Path(directory.resolved_path) / media_file.relative_path),
+                            "catalogue_exists": bool(media_file.exists),
+                            "directory_catalogue_exists": bool(directory.exists),
+                            "physical_exists": (Path(directory.resolved_path) / media_file.relative_path).is_file(),
+                            "missing_since": media_file.missing_since.isoformat() if media_file.missing_since else None,
+                        }
+                        for media_file, directory in mapped_rows
+                    ],
+                },
             )
         else:
             await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "show_release", release.id)
