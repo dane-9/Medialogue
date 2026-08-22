@@ -1,4 +1,4 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientScope, DownloadClientTestResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, InteractiveSearchJob, InteractiveSearchResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, SearchIndexerStatus, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientScope, DownloadClientTestResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
 
 export class ApiError extends Error {
   status: number
@@ -245,6 +245,7 @@ function normalizeSeason(value: unknown): Season {
     seasonNumber: numberValue(item.season_number || item.seasonNumber),
     title: textValue(item.title) || undefined,
     monitored: item.monitored !== false,
+    counted: item.counted !== false,
     revision: numberValue(item.revision, 1),
     episodeCount: numberValue(item.episode_count || item.episodeCount, episodes.length),
     presentCount: numberValue(item.present_count || item.presentCount, episodes.filter((episode) => episode.status === 'Present').length),
@@ -272,6 +273,7 @@ function normalizeShow(value: unknown): Show {
     plex: normalizedPlexState(item.plex_state),
     tmdbId: optionalNumber(item.tmdb_id),
     tvdbId: optionalNumber(item.tvdb_id),
+    tmdbEpisodeGroupId: textValue(item.tmdb_episode_group_id) || undefined,
     monitored: item.monitored !== false,
     identityState: textValue(item.identity_state) || undefined,
     problemCount: optionalNumber(item.problem_count),
@@ -643,65 +645,6 @@ function normalizeIndexer(value: unknown): Indexer {
   }
 }
 
-function normalizeSearchResult(value: unknown): InteractiveSearchResult {
-  const item = record(value)
-  return {
-    id: textValue(item.id),
-    jobId: textValue(item.job_id || item.jobId),
-    indexerId: textValue(item.indexer_id || item.indexerId) || undefined,
-    indexerName: textValue(item.indexer_name || item.indexerName, 'Indexer'),
-    mediaType: textValue(item.media_type || item.mediaType, 'movies').toLowerCase() === 'shows' ? 'shows' : 'movies',
-    targetEntityType: textValue(item.target_entity_type || item.targetEntityType),
-    title: textValue(item.title),
-    size: optionalNumber(item.size),
-    seeders: optionalNumber(item.seeders),
-    publishedAt: dateValue(item.published_at || item.publishedAt),
-    quality: textValue(item.quality) || undefined,
-    edition: textValue(item.edition) || undefined,
-    releaseGroup: textValue(item.release_group || item.releaseGroup) || undefined,
-    customFormatScore: optionalNumber(item.custom_format_score ?? item.customFormatScore),
-    qualityProfileId: textValue(item.quality_profile_id || item.qualityProfileId) || undefined,
-    qualityProfileName: textValue(item.quality_profile_name || item.qualityProfileName) || undefined,
-    minimumQuality: textValue(item.minimum_quality || item.minimumQuality) || undefined,
-    minimumQualityMet: optionalBoolean(item.minimum_quality_met ?? item.minimumQualityMet),
-    customFormatSnapshot: record(item.custom_format_snapshot || item.customFormatSnapshot),
-    parser: record(item.parser),
-    warnings: Array.isArray(item.warnings) ? item.warnings.map((warning) => textValue(warning)).filter(Boolean) : [],
-    selectedAt: dateValue(item.selected_at || item.selectedAt),
-    selectedDownloadClientId: textValue(item.selected_download_client_id || item.selectedDownloadClientId) || undefined,
-    createdAt: dateValue(item.created_at || item.createdAt) ?? '',
-    expiresAt: dateValue(item.expires_at || item.expiresAt) ?? '',
-  }
-}
-
-function normalizeSearchJob(value: unknown): InteractiveSearchJob {
-  const item = record(value)
-  const statuses = Array.isArray(item.indexers) ? item.indexers : []
-  return {
-    id: textValue(item.id),
-    status: textValue(item.status, 'queued'),
-    target: record(item.target),
-    progress: record(item.progress),
-    indexers: statuses.map((status): SearchIndexerStatus => {
-      const row = record(status)
-      return {
-        id: textValue(row.id),
-        name: textValue(row.name, 'Indexer'),
-        status: textValue(row.status, 'queued'),
-        results: numberValue(row.results),
-        elapsedMs: optionalNumber(row.elapsed_ms ?? row.elapsedMs),
-        error: textValue(row.error) || undefined,
-      }
-    }),
-    results: Array.isArray(item.results) ? item.results.map(normalizeSearchResult) : [],
-    resultTotal: numberValue(item.result_total ?? item.resultTotal),
-    error: Object.keys(record(item.error)).length ? record(item.error) : undefined,
-    createdAt: dateValue(item.created_at || item.createdAt) ?? '',
-    startedAt: dateValue(item.started_at || item.startedAt),
-    finishedAt: dateValue(item.finished_at || item.finishedAt),
-  }
-}
-
 function normalizeQualityDefinition(value: unknown): QualityDefinition {
   const item = record(value)
   return {
@@ -923,10 +866,13 @@ export const api = {
     return items.map(normalizeShow)
   },
   show: (resourceId: string) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}`).then(normalizeShow),
+  specialsCounting: () => request<{ count_specials: boolean }>('/api/v1/shows/specials-counting'),
+  setSpecialsCounting: (countSpecials: boolean) => request<{ count_specials: boolean; seasons_changed: number; shows_affected: number }>('/api/v1/shows/specials-counting', { method: 'PUT', body: JSON.stringify({ count_specials: countSpecials }) }),
   lookupShows: async (query: string) => (await request<unknown[]>(`/api/v1/shows/lookup?query=${encodeURIComponent(query)}`)).map(normalizeTMDBShowLookup),
   addShow: (tmdbId: number) => request<unknown>('/api/v1/shows', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, monitored: true }) }).then(normalizeShow),
-  updateShow: (resourceId: string, payload: { monitored?: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeShow),
-  updateSeason: (seasonId: string, payload: { monitored?: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/seasons/${encodeURIComponent(seasonId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeSeason),
+  episodeOrderings: (resourceId: string) => request<Array<{ id: string | null; name: string; type_label: string; season_count: number; episode_count: number; description?: string; network?: string; selected: boolean }>>(`/api/v1/shows/${encodeURIComponent(resourceId)}/episode-orderings`),
+  updateShow: (resourceId: string, payload: { monitored?: boolean; tmdb_episode_group_id?: string; expected_revision?: number }) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeShow),
+  updateSeason: (seasonId: string, payload: { monitored?: boolean; counted?: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/seasons/${encodeURIComponent(seasonId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeSeason),
   updateEpisode: (episodeId: string, payload: { monitored?: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/episodes/${encodeURIComponent(episodeId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeEpisode),
   correctEpisodeMapping: (mediaFileId: string, episodeIds: string[]) => request<{ media_file_id: string; show_release_id: string; episode_ids: string[]; episode_numbers: number[]; manual_override: boolean }>(`/api/v1/media-files/${encodeURIComponent(mediaFileId)}/episode-mappings`, { method: 'PUT', body: JSON.stringify({ episode_ids: episodeIds }) }),
   refreshShowMetadata: (resourceId: string) => request<{ job_id: string }>(`/api/v1/shows/${encodeURIComponent(resourceId)}/metadata/refresh`, { method: 'POST' }),
@@ -1054,9 +1000,6 @@ export const api = {
   saveMovieProfileSettings: (resourceId: string, payload: { quality_profile_id?: string | null; minimum_quality_definition_override_id?: string | null; custom_format_score_overrides?: Record<string, number>; expected_revision?: number }) => request<unknown>(`/api/v1/movies/${encodeURIComponent(resourceId)}/profile-settings`, { method: 'PUT', body: JSON.stringify(payload) }).then(normalizeMediaProfileSettings),
   showProfileSettings: (resourceId: string) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}/profile-settings`).then(normalizeMediaProfileSettings),
   saveShowProfileSettings: (resourceId: string, payload: { quality_profile_id?: string | null; minimum_quality_definition_override_id?: string | null; custom_format_score_overrides?: Record<string, number>; expected_revision?: number }) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}/profile-settings`, { method: 'PUT', body: JSON.stringify(payload) }).then(normalizeMediaProfileSettings),
-  startMovieSearch: (resourceId: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(resourceId)}/interactive-search`, { method: 'POST' }),
-  searchJob: (jobId: string) => request<unknown>(`/api/v1/search-jobs/${encodeURIComponent(jobId)}`).then(normalizeSearchJob),
-  downloadSearchResult: (resultId: string, downloadClientId: string) => request<{ search_result_id: string; download_client_id: string; client_name: string; status: string; selected_at: string }>(`/api/v1/search-results/${encodeURIComponent(resultId)}/download`, { method: 'POST', body: JSON.stringify({ download_client_id: downloadClientId }) }),
   downloads: async () => {
     const payload = await request<{ items?: unknown[] } | unknown[]>('/api/v1/downloads')
     const items = Array.isArray(payload) ? payload : payload.items ?? []

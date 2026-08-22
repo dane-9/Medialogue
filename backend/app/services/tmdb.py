@@ -6,11 +6,19 @@ from datetime import datetime, timezone
 from time import perf_counter
 from typing import Callable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.identity import normalize_identity_title
-from app.integrations.tmdb import TMDBClient, TMDBMovieMatch, TMDBShowDetails, TMDBShowMatch
+from app.core.integration_config import get_integration_config_store
+from app.integrations.tmdb import (
+    TMDBClient,
+    TMDBEpisodeMetadata,
+    TMDBMovieMatch,
+    TMDBSeasonMetadata,
+    TMDBShowDetails,
+    TMDBShowMatch,
+)
 from app.models.domain import Episode, JobStatus, PresenceState, Season, Severity, Show
 from app.services.events import create_event
 from app.services.integration_state import ConfiguredTMDB, get_configured_tmdb
@@ -374,18 +382,61 @@ async def sync_show_metadata(
         show.poster_ref = details.poster_path
         show.tvdb_id = details.tvdb_id
         show.metadata_refreshed_at = utcnow()
+
+        # A show can follow one of TMDB's episode groups instead of the default
+        # season structure. The group holds the same episodes, rearranged, so
+        # this changes how they are numbered rather than which ones exist.
+        grouped: dict[int, tuple[str | None, tuple[TMDBEpisodeMetadata, ...]]] | None = None
+        season_plan = list(details.seasons)
+        if show.tmdb_episode_group_id:
+            try:
+                group = await client.get_episode_group(show.tmdb_episode_group_id)
+            except Exception:
+                # An unreachable group must not wipe a show's structure; keep
+                # whatever is already stored and try again on the next refresh.
+                group = None
+            if group is not None and group.seasons:
+                grouped = {number: (title, episodes) for number, title, episodes in group.seasons}
+                season_plan = [
+                    TMDBSeasonMetadata(
+                        season_number=number,
+                        title=title,
+                        episode_count=len(episodes),
+                        air_date=next((item.air_date for item in episodes if item.air_date), None),
+                        poster_path=None,
+                    )
+                    for number, title, episodes in group.seasons
+                ]
+
+        # Renumbering in place would trip uq_episodes_show_season_number the
+        # moment an episode takes a slot another one still holds. Park every
+        # existing episode on a negative number first; the mapping is injective,
+        # so the parked values cannot collide either. Final numbers are written
+        # below. This runs in both directions, because switching back to the
+        # default structure renumbers just as much as switching away from it.
+        existing = (await db.scalars(select(Episode).where(Episode.show_id == show.id))).all()
+        for episode in existing:
+            episode.season_number = -1000 - abs(episode.season_number)
+            episode.episode_number = -abs(episode.episode_number)
+        if existing:
+            await db.flush()
+
         season_count = episode_count = 0
-        for season_meta in details.seasons:
+        for season_meta in season_plan:
             # Specials (season 0) are valid metadata. They remain independently
             # monitorable just like numbered seasons.
             season = await db.scalar(
                 select(Season).where(Season.show_id == show.id, Season.season_number == season_meta.season_number)
             )
             if season is None:
+                # Season 0 follows the library-wide Specials preference, so a
+                # newly added show matches how the rest of the library counts.
+                counted = season_meta.season_number != 0 or get_integration_config_store().get_count_specials()
                 season = Season(
                     show_id=show.id,
                     season_number=season_meta.season_number,
                     title=season_meta.title,
+                    counted=counted,
                     metadata_json={},
                 )
                 db.add(season)
@@ -400,20 +451,32 @@ async def sync_show_metadata(
                 "provider": "tmdb",
             }
             season_count += 1
-            try:
-                episode_metadata = await client.get_season(show.tmdb_id, season_meta.season_number)
-            except Exception:
-                # One unavailable season must not discard metadata already
-                # refreshed for the rest of the show.
-                continue
+            if grouped is not None:
+                episode_metadata = list(grouped.get(season_meta.season_number, (None, ()))[1])
+            else:
+                try:
+                    episode_metadata = await client.get_season(show.tmdb_id, season_meta.season_number)
+                except Exception:
+                    # One unavailable season must not discard metadata already
+                    # refreshed for the rest of the show.
+                    continue
             for item in episode_metadata:
-                episode = await db.scalar(
-                    select(Episode).where(
-                        Episode.show_id == show.id,
-                        Episode.season_number == item.season_number,
-                        Episode.episode_number == item.episode_number,
+                # TMDB's episode id is the stable identity. Matching on it first
+                # means switching ordering renumbers the existing rows instead of
+                # creating duplicates and stranding their file mappings.
+                episode = None
+                if item.tmdb_id is not None:
+                    episode = await db.scalar(
+                        select(Episode).where(Episode.show_id == show.id, Episode.tmdb_id == item.tmdb_id)
                     )
-                )
+                if episode is None:
+                    episode = await db.scalar(
+                        select(Episode).where(
+                            Episode.show_id == show.id,
+                            Episode.season_number == item.season_number,
+                            Episode.episode_number == item.episode_number,
+                        )
+                    )
                 if episode is None:
                     episode = Episode(
                         show_id=show.id,
@@ -424,6 +487,8 @@ async def sync_show_metadata(
                     )
                     db.add(episode)
                 episode.season_id = season.id
+                episode.season_number = item.season_number
+                episode.episode_number = item.episode_number
                 episode.title = item.title
                 episode.air_date = item.air_date
                 episode.tmdb_id = item.tmdb_id
@@ -433,6 +498,20 @@ async def sync_show_metadata(
                     "provider": "tmdb",
                 }
                 episode_count += 1
+        # An ordering with fewer seasons leaves the surplus behind, in either
+        # direction. Drop the ones nothing landed in; a season still holding
+        # episodes is never touched, so no mapped media can be lost here.
+        planned = {season_meta.season_number for season_meta in season_plan}
+        for season in (await db.scalars(select(Season).where(Season.show_id == show.id))).all():
+            if season.season_number in planned:
+                continue
+            remaining = await db.scalar(
+                select(func.count()).select_from(Episode).where(Episode.season_id == season.id)
+            )
+            if not remaining:
+                await db.delete(season)
+        await db.flush()
+
         configuration.health = "healthy"
         configuration.last_success_at = utcnow()
         configuration.last_error = None

@@ -8,7 +8,6 @@ import {
   isRegexConditionType,
   normalizeMediaView,
   problemMatchesFilter,
-  searchResultNeedsWarning,
   toggleIdSelection,
 } from './uiState'
 
@@ -53,14 +52,7 @@ describe('Problems and duplicate-resolution UI state', () => {
   })
 })
 
-describe('search/custom-format presentation rules', () => {
-  it('keeps below-minimum quality and parser warnings visible as warnings rather than blocking results', () => {
-    expect(searchResultNeedsWarning(false, [])).toBe(true)
-    expect(searchResultNeedsWarning(true, ['Parser disagreement'])).toBe(true)
-    expect(searchResultNeedsWarning(true, [])).toBe(false)
-  })
-
-
+describe('custom-format presentation rules', () => {
   it('creates local IDs even when crypto.randomUUID is unavailable on plain HTTP', () => {
     const first = browserSafeId(null)
     const second = browserSafeId(null)

@@ -573,3 +573,101 @@ def test_explicit_season_episode_marker_still_wins_over_the_folder(client: TestC
         assert episode_by_number(show, 2)["presence_state"] == "present"
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_uncounting_a_season_removes_its_episodes_from_the_show_total(client: TestClient) -> None:
+    """Counting is its own flag, deliberately separate from monitoring.
+
+    A season you have finished collecting is normally unmonitored and must still
+    count, or a show you fully own would shrink from 19/19 to 9/9.
+    """
+
+    root = Path.cwd() / f"uncount-season-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    (show_dir / "Season 1").mkdir(parents=True)
+    (show_dir / "Season 1" / "Dollface S01E01 1080p WEB-DL.mkv").write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        listing = client.get("/api/v1/shows").json()["items"][0]
+        before_total = listing["episode_count"]
+        assert before_total > 0
+
+        show = detail(client)
+        season = next(item for item in show["seasons"] if item["season_number"] == 1)
+        assert season["counted"] is True
+
+        # Unmonitoring alone must not move the totals.
+        unmonitored = client.patch(
+            f"/api/v1/seasons/{season['id']}",
+            headers=headers,
+            json={"monitored": False, "expected_revision": season["revision"]},
+        )
+        assert unmonitored.status_code == 200, unmonitored.text
+        assert client.get("/api/v1/shows").json()["items"][0]["episode_count"] == before_total
+
+        # Uncounting is what removes it.
+        refreshed = detail(client)
+        season = next(item for item in refreshed["seasons"] if item["season_number"] == 1)
+        uncounted = client.patch(
+            f"/api/v1/seasons/{season['id']}",
+            headers=headers,
+            json={"counted": False, "expected_revision": season["revision"]},
+        )
+        assert uncounted.status_code == 200, uncounted.text
+        after = client.get("/api/v1/shows").json()["items"][0]
+        assert after["episode_count"] == before_total - season["episode_count"]
+
+        # The season still reports its own contents, and monitoring is untouched.
+        final = detail(client)
+        still = next(item for item in final["seasons"] if item["season_number"] == 1)
+        assert still["episode_count"] == season["episode_count"]
+        assert still["counted"] is False
+        assert still["monitored"] is False
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_specials_toggle_applies_across_every_show_and_is_remembered(client: TestClient) -> None:
+    """The Specials switch is a hard monitoring change, not a display filter."""
+
+    root = Path.cwd() / f"specials-toggle-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    (show_dir / "Season 1").mkdir(parents=True)
+    (show_dir / "Season 1" / "Dollface S01E01 1080p WEB-DL.mkv").write_bytes(b"episode")
+    (show_dir / "Specials").mkdir(parents=True)
+    (show_dir / "Specials" / "01 - Behind The Scenes.mkv").write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        assert client.get("/api/v1/shows/specials-counting").json()["count_specials"] is True
+        before = client.get("/api/v1/shows").json()["items"][0]["episode_count"]
+
+        off = client.put("/api/v1/shows/specials-counting", headers=headers, json={"count_specials": False})
+        assert off.status_code == 200, off.text
+        assert off.json()["count_specials"] is False
+        assert off.json()["seasons_changed"] >= 1
+
+        # The preference is stored, and the totals moved.
+        assert client.get("/api/v1/shows/specials-counting").json()["count_specials"] is False
+        after = client.get("/api/v1/shows").json()["items"][0]["episode_count"]
+        assert after < before
+
+        show = detail(client)
+        specials = next(item for item in show["seasons"] if item["season_number"] == 0)
+        assert specials["counted"] is False
+        # Counting is not monitoring: nothing stopped being searched for.
+        assert specials["monitored"] is True
+
+        # Turning it back on restores both the season and the total.
+        on = client.put("/api/v1/shows/specials-counting", headers=headers, json={"count_specials": True})
+        assert on.status_code == 200, on.text
+        assert client.get("/api/v1/shows").json()["items"][0]["episode_count"] == before
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

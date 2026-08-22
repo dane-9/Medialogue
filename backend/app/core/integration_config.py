@@ -92,6 +92,7 @@ class IntegrationConfigStore:
             "tmdb": None,
             "download_clients": [],
             "indexers": [],
+            "library": {"count_specials": True},
         }
 
     def _default_secrets(self) -> dict[str, Any]:
@@ -305,6 +306,30 @@ class IntegrationConfigStore:
         config["tmdb"] = {"id": str(item_id), "enabled": bool(enabled), "revision": revision}
         self._save(config, secrets)
         return self.get_tmdb()  # type: ignore[return-value]
+
+    def get_count_specials(self) -> bool:
+        """Whether Season 0 counts toward show episode totals, library-wide.
+
+        One stored answer rather than a per-show habit: Specials are almost
+        always wanted everywhere or nowhere. This is purely about counting and
+        says nothing about whether Specials are searched for.
+        """
+
+        config, _ = self._load()
+        library = config.get("library")
+        if not isinstance(library, dict):
+            return True
+        return bool(library.get("count_specials", True))
+
+    def save_count_specials(self, value: bool) -> bool:
+        config, secrets = self._load()
+        library = config.get("library")
+        if not isinstance(library, dict):
+            library = {}
+        library["count_specials"] = bool(value)
+        config["library"] = library
+        self._save(config, secrets)
+        return bool(value)
 
     def list_download_clients(self) -> list[DownloadClientConfig]:
         config, secrets = self._load()

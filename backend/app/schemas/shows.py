@@ -12,11 +12,14 @@ class ShowCreate(BaseModel):
 
 class ShowUpdate(BaseModel):
     monitored: bool | None = None
+    # "" clears the selection and returns the show to TMDB's default structure.
+    tmdb_episode_group_id: str | None = None
     expected_revision: int | None = None
 
 
 class SeasonUpdate(BaseModel):
     monitored: bool | None = None
+    counted: bool | None = None
     expected_revision: int | None = None
 
 
@@ -80,6 +83,7 @@ class SeasonResponse(BaseModel):
     season_number: int
     title: str | None = None
     monitored: bool
+    counted: bool = True
     revision: int
     episode_count: int
     present_count: int
@@ -92,6 +96,7 @@ class ShowSummaryResponse(BaseModel):
     resource_id: str
     tmdb_id: int | None
     tvdb_id: int | None = None
+    tmdb_episode_group_id: str | None = None
     title: str
     year: int | None
     monitored: bool

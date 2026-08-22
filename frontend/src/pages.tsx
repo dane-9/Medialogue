@@ -7,9 +7,9 @@ import { Icon } from './components/Icon'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select, Stat } from './components/ui'
 import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
-import { contextMenuSelection, duplicateLoserIds, normalizeMediaView, problemMatchesFilter, searchResultNeedsWarning, toggleIdSelection } from './lib/uiState'
+import { contextMenuSelection, duplicateLoserIds, normalizeMediaView, problemMatchesFilter, toggleIdSelection } from './lib/uiState'
 import { useUrlNumber, useUrlState } from './lib/urlState'
-import type { CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchJob, InteractiveSearchResult, MediaProfileSettings, Movie, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, MediaProfileSettings, Movie, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
 
 
 
@@ -477,6 +477,8 @@ export function ShowsPage() {
   const [lookupQuery, setLookupQuery] = useState('')
   const [lookupResults, setLookupResults] = useState<TMDBShowLookup[]>([])
   const [lookupBusy, setLookupBusy] = useState(false)
+  const [countSpecials, setCountSpecials] = useState(true)
+  const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
     try { setItems(await api.shows(query)); setError('') }
@@ -485,6 +487,22 @@ export function ShowsPage() {
   }
   useLiveLibraryRefresh(() => load(false))
   useEffect(() => { const timer = window.setTimeout(() => { void load() }, 150); return () => window.clearTimeout(timer) }, [query])
+  useEffect(() => { api.specialsCounting().then((value) => setCountSpecials(value.count_specials)).catch(() => undefined) }, [])
+
+  // A hard switch, not a view filter: it rewrites the Counted flag on Season 0
+  // for every show. Monitoring is left alone, so nothing stops being searched.
+  const toggleSpecials = async () => {
+    const next = !countSpecials
+    if (!next && !window.confirm('Stop counting Specials on every show? They will be excluded from episode totals, and any per-show Counted choice you made by hand is replaced. Monitoring is not affected.')) return
+    setSpecialsBusy(true)
+    try {
+      const result = await api.setSpecialsCounting(next)
+      setCountSpecials(result.count_specials)
+      setError('')
+      await load(false)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not change Specials counting.') }
+    finally { setSpecialsBusy(false) }
+  }
   const lookup = async () => {
     if (!lookupQuery.trim()) return
     setLookupBusy(true)
@@ -504,7 +522,7 @@ export function ShowsPage() {
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="primary" icon="plus" onClick={() => setAdding((value) => !value)}>Add show</Button>}>
     <div className="stats-row"><Stat label="Shows" value={String(items.length)} detail={`${present} fully present`} tone="blue" /><Stat label="Episodes" value={String(totalEpisodes)} detail={`${items.reduce((sum, show) => sum + show.episodesPresent, 0)} present`} tone="green" /><Stat label="Missing" value={String(missingEpisodes)} detail="Episode-level inventory" tone="amber" /><Stat label="Needs review" value={String(items.filter((show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0).length)} detail="Conflicts and mapping issues" tone="red" /></div>
     {adding && <Panel title="Add Show from TMDB" eyebrow="METADATA"><div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={lookupQuery} onChange={(event) => setLookupQuery(event.target.value)} placeholder="Search TMDB for a show…" onKeyDown={(event) => { if (event.key === 'Enter') void lookup() }} /></div><Button variant="primary" onClick={() => void lookup()} disabled={lookupBusy}>{lookupBusy ? 'Searching…' : 'Search'}</Button></div>{lookupResults.length ? <div className="history-list">{lookupResults.map((candidate) => <div className="history-row" key={candidate.tmdbId}><span className="history-line" /><div><strong>{candidate.title} {candidate.year ? `(${candidate.year})` : ''}</strong><span>TMDB {candidate.tmdbId}{candidate.originalTitle && candidate.originalTitle !== candidate.title ? ` · ${candidate.originalTitle}` : ''}</span></div><Button variant="ghost" onClick={() => void add(candidate)} disabled={lookupBusy}>Add</Button></div>)}</div> : <span className="muted">Search TMDB, choose the exact Show, then Medialogue will create Seasons and Episodes as Missing until media is discovered.</span>}</Panel>}
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search shows…" /></div><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }}><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }}><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search shows…" /></div><div className="specials-toggle" title={countSpecials ? 'Specials count toward episode totals on every show' : 'Specials are excluded from episode totals. Monitoring is unaffected.'}><span className="specials-toggle-label">Count specials</span><button type="button" className="toggle" aria-pressed={countSpecials} aria-label="Count Specials toward episode totals on every show" disabled={specialsBusy} onClick={() => void toggleSpecials()}><span /></button><span className="toggle-label">{specialsBusy ? 'Applying…' : countSpecials ? 'Yes' : 'No'}</span></div><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }}><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }}><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button></div>
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{items.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>Plex</th><th>Seasons</th><th /></tr></thead><tbody>{items.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td><td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
     {!error && !loading && !items.length && <EmptyState title="No Shows yet" detail="Add a Show from TMDB or scan a configured Show storage root." />}
@@ -558,6 +576,34 @@ export function ShowDetailPage({ id }: { id: string }) {
     finally { setBusy(false) }
   }
   const setSeasonMonitored = async (season: Season, monitored: boolean) => { try { await api.updateSeason(season.id, { monitored, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season monitoring.') } }
+  const [orderings, setOrderings] = useState<EpisodeOrdering[] | null>(null)
+  const [orderingBusy, setOrderingBusy] = useState(false)
+
+  // Loaded on demand: it costs two TMDB calls, and most shows never need it.
+  const loadOrderings = async () => {
+    if (orderings || orderingBusy) return
+    setOrderingBusy(true)
+    try { setOrderings(await api.episodeOrderings(id)) }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not read episode orderings.') }
+    finally { setOrderingBusy(false) }
+  }
+
+  // Switching renumbers the show's episodes, so it is always an explicit act —
+  // never something a background metadata refresh does on its own.
+  const chooseOrdering = async (option: EpisodeOrdering) => {
+    if (option.selected || !show) return
+    if (!window.confirm(`Switch this show to "${option.name}"? Episodes keep their identity but are renumbered, so files already matched may need a re-scan to line up with the new numbering.`)) return
+    setOrderingBusy(true)
+    try {
+      await api.updateShow(id, { tmdb_episode_group_id: option.id ?? '', expected_revision: show.revision })
+      setOrderings(null)
+      await load()
+      setMessage(`Episode ordering switched to ${option.name}. Re-scan this show's storage root if file matches look off.`)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not switch episode ordering.') }
+    finally { setOrderingBusy(false) }
+  }
+
+  const setSeasonCounted = async (season: Season, counted: boolean) => { try { await api.updateSeason(season.id, { counted, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season counting.') } }
   const setEpisodeMonitored = async (episode: Episode, monitored: boolean) => { try { await api.updateEpisode(episode.id, { monitored, expected_revision: episode.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update episode monitoring.') } }
   const searchSeason = async (season: Season) => { try { const result = await api.startSeasonSearch(season.id); setMessage(`Season search started · job ${result.job_id.slice(0, 8)}…`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start season search.') } }
   const searchEpisode = async (episode: Episode) => { try { const result = await api.startEpisodeSearch(episode.id); setMessage(`Episode search started · job ${result.job_id.slice(0, 8)}…`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start episode search.') } }
@@ -570,7 +616,30 @@ export function ShowDetailPage({ id }: { id: string }) {
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {mappingEditor && <Panel title="Correct episode mapping" eyebrow="LOGICAL MAPPING ONLY"><div className="settings-note"><Icon name="shield" size={15} /><span>This changes only Medialogue's episode mapping. The file is not renamed, moved, copied, or modified.</span></div><div className="mapping-path">{mappingEditor.media.path}</div><div className="mapping-grid">{mappingEditor.season.episodes.map((episode) => <label className="inline-check" key={episode.id}><input type="checkbox" checked={mappingEpisodeIds.includes(episode.id)} onChange={(event) => setMappingEpisodeIds((current) => event.target.checked ? [...current, episode.id] : current.filter((item) => item !== episode.id))} />S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</label>)}</div><div className="settings-footer"><Button variant="ghost" onClick={() => setMappingEditor(null)}>Cancel</Button><Button variant="primary" onClick={() => void saveMapping()} disabled={busy || !mappingEpisodeIds.length}>{busy ? 'Saving…' : 'Save mapping'}</Button></div></Panel>}
     <Panel className="detail-hero"><div className={`detail-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /><span className="poster-title">{show.title}</span><span className="poster-year">{show.year || ''}</span></div><div className="detail-intro"><div className="eyebrow">SHOW {show.tmdbId ? `· TMDB ${show.tmdbId}` : ''}</div><h2>{show.title} {show.year ? <span className="detail-year">({show.year})</span> : null}</h2><div className="badge-row"><Badge tone={statusTone(show.status)}>{show.status}</Badge><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge><Badge tone={show.monitored === false ? 'neutral' : 'blue'}>{show.monitored === false ? 'Unmonitored' : 'Monitored'}</Badge></div><p className="detail-description">{show.overview ?? 'Episode presence is tracked independently while every file stays at its existing path.'}</p></div></Panel>
-    <div className="detail-layout"><div><Panel title="Seasons & Episodes" eyebrow={`${show.episodesPresent} / ${show.episodesTotal} PRESENT`}>{seasons.map((season) => { const open = expanded[season.id] ?? false; return <div className="season-block" key={season.id}><div className="release-evidence-row"><button className="icon-button" onClick={() => setExpanded((value) => ({ ...value, [season.id]: !open }))}><Icon name="chevron" size={15} style={{ transform: open ? 'rotate(90deg)' : undefined }} /></button><div className="release-main"><strong>{season.title || `Season ${season.seasonNumber}`}</strong><span>{season.presentCount} / {season.episodeCount} present · {season.missingCount} missing</span></div><Badge tone={season.missingCount ? 'amber' : 'green'}>{season.missingCount ? 'Incomplete' : 'Complete'}</Badge><Button variant="ghost" onClick={() => void searchSeason(season)}>Search season</Button><label className="inline-check"><input type="checkbox" checked={season.monitored} onChange={(event) => void setSeasonMonitored(season, event.target.checked)} />Monitored</label></div>{open && <div className="episode-list">{season.episodes.map((episode) => <div className="history-row" key={episode.id}><span className="history-line" /><div><strong>S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</strong><span>{episode.quality || 'No media'}{episode.media[0]?.path ? ` · ${episode.media[0].path}` : ''}</span><div className="badge-row compact">{episode.media[0]?.releaseScope === 'season_pack' && <Badge tone="purple">Season pack</Badge>}{episode.media[0]?.mappedEpisodeNumbers.length > 1 && <Badge tone="blue">Multi-episode · {episode.media[0].mappedEpisodeNumbers.map((number) => `E${String(number).padStart(2, '0')}`).join(' + ')}</Badge>}{episode.media[0]?.manualMapping && <Badge tone="neutral">Manual mapping</Badge>}</div></div><Badge tone={statusTone(episode.status)}>{episode.status}</Badge><Badge tone={statusTone(episode.plex)}>Plex {episode.plex}</Badge><label className="inline-check"><input type="checkbox" checked={episode.monitored} onChange={(event) => void setEpisodeMonitored(episode, event.target.checked)} />Monitor</label>{episode.media[0] && <Button variant="ghost" onClick={() => editMapping(episode.media[0], season)}>Map</Button>}<Button variant="ghost" onClick={() => void searchEpisode(episode)}>Search</Button></div>)}</div>}</div> })}{!seasons.length && <div className="history-empty">No season metadata exists yet. Refresh TMDB metadata or scan a Show root.</div>}</Panel><ShowProfilePanel resourceId={id} /><Panel title="Recent history" eyebrow="EVENTS">{show.recentEvents?.length ? show.recentEvents.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div></div>) : <div className="history-empty">No Show or episode events recorded yet.</div>}</Panel></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={show.status} tone={statusTone(show.status)} /><DetailFact label="Plex verification" value={show.plex} tone={statusTone(show.plex)} /><DetailFact label="Episodes present" value={`${show.episodesPresent} / ${show.episodesTotal}`} /><DetailFact label="Last observed" value={formatEvidenceDate(show.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={`${show.problemCount ?? 0} NEED ATTENTION`}>{show.problems?.length ? show.problems.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Mapped episode files are consistent with current evidence.</span></div></div>}</Panel></aside></div>
+    <div className="detail-layout"><div><Panel title="Episode ordering" eyebrow="TMDB STRUCTURE" action={orderings ? undefined : <Button variant="ghost" onClick={() => void loadOrderings()} disabled={orderingBusy}>{orderingBusy ? 'Loading…' : 'Show orderings'}</Button>}>
+      {orderings
+        ? <div className="ordering-list">
+            {orderings.map((option) => <button
+              className={`ordering-option ${option.selected ? 'selected' : ''}`}
+              key={option.id ?? 'default'}
+              disabled={orderingBusy}
+              onClick={() => void chooseOrdering(option)}
+            >
+              <span className="ordering-copy">
+                <strong>{option.name}</strong>
+                <span>{option.season_count} season{option.season_count === 1 ? '' : 's'} · {option.episode_count} episode{option.episode_count === 1 ? '' : 's'}{option.network ? ` · ${option.network}` : ''}</span>
+                {option.description && <small>{option.description}</small>}
+              </span>
+              <Badge tone={option.selected ? 'green' : 'neutral'}>{option.selected ? 'In use' : option.type_label}</Badge>
+            </button>)}
+            <p className="cf-modal-note">TMDB stores alternate orderings for many shows. They contain the same episodes arranged differently, so switching renumbers what you already have rather than replacing it.</p>
+          </div>
+        : <div className="ordering-summary">
+            <span className="muted">Using {show.tmdbEpisodeGroupId ? 'a custom TMDB episode group' : "TMDB's default season structure"}.</span>
+            <small>If this show&rsquo;s seasons do not match how your files are numbered, another ordering probably does.</small>
+          </div>}
+    </Panel>
+    <Panel title="Seasons & Episodes" eyebrow={`${show.episodesPresent} / ${show.episodesTotal} PRESENT`}>{seasons.map((season) => { const open = expanded[season.id] ?? false; return <div className="season-block" key={season.id}><div className="release-evidence-row"><button className="icon-button" onClick={() => setExpanded((value) => ({ ...value, [season.id]: !open }))}><Icon name="chevron" size={15} style={{ transform: open ? 'rotate(90deg)' : undefined }} /></button><div className="release-main"><strong>{season.title || `Season ${season.seasonNumber}`}</strong><span>{season.presentCount} / {season.episodeCount} present · {season.missingCount} missing</span></div><Badge tone={season.missingCount ? 'amber' : 'green'}>{season.missingCount ? 'Incomplete' : 'Complete'}</Badge><Button variant="ghost" onClick={() => void searchSeason(season)}>Search season</Button><label className="inline-check" title="Keep searching for missing episodes in this season."><input type="checkbox" checked={season.monitored} onChange={(event) => void setSeasonMonitored(season, event.target.checked)} />Monitored</label><label className="inline-check" title="Include this season in the show's episode totals. Independent of monitoring."><input type="checkbox" checked={season.counted} onChange={(event) => void setSeasonCounted(season, event.target.checked)} />Counted</label></div>{open && <div className="episode-list">{season.episodes.map((episode) => <div className="history-row" key={episode.id}><span className="history-line" /><div><strong>S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</strong><span>{episode.quality || 'No media'}{episode.media[0]?.path ? ` · ${episode.media[0].path}` : ''}</span><div className="badge-row compact">{episode.media[0]?.releaseScope === 'season_pack' && <Badge tone="purple">Season pack</Badge>}{episode.media[0]?.mappedEpisodeNumbers.length > 1 && <Badge tone="blue">Multi-episode · {episode.media[0].mappedEpisodeNumbers.map((number) => `E${String(number).padStart(2, '0')}`).join(' + ')}</Badge>}{episode.media[0]?.manualMapping && <Badge tone="neutral">Manual mapping</Badge>}</div></div><Badge tone={statusTone(episode.status)}>{episode.status}</Badge><Badge tone={statusTone(episode.plex)}>Plex {episode.plex}</Badge><label className="inline-check"><input type="checkbox" checked={episode.monitored} onChange={(event) => void setEpisodeMonitored(episode, event.target.checked)} />Monitor</label>{episode.media[0] && <Button variant="ghost" onClick={() => editMapping(episode.media[0], season)}>Map</Button>}<Button variant="ghost" onClick={() => void searchEpisode(episode)}>Search</Button></div>)}</div>}</div> })}{!seasons.length && <div className="history-empty">No season metadata exists yet. Refresh TMDB metadata or scan a Show root.</div>}</Panel><ShowProfilePanel resourceId={id} /><Panel title="Recent history" eyebrow="EVENTS">{show.recentEvents?.length ? show.recentEvents.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div></div>) : <div className="history-empty">No Show or episode events recorded yet.</div>}</Panel></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={show.status} tone={statusTone(show.status)} /><DetailFact label="Plex verification" value={show.plex} tone={statusTone(show.plex)} /><DetailFact label="Episodes present" value={`${show.episodesPresent} / ${show.episodesTotal}`} /><DetailFact label="Last observed" value={formatEvidenceDate(show.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={`${show.problemCount ?? 0} NEED ATTENTION`}>{show.problems?.length ? show.problems.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Mapped episode files are consistent with current evidence.</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -1136,192 +1205,6 @@ export function ProblemsPage() {
       </> : <EmptyState icon="alert" title="No unresolved problems on this page" detail={total ? 'Use the page controls to continue through the queue.' : 'The live reconciliation queue is clear.'} />}</Panel></div>
     {pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button><span>Page {page} of {pages} · {total} matching Problems</span><Button variant="ghost" disabled={page >= pages || loading} onClick={() => setPage((value) => Math.min(pages, value + 1))}>Next</Button></div>}
   </Page>
-}
-
-type SearchCandidate = {
-  tmdbId?: number
-  movieId?: string
-  title: string
-  year?: number
-  poster?: string
-  status?: string
-}
-
-function SearchPickPoster({ candidate }: { candidate: SearchCandidate }) {
-  const reference = candidate.poster
-  const source = reference ? (reference.startsWith('http') ? reference : `https://image.tmdb.org/t/p/w92${reference.startsWith('/') ? reference : `/${reference}`}`) : undefined
-  return <span className="search-pick-poster">{source ? <img src={source} alt="" loading="lazy" /> : <Icon name="film" size={16} />}</span>
-}
-
-export function SearchPage() {
-  const [query, setQuery] = useUrlState('q')
-  const [candidates, setCandidates] = useState<SearchCandidate[]>([])
-  const [selectedMovie, setSelectedMovie] = useState<SearchCandidate | null>(null)
-  const [looking, setLooking] = useState(false)
-  const [jobId, setJobId] = useState<string | null>(null)
-  const [job, setJob] = useState<InteractiveSearchJob | null>(null)
-  const [clients, setClients] = useState<DownloadClient[]>([])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  // TMDB is the search index; the library is an annotation on the results.
-  // Titles you already own are still returned, marked with their real state.
-  useEffect(() => {
-    const term = query.trim()
-    if (!term) { setCandidates([]); setLooking(false); return }
-    let alive = true
-    setLooking(true)
-    const timer = window.setTimeout(async () => {
-      try {
-        const [library, matches] = await Promise.all([
-          api.movies(term).catch(() => [] as Movie[]),
-          api.lookupMovies(term).catch(() => [] as TMDBMovieLookup[]),
-        ])
-        if (!alive) return
-        const owned = new Map<number, Movie>()
-        library.forEach((movie) => { if (movie.tmdbId) owned.set(movie.tmdbId, movie) })
-        const rows: SearchCandidate[] = matches.slice(0, 12).map((match) => {
-          const held = owned.get(match.tmdbId)
-          return { tmdbId: match.tmdbId, movieId: held?.id, title: held?.title ?? match.title, year: held?.year ?? match.year, poster: held?.poster ?? match.posterRef, status: held?.status }
-        })
-        library.forEach((movie) => {
-          if (movie.tmdbId && rows.some((row) => row.tmdbId === movie.tmdbId)) return
-          rows.unshift({ tmdbId: movie.tmdbId, movieId: movie.id, title: movie.title, year: movie.year, poster: movie.poster, status: movie.status })
-        })
-        setCandidates(rows)
-      } finally { if (alive) setLooking(false) }
-    }, 260)
-    return () => { alive = false; window.clearTimeout(timer) }
-  }, [query])
-
-  useEffect(() => { api.downloadClients().then((items) => setClients(items.filter((item) => item.enabled))).catch(() => undefined) }, [])
-
-  useEffect(() => {
-    if (!jobId) return
-    let alive = true
-    const refresh = () => api.searchJob(jobId).then((value) => { if (alive) setJob(value) }).catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not refresh search results.') })
-    void refresh()
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const onSearchEvent = (event: Event) => {
-      const message = event as MessageEvent<string>
-      try {
-        const payload = JSON.parse(message.data) as { entity_id?: string }
-        if (!payload.entity_id || payload.entity_id === jobId) void refresh()
-      } catch { void refresh() }
-    }
-    ;['search.result', 'search.indexer_status', 'search.completed', 'search.failed', 'search.cancelled'].forEach((name) => stream.addEventListener(name, onSearchEvent))
-    const fallback = window.setInterval(() => { if (job?.status === 'running' || job?.status === 'queued' || !job) void refresh() }, 2500)
-    return () => {
-      alive = false
-      window.clearInterval(fallback)
-      stream.close()
-    }
-  }, [jobId, job?.status])
-
-  const start = async () => {
-    if (!selectedMovie) { setError('Choose a movie from your library first.'); return }
-    setBusy(true); setError(''); setJob(null)
-    try {
-      // A TMDB-only pick has to become a library Movie before it can be
-      // searched: the endpoint resolves its target against the movies table,
-      // and a grab needs something to attach to.
-      let movieId = selectedMovie.movieId
-      if (!movieId) {
-        if (!selectedMovie.tmdbId) throw new Error('This title has no TMDB id, so it cannot be searched.')
-        const added = await api.addMovie(selectedMovie.tmdbId)
-        movieId = added.id
-        setSelectedMovie((current) => current ? { ...current, movieId: added.id, status: added.status } : current)
-      }
-      const started = await api.startMovieSearch(movieId)
-      setJobId(started.job_id)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not start the interactive search.') }
-    finally { setBusy(false) }
-  }
-
-  const movieClients = clients.filter((client) => client.scope === 'movies')
-  const indexerCount = job?.indexers.length ?? 0
-  const resultCount = job?.resultTotal ?? 0
-  return <Page title="Interactive Search" subtitle="Search configured Prowlarr-backed indexers and choose exactly what to download.">
-    <Panel className="search-hero">
-      <div className="search-hero-icon"><Icon name="search" size={23} /></div>
-      <div className="search-hero-copy"><div className="eyebrow">MANUAL WORKFLOW</div><h2>Find a release for any title</h2><p>Search TMDB for the film you want, then query your indexers for it. A title you do not own yet is added to your library as Missing when the search starts, so the grab has somewhere to land. Nothing is downloaded until you choose a result.</p></div>
-      <div className="search-form">
-        <Input placeholder="Search TMDB for a movie…" value={query} onChange={(event) => { setQuery(event.target.value); setSelectedMovie(null) }} />
-        <Button variant="primary" icon="search" onClick={() => void start()} disabled={busy || !selectedMovie}>{busy ? 'Starting…' : selectedMovie && !selectedMovie.movieId ? 'Add & search indexers' : 'Search indexers'}</Button>
-      </div>
-      <div className="search-picks">
-        {selectedMovie
-          ? <button className="search-pick selected" onClick={() => setSelectedMovie(null)}>
-              <SearchPickPoster candidate={selectedMovie} />
-              <span className="search-pick-copy"><strong>{selectedMovie.title}</strong><span>{[selectedMovie.year || 'Year unknown', selectedMovie.tmdbId ? `TMDB ${selectedMovie.tmdbId}` : null].filter(Boolean).join(' · ')}</span></span>
-              <Badge tone={selectedMovie.status ? statusTone(selectedMovie.status) : 'neutral'}>{selectedMovie.status ?? 'Not in library'}</Badge>
-            </button>
-          : candidates.slice(0, 8).map((candidate) => <button className="search-pick" key={candidate.tmdbId ?? candidate.movieId} onClick={() => setSelectedMovie(candidate)}>
-              <SearchPickPoster candidate={candidate} />
-              <span className="search-pick-copy"><strong>{candidate.title}</strong><span>{candidate.year || 'Year unknown'}</span></span>
-              <Badge tone={candidate.status ? statusTone(candidate.status) : 'neutral'}>{candidate.status ?? 'Not in library'}</Badge>
-            </button>)}
-        {!selectedMovie && !candidates.length && <span className="muted">{looking ? 'Searching TMDB…' : query.trim() ? 'No TMDB matches.' : 'Type a film title to begin.'}</span>}
-      </div>
-    </Panel>
-    {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
-    {job ? <Panel title="Search results" eyebrow={`${indexerCount} INDEXER${indexerCount === 1 ? '' : 'S'} · ${resultCount} RESULT${resultCount === 1 ? '' : 'S'}`} action={<Badge tone={job.status === 'completed' ? 'green' : job.status === 'failed' ? 'red' : 'amber'}>{job.status}</Badge>}>
-      <div className="indexer-strip">{job.indexers.map((indexer) => <span key={indexer.id} title={indexer.error}><span className={`health-dot ${indexer.status === 'completed' ? 'green' : indexer.status === 'failed' || indexer.status === 'timeout' ? 'red' : 'amber'}`} />{indexer.name} · {indexer.status}{indexer.status === 'completed' ? ` · ${indexer.results} results` : ''}</span>)}<span className="muted">Custom Format matches, profile scores, overrides, and minimum-quality status are frozen with each result. No score hides or blocks a release.</span></div>
-      {job.results.length ? <div className="search-table-wrap"><table className="data-table search-results"><thead><tr><th>Release</th><th>Indexer</th><th>Age</th><th>Size</th><th>Quality</th><th>Edition</th><th>Group</th><th>CF Score</th><th>Seeders</th><th /></tr></thead><tbody>{job.results.map((result) => <SearchResultRows key={result.id} result={result} clients={movieClients} onSubmitted={() => jobId && api.searchJob(jobId).then(setJob).catch(() => undefined)} onError={setError} />)}</tbody></table></div> : <EmptyState icon="search" title={job.status === 'completed' ? 'No releases returned' : 'Waiting for indexers'} detail={job.status === 'completed' ? 'The enabled Movie indexers returned no results.' : 'Results appear here as each indexer responds.'} />}
-    </Panel> : <EmptyState icon="search" title="Select a movie to search" detail="Interactive searches fan out to every enabled Movie/Both indexer. One slow or failed indexer does not block the others." />}
-  </Page>
-}
-
-function SearchResultRows({ result, clients, onSubmitted, onError }: { result: InteractiveSearchResult; clients: DownloadClient[]; onSubmitted: () => void; onError: (message: string) => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const [choosing, setChoosing] = useState(false)
-  const [selectedClient, setSelectedClient] = useState(clients[0]?.id ?? '')
-  const [busy, setBusy] = useState(false)
-  useEffect(() => { if (!selectedClient && clients[0]) setSelectedClient(clients[0].id) }, [clients, selectedClient])
-  const submit = async (clientId?: string) => {
-    const destination = clientId ?? (clients.length === 1 ? clients[0]?.id : selectedClient)
-    if (!destination) { setChoosing(true); return }
-    setBusy(true); onError('')
-    try { await api.downloadSearchResult(result.id, destination); setChoosing(false); onSubmitted() }
-    catch (reason) { onError(reason instanceof Error ? reason.message : 'Could not submit the selected release.') }
-    finally { setBusy(false) }
-  }
-  const snapshotFormats = Array.isArray(result.customFormatSnapshot.formats)
-    ? result.customFormatSnapshot.formats.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    : []
-  const matchedFormats = snapshotFormats.filter((item) => item.matched === true)
-  return <>
-    <tr className={searchResultNeedsWarning(result.minimumQualityMet, result.warnings) ? 'search-result-warning' : ''} onClick={() => setExpanded((value) => !value)}>
-      <td><div className="release-result"><strong>{result.title}</strong>{result.selectedAt && <Badge tone="green">Submitted</Badge>}{result.minimumQualityMet === false && <Badge tone="amber">Below minimum</Badge>}{result.warnings.length > 0 && <Badge tone="amber">{result.warnings.length} warning{result.warnings.length === 1 ? '' : 's'}</Badge>}</div></td>
-      <td>{result.indexerName}</td><td className="muted">{formatSearchAge(result.publishedAt)}</td><td>{formatSearchBytes(result.size)}</td><td><Badge tone={result.quality ? 'green' : 'neutral'}>{result.quality ?? 'Unknown'}</Badge></td><td>{result.edition ?? '—'}</td><td>{result.releaseGroup ?? 'NoGroup'}</td><td><span className={result.customFormatScore !== undefined && result.customFormatScore < 0 ? 'score-negative' : 'score-positive'}><strong>{result.customFormatScore !== undefined && result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore ?? 0}</strong></span>{snapshotFormats.length ? <small className="table-sub">{matchedFormats.length}/{snapshotFormats.length} matched</small> : null}</td><td>{result.seeders ?? '—'}</td>
-      <td onClick={(event) => event.stopPropagation()}>{result.selectedAt ? <Badge tone="green">Sent</Badge> : choosing && clients.length > 1 ? <div className="search-client-chooser"><Select value={selectedClient} onChange={(event) => setSelectedClient(event.target.value)}>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select><Button variant="primary" icon="download" onClick={() => void submit()} disabled={busy}>{busy ? 'Sending…' : 'Send'}</Button></div> : <Button variant="secondary" icon="download" onClick={() => clients.length > 1 ? setChoosing(true) : void submit()} disabled={busy || clients.length === 0}>{busy ? 'Sending…' : clients.length === 0 ? 'No Movie client' : 'Download'}</Button>}</td>
-    </tr>
-    {expanded && <tr className="search-result-detail"><td colSpan={10}><div className="search-detail-grid"><div><div className="eyebrow">PARSER RESULT</div><pre>{JSON.stringify(result.parser, null, 2)}</pre></div><div><div className="eyebrow">SEARCH-TIME EVIDENCE</div><dl><dt>Indexer</dt><dd>{result.indexerName}</dd><dt>Quality</dt><dd>{result.quality ?? 'Unknown'}</dd><dt>Edition</dt><dd>{result.edition ?? 'None'}</dd><dt>Release group</dt><dd>{result.releaseGroup ?? 'NoGroup'}</dd><dt>Quality Profile</dt><dd>{result.qualityProfileName ?? 'No profile assigned'}</dd><dt>Minimum quality</dt><dd>{result.minimumQuality ? `${result.minimumQuality} · ${result.minimumQualityMet === false ? 'below minimum' : result.minimumQualityMet === true ? 'meets minimum' : 'not comparable'}` : 'No minimum'}</dd><dt>Custom Format score</dt><dd><strong className={(result.customFormatScore ?? 0) < 0 ? 'score-negative' : 'score-positive'}>{(result.customFormatScore ?? 0) > 0 ? '+' : ''}{result.customFormatScore ?? 0}</strong></dd></dl><div className="search-cf-evidence"><div className="field-label">Custom Format snapshot <span>Immutable search-time evidence</span></div>{snapshotFormats.length ? snapshotFormats.map((format, index) => {
-      const name = typeof format.custom_format_name === 'string' ? format.custom_format_name : `Custom Format ${index + 1}`
-      const conditions = Array.isArray(format.conditions) ? format.conditions.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')) : []
-      const matched = format.matched === true
-      const profileScore = Number(format.profile_score ?? 0); const overrideScore = format.override_score === null || format.override_score === undefined ? undefined : Number(format.override_score); const effectiveScore = Number(format.effective_score ?? profileScore); const contribution = Number(format.contribution ?? (matched ? effectiveScore : 0)); return <div className="search-cf-format" key={`${String(format.custom_format_id ?? name)}-${index}`}><div className="search-cf-format-head"><Badge tone={matched ? 'green' : 'neutral'}>{matched ? 'Matched' : 'Not matched'}</Badge><strong>{name}</strong><span className={contribution < 0 ? 'score-negative' : 'score-positive'}>{contribution > 0 ? '+' : ''}{contribution}</span><small>Profile {profileScore > 0 ? '+' : ''}{profileScore}{overrideScore !== undefined ? ` · Override ${overrideScore > 0 ? '+' : ''}${overrideScore}` : ''}</small></div>{conditions.map((condition, conditionIndex) => <div className={`search-cf-condition ${condition.effective_result === true ? 'pass' : 'fail'}`} key={`${String(condition.condition_id ?? conditionIndex)}`}><Icon name={condition.effective_result === true ? 'check' : 'close'} size={13} /><span>{String(condition.name || condition.condition_type || 'Condition')}</span><small>{String(condition.reason || (condition.effective_result === true ? 'Passed' : 'Failed'))}</small></div>)}</div>
-    }) : <span className="muted">No enabled Custom Formats were eligible when this result was discovered.</span>}</div>{result.warnings.length > 0 && <div className="search-warning-list">{result.warnings.map((warning) => <span key={warning}><Icon name="alert" size={14} />{warning}</span>)}</div>}</div></div></td></tr>}
-  </>
-}
-
-function formatSearchBytes(bytes?: number) {
-  if (!bytes) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
-  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
-}
-
-function formatSearchAge(value?: string) {
-  if (!value) return '—'
-  const timestamp = new Date(value).getTime()
-  if (!Number.isFinite(timestamp)) return '—'
-  const hours = Math.max(0, Math.floor((Date.now() - timestamp) / 3_600_000))
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  return `${days}d`
 }
 
 export function TorrentArchivePage() {

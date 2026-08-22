@@ -43,10 +43,6 @@ export function duplicatePreviewReady(releaseIds: readonly string[], winnerRelea
   return Boolean(winnerReleaseId) && releaseIds.includes(winnerReleaseId) && duplicateLoserIds(releaseIds, winnerReleaseId).length > 0
 }
 
-export function searchResultNeedsWarning(minimumQualityMet: boolean | undefined, warnings: readonly string[]): boolean {
-  return minimumQualityMet === false || warnings.length > 0
-}
-
 export function isRegexConditionType(type: CustomFormatConditionType): boolean {
   return type === 'release_title' || type === 'release_group'
 }

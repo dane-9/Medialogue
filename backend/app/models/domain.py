@@ -248,6 +248,10 @@ class Show(TimestampMixin, Base):
     year: Mapped[int | None] = mapped_column(Integer)
     tmdb_id: Mapped[int | None] = mapped_column()
     tvdb_id: Mapped[int | None] = mapped_column()
+    # Which TMDB ordering this show uses. NULL means TMDB's default season
+    # structure; a value selects one of the show's episode groups, which
+    # rearranges the same episodes rather than replacing them.
+    tmdb_episode_group_id: Mapped[str | None] = mapped_column(String(64))
     overview: Mapped[str | None] = mapped_column(Text)
     poster_ref: Mapped[str | None] = mapped_column(String(1024))
     monitored: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -269,6 +273,11 @@ class Season(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     show_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), nullable=False)
     season_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Whether this season contributes to the show's episode totals. Independent
+    # of `monitored`: a completed season stops being searched for but still
+    # counts, and an ignored one keeps its own contents visible while sitting
+    # outside the total.
+    counted: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     title: Mapped[str | None] = mapped_column(String(512))
     monitored: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONType, default=dict, nullable=False)
