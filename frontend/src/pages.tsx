@@ -1161,7 +1161,9 @@ export function ProblemsPage() {
       const qbitErrors = Array.isArray(summary.qbit_errors) ? summary.qbit_errors.map(String) : []
       const errors = [...directErrors, ...qbitErrors]
       setMessage(job?.state === 'completed'
-        ? errors.length ? `Evidence recheck completed with warnings: ${errors.join('; ')}` : 'Evidence recheck complete. The Problem remains open only if the condition is still present.'
+        ? errors.length ? `Evidence recheck completed with warnings: ${errors.join('; ')}`
+        : summary.condition_cleared === true ? 'Problem cleared: the condition is no longer present.'
+        : 'Evidence recheck complete: the condition is still present.'
         : job?.state === 'cancelled' ? 'Evidence recheck cancelled.'
         : `Evidence recheck failed${job?.error ? `: ${job.error}` : '.'} Review Jobs for details.`)
     }

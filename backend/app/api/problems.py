@@ -1,5 +1,4 @@
 import asyncio
-import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -39,12 +38,13 @@ from app.services.integration_state import get_configured_download_client
 from app.schemas.problems import ProblemResolveRequest, ProblemResponse
 from app.services.events import publish_live_event
 from app.services.jobs import create_job, publish_job_status, update_job
-from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan, storage_root_scan_running
+from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
 from app.services.plex import get_plex_configuration, recheck_movie_plex, recheck_show_plex
 from app.services.problem_resolution import available_actions, resolve_explicit_problem_action
 from app.services.qbittorrent import poll_download_client
 from app.services.reconciliation import resolve_problem as resolve_observed_problem
 from app.services.runtime_jobs import launch_runtime_job
+from app.services.shows import recheck_episode_duplicate_problem
 from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
 router = APIRouter(prefix="/problems", tags=["problems"])
@@ -233,8 +233,9 @@ async def _queue_root_rechecks(db: AsyncSession, root_ids: set[UUID]) -> tuple[l
         if existing is not None:
             active_job_ids.append(existing.id)
             continue
-        if storage_root_scan_running(root.id):
-            continue
+        # A runtime lock without a discoverable active DB job is a transient
+        # race (or a previous worker winding down). Queue behind that lock so a
+        # recheck can never silently claim success without examining the root.
         job = await create_job(
             db,
             "reconciliation",
@@ -281,7 +282,19 @@ async def run_problem_recheck(
                 problem,
                 plex_client_factory=plex_client_factory,
             )
-            direct_recheck = problem.reason == "TMDB_SHOW_METADATA_UNAVAILABLE" or plex_handled
+            duplicate_handled = (
+                problem.reason == "DUPLICATE_EPISODE_RELEASE"
+                and problem.entity_type == "episode"
+                and problem.entity_id is not None
+            )
+            duplicate_cleared = False
+            if duplicate_handled:
+                duplicate_cleared = await recheck_episode_duplicate_problem(db, problem.entity_id)
+            direct_recheck = (
+                problem.reason == "TMDB_SHOW_METADATA_UNAVAILABLE"
+                or plex_handled
+                or (duplicate_handled and duplicate_cleared)
+            )
             root_ids = set() if direct_recheck else await _problem_root_ids(db, problem)
             download_client_ids = await _problem_download_client_ids(db, problem)
             new_job_ids, active_job_ids = await _queue_root_rechecks(db, root_ids)
@@ -324,14 +337,22 @@ async def run_problem_recheck(
             failed_child_ids: list[str] = []
             pending = set(child_job_ids)
             seen = set(child_job_ids)
+            last_completed = -1
             while pending:
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.25)
                 await db.refresh(job)
                 if job.status == JobStatus.CANCELLED:
                     return
                 for child_id in list(pending):
                     child = await db.get(Job, child_id)
-                    if child is None or child.status not in terminal_states:
+                    if child is None:
+                        continue
+                    # Child scans write through independent sessions and this
+                    # app deliberately uses expire_on_commit=False. Without an
+                    # explicit refresh the identity map can retain RUNNING
+                    # forever even though the durable Job already completed.
+                    await db.refresh(child)
+                    if child.status not in terminal_states:
                         continue
                     pending.remove(child_id)
                     if child.status != JobStatus.COMPLETED:
@@ -342,17 +363,23 @@ async def run_problem_recheck(
                             seen.add(followup_id)
                             pending.add(followup_id)
                 completed = len(seen) - len(pending)
-                await update_job(
-                    db,
-                    job,
-                    progress={"current": completed, "total": max(len(seen), 1), "percent": round(completed * 100 / max(len(seen), 1), 1), "stage": "waiting_for_evidence", "detail": f"Waiting for {len(pending)} evidence job{'s' if len(pending) != 1 else ''}…"},
-                )
-                await db.commit()
-                publish_job_status(job)
+                if completed != last_completed:
+                    last_completed = completed
+                    await update_job(
+                        db,
+                        job,
+                        progress={"current": completed, "total": max(len(seen), 1), "percent": round(completed * 100 / max(len(seen), 1), 1), "stage": "waiting_for_evidence", "detail": f"Waiting for {len(pending)} evidence job{'s' if len(pending) != 1 else ''}…"},
+                    )
+                    await db.commit()
+                    publish_job_status(job)
+
+            if duplicate_handled and problem.entity_id is not None:
+                duplicate_cleared = await recheck_episode_duplicate_problem(db, problem.entity_id)
 
             refreshed = await db.get(Problem, problem_id)
             if refreshed is not None:
                 problem = refreshed
+                await db.refresh(problem)
                 all_errors = [*direct_errors, *qbit_errors]
                 problem.resolution = {
                     **dict(problem.resolution or {}),
@@ -361,6 +388,14 @@ async def run_problem_recheck(
                 }
                 await db.commit()
 
+            condition_cleared = problem.status != ProblemStatus.OPEN
+            if condition_cleared:
+                message = "Problem condition cleared."
+            elif failed_child_ids or direct_errors or qbit_errors:
+                message = "Problem evidence recheck completed with errors; the condition is still present."
+            else:
+                message = "Problem evidence recheck completed; the condition is still present."
+
             summary = {
                 "problem_id": str(problem_id),
                 "reason": problem.reason,
@@ -368,7 +403,9 @@ async def run_problem_recheck(
                 "failed_child_job_ids": failed_child_ids,
                 "direct_errors": direct_errors,
                 "qbit_errors": qbit_errors,
-                "message": "Problem evidence recheck completed." if not (failed_child_ids or direct_errors or qbit_errors) else "Problem evidence recheck completed with errors.",
+                "condition_cleared": condition_cleared,
+                "problem_status": problem.status.value,
+                "message": message,
             }
             if failed_child_ids or direct_errors or qbit_errors:
                 await update_job(

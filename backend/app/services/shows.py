@@ -294,6 +294,34 @@ async def _refresh_episode_duplicate_problem(db: AsyncSession, episode: Episode)
         await resolve_problem(db, "DUPLICATE_EPISODE_RELEASE", "episode", episode.id)
 
 
+async def recheck_episode_duplicate_problem(db: AsyncSession, episode_id: UUID) -> bool:
+    """Recheck a duplicate warning against the filesystem immediately.
+
+    A catalogue scan is not required for this check because every candidate's
+    last observed path is already stored. This is especially important during
+    the missing-file grace period: deleting the losing file should clear the
+    warning without waiting for its catalogue row to age out.
+    """
+
+    episode = await db.get(Episode, episode_id)
+    if episode is None:
+        await resolve_problem(db, "DUPLICATE_EPISODE_RELEASE", "episode", episode_id)
+    else:
+        await _refresh_episode_duplicate_problem(db, episode)
+    await db.flush()
+    remaining = await db.scalar(
+        select(func.count())
+        .select_from(Problem)
+        .where(
+            Problem.reason == "DUPLICATE_EPISODE_RELEASE",
+            Problem.entity_type == "episode",
+            Problem.entity_id == episode_id,
+            Problem.status == ProblemStatus.OPEN,
+        )
+    )
+    return not bool(remaining)
+
+
 async def _refresh_episode_presence(db: AsyncSession, episode: Episode, *, emit_event: bool = True) -> None:
     existing = int(
         await db.scalar(
