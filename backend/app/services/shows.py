@@ -42,7 +42,7 @@ from app.parser import extract_episode_numbers, parse_release_name, parse_season
 from app.services.events import create_event
 from app.services.quality_profiles import evaluate_current_release_score
 from app.services.reconciliation import open_problem, resolve_problem
-from app.services.tmdb import TMDBUnavailable, resolve_show_identity, sync_show_metadata
+from app.services.tmdb import TMDBUnavailable, resolve_show_identity_detailed, sync_show_metadata
 
 
 def utcnow() -> datetime:
@@ -460,7 +460,8 @@ async def reconcile_show_directory(
                 break
 
     if show is None:
-        match, reason = await resolve_show_identity(db, title, year)
+        tmdb_resolution = await resolve_show_identity_detailed(db, title, year)
+        match, reason = tmdb_resolution.match, tmdb_resolution.reason
         if match is None:
             # See reconcile_movie_directory: an absent or unreachable TMDB is a
             # global state. Scans are gated on it being configured, so this only
@@ -476,7 +477,28 @@ async def reconcile_show_directory(
                 entity_type="media_directory",
                 entity_id=directory.id,
                 message=f"TMDB could not uniquely identify {title or 'this Show candidate'}.",
-                details={"path": observation.path, "title": title, "year": year, "tmdb_reason": reason},
+                details={
+                    "path": observation.path,
+                    "title": title,
+                    "year": year,
+                    "parsed_title": title,
+                    "parsed_year": year,
+                    "parsed_identity": f"{title} ({year})" if year is not None else title,
+                    "tmdb_reason": reason,
+                    "tmdb_queries": list(tmdb_resolution.queries),
+                    "tmdb_candidates": [
+                        {
+                            "tmdb_id": item.tmdb_id,
+                            "title": item.title,
+                            "original_title": item.original_title,
+                            "year": item.year,
+                            "overview": item.overview,
+                            "poster_path": item.poster_path,
+                        }
+                        for item in tmdb_resolution.candidates[:10]
+                    ],
+                    "parse": folder_parse.to_dict(),
+                },
                 severity=Severity.WARNING,
             )
             return "review"
