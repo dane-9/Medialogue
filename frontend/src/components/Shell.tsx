@@ -12,7 +12,6 @@ const primary = [
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
 ]
 const tools = [
-  { to: '/search', label: 'Interactive Search', icon: 'search' as const },
   { to: '/torrent-archive', label: 'Torrent Archive', icon: 'archive' as const },
   { to: '/custom-formats', label: 'Custom Formats', icon: 'sliders' as const },
   { to: '/quality-profiles', label: 'Quality Profiles', icon: 'spark' as const },

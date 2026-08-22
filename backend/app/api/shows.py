@@ -4,6 +4,7 @@ from pathlib import PurePosixPath
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -11,6 +12,8 @@ from sqlalchemy.orm import selectinload
 from app.api.dependencies import require_admin, require_csrf
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
+from app.core.integration_config import get_integration_config_store
+from app.services.events import create_event
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
@@ -48,7 +51,7 @@ from app.services.events import scope_predicate, show_event_scope
 from app.services.shows import add_show_from_tmdb, resolve_show_resource, set_media_file_episode_mappings, show_plex_state, show_problem_count
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
-from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh
+from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
 
 router = APIRouter(tags=["shows"])
 
@@ -63,23 +66,37 @@ def _show_query():
     )
 
 
+def _counted_episodes(show: Show) -> list[Episode]:
+    """Episodes a show's totals are measured against.
+
+    Driven by `Season.counted`, never by monitoring. Monitoring is about whether
+    Medialogue keeps searching for something; a season you have finished
+    collecting is normally unmonitored and must still count, or a show you fully
+    own would silently shrink from 19/19 to 9/9.
+    """
+
+    counted_seasons = {season.id for season in show.seasons if season.counted}
+    return [episode for episode in show.episodes if episode.season_id in counted_seasons]
+
 def _show_state(show: Show) -> str:
-    monitored = [episode for episode in show.episodes if episode.monitored]
+    counted = _counted_episodes(show)
     if show.identity_state.value == "conflict":
         return "Conflict"
-    if not monitored:
+    if not counted:
         return "Present" if any(episode.presence_state == PresenceState.PRESENT for episode in show.episodes) else "Missing"
-    return "Missing" if any(episode.presence_state != PresenceState.PRESENT for episode in monitored) else "Present"
+    return "Missing" if any(episode.presence_state != PresenceState.PRESENT for episode in counted) else "Present"
 
 
 async def _summary(db: AsyncSession, show: Show) -> ShowSummaryResponse:
-    present = sum(episode.presence_state == PresenceState.PRESENT for episode in show.episodes)
-    missing = sum(episode.presence_state != PresenceState.PRESENT for episode in show.episodes)
+    counted = _counted_episodes(show)
+    present = sum(episode.presence_state == PresenceState.PRESENT for episode in counted)
+    missing = sum(episode.presence_state != PresenceState.PRESENT for episode in counted)
     return ShowSummaryResponse(
         id=show.id,
         resource_id=str(show.tmdb_id or show.id),
         tmdb_id=show.tmdb_id,
         tvdb_id=show.tvdb_id,
+        tmdb_episode_group_id=show.tmdb_episode_group_id,
         title=show.title,
         year=show.year,
         monitored=show.monitored,
@@ -87,13 +104,135 @@ async def _summary(db: AsyncSession, show: Show) -> ShowSummaryResponse:
         state=_show_state(show),
         plex_state=await show_plex_state(db, show.id),
         season_count=len(show.seasons),
-        episode_count=len(show.episodes),
+        episode_count=len(counted),
         episodes_present=present,
         episodes_missing=missing,
         problem_count=await show_problem_count(db, show.id),
         poster_ref=show.poster_ref,
         revision=show.revision,
     )
+
+
+class SpecialsCountingState(BaseModel):
+    count_specials: bool
+
+
+class SpecialsCountingResult(SpecialsCountingState):
+    seasons_changed: int
+    shows_affected: int
+
+
+@router.get("/shows/specials-counting", response_model=SpecialsCountingState)
+async def get_specials_counting(_: AdminUser = Depends(require_admin)) -> SpecialsCountingState:
+    return SpecialsCountingState(count_specials=get_integration_config_store().get_count_specials())
+
+
+@router.put("/shows/specials-counting", response_model=SpecialsCountingResult)
+async def set_specials_counting(
+    payload: SpecialsCountingState,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> SpecialsCountingResult:
+    """Store the preference and apply it to Season 0 on every show.
+
+    Only the counting flag moves. Monitoring is left alone, so turning Specials
+    off does not quietly stop Medialogue searching for anything you had asked it
+    to look for.
+    """
+
+    count = bool(payload.count_specials)
+    get_integration_config_store().save_count_specials(count)
+
+    specials = (await db.scalars(select(Season).where(Season.season_number == 0))).all()
+    changed = [season for season in specials if season.counted != count]
+    for season in changed:
+        season.counted = count
+        season.revision += 1
+    if changed:
+        await create_event(
+            db,
+            "show.specials_counting_changed",
+            entity_type="library",
+            entity_id=None,
+            message=f"Specials {'counted in' if count else 'excluded from'} episode totals across {len({season.show_id for season in changed})} shows.",
+            details={"count_specials": count, "seasons_changed": len(changed)},
+        )
+    await db.commit()
+    return SpecialsCountingResult(
+        count_specials=count,
+        seasons_changed=len(changed),
+        shows_affected=len({season.show_id for season in changed}),
+    )
+
+
+class EpisodeOrderingOption(BaseModel):
+    id: str | None
+    name: str
+    type_label: str
+    season_count: int
+    episode_count: int
+    description: str | None = None
+    network: str | None = None
+    selected: bool
+
+
+@router.get("/shows/{resource_id}/episode-orderings", response_model=list[EpisodeOrderingOption])
+async def list_episode_orderings(
+    resource_id: str,
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_tmdb_client_factory),
+) -> list[EpisodeOrderingOption]:
+    """Every ordering this show can use, default first.
+
+    TMDB's default season structure is presented as an option in its own right
+    so the choice reads as one list rather than "the normal way, plus extras".
+    """
+
+    show = await resolve_show_resource(db, resource_id)
+    if show is None:
+        raise AppError("NOT_FOUND", "Show was not found.", status_code=404)
+    if show.tmdb_id is None:
+        raise AppError("TMDB_ID_REQUIRED", "This Show has no TMDB identity, so it has no alternate orderings.", status_code=409)
+
+    configuration = await get_tmdb_configuration(db)
+    if configuration is None or not configuration.enabled or not configuration.api_key:
+        raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before reading episode orderings.", status_code=409)
+
+    client = client_factory(configuration.api_key)
+    try:
+        details = await client.get_show(show.tmdb_id)
+        groups = await client.list_episode_groups(show.tmdb_id)
+    except Exception as exc:
+        raise AppError("TMDB_UNAVAILABLE", f"Could not read episode orderings: {exc}", status_code=503) from exc
+    finally:
+        await client.close()
+
+    options = [
+        EpisodeOrderingOption(
+            id=None,
+            name="TMDB default",
+            type_label="Default",
+            season_count=len(details.seasons),
+            episode_count=sum(season.episode_count for season in details.seasons),
+            description="The season structure on the TMDB record itself.",
+            selected=show.tmdb_episode_group_id is None,
+        )
+    ]
+    options.extend(
+        EpisodeOrderingOption(
+            id=group.id,
+            name=group.name,
+            type_label=group.type_label,
+            season_count=group.group_count,
+            episode_count=group.episode_count,
+            description=group.description or None,
+            network=group.network,
+            selected=show.tmdb_episode_group_id == group.id,
+        )
+        for group in groups
+    )
+    return options
 
 
 @router.get("/shows", response_model=Collection[ShowSummaryResponse])
@@ -192,6 +331,7 @@ async def update_show(
     payload: ShowUpdate,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_tmdb_client_factory),
 ) -> ShowSummaryResponse:
     show = await resolve_show_resource(db, resource_id)
     if show is None:
@@ -200,7 +340,22 @@ async def update_show(
         raise AppError("REVISION_CONFLICT", "Show changed; refresh and try again.", status_code=409)
     if payload.monitored is not None:
         show.monitored = payload.monitored
+    reorder = False
+    if payload.tmdb_episode_group_id is not None:
+        # An empty string means "back to the TMDB default".
+        selection = payload.tmdb_episode_group_id.strip() or None
+        reorder = selection != show.tmdb_episode_group_id
+        show.tmdb_episode_group_id = selection
     show.revision += 1
+    if reorder:
+        # Renumbering is not a metadata detail, so it happens here and now
+        # rather than waiting for some later refresh to quietly rearrange the
+        # library. Episodes keep their identity; only their numbers move.
+        try:
+            await sync_show_metadata(db, show, client_factory=client_factory)
+        except Exception as exc:
+            await db.rollback()
+            raise AppError("TMDB_SHOW_METADATA_FAILED", f"Could not apply the selected ordering: {exc}", status_code=503) from exc
     await db.commit()
     loaded = (await db.scalars(_show_query().where(Show.id == show.id))).unique().one()
     return await _summary(db, loaded)
@@ -243,6 +398,9 @@ async def update_season(
         raise AppError("NOT_FOUND", "Season was not found.", status_code=404)
     if payload.expected_revision is not None and payload.expected_revision != season.revision:
         raise AppError("REVISION_CONFLICT", "Season changed; refresh and try again.", status_code=409)
+    if payload.counted is not None:
+        # Counting is independent of monitoring, so this does not touch episodes.
+        season.counted = payload.counted
     if payload.monitored is not None:
         season.monitored = payload.monitored
         episodes = (await db.scalars(select(Episode).where(Episode.season_id == season.id))).all()
@@ -431,6 +589,7 @@ async def _season_responses(db: AsyncSession, show: Show) -> list[SeasonResponse
             season_number=season.season_number,
             title=season.title,
             monitored=season.monitored,
+            counted=season.counted,
             revision=season.revision,
             episode_count=len(episode_rows),
             present_count=present,

@@ -219,11 +219,24 @@ export interface Season {
   seasonNumber: number
   title?: string
   monitored: boolean
+  /** Whether this season contributes to the show's episode totals. */
+  counted: boolean
   revision: number
   episodeCount: number
   presentCount: number
   missingCount: number
   episodes: Episode[]
+}
+
+export interface EpisodeOrdering {
+  id: string | null
+  name: string
+  type_label: string
+  season_count: number
+  episode_count: number
+  description?: string
+  network?: string
+  selected: boolean
 }
 
 export interface Show {
@@ -240,6 +253,7 @@ export interface Show {
   plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
   tmdbId?: number
   tvdbId?: number
+  tmdbEpisodeGroupId?: string
   monitored?: boolean
   identityState?: string
   problemCount?: number
@@ -567,58 +581,6 @@ export interface IndexerTestResult {
   title?: string
   message?: string
 }
-
-export interface InteractiveSearchResult {
-  id: string
-  jobId: string
-  indexerId?: string
-  indexerName: string
-  mediaType: 'movies' | 'shows'
-  targetEntityType: string
-  title: string
-  size?: number
-  seeders?: number
-  publishedAt?: string
-  quality?: string
-  edition?: string
-  releaseGroup?: string
-  customFormatScore?: number
-  qualityProfileId?: string
-  qualityProfileName?: string
-  minimumQuality?: string
-  minimumQualityMet?: boolean
-  customFormatSnapshot: Record<string, unknown>
-  parser: Record<string, unknown>
-  warnings: string[]
-  selectedAt?: string
-  selectedDownloadClientId?: string
-  createdAt: string
-  expiresAt: string
-}
-
-export interface SearchIndexerStatus {
-  id: string
-  name: string
-  status: 'queued' | 'searching' | 'completed' | 'failed' | 'timeout' | string
-  results: number
-  elapsedMs?: number
-  error?: string
-}
-
-export interface InteractiveSearchJob {
-  id: string
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | string
-  target: Record<string, unknown>
-  progress: Record<string, unknown>
-  indexers: SearchIndexerStatus[]
-  results: InteractiveSearchResult[]
-  resultTotal: number
-  error?: Record<string, unknown>
-  createdAt: string
-  startedAt?: string
-  finishedAt?: string
-}
-
 
 export interface TMDBMovieLookup {
   tmdbId: number

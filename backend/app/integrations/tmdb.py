@@ -49,6 +49,51 @@ class TMDBEpisodeMetadata:
     overview: str | None = None
 
 
+# TMDB documents these seven groupings. The label is what an operator picks
+# from, so it is resolved here rather than left as a bare integer in the UI.
+EPISODE_GROUP_TYPES: dict[int, str] = {
+    1: "Original air date",
+    2: "Absolute",
+    3: "DVD",
+    4: "Digital",
+    5: "Story arc",
+    6: "Production",
+    7: "TV",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class TMDBEpisodeGroupSummary:
+    """One available ordering, without its episodes."""
+
+    id: str
+    name: str
+    type: int
+    group_count: int
+    episode_count: int
+    description: str | None = None
+    network: str | None = None
+
+    @property
+    def type_label(self) -> str:
+        return EPISODE_GROUP_TYPES.get(self.type, "Other")
+
+
+@dataclass(frozen=True, slots=True)
+class TMDBEpisodeGroup:
+    """A full ordering: seasons in order, each holding episodes in order.
+
+    The episodes are the same TMDB episodes as the default structure — the same
+    ``tmdb_id`` values — just arranged differently. That is what makes switching
+    an ordering a renumbering rather than a rebuild.
+    """
+
+    id: str
+    name: str
+    type: int
+    seasons: tuple[tuple[int, str | None, tuple[TMDBEpisodeMetadata, ...]], ...]
+
+
 @dataclass(frozen=True, slots=True)
 class TMDBShowDetails:
     tmdb_id: int
@@ -212,6 +257,61 @@ class TMDBClient:
                 )
             )
         return sorted(episodes, key=lambda item: item.episode_number)
+
+    async def list_episode_groups(self, tmdb_id: int) -> list[TMDBEpisodeGroupSummary]:
+        payload = (await self._get(f"/tv/{tmdb_id}/episode_groups")).json()
+        groups: list[TMDBEpisodeGroupSummary] = []
+        for item in payload.get("results", []):
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                continue
+            network = item.get("network")
+            groups.append(
+                TMDBEpisodeGroupSummary(
+                    id=item["id"],
+                    name=item.get("name") if isinstance(item.get("name"), str) else "Unnamed group",
+                    type=int(item.get("type") or 0),
+                    group_count=int(item.get("group_count") or 0),
+                    episode_count=int(item.get("episode_count") or 0),
+                    description=item.get("description") if isinstance(item.get("description"), str) else None,
+                    network=network.get("name") if isinstance(network, dict) and isinstance(network.get("name"), str) else None,
+                )
+            )
+        return groups
+
+    async def get_episode_group(self, group_id: str) -> TMDBEpisodeGroup:
+        payload = (await self._get(f"/tv/episode_group/{group_id}")).json()
+        seasons: list[tuple[int, str | None, tuple[TMDBEpisodeMetadata, ...]]] = []
+        raw_groups = [item for item in payload.get("groups", []) if isinstance(item, dict)]
+        # `order` is TMDB's own index for the group; fall back to position so a
+        # group missing the field still produces a stable, contiguous structure.
+        raw_groups.sort(key=lambda item: item.get("order") if isinstance(item.get("order"), int) else 0)
+        for index, group in enumerate(raw_groups):
+            episodes: list[TMDBEpisodeMetadata] = []
+            raw_episodes = [item for item in group.get("episodes", []) if isinstance(item, dict)]
+            raw_episodes.sort(key=lambda item: item.get("order") if isinstance(item.get("order"), int) else 0)
+            season_number = group.get("order") if isinstance(group.get("order"), int) else index + 1
+            for position, item in enumerate(raw_episodes, start=1):
+                episodes.append(
+                    TMDBEpisodeMetadata(
+                        tmdb_id=int(item["id"]) if isinstance(item.get("id"), int) else None,
+                        season_number=season_number,
+                        episode_number=position,
+                        title=item.get("name") if isinstance(item.get("name"), str) else None,
+                        air_date=_date(item.get("air_date")),
+                        overview=item.get("overview") if isinstance(item.get("overview"), str) else None,
+                    )
+                )
+            seasons.append((
+                season_number,
+                group.get("name") if isinstance(group.get("name"), str) else None,
+                tuple(episodes),
+            ))
+        return TMDBEpisodeGroup(
+            id=str(payload.get("id") or group_id),
+            name=payload.get("name") if isinstance(payload.get("name"), str) else "Unnamed group",
+            type=int(payload.get("type") or 0),
+            seasons=tuple(seasons),
+        )
 
     async def _get(self, path: str, **kwargs: object) -> httpx.Response:
         response = await self._client.get(path, **kwargs)
