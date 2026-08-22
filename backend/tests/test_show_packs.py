@@ -202,6 +202,44 @@ def test_filesystem_season_pack_uses_one_release_for_many_episode_files(client: 
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_multi_season_container_accepts_member_from_nested_season_folder(client: TestClient) -> None:
+    root = Path.cwd() / f"multi-season-container-{uuid.uuid4().hex}"
+    collection = root / "Dollface.S01-S04.1080p.WEB-DL.H.264-HONE"
+    season_one = collection / "S01"
+    season_four = collection / "S04"
+    season_one.mkdir(parents=True)
+    season_four.mkdir(parents=True)
+    for number in (1, 2):
+        (season_one / f"Dollface.S01E{number:02d}.1080p.WEB-DL.H.264-HONE.mkv").write_bytes(b"episode")
+    episode_path = season_four / "Dollface.S04E01.1080p.WEB-DL.H.264-HONE.mkv"
+    episode_path.write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        show = detail(client)
+        season = next(item for item in show["seasons"] if item["season_number"] == 4)
+        episode = next(item for item in season["episodes"] if item["episode_number"] == 1)
+        assert episode["presence_state"] == "present"
+        assert len(episode["media"]) == 1
+        assert Path(episode["media"][0]["path"]).resolve() == episode_path.resolve()
+        # A cross-season collection is not silently collapsed into an S01 pack.
+        assert episode["media"][0]["release_scope"] == "episode"
+        season_one_detail = next(item for item in show["seasons"] if item["season_number"] == 1)
+        assert {
+            media["release_scope"]
+            for item in season_one_detail["episodes"][:2]
+            for media in item["media"]
+        } == {"episode"}
+        assert client.get(
+            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
+        ).json()["total"] == 0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_explicit_member_episodes_win_over_a_conflicting_season_container(client: TestClient) -> None:
     root = Path.cwd() / f"container-mismatch-{uuid.uuid4().hex}"
     wrong_pack = root / "Dollface S02 1080p DSNP WEB-DL H.264-WRONG"

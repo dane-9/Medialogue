@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterator
 
 
-PARSER_VERSION = "1.0.0"
+PARSER_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +26,10 @@ class IdentityInfo:
     season: int | None = None
     episodes: tuple[int, ...] = ()
     episode_title: str | None = None
+    # A release may cover more than one season (for example ``S01-S04``).
+    # ``season`` remains the primary/first season for compatibility, while
+    # callers making containment decisions must use this complete set.
+    seasons: tuple[int, ...] = ()
 
     # Friendly aliases used by callers that do not need the word candidate.
     @property
@@ -45,12 +49,17 @@ class IdentityInfo:
         return self.season
 
     @property
+    def season_numbers(self) -> tuple[int, ...]:
+        return self.seasons or ((self.season,) if self.season is not None else ())
+
+    @property
     def is_tv(self) -> bool:
         return self.season is not None
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["episodes"] = list(self.episodes)
+        value["seasons"] = list(self.season_numbers)
         value["title"] = self.title_candidate
         return value
 

@@ -308,6 +308,30 @@ def _edition_from_name(normalized: str) -> tuple[str | None, str | None]:
 _SEASON_NUMBER = r"(?:\d{1,2}|(?:19|20)\d{2})"
 
 
+def _extract_season_numbers(normalized: str, primary_season: int | None) -> tuple[int, ...]:
+    """Return every season explicitly covered by a release name.
+
+    The legacy ``season`` identity remains the first season for compatibility,
+    but a range such as S01-S04 is not semantically a Season 1 pack.
+    """
+
+    season_range = re.search(
+        rf"(?<![A-Za-z0-9])(?:S|Seasons?[\s._-]*)(?P<start>{_SEASON_NUMBER})"
+        rf"\s*(?:-|–|\bto\b|\bthrough\b)\s*"
+        rf"(?:S|Seasons?[\s._-]*)?(?P<end>{_SEASON_NUMBER})(?![A-Za-z0-9])",
+        normalized,
+        re.IGNORECASE,
+    )
+    if season_range:
+        start = int(season_range.group("start"))
+        end = int(season_range.group("end"))
+        # Reject reversed or implausibly broad ranges instead of manufacturing
+        # hundreds of season identities from malformed release text.
+        if start <= end and end - start <= 100:
+            return tuple(range(start, end + 1))
+    return (primary_season,) if primary_season is not None else ()
+
+
 def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], int | None, int | None]:
     """Return season, episode numbers, and marker start/end.
 
@@ -782,7 +806,14 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
             # Technical suffixes are sometimes separated only by a provider
             # token; remove a trailing release-group artefact if present.
             episode_title = episode_title.strip(" ._-([") or None
-        identity = IdentityInfo(title_part or None, identity_year, season, episodes, episode_title or None)
+        identity = IdentityInfo(
+            title_part or None,
+            identity_year,
+            season,
+            episodes,
+            episode_title or None,
+            seasons=_extract_season_numbers(normalized, season),
+        )
         boundary_for_technical = marker_end
     else:
         boundary_for_technical = 0

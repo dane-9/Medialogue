@@ -1043,6 +1043,11 @@ async def associate_incoming_torrent(
         season_number = parsed.identity.season
         if not title or season_number is None:
             return None
+        # ShowRelease has a single Season foreign key. A multi-season torrent
+        # (S01-S04) cannot safely be represented as an incoming Season 1 pack;
+        # its individual files will be associated when they exist and scan.
+        if len(parsed.identity.season_numbers) > 1:
+            return None
         statement = select(Show).where(func.lower(Show.title) == title.casefold())
         if parsed.identity.year is not None:
             statement = statement.where((Show.year == parsed.identity.year) | Show.year.is_(None))
