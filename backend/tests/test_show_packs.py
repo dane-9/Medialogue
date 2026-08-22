@@ -420,6 +420,70 @@ def test_duplicate_episode_files_are_flagged_and_left_untouched(client: TestClie
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_recheck_clears_episode_duplicate_immediately_after_loser_is_deleted(client: TestClient) -> None:
+    root = Path.cwd() / f"recheck-duplicate-episode-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    show_dir.mkdir(parents=True)
+    winner = show_dir / "Dollface S01E01 2160p DSNP WEB-DL H.265-HONE.mkv"
+    loser = show_dir / "Dollface S01E01 1080p DSNP WEB-DL H.264-OTHER.mkv"
+    winner.write_bytes(b"winner")
+    loser.write_bytes(b"loser")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+        problems = client.get("/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE").json()
+        assert problems["total"] == 1
+
+        loser.unlink()
+        requested = client.post(
+            f"/api/v1/problems/{problems['items'][0]['id']}/resolve",
+            headers=headers,
+            json={"action": "recheck", "payload": {}},
+        )
+        assert requested.status_code == 200, requested.text
+        parent = wait_job(client, requested.json()["resolution"]["recheck_parent_job_id"])
+        assert parent["status"] == "completed", parent
+        assert parent["summary"]["condition_cleared"] is True
+        assert parent["summary"]["child_job_ids"] == []
+
+        remaining = client.get("/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE&status=open").json()
+        assert remaining["total"] == 0
+        assert winner.exists() and not loser.exists()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_recheck_that_still_needs_a_scan_observes_child_job_completion(client: TestClient) -> None:
+    root = Path.cwd() / f"recheck-existing-duplicate-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    show_dir.mkdir(parents=True)
+    (show_dir / "Dollface S01E01 2160p DSNP WEB-DL H.265-HONE.mkv").write_bytes(b"winner")
+    (show_dir / "Dollface S01E01 1080p DSNP WEB-DL H.264-OTHER.mkv").write_bytes(b"loser")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+        problem = client.get(
+            "/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE&status=open"
+        ).json()["items"][0]
+
+        requested = client.post(
+            f"/api/v1/problems/{problem['id']}/resolve",
+            headers=headers,
+            json={"action": "recheck", "payload": {}},
+        )
+        assert requested.status_code == 200, requested.text
+        parent = wait_job(client, requested.json()["resolution"]["recheck_parent_job_id"])
+        assert parent["status"] == "completed", parent
+        assert parent["summary"]["condition_cleared"] is False
+        assert len(parent["summary"]["child_job_ids"]) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_renamed_episode_does_not_create_false_physical_duplicate_during_grace(client: TestClient) -> None:
     root = Path.cwd() / f"renamed-episode-{uuid.uuid4().hex}"
     show_dir = root / "Dollface 2019"
