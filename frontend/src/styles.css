@@ -742,7 +742,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 /* Callouts — one shape, four tones. Replaces settings-note,
    cf-banner, problem-summary, archive-callout, setup-return and friends. */
-.settings-note, .cf-banner, .problem-summary, .archive-callout,
+.settings-note, .drawer-note, .cf-banner, .problem-summary, .archive-callout,
 .reconciliation-banner, .setup-return, .problem-evidence-note, .cf-definition-note {
   display: flex;
   align-items: center;
@@ -755,7 +755,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font-size: var(--t-sm);
   line-height: 1.5;
 }
-.settings-note svg, .cf-banner svg, .problem-summary svg,
+.settings-note svg, .drawer-note svg, .cf-banner svg, .problem-summary svg,
 .archive-callout svg, .reconciliation-banner svg { flex: none; color: var(--faint); }
 .settings-note.error-note, .cf-banner-error, .reconciliation-banner-red {
   color: var(--err);
@@ -1575,14 +1575,38 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .tmdb-selection-bar > span { color: var(--muted); font-size: var(--t-sm); }
 
 /* --------------------------------------------------------------------------
-   Background jobs — rendered at the top of Event History, which is the single
-   destination for both running and completed work.
+   Jobs drawer — background work, reachable from anywhere via the topbar.
    -------------------------------------------------------------------------- */
 
-.active-jobs { margin-bottom: var(--s4); }
-.active-jobs .settings-note { margin: var(--s4) var(--s4) 0; }
-.active-jobs .job-item { padding: var(--s3) var(--s4); }
-.job-item { padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
+.drawer-backdrop { position: fixed; z-index: 40; inset: 0; background: rgba(3, 3, 4, .6); }
+.jobs-drawer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  width: 390px;
+  max-width: 100%;
+  flex-direction: column;
+  border-left: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, .45);
+  animation: drawer-in .16s ease-out;
+}
+@keyframes drawer-in { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.drawer-header h2 { margin-top: 2px; font: 600 var(--t-xl)/1.25 var(--sans); }
+.drawer-note { margin: var(--s4) var(--s4) 0; }
+.job-list { flex: 1; padding: 0 var(--s4); overflow: auto; }
+.drawer-footer { padding: var(--s4); border-top: 1px solid var(--line); }
+.drawer-footer .button { width: 100%; justify-content: flex-start; }
+.job-item { padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+.job-item:last-child { border-bottom: 0; }
 .job-item:last-child { border-bottom: 0; }
 .job-item-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
 .job-state { display: inline-flex; align-items: center; gap: var(--s1); color: var(--muted); font: 500 var(--t-micro) var(--mono); text-transform: uppercase; }

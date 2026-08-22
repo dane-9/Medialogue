@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ActiveJobs } from './components/ActiveJobs'
 import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
 import { Icon } from './components/Icon'
@@ -760,7 +759,6 @@ export function EventHistoryPage() {
   }
 
   return <Page title="Event History" subtitle="Durable state changes and decisions. High-frequency progress stays live-only and does not flood this history." action={<div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void load()}>Refresh</Button><Button variant="danger" onClick={() => void clearHistory()}>Clear history</Button></div>}>
-    <ActiveJobs />
     <div className="toolbar event-toolbar">
       <Select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">All severities</option><option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option></Select>
       <Select value={entityType} onChange={(event) => setEntityType(event.target.value)}><option value="">All entities</option><option value="movie">Movies</option><option value="show">Shows</option><option value="episode">Episodes</option><option value="movie_release">Movie releases</option><option value="show_release">Show releases</option><option value="torrent">Torrents</option><option value="storage_root">Storage roots</option><option value="download_client">Download clients</option><option value="tag">Tags</option><option value="bulk_operation">Bulk operations</option></Select>
