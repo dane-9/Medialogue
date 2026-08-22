@@ -168,6 +168,26 @@ async def _quality_for_parse(db: AsyncSession, parsed: Any) -> QualityDefinition
     return await db.scalar(select(QualityDefinition).where(QualityDefinition.name == parsed.quality.canonical))
 
 
+def _release_matches_member_identity(
+    release: ShowRelease,
+    *,
+    show_id: UUID,
+    season_id: UUID,
+    season_number: int,
+    episode_numbers: tuple[int, ...],
+) -> bool:
+    """Prevent an old/shared release from being rewritten around a new member."""
+
+    if release.show_id != show_id or release.season_id != season_id:
+        return False
+    release_identity = parse_release_name(release.raw_release_name).identity
+    if release_identity.season is not None and release_identity.season != season_number:
+        return False
+    if release_identity.episodes:
+        return tuple(dict.fromkeys(release_identity.episodes)) == episode_numbers
+    return True
+
+
 async def _prepare_show_release(
     db: AsyncSession,
     *,
@@ -501,6 +521,14 @@ async def reconcile_show_directory(
     # Strong season-pack evidence comes from the torrent/folder release name.
     # For a filesystem-only discovery, require at least two episode files in
     # that same season so a generic Show folder is not collapsed into one pack.
+    container_parse = next(
+        (
+            candidate
+            for candidate in (torrent_parse, folder_parse)
+            if candidate is not None and candidate.identity.season is not None
+        ),
+        None,
+    )
     pack_parse = None
     for candidate in (torrent_parse, folder_parse):
         if candidate is not None and candidate.identity.season is not None and not candidate.identity.episodes:
@@ -520,9 +548,27 @@ async def reconcile_show_directory(
     if pack_parse is not None:
         pack_season = await _ensure_season(db, show, pack_parse.identity.season)
         existing_pack = incoming_release if incoming_release and incoming_release.release_scope == ReleaseScope.SEASON_PACK else None
+        if existing_pack is not None and not _release_matches_member_identity(
+            existing_pack,
+            show_id=show.id,
+            season_id=pack_season.id,
+            season_number=pack_season.season_number,
+            episode_numbers=(),
+        ):
+            existing_pack = None
         if existing_pack is None and directory.show_release_id:
             candidate = await db.get(ShowRelease, directory.show_release_id)
-            if candidate is not None and candidate.release_scope == ReleaseScope.SEASON_PACK and candidate.show_id == show.id:
+            if (
+                candidate is not None
+                and candidate.release_scope == ReleaseScope.SEASON_PACK
+                and _release_matches_member_identity(
+                    candidate,
+                    show_id=show.id,
+                    season_id=pack_season.id,
+                    season_number=pack_season.season_number,
+                    episode_numbers=(),
+                )
+            ):
                 existing_pack = candidate
         pack_was_new = existing_pack is None
         pack_release = await _prepare_show_release(
@@ -570,6 +616,7 @@ async def reconcile_show_directory(
             media_file.missing_since = None
             media_file.missing_check_count = 0
             continue
+        await resolve_problem(db, "EPISODE_CONTAINER_MISMATCH", "media_file", media_file.id)
         if not media_file.exists:
             continue
         if media_file.missing_since is None:
@@ -618,6 +665,62 @@ async def reconcile_show_directory(
             parse_snapshot=parsed.to_dict(),
             parser_version=parsed.parser_version,
         ))
+
+        explicit_member_season = parsed.identity.season
+        explicit_member_episodes = tuple(dict.fromkeys(parsed.identity.episodes))
+        belongs_to_pack = torrent_member_paths is None or relative_path in torrent_member_paths
+        container_episodes = (
+            tuple(dict.fromkeys(container_parse.identity.episodes))
+            if container_parse is not None
+            else ()
+        )
+        season_disagrees = bool(
+            container_parse is not None
+            and explicit_member_season is not None
+            and explicit_member_season != container_parse.identity.season
+        )
+        episodes_disagree = bool(
+            container_parse is not None
+            and explicit_member_season == container_parse.identity.season
+            and explicit_member_episodes
+            and container_episodes
+            and not set(explicit_member_episodes).issubset(container_episodes)
+        )
+        container_mismatch = bool(
+            container_parse is not None
+            and belongs_to_pack
+            and (season_disagrees or episodes_disagree)
+        )
+        if container_mismatch:
+            container_name = torrent.name if torrent is not None else observation.name
+            await open_problem(
+                db,
+                reason="EPISODE_CONTAINER_MISMATCH",
+                entity_type="media_file",
+                entity_id=media_file.id,
+                message=(
+                    f"{Path(relative_path).name} identifies "
+                    f"S{explicit_member_season:02d}"
+                    f"{''.join(f'E{number:02d}' for number in explicit_member_episodes)}, "
+                    f"but its containing release identifies "
+                    f"S{container_parse.identity.season:02d}"
+                    f"{''.join(f'E{number:02d}' for number in container_episodes)}."
+                ),
+                details={
+                    "path": str(Path(observation.path) / relative_path),
+                    "filename": Path(relative_path).name,
+                    "member_season": explicit_member_season,
+                    "member_episode_numbers": list(parsed.identity.episodes),
+                    "container_season": container_parse.identity.season,
+                    "container_episode_numbers": list(container_episodes),
+                    "container_name": container_name,
+                    "container_source": "torrent" if torrent is not None and container_parse is torrent_parse else "folder",
+                    "show_release_id": str(pack_release.id) if pack_release is not None else None,
+                },
+                severity=Severity.WARNING,
+            )
+        else:
+            await resolve_problem(db, "EPISODE_CONTAINER_MISMATCH", "media_file", media_file.id)
 
         # A manual mapping is authoritative for the entire file, including
         # episode numbers intentionally removed from the parser-derived set.
@@ -669,6 +772,7 @@ async def reconcile_show_directory(
         if (
             pack_release is not None
             and pack_season is not None
+            and not container_mismatch
             and season_number == pack_season.season_number
             and (torrent_member_paths is None or relative_path in torrent_member_paths)
         ):
@@ -676,22 +780,34 @@ async def reconcile_show_directory(
         else:
             existing_release_ids = {mapping.show_release_id for mapping in media_file.episode_maps if mapping.show_release_id}
             if len(existing_release_ids) == 1:
-                release = await db.get(ShowRelease, next(iter(existing_release_ids)))
+                candidate = await db.get(ShowRelease, next(iter(existing_release_ids)))
+                if candidate is not None and _release_matches_member_identity(
+                    candidate,
+                    show_id=show.id,
+                    season_id=season.id,
+                    season_number=season_number,
+                    episode_numbers=episode_numbers,
+                ):
+                    release = candidate
             if release is None and incoming_release is not None and incoming_identity:
                 incoming_season = incoming_identity.get("season")
                 incoming_episodes = tuple(incoming_identity.get("episodes") or ())
                 if incoming_season == season_number and tuple(episode_numbers) == incoming_episodes:
                     release = incoming_release
             scope = ReleaseScope.MULTI_EPISODE if len(episode_numbers) > 1 else ReleaseScope.EPISODE
-            release = await _prepare_show_release(
-                db,
-                show=show,
-                season=season,
-                raw_release_name=(torrent.name if torrent is not None and release is incoming_release else Path(relative_path).stem),
-                scope=scope,
-                parsed=(torrent_parse if torrent is not None and release is incoming_release and torrent_parse is not None else parsed),
-                existing=release,
-            )
+            # A compatible existing season pack remains the member's release;
+            # never collapse or rewrite that shared container as an episode
+            # release merely because a conflicting torrent was observed later.
+            if release is None or release.release_scope != ReleaseScope.SEASON_PACK:
+                release = await _prepare_show_release(
+                    db,
+                    show=show,
+                    season=season,
+                    raw_release_name=(torrent.name if torrent is not None and release is incoming_release else Path(relative_path).stem),
+                    scope=scope,
+                    parsed=(torrent_parse if torrent is not None and release is incoming_release and torrent_parse is not None else parsed),
+                    existing=release,
+                )
             if torrent is not None and release is incoming_release:
                 link = await db.scalar(
                     select(ShowReleaseTorrent).where(
@@ -710,7 +826,7 @@ async def reconcile_show_directory(
         touched_release_ids.add(release.id)
 
         unresolved_numbers: list[int] = []
-        newly_mapped = 0
+        resolved_episodes: list[Episode] = []
         for episode_number in episode_numbers:
             episode = await _ensure_episode_for_mapping(
                 db,
@@ -722,6 +838,27 @@ async def reconcile_show_directory(
             if episode is None:
                 unresolved_numbers.append(episode_number)
                 continue
+            resolved_episodes.append(episode)
+
+        # A confident current parse is authoritative over older automatic
+        # parser mappings for this same physical file. Previous builds only
+        # added mappings, so a corrected parse (for example S20E04 on a file
+        # historically mapped to E20) left both rows behind and manufactured a
+        # duplicate. Manual mappings are handled above and are never removed.
+        if not unresolved_numbers:
+            desired_episode_ids = {episode.id for episode in resolved_episodes}
+            for stale_mapping in list(media_file.episode_maps):
+                if stale_mapping.manual_override or stale_mapping.episode_id in desired_episode_ids:
+                    continue
+                touched_episode_ids.add(stale_mapping.episode_id)
+                if stale_mapping.show_release_id:
+                    touched_release_ids.add(stale_mapping.show_release_id)
+                await db.delete(stale_mapping)
+            await db.flush()
+
+        newly_mapped = 0
+        for episode in resolved_episodes:
+            episode_number = episode.episode_number
             touched_episode_ids.add(episode.id)
             mapping = await db.scalar(
                 select(EpisodeMediaMap).where(
@@ -947,6 +1084,8 @@ async def mark_absent_show_directories(
             directory.missing_since = None
             directory.missing_check_count = 0
             continue
+        for media_file in directory.files:
+            await resolve_problem(db, "EPISODE_CONTAINER_MISMATCH", "media_file", media_file.id)
         if not directory.exists:
             continue
         if directory.missing_since is None:
