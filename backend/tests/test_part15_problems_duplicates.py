@@ -9,7 +9,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api import duplicates as duplicates_api
@@ -22,6 +22,7 @@ from app.integrations.tmdb import TMDBMovieMatch
 from app.main import create_app
 from app.models.domain import (
     AccessMode,
+    AssociationType,
     DownloadClient,
     Episode,
     EpisodeMediaMap,
@@ -39,6 +40,8 @@ from app.models.domain import (
     ReleaseState,
     Season,
     Show,
+    ShowRelease,
+    ShowReleaseTorrent,
     Severity,
     SourceType,
     StorageRoot,
@@ -46,7 +49,7 @@ from app.models.domain import (
     TorrentArchiveState,
     TorrentClientObservation,
 )
-from app.services.reconciliation import mark_absent_known_directories
+from app.services.reconciliation import mark_absent_known_directories, reconcile_torrent_disagreements
 
 
 @pytest.fixture
@@ -405,6 +408,80 @@ def test_episode_winner_selection_keeps_physical_duplicate_open(client: TestClie
         assert db_run(mapping_state) == {str(winner_id): False, other_id: True}
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_qbit_only_attached_releases_become_historical_without_path_problems(client: TestClient) -> None:
+    async def exercise(db):
+        movie = Movie(title="Gone Movie", sort_title="gone movie", year=2020, identity_state=IdentityState.MATCHED)
+        show = Show(title="Gone Show", year=2020)
+        movie_torrent = Torrent(info_hash="a" * 40, name="Gone.Movie.2020")
+        show_torrent = Torrent(info_hash="b" * 40, name="Gone.Show.S01")
+        db.add_all([movie, show, movie_torrent, show_torrent])
+        await db.flush()
+
+        movie_release = MovieRelease(
+            movie_id=movie.id,
+            raw_release_name=movie_torrent.name,
+            release_state=ReleaseState.MISSING,
+        )
+        season = Season(show_id=show.id, season_number=1)
+        db.add_all([movie_release, season])
+        await db.flush()
+        show_release = ShowRelease(
+            show_id=show.id,
+            season_id=season.id,
+            raw_release_name=show_torrent.name,
+            release_state=ReleaseState.MISSING,
+        )
+        db.add(show_release)
+        await db.flush()
+
+        movie_link = MovieReleaseTorrent(
+            movie_release_id=movie_release.id,
+            torrent_id=movie_torrent.id,
+            association_type=AssociationType.ATTACHED,
+        )
+        show_link = ShowReleaseTorrent(
+            show_release_id=show_release.id,
+            torrent_id=show_torrent.id,
+            association_type=AssociationType.ATTACHED,
+        )
+        db.add_all([
+            movie_link,
+            show_link,
+            Problem(
+                reason="TORRENT_PATH_NOT_FOUND",
+                entity_type="movie_release",
+                entity_id=movie_release.id,
+                message="stale movie warning",
+            ),
+            Problem(
+                reason="TORRENT_PATH_NOT_FOUND",
+                entity_type="show_release",
+                entity_id=show_release.id,
+                message="stale show warning",
+            ),
+        ])
+        await db.flush()
+
+        await reconcile_torrent_disagreements(db, movie_torrent, qbit_present=True)
+        await reconcile_torrent_disagreements(db, show_torrent, qbit_present=True)
+        await db.flush()
+
+        open_path_problems = int(
+            await db.scalar(
+                select(func.count())
+                .select_from(Problem)
+                .where(Problem.reason == "TORRENT_PATH_NOT_FOUND", Problem.status == ProblemStatus.OPEN)
+            )
+            or 0
+        )
+        return movie_link.association_type, show_link.association_type, open_path_problems
+
+    movie_state, show_state, open_count = db_run(exercise)
+    assert movie_state is AssociationType.HISTORICAL
+    assert show_state is AssociationType.HISTORICAL
+    assert open_count == 0
 
 
 class ManualTMDBClient:

@@ -1537,16 +1537,26 @@ async def reconcile_torrent_disagreements(
         release = await db.get(MovieRelease, link.movie_release_id)
         if release is None:
             continue
+        if link.association_type == AssociationType.HISTORICAL:
+            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "movie_release", release.id)
+            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "movie_release", release.id)
+            continue
         directories = (await db.scalars(select(MediaDirectory).where(MediaDirectory.movie_release_id == release.id))).all()
         media_present = any(directory.exists for directory in directories)
+        if not media_present:
+            # The filesystem is authoritative for established library media.
+            # A qBittorrent-only remnant is historical evidence, not an
+            # actionable library fault. Active/incoming completion failures are
+            # handled earlier by finalize_completed_torrent on the Torrent.
+            link.association_type = AssociationType.HISTORICAL
+            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "movie_release", release.id)
+            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "movie_release", release.id)
+            continue
         reason = None
         message = ""
         if qbit_present is False and media_present:
             reason = "TORRENT_REMOVED_EXTERNALLY"
             message = "The attached media is present but its qBittorrent torrent was removed externally."
-        elif qbit_present is True and not media_present:
-            reason = "TORRENT_PATH_NOT_FOUND"
-            message = "qBittorrent still reports the torrent, but its attached media path is missing."
         if reason is not None:
             alternate = "TORRENT_PATH_NOT_FOUND" if reason == "TORRENT_REMOVED_EXTERNALLY" else "TORRENT_REMOVED_EXTERNALLY"
             await resolve_problem(db, alternate, "movie_release", release.id)
@@ -1583,6 +1593,10 @@ async def reconcile_torrent_disagreements(
         release = await db.get(ShowRelease, link.show_release_id)
         if release is None:
             continue
+        if link.association_type == AssociationType.HISTORICAL:
+            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "show_release", release.id)
+            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "show_release", release.id)
+            continue
         media_present = bool(
             await db.scalar(
                 select(func.count())
@@ -1599,14 +1613,16 @@ async def reconcile_torrent_disagreements(
                 .where(EpisodeMediaMap.show_release_id == release.id)
             )
         ).all()
+        if not media_present:
+            link.association_type = AssociationType.HISTORICAL
+            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "show_release", release.id)
+            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "show_release", release.id)
+            continue
         reason = None
         message = ""
         if qbit_present is False and media_present:
             reason = "TORRENT_REMOVED_EXTERNALLY"
             message = "The Show media is present but its qBittorrent torrent was removed externally."
-        elif qbit_present is True and not media_present:
-            reason = "TORRENT_PATH_NOT_FOUND"
-            message = "qBittorrent still reports the Show torrent, but none of its mapped media files are present."
         if reason is not None:
             alternate = "TORRENT_PATH_NOT_FOUND" if reason == "TORRENT_REMOVED_EXTERNALLY" else "TORRENT_REMOVED_EXTERNALLY"
             await resolve_problem(db, alternate, "show_release", release.id)
