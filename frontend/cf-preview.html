@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Medialogue — Custom Formats</title>
+<link rel="stylesheet" href="/src/styles.css" />
+<style>
+  /* Preview harness only. Everything else is the real stylesheet. */
+  .pv-bar { position: fixed; z-index: 120; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+  .pv-bar strong { font-size: 12px; margin-right: 8px; color: var(--faint); font-family: var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+  .pv-bar .pv-hint { margin-left: auto; color: var(--faint); font-size: 11px; }
+  .page-content { padding-bottom: 72px; }
+</style>
+</head>
+<body>
+<svg style="display:none">
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+</svg>
+<script>
+function ic(n,s){return '<svg width="'+s+'" height="'+s+'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-'+n+'"/></svg>'}
+</script>
+
+<div class="app-shell">
+  <main class="main-area" style="margin-left:0">
+    <div class="page-content">
+      <div class="page">
+        <div class="page-heading">
+          <div class="heading-copy">
+            <div class="eyebrow">MEDIALOGUE / CUSTOM FORMATS</div>
+            <h1>Custom Formats</h1>
+            <p>Explainable release matching rules. Scores belong to Quality Profiles, never to a format itself.</p>
+          </div>
+          <div class="heading-actions">
+            <button class="button button-ghost" id="b-import"></button>
+            <button class="button button-ghost" id="b-export"></button>
+            <button class="button button-primary" id="b-new"></button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-field"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#i-search"/></svg><input class="input" id="filter" placeholder="Filter formats and conditions…" /></div>
+          <div class="toolbar-spacer"></div>
+          <span class="selection-count" id="count">5 formats</span>
+        </div>
+
+        <div class="cf-card-grid" id="grid"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+
+<div class="pv-bar">
+  <strong>Custom Formats</strong>
+  <span class="pv-hint">Click any card to open the editor · Esc or the backdrop closes it</span>
+</div>
+
+<script>
+const FORMATS = [
+  { name: 'Remux Tier', desc: 'Untouched disc remuxes — highest fidelity, largest files.', on: true, scope: 'Movies & Shows', profiles: 3,
+    conds: [ {t:'Release Title', v:'\\b(remux|bdremux)\\b', req:true, rx:true}, {t:'Source', v:'Bluray', req:true}, {t:'Resolution', v:'2160p'} ] },
+  { name: 'HDR10+ / Dolby Vision', desc: 'Wide colour formats worth a bump over plain HDR10.', on: true, scope: 'Movies & Shows', profiles: 2,
+    conds: [ {t:'HDR Type', v:'DV'}, {t:'HDR Type', v:'HDR10+'} ] },
+  { name: 'Atmos / TrueHD', desc: 'Object-based audio tracks.', on: true, scope: 'Movies', profiles: 2,
+    conds: [ {t:'Audio Codec', v:'TrueHD'}, {t:'Release Title', v:'\\batmos\\b', rx:true} ] },
+  { name: 'Low Quality Groups', desc: 'Groups that consistently ship re-encodes claiming to be sources.', on: true, scope: 'Movies & Shows', profiles: 4,
+    conds: [ {t:'Release Group', v:'YIFY', neg:true}, {t:'Release Group', v:'RARBG', neg:true}, {t:'Release Group', v:'PSA', neg:true}, {t:'Release Group', v:'GalaxyRG', neg:true}, {t:'Release Group', v:'Tigole', neg:true} ] },
+  { name: 'Upscaled', desc: 'Fake 4K — 1080p masters resized up.', on: false, scope: 'Movies & Shows', profiles: 1,
+    conds: [ {t:'Release Title', v:'\\b(upscal|ai.?enhanc)', rx:true, neg:true}, {t:'Resolution', v:'2160p'} ] },
+];
+
+function chip(c) {
+  return '<span class="cf-condition-chip">' + (c.neg ? '<em>not</em>' : '') + c.t + '<code>' + (c.v || '—') + '</code></span>';
+}
+function card(f, i) {
+  const shown = f.conds.slice(0, 4).map(chip).join('');
+  const more = f.conds.length > 4 ? '<span class="cf-condition-chip cf-condition-more">+' + (f.conds.length - 4) + ' more</span>' : '';
+  return '<button class="cf-card' + (f.on ? '' : ' cf-card-off') + '" data-i="' + i + '">'
+    + '<div class="cf-card-head"><strong>' + f.name + '</strong><span class="badge badge-' + (f.on ? 'green' : 'neutral') + '"><span class="badge-dot"></span>' + (f.on ? 'On' : 'Off') + '</span></div>'
+    + '<p class="cf-card-description">' + f.desc + '</p>'
+    + '<div class="cf-card-conditions">' + shown + more + '</div>'
+    + '<div class="cf-card-foot"><span>' + f.scope + '</span><span>' + f.conds.length + ' condition' + (f.conds.length === 1 ? '' : 's') + '</span><span>' + f.profiles + ' profile' + (f.profiles === 1 ? '' : 's') + '</span></div>'
+    + '</button>';
+}
+function addCard() {
+  return '<button class="cf-card cf-card-add" id="add">' + ic('plus', 22) + '<strong>New custom format</strong><span>Define a new matching rule</span></button>';
+}
+function render() {
+  const term = (document.getElementById('filter').value || '').toLowerCase();
+  const visible = FORMATS.map((f, i) => [f, i]).filter(([f]) =>
+    !term || f.name.toLowerCase().includes(term) || f.desc.toLowerCase().includes(term)
+    || f.conds.some(c => c.t.toLowerCase().includes(term) || (c.v || '').toLowerCase().includes(term)));
+  document.getElementById('grid').innerHTML = visible.map(([f, i]) => card(f, i)).join('') + addCard();
+  document.getElementById('count').textContent = FORMATS.length + ' formats';
+  document.querySelectorAll('.cf-card[data-i]').forEach(el => el.onclick = () => open(FORMATS[+el.dataset.i]));
+  document.getElementById('add').onclick = () => open({ name: 'New Custom Format', desc: '', on: true, scope: 'Movies & Shows', profiles: 0, conds: [] }, true);
+}
+
+function condRow(c, i) {
+  const badges = (c.req ? '<span class="badge badge-blue"><span class="badge-dot"></span>Required</span>' : '')
+    + (c.neg ? '<span class="badge badge-amber"><span class="badge-dot"></span>Negated</span>' : '')
+    + (c.rx ? '<span class="badge"><span class="badge-dot"></span>Regex</span>' : '');
+  return '<div class="cf-condition-card">'
+    + '<div class="condition-top"><strong>Condition ' + (i + 1) + '</strong><div class="cf-condition-badges">' + badges
+    + '<button class="icon-button" aria-label="Remove">' + ic('close', 15) + '</button></div></div>'
+    + '<div class="cf-condition-grid">'
+    + '<label><span>Field</span><select class="input"><option>' + c.t + '</option></select></label>'
+    + '<label class="cf-value-field"><span>' + (c.rx ? 'Pattern' : 'Value') + '</span><input class="input" value="' + (c.v || '').replace(/"/g, '&quot;') + '" /></label>'
+    + '</div>'
+    + '<div class="cf-condition-toggles">'
+    + '<label><input type="checkbox" ' + (c.req ? 'checked' : '') + ' />Required</label>'
+    + '<label><input type="checkbox" ' + (c.neg ? 'checked' : '') + ' />Negate</label>'
+    + '<label><input type="checkbox" />Case sensitive</label>'
+    + '</div></div>';
+}
+
+function field(label, help, control, wide) {
+  return '<div class="field' + (wide ? ' field-wide' : '') + '"><div class="field-head"><span>' + label + '</span></div>'
+    + '<div class="field-help">' + help + '</div>' + control + '</div>';
+}
+
+function open(f, isNew) {
+  const conds = f.conds.length
+    ? '<div class="cf-condition-list">' + f.conds.map(condRow).join('') + '</div>'
+    : '<div class="cf-test-placeholder">' + ic('sliders', 18) + '<strong>No conditions yet</strong><span>A format with no conditions never matches anything. Add at least one.</span></div>';
+
+  document.getElementById('modal-root').innerHTML =
+    '<div class="modal-backdrop" id="backdrop"><div class="modal modal-wide" role="dialog">'
+    + '<div class="modal-head"><div class="modal-head-copy"><div class="eyebrow">' + (isNew ? 'NEW CUSTOM FORMAT' : 'EDIT CUSTOM FORMAT') + '</div><h2>' + f.name + '</h2></div>'
+    + '<button class="icon-button" id="x">' + ic('close', 18) + '</button></div>'
+    + '<div class="modal-body">'
+    + '<div class="cf-modal-grid">'
+    + field('Name', 'Shown wherever this format is referenced, including Quality Profile scores.', '<input class="input" value="' + f.name + '" />')
+    + field('Applies to', 'Which library a release must belong to for this format to be evaluated at all.', '<select class="input"><option>' + f.scope + '</option></select>')
+    + field('Description', 'Optional note explaining what this format is for. Only ever shown to you.', '<input class="input" value="' + f.desc + '" placeholder="What does this format capture?" />', true)
+    + field('Enabled', 'When off, this format is skipped during evaluation and contributes no score anywhere.', '<div class="setting-control"><button class="toggle" aria-pressed="' + f.on + '"><span></span></button><span class="toggle-label">' + (f.on ? 'Enabled' : 'Disabled') + '</span></div>', true)
+    + '</div>'
+    + '<div class="cf-modal-section">'
+    + '<div class="section-title"><h3>Conditions</h3><button class="button button-secondary">' + ic('plus', 16) + 'Add condition</button></div>'
+    + '<p class="cf-modal-note">Every condition marked <strong>Required</strong> must pass. If none are required, any single match is enough.</p>'
+    + conds + '</div>'
+    + '<div class="cf-modal-section">'
+    + '<div class="section-title"><h3>Test against a release</h3></div>'
+    + '<p class="cf-modal-note">Nothing is saved by testing. This evaluates the conditions above exactly as reconciliation would.</p>'
+    + '<input class="input" value="Inception 2010 Hybrid 2160p UHD BluRay REMUX DV HDR HEVC DTS-HD MA 5.1-LM" />'
+    + '<div class="cf-test-actions"><button class="button button-secondary" id="run">Test this format</button><button class="button button-ghost">Test every format</button><div class="toolbar-spacer"></div><select class="input select"><option>No profile scoring</option></select></div>'
+    + '<div id="result"></div>'
+    + '</div></div>'
+    + '<div class="modal-foot">'
+    + (isNew ? '' : '<button class="button button-danger">Delete</button><button class="button button-ghost">Duplicate</button><button class="button button-ghost">' + ic('download', 16) + 'Export</button>')
+    + '<span class="footer-state clean" id="state">All changes saved</span>'
+    + '<button class="button button-secondary" id="cancel">Cancel</button>'
+    + '<button class="button button-primary">Save format</button>'
+    + '</div></div></div>';
+
+  const close = () => { document.getElementById('modal-root').innerHTML = ''; document.body.style.overflow = ''; };
+  document.body.style.overflow = 'hidden';
+  document.getElementById('x').onclick = close;
+  document.getElementById('cancel').onclick = close;
+  document.getElementById('backdrop').onclick = (e) => { if (e.target.id === 'backdrop') close(); };
+  document.onkeydown = (e) => { if (e.key === 'Escape') close(); };
+  document.querySelectorAll('.modal input, .modal select').forEach(el => el.addEventListener('input', () => {
+    const s = document.getElementById('state'); s.textContent = 'Unsaved changes'; s.classList.remove('clean');
+  }));
+  document.querySelectorAll('.modal .toggle').forEach(t => t.onclick = () => {
+    const on = t.getAttribute('aria-pressed') === 'true';
+    t.setAttribute('aria-pressed', String(!on));
+    t.parentElement.querySelector('.toggle-label').textContent = on ? 'Disabled' : 'Enabled';
+  });
+  const run = document.getElementById('run');
+  if (run) run.onclick = () => {
+    document.getElementById('result').innerHTML =
+      '<div class="cf-evaluation"><div class="cf-evaluation-summary matched">' + ic('check', 16)
+      + '<strong>Matches this format</strong><span>NO SCORE IS ASSIGNED HERE</span></div>'
+      + f.conds.map(c => '<div class="cf-condition-result pass"><div class="cf-result-icon">' + ic('check', 12) + '</div>'
+        + '<div class="cf-result-copy"><strong>' + c.t + '</strong><span>Condition matched.</span>'
+        + '<small>Evidence: ' + (c.v || '—') + ' · ' + (c.req ? 'Required' : 'Optional') + '</small></div></div>').join('')
+      + '</div>';
+  };
+}
+
+document.getElementById('b-import').innerHTML = ic('archive', 16) + 'Import';
+document.getElementById('b-export').innerHTML = ic('download', 16) + 'Export all';
+document.getElementById('b-new').innerHTML = ic('plus', 16) + 'New custom format';
+document.getElementById('filter').addEventListener('input', render);
+document.getElementById('b-new').onclick = () => open({ name: 'New Custom Format', desc: '', on: true, scope: 'Movies & Shows', profiles: 0, conds: [] }, true);
+render();
+</script>
+</body>
+</html>

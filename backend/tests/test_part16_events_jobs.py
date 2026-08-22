@@ -31,7 +31,7 @@ from app.models.domain import (
     Torrent,
 )
 from app.services.events import create_event, subscribe, unsubscribe
-from app.services.jobs import create_job, update_job
+from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job, update_job
 from app.services.reconciliation import mark_root_available, mark_root_unavailable, open_problem
 
 
@@ -127,6 +127,41 @@ def test_job_status_is_persisted_and_published_live(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "running"
     assert response.json()["progress"]["percent"] == 25
+
+
+def test_shared_job_runner_persists_worker_failure(client: TestClient) -> None:
+    login_headers(client)
+
+    async def scenario():
+        async with db_session.async_session_factory() as db:
+            job = await create_job(db, "shared_runner_test")
+            await db.commit()
+            job_id = job.id
+
+        async def worker(db, job):
+            await checkpoint_job(db, job, status=JobStatus.RUNNING, progress={"percent": 10, "stage": "working"})
+            raise JobFailure(
+                "SHARED_RUNNER_FAILED",
+                "The worker failed.",
+                details={"attempt": 1},
+                progress={"percent": 50, "stage": "failed"},
+            )
+
+        await run_job(
+            job_id,
+            worker,
+            failure_code="UNEXPECTED_SHARED_RUNNER_FAILURE",
+            failure_message="Unexpected worker failure.",
+        )
+
+        async with db_session.async_session_factory() as db:
+            return await db.get(Job, job_id)
+
+    job = asyncio.run(scenario())
+    assert job is not None
+    assert job.status == JobStatus.FAILED
+    assert job.progress == {"percent": 50, "stage": "failed"}
+    assert job.error == {"code": "SHARED_RUNNER_FAILED", "message": "The worker failed.", "details": {"attempt": 1}}
 
 
 def test_problem_live_events_are_commit_bound_and_rollback_safe(client: TestClient) -> None:
