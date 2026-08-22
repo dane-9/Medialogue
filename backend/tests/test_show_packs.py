@@ -11,14 +11,18 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
+from app.integrations.filesystem import DirectoryObservation
 from app.integrations.qbittorrent import TorrentObservation
 from app.integrations.tmdb import TMDBEpisodeMetadata, TMDBSeasonMetadata, TMDBShowDetails, TMDBShowMatch
 from app.main import create_app
+from app.models.domain import EpisodeMediaMap, MatchMethod, Problem, Show, StorageRoot, Torrent
+from app.services.shows import reconcile_show_directory
 
 
 class FakeTMDBClient:
@@ -194,6 +198,130 @@ def test_filesystem_season_pack_uses_one_release_for_many_episode_files(client: 
         assert len({item["show_release_id"] for item in media}) == 1
         # The pack mapped cleanly: no member was left unresolved.
         assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_explicit_member_episodes_win_over_a_conflicting_season_container(client: TestClient) -> None:
+    root = Path.cwd() / f"container-mismatch-{uuid.uuid4().hex}"
+    wrong_pack = root / "Dollface S02 1080p DSNP WEB-DL H.264-WRONG"
+    wrong_pack.mkdir(parents=True)
+    files = []
+    for number in (1, 2):
+        path = wrong_pack / f"Dollface S01E{number:02d} 1080p DSNP WEB-DL H.264-HONE.mkv"
+        path.write_bytes(f"episode-{number}".encode())
+        files.append(path)
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        show = detail(client)
+        for number, path in enumerate(files, start=1):
+            episode = episode_by_number(show, number)
+            assert episode["presence_state"] == "present"
+            assert len(episode["media"]) == 1
+            assert episode["media"][0]["mapped_episode_numbers"] == [number]
+            assert Path(episode["media"][0]["path"]).resolve() == path.resolve()
+            assert episode["media"][0]["release_name"] == path.stem
+
+        mismatches = client.get(
+            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
+        ).json()
+        assert mismatches["total"] == 2
+        assert {item["details"]["member_season"] for item in mismatches["items"]} == {1}
+        assert {item["details"]["container_season"] for item in mismatches["items"]} == {2}
+        assert {item["details"]["container_source"] for item in mismatches["items"]} == {"folder"}
+        assert client.get(
+            "/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE&status=open"
+        ).json()["total"] == 0
+
+        wrong_episode_container = root / "Dollface S01E03 1080p DSNP WEB-DL H.264-WRONG"
+        wrong_pack.rename(wrong_episode_container)
+        scan(client, headers, configured["id"])
+        episode_mismatches = client.get(
+            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
+        ).json()
+        assert episode_mismatches["total"] == 2
+        assert {
+            tuple(item["details"]["container_episode_numbers"])
+            for item in episode_mismatches["items"]
+        } == {(3,)}
+
+        correct_pack = root / "Dollface S01 1080p DSNP WEB-DL H.264-HONE"
+        wrong_episode_container.rename(correct_pack)
+        scan(client, headers, configured["id"])
+        assert client.get(
+            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
+        ).json()["total"] == 0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_conflicting_torrent_season_does_not_relabel_pack_members(client: TestClient) -> None:
+    root = Path.cwd() / f"torrent-container-mismatch-{uuid.uuid4().hex}"
+    pack = root / "Dollface S01 1080p DSNP WEB-DL H.264-HONE"
+    pack.mkdir(parents=True)
+    relative_paths = []
+    for number in (1, 2):
+        name = f"Dollface S01E{number:02d} 1080p DSNP WEB-DL H.264-HONE.mkv"
+        (pack / name).write_bytes(f"episode-{number}".encode())
+        relative_paths.append(name)
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+        original_release_ids = {
+            episode_by_number(detail(client), number)["media"][0]["show_release_id"]
+            for number in (1, 2)
+        }
+        assert len(original_release_ids) == 1
+
+        async def observe_conflicting_torrent() -> None:
+            async with db_session.async_session_factory() as db:
+                storage_root = await db.get(StorageRoot, uuid.UUID(configured["id"]))
+                show = await db.scalar(select(Show).where(Show.tmdb_id == 194764))
+                assert storage_root is not None and show is not None
+                torrent = Torrent(
+                    info_hash=uuid.uuid4().hex,
+                    name="Dollface S02 1080p DSNP WEB-DL H.264-WRONG",
+                    total_size=20,
+                )
+                db.add(torrent)
+                await db.flush()
+                await reconcile_show_directory(
+                    db,
+                    storage_root,
+                    DirectoryObservation(
+                        path=str(pack.resolve()),
+                        name=pack.name,
+                        media_files=tuple(relative_paths),
+                        has_dvd_structure=False,
+                        has_bluray_structure=False,
+                    ),
+                    torrent=torrent,
+                    show_hint=show,
+                    torrent_member_paths=set(relative_paths),
+                )
+                await db.commit()
+
+        asyncio.run(observe_conflicting_torrent())
+
+        after = detail(client)
+        for number in (1, 2):
+            media = episode_by_number(after, number)["media"][0]
+            assert media["mapped_episode_numbers"] == [number]
+            assert media["show_release_id"] in original_release_ids
+            assert media["release_scope"] == "season_pack"
+            assert "S01" in media["release_name"]
+        mismatches = client.get(
+            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
+        ).json()
+        assert mismatches["total"] == 2
+        assert {item["details"]["container_source"] for item in mismatches["items"]} == {"torrent"}
+        assert {item["details"]["container_season"] for item in mismatches["items"]} == {2}
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -416,6 +544,59 @@ def test_duplicate_episode_files_are_flagged_and_left_untouched(client: TestClie
         }
         assert first.exists() and first.read_bytes() == b"first"
         assert second.exists() and second.read_bytes() == b"second"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_rescan_replaces_a_stale_automatic_episode_mapping(client: TestClient) -> None:
+    """A file parsed as E02 must not retain an old automatic mapping to E01."""
+
+    root = Path.cwd() / f"stale-episode-map-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    show_dir.mkdir(parents=True)
+    first = show_dir / "Dollface S01E01 1080p DSNP WEB-DL H.264-HONE.mkv"
+    second = show_dir / "Dollface S01E02 1080p DSNP WEB-DL H.264-HONE.mkv"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+        before = detail(client)
+        episode_one = episode_by_number(before, 1)
+        episode_two = episode_by_number(before, 2)
+        second_media = episode_two["media"][0]
+
+        async def seed_stale_mapping() -> None:
+            async with db_session.async_session_factory() as db:
+                db.add(EpisodeMediaMap(
+                    episode_id=uuid.UUID(episode_one["id"]),
+                    media_file_id=uuid.UUID(second_media["media_file_id"]),
+                    show_release_id=uuid.UUID(second_media["show_release_id"]),
+                    match_method=MatchMethod.PARSER,
+                    confidence=1.0,
+                ))
+                db.add(Problem(
+                    reason="DUPLICATE_EPISODE_RELEASE",
+                    entity_type="episode",
+                    entity_id=uuid.UUID(episode_one["id"]),
+                    message="S01E01 has multiple physical media files.",
+                ))
+                await db.commit()
+
+        asyncio.run(seed_stale_mapping())
+        scan(client, headers, configured["id"])
+
+        after = detail(client)
+        episode_one = episode_by_number(after, 1)
+        episode_two = episode_by_number(after, 2)
+        assert [Path(item["path"]).resolve() for item in episode_one["media"]] == [first.resolve()]
+        assert [Path(item["path"]).resolve() for item in episode_two["media"]] == [second.resolve()]
+        open_duplicates = client.get(
+            "/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE&status=open"
+        ).json()
+        assert open_duplicates["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
