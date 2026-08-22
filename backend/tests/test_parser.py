@@ -198,3 +198,51 @@ def test_vc1_is_recognized_as_video_codec_not_unknown_release_text():
     assert result.year == 2009
     assert result.video.codec == "VC-1"
     assert "VC-1" not in result.unknown_tokens
+
+
+def test_season_folder_names_cover_the_common_layouts() -> None:
+    from app.parser import parse_season_folder
+
+    assert parse_season_folder("Season 1") == 1
+    assert parse_season_folder("Season.1") == 1
+    assert parse_season_folder("Season_1") == 1
+    assert parse_season_folder("Season 01") == 1
+    assert parse_season_folder("S01") == 1
+    assert parse_season_folder("S1") == 1
+    assert parse_season_folder("Series 2") == 2
+    assert parse_season_folder("Specials") == 0
+    assert parse_season_folder("Season 0") == 0
+    # Shows organised by production year, e.g. Tom and Jerry.
+    assert parse_season_folder("S1940") == 1940
+    assert parse_season_folder("Season 1960") == 1960
+    # Anything that is not a season folder must stay unrecognised.
+    assert parse_season_folder("Extras") is None
+    assert parse_season_folder("Season") is None
+    assert parse_season_folder("Dollface 2019") is None
+
+
+def test_year_seasons_parse_as_season_and_episode() -> None:
+    from app.parser import parse_release_name
+
+    identity = parse_release_name(
+        "Tom and Jerry (1940) - S1960E01 - Switchin' Kitten (1080p AMZN WEB-DL x265 Ghost)"
+    ).identity
+    assert identity.season == 1960
+    assert identity.episodes == (1,)
+    assert identity.title_candidate == "Tom and Jerry"
+    assert identity.episode_title == "Switchin' Kitten"
+
+
+def test_episode_only_filenames_yield_episode_numbers() -> None:
+    from app.parser import extract_episode_numbers
+
+    assert extract_episode_numbers("01 - Pilot") == (1,)
+    assert extract_episode_numbers("11 - The One With The Thing") == (11,)
+    assert extract_episode_numbers("01. Pilot") == (1,)
+    assert extract_episode_numbers("E01 - Pilot") == (1,)
+    assert extract_episode_numbers("Episode 4") == (4,)
+    assert extract_episode_numbers("01-03 - Triple") == (1, 2, 3)
+    # A bare number with no separator is a title, not an episode index.
+    assert extract_episode_numbers("1917") == ()
+    assert extract_episode_numbers("300") == ()
+    assert extract_episode_numbers("Some Title") == ()

@@ -98,6 +98,16 @@ async def _select_movie_by_alternative_title(
     return None, None
 
 
+class TMDBUnavailable(RuntimeError):
+    """TMDB could not be reached while identity was required.
+
+    This is an infrastructure state, not a property of any one title, so it is
+    raised once and allowed to fail the surrounding job. Recording it against
+    every directory instead would turn a single outage into thousands of
+    individually actionable Problems that one retry resolves.
+    """
+
+
 async def get_tmdb_configuration(db: AsyncSession) -> ConfiguredTMDB | None:
     return await get_configured_tmdb(db)
 

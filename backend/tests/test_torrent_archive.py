@@ -22,6 +22,43 @@ from app.main import create_app
 from app.models.domain import IdentityState, Movie
 
 
+class _NoMatchTMDBClient:
+    """Reachable TMDB that recognises nothing.
+
+    Keeps these suites focused on their own subject: the scan completes, and
+    identity simply stays unresolved.
+    """
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    async def health(self):
+        return {"status": "healthy"}
+
+    async def search_movie(self, title: str, year: int | None = None):
+        return []
+
+    async def search_show(self, title: str, year: int | None = None):
+        return []
+
+    async def get_movie_alternative_titles(self, tmdb_id: int):
+        return ()
+
+    async def close(self):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _configure_fake_tmdb(monkeypatch):
+    import app.api.tmdb as tmdb_api
+    import app.services.tmdb as tmdb_service
+
+    monkeypatch.setattr(tmdb_service, "TMDBClient", _NoMatchTMDBClient)
+    monkeypatch.setattr(tmdb_api, "TMDBClient", _NoMatchTMDBClient)
+
+
+
+
 @pytest.fixture
 def archive_client():
     base = Path.cwd() / f"medialogue-archive-test-{uuid.uuid4().hex}"
@@ -113,6 +150,7 @@ def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
 def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(archive_client) -> None:
     client, base, archive_dir = archive_client
     headers = _login(client)
+    client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     media_root = base / "movies"
     media_root.mkdir()
@@ -252,6 +290,7 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
 def test_restore_rejects_destination_outside_configured_roots(archive_client) -> None:
     client, base, _ = archive_client
     headers = _login(client)
+    client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     media_root = base / "movies"
     media_root.mkdir()
     root = client.post(
@@ -288,6 +327,7 @@ def test_restore_rejects_destination_outside_configured_roots(archive_client) ->
     )
     _install_fake(client, behavior)
     try:
+        client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
         client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         polled = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
         assert polled.status_code == 202, polled.text
@@ -308,6 +348,7 @@ def test_restore_rejects_destination_outside_configured_roots(archive_client) ->
 def test_failed_archive_is_visible_and_manual_retry_can_recover(archive_client) -> None:
     client, base, _ = archive_client
     headers = _login(client)
+    client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     media_root = base / "movies"
     media_root.mkdir()

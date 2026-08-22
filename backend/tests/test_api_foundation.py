@@ -271,7 +271,13 @@ def test_scan_flags_two_present_same_edition_releases_as_duplicate(client: TestC
             shutil.rmtree(fixture_root)
 
 
-def test_new_scan_requires_tmdb_identity_before_automatic_add(client: TestClient) -> None:
+def test_scan_is_refused_until_tmdb_is_configured(client: TestClient) -> None:
+    """TMDB establishes identity, so a scan without it is refused outright.
+
+    It used to run and record a TMDB_MATCH_REQUIRED Problem per directory,
+    which turned one unset API key into thousands of identical rows.
+    """
+
     fixture_root = Path.cwd() / f"tmdb-required-{uuid.uuid4().hex}"
     release_name = "Inception 2010 1080p BluRay REMUX AVC DTS-HD MA 5.1-GROUP"
     release_dir = fixture_root / release_name
@@ -286,15 +292,17 @@ def test_new_scan_requires_tmdb_identity_before_automatic_add(client: TestClient
             headers=headers,
             json={"name": "TMDB required", "path": str(fixture_root), "media_type": "movies"},
         ).json()
-        job = _scan(client, headers, root["id"])
-        assert job["status"] == "completed", job
+
+        response = client.post(f"/api/v1/storage-roots/{root['id']}/scan", headers=headers)
+        assert response.status_code == 409, response.text
+        assert response.json()["error"]["code"] == "TMDB_NOT_CONFIGURED"
+
+        # Nothing ran, so nothing was discovered and no Problem was recorded.
         assert client.get("/api/v1/movies").json()["total"] == 0
-        problems = client.get("/api/v1/problems?reason=TMDB_MATCH_REQUIRED").json()
-        assert problems["total"] == 1
+        assert client.get("/api/v1/problems").json()["total"] == 0
     finally:
         if fixture_root.exists():
             shutil.rmtree(fixture_root)
-
 
 def test_show_root_scan_tracks_episode_presence_independently(client: TestClient) -> None:
     fixture_root = Path.cwd() / f"show-scan-fixture-{uuid.uuid4().hex}"
@@ -402,8 +410,6 @@ def test_show_scan_maps_multi_episode_and_flags_episode_less_video(client: TestC
         # episode-less S01 video as an unresolved member instead of rejecting
         # the whole directory.
         assert job["summary"]["matched"] == 1
-        assert client.get("/api/v1/problems?reason=SEASON_PACK_MAPPING_PENDING").json()["total"] == 0
-        assert client.get("/api/v1/problems?reason=MULTI_EPISODE_MAPPING_PENDING").json()["total"] == 0
         assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 1
         show = client.get("/api/v1/shows").json()["items"][0]
         assert show["episodes_present"] == 2

@@ -11,6 +11,8 @@ from .release_parser import (
     parse_release,
     detect_edition,
     detect_release_group,
+    parse_season_folder,
+    extract_episode_numbers,
 )
 from .types import (
     PARSER_VERSION,
@@ -43,6 +45,8 @@ __all__ = [
     "parse",
     "parse_name",
     "parse_release_name",
+    "parse_season_folder",
+    "extract_episode_numbers",
     "parse_quality",
     "parse_release",
     "detect_edition",

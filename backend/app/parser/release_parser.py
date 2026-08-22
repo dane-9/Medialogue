@@ -276,6 +276,9 @@ def _edition_from_name(normalized: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+_SEASON_NUMBER = r"(?:\d{1,2}|(?:19|20)\d{2})"
+
+
 def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], int | None, int | None]:
     """Return season, episode numbers, and marker start/end.
 
@@ -285,7 +288,7 @@ def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], 
 
     # The compact range is deliberately handled before the repeated E form.
     range_match = re.search(
-        r"(?<![A-Za-z0-9])S(?P<s>\d{1,2})E(?P<start>\d{1,3})\s*[-–]\s*(?:E)?(?P<end>\d{1,3})(?!\d)",
+        rf"(?<![A-Za-z0-9])S(?P<s>{_SEASON_NUMBER})E(?P<start>\d{{1,3}})\s*[-–]\s*(?:E)?(?P<end>\d{{1,3}})(?!\d)",
         normalized,
         re.IGNORECASE,
     )
@@ -296,7 +299,7 @@ def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], 
         return season, episodes, range_match.start(), range_match.end()
 
     compact = re.search(
-        r"(?<![A-Za-z0-9])S(?P<s>\d{1,2})(?P<eps>(?:E\d{1,3})+)(?!\d)",
+        rf"(?<![A-Za-z0-9])S(?P<s>{_SEASON_NUMBER})(?P<eps>(?:E\d{{1,3}})+)(?!\d)",
         normalized,
         re.IGNORECASE,
     )
@@ -306,7 +309,7 @@ def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], 
         return season, episodes, compact.start(), compact.end()
 
     single = re.search(
-        r"(?<![A-Za-z0-9])S(?P<s>\d{1,2})E(?P<e>\d{1,3})(?!\d)",
+        rf"(?<![A-Za-z0-9])S(?P<s>{_SEASON_NUMBER})E(?P<e>\d{{1,3}})(?!\d)",
         normalized,
         re.IGNORECASE,
     )
@@ -319,10 +322,71 @@ def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], 
     if one_x:
         return int(one_x.group("s")), (int(one_x.group("e")),), one_x.start(), one_x.end()
 
-    season_only = re.search(r"(?<![A-Za-z0-9])S(?P<s>\d{1,2})(?![A-Za-z0-9])", normalized, re.I)
+    season_only = re.search(rf"(?<![A-Za-z0-9])S(?P<s>{_SEASON_NUMBER})(?![A-Za-z0-9])", normalized, re.I)
     if season_only:
         return int(season_only.group("s")), (), season_only.start(), season_only.end()
     return None, (), None, None
+
+
+
+def parse_season_folder(name: str) -> int | None:
+    """Return the season number a directory name denotes, if any.
+
+    Recognises the layouts libraries actually use: ``Season 1``, ``Season.1``,
+    ``Season_1``, ``Season 01``, ``S01``, ``S1``, the UK ``Series 2`` form, and
+    year seasons such as ``Season 1940`` / ``S1940``. ``Specials`` and
+    ``Season 0`` both mean season zero.
+    """
+
+    text = str(name).strip()
+    if not text:
+        return None
+    if re.fullmatch(r"specials?", text, re.IGNORECASE):
+        return 0
+    worded = re.fullmatch(
+        rf"(?:season|series|staffel|saison)[\s._-]*({_SEASON_NUMBER})",
+        text,
+        re.IGNORECASE,
+    )
+    if worded:
+        return int(worded.group(1))
+    compact = re.fullmatch(rf"s[\s._-]*({_SEASON_NUMBER})", text, re.IGNORECASE)
+    if compact:
+        return int(compact.group(1))
+    return None
+
+
+def extract_episode_numbers(name: str) -> tuple[int, ...]:
+    """Episode numbers from a filename whose season comes from its folder.
+
+    Only used when a season folder has already established the season, because
+    these patterns are far weaker than S01E01 and would misfire on titles that
+    merely begin with a number.
+    """
+
+    text = normalize_release_name(_clean_raw_name(str(name)))
+
+    ranged = re.match(r"\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*[-–]\s+", text)
+    if ranged:
+        start, end = int(ranged.group(1)), int(ranged.group(2))
+        if end >= start and end - start < 50:
+            return tuple(range(start, end + 1))
+
+    explicit = re.findall(r"(?<![A-Za-z0-9])E(\d{1,3})(?!\d)", text, re.IGNORECASE)
+    if explicit:
+        return tuple(dict.fromkeys(int(value) for value in explicit))
+
+    worded = re.search(r"\bepisode[\s._-]*(\d{1,3})(?!\d)", text, re.IGNORECASE)
+    if worded:
+        return (int(worded.group(1)),)
+
+    # ``01 - Title`` / ``01. Title`` / ``01 Title``: a leading number acting as
+    # the episode index. A separator is required so a title like "1917" or
+    # "300" is not mistaken for an episode.
+    leading = re.match(r"\s*(\d{1,3})\s*(?:[-–.]\s*|\s+)(?=\S)", text)
+    if leading:
+        return (int(leading.group(1)),)
+    return None or ()
 
 
 def _year_match(normalized: str, *, before: int | None = None) -> re.Match[str] | None:
@@ -338,7 +402,7 @@ def _technical_boundary(normalized: str, *, start: int = 0) -> int | None:
     patterns = (
         r"\b(?:2160|1080|720|576|480)p\b",
         r"\b(?:576|480)i\b",
-        r"\b(?:S\d{1,2}(?:E\d{1,3})?|\d{1,2}x\d{1,3})\b",
+        rf"\b(?:S{_SEASON_NUMBER}(?:E\d{{1,3}})?|\d{{1,2}}x\d{{1,3}})\b",
         r"\b(?:WEB[- ]?DL|WEB[- ]?Rip|HDTV|Blu[- ]?Ray|DVD(?:5|9)?|REMUX)\b",
         r"\b(?:x26[45]|AVC|HEVC|H\.26[45]|MPEG[- ]?2|VC[- ]?1|TrueHD|DTS[- ]?HD|DD\+?|FLAC|AAC)\b",
     )
@@ -656,7 +720,7 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
         # title.  Keep the title text before that year for consistency with
         # movie identity parsing.
         if year_match:
-            title_part = normalized[: year_match.start()].strip(" -")
+            title_part = normalized[: year_match.start()].strip(" -([.")
             identity_year = year
         else:
             identity_year = None
@@ -669,7 +733,7 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
         if episode_title:
             # Technical suffixes are sometimes separated only by a provider
             # token; remove a trailing release-group artefact if present.
-            episode_title = episode_title.strip(" ._-" ) or None
+            episode_title = episode_title.strip(" ._-([") or None
         identity = IdentityInfo(title_part or None, identity_year, season, episodes, episode_title or None)
         boundary_for_technical = marker_end
     else:
@@ -730,7 +794,7 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
     )
 
     warnings: list[str] = []
-    if season is None and re.search(r"\bS\d{1,2}(?:E\d{1,3})?\b", normalized, re.I):
+    if season is None and re.search(rf"\bS{_SEASON_NUMBER}(?:E\d{{1,3}})?\b", normalized, re.I):
         warnings.append("season_episode_boundary_ambiguous")
     if quality.canonical is None:
         warnings.append("quality_not_detected")
