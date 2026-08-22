@@ -909,7 +909,7 @@ function ProblemEvidenceDetails({ problem, selectedTmdbId, onSelectTmdbCandidate
     </div>
   }
 
-  if (problem.code === 'TMDB_IDENTITY_UNRESOLVED') {
+  if (problem.code === 'TMDB_IDENTITY_UNRESOLVED' || problem.code === 'TMDB_SHOW_IDENTITY_UNRESOLVED') {
     const parsed = parserIdentity(details)
     const reason = problemText(details.tmdb_reason)
     const candidates = Array.isArray(details.tmdb_candidates) ? details.tmdb_candidates.map(problemRecord) : []

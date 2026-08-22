@@ -39,6 +39,14 @@ class TMDBMovieIdentityResolution:
     queries: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class TMDBShowIdentityResolution:
+    match: TMDBShowMatch | None
+    reason: str
+    candidates: tuple[TMDBShowMatch, ...] = ()
+    queries: tuple[str, ...] = ()
+
+
 def _title_query_variants(title: str) -> tuple[str, ...]:
     """Return conservative query spellings for punctuation/ampersand variants."""
 
@@ -292,39 +300,100 @@ async def resolve_show_identity(
 ) -> tuple[TMDBShowMatch | None, str]:
     """Resolve a show candidate against TMDB with the same no-guess policy as Movies."""
 
+    resolution = await resolve_show_identity_detailed(
+        db,
+        title,
+        year,
+        client_factory=client_factory,
+    )
+    return resolution.match, resolution.reason
+
+
+def _select_show_identity(
+    title: str,
+    year: int | None,
+    matches: list[TMDBShowMatch] | tuple[TMDBShowMatch, ...],
+) -> tuple[TMDBShowMatch | None, str, tuple[TMDBShowMatch, ...]]:
+    target = normalize_identity_title(title)
+    exact = tuple(
+        item
+        for item in matches
+        if target in {
+            normalize_identity_title(item.title),
+            normalize_identity_title(item.original_title),
+        }
+        and (year is None or item.year is None or item.year == year)
+    )
+    if len(exact) == 1:
+        return exact[0], "matched", exact
+    if len(exact) > 1:
+        with_year = tuple(item for item in exact if year is not None and item.year == year)
+        if len(with_year) == 1:
+            return with_year[0], "matched", exact
+        return None, "ambiguous", exact
+    return None, "not_found", tuple(matches)
+
+
+async def resolve_show_identity_detailed(
+    db: AsyncSession,
+    title: str,
+    year: int | None,
+    *,
+    client_factory: TMDBClientFactory | None = None,
+) -> TMDBShowIdentityResolution:
+    """Resolve a Show while retaining candidates for manual Problem resolution."""
+
     configuration = await get_tmdb_configuration(db)
     if configuration is None or not configuration.enabled or not configuration.api_key:
-        return None, "not_configured"
+        return TMDBShowIdentityResolution(None, "not_configured")
     factory = client_factory or TMDBClient
     client = factory(configuration.api_key)
     configuration.last_checked_at = utcnow()
+    queries: list[str] = []
+    collected: dict[int, TMDBShowMatch] = {}
     try:
-        matches = await client.search_show(title, year)
+        for query_title in _title_query_variants(title):
+            queries.append(f"{query_title} ({year})" if year is not None else query_title)
+            for item in await client.search_show(query_title, year):
+                collected[item.tmdb_id] = item
+            match, reason, evidence = _select_show_identity(title, year, list(collected.values()))
+            if match is not None or reason == "ambiguous":
+                configuration.health = "healthy"
+                configuration.last_success_at = utcnow()
+                configuration.last_error = None
+                return TMDBShowIdentityResolution(match, reason, evidence, tuple(queries))
+
+        # TMDB's first-air-year filter can omit the intended series. Retry the
+        # title without that filter, while retaining the same strict year check
+        # before an automatic match is accepted.
+        if year is not None:
+            for query_title in _title_query_variants(title):
+                queries.append(query_title)
+                for item in await client.search_show(query_title, None):
+                    collected[item.tmdb_id] = item
+                match, reason, evidence = _select_show_identity(title, year, list(collected.values()))
+                if match is not None or reason == "ambiguous":
+                    configuration.health = "healthy"
+                    configuration.last_success_at = utcnow()
+                    configuration.last_error = None
+                    return TMDBShowIdentityResolution(match, reason, evidence, tuple(queries))
+
         configuration.health = "healthy"
         configuration.last_success_at = utcnow()
         configuration.last_error = None
     except Exception as exc:
         configuration.health = "unavailable"
         configuration.last_error = str(exc)
-        return None, "unavailable"
+        return TMDBShowIdentityResolution(
+            None,
+            "unavailable",
+            tuple(collected.values()),
+            tuple(queries),
+        )
     finally:
         await client.close()
-
-    target = normalize_identity_title(title)
-    exact = [
-        item
-        for item in matches
-        if target in {normalize_identity_title(item.title), normalize_identity_title(item.original_title)}
-        and (year is None or item.year is None or item.year == year)
-    ]
-    if len(exact) == 1:
-        return exact[0], "matched"
-    if len(exact) > 1:
-        with_year = [item for item in exact if year is not None and item.year == year]
-        if len(with_year) == 1:
-            return with_year[0], "matched"
-        return None, "ambiguous"
-    return None, "not_found"
+    match, reason, evidence = _select_show_identity(title, year, list(collected.values()))
+    return TMDBShowIdentityResolution(match, reason, evidence, tuple(queries))
 
 
 async def get_show_details(

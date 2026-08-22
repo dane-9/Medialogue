@@ -176,6 +176,45 @@ def test_show_metadata_refresh_is_a_job(client: TestClient) -> None:
     assert refreshed.json()["seasons"][0]["episodes"][0]["title"] == "Episode One"
 
 
+def test_ambiguous_show_problem_retains_selectable_tmdb_candidates(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def ambiguous_search(_self, title: str, year: int | None = None):
+        return [
+            TMDBShowMatch(194764, "Dollface", "Dollface", 2019, "First candidate.", "/first.jpg"),
+            TMDBShowMatch(294764, "Dollface", "Dollface", 2019, "Second candidate.", "/second.jpg"),
+        ]
+
+    monkeypatch.setattr(FakeTMDBClient, "search_show", ambiguous_search)
+    root = Path.cwd() / f"ambiguous-show-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    show_dir.mkdir(parents=True)
+    (show_dir / "Dollface S01E01 1080p WEB-DL H.264-HONE.mkv").write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        response = client.get(
+            "/api/v1/problems?reason=TMDB_SHOW_IDENTITY_UNRESOLVED&status=open"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 1
+        problem = response.json()["items"][0]
+        assert problem["details"]["tmdb_reason"] == "ambiguous"
+        assert problem["details"]["tmdb_queries"] == ["Dollface (2019)"]
+        assert [item["tmdb_id"] for item in problem["details"]["tmdb_candidates"]] == [194764, 294764]
+        assert [item["poster_path"] for item in problem["details"]["tmdb_candidates"]] == [
+            "/first.jpg",
+            "/second.jpg",
+        ]
+        assert "confirm_show_match" in problem["available_actions"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_filesystem_season_pack_uses_one_release_for_many_episode_files(client: TestClient) -> None:
     root = Path.cwd() / f"season-pack-{uuid.uuid4().hex}"
     pack_name = "Dollface S01 2160p DSNP WEB-DL DD+ 5.1 H.265-HONE"
