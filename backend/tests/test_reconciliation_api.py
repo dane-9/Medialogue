@@ -129,11 +129,6 @@ def _login(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": response.json()["csrf_token"]}
 
 
-def _enable_operations(client: TestClient, headers: dict[str, str]) -> None:
-    response = client.put("/api/v1/operations", headers=headers, json={"enabled": True})
-    assert response.status_code == 200, response.text
-
-
 def _torrent(
     info_hash: str,
     name: str,
@@ -214,7 +209,6 @@ def _scan(client: TestClient, headers: dict[str, str], root_id: str, *, timeout:
 def _movie_setup(client: TestClient, *, release_name: str = "Inception 2010 1080p BluRay REMUX AVC DTS-HD MA 5.1-K"):
     headers = _login(client)
     _configure_tmdb(client, headers)
-    _enable_operations(client, headers)
     root = Path.cwd() / f"reconciliation-fixture-{os.urandom(8).hex()}"
     release_dir = root / release_name
     release_dir.mkdir(parents=True)
@@ -547,7 +541,6 @@ def test_reconciliation_refresh_status_and_root_overlap_lock(client: TestClient)
 def test_completed_in_scope_manual_qbit_torrent_can_create_tmdb_backed_movie(client: TestClient) -> None:
     headers = _login(client)
     _configure_tmdb(client, headers)
-    _enable_operations(client, headers)
     root = Path.cwd() / f"qbit-new-movie-{os.urandom(8).hex()}"
     release_name = "Inception 2010 2160p UHD BluRay REMUX HEVC TrueHD 7.1-GROUP"
     release_dir = root / release_name

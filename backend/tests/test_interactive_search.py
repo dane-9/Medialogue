@@ -335,7 +335,6 @@ def test_selected_search_result_submits_to_eligible_qbit_and_is_idempotent(clien
         started = client.post(f"/api/v1/movies/{movie_resource}/interactive-search", headers=headers).json()
         result = client.get(f"/api/v1/search-jobs/{started['job_id']}").json()["results"][0]
 
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         wrong = client.post(
             f"/api/v1/search-results/{result['id']}/download",
             headers=headers,

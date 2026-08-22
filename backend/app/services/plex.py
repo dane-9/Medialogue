@@ -234,10 +234,6 @@ async def recheck_movie_plex(
         if client is not None:
             await client.close()
     await _record_health_change(db, configuration, previous_health)
-    # Movie title/year disagreements from Plex are no longer a valid Problem.
-    # Clear legacy rows whenever this movie is touched by Plex verification.
-    await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "movie", movie.id)
-
     return {
         "state": overall.value,
         "checked_releases": checked,

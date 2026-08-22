@@ -9,14 +9,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
-from app.api import auth, bulk, custom_formats, downloads, duplicates, health, indexers, jobs, movies, operations, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tmdb, torrent_archive
+from app.api import auth, bulk, custom_formats, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tmdb, torrent_archive
 from app.core.config import Settings, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.integration_config import get_integration_config_store
 from app.core.logging import configure_logging
 from app.db.bootstrap import (
     ensure_default_admin,
-    ensure_problem_integrity,
     ensure_quality_definitions,
     mark_running_jobs_interrupted,
 )
@@ -69,7 +68,6 @@ async def lifespan(_: FastAPI):
                 await ensure_default_admin(db, settings)
             await ensure_quality_definitions(db)
             await mark_running_jobs_interrupted(db)
-            await ensure_problem_integrity(db)
             await ensure_configured_integration_states(db)
             await db.commit()
     except Exception:
@@ -89,7 +87,6 @@ async def lifespan(_: FastAPI):
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    operations.reset_active_operations()
     if settings is not None:
         get_settings.cache_clear()
         set_settings(settings)
@@ -117,7 +114,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(problems.router, prefix="/api/v1")
     app.include_router(duplicates.router, prefix="/api/v1")
     app.include_router(parser.router, prefix="/api/v1")
-    app.include_router(operations.router, prefix="/api/v1")
     app.include_router(movies.router, prefix="/api/v1")
     app.include_router(tags.router, prefix="/api/v1")
     app.include_router(bulk.router, prefix="/api/v1")

@@ -364,7 +364,6 @@ async def reconcile_show_directory(
                     f"TMDB is {reason.replace('_', ' ')}; Show identity cannot be established. "
                     "Check Settings -> Metadata, then run the scan again."
                 )
-            await resolve_problem(db, "TMDB_SHOW_MATCH_REQUIRED", "media_directory", directory.id)
             await open_problem(
                 db,
                 reason="TMDB_SHOW_IDENTITY_UNRESOLVED",
@@ -375,7 +374,6 @@ async def reconcile_show_directory(
                 severity=Severity.WARNING,
             )
             return "review"
-        await resolve_problem(db, "TMDB_SHOW_MATCH_REQUIRED", "media_directory", directory.id)
         await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         show = await db.scalar(select(Show).where(Show.tmdb_id == match.tmdb_id))
         if show is None:
@@ -412,7 +410,6 @@ async def reconcile_show_directory(
                 details={"tmdb_id": show.tmdb_id, "path": observation.path},
             )
     else:
-        await resolve_problem(db, "TMDB_SHOW_MATCH_REQUIRED", "media_directory", directory.id)
         await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
 
     parsed_by_path: dict[str, Any] = {
@@ -560,9 +557,6 @@ async def reconcile_show_directory(
                     episode.presence_state = PresenceState.PRESENT
             for reason in (
                 "EPISODE_MAPPING_UNRESOLVED",
-                "SEASON_PACK_MAPPING_PENDING",
-                "MULTI_EPISODE_MAPPING_PENDING",
-                "SHOW_FILE_IDENTITY_MISMATCH",
             ):
                 await resolve_problem(db, reason, "media_file", media_file.id)
             mapped += 1
@@ -579,9 +573,6 @@ async def reconcile_show_directory(
             episode_numbers = extract_episode_numbers(Path(relative_path).stem)
         if season_number is None or not episode_numbers:
             unresolved += 1
-            # SHOW_FILE_IDENTITY_MISMATCH is no longer raised; clearing it here
-            # retires any row left over from before the check was removed.
-            await resolve_problem(db, "SHOW_FILE_IDENTITY_MISMATCH", "media_file", media_file.id)
             await open_problem(
                 db,
                 reason="EPISODE_MAPPING_UNRESOLVED",
@@ -707,12 +698,6 @@ async def reconcile_show_directory(
             )
         else:
             await resolve_problem(db, "EPISODE_MAPPING_UNRESOLVED", "media_file", media_file.id)
-        if episode_numbers:
-            # Retire-only: nothing raises these any more. Clearing them keeps
-            # rows written by earlier versions from becoming unresolvable.
-            await resolve_problem(db, "SEASON_PACK_MAPPING_PENDING", "media_file", media_file.id)
-            await resolve_problem(db, "MULTI_EPISODE_MAPPING_PENDING", "media_file", media_file.id)
-        await resolve_problem(db, "SHOW_FILE_IDENTITY_MISMATCH", "media_file", media_file.id)
         if newly_mapped or not unresolved_numbers:
             mapped += 1
 
@@ -827,7 +812,7 @@ async def set_media_file_episode_mappings(
         episode = await db.get(Episode, episode_id)
         if episode is not None:
             await _refresh_episode_presence(db, episode)
-    for reason in ("EPISODE_MAPPING_UNRESOLVED", "MULTI_EPISODE_MAPPING_PENDING", "SEASON_PACK_MAPPING_PENDING", "SHOW_FILE_IDENTITY_MISMATCH"):
+    for reason in ("EPISODE_MAPPING_UNRESOLVED",):
         await resolve_problem(db, reason, "media_file", media_file.id)
     await create_event(
         db,

@@ -212,7 +212,6 @@ def test_duplicate_preview_lists_entire_folder_and_commit_deletes_only_loser(cli
     root.mkdir()
     try:
         movie_id, winner_id, loser_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root))
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
 
         preview = client.post(
             f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
@@ -276,7 +275,6 @@ def test_selecting_winner_without_deleting_keeps_duplicate_problem_open(client: 
     root.mkdir()
     try:
         movie_id, winner_id, loser_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root))
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         preview = client.post(
             f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
             headers=headers,
@@ -513,7 +511,6 @@ def test_duplicate_torrent_removal_requires_archive_and_never_deletes_qbit_data(
         client.app.dependency_overrides[duplicates_api.get_qbit_client_factory] = lambda: (
             lambda *_args, **_kwargs: DuplicateQbitAdapter(calls)
         )
-        assert client.put("/api/v1/operations", headers=headers, json={"enabled": True}).status_code == 200
 
         preview = client.post(
             f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
@@ -698,7 +695,6 @@ def test_duplicate_commit_refuses_to_delete_loser_if_winner_disappears(client: T
     root.mkdir()
     try:
         movie_id, winner_id, loser_id, _ = db_run(lambda db: seed_movie_duplicate(db, root))
-        assert client.put("/api/v1/operations", headers=headers, json={"enabled": True}).status_code == 200
         preview = client.post(
             f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
             headers=headers,
@@ -740,7 +736,6 @@ def test_qbit_failure_skips_requested_media_deletion(client: TestClient) -> None
         client.app.dependency_overrides[duplicates_api.get_qbit_client_factory] = lambda: (
             lambda *_args, **_kwargs: FailingDuplicateQbitAdapter()
         )
-        assert client.put("/api/v1/operations", headers=headers, json={"enabled": True}).status_code == 200
 
         preview = client.post(
             f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
@@ -785,7 +780,6 @@ def test_duplicate_confirmation_rejects_tampering(client: TestClient) -> None:
     root.mkdir()
     try:
         movie_id, winner_id, loser_id, _ = db_run(lambda db: seed_movie_duplicate(db, root))
-        assert client.put("/api/v1/operations", headers=headers, json={"enabled": True}).status_code == 200
         preview = client.post(
             f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
             headers=headers,
@@ -814,7 +808,6 @@ def test_duplicate_confirmation_expires_before_any_destructive_action(client: Te
     root.mkdir()
     try:
         movie_id, winner_id, loser_id, _ = db_run(lambda db: seed_movie_duplicate(db, root))
-        assert client.put("/api/v1/operations", headers=headers, json={"enabled": True}).status_code == 200
         preview = client.post(
             f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
             headers=headers,

@@ -208,12 +208,6 @@ def movie_context(client: TestClient):
 
     headers = _login(client)
     _configure_tmdb(client, headers)
-    enabled = client.put(
-        "/api/v1/operations",
-        headers=headers,
-        json={"enabled": True},
-    )
-    assert enabled.status_code == 200, enabled.text
     root = client.post(
         "/api/v1/storage-roots",
         headers=headers,
@@ -472,7 +466,6 @@ def test_initial_scan_persists_plex_exact_path_verification(client: TestClient, 
 
     monkeypatch.setattr(reconciliation_service, "PlexClient", behavior.factory)
     try:
-        client.put("/api/v1/operations", headers=headers, json={"enabled": True})
         root = client.post(
             "/api/v1/storage-roots",
             headers=headers,
@@ -497,7 +490,6 @@ def test_plex_recheck_show_exact_episode_path_match(client: TestClient) -> None:
     episode.write_bytes(b"plex-show-test")
     headers = _login(client)
     _configure_tmdb(client, headers)
-    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     root = client.post(
         "/api/v1/storage-roots", headers=headers,
         json={"name": "Plex Shows", "path": str(fixture_root), "media_type": "shows"},
@@ -534,7 +526,6 @@ def test_plex_recheck_show_ignores_show_title_metadata_when_episode_numbers_matc
     episode.write_bytes(b"plex-show-title-test")
     headers = _login(client)
     _configure_tmdb(client, headers)
-    client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     root_response = client.post(
         "/api/v1/storage-roots", headers=headers,
         json={"name": "Plex Shows title advisory", "path": str(fixture_root), "media_type": "shows"},
