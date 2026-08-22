@@ -313,6 +313,53 @@ async def _poll_download_client(
                 for root in roots
             )
         previously_known = info_hash in prior_by_hash
+        if observed.checking and previously_known and not in_scope:
+            # checkingResumeData can temporarily omit or alter paths. A known
+            # torrent must remain managed during that transient state; path
+            # scope is re-evaluated after qBittorrent finishes checking.
+            relevant_count += 1
+            prior = prior_by_hash[info_hash]
+            torrent = await db.get(Torrent, prior.torrent_id)
+            if torrent is not None:
+                async with db.begin_nested():
+                    if reported_content:
+                        prior.reported_save_path = reported_content
+                    if resolved_content:
+                        prior.resolved_save_path = resolved_content
+                    prior.state = observed.state
+                    prior.progress = observed.progress
+                    prior.category = observed.category or None
+                    prior.tags = list(observed.tags)
+                    prior.is_present = True
+                    prior.last_seen_at = utcnow()
+                    prior.removed_at = None
+                    torrent.name = observed.name
+                    torrent.last_seen_at = utcnow()
+                    torrent.metadata_json = {
+                        **(torrent.metadata_json or {}),
+                        "progress": float(observed.progress),
+                        "state": observed.state,
+                        "checking": True,
+                        "scope": client.scope.value,
+                    }
+                    publish_live_event(
+                        "download.progress",
+                        entity_type="torrent",
+                        entity_id=torrent.id,
+                        data={
+                            "torrent_id": str(torrent.id),
+                            "client_id": str(client.id),
+                            "client_name": client.name,
+                            "name": observed.name,
+                            "progress": float(observed.progress),
+                            "percent": round(float(observed.progress) * 100, 2),
+                            "state": observed.state,
+                            "scope": client.scope.value,
+                            "reported_path": prior.reported_save_path,
+                            "resolved_path": prior.resolved_save_path,
+                        },
+                    )
+            continue
         # Configured storage roots are the hard boundary for reconciliation.
         # qBittorrent often contains torrents for libraries Medialogue cannot
         # and should not see.  Even a historically-known torrent must not
@@ -362,12 +409,16 @@ async def _poll_download_client(
                         info_hash=info_hash,
                         name=observed.name,
                         total_size=observed.total_size,
-                        completed_at=timestamp_completed,
+                        # A completion timestamp reported during a force check
+                        # must not suppress the real completion transition once
+                        # qBittorrent returns to a normal state.
+                        completed_at=None if observed.checking else timestamp_completed,
                         tracker_summary={"tracker": observed.tracker} if observed.tracker else {},
                         metadata_json={
                             "content_path": observed.content_path,
                             "mapping_id": str(mapping_id) if mapping_id else None,
                             "completed": observed.complete,
+                            "checking": observed.checking,
                         },
                     )
                     db.add(torrent)
@@ -406,7 +457,10 @@ async def _poll_download_client(
                         **(torrent.metadata_json or {}),
                         "content_path": observed.content_path,
                         "mapping_id": str(mapping_id) if mapping_id else None,
-                        "completed": observed.complete,
+                        # A force recheck is transient and must not erase the
+                        # durable fact that this torrent completed previously.
+                        "completed": was_complete if observed.checking else observed.complete,
+                        "checking": observed.checking,
                     }
                     if observed.complete and not was_complete:
                         completed += 1
@@ -483,6 +537,14 @@ async def _poll_download_client(
                         message=f"Torrent reappeared in qBittorrent client {client.name}.",
                         details={"client_id": str(client.id), "info_hash": info_hash},
                     )
+
+                # qBittorrent's checkingUP/checkingDL/checkingResumeData states
+                # are verification telemetry, not lifecycle transitions. Keep
+                # the observation fresh but preserve every existing association
+                # and wait for the next normal state before attaching,
+                # finalizing, archiving, or reconciling disagreements.
+                if observed.checking:
+                    continue
 
                 # Persist an Incoming association while downloading. Completion is
                 # authoritative, but attachment additionally requires shared path,

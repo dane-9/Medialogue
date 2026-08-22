@@ -451,6 +451,84 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
             root.rmdir()
 
 
+def test_checking_torrent_updates_telemetry_without_reconciliation(client: TestClient) -> None:
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    root = Path.cwd() / f"qbit-checking-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    try:
+        configured_root = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": "qbit checking", "path": str(root), "media_type": "movies"},
+        )
+        assert configured_root.status_code == 201, configured_root.text
+        _initialize_root(client, headers, configured_root.json()["id"])
+        configured = _create_client(client, headers, tags=["managed"])
+        behavior = FakeQBitBehavior(
+            torrents=[
+                _torrent(
+                    "checkinghash",
+                    "Checking Movie 2020 1080p WEB-DL",
+                    progress=1.0,
+                    state="checkingUP",
+                    save_path=str(root),
+                    content_path=str(root / "Checking Movie 2020 1080p WEB-DL"),
+                )
+            ]
+        )
+        _install_fake(client, behavior)
+        try:
+            summary = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert summary["added"] == 1
+            assert summary["completed"] == 0
+
+            downloads = client.get("/api/v1/downloads").json()["items"]
+            assert len(downloads) == 1
+            assert downloads[0]["state"] == "checkingUP"
+            assert downloads[0]["progress"] == pytest.approx(1.0)
+            assert downloads[0]["incoming"] is False
+
+            assert client.get("/api/v1/movies").json()["total"] == 0
+            assert client.get("/api/v1/problems?reason=TORRENT_PATH_NOT_FOUND").json()["total"] == 0
+
+            behavior.torrents = [
+                _torrent(
+                    "checkinghash",
+                    "Checking Movie 2020 1080p WEB-DL",
+                    progress=0.5,
+                    state="checkingResumeData",
+                    save_path="",
+                    content_path=None,
+                )
+            ]
+            transient = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert transient["relevant"] == 1
+            during_resume_check = client.get("/api/v1/downloads").json()["items"][0]
+            assert during_resume_check["state"] == "checkingResumeData"
+            assert during_resume_check["is_present"] is True
+            assert during_resume_check["resolved_save_path"] == str(root / "Checking Movie 2020 1080p WEB-DL")
+
+            behavior.torrents = [
+                _torrent(
+                    "checkinghash",
+                    "Checking Movie 2020 1080p WEB-DL",
+                    progress=1.0,
+                    state="pausedUP",
+                    save_path=str(root),
+                    content_path=str(root / "Checking Movie 2020 1080p WEB-DL"),
+                )
+            ]
+            finished = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert finished["completed"] == 1
+            assert client.get("/api/v1/problems?reason=TORRENT_PATH_NOT_FOUND").json()["total"] == 1
+        finally:
+            client.app.dependency_overrides.clear()
+    finally:
+        if root.exists():
+            root.rmdir()
+
+
 def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resolves(client: TestClient) -> None:
     """A qBit path outside enabled roots is not a Medialogue filesystem fault.
 

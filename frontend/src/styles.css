@@ -882,6 +882,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--accent-soft);
 }.state-icon, .problem-severity { width: var(--control-sm); height: var(--control-sm); }
 .state-downloading { color: var(--accent-text); background: var(--accent-soft); }
+.state-checking { color: var(--warn); background: var(--warn-soft); }
 .state-seeding { color: var(--ok); background: var(--ok-soft); }
 .state-completed { color: var(--muted); background: var(--raised-2); }
 .state-error { color: var(--err); background: var(--err-soft); }

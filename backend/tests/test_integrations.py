@@ -34,6 +34,29 @@ async def test_qbittorrent_observation_and_completion():
     assert values[0].tags == ("managed", "archive")
 
 
+@pytest.mark.parametrize("state", ["checkingUP", "checkingDL", "checkingResumeData"])
+def test_qbittorrent_checking_states_are_transient_not_complete(state: str):
+    from app.integrations.qbittorrent import TorrentObservation
+
+    observation = TorrentObservation(
+        info_hash="abc",
+        name="Checking",
+        progress=1.0,
+        state=state,
+        save_path="/downloads",
+        content_path="/downloads/Checking",
+        category="",
+        tags=(),
+        tracker=None,
+        total_size=1,
+        added_at=None,
+        completed_at=1_700_000_000,
+    )
+
+    assert observation.checking is True
+    assert observation.complete is False
+
+
 @pytest.mark.asyncio
 async def test_qbittorrent_accepts_v52_no_content_login_response():
     paths: list[str] = []
