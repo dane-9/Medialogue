@@ -35,6 +35,43 @@ from app.services.jobs import create_job, update_job
 from app.services.reconciliation import mark_root_available, mark_root_unavailable, open_problem
 
 
+class _NoMatchTMDBClient:
+    """Reachable TMDB that recognises nothing.
+
+    Keeps these suites focused on their own subject: the scan completes, and
+    identity simply stays unresolved.
+    """
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    async def health(self):
+        return {"status": "healthy"}
+
+    async def search_movie(self, title: str, year: int | None = None):
+        return []
+
+    async def search_show(self, title: str, year: int | None = None):
+        return []
+
+    async def get_movie_alternative_titles(self, tmdb_id: int):
+        return ()
+
+    async def close(self):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _configure_fake_tmdb(monkeypatch):
+    import app.api.tmdb as tmdb_api
+    import app.services.tmdb as tmdb_service
+
+    monkeypatch.setattr(tmdb_service, "TMDBClient", _NoMatchTMDBClient)
+    monkeypatch.setattr(tmdb_api, "TMDBClient", _NoMatchTMDBClient)
+
+
+
+
 @pytest.fixture
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-part16-", suffix=".db", dir=os.getcwd())
@@ -206,6 +243,7 @@ def test_cancelled_queued_job_is_not_resurrected_and_restart_interrupts_running_
 
 def test_empty_root_scan_has_durable_history_and_survives_refresh(client: TestClient) -> None:
     headers = login_headers(client)
+    client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     root_path = Path(tempfile.mkdtemp(prefix="medialogue-empty-root-", dir=os.getcwd()))
     try:
@@ -316,6 +354,7 @@ def test_storage_scan_job_is_runtime_visible_deduplicated_and_cancellable(client
     from app.services.jobs import update_job
 
     headers = login_headers(client)
+    client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     root_path = Path(tempfile.mkdtemp(prefix="medialogue-cancellable-root-", dir=os.getcwd()))
     started = threading.Event()

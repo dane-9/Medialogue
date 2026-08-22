@@ -1560,7 +1560,13 @@ function StorageSettings() {
         else if (finished) setMessage(`${initializing ? 'Initialization scan' : 'Scan'} ${finished.state}. The root ${initializing ? 'remains uninitialized' : 'was not fully refreshed'}.`)
       }).catch((reason) => setMessage(reason instanceof Error ? reason.message : 'Could not track scan completion.'))
     }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start scan.') }
+    catch (reason) {
+      // Scanning is gated on TMDB because it establishes the identity of
+      // everything discovered. Point at the fix rather than restating the code.
+      if (reason instanceof ApiError && reason.code === 'TMDB_NOT_CONFIGURED') {
+        setMessage('Configure TMDB before scanning — Medialogue cannot identify discovered media without it. Settings → Metadata.')
+      } else setMessage(reason instanceof Error ? reason.message : 'Could not start scan.')
+    }
   }
   const addRoot = async () => {
     try {

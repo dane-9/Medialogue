@@ -2,10 +2,13 @@ import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatCo
 
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /** Machine-readable code from the API error envelope, when present. */
+  code?: string
+  constructor(message: string, status: number, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -39,7 +42,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let payload: ApiErrorShape = {}
     try { payload = await response.json() as ApiErrorShape } catch { /* non-json response */ }
-    throw new ApiError((payload.error?.message ?? payload.detail ?? payload.message ?? response.statusText) || 'Request failed', response.status)
+    throw new ApiError((payload.error?.message ?? payload.detail ?? payload.message ?? response.statusText) || 'Request failed', response.status, payload.error?.code)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

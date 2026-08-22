@@ -22,6 +22,7 @@ from app.schemas.storage import (
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
+from app.services.tmdb import get_tmdb_configuration
 
 router = APIRouter(tags=["storage"])
 
@@ -153,6 +154,17 @@ async def scan_storage_root(
         raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
     if not root.enabled:
         raise AppError("STORAGE_ROOT_DISABLED", "Storage root is disabled.", status_code=409)
+    # TMDB establishes the identity of everything a scan discovers. Without it,
+    # every directory would be recorded as an unidentified Problem — one global
+    # misconfiguration turning into thousands of individually actionable rows.
+    # Refusing to start is the honest answer: fix the one setting, then scan.
+    configuration = await get_tmdb_configuration(db)
+    if configuration is None or not configuration.enabled or not configuration.api_key:
+        raise AppError(
+            "TMDB_NOT_CONFIGURED",
+            "Configure TMDB before scanning. Medialogue cannot identify discovered media without it.",
+            status_code=409,
+        )
     existing = await active_storage_root_scan_job(db, root.id)
     if existing is not None:
         return JobAcceptedResponse(job_id=existing.id)

@@ -194,7 +194,8 @@ def test_filesystem_season_pack_uses_one_release_for_many_episode_files(client: 
         media = [item["media"][0] for item in episodes]
         assert {item["release_scope"] for item in media} == {"season_pack"}
         assert len({item["show_release_id"] for item in media}) == 1
-        assert client.get("/api/v1/problems?reason=SEASON_PACK_MAPPING_PENDING").json()["total"] == 0
+        # The pack mapped cleanly: no member was left unresolved.
+        assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -220,7 +221,8 @@ def test_multi_episode_file_maps_one_media_file_to_every_episode(client: TestCli
         assert e1["media"][0]["release_scope"] == "multi_episode"
         assert e1["media"][0]["mapped_episode_numbers"] == [1, 2]
         assert e2["media"][0]["mapped_episode_numbers"] == [1, 2]
-        assert client.get("/api/v1/problems?reason=MULTI_EPISODE_MAPPING_PENDING").json()["total"] == 0
+        # Both episodes resolved from the one file; nothing left pending.
+        assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -512,5 +514,64 @@ def test_ranged_multi_episode_file_maps_every_episode_in_range(client: TestClien
         assert episodes[0]["media"][0]["mapped_episode_numbers"] == [1, 2, 3]
         assert episodes[0]["media"][0]["release_scope"] == "multi_episode"
         assert media.exists() and media.read_bytes() == b"range"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_season_folder_supplies_the_season_for_episode_only_filenames(client: TestClient) -> None:
+    """``Season 1/01 - Title.mkv`` is a real layout; the folder is the evidence."""
+
+    root = Path.cwd() / f"season-folder-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    (show_dir / "Season 1").mkdir(parents=True)
+    (show_dir / "Season 1" / "01 - Pilot.mkv").write_bytes(b"episode")
+    (show_dir / "Season 1" / "02 - Second.mkv").write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        show = detail(client)
+        for number in (1, 2):
+            assert episode_by_number(show, number)["presence_state"] == "present"
+        assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.parametrize("folder", ["Season 1", "Season.1", "Season_1", "S01", "S1"])
+def test_every_common_season_folder_spelling_is_recognised(client: TestClient, folder: str) -> None:
+    root = Path.cwd() / f"season-spelling-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    (show_dir / folder).mkdir(parents=True)
+    (show_dir / folder / "03 - Third.mkv").write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        show = detail(client)
+        assert episode_by_number(show, 3)["presence_state"] == "present"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_explicit_season_episode_marker_still_wins_over_the_folder(client: TestClient) -> None:
+    """A filename that states S01E02 is trusted over a folder claiming season 5."""
+
+    root = Path.cwd() / f"season-conflict-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    (show_dir / "Season 5").mkdir(parents=True)
+    (show_dir / "Season 5" / "Dollface S01E02 1080p WEB-DL.mkv").write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+
+        show = detail(client)
+        assert episode_by_number(show, 2)["presence_state"] == "present"
     finally:
         shutil.rmtree(root, ignore_errors=True)

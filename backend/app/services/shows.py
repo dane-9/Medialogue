@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -39,19 +38,15 @@ from app.models.domain import (
     SourceType,
     StorageRoot,
 )
-from app.parser import parse_release_name
+from app.parser import extract_episode_numbers, parse_release_name, parse_season_folder
 from app.services.events import create_event
 from app.services.quality_profiles import evaluate_current_release_score
 from app.services.reconciliation import open_problem, resolve_problem
-from app.services.tmdb import resolve_show_identity, sync_show_metadata
+from app.services.tmdb import TMDBUnavailable, resolve_show_identity, sync_show_metadata
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _normalized_title(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
 
 
 async def resolve_show_resource(db: AsyncSession, resource_id: str) -> Show | None:
@@ -276,6 +271,22 @@ async def _refresh_episode_presence(db: AsyncSession, episode: Episode, *, emit_
     await _refresh_episode_duplicate_problem(db, episode)
 
 
+
+def _season_from_relative_path(relative_path: str) -> int | None:
+    """Season number implied by the folders a file sits in, nearest first.
+
+    Libraries organise episodes under Season 1 / Season.1 / S01 / S1940 and then
+    often name the file with only an index (``01 - Pilot``). The folder is
+    reliable evidence, so it stands in for a season the filename omits.
+    """
+
+    for part in reversed(Path(relative_path).parent.parts):
+        season = parse_season_folder(part)
+        if season is not None:
+            return season
+    return None
+
+
 async def reconcile_show_directory(
     db: AsyncSession,
     root: StorageRoot,
@@ -345,17 +356,23 @@ async def reconcile_show_directory(
     if show is None:
         match, reason = await resolve_show_identity(db, title, year)
         if match is None:
-            problem_reason = "TMDB_SHOW_MATCH_REQUIRED" if reason in {"not_configured", "unavailable"} else "TMDB_SHOW_IDENTITY_UNRESOLVED"
-            alternate = "TMDB_SHOW_IDENTITY_UNRESOLVED" if problem_reason == "TMDB_SHOW_MATCH_REQUIRED" else "TMDB_SHOW_MATCH_REQUIRED"
-            await resolve_problem(db, alternate, "media_directory", directory.id)
+            # See reconcile_movie_directory: an absent or unreachable TMDB is a
+            # global state. Scans are gated on it being configured, so this only
+            # fires on a mid-run outage and fails the job once.
+            if reason in {"not_configured", "unavailable"}:
+                raise TMDBUnavailable(
+                    f"TMDB is {reason.replace('_', ' ')}; Show identity cannot be established. "
+                    "Check Settings -> Metadata, then run the scan again."
+                )
+            await resolve_problem(db, "TMDB_SHOW_MATCH_REQUIRED", "media_directory", directory.id)
             await open_problem(
                 db,
-                reason=problem_reason,
+                reason="TMDB_SHOW_IDENTITY_UNRESOLVED",
                 entity_type="media_directory",
                 entity_id=directory.id,
-                message="TMDB must uniquely identify a newly discovered Show before it is added automatically.",
+                message=f"TMDB could not uniquely identify {title or 'this Show candidate'}.",
                 details={"path": observation.path, "title": title, "year": year, "tmdb_reason": reason},
-                severity=Severity.ERROR if reason == "unavailable" else Severity.WARNING,
+                severity=Severity.WARNING,
             )
             return "review"
         await resolve_problem(db, "TMDB_SHOW_MATCH_REQUIRED", "media_directory", directory.id)
@@ -553,9 +570,17 @@ async def reconcile_show_directory(
 
         season_number = parsed.identity.season
         episode_numbers = tuple(dict.fromkeys(parsed.identity.episodes))
-        parsed_title = parsed.identity.title_candidate
+        # An explicit S01E01 in the filename always wins. The season folder only
+        # fills in what the filename left out.
+        folder_season = _season_from_relative_path(relative_path)
+        if season_number is None and folder_season is not None:
+            season_number = folder_season
+        if not episode_numbers and folder_season is not None:
+            episode_numbers = extract_episode_numbers(Path(relative_path).stem)
         if season_number is None or not episode_numbers:
             unresolved += 1
+            # SHOW_FILE_IDENTITY_MISMATCH is no longer raised; clearing it here
+            # retires any row left over from before the check was removed.
             await resolve_problem(db, "SHOW_FILE_IDENTITY_MISMATCH", "media_file", media_file.id)
             await open_problem(
                 db,
@@ -566,22 +591,6 @@ async def reconcile_show_directory(
                 details={"path": str(Path(observation.path) / relative_path), "parse": parsed.to_dict()},
             )
             continue
-        if parsed_title and _normalized_title(parsed_title) != _normalized_title(show.title):
-            unresolved += 1
-            await resolve_problem(db, "EPISODE_MAPPING_UNRESOLVED", "media_file", media_file.id)
-            await resolve_problem(db, "SEASON_PACK_MAPPING_PENDING", "media_file", media_file.id)
-            await resolve_problem(db, "MULTI_EPISODE_MAPPING_PENDING", "media_file", media_file.id)
-            await open_problem(
-                db,
-                reason="SHOW_FILE_IDENTITY_MISMATCH",
-                entity_type="media_file",
-                entity_id=media_file.id,
-                message="The episode filename appears to identify a different Show.",
-                details={"show": show.title, "parsed_title": parsed_title, "path": relative_path},
-                severity=Severity.ERROR,
-            )
-            continue
-
         season = await _ensure_season(db, show, season_number)
 
         release: ShowRelease | None = None
@@ -699,6 +708,8 @@ async def reconcile_show_directory(
         else:
             await resolve_problem(db, "EPISODE_MAPPING_UNRESOLVED", "media_file", media_file.id)
         if episode_numbers:
+            # Retire-only: nothing raises these any more. Clearing them keeps
+            # rows written by earlier versions from becoming unresolvable.
             await resolve_problem(db, "SEASON_PACK_MAPPING_PENDING", "media_file", media_file.id)
             await resolve_problem(db, "MULTI_EPISODE_MAPPING_PENDING", "media_file", media_file.id)
         await resolve_problem(db, "SHOW_FILE_IDENTITY_MISMATCH", "media_file", media_file.id)

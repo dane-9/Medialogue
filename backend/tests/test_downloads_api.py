@@ -29,6 +29,43 @@ from app.main import create_app
 from app.models.domain import DownloadClient, Torrent
 
 
+class _NoMatchTMDBClient:
+    """Reachable TMDB that recognises nothing.
+
+    Keeps these suites focused on their own subject: the scan completes, and
+    identity simply stays unresolved.
+    """
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    async def health(self):
+        return {"status": "healthy"}
+
+    async def search_movie(self, title: str, year: int | None = None):
+        return []
+
+    async def search_show(self, title: str, year: int | None = None):
+        return []
+
+    async def get_movie_alternative_titles(self, tmdb_id: int):
+        return ()
+
+    async def close(self):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _configure_fake_tmdb(monkeypatch):
+    import app.api.tmdb as tmdb_api
+    import app.services.tmdb as tmdb_service
+
+    monkeypatch.setattr(tmdb_service, "TMDBClient", _NoMatchTMDBClient)
+    monkeypatch.setattr(tmdb_api, "TMDBClient", _NoMatchTMDBClient)
+
+
+
+
 @pytest.fixture
 def client():
     db_path = tempfile.mktemp(prefix="medialogue-downloads-", suffix=".db", dir=os.getcwd())
@@ -99,6 +136,7 @@ def _login(client: TestClient) -> dict[str, str]:
 
 
 def _enable_operations(client: TestClient, headers: dict[str, str]) -> None:
+    client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test", "enabled": True})
     response = client.put("/api/v1/operations", headers=headers, json={"enabled": True})
     assert response.status_code == 200, response.text
 

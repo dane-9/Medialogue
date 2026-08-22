@@ -65,7 +65,7 @@ from app.reconciliation.types import (
 )
 from app.services.events import create_event, publish_live_event, queue_live_event
 from app.services.integration_state import get_configured_plex
-from app.services.tmdb import resolve_movie_identity, resolve_movie_identity_detailed
+from app.services.tmdb import TMDBUnavailable, resolve_movie_identity, resolve_movie_identity_detailed
 from app.services.quality_profiles import evaluate_current_release_score
 
 
@@ -820,20 +820,24 @@ async def reconcile_movie_directory(
         tmdb_resolution = await resolve_movie_identity_detailed(db, title, year)
         tmdb_match, tmdb_reason = tmdb_resolution.match, tmdb_resolution.reason
         if tmdb_match is None:
-            reason = "TMDB_MATCH_REQUIRED" if tmdb_reason in {"not_configured", "unavailable"} else "TMDB_IDENTITY_UNRESOLVED"
-            alternate = "TMDB_IDENTITY_UNRESOLVED" if reason == "TMDB_MATCH_REQUIRED" else "TMDB_MATCH_REQUIRED"
-            await resolve_problem(db, alternate, "media_directory", directory.id)
+            # A missing or unreachable TMDB is a global state, not a fact about
+            # this directory. Scans are gated on TMDB being configured, so this
+            # only fires on an outage mid-run: fail the job once rather than
+            # opening an identical Problem for every directory discovered.
+            if tmdb_reason in {"not_configured", "unavailable"}:
+                raise TMDBUnavailable(
+                    f"TMDB is {tmdb_reason.replace('_', ' ')}; identity cannot be established. "
+                    "Check Settings -> Metadata, then run the scan again."
+                )
+            reason = "TMDB_IDENTITY_UNRESOLVED"
+            await resolve_problem(db, "TMDB_MATCH_REQUIRED", "media_directory", directory.id)
             await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
             await open_problem(
                 db,
                 reason=reason,
                 entity_type="media_directory",
                 entity_id=directory.id,
-                message=(
-                    "TMDB must confirm a newly discovered movie before it is added automatically."
-                    if reason == "TMDB_MATCH_REQUIRED"
-                    else f"TMDB could not uniquely identify {_identity_label(title, year) or 'this movie candidate'}."
-                ),
+                message=f"TMDB could not uniquely identify {_identity_label(title, year) or 'this movie candidate'}.",
                 details={
                     "path": observation.path,
                     "parsed_title": title,
