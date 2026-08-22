@@ -17,7 +17,6 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
 from app.core.security import sign_confirmation_payload, verify_confirmation_payload
-from app.db import session as db_session
 from app.integrations.filesystem import FilesystemObserver
 from app.models.domain import (
     AccessMode,
@@ -25,7 +24,6 @@ from app.models.domain import (
     Episode,
     EpisodeMediaMap,
     IdentityState,
-    Job,
     JobStatus,
     MediaDirectory,
     MediaFile,
@@ -45,7 +43,7 @@ from app.models.domain import (
     utcnow,
 )
 from app.services.events import create_event, queue_live_event
-from app.services.jobs import publish_job_status, update_job
+from app.services.jobs import JobFailure, checkpoint_job, run_job
 from app.services.reconciliation import open_problem, reconcile_movie_directory, resolve_problem
 from app.services.shows import add_show_from_tmdb, reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration
@@ -789,17 +787,8 @@ async def run_duplicate_resolution(
 ) -> None:
     """Run the explicitly confirmed duplicate decision as a durable Job."""
 
-    async with db_session.async_session_factory() as db:
-        job = await db.get(Job, job_id)
-        if job is None or job.status in {
-            JobStatus.CANCELLED,
-            JobStatus.INTERRUPTED,
-            JobStatus.COMPLETED,
-            JobStatus.FAILED,
-        }:
-            return
-
-        await update_job(
+    async def worker(db, job) -> None:
+        await checkpoint_job(
             db,
             job,
             status=JobStatus.RUNNING,
@@ -811,8 +800,6 @@ async def run_duplicate_resolution(
                 "detail": "Applying the confirmed duplicate resolution…",
             },
         )
-        await db.commit()
-        publish_job_status(job)
 
         try:
             result = await commit_duplicate_resolution(
@@ -832,7 +819,7 @@ async def run_duplicate_resolution(
                 "problem_status": str(result["problem_status"]),
                 "message": "Duplicate resolution completed.",
             }
-            await update_job(
+            await checkpoint_job(
                 db,
                 job,
                 status=JobStatus.COMPLETED,
@@ -848,14 +835,10 @@ async def run_duplicate_resolution(
         except asyncio.CancelledError:
             raise
         except AppError as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None:
-                return
-            await update_job(
-                db,
-                job,
-                status=JobStatus.FAILED,
+            raise JobFailure(
+                exc.code,
+                exc.message,
+                details=exc.details,
                 progress={
                     "current": 0,
                     "total": 1,
@@ -863,17 +846,11 @@ async def run_duplicate_resolution(
                     "stage": "failed",
                     "detail": "Duplicate resolution could not be applied.",
                 },
-                error={"code": exc.code, "message": exc.message, "details": exc.details},
-            )
+            ) from exc
         except Exception as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None:
-                return
-            await update_job(
-                db,
-                job,
-                status=JobStatus.FAILED,
+            raise JobFailure(
+                "DUPLICATE_RESOLUTION_FAILED",
+                str(exc),
                 progress={
                     "current": 0,
                     "total": 1,
@@ -881,7 +858,11 @@ async def run_duplicate_resolution(
                     "stage": "failed",
                     "detail": "Duplicate resolution failed.",
                 },
-                error={"code": "DUPLICATE_RESOLUTION_FAILED", "message": str(exc)},
-            )
-        await db.commit()
-        publish_job_status(job)
+            ) from exc
+
+    await run_job(
+        job_id,
+        worker,
+        failure_code="DUPLICATE_RESOLUTION_FAILED",
+        failure_message="Duplicate resolution failed.",
+    )

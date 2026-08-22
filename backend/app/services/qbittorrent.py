@@ -21,10 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import QBittorrentClient, QBittorrentError, TorrentObservation
-from app.db import session as db_session
 from app.models.domain import (
     IntegrationType,
-    Job,
     JobStatus,
     MediaType,
     RemotePathMapping,
@@ -35,7 +33,7 @@ from app.models.domain import (
 )
 from app.services.events import create_event, publish_live_event
 from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
-from app.services.jobs import publish_job_status, update_job
+from app.services.jobs import JobFailure, checkpoint_job, run_job
 from app.services.torrent_archive import ensure_torrent_archived, refresh_torrent_manifest, torrent_archive_complete
 from app.services.reconciliation import (
     associate_incoming_torrent,
@@ -655,36 +653,28 @@ async def run_download_client_poll(
 ) -> None:
     """Poll one qBittorrent client as a durable background Job."""
 
-    async with db_session.async_session_factory() as db:
-        job = await db.get(Job, job_id)
+    async def worker(db, job) -> None:
         client = await get_configured_download_client(db, client_id)
-        if job is None or client is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
+        if client is None:
             return
         if not client.enabled:
-            await update_job(
-                db,
-                job,
-                status=JobStatus.FAILED,
+            raise JobFailure(
+                "DOWNLOAD_CLIENT_DISABLED",
+                "qBittorrent client is disabled.",
                 progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "qBittorrent client is disabled."},
-                error={"code": "DOWNLOAD_CLIENT_DISABLED", "message": "qBittorrent client is disabled."},
             )
-            await db.commit()
-            publish_job_status(job)
-            return
 
         client_name = client.name
-        await update_job(
+        await checkpoint_job(
             db,
             job,
             status=JobStatus.RUNNING,
             progress={"current": 0, "total": 1, "percent": 0, "stage": "polling", "detail": f"Polling qBittorrent client {client_name}…"},
         )
-        await db.commit()
-        publish_job_status(job)
         try:
             result = _job_poll_result(await poll_download_client(db, client, client_factory=client_factory))
             summary = {"client_id": str(client.id), "client_name": client_name, **result, "message": f"qBittorrent poll completed for {client_name}."}
-            await update_job(
+            await checkpoint_job(
                 db,
                 job,
                 status=JobStatus.COMPLETED,
@@ -694,19 +684,18 @@ async def run_download_client_poll(
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED}:
-                return
-            await update_job(
-                db,
-                job,
-                status=JobStatus.FAILED,
+            raise JobFailure(
+                "QBITTORRENT_POLL_FAILED",
+                str(exc),
                 progress={"current": 1, "total": 1, "percent": 100, "stage": "failed", "detail": f"qBittorrent poll failed for {client_name}."},
-                error={"code": "QBITTORRENT_POLL_FAILED", "message": str(exc)},
             )
-        await db.commit()
-        publish_job_status(job)
+
+    await run_job(
+        job_id,
+        worker,
+        failure_code="QBITTORRENT_POLL_FAILED",
+        failure_message="qBittorrent poll failed.",
+    )
 
 
 async def run_all_download_client_polls(
@@ -716,61 +705,49 @@ async def run_all_download_client_polls(
 ) -> None:
     """Poll all enabled qBittorrent clients as one durable background Job."""
 
-    async with db_session.async_session_factory() as db:
-        job = await db.get(Job, job_id)
-        if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
-            return
-        try:
-            clients = [client for client in await list_configured_download_clients(db) if client.enabled]
-            total = len(clients)
-            results: list[dict[str, object]] = []
-            await update_job(
+    async def worker(db, job) -> None:
+        clients = [client for client in await list_configured_download_clients(db) if client.enabled]
+        total = len(clients)
+        results: list[dict[str, object]] = []
+        await checkpoint_job(
+            db,
+            job,
+            status=JobStatus.RUNNING,
+            progress={"current": 0, "total": total, "percent": 0, "stage": "polling", "detail": f"Polling {total} qBittorrent client{'s' if total != 1 else ''}…"},
+            summary={"client_count": total, "results": []},
+        )
+        for index, client in enumerate(clients, start=1):
+            await db.refresh(job)
+            if job.status == JobStatus.CANCELLED:
+                return
+            client_name = client.name
+            try:
+                results.append(_job_poll_result(await poll_download_client(db, client, client_factory=client_factory)))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                await db.rollback()
+                results.append({"client_id": str(client.id), "client_name": client_name, "status": "unavailable", "message": str(exc)})
+            summary = {"client_count": total, "results": results}
+            await checkpoint_job(
                 db,
                 job,
-                status=JobStatus.RUNNING,
-                progress={"current": 0, "total": total, "percent": 0, "stage": "polling", "detail": f"Polling {total} qBittorrent client{'s' if total != 1 else ''}…"},
-                summary={"client_count": total, "results": []},
-            )
-            await db.commit()
-            publish_job_status(job)
-            for index, client in enumerate(clients, start=1):
-                await db.refresh(job)
-                if job.status == JobStatus.CANCELLED:
-                    return
-                client_name = client.name
-                try:
-                    results.append(_job_poll_result(await poll_download_client(db, client, client_factory=client_factory)))
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    await db.rollback()
-                    results.append({"client_id": str(client.id), "client_name": client_name, "status": "unavailable", "message": str(exc)})
-                summary = {"client_count": total, "results": results}
-                await update_job(
-                    db,
-                    job,
-                    progress={"current": index, "total": total, "percent": round(index * 100 / total, 1) if total else 100, "stage": "polling", "detail": f"Polled {client_name} ({index}/{total})."},
-                    summary=summary,
-                )
-                await db.commit()
-                publish_job_status(job)
-            summary = {"client_count": total, "results": results, "message": f"qBittorrent poll completed for {total} client{'s' if total != 1 else ''}."}
-            await update_job(
-                db,
-                job,
-                status=JobStatus.COMPLETED,
-                progress={"current": total, "total": total, "percent": 100, "stage": "completed", "detail": summary["message"]},
+                progress={"current": index, "total": total, "percent": round(index * 100 / total, 1) if total else 100, "stage": "polling", "detail": f"Polled {client_name} ({index}/{total})."},
                 summary=summary,
             )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            await update_job(
-                db,
-                job,
-                status=JobStatus.FAILED,
-                progress={"current": 0, "total": 0, "percent": 0, "stage": "failed", "detail": "qBittorrent polling failed."},
-                error={"code": "QBITTORRENT_POLL_FAILED", "message": str(exc)},
-            )
-        await db.commit()
-        publish_job_status(job)
+        summary = {"client_count": total, "results": results, "message": f"qBittorrent poll completed for {total} client{'s' if total != 1 else ''}."}
+        await checkpoint_job(
+            db,
+            job,
+            status=JobStatus.COMPLETED,
+            progress={"current": total, "total": total, "percent": 100, "stage": "completed", "detail": summary["message"]},
+            summary=summary,
+        )
+
+    await run_job(
+        job_id,
+        worker,
+        failure_code="QBITTORRENT_POLL_FAILED",
+        failure_message="qBittorrent polling failed.",
+        failure_progress={"current": 0, "total": 0, "percent": 0, "stage": "failed", "detail": "qBittorrent polling failed."},
+    )

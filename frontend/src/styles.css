@@ -332,7 +332,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .heading-copy p, .page-header p { color: var(--muted); font-size: var(--t-md); }
 .heading-actions, .page-actions, .row-actions, .button-row, .detail-actions,
-.cf-editor-actions, .cf-export-actions, .cf-test-actions, .cf-condition-badges {
+.cf-test-actions, .cf-condition-badges {
   display: flex;
   align-items: center;
   gap: var(--s2);
@@ -804,16 +804,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    pane, so the gap collapses and a divider takes its place. */
 .split-flush { gap: 0; }
 
-.split-rail, .format-list, .profile-list, .qbit-client-list, .problem-list-panel {
+.split-rail, .profile-list, .qbit-client-list, .problem-list-panel {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
-.split-pane, .format-editor, .profile-editor, .qbit-editor, .settings-panel,
+.split-pane, .profile-editor, .qbit-editor, .settings-panel,
 .problem-detail-panel { min-width: 0; }
 
 /* Rail item — the single selectable row used by every rail in the app. */
-.rail-item, .format-list-items > button, .profile-item, .qbit-client-item, .problem-row {
+.rail-item, .profile-item, .qbit-client-item, .problem-row {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -825,15 +825,15 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: transparent;
   text-align: left;
 }
-.rail-item:hover, .format-list-items > button:hover, .profile-item:hover,
+.rail-item:hover, .profile-item:hover,
 .qbit-client-item:hover, .problem-row:hover { color: var(--text); background: var(--raised); }
-.rail-item.selected, .format-list-items > button.selected, .profile-item.selected,
+.rail-item.selected, .profile-item.selected,
 .qbit-client-item.selected, .problem-row.selected {
   color: var(--text);
   background: var(--accent-soft);
   box-shadow: inset 2px 0 var(--accent);
 }
-.rail-item > span:nth-child(2), .format-list-items > button > span:nth-child(2),
+.rail-item > span:nth-child(2), > span:nth-child(2),
 .profile-item > span:nth-child(2), .qbit-client-item > span:nth-child(2),
 .problem-row-copy {
   display: flex;
@@ -842,7 +842,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   flex-direction: column;
   gap: 2px;
 }
-.rail-item strong, .format-list-items strong, .profile-item strong,
+.rail-item strong, .profile-item strong,
 .qbit-client-item strong, .problem-row-copy strong {
   overflow: hidden;
   color: var(--text);
@@ -851,7 +851,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-item small, .format-list-items small, .profile-item small,
+.rail-item small, .profile-item small,
 .qbit-client-item small, .problem-row-copy small {
   overflow: hidden;
   color: var(--faint);
@@ -870,7 +870,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .qbit-client-item .badge { flex: none; }
 
 /* Rail glyph — the small square icon that leads a rail item. */
-.rail-glyph, .format-symbol, .profile-icon, .root-icon, .release-icon,
+.rail-glyph, .profile-icon, .root-icon, .release-icon,
 .profile-hero-icon, .incoming-icon,
 .state-icon, .problem-severity, .search-hero-icon {
   display: grid;
@@ -881,9 +881,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-radius: var(--r-md);
   color: var(--accent-text);
   background: var(--accent-soft);
-}
-.format-symbol { font: var(--t-md) var(--mono); }
-.state-icon, .problem-severity { width: var(--control-sm); height: var(--control-sm); }
+}.state-icon, .problem-severity { width: var(--control-sm); height: var(--control-sm); }
 .state-downloading { color: var(--accent-text); background: var(--accent-soft); }
 .state-seeding { color: var(--ok); background: var(--ok-soft); }
 .state-completed { color: var(--muted); background: var(--raised-2); }
@@ -892,14 +890,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .severity-medium { color: var(--warn); background: var(--warn-soft); }
 .severity-low { color: var(--muted); background: var(--raised-2); }
 
-.format-list-items { flex: 1; }
-.format-list > .button, .cf-list-actions .button { margin: var(--s3); justify-content: flex-start; }
-.cf-list-actions { display: grid; gap: var(--s1); padding-top: var(--s2); border-top: 1px solid var(--line); }
-.cf-list-actions .button { margin: 0 var(--s3); }
 .cf-list-state { padding: var(--s4); color: var(--muted); font-size: var(--t-sm); }
 .cf-file-input { display: none; }
-.format-score { color: var(--ok); font: var(--t-xs) var(--mono); }
-.format-score.negative { color: var(--err); }
 
 /* --------------------------------------------------------------------------
    Media grid and cards
@@ -1392,14 +1384,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .search-cf-condition.pass svg { color: var(--ok); }
 .search-cf-condition.fail svg { color: var(--err); }
 .search-cf-condition span { color: var(--muted); }
-.search-cf-condition small { overflow: hidden; color: var(--faint); text-overflow: ellipsis; white-space: nowrap; }
-
-/* --------------------------------------------------------------------------
-   Custom formats and quality profiles
-   -------------------------------------------------------------------------- */
-
-.format-editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); gap: var(--s5); padding: var(--s4); }
-.format-test { min-width: 0; }
+.search-cf-condition small { overflow: hidden; color: var(--faint); text-overflow: ellipsis; white-space: nowrap; }.format-test { min-width: 0; }
 .format-test > .input { width: 100%; margin-bottom: var(--s2); }
 .cf-conditions-column { display: grid; align-content: start; gap: var(--s2); min-width: 0; }
 
@@ -1426,23 +1411,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-top: 1px solid var(--line);
 }
 .cf-condition-toggles label { display: inline-flex; align-items: center; gap: var(--s1); color: var(--muted); font-size: var(--t-xs); }
-.cf-condition-toggles input { accent-color: var(--accent); }
-
-.cf-editor-meta {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) 150px 90px;
-  gap: var(--s3);
-  padding: var(--s4);
-  border-bottom: 1px solid var(--line);
-}
-.cf-editor-meta label { min-width: 0; }
-.cf-description-field { grid-column: 1 / -1; }
-.cf-enabled-field { display: flex; flex-direction: column; }
-.cf-enabled-field input { width: 16px; height: 16px; margin: var(--s2) 0 0; accent-color: var(--accent); }
-.cf-editor-footer { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
-.cf-export-actions { flex: 1; }
-.cf-dirty-state { color: var(--faint); font: var(--t-micro) var(--mono); }
-.cf-search-match { color: var(--accent-text); font: var(--t-xs) var(--mono); white-space: nowrap; }
+.cf-condition-toggles input { accent-color: var(--accent); }.cf-search-match { color: var(--accent-text); font: var(--t-xs) var(--mono); white-space: nowrap; }
 .cf-search-match strong { color: var(--accent-text); font-size: var(--t-sm); }
 .cf-test-actions { margin-bottom: var(--s3); }
 
@@ -1597,8 +1566,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    nothing between them and the border. */
 .panel > .toolbar { padding: var(--s4); margin-bottom: 0; }
 .panel > .empty-state,
-.split-rail > .empty-state,
-.format-list > .empty-state,
+.split-rail > .empty-state > .empty-state,
 .qbit-client-list > .empty-state { margin: var(--s4); padding: var(--s5) var(--s4); }
 .recovery-settings { display: block; }
 .recovery-job { display: grid; gap: var(--s2); min-width: 320px; }
@@ -1921,9 +1889,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    -------------------------------------------------------------------------- */
 
 @media (max-width: 1400px) {
-  .split { --rail: 240px; }
-  .format-editor-grid { grid-template-columns: minmax(0, 1fr); }
-}
+  .split { --rail: 240px; }}
 @media (max-width: 1220px) {
   .health-strip { display: none; }
   .page-content { padding: var(--s4); }
@@ -2081,3 +2047,130 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .search-pick-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .search-pick-copy span { color: var(--faint); font: var(--t-micro) var(--mono); }
 .search-pick .badge { flex: none; }
+
+/* --------------------------------------------------------------------------
+   Modal — a centred dialog with fixed header/footer and a scrolling body.
+   -------------------------------------------------------------------------- */
+
+.modal {
+  display: flex;
+  width: min(640px, 100%);
+  max-height: 82vh;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+}
+.modal-wide { width: min(880px, 100%); }
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.modal-head-copy { min-width: 0; }
+.modal-head h2 { margin-top: 2px; font: 600 var(--t-xl)/1.25 var(--sans); overflow-wrap: anywhere; }
+.modal-body { flex: 1; overflow: auto; }
+.modal-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s4);
+  border-top: 1px solid var(--line);
+}
+.modal-foot .footer-state { text-align: right; }
+
+/* --------------------------------------------------------------------------
+   Custom Formats — a grid of what each format matches, edited in a dialog.
+   -------------------------------------------------------------------------- */
+
+.cf-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--s3);
+  align-items: start;
+}
+.cf-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-height: 150px;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  transition: border-color .12s, background .12s;
+}
+.cf-card:hover { border-color: var(--accent-line); background: var(--raised); }
+.cf-card-off { opacity: .6; }
+.cf-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s2); }
+.cf-card-head strong { min-width: 0; color: var(--text); font-size: var(--t-md); font-weight: 600; overflow-wrap: anywhere; }
+.cf-card-head .badge { flex: none; }
+.cf-card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.cf-card-conditions { display: flex; flex-wrap: wrap; gap: var(--s1); flex: 1; align-content: flex-start; }
+.cf-condition-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  max-width: 100%;
+  padding: 2px var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: var(--raised);
+  font: var(--t-micro) var(--mono);
+}
+.cf-condition-chip em { color: var(--warn); font-style: normal; }
+.cf-condition-chip code { overflow: hidden; color: var(--accent-text); text-overflow: ellipsis; white-space: nowrap; }
+.cf-condition-more { color: var(--faint); }
+.cf-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font: var(--t-micro) var(--mono);
+}
+.cf-card-add {
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  text-align: center;
+}
+.cf-card-add:hover { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.cf-card-add strong { color: var(--text); font-size: var(--t-md); font-weight: 500; }
+.cf-card-add span { font-size: var(--t-xs); }
+
+.cf-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  padding: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.cf-modal-grid .field-wide { grid-column: 1 / -1; }
+.cf-modal-section { display: grid; gap: var(--s3); padding: var(--s4); }
+.cf-modal-section + .cf-modal-section { border-top: 1px solid var(--line); }
+.cf-modal-note { color: var(--muted); font-size: var(--t-xs); line-height: 1.55; }
+.cf-modal-note strong { color: var(--text); }
+.cf-condition-list { display: grid; gap: var(--s2); }
+.cf-condition-card .condition-top strong { color: var(--faint); font: 500 var(--t-micro) var(--mono); letter-spacing: .08em; text-transform: uppercase; }

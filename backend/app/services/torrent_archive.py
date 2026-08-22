@@ -24,11 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.db import session as db_session
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.domain import (
     IntegrationType,
-    Job,
     JobStatus,
     MediaDirectory,
     MediaType,
@@ -48,7 +46,7 @@ from app.models.domain import (
 from app.core.integration_config import get_integration_config_store
 from app.services.events import create_event
 from app.services.integration_state import ConfiguredDownloadClient
-from app.services.jobs import publish_job_status, update_job
+from app.services.jobs import JobFailure, checkpoint_job, run_job
 
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -681,18 +679,13 @@ async def run_torrent_archive_retry(
 ) -> None:
     """Retry a torrent archive export as a durable Job."""
 
-    async with db_session.async_session_factory() as db:
-        job = await db.get(Job, job_id)
-        if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
-            return
-        await update_job(
+    async def worker(db, job) -> None:
+        await checkpoint_job(
             db,
             job,
             status=JobStatus.RUNNING,
             progress={"current": 0, "total": 1, "percent": 0, "stage": "archiving", "detail": "Retrying torrent recovery archive…"},
         )
-        await db.commit()
-        publish_job_status(job)
         try:
             torrent = await db.get(Torrent, torrent_id)
             if torrent is None:
@@ -712,7 +705,7 @@ async def run_torrent_archive_retry(
                 "manifest_path": torrent.manifest_path,
                 "message": None if success else str((torrent.metadata_json or {}).get("archive_error") or "Archive failed."),
             }
-            await update_job(
+            await checkpoint_job(
                 db,
                 job,
                 status=JobStatus.COMPLETED if success else JobStatus.FAILED,
@@ -723,19 +716,25 @@ async def run_torrent_archive_retry(
         except asyncio.CancelledError:
             raise
         except AppError as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None:
-                return
-            await update_job(db, job, status=JobStatus.FAILED, progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": exc.message}, error={"code": exc.code, "message": exc.message, "details": exc.details})
+            raise JobFailure(
+                exc.code,
+                exc.message,
+                details=exc.details,
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": exc.message},
+            ) from exc
         except Exception as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None:
-                return
-            await update_job(db, job, status=JobStatus.FAILED, progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Recovery archive retry failed."}, error={"code": "TORRENT_ARCHIVE_FAILED", "message": str(exc)})
-        await db.commit()
-        publish_job_status(job)
+            raise JobFailure(
+                "TORRENT_ARCHIVE_FAILED",
+                str(exc),
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Recovery archive retry failed."},
+            ) from exc
+
+    await run_job(
+        job_id,
+        worker,
+        failure_code="TORRENT_ARCHIVE_FAILED",
+        failure_message="Recovery archive retry failed.",
+    )
 
 
 async def run_torrent_archive_restore(
@@ -750,18 +749,13 @@ async def run_torrent_archive_restore(
 ) -> None:
     """Submit an archived torrent to qBittorrent as a durable Job."""
 
-    async with db_session.async_session_factory() as db:
-        job = await db.get(Job, job_id)
-        if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
-            return
-        await update_job(
+    async def worker(db, job) -> None:
+        await checkpoint_job(
             db,
             job,
             status=JobStatus.RUNNING,
             progress={"current": 0, "total": 1, "percent": 0, "stage": "restoring", "detail": "Submitting archived torrent to qBittorrent…"},
         )
-        await db.commit()
-        publish_job_status(job)
         try:
             result = await restore_torrent_archive(
                 db,
@@ -772,20 +766,26 @@ async def run_torrent_archive_restore(
                 tags=tags,
                 client_factory=client_factory,
             )
-            await update_job(db, job, status=JobStatus.COMPLETED, progress={"current": 1, "total": 1, "percent": 100, "stage": "completed", "detail": "Archived torrent submitted to qBittorrent."}, summary=result)
+            await checkpoint_job(db, job, status=JobStatus.COMPLETED, progress={"current": 1, "total": 1, "percent": 100, "stage": "completed", "detail": "Archived torrent submitted to qBittorrent."}, summary=result)
         except asyncio.CancelledError:
             raise
         except AppError as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None:
-                return
-            await update_job(db, job, status=JobStatus.FAILED, progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": exc.message}, error={"code": exc.code, "message": exc.message, "details": exc.details})
+            raise JobFailure(
+                exc.code,
+                exc.message,
+                details=exc.details,
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": exc.message},
+            ) from exc
         except Exception as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None:
-                return
-            await update_job(db, job, status=JobStatus.FAILED, progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Torrent restore failed."}, error={"code": "QBITTORRENT_RESTORE_FAILED", "message": str(exc)})
-        await db.commit()
-        publish_job_status(job)
+            raise JobFailure(
+                "QBITTORRENT_RESTORE_FAILED",
+                str(exc),
+                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Torrent restore failed."},
+            ) from exc
+
+    await run_job(
+        job_id,
+        worker,
+        failure_code="QBITTORRENT_RESTORE_FAILED",
+        failure_message="Torrent restore failed.",
+    )
