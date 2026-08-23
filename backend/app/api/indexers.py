@@ -45,7 +45,6 @@ def _response(indexer: ConfiguredIndexer) -> IndexerResponse:
         categories=list(indexer.categories),
         minimum_seeders=indexer.minimum_seeders,
         priority=indexer.priority,
-        download_client_id=indexer.download_client_id,
         health=indexer.health,
         last_checked_at=indexer.last_checked_at,
         last_success_at=indexer.last_success_at,
@@ -86,8 +85,6 @@ async def create_indexer(
     db: AsyncSession = Depends(get_db),
 ) -> IndexerResponse:
     store = get_integration_config_store()
-    if payload.download_client_id is not None and store.get_download_client(payload.download_client_id) is None:
-        raise AppError("DOWNLOAD_CLIENT_NOT_FOUND", "The selected download client was not found.", status_code=404)
     config = store.save_indexer(
         IndexerConfig(
             id=uuid4(),
@@ -102,7 +99,6 @@ async def create_indexer(
             categories=list(payload.categories),
             minimum_seeders=payload.minimum_seeders,
             priority=payload.priority,
-            download_client_id=payload.download_client_id,
         )
     )
     state = Indexer(id=config.id)
@@ -137,9 +133,6 @@ async def update_indexer(
     if indexer is None:
         raise AppError("NOT_FOUND", "Indexer was not found.", status_code=404)
     current = indexer.config
-    values = payload.model_dump(exclude_unset=True)
-    if values.get("download_client_id") is not None and get_integration_config_store().get_download_client(values["download_client_id"]) is None:
-        raise AppError("DOWNLOAD_CLIENT_NOT_FOUND", "The selected download client was not found.", status_code=404)
     updated = IndexerConfig(
         id=current.id,
         name=(payload.name.strip() if payload.name is not None else current.name),
@@ -153,7 +146,6 @@ async def update_indexer(
         categories=(list(payload.categories) if payload.categories is not None else list(current.categories)),
         minimum_seeders=(payload.minimum_seeders if payload.minimum_seeders is not None else current.minimum_seeders),
         priority=(payload.priority if payload.priority is not None else current.priority),
-        download_client_id=(values["download_client_id"] if "download_client_id" in values else current.download_client_id),
         revision=current.revision,
     )
     try:

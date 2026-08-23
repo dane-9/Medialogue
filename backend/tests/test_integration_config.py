@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -47,7 +48,6 @@ def test_file_backed_integration_configuration_encrypts_secrets(tmp_path: Path) 
             categories=[2000, 2040],
             minimum_seeders=5,
             priority=10,
-            download_client_id=client_id,
         )
     )
 
@@ -69,7 +69,6 @@ def test_file_backed_integration_configuration_encrypts_secrets(tmp_path: Path) 
     assert saved_indexer is not None
     assert (saved_indexer.enable_rss, saved_indexer.enable_interactive_search) == (False, True)
     assert (saved_indexer.categories, saved_indexer.minimum_seeders, saved_indexer.priority) == ([2000, 2040], 5, 10)
-    assert saved_indexer.download_client_id == client_id
     if os.name != "nt":
         assert (tmp_path / "medialogue.json").stat().st_mode & 0o777 == 0o600
         assert (tmp_path / "secrets.enc").stat().st_mode & 0o777 == 0o600
@@ -136,3 +135,29 @@ def test_incomplete_config_pair_is_rejected_instead_of_recreating_secrets(tmp_pa
     fresh_store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
     with pytest.raises(RuntimeError, match="Incomplete integration configuration"):
         fresh_store.ensure_initialized()
+
+
+def test_startup_removes_legacy_indexer_download_client_field(tmp_path: Path) -> None:
+    store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    store.ensure_initialized()
+    indexer_id = uuid4()
+    store.save_indexer(
+        IndexerConfig(
+            id=indexer_id,
+            name="Legacy indexer",
+            torznab_url="http://prowlarr:9696/api/v1/indexer/1/newznab",
+            api_key="secret",
+            scope="movies",
+        )
+    )
+
+    config_path = tmp_path / "medialogue.json"
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["indexers"][0]["download_client_id"] = str(uuid4())
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    restarted = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    restarted.ensure_initialized()
+    cleaned = json.loads(config_path.read_text(encoding="utf-8"))
+    assert "download_client_id" not in cleaned["indexers"][0]
+    assert restarted.get_indexer(indexer_id) is not None

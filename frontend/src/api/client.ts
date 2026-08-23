@@ -1,4 +1,4 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientScope, DownloadClientTestResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
 
 export class ApiError extends Error {
   status: number
@@ -479,6 +479,67 @@ function normalizeDownload(value: unknown): Download {
   }
 }
 
+function normalizeInteractiveSearchResult(value: unknown): InteractiveSearchResult {
+  const item = record(value)
+  return {
+    id: textValue(item.id),
+    jobId: textValue(item.job_id ?? item.jobId),
+    indexerId: textValue(item.indexer_id ?? item.indexerId) || undefined,
+    indexerName: textValue(item.indexer_name ?? item.indexerName, 'Indexer'),
+    mediaType: textValue(item.media_type ?? item.mediaType, 'movies') === 'shows' ? 'shows' : 'movies',
+    targetEntityType: textValue(item.target_entity_type ?? item.targetEntityType),
+    title: textValue(item.title),
+    size: optionalNumber(item.size),
+    seeders: optionalNumber(item.seeders),
+    publishedAt: dateValue(item.published_at ?? item.publishedAt),
+    quality: textValue(item.quality) || undefined,
+    qualityAllowed: item.quality_allowed !== false && item.qualityAllowed !== false,
+    qualityPreference: numberValue(item.quality_preference ?? item.qualityPreference),
+    edition: textValue(item.edition) || undefined,
+    releaseGroup: textValue(item.release_group ?? item.releaseGroup) || undefined,
+    customFormatScore: optionalNumber(item.custom_format_score ?? item.customFormatScore),
+    qualityProfileId: textValue(item.quality_profile_id ?? item.qualityProfileId) || undefined,
+    qualityProfileName: textValue(item.quality_profile_name ?? item.qualityProfileName) || undefined,
+    minimumQuality: textValue(item.minimum_quality ?? item.minimumQuality) || undefined,
+    minimumQualityMet: optionalBoolean(item.minimum_quality_met ?? item.minimumQualityMet),
+    customFormatSnapshot: record(item.custom_format_snapshot ?? item.customFormatSnapshot),
+    parser: record(item.parser),
+    warnings: Array.isArray(item.warnings) ? item.warnings.map((value) => textValue(value)).filter(Boolean) : [],
+    selectedAt: dateValue(item.selected_at ?? item.selectedAt),
+    selectedDownloadClientId: textValue(item.selected_download_client_id ?? item.selectedDownloadClientId) || undefined,
+    createdAt: dateValue(item.created_at ?? item.createdAt) ?? '',
+    expiresAt: dateValue(item.expires_at ?? item.expiresAt) ?? '',
+  }
+}
+
+function normalizeInteractiveSearchJob(value: unknown): InteractiveSearchJob {
+  const item = record(value)
+  const indexers = Array.isArray(item.indexers) ? item.indexers : []
+  return {
+    id: textValue(item.id),
+    status: textValue(item.status, 'queued'),
+    target: record(item.target),
+    progress: record(item.progress),
+    indexers: indexers.map((value) => {
+      const row = record(value)
+      return {
+        id: textValue(row.id),
+        name: textValue(row.name, 'Indexer'),
+        status: textValue(row.status, 'queued'),
+        results: numberValue(row.results),
+        elapsedMs: optionalNumber(row.elapsed_ms ?? row.elapsedMs),
+        error: textValue(row.error) || undefined,
+      }
+    }),
+    results: Array.isArray(item.results) ? item.results.map(normalizeInteractiveSearchResult) : [],
+    resultTotal: numberValue(item.result_total ?? item.resultTotal),
+    error: Object.keys(record(item.error)).length ? record(item.error) : undefined,
+    createdAt: dateValue(item.created_at ?? item.createdAt) ?? '',
+    startedAt: dateValue(item.started_at ?? item.startedAt),
+    finishedAt: dateValue(item.finished_at ?? item.finishedAt),
+  }
+}
+
 function normalizeStorageRoot(value: unknown): StorageRoot {
   const item = record(value)
   return {
@@ -675,7 +736,6 @@ function normalizeIndexer(value: unknown): Indexer {
     categories: Array.isArray(item.categories) ? item.categories.map((value) => numberValue(value)).filter((value) => value >= 0) : [],
     minimumSeeders: numberValue(item.minimum_seeders ?? item.minimumSeeders, 1),
     priority: numberValue(item.priority, 25),
-    downloadClientId: textValue(item.download_client_id ?? item.downloadClientId) || undefined,
     health: textValue(item.health, 'unknown'),
     lastCheckedAt: dateValue(item.last_checked_at || item.lastCheckedAt),
     lastSuccessAt: dateValue(item.last_success_at || item.lastSuccessAt),
@@ -953,6 +1013,9 @@ export const api = {
   refreshTmdbHealth: () => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/health/refresh', { method: 'POST' }),
   recheckMoviePlex: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
   startMovieSearch: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/interactive-search`, { method: 'POST' }),
+  startUnattachedMovieSearch: (tmdbId: number, qualityProfileId: string) => request<{ job_id: string }>('/api/v1/interactive-search/movies', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, quality_profile_id: qualityProfileId }) }),
+  searchJob: (jobId: string) => request<unknown>(`/api/v1/search-jobs/${encodeURIComponent(jobId)}`).then(normalizeInteractiveSearchJob),
+  downloadSearchResult: (resultId: string, payload: { download_client_id: string; category?: string | null }) => request<{ search_result_id: string; download_client_id: string; client_name: string; status: string; selected_at: string; movie_id?: string; category?: string | null }>(`/api/v1/search-results/${encodeURIComponent(resultId)}/download`, { method: 'POST', body: JSON.stringify(payload) }),
   reconcileMovie: (_id: string) => request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' }),
   reconcileAll: async () => {
     const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })
@@ -994,6 +1057,18 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeDownloadClient)
   },
+  downloadClientCategories: async (id: string): Promise<DownloadClientCategory[]> => {
+    const rows = await request<unknown[]>(`/api/v1/download-clients/${encodeURIComponent(id)}/categories`)
+    return rows.map((value) => {
+      const item = record(value)
+      return {
+        name: textValue(item.name),
+        savePath: textValue(item.save_path ?? item.savePath),
+        resolvedSavePath: textValue(item.resolved_save_path ?? item.resolvedSavePath),
+        isDefault: Boolean(item.is_default ?? item.isDefault),
+      }
+    })
+  },
   createDownloadClient: (configuration: { name: string; url: string; username?: string; password?: string; scope: DownloadClientScope; category?: string; tags: string[]; enabled: boolean; poll_interval_seconds?: number; recent_priority: 'first' | 'last'; older_priority: 'first' | 'last'; sequential_order: boolean; first_last_first: boolean; content_layout: 'default' | 'original' | 'subfolder'; completed_download_handling: boolean }) => request<unknown>('/api/v1/download-clients', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeDownloadClient),
   updateDownloadClient: (id: string, configuration: { name: string; url: string; username?: string; password?: string; scope: DownloadClientScope; category?: string; tags: string[]; enabled: boolean; poll_interval_seconds?: number; recent_priority: 'first' | 'last'; older_priority: 'first' | 'last'; sequential_order: boolean; first_last_first: boolean; content_layout: 'default' | 'original' | 'subfolder'; completed_download_handling: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/download-clients/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(configuration) }).then(normalizeDownloadClient),
   testDownloadClient: (id?: string, configuration?: { url: string; username?: string; password?: string }) => request<DownloadClientTestResult>(id ? `/api/v1/download-clients/${encodeURIComponent(id)}/test` : '/api/v1/download-clients/test', { method: 'POST', ...(configuration ? { body: JSON.stringify(configuration) } : {}) }),
@@ -1004,8 +1079,8 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeIndexer)
   },
-  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; timeout_seconds?: number; enable_rss: boolean; enable_interactive_search: boolean; categories: number[]; minimum_seeders: number; priority: number; download_client_id?: string | null }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
-  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; timeout_seconds?: number; enable_rss?: boolean; enable_interactive_search?: boolean; categories?: number[]; minimum_seeders?: number; priority?: number; download_client_id?: string | null; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; timeout_seconds?: number; enable_rss: boolean; enable_interactive_search: boolean; categories: number[]; minimum_seeders: number; priority: number }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; timeout_seconds?: number; enable_rss?: boolean; enable_interactive_search?: boolean; categories?: number[]; minimum_seeders?: number; priority?: number; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
   deleteIndexer: (id: string) => request<void>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   testIndexer: async (id?: string, configuration?: { torznab_url: string; api_key: string; timeout_seconds?: number }): Promise<IndexerTestResult> => {
     const payload = await request<{ status: string; latency_ms?: number; title?: string; message?: string }>(id ? `/api/v1/indexers/${encodeURIComponent(id)}/test` : '/api/v1/indexers/test', { method: 'POST', ...(configuration ? { body: JSON.stringify(configuration) } : {}) })

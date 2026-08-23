@@ -98,6 +98,13 @@ class DownloadClientTestResponse(BaseModel):
     message: str | None = None
 
 
+class DownloadClientCategoryResponse(BaseModel):
+    name: str
+    save_path: str
+    resolved_save_path: str
+    is_default: bool = False
+
+
 class DownloadClientTestRequest(BaseModel):
     url: AnyHttpUrl
     username: str = ""

@@ -22,7 +22,7 @@ from app.parser.quality import QUALITY_BY_NAME
 @dataclass(frozen=True, slots=True)
 class EffectiveProfile:
     media_type: MediaType
-    entity_id: UUID
+    entity_id: UUID | None
     assignment_id: UUID | None
     assignment_revision: int | None
     profile_id: UUID | None
@@ -44,7 +44,7 @@ class EffectiveProfile:
         return {
             "schema_version": 1,
             "media_type": self.media_type.value,
-            "entity_id": str(self.entity_id),
+            "entity_id": str(self.entity_id) if self.entity_id else None,
             "assignment_id": str(self.assignment_id) if self.assignment_id else None,
             "assignment_revision": self.assignment_revision,
             "profile_id": str(self.profile_id) if self.profile_id else None,
@@ -186,6 +186,83 @@ async def load_effective_profile(
         profile_scores=profile_scores,
         overrides=overrides,
         effective_scores=effective_scores,
+        score_names=score_names,
+        enabled_formats=enabled_formats,
+    )
+
+
+async def load_quality_profile_for_search(
+    db: AsyncSession,
+    *,
+    media_type: MediaType,
+    profile_id: UUID,
+) -> EffectiveProfile:
+    """Load a Quality Profile without requiring a persisted Movie/Show.
+
+    Manual acquisition searches can begin from a TMDB result before the Movie
+    exists in Medialogue. Those searches still need the same immutable quality
+    and Custom Format policy snapshot as library searches, but there is no
+    per-title assignment or override yet.
+    """
+
+    profile = await db.scalar(
+        select(QualityProfile)
+        .options(
+            selectinload(QualityProfile.minimum_quality_definition),
+            selectinload(QualityProfile.custom_format_scores).selectinload(ProfileCustomFormatScore.custom_format),
+        )
+        .where(QualityProfile.id == profile_id)
+    )
+    if profile is None:
+        raise ValueError("Quality Profile does not exist")
+
+    profile_scores: dict[str, int] = {}
+    score_names: dict[str, str] = {}
+    enabled_formats: dict[str, bool] = {}
+    for item in profile.custom_format_scores:
+        key = str(item.custom_format_id)
+        profile_scores[key] = int(item.score)
+        if item.custom_format is not None:
+            score_names[key] = item.custom_format.name
+            enabled_formats[key] = bool(item.custom_format.enabled)
+
+    quality_rows = (
+        await db.scalars(
+            select(QualityDefinition)
+            .where(QualityDefinition.enabled.is_(True))
+            .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
+        )
+    ).all()
+    quality_by_id = {str(item.id): item for item in quality_rows}
+    configured_quality_ids = (profile.settings or {}).get("quality_definition_ids")
+    if isinstance(configured_quality_ids, list):
+        quality_order = tuple(
+            quality_by_id[str(quality_id)].name
+            for quality_id in configured_quality_ids
+            if str(quality_id) in quality_by_id
+        )
+    else:
+        quality_order = tuple(item.name for item in quality_rows)
+
+    minimum_id = profile.minimum_quality_definition_id
+    minimum_name = profile.minimum_quality_definition.name if profile.minimum_quality_definition else None
+    return EffectiveProfile(
+        media_type=media_type,
+        entity_id=None,
+        assignment_id=None,
+        assignment_revision=None,
+        profile_id=profile.id,
+        profile_name=profile.name,
+        profile_revision=profile.revision,
+        minimum_quality_definition_id=minimum_id,
+        minimum_quality_name=minimum_name,
+        profile_minimum_quality_definition_id=minimum_id,
+        profile_minimum_quality_name=minimum_name,
+        minimum_quality_overridden=False,
+        quality_order=quality_order,
+        profile_scores=profile_scores,
+        overrides={},
+        effective_scores=dict(profile_scores),
         score_names=score_names,
         enabled_formats=enabled_formats,
     )

@@ -329,6 +329,66 @@ export interface DownloadClient {
   completedDownloadHandling: boolean
 }
 
+export interface DownloadClientCategory {
+  name: string
+  savePath: string
+  resolvedSavePath: string
+  isDefault: boolean
+}
+
+export interface InteractiveSearchResult {
+  id: string
+  jobId: string
+  indexerId?: string
+  indexerName: string
+  mediaType: 'movies' | 'shows'
+  targetEntityType: string
+  title: string
+  size?: number
+  seeders?: number
+  publishedAt?: string
+  quality?: string
+  qualityAllowed: boolean
+  qualityPreference: number
+  edition?: string
+  releaseGroup?: string
+  customFormatScore?: number
+  qualityProfileId?: string
+  qualityProfileName?: string
+  minimumQuality?: string
+  minimumQualityMet?: boolean
+  customFormatSnapshot: Record<string, unknown>
+  parser: Record<string, unknown>
+  warnings: string[]
+  selectedAt?: string
+  selectedDownloadClientId?: string
+  createdAt: string
+  expiresAt: string
+}
+
+export interface InteractiveSearchIndexerStatus {
+  id: string
+  name: string
+  status: string
+  results: number
+  elapsedMs?: number
+  error?: string
+}
+
+export interface InteractiveSearchJob {
+  id: string
+  status: string
+  target: Record<string, unknown>
+  progress: Record<string, unknown>
+  indexers: InteractiveSearchIndexerStatus[]
+  results: InteractiveSearchResult[]
+  resultTotal: number
+  error?: Record<string, unknown>
+  createdAt: string
+  startedAt?: string
+  finishedAt?: string
+}
+
 export interface DownloadClientTestResult {
   status: string
   version?: string
@@ -595,7 +655,6 @@ export interface Indexer {
   categories: number[]
   minimumSeeders: number
   priority: number
-  downloadClientId?: string
   health: string
   lastCheckedAt?: string
   lastSuccessAt?: string

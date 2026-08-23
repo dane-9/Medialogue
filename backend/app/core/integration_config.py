@@ -73,7 +73,6 @@ class IndexerConfig:
     categories: list[int] = field(default_factory=list)
     minimum_seeders: int = 1
     priority: int = 25
-    download_client_id: UUID | None = None
     revision: int = 1
     api_key: str | None = None
 
@@ -174,8 +173,17 @@ class IntegrationConfigStore:
             secrets_exist = self.secrets_path.exists()
             if config_exists and secrets_exist:
                 # Force a read/decrypt so startup fails clearly if the secret
-                # key changed or either file is corrupt.
-                self._load()
+                # key changed or either file is corrupt. Also discard the old
+                # indexer -> download-client coupling: download destination is
+                # now chosen explicitly by the acquisition workflow.
+                config, secrets = self._load()
+                changed = False
+                for row in config.get("indexers") or []:
+                    if isinstance(row, dict) and "download_client_id" in row:
+                        row.pop("download_client_id", None)
+                        changed = True
+                if changed:
+                    self._save(config, secrets)
                 return
             if config_exists != secrets_exist:
                 present = self.config_path.name if config_exists else self.secrets_path.name
@@ -431,7 +439,6 @@ class IntegrationConfigStore:
                 enable_interactive_search=bool(row.get("enable_interactive_search", True)),
                 categories=[int(value) for value in (row.get("categories") or [])],
                 minimum_seeders=int(row.get("minimum_seeders", 1)), priority=int(row.get("priority", 25)),
-                download_client_id=self._uuid(row["download_client_id"]) if row.get("download_client_id") else None,
                 api_key=keys.get(str(item_id)) or None,
             ))
         return items
@@ -451,8 +458,7 @@ class IntegrationConfigStore:
         row = {"id": str(item.id), "name": item.name, "torznab_url": item.torznab_url.rstrip("/"), "scope": item.scope,
                "enabled": bool(item.enabled), "timeout_seconds": int(item.timeout_seconds), "revision": revision,
                "enable_rss": bool(item.enable_rss), "enable_interactive_search": bool(item.enable_interactive_search),
-               "categories": list(item.categories), "minimum_seeders": int(item.minimum_seeders), "priority": int(item.priority),
-               "download_client_id": str(item.download_client_id) if item.download_client_id else None}
+               "categories": list(item.categories), "minimum_seeders": int(item.minimum_seeders), "priority": int(item.priority)}
         if index is None:
             rows.append(row)
         else:
