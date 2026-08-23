@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterator
 
 
-PARSER_VERSION = "1.1.0"
+PARSER_VERSION = "1.2.0"
 
 
 @dataclass(frozen=True, slots=True)
