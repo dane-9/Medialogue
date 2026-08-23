@@ -296,6 +296,8 @@ function normalizeTMDBShowLookup(value: unknown): TMDBShowLookup {
     year: optionalNumber(item.year),
     overview: textValue(item.overview) || undefined,
     posterRef: textValue(item.poster_ref) || undefined,
+    director: textValue(item.director) || undefined,
+    cast: Array.isArray(item.cast) ? item.cast.map((entry) => textValue(entry)).filter(Boolean) : undefined,
   }
 }
 
@@ -502,6 +504,7 @@ function normalizeProblem(value: unknown): Problem {
     created: createdAt ? new Date(createdAt).toLocaleString() : textValue(item.created, 'Unknown time'),
     reason: textValue(item.reason) || undefined,
     status: textValue(item.status) || undefined,
+    workflow: (['manual', 'choice', 'config', 'waiting'].includes(textValue(item.workflow)) ? textValue(item.workflow) : 'waiting') as Problem['workflow'],
     entityType: textValue(item.entity_type || item.entityType) || undefined,
     entityId: textValue(item.entity_id || item.entityId) || undefined,
     details: Object.keys(details).length ? details : undefined,
@@ -520,6 +523,8 @@ function normalizeTMDBMovieLookup(value: unknown): TMDBMovieLookup {
     year: optionalNumber(item.year),
     overview: textValue(item.overview) || undefined,
     posterRef: textValue(item.poster_ref ?? item.posterRef) || undefined,
+    director: textValue(item.director) || undefined,
+    cast: Array.isArray(item.cast) ? item.cast.map((entry) => textValue(entry)).filter(Boolean) : undefined,
   }
 }
 
@@ -1022,11 +1027,13 @@ export const api = {
     const payload = await request<{ count: number }>(`/api/v1/problems/count?status=${encodeURIComponent(status)}`)
     return numberValue(payload.count)
   },
-  problemsPage: async (filters: { status?: string; page?: number; pageSize?: number; category?: string; severity?: string } = {}) => {
+  problemSummary: () => request<{ open: number; suppressed: number; workflows: Record<string, number> }>('/api/v1/problems/summary'),
+  problemsPage: async (filters: { status?: string; page?: number; pageSize?: number; category?: string; severity?: string; workflow?: string } = {}) => {
     const params = new URLSearchParams()
     if (filters.status) params.set('status', filters.status)
     if (filters.category && filters.category !== 'all') params.set('category', filters.category)
     if (filters.severity && filters.severity !== 'all') params.set('severity', filters.severity)
+    if (filters.workflow && filters.workflow !== 'all') params.set('workflow', filters.workflow)
     params.set('page', String(filters.page ?? 1))
     params.set('page_size', String(filters.pageSize ?? 100))
     const payload = await request<{ items: unknown[]; total: number; pages: number; page: number; page_size: number }>(`/api/v1/problems?${params.toString()}`)
@@ -1040,6 +1047,7 @@ export const api = {
     if (filters.severity && filters.severity !== 'all') params.set('severity', filters.severity)
     return request<{ deleted: number }>(`/api/v1/problems${params.size ? `?${params.toString()}` : ''}`, { method: 'DELETE' })
   },
+  recheckProblems: () => request<{ requested: number; job_ids: string[] }>('/api/v1/problems/recheck', { method: 'POST' }),
   resolveProblem: (id: string, action: string, payload: Record<string, unknown> = {}) => request<unknown>(`/api/v1/problems/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify({ action, payload }) }).then(normalizeProblem),
 }
 

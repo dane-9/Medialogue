@@ -51,7 +51,7 @@ Medialogue only scans storage roots explicitly configured in Settings.
 - `/torrent-archive` stores archived `.torrent` files and versioned recovery manifests independently from live qBittorrent state.
 - Media roots are user-owned filesystem state. Medialogue never renames, moves, copies, hardlinks, reorganizes, or creates metadata sidecars beside media.
 
-The example Compose file mounts `/media` as **read-only**, which is sufficient for discovery, matching, Plex verification, and Missing detection. If you want Medialogue's explicit **Delete Media** workflow to delete a configured root's directories, mount that specific root read/write and configure it as `read_write` in Medialogue. Read/write access is never required merely to scan or track media.
+The example Compose file mounts `/media` as **read-only**, which is sufficient for discovery, matching, Plex verification, Missing detection, and Problem rechecks. The Problems workflow does not delete duplicate media; remove an unwanted copy outside Medialogue and recheck the Problem.
 
 ## Torrent archive and recovery manifests
 
@@ -229,32 +229,21 @@ DUPLICATE_PHYSICAL_RELEASE
 DUPLICATE_EPISODE_RELEASE
 ```
 
-The Problems page supports filtering, explicit TMDB Movie/Show matching, episode duplicate preference, path-mapping guidance, and direct duplicate comparison. TMDB/manual matching is authoritative for Movie identity. Plex movie titles and years are advisory metadata and never create or block a Problem; Plex only verifies physical presence/path. For Shows, an exact-file season/episode-number disagreement can still surface because it indicates a real episode-mapping issue. Identity correction changes database metadata only; it never renames or relocates media.
+The Problems page is organized by the next required action: manual fixes, identity confirmation, configuration, or recheck. It supports explicit TMDB Movie/Show matching, path-mapping guidance, direct Plex-item links, per-Problem rechecks, and rechecking the current active queue. TMDB/manual matching is authoritative for Movie identity. Plex movie titles and years are advisory metadata and never create or block a Problem; Plex only verifies physical presence/path. For Shows, an exact-file season/episode-number disagreement can still surface because it indicates a real episode-mapping issue. Identity correction changes database metadata only; it never renames or relocates media.
 
 ### Movie physical duplicates
 
-A `DUPLICATE_PHYSICAL_RELEASE` is deliberately left untouched until the administrator chooses what to do. The duplicate resolver first asks which release is preferred. Selecting a winner alone does **not** remove the warning while the other physical directory still exists.
-
-Optional deletion follows a two-stage destructive workflow:
-
-1. **Preview** performs a fresh recursive inventory of every losing media directory, including subtitles, artwork, text files, and other sidecars already present there.
-2. The server returns the exact directories/files, qBittorrent associations, archive status, and a short-lived signed confirmation token.
-3. **Commit** re-inventories the targets. If anything changed after preview, the request fails with `DELETE_PREVIEW_STALE` and a new preview is required.
-4. Only a configured `read_write` storage root can be deleted. The entire explicitly selected losing media directory is removed; Medialogue does not selectively reorganize its contents.
-
-Duplicate commits remain explicit confirmed actions. Paths are checked again against the configured storage root and directory symlink targets are refused.
-
-If the user also chooses to remove the losing torrent from qBittorrent, Medialogue first requires that torrent to be safely archived. qBittorrent is then called with **delete data = false** because filesystem deletion is controlled independently by the reviewed directory operation. The archived `.torrent` and manifest remain in `/torrent-archive`. A qBittorrent removal failure is preserved as its own Problem rather than discarding recovery evidence.
+A `DUPLICATE_PHYSICAL_RELEASE` is deliberately left untouched. Review the paths and quality evidence, delete the unwanted copy using your normal filesystem tools, then recheck the Problem. Medialogue closes it only after current filesystem evidence proves that one physical copy remains.
 
 ### Episode duplicates
 
-For `DUPLICATE_EPISODE_RELEASE`, the user can choose the preferred physical file/mapping. That preference becomes manual authority, but both physical files remain untouched and the Problem stays open until later filesystem evidence shows that the losing copy has actually disappeared.
+`DUPLICATE_EPISODE_RELEASE` follows the same rule: delete the unwanted file outside Medialogue, then recheck. Medialogue does not choose a preferred mapping while both physical files exist.
 
 ### Path mapping problems
 
 Remote qBittorrent path mappings can be configured under **Settings → Storage Roots**. The UI stores the reported remote prefix and its container-visible local prefix, optionally scoped to one qBittorrent client and one storage root. Medialogue never guesses a path translation. After adding or correcting a mapping, recheck the affected Problem/reconciliation evidence.
 
-Storage roots can now be created as either **Read-only** or **Read/write** from the UI. Read-only is the safe detection default; read/write is required only for explicit confirmed filesystem deletion.
+Storage roots can be described as **Read-only** or **Read/write** in the UI, but reconciliation and Problem handling require only read access. Medialogue does not use Problems to delete media.
 
 ## Tags and bulk Movie administration
 

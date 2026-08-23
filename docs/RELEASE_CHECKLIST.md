@@ -8,7 +8,7 @@ This checklist is for validating a Medialogue source release before deploying it
 - Copy `.env.example` to `.env`.
 - Replace the example PostgreSQL password and Medialogue secret key.
 - Review `PUID`, `PGID`, timezone, persistent paths, and media bind mounts.
-- Keep media mounts read-only unless the explicit Delete Media workflow is required for that root.
+- Keep media mounts read-only; duplicate cleanup is performed outside Medialogue.
 
 ## Preflight
 
@@ -39,7 +39,7 @@ Before using write-capable actions:
 
 - confirm every Storage Root points at the intended container-visible path;
 - confirm each root is marked Movies or Shows correctly;
-- confirm read/write is enabled only where explicit deletion is desired;
+- confirm media mounts remain read-only for ordinary Medialogue operation;
 - test Plex, qBittorrent, metadata, and indexer connections as applicable;
 - confirm remote path mappings when qBittorrent reports paths different from container paths;
 - run the first full library scan explicitly.

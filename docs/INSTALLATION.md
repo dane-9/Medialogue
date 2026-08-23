@@ -80,7 +80,7 @@ PUID=10001
 PGID=10001
 ```
 
-Read-only scanning works as long as that identity can read the media paths. If a particular storage root is mounted `:rw` for the explicit Delete Media workflow, the chosen `PUID`/`PGID` must also have permission to delete from that host path.
+Read-only scanning works as long as that identity can read the media paths. Duplicate cleanup is performed outside Medialogue with the administrator's normal filesystem tools.
 
 ## Dockge
 

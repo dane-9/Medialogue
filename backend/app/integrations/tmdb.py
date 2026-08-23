@@ -168,6 +168,23 @@ class TMDBClient:
             poster_path=payload.get("poster_path") if isinstance(payload.get("poster_path"), str) else None,
         )
 
+    async def get_movie_credits(self, tmdb_id: int) -> tuple[str | None, tuple[str, ...]]:
+        payload = (await self._get(f"/movie/{tmdb_id}/credits")).json()
+        director = next(
+            (
+                item.get("name")
+                for item in payload.get("crew", [])
+                if isinstance(item, dict) and item.get("job") == "Director" and isinstance(item.get("name"), str)
+            ),
+            None,
+        )
+        cast = tuple(
+            item["name"]
+            for item in payload.get("cast", [])[:3]
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        )
+        return director, cast
+
     async def get_movie_alternative_titles(self, tmdb_id: int) -> tuple[str, ...]:
         """Return TMDB's known alternate titles for a Movie.
 
@@ -239,6 +256,24 @@ class TMDBClient:
             tvdb_id=int(external["tvdb_id"]) if isinstance(external.get("tvdb_id"), int) else None,
             seasons=tuple(sorted(seasons, key=lambda item: item.season_number)),
         )
+
+    async def get_show_credits(self, tmdb_id: int) -> tuple[str | None, tuple[str, ...]]:
+        payload = (await self._get(f"/tv/{tmdb_id}", params={"append_to_response": "credits"})).json()
+        creator = next(
+            (
+                item.get("name")
+                for item in payload.get("created_by", [])
+                if isinstance(item, dict) and isinstance(item.get("name"), str)
+            ),
+            None,
+        )
+        credits = payload.get("credits") if isinstance(payload.get("credits"), dict) else {}
+        cast = tuple(
+            item["name"]
+            for item in credits.get("cast", [])[:3]
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        )
+        return creator, cast
 
     async def get_season(self, tmdb_id: int, season_number: int) -> list[TMDBEpisodeMetadata]:
         payload = (await self._get(f"/tv/{tmdb_id}/season/{season_number}")).json()

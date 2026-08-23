@@ -159,6 +159,31 @@ class ProblemStatus(StrEnum):
     DISMISSED = "dismissed"
 
 
+class ProblemWorkflow(StrEnum):
+    MANUAL = "manual"
+    CHOICE = "choice"
+    CONFIG = "config"
+    WAITING = "waiting"
+
+
+def classify_problem_workflow(reason: str) -> ProblemWorkflow:
+    """Classify a Problem by the next user-visible step, not its source."""
+
+    if "DUPLICATE" in reason:
+        return ProblemWorkflow.MANUAL
+    if reason in {
+        "LOW_CONFIDENCE_MATCH",
+        "TMDB_MATCH_REQUIRED",
+        "TMDB_IDENTITY_UNRESOLVED",
+        "TMDB_SHOW_MATCH_REQUIRED",
+        "TMDB_SHOW_IDENTITY_UNRESOLVED",
+    }:
+        return ProblemWorkflow.CHOICE
+    if reason == "PATH_MAPPING_FAILED" or "ROOT" in reason or reason.endswith("_NOT_CONFIGURED"):
+        return ProblemWorkflow.CONFIG
+    return ProblemWorkflow.WAITING
+
+
 class Severity(StrEnum):
     INFO = "info"
     WARNING = "warning"
@@ -707,6 +732,7 @@ class Problem(Base):
     __tablename__ = "problems"
     __table_args__ = (
         Index("ix_problems_status_created", "status", "created_at"),
+        Index("ix_problems_status_workflow_created", "status", "workflow", "created_at"),
         Index("ix_problems_reason", "reason"),
         # Exactly one durable OPEN problem may represent a given condition.
         # Separate partial indexes are required because PostgreSQL/SQLite both
@@ -733,6 +759,9 @@ class Problem(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     reason: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[ProblemStatus] = mapped_column(SAEnum(ProblemStatus, native_enum=False), default=ProblemStatus.OPEN, nullable=False)
+    workflow: Mapped[ProblemWorkflow] = mapped_column(
+        SAEnum(ProblemWorkflow, native_enum=False), default=ProblemWorkflow.WAITING, nullable=False
+    )
     severity: Mapped[Severity] = mapped_column(SAEnum(Severity, native_enum=False), default=Severity.WARNING, nullable=False)
     entity_type: Mapped[str] = mapped_column(String(128), nullable=False)
     entity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))

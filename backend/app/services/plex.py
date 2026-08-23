@@ -419,6 +419,7 @@ async def recheck_show_plex(
                                 else None
                             ),
                             "plex_path": exact.file_path,
+                            "plex_rating_key": exact.rating_key,
                             "differences": differences,
                         }
                     )

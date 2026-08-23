@@ -278,8 +278,16 @@ async def lookup_shows(
     if configuration is None or not configuration.enabled or not configuration.api_key:
         raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before looking up Shows.", status_code=409)
     client = client_factory(configuration.api_key)
+    credits: dict[int, tuple[str | None, tuple[str, ...]]] = {}
     try:
         matches = await client.search_show(query, year)
+        credit_loader = getattr(client, "get_show_credits", None)
+        if callable(credit_loader):
+            for item in matches[:6]:
+                try:
+                    credits[item.tmdb_id] = await credit_loader(item.tmdb_id)
+                except Exception:
+                    credits[item.tmdb_id] = (None, ())
     except Exception as exc:
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Show lookup failed: {exc}", status_code=503) from exc
     finally:
@@ -292,6 +300,8 @@ async def lookup_shows(
             year=item.year,
             overview=item.overview,
             poster_ref=item.poster_path,
+            director=credits.get(item.tmdb_id, (None, ()))[0],
+            cast=list(credits.get(item.tmdb_id, (None, ()))[1]),
         )
         for item in matches[:25]
     ]

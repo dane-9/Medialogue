@@ -14,7 +14,8 @@ from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
 from app.main import create_app
-from app.models.domain import Event, MediaDirectory, MediaFile, MediaRole, MediaType, Movie, Problem, ProblemStatus, Severity, StorageRoot
+from app.models.domain import Event, MediaDirectory, MediaFile, MediaRole, MediaType, Movie, Problem, ProblemStatus, Severity, StorageRoot, classify_problem_workflow
+from app.services.reconciliation import open_problem
 
 
 @pytest.fixture
@@ -78,7 +79,7 @@ def test_storage_root_can_be_removed_without_deleting_observed_inventory(client:
     assert directory.resolved_path == "/movies/Example Movie (2026)"
 
 
-def test_problem_queue_paginates_and_supports_single_and_bulk_deletion(client: TestClient) -> None:
+def test_problem_queue_paginates_and_supports_suppression_restore_and_single_deletion(client: TestClient) -> None:
     headers = _headers(client)
 
     async def seed():
@@ -94,6 +95,9 @@ def test_problem_queue_paginates_and_supports_single_and_bulk_deletion(client: T
                         entity_id=uuid.uuid4(),
                         message=f"Problem {index}",
                         details={"index": index},
+                        workflow=classify_problem_workflow(
+                            "TMDB_MOVIE_IDENTITY_UNRESOLVED" if index % 2 == 0 else "DUPLICATE_PHYSICAL_RELEASE"
+                        ),
                     )
                 )
             db.add_all(rows)
@@ -129,11 +133,44 @@ def test_problem_queue_paginates_and_supports_single_and_bulk_deletion(client: T
 
     duplicates = client.get("/api/v1/problems?status=open&category=duplicates&page_size=250")
     duplicate_count = duplicates.json()["total"]
-    cleared = client.delete("/api/v1/problems?status=open&category=duplicates", headers=headers)
-    assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["deleted"] == duplicate_count
-    remaining = client.get("/api/v1/problems?status=open&category=duplicates&page_size=250")
-    assert remaining.json()["total"] == 0
+    assert duplicate_count > 0
+    assert client.delete("/api/v1/problems?status=open&category=duplicates", headers=headers).status_code == 405
+
+    suppressed_id = duplicates.json()["items"][0]["id"]
+    suppressed_entity_id = duplicates.json()["items"][0]["entity_id"]
+    dismissed = client.post(
+        f"/api/v1/problems/{suppressed_id}/resolve",
+        headers=headers,
+        json={"action": "dismiss", "payload": {}},
+    )
+    assert dismissed.status_code == 200, dismissed.text
+    assert dismissed.json()["status"] == "dismissed"
+    assert client.get("/api/v1/problems/summary").json()["suppressed"] == 1
+
+    async def observe_same_fingerprint():
+        async with db_session.async_session_factory() as db:
+            observed = await open_problem(
+                db,
+                reason="DUPLICATE_PHYSICAL_RELEASE",
+                entity_type="media_directory",
+                entity_id=uuid.UUID(suppressed_entity_id),
+                message="Observed again after suppression.",
+            )
+            await db.commit()
+            return str(observed.id), observed.status
+
+    observed_id, observed_status = asyncio.run(observe_same_fingerprint())
+    assert observed_id == suppressed_id
+    assert observed_status == ProblemStatus.DISMISSED
+
+    restored = client.post(
+        f"/api/v1/problems/{suppressed_id}/resolve",
+        headers=headers,
+        json={"action": "restore", "payload": {}},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["status"] == "open"
+    assert restored.json()["workflow"] == "manual"
 
 
 def test_media_file_problem_subject_is_human_readable(client: TestClient) -> None:
@@ -166,6 +203,28 @@ def test_media_file_problem_subject_is_human_readable(client: TestClient) -> Non
     response = client.get("/api/v1/problems?status=open&reason=EPISODE_MAPPING_UNRESOLVED")
     assert response.status_code == 200, response.text
     assert response.json()["items"][0]["subject"] == "Example.Show.S01E01.mkv · /shows/Example Show/Season 01"
+
+
+def test_recheck_all_targets_only_existing_open_problems(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    headers = _headers(client)
+    launched: list[uuid.UUID] = []
+    monkeypatch.setattr("app.api.problems.launch_runtime_job", lambda job_id, runner: launched.append(job_id))
+
+    async def seed():
+        async with db_session.async_session_factory() as db:
+            db.add_all([
+                Problem(reason="PATH_MAPPING_FAILED", entity_type="torrent", entity_id=uuid.uuid4(), message="open"),
+                Problem(reason="DUPLICATE_PHYSICAL_RELEASE", entity_type="movie", entity_id=uuid.uuid4(), message="open"),
+                Problem(reason="ROOT_UNREACHABLE", entity_type="storage_root", entity_id=uuid.uuid4(), message="suppressed", status=ProblemStatus.DISMISSED),
+            ])
+            await db.commit()
+
+    asyncio.run(seed())
+    response = client.post("/api/v1/problems/recheck", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["requested"] == 2
+    assert len(response.json()["job_ids"]) == 2
+    assert {str(item) for item in launched} == set(response.json()["job_ids"])
 
 
 
