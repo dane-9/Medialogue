@@ -143,6 +143,52 @@ def test_movie_identity_selection_accepts_ampersand_and_punctuation_variants() -
     assert len(evidence) == 1
 
 
+def test_show_identity_prefers_a_unique_display_title_over_original_name_aliases() -> None:
+    from app.integrations.tmdb import TMDBShowMatch
+    from app.services.tmdb import _select_show_identity
+
+    intended = TMDBShowMatch(63404, "Taskmaster", "Taskmaster", 2015, "The original series.", "/uk.jpg")
+    localized = TMDBShowMatch(195531, "Taskmaster Portugal", "Taskmaster", 2022, "Portuguese edition.", "/pt.jpg")
+
+    match, reason, evidence = _select_show_identity("Taskmaster", None, [intended, localized])
+
+    assert reason == "matched"
+    assert match is intended
+    assert evidence == (intended,)
+
+
+def test_show_identity_keeps_real_same_title_editions_ambiguous_without_a_year() -> None:
+    from app.integrations.tmdb import TMDBShowMatch
+    from app.services.tmdb import _select_show_identity
+
+    us = TMDBShowMatch(2316, "The Office", "The Office", 2005, "Scranton.", "/us.jpg")
+    uk = TMDBShowMatch(2996, "The Office", "The Office", 2001, "Slough.", "/uk.jpg")
+
+    match, reason, evidence = _select_show_identity("The Office", None, [us, uk])
+
+    assert match is None
+    assert reason == "ambiguous"
+    assert evidence == (us, uk)
+
+    match, reason, _ = _select_show_identity("The Office", 2005, [us, uk])
+    assert reason == "matched"
+    assert match is us
+
+
+def test_show_identity_ignores_an_empty_shadow_row_behind_a_complete_exact_result() -> None:
+    from app.integrations.tmdb import TMDBShowMatch
+    from app.services.tmdb import _select_show_identity
+
+    series = TMDBShowMatch(1417, "Glee", "Glee", 2009, "A musical comedy.", "/glee.jpg")
+    shadow = TMDBShowMatch(272153, "Glee", "Glee", None, None, None)
+
+    match, reason, evidence = _select_show_identity("Glee", None, [series, shadow])
+
+    assert reason == "matched"
+    assert match is series
+    assert evidence == (series, shadow)
+
+
 def test_movie_alternative_title_can_resolve_home_video_alias() -> None:
     from app.integrations.tmdb import TMDBMovieMatch
     from app.services.tmdb import _select_movie_by_alternative_title

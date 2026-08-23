@@ -1290,7 +1290,10 @@ function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; dupl
     const path = problemText(details.path ?? details.local_path ?? details.reported_path ?? details.resolved_path)
     if (path) rows.push(['Path', path])
     const parsed = parserIdentity(details)
-    if (parsed.identity) rows.push(['Parsed as', parsed.identity, parsed.warnings.length ? parsed.warnings.join(' · ') : undefined])
+    const parserWarnings = problem.code === 'TMDB_SHOW_IDENTITY_UNRESOLVED'
+      ? parsed.warnings.filter((warning) => !['quality_not_detected', 'release_group_inferred_nogroup'].includes(warning))
+      : parsed.warnings
+    if (parsed.identity) rows.push(['Parsed as', parsed.identity, parserWarnings.length ? parserWarnings.join(' · ') : undefined])
     const qbitPath = problemText(details.qbittorrent_path ?? details.remote_path)
     if (qbitPath && qbitPath !== path) rows.push(['qBittorrent path', qbitPath])
   }
