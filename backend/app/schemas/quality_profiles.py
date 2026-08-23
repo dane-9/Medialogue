@@ -26,6 +26,7 @@ class QualityProfileScoreInput(BaseModel):
 class QualityProfileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     minimum_quality_definition_id: UUID | None = None
+    quality_definition_ids: list[UUID] | None = Field(default=None, max_length=1000)
     custom_format_scores: list[QualityProfileScoreInput] = Field(default_factory=list, max_length=1000)
 
     @field_validator("name")
@@ -37,6 +38,7 @@ class QualityProfileCreate(BaseModel):
 class QualityProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     minimum_quality_definition_id: UUID | None = None
+    quality_definition_ids: list[UUID] | None = Field(default=None, max_length=1000)
     custom_format_scores: list[QualityProfileScoreInput] | None = Field(default=None, max_length=1000)
     expected_revision: int | None = Field(default=None, ge=1)
 
@@ -57,6 +59,7 @@ class QualityProfileResponse(BaseModel):
     id: UUID
     name: str
     minimum_quality_definition: QualityDefinitionResponse | None
+    qualities: list[QualityDefinitionResponse]
     custom_format_scores: list[QualityProfileScoreResponse]
     assigned_titles: int
     revision: int

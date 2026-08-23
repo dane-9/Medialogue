@@ -18,7 +18,7 @@ from app.services.custom_formats import evaluate_custom_format
 BY_KEY = {item.key: item for item in BUILTIN_FORMATS}
 
 
-def _matches(key: str, release: str) -> bool:
+def _evaluation(key: str, release: str, *, score: int = 0):
     builtin = BY_KEY[key]
     fmt = EvaluationFormat.from_dict(
         {
@@ -30,7 +30,11 @@ def _matches(key: str, release: str) -> bool:
             "condition_definition": condition_definition(builtin),
         }
     )
-    return evaluate_custom_format(fmt, parse_release_name(release)).matched
+    return evaluate_custom_format(fmt, parse_release_name(release), score=score)
+
+
+def _matches(key: str, release: str) -> bool:
+    return _evaluation(key, release).matched
 
 
 def test_every_builtin_has_a_unique_key_and_at_least_one_condition() -> None:
@@ -39,6 +43,10 @@ def test_every_builtin_has_a_unique_key_and_at_least_one_condition() -> None:
     for item in BUILTIN_FORMATS:
         assert item.conditions, item.key
         assert item.name and item.description, item.key
+        stored = condition_definition(item)["conditions"]
+        assert all(condition["name"] for condition in stored), item.key
+        for source, condition in zip(item.conditions, stored, strict=True):
+            assert condition["name"] == (source.name or item.name), item.key
 
 
 @pytest.mark.parametrize(
@@ -55,33 +63,66 @@ def test_every_builtin_has_a_unique_key_and_at_least_one_condition() -> None:
         ("audio-ddplus", "Movie 2024 1080p WEB-DL DD+5.1 x265-GRP"),
         ("audio-ddplus", "Movie 2024 1080p WEB-DL EAC3 5.1-GRP"),
         ("audio-ddplus", "Movie 2024 1080p WEB-DL E-AC-3 5.1-GRP"),
+        ("audio-dtsx", "Movie 2024 2160p BluRay REMUX DTS-X 7.1-GRP"),
         # Lossless and object audio.
         ("audio-truehd", "Movie 2024 2160p BluRay REMUX TrueHD 7.1 Atmos-GRP"),
-        ("audio-atmos", "Movie 2024 2160p BluRay REMUX TrueHD 7.1 Atmos-GRP"),
         ("audio-dtshd-ma", "Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP"),
         ("audio-dts", "Movie 2024 1080p BluRay DTS 5.1 x264-GRP"),
         ("audio-dd", "Movie 2024 1080p BluRay AC3 2.0 x264-GRP"),
-        ("audio-surround", "Movie 2024 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         # HDR flavours are distinct values, so they score independently.
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL DV HDR10+ x265-FLUX"),
+        ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL DOVI x265-FLUX"),
+        ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL Dolby.Vision x265-FLUX"),
+        ("hdr-dv-hdr10", "Movie 2024 2160p WEB-DL DoVi HDR10 x265-FLUX"),
         ("hdr-hdr10-plus", "Movie 2024 2160p WEB-DL DV HDR10+ x265-FLUX"),
+        ("hdr-hdr10", "Movie 2024 2160p WEB-DL HDR x265-FLUX"),
+        ("hdr-hdr10", "Movie 2024 2160p WEB-DL HDR10 x265-FLUX"),
+        ("hdr-sdr", "Movie 2024 2160p BluRay SDR x265-GRP"),
+        ("hdr-sdr", "Movie 2024 2160p BluRay x265-GRP"),
         # Release traits.
         ("attr-repack-proper", "Movie 2024 1080p WEB-DL REPACK DDP5.1 x264-GRP"),
+        ("attr-repack-proper", "Movie 2024 1080p WEB-DL REPACK2 DDP5.1 x264-GRP"),
+        ("attr-repack-proper", "Movie 2024 1080p WEB-DL REPACK3 DDP5.1 x264-GRP"),
+        ("attr-proper", "Movie 2024 1080p WEB-DL PROPER DDP5.1 x264-GRP"),
+        ("attr-proper", "Movie 2024 1080p WEB-DL PROPER2 DDP5.1 x264-GRP"),
+        ("attr-proper", "Movie 2024 1080p WEB-DL PROPER3 DDP5.1 x264-GRP"),
+        ("attr-rerip", "Movie 2024 1080p WEB-DL RERIP DDP5.1 x264-GRP"),
+        ("attr-rerip", "Movie 2024 1080p WEB-DL RERIP2 DDP5.1 x264-GRP"),
+        ("attr-rerip", "Movie 2024 1080p WEB-DL RERIP3 DDP5.1 x264-GRP"),
         ("attr-hybrid", "Movie 2024 2160p Hybrid BluRay REMUX HEVC-GRP"),
         # Streaming providers.
         ("web-amzn", "Show S01E01 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("web-atvp", "Show S01E01 2160p ATVP WEB-DL DDP5.1 H.265-NTb"),
+        ("web-bcore", "Movie 2024 2160p BCORE WEB-DL DDP5.1 H.265-GRP"),
         ("web-max", "Show S01E01 1080p HMAX WEB-DL DDP5.1 H.264-NTb"),
         ("web-paramount", "Show S01E01 1080p PMTP WEB-DL DDP5.1 H.264-NTb"),
         ("web-sho", "Show S01E01 1080p SHO WEB-DL DDP5.1 H.264-NTb"),
-        ("web-stan", "Show S01E01 1080p STAN WEB-DL DDP5.1 H.264-NTb"),
-        ("web-crave", "Show S01E01 1080p CRAV WEB-DL DDP5.1 H.264-NTb"),
-        ("web-anime", "Show S01E01 1080p CR WEB-DL AAC2.0-NTb"),
-        ("web-uk", "Show S01E01 1080p iP WEB-DL AAC2.0-NTb"),
+        ("web-itunes", "Movie 2024 2160p iT WEB-DL DDP5.1 H.265-GRP"),
+        ("web-movies-anywhere", "Movie 2024 2160p MA WEB-DL DDP5.1 H.265-GRP"),
     ],
 )
 def test_builtin_matches_a_representative_release(key: str, release: str) -> None:
     assert _matches(key, release), f"{key} should match {release}"
+
+
+@pytest.mark.parametrize(
+    ("key", "tag", "offset"),
+    [
+        ("attr-repack-proper", "REPACK", 1),
+        ("attr-repack-proper", "REPACK2", 2),
+        ("attr-repack-proper", "REPACK3", 3),
+        ("attr-proper", "PROPER", 1),
+        ("attr-proper", "PROPER2", 2),
+        ("attr-proper", "PROPER3", 3),
+        ("attr-rerip", "RERIP", 1),
+        ("attr-rerip", "RERIP2", 2),
+        ("attr-rerip", "RERIP3", 3),
+    ],
+)
+def test_revision_formats_apply_the_number_as_the_score_offset(key: str, tag: str, offset: int) -> None:
+    result = _evaluation(key, f"Movie 2024 1080p WEB-DL {tag} DDP5.1 x264-GRP", score=10)
+    assert result.score_offset == offset
+    assert result.score_contribution == 10 + offset
 
 
 @pytest.mark.parametrize(
@@ -96,14 +137,21 @@ def test_builtin_matches_a_representative_release(key: str, release: str) -> Non
         # Dolby Digital must not be confused with Dolby Digital Plus.
         ("audio-dd", "Movie 2024 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("audio-ddplus", "Movie 2024 1080p BluRay AC3 2.0 x264-GRP"),
-        # A stereo release is not surround.
-        ("audio-surround", "Movie 2024 1080p BluRay AC3 2.0 x264-GRP"),
         # HDR10+ is not Dolby Vision.
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL HDR10+ x265-GRP"),
+        ("hdr-dv-hdr10", "Movie 2024 2160p WEB-DL DV HDR10+ x265-GRP"),
+        ("hdr-hdr10", "Movie 2024 2160p WEB-DL HDR10+ x265-GRP"),
+        ("hdr-sdr", "Movie 2024 1080p BluRay SDR x265-GRP"),
+        ("hdr-sdr", "Movie 2024 2160p WEB-DL HDR10 x265-GRP"),
+        ("hdr-sdr", "Movie 2024 2160p WEB-DL DOVI x265-GRP"),
+        ("hdr-sdr", "Movie 2024 2160p HDTV HLG x265-GRP"),
         # A provider format must not match another provider.
         ("web-amzn", "Show S01E01 1080p DSNP WEB-DL DDP5.1 H.264-NTb"),
         ("web-paramount", "Show S01E01 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("web-sho", "Show S01E01 1080p PMTP WEB-DL DDP5.1 H.264-NTb"),
+        ("web-itunes", "Movie 2024 2160p MA WEB-DL DDP5.1 H.265-GRP"),
+        ("web-movies-anywhere", "Movie 2024 2160p iT WEB-DL DDP5.1 H.265-GRP"),
+        ("web-movies-anywhere", "Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP"),
     ],
 )
 def test_builtin_does_not_match_an_unrelated_release(key: str, release: str) -> None:
@@ -132,13 +180,11 @@ def test_every_required_audio_codec_has_a_working_builtin(key: str, release: str
     assert _matches(key, release), f"{key} should match {release}"
 
 
-def test_atmos_matches_both_its_carrier_and_the_combined_format() -> None:
-    """A TrueHD Atmos release is TrueHD, so both formats match and both score."""
+def test_atmos_matches_only_its_specific_carrier_format() -> None:
 
     truehd_atmos = "Movie 2024 2160p BluRay REMUX TrueHD 7.1 Atmos-GRP"
     assert _matches("audio-truehd", truehd_atmos)
     assert _matches("audio-truehd-atmos", truehd_atmos)
-    assert _matches("audio-atmos", truehd_atmos)
     # ...but it is not DD+ Atmos.
     assert not _matches("audio-ddplus-atmos", truehd_atmos)
 
@@ -152,7 +198,21 @@ def test_a_carrier_without_atmos_does_not_match_the_atmos_formats() -> None:
     plain = "Movie 2024 2160p BluRay REMUX TrueHD 7.1-GRP"
     assert _matches("audio-truehd", plain)
     assert not _matches("audio-truehd-atmos", plain)
-    assert not _matches("audio-atmos", plain)
+
+
+def test_withdrawn_catch_all_formats_are_not_in_the_catalogue() -> None:
+    assert {
+        "audio-atmos",
+        "audio-surround",
+        "audio-stereo",
+        "hdr-any",
+        "attr-remastered",
+        "web-free",
+        "web-stan",
+        "web-uk",
+        "web-anime",
+        "web-crave",
+    }.isdisjoint(BY_KEY)
 
 
 def test_dts_variants_do_not_bleed_into_each_other() -> None:

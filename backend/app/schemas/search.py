@@ -19,6 +19,8 @@ class SearchResultResponse(BaseModel):
     seeders: int | None
     published_at: datetime | None
     quality: str | None
+    quality_allowed: bool
+    quality_preference: int
     edition: str | None
     release_group: str | None
     custom_format_score: int | None

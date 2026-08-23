@@ -1,15 +1,17 @@
 import asyncio
 import os
-import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import select
 
 from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
 from app.main import create_app
+from app.db.bootstrap import ensure_builtin_custom_formats
+from app.models.domain import CustomFormat, MediaScope
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -32,8 +34,8 @@ def _user_formats(payload: dict) -> list[dict]:
 
 
 @pytest.fixture
-def client():
-    db_path = tempfile.mktemp(prefix="medialogue-cf-", suffix=".db", dir=os.getcwd())
+def client(tmp_path):
+    db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(database_url=database_url, bootstrap_admin=True, config_dir=f"{db_path}.config", secret_key="test-secret-key-123456")
     engine = create_async_engine(database_url)
@@ -127,6 +129,80 @@ def test_custom_format_crud_has_no_intrinsic_score_and_uses_revision(client: Tes
     assert deleted.status_code == 200, deleted.text
     assert deleted.json()["deleted"] is True
 
+
+def test_custom_format_sections_and_order_are_persistent(client: TestClient) -> None:
+    headers = _login(client)
+    created = _create(client, headers, name="My Ordered Format")
+    initial = client.get("/api/v1/custom-formats/layout")
+    assert initial.status_code == 200, initial.text
+    sections = initial.json()["sections"]
+    assert all(section["id"] != "custom" and section["name"] != "Custom" for section in sections)
+    assert any(section["id"] == "dynamic-range" and section["name"] == "Dynamic Range" for section in sections)
+    assert all(section["id"] != "hdr" and section["name"] != "HDR" for section in sections)
+    all_ids = [format_id for section in sections for format_id in section["format_ids"]]
+    assert created["id"] in all_ids
+    assert created["id"] in next(section["format_ids"] for section in sections if section["id"] == "release")
+
+    custom_ids = [created["id"]]
+    remaining_ids = [format_id for format_id in all_ids if format_id != created["id"]]
+    reordered = {
+        "sections": [
+            {"id": "favorites", "name": "Favorites", "format_ids": custom_ids},
+            {"id": "everything-else", "name": "Everything else", "format_ids": remaining_ids},
+        ]
+    }
+    saved = client.put("/api/v1/custom-formats/layout", headers=headers, json=reordered)
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == reordered
+    assert client.get("/api/v1/custom-formats/layout").json() == reordered
+
+    invalid = client.put(
+        "/api/v1/custom-formats/layout",
+        headers=headers,
+        json={"sections": [{"id": "favorites", "name": "Favorites", "format_ids": []}]},
+    )
+    assert invalid.status_code == 409, invalid.text
+
+
+def test_withdrawn_builtin_is_deleted_instead_of_left_disabled(client: TestClient) -> None:
+    async def exercise() -> None:
+        async with db_session.async_session_factory() as db:
+            db.add(CustomFormat(
+                name="HDR (any)",
+                media_scope=MediaScope.BOTH,
+                enabled=False,
+                builtin=True,
+                builtin_key="hdr-any",
+                condition_definition={"schema_version": 1, "conditions": []},
+            ))
+            await db.commit()
+            await ensure_builtin_custom_formats(db)
+            await db.commit()
+            assert await db.scalar(select(CustomFormat).where(CustomFormat.builtin_key == "hdr-any")) is None
+
+    asyncio.run(exercise())
+
+
+def test_builtin_can_be_disabled_and_reenabled_with_enabled_only_patch(client: TestClient) -> None:
+    headers = _login(client)
+    formats = client.get("/api/v1/custom-formats?page_size=250").json()["items"]
+    builtin = next(item for item in formats if item["builtin"])
+
+    disabled = client.patch(
+        f"/api/v1/custom-formats/{builtin['id']}",
+        headers=headers,
+        json={"enabled": False, "expected_revision": builtin["revision"]},
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["enabled"] is False
+
+    reenabled = client.patch(
+        f"/api/v1/custom-formats/{builtin['id']}",
+        headers=headers,
+        json={"enabled": True, "expected_revision": disabled.json()["revision"]},
+    )
+    assert reenabled.status_code == 200, reenabled.text
+    assert reenabled.json()["enabled"] is True
 
 def test_custom_format_test_explains_every_condition_and_parser_output(client: TestClient) -> None:
     headers = _login(client)
@@ -224,7 +300,11 @@ def test_application_owned_export_import_round_trip(client: TestClient) -> None:
     assert bundle["schema_version"] == 1
     assert len(bundle["custom_formats"]) == 1
     assert "id" not in bundle["custom_formats"][0]
-    assert "score" not in str(bundle).lower()
+    # Formats still do not own a fixed profile score; rules may carry the
+    # relative score offset introduced for variants such as REPACK2.
+    assert "score" not in bundle["custom_formats"][0]
+    assert all("score" not in condition for condition in bundle["custom_formats"][0]["conditions"])
+    assert all("score_offset" in condition for condition in bundle["custom_formats"][0]["conditions"])
 
     client.delete(f"/api/v1/custom-formats/{created['id']}", headers=headers)
     imported = client.post("/api/v1/custom-formats/import", headers=headers, json=bundle)

@@ -1,7 +1,6 @@
 import asyncio
 import os
 import shutil
-import tempfile
 import time
 from pathlib import Path
 
@@ -19,10 +18,10 @@ from app.main import create_app
 
 
 @pytest.fixture
-def client():
+def client(tmp_path):
     """Give Plex endpoint tests their own isolated SQLite database."""
 
-    db_path = tempfile.mktemp(prefix="medialogue-plex-", suffix=".db", dir=os.getcwd())
+    db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(
         database_url=database_url,

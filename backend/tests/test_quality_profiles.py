@@ -1,6 +1,5 @@
 import asyncio
 import os
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -55,8 +54,8 @@ def _user_formats(payload: dict) -> list[dict]:
 
 
 @pytest.fixture
-def client():
-    db_path = tempfile.mktemp(prefix="medialogue-profiles-", suffix=".db", dir=os.getcwd())
+def client(tmp_path):
+    db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(database_url=database_url, bootstrap_admin=True, config_dir=f"{db_path}.config", secret_key="test-secret-key-123456")
     engine = create_async_engine(database_url)
@@ -252,6 +251,80 @@ def test_zero_and_negative_scores_are_valid_and_quality_definitions_are_read_onl
     values = {row["custom_format_name"]: row["score"] for row in profile.json()["custom_format_scores"]}
     assert values == {"Hybrid": 0, "NoGroup": -100000}
     assert client.post("/api/v1/quality-definitions", headers=headers, json={"name": "CAM"}).status_code == 405
+
+
+def test_saved_profile_scores_are_returned_highest_first(client: TestClient):
+    headers = login(client)
+    middle = create_cf(client, headers)
+    high = client.post("/api/v1/custom-formats", headers=headers, json={
+        "name": "Preferred", "media_scope": "movies", "conditions": [{"type": "release_title", "pattern": "Preferred"}]
+    }).json()
+    low = client.post("/api/v1/custom-formats", headers=headers, json={
+        "name": "Avoid", "media_scope": "movies", "conditions": [{"type": "release_title", "pattern": "Avoid"}]
+    }).json()
+    response = client.post("/api/v1/quality-profiles", headers=headers, json={
+        "name": "Ordered",
+        "custom_format_scores": [
+            {"custom_format_id": low["id"], "score": -100},
+            {"custom_format_id": middle["id"], "score": 0},
+            {"custom_format_id": high["id"], "score": 100},
+        ],
+    })
+    assert response.status_code == 201, response.text
+    assert [item["score"] for item in response.json()["custom_format_scores"]] == [100, 0, -100]
+
+
+def test_profile_persists_selected_quality_order(client: TestClient):
+    headers = login(client)
+    preferred = quality_id(client, "1080p WEB-DL")
+    fallback = quality_id(client, "2160p BluRay REMUX")
+    response = client.post("/api/v1/quality-profiles", headers=headers, json={
+        "name": "Ordered qualities",
+        "quality_definition_ids": [preferred, fallback],
+        "custom_format_scores": [],
+    })
+    assert response.status_code == 201, response.text
+    assert [item["name"] for item in response.json()["qualities"]] == ["1080p WEB-DL", "2160p BluRay REMUX"]
+
+    empty = client.patch(
+        f"/api/v1/quality-profiles/{response.json()['id']}",
+        headers=headers,
+        json={"quality_definition_ids": [], "expected_revision": response.json()["revision"]},
+    )
+    assert empty.status_code == 422
+
+
+def test_interactive_search_uses_profile_quality_order_before_format_score(client: TestClient):
+    headers = login(client)
+    movie = seed_movie()
+    preferred = quality_id(client, "1080p WEB-DL")
+    fallback = quality_id(client, "2160p BluRay REMUX")
+    profile = client.post("/api/v1/quality-profiles", headers=headers, json={
+        "name": "1080 first",
+        "quality_definition_ids": [preferred, fallback],
+        "custom_format_scores": [],
+    }).json()
+    client.put(f"/api/v1/movies/{movie}/profile-settings", headers=headers, json={
+        "quality_profile_id": profile["id"],
+    })
+    create_indexer(client, headers)
+    behavior = Behavior(results=[
+        SearchResult(guid="four-k", title="Inception 2010 2160p BluRay REMUX HEVC-GRP", download_url="magnet:?xt=urn:btih:4k", size=20_000, seeders=100, published=None),
+        SearchResult(guid="excluded", title="Inception 2010 720p WEB-DL H.264-GRP", download_url="magnet:?xt=urn:btih:720", size=5_000, seeders=500, published=None),
+        SearchResult(guid="preferred", title="Inception 2010 1080p WEB-DL H.264-GRP", download_url="magnet:?xt=urn:btih:1080", size=10_000, seeders=1, published=None),
+    ])
+    client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: behavior.factory
+    try:
+        started = client.post(f"/api/v1/movies/{movie}/interactive-search", headers=headers)
+        assert started.status_code == 202, started.text
+        results = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"]
+        assert [item["quality"] for item in results] == ["1080p WEB-DL", "2160p BluRay REMUX", "720p WEB-DL"]
+        assert results[0]["quality_allowed"] is True
+        assert results[0]["quality_preference"] > results[1]["quality_preference"]
+        assert results[2]["quality_allowed"] is False
+        assert any("not enabled" in warning for warning in results[2]["warnings"])
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_custom_format_edit_recomputes_current_score_without_rewriting_history(client: TestClient):

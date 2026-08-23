@@ -102,10 +102,11 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> None:
         row.condition_definition = condition_definition(builtin)
         row.builtin = True
 
-    # A built-in withdrawn from the catalogue is disabled rather than deleted,
-    # because Quality Profiles may still carry a score referencing it.
+    # Withdrawn built-ins must disappear from the catalog. Score rows are
+    # application configuration, not historical evidence, and cascade away;
+    # release snapshots remain untouched.
     for key, row in existing.items():
         if key not in BUILTIN_KEYS:
-            row.enabled = False
+            await session.delete(row)
 
     await session.flush()

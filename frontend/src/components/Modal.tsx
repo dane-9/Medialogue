@@ -9,12 +9,13 @@ import { Icon } from './Icon'
  * page behind it can stay a simple overview: you see everything at once, then
  * open exactly the one thing you are changing.
  */
-export function Modal({ title, eyebrow, onClose, footer, wide, children }: PropsWithChildren<{
+export function Modal({ title, eyebrow, onClose, footer, wide, className, children }: PropsWithChildren<{
   title: string
   eyebrow?: string
   onClose: () => void
   footer?: ReactNode
   wide?: boolean
+  className?: string
 }>) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
@@ -29,7 +30,7 @@ export function Modal({ title, eyebrow, onClose, footer, wide, children }: Props
   }, [onClose])
 
   return <div className="modal-backdrop" onClick={onClose}>
-    <div className={`modal ${wide ? 'modal-wide' : ''}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
+    <div className={`modal ${wide ? 'modal-wide' : ''} ${className ?? ''}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
       <div className="modal-head">
         <div className="modal-head-copy">
           {eyebrow && <div className="eyebrow">{eyebrow}</div>}

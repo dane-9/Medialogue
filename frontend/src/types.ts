@@ -445,6 +445,7 @@ export interface CustomFormatCondition {
   negate: boolean
   caseSensitive: boolean
   group?: string
+  scoreOffset: number
 }
 
 export interface CustomFormat {
@@ -464,6 +465,12 @@ export interface CustomFormat {
   builtin?: boolean
 }
 
+export interface CustomFormatSection {
+  id: string
+  name: string
+  formatIds: string[]
+}
+
 export interface CustomFormatConditionEvaluation {
   conditionId: string
   conditionType: string
@@ -477,6 +484,7 @@ export interface CustomFormatConditionEvaluation {
   reason?: string
   group?: string
   regexMatch?: string
+  scoreOffset: number
 }
 
 export interface CustomFormatEvaluation {
@@ -485,6 +493,7 @@ export interface CustomFormatEvaluation {
   matched: boolean
   conditions: CustomFormatConditionEvaluation[]
   groupResults: Record<string, boolean>
+  scoreOffset: number
   profileScore?: number
   contribution?: number
   error?: string
@@ -526,6 +535,7 @@ export interface QualityProfile {
   id: string
   name: string
   minimumQuality?: QualityDefinition
+  qualities: QualityDefinition[]
   customFormatScores: QualityProfileScore[]
   assignedTitles: number
   revision: number
