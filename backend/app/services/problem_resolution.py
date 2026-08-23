@@ -53,31 +53,29 @@ CONFIRMATION_TTL_SECONDS = 10 * 60
 
 
 def available_actions(problem: Problem) -> list[str]:
+    if problem.status == ProblemStatus.DISMISSED:
+        return ["restore"]
     if problem.status != ProblemStatus.OPEN:
         return []
     reason = problem.reason
-    if reason == "DUPLICATE_PHYSICAL_RELEASE" and problem.entity_type == "movie":
-        return ["compare_duplicates", "recheck"]
-    if reason == "DUPLICATE_EPISODE_RELEASE" and problem.entity_type == "episode":
-        return ["choose_episode_winner", "recheck"]
+    if "DUPLICATE" in reason:
+        return ["dismiss", "recheck"]
     if problem.entity_type in {"media_directory", "movie"} and reason in {
         "LOW_CONFIDENCE_MATCH",
         "TMDB_MATCH_REQUIRED",
         "TMDB_IDENTITY_UNRESOLVED",
         "PLEX_IDENTITY_MISMATCH",
     }:
-        return ["confirm_movie_match", "recheck"]
+        return ["confirm_movie_match", "dismiss", "recheck"]
     if problem.entity_type in {"media_directory", "show"} and reason in {
         "TMDB_SHOW_MATCH_REQUIRED",
         "TMDB_SHOW_IDENTITY_UNRESOLVED",
         "PLEX_IDENTITY_MISMATCH",
     }:
-        return ["confirm_show_match", "recheck"]
+        return ["confirm_show_match", "dismiss", "recheck"]
     if reason in {"PATH_MAPPING_FAILED", "TORRENT_PATH_NOT_FOUND", "ROOT_UNREACHABLE"}:
-        return ["recheck"]
-    if reason in {"QBIT_REMOVE_FAILED"}:
         return ["dismiss", "recheck"]
-    return ["recheck"]
+    return ["dismiss", "recheck"]
 
 
 async def resolve_explicit_problem_action(
@@ -88,14 +86,35 @@ async def resolve_explicit_problem_action(
     *,
     tmdb_client_factory: Callable[..., Any] | None = None,
 ) -> Problem:
+    if action == "restore":
+        if problem.status != ProblemStatus.DISMISSED:
+            raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "Only a suppressed problem can be restored.", status_code=409)
+        problem.status = ProblemStatus.OPEN
+        problem.resolution = {"action": "restored", "restored_at": utcnow().isoformat()}
+        problem.resolved_at = None
+        await create_event(
+            db,
+            "problem.restored",
+            entity_type=problem.entity_type,
+            entity_id=problem.entity_id,
+            message="A suppressed Problem was restored to the active queue.",
+            details={"problem_id": str(problem.id), "reason": problem.reason},
+        )
+        queue_live_event(
+            db,
+            "problem.updated",
+            entity_type=problem.entity_type,
+            entity_id=problem.entity_id,
+            data={"problem_id": str(problem.id), "reason": problem.reason},
+        )
+        return problem
+
     if problem.status != ProblemStatus.OPEN:
         raise AppError("PROBLEM_ALREADY_RESOLVED", "Problem is no longer open.", status_code=409)
 
     if action == "dismiss":
-        if problem.reason not in {"QBIT_REMOVE_FAILED"}:
-            raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "This problem cannot be dismissed without fixing its evidence.", status_code=409)
         problem.status = ProblemStatus.DISMISSED
-        problem.resolution = {"action": action}
+        problem.resolution = {"action": action, "suppressed": True, "suppressed_at": utcnow().isoformat()}
         problem.resolved_at = utcnow()
         await _resolution_event(db, problem, "Problem dismissed after manual review.")
         return problem
@@ -136,33 +155,6 @@ async def resolve_explicit_problem_action(
         problem.resolution = {"action": action, "tmdb_id": int(payload["tmdb_id"])}
         problem.resolved_at = utcnow()
         await _resolution_event(db, problem, "Show identity manually confirmed.")
-        return problem
-
-    if action == "choose_episode_winner":
-        override_applied = await _choose_episode_winner(db, problem, payload)
-        # Physical evidence still contains a duplicate; retain the Problem as
-        # OPEN until a later scan proves the losing file is gone.
-        problem.resolution = {
-            "action": action,
-            "winner_media_file_id": str(payload["winner_media_file_id"]),
-            "winner_manual_override_applied": override_applied,
-            "physical_duplicate_remains": True,
-        }
-        queue_live_event(
-            db,
-            "problem.updated",
-            entity_type=problem.entity_type,
-            entity_id=problem.entity_id,
-            data={"problem_id": str(problem.id), "reason": problem.reason},
-        )
-        await create_event(
-            db,
-            "duplicate.episode_winner_selected",
-            entity_type="episode",
-            entity_id=problem.entity_id,
-            message="A preferred episode file was selected; the physical duplicate remains on disk.",
-            details={"problem_id": str(problem.id), **problem.resolution},
-        )
         return problem
 
     raise AppError("PROBLEM_ACTION_NOT_ALLOWED", f"Unsupported resolution action: {action}", status_code=422)

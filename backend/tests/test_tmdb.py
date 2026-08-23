@@ -63,6 +63,27 @@ def test_tmdb_health_surfaces_http_failure() -> None:
     assert "401" in asyncio.run(run())
 
 
+def test_tmdb_candidate_credits_include_principal_people() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/3/movie/1091/credits":
+            return httpx.Response(200, json={"crew": [{"job": "Director", "name": "John Carpenter"}], "cast": [{"name": "Kurt Russell"}, {"name": "Keith David"}, {"name": "Wilford Brimley"}, {"name": "Fourth Billing"}]})
+        if request.url.path == "/3/tv/94997":
+            assert request.url.params["append_to_response"] == "credits"
+            return httpx.Response(200, json={"created_by": [{"name": "Example Creator"}], "credits": {"cast": [{"name": "Lead One"}, {"name": "Lead Two"}]}})
+        raise AssertionError(f"unexpected TMDB request: {request.url}")
+
+    async def run():
+        client = TMDBClient("test-key", transport=httpx.MockTransport(handler))
+        try:
+            return await client.get_movie_credits(1091), await client.get_show_credits(94997)
+        finally:
+            await client.close()
+
+    movie, show = asyncio.run(run())
+    assert movie == ("John Carpenter", ("Kurt Russell", "Keith David", "Wilford Brimley"))
+    assert show == ("Example Creator", ("Lead One", "Lead Two"))
+
+
 def test_tmdb_show_search_details_and_episode_metadata() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/3/search/tv":

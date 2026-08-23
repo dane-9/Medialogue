@@ -24,15 +24,6 @@ Keep the same `MEDIALOGUE_SECRET_KEY` that was used when the file was written. M
 
 Treat each qBittorrent client independently. If another configured instance works, the common Medialogue networking/auth path is functioning and the failing instance should be checked for its own credentials, WebUI failed-login/IP-ban state, reverse-proxy base path, and host access rules. Medialogue distinguishes rejected credentials from qBittorrent's HTTP 403 temporary IP ban and stops automatic retries after a confirmed auth failure.
 
-## Media scans work but Delete Media fails
-
-The root must be both:
-
-1. mounted read/write in Docker; and
-2. configured as `read_write` in Medialogue.
-
-The runtime PUID/PGID must have host filesystem delete permission. Medialogue never changes media-root ownership itself.
-
 ## Root suddenly shows offline
 
 Do not remove/re-add all titles. A whole-root outage is tracked separately and does not mass-convert known media to Missing. Restore the mount/network path, then recheck/scan the root.
@@ -59,4 +50,3 @@ This was caused by an older packaging configuration accidentally treating Medial
 Use the v4-or-newer source package, publish a new image, then pull/recreate the Medialogue container. v4 restricts Python package discovery to `app*` and validates the real Alembic CLI during the Docker build and again before GHCR publishing.
 
 If you maintain the repository through GitHub's web uploader, remember that uploading a newer folder does not delete obsolete files already in the repository. Delete obsolete files explicitly or use a normal Git checkout/sync.
-

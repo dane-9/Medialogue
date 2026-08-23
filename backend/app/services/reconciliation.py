@@ -54,6 +54,7 @@ from app.models.domain import (
     StorageRoot,
     Torrent,
     TorrentClientObservation,
+    classify_problem_workflow,
 )
 from app.parser import ReleaseParseResult, parse_release_name
 from app.reconciliation.engine import ReconciliationEngine
@@ -154,15 +155,40 @@ async def open_problem(
         advisory_key = int.from_bytes(hashlib.blake2b(identity, digest_size=8).digest(), "big", signed=True)
         await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": advisory_key})
 
-    query = select(Problem).where(
+    identity_query = select(Problem).where(
         Problem.reason == reason,
         Problem.entity_type == entity_type,
-        Problem.status == ProblemStatus.OPEN,
     )
     if entity_id is None:
-        query = query.where(Problem.entity_id.is_(None))
+        identity_query = identity_query.where(Problem.entity_id.is_(None))
     else:
-        query = query.where(Problem.entity_id == entity_id)
+        identity_query = identity_query.where(Problem.entity_id == entity_id)
+    suppressed = await db.scalar(
+        identity_query.where(Problem.status == ProblemStatus.DISMISSED).order_by(Problem.created_at.desc()).limit(1)
+    )
+    if suppressed is not None:
+        # Dismissal is an explicit admin suppression. Keep its evidence fresh
+        # for debugging, but never recreate or reopen the fingerprint.
+        changed = (
+            suppressed.message != message
+            or dict(suppressed.details or {}) != (details or {})
+            or suppressed.severity != severity
+        )
+        suppressed.message = message
+        suppressed.details = details or {}
+        suppressed.severity = severity
+        await db.flush()
+        if changed:
+            queue_live_event(
+                db,
+                "problem.updated",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                data={"problem_id": str(suppressed.id), "reason": reason, "suppressed": True},
+            )
+        return suppressed
+
+    query = identity_query.where(Problem.status == ProblemStatus.OPEN)
     existing_problems = (await db.scalars(query.order_by(Problem.created_at.asc()))).all()
     problem = existing_problems[0] if existing_problems else None
     created = False
@@ -174,6 +200,7 @@ async def open_problem(
             message=message,
             details=details or {},
             severity=severity,
+            workflow=classify_problem_workflow(reason),
         )
         try:
             async with db.begin_nested():
@@ -199,6 +226,7 @@ async def open_problem(
         problem.message = message
         problem.details = details or {}
         problem.severity = severity
+        problem.workflow = classify_problem_workflow(reason)
     await db.flush()
     if created:
         await create_event(

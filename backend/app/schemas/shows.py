@@ -35,6 +35,8 @@ class TMDBShowLookupResponse(BaseModel):
     year: int | None = None
     overview: str | None = None
     poster_ref: str | None = None
+    director: str | None = None
+    cast: list[str] = Field(default_factory=list)
 
 
 class EpisodeMediaResponse(BaseModel):

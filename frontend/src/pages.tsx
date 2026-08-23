@@ -952,7 +952,7 @@ function TMDBMatchPicker({ kind, query, matches, selected, loading, onQueryChang
   return <div className="resolution-block"><div className="eyebrow">MANUAL {kind.toUpperCase()} MATCH</div><p>Search TMDB, select the exact {kind.toLowerCase()}, then apply the match. The filesystem is not renamed or moved.</p><div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={`Search TMDB ${kind}s…`} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} /></div><Button variant="ghost" onClick={onSearch} disabled={loading || !query.trim()}>Search</Button></div>{matches.length > 0 && <div className="tmdb-candidate-grid">{matches.map((match) => <TMDBCandidateCard key={match.tmdbId} match={match} selected={selected?.tmdbId === match.tmdbId} onSelect={() => onSelect(match)} />)}</div>}{selected && <div className="tmdb-selection-bar"><span>Selected: <strong>{selected.title}{selected.year ? ` (${selected.year})` : ''}</strong> · TMDB {selected.tmdbId}</span><Button variant="primary" onClick={onApply} disabled={loading}>Apply selected {kind}</Button></div>}</div>
 }
 
-export function ProblemsPage() {
+function LegacyProblemsPage() {
   const [items, setItems] = useState<Problem[]>([])
   const [selected, setSelected] = useUrlState('problem')
   const [loaded, setLoaded] = useState(false)
@@ -1252,6 +1252,254 @@ export function ProblemsPage() {
         <div className="detail-actions">{current.availableActions?.includes('recheck') && <Button variant="ghost" icon="refresh" onClick={() => void recheckProblem()} disabled={loading}>Recheck evidence</Button>}{current.availableActions?.includes('dismiss') && <Button variant="ghost" onClick={() => void dismissProblem()} disabled={loading}>Dismiss</Button>}<Button variant="danger" onClick={() => void deleteCurrentProblem()} disabled={loading}>Delete warning record</Button></div>
       </> : <EmptyState icon="alert" title="No unresolved problems on this page" detail={total ? 'Use the page controls to continue through the queue.' : 'The live reconciliation queue is clear.'} />}</Panel></div>
     {pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button><span>Page {page} of {pages} · {total} matching Problems</span><Button variant="ghost" disabled={page >= pages || loading} onClick={() => setPage((value) => Math.min(pages, value + 1))}>Next</Button></div>}
+  </Page>
+}
+
+const problemWorkflowLabels: Record<Problem['workflow'], string> = {
+  manual: 'Fix manually',
+  choice: 'Confirm identity',
+  config: 'Fix settings',
+  waiting: 'Recheck',
+}
+
+function problemCandidateFromEvidence(candidate: Record<string, unknown>): TMDBCandidate | undefined {
+  return problemTMDBCandidateLookup(candidate)
+}
+
+function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; duplicateMovie: Movie | null }) {
+  const details = problem.details ?? {}
+  const rows: Array<[string, string, string?]> = []
+  if (problem.code === 'DUPLICATE_PHYSICAL_RELEASE' && duplicateMovie?.releasesDetail?.length) {
+    duplicateMovie.releasesDetail.filter((release) => release.state === 'duplicate' || release.state === 'current').forEach((release, index) => {
+      const directory = release.directories.find((item) => item.exists) ?? release.directories[0]
+      rows.push([`Copy ${index + 1}`, directory?.path ?? release.name, [release.quality, release.edition, release.releaseGroup].filter(Boolean).join(' · ')])
+    })
+  } else if (problem.code === 'DUPLICATE_EPISODE_RELEASE' && Array.isArray(details.media_files)) {
+    details.media_files.map(problemRecord).forEach((file, index) => rows.push([
+      `File ${index + 1}`,
+      problemText(file.path) ?? problemText(file.filename) ?? 'Path not recorded',
+      file.physical_exists === true ? 'Verified on disk' : 'Not currently verified on disk',
+    ]))
+  } else if (problem.code === 'PLEX_IDENTITY_MISMATCH' && Array.isArray(details.conflicts)) {
+    const conflict = problemRecord(details.conflicts[0])
+    rows.push(
+      ['Medialogue says', problemText(conflict.local_episode) ?? problemText(details.local_identity) ?? problem.subject, problemText(conflict.local_path)],
+      ['Plex says', problemText(conflict.plex_episode) ?? problemText(details.plex_identity) ?? 'Conflicting Plex identity', problemText(conflict.plex_path)],
+    )
+  } else {
+    const path = problemText(details.path ?? details.local_path ?? details.reported_path ?? details.resolved_path)
+    if (path) rows.push(['Path', path])
+    const parsed = parserIdentity(details)
+    if (parsed.identity) rows.push(['Parsed as', parsed.identity, parsed.warnings.length ? parsed.warnings.join(' · ') : undefined])
+    const qbitPath = problemText(details.qbittorrent_path ?? details.remote_path)
+    if (qbitPath && qbitPath !== path) rows.push(['qBittorrent path', qbitPath])
+  }
+  if (!rows.length) rows.push(['Affected media', problem.subject, problem.entityType ? `${problem.entityType} evidence` : undefined])
+  return <section className="problems-key-details">{rows.map(([label, value, note], index) => <div className="problems-detail-row" key={`${label}-${index}`}><span>{label}</span><div><strong>{value}</strong>{note && <small>{note}</small>}</div></div>)}</section>
+}
+
+function ProblemsIdentityPicker({
+  problem,
+  matches,
+  selected,
+  query,
+  loading,
+  onQuery,
+  onSearch,
+  onSelect,
+  onApply,
+  onCancel,
+}: {
+  problem: Problem
+  matches: TMDBCandidate[]
+  selected?: TMDBCandidate
+  query: string
+  loading: boolean
+  onQuery: (value: string) => void
+  onSearch: () => void
+  onSelect: (match: TMDBCandidate) => void
+  onApply: () => void
+  onCancel?: () => void
+}) {
+  return <section className="problems-identity-resolver">
+    <div className="problems-resolver-head"><div><div className="eyebrow">POSSIBLE MATCHES</div><p>Choose the identity Medialogue should use. Media will not be renamed or moved.</p></div>{onCancel && <Button variant="ghost" onClick={onCancel}>Cancel</Button>}</div>
+    {matches.length ? <div className="problems-identity-grid">{matches.slice(0, 6).map((match) => <button type="button" className={`problems-identity-card ${selected?.tmdbId === match.tmdbId ? 'selected' : ''}`} key={match.tmdbId} onClick={() => onSelect(match)} aria-pressed={selected?.tmdbId === match.tmdbId}>
+      <span className="problems-identity-poster">{match.posterRef ? <img src={tmdbPosterUrl(match.posterRef)} alt={`${match.title} poster`} loading="lazy" referrerPolicy="no-referrer" /> : <Icon name={problem.entityType === 'show' ? 'tv' : 'film'} size={26} />}</span>
+      <span className="problems-identity-copy"><span className="problems-identity-title"><strong>{match.title}</strong>{match.year && <span>{match.year}</span>}</span>{match.overview && <span className="problems-identity-overview">{match.overview}</span>}<span className="problems-identity-credits"><span><strong>{problem.entityType === 'show' ? 'Creator' : 'Director'}:</strong> {match.director ?? 'Not listed'}</span><span><strong>Cast:</strong> {match.cast?.length ? match.cast.join(' · ') : 'Not listed'}</span></span><span className="problems-identity-meta">TMDB {match.tmdbId}</span></span>
+      <span className="problems-identity-radio" aria-hidden="true" />
+    </button>)}</div> : <div className="problems-candidate-empty">{loading ? 'Loading TMDB suggestions…' : 'Search TMDB to load possible matches.'}</div>}
+    <div className="problems-tmdb-search"><div><strong>Not one of these?</strong><span>Search TMDB directly</span></div><Input value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} placeholder="Title or title + year" /><Button variant="ghost" icon="search" onClick={onSearch} disabled={loading || !query.trim()}>{loading ? 'Searching…' : 'Search TMDB'}</Button></div>
+    <div className="problems-identity-submit"><Button variant="primary" onClick={onApply} disabled={loading || !selected}>Use selected match</Button></div>
+  </section>
+}
+
+export function ProblemsPage() {
+  const navigate = useNavigate()
+  const [items, setItems] = useState<Problem[]>([])
+  const [selected, setSelected] = useUrlState('problem')
+  const [workflow, setWorkflow] = useUrlState('workflow', 'all')
+  const [reasonFilter, setReasonFilter] = useUrlState('reason', 'all')
+  const [severityFilter, setSeverityFilter] = useUrlState('severity', 'all')
+  const [queueStatus, setQueueStatus] = useUrlState('problemStatus', 'open')
+  const [page, setPage] = useUrlNumber('page', 1)
+  const [pages, setPages] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [summary, setSummary] = useState<{ open: number; suppressed: number; workflows: Record<string, number> }>({ open: 0, suppressed: 0, workflows: {} })
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [message, setMessage] = useState('')
+  const [duplicateMovie, setDuplicateMovie] = useState<Movie | null>(null)
+  const [tmdbQuery, setTmdbQuery] = useState('')
+  const [tmdbMatches, setTmdbMatches] = useState<TMDBCandidate[]>([])
+  const [selectedTmdb, setSelectedTmdb] = useState<TMDBCandidate>()
+  const [editingPlexIdentity, setEditingPlexIdentity] = useState(false)
+  const [plexConfiguration, setPlexConfiguration] = useState<Awaited<ReturnType<typeof api.plexConfiguration>>>()
+  const loadGeneration = useRef(0)
+  const reloadCurrent = useRef<() => void>(() => undefined)
+
+  const load = async (targetPage = page, preserveMessage = false) => {
+    const generation = ++loadGeneration.current
+    setLoading(true)
+    try {
+      const [payload, nextSummary] = await Promise.all([
+        api.problemsPage({ status: queueStatus, page: targetPage, pageSize: 250, category: reasonFilter, severity: severityFilter, workflow: queueStatus === 'open' ? workflow : 'all' }),
+        api.problemSummary(),
+      ])
+      if (generation !== loadGeneration.current) return
+      setItems(payload.items); setTotal(payload.total); setPages(payload.pages); setPage(payload.page); setSummary(nextSummary); setLoaded(true)
+      if (selected && !payload.items.some((problem) => problem.id === selected)) setSelected('')
+      if (!preserveMessage) setMessage('')
+    } catch (reason) { if (generation === loadGeneration.current) setMessage(reason instanceof Error ? reason.message : 'Could not load Problems.') }
+    finally { if (generation === loadGeneration.current) setLoading(false) }
+  }
+  reloadCurrent.current = () => void load(page, true)
+
+  useEffect(() => { void load(1) }, [workflow, reasonFilter, severityFilter, queueStatus])
+  useEffect(() => {
+    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const invalidate = () => reloadCurrent.current()
+    stream.addEventListener('problem.created', invalidate); stream.addEventListener('problem.updated', invalidate); stream.addEventListener('problem.resolved', invalidate); stream.addEventListener('problem.deleted', invalidate)
+    return () => stream.close()
+  }, [])
+  useEffect(() => { api.plexConfiguration().then(setPlexConfiguration).catch(() => undefined) }, [])
+
+  const visible = items.filter((problem) => !search.trim() || [problem.title, problem.subject, problem.detail, problem.code].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
+  const current = visible.find((problem) => problem.id === selected) ?? visible[0]
+
+  useEffect(() => {
+    setDuplicateMovie(null); setSelectedTmdb(undefined); setEditingPlexIdentity(false); setTmdbMatches([])
+    if (!current) return
+    if (current.code === 'DUPLICATE_PHYSICAL_RELEASE' && current.entityId) void api.movie(current.entityId).then(setDuplicateMovie).catch(() => undefined)
+    const canMatch = current.availableActions?.some((action) => action === 'confirm_movie_match' || action === 'confirm_show_match')
+    if (!canMatch || current.code === 'PLEX_IDENTITY_MISMATCH') return
+    const details = current.details ?? {}
+    const query = [problemText(details.parsed_title ?? details.title) ?? current.subject, problemText(details.parsed_year ?? details.year)].filter(Boolean).join(' ')
+    setTmdbQuery(query)
+    const candidates = Array.isArray(details.tmdb_candidates) ? details.tmdb_candidates.map(problemRecord).map(problemCandidateFromEvidence).filter((item): item is TMDBCandidate => Boolean(item)) : []
+    setTmdbMatches(candidates.slice(0, 6))
+    const searchCandidates = current.availableActions?.includes('confirm_show_match') ? api.lookupShows(query) : api.lookupMovies(query)
+    void searchCandidates.then((matches) => setTmdbMatches(matches.slice(0, 6))).catch(() => undefined)
+  }, [current?.id])
+
+  const runTmdbSearch = async () => {
+    if (!current || !tmdbQuery.trim()) return
+    setLoading(true); setMessage('')
+    try {
+      const matches = current.availableActions?.includes('confirm_show_match') ? await api.lookupShows(tmdbQuery.trim()) : await api.lookupMovies(tmdbQuery.trim())
+      setTmdbMatches(matches.slice(0, 6)); setSelectedTmdb(undefined)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
+    finally { setLoading(false) }
+  }
+
+  const applyTmdbMatch = async () => {
+    if (!current || !selectedTmdb) return
+    const action = current.availableActions?.includes('confirm_show_match') ? 'confirm_show_match' : 'confirm_movie_match'
+    setLoading(true); setMessage('')
+    try {
+      await api.resolveProblem(current.id, action, { tmdb_id: selectedTmdb.tmdbId })
+      setSelected(''); await load(page, true); setMessage(`Matched to ${selectedTmdb.title}${selectedTmdb.year ? ` (${selectedTmdb.year})` : ''}.`)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the selected identity.') }
+    finally { setLoading(false) }
+  }
+
+  const recheckCurrent = async () => {
+    if (!current) return
+    setLoading(true); setMessage('')
+    try {
+      const response = await api.resolveProblem(current.id, 'recheck')
+      const jobId = typeof response.resolution?.recheck_parent_job_id === 'string' ? response.resolution.recheck_parent_job_id : ''
+      if (jobId) await api.waitForJobs([jobId])
+      await load(page, true)
+      setMessage('Evidence recheck finished. Resolved Problems were removed from the queue.')
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not recheck this Problem.') }
+    finally { setLoading(false) }
+  }
+
+  const recheckAll = async () => {
+    setLoading(true); setMessage('')
+    try { const result = await api.recheckProblems(); setMessage(result.requested ? `Rechecking ${result.requested} existing Problem${result.requested === 1 ? '' : 's'}…` : 'There are no open Problems to recheck.') }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not recheck Problems.') }
+    finally { setLoading(false) }
+  }
+
+  const adminAction = async (action: 'dismiss' | 'restore' | 'delete') => {
+    if (!current) return
+    const prompt = action === 'dismiss' ? 'Suppress this Problem fingerprint? It will not be recreated until restored.' : action === 'restore' ? 'Restore this suppressed Problem to the active queue?' : 'Permanently delete this Problem record? It may be recreated if the condition is observed again.'
+    if (!window.confirm(prompt)) return
+    setLoading(true); setMessage('')
+    try {
+      if (action === 'delete') await api.deleteProblem(current.id)
+      else await api.resolveProblem(current.id, action)
+      setSelected(''); await load(page, true); setMessage(action === 'dismiss' ? 'Problem suppressed.' : action === 'restore' ? 'Problem restored to the active queue.' : 'Problem record deleted.')
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not ${action} the Problem.`) }
+    finally { setLoading(false) }
+  }
+
+  const plexRatingKey = (() => {
+    const details = current?.details ?? {}
+    if (problemText(details.plex_rating_key)) return problemText(details.plex_rating_key)
+    if (Array.isArray(details.conflicts)) return problemText(problemRecord(details.conflicts[0]).plex_rating_key)
+    return undefined
+  })()
+  const openPlex = () => {
+    if (!plexConfiguration?.url || !plexRatingKey) { setMessage('The Plex item link is not available in this Problem’s stored evidence. Recheck it to collect the current Plex item.'); return }
+    const machine = plexConfiguration.machine_identifier ? `/server/${encodeURIComponent(plexConfiguration.machine_identifier)}` : ''
+    const url = `${plexConfiguration.url.replace(/\/$/, '')}/web/index.html#!${machine}/details?key=${encodeURIComponent(`/library/metadata/${plexRatingKey}`)}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const beginPlexIdentityChange = () => {
+    if (!current) return
+    const details = current.details ?? {}
+    const query = problemText(details.local_identity ?? details.medialogue_title) ?? current.subject
+    setTmdbQuery(query); setEditingPlexIdentity(true); setSelectedTmdb(undefined); setTmdbMatches([])
+    const request = current.availableActions?.includes('confirm_show_match') ? api.lookupShows(query) : api.lookupMovies(query)
+    void request.then((matches) => setTmdbMatches(matches.slice(0, 6))).catch((reason) => setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.'))
+  }
+
+  const workflowTabs: Array<{ value: string; label: string }> = [
+    { value: 'all', label: 'Needs attention' }, { value: 'manual', label: 'Fix manually' }, { value: 'choice', label: 'Confirm identity' }, { value: 'config', label: 'Configuration' }, { value: 'waiting', label: 'Recheck' },
+  ]
+
+  return <Page title="Problems" subtitle="See what is wrong, exactly where it is, and what to do next." action={<div className="page-actions"><Button variant="ghost" onClick={() => { setQueueStatus(queueStatus === 'dismissed' ? 'open' : 'dismissed'); setSelected('') }}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div>}>
+    <div className={`problems-summary ${queueStatus === 'dismissed' ? 'suppressed' : ''}`}><div className="problems-summary-icon"><Icon name={queueStatus === 'dismissed' ? 'shield' : 'alert'} size={20} /></div><div><strong>{!loaded ? 'Loading Problems…' : queueStatus === 'dismissed' ? `${summary.suppressed} suppressed Problem${summary.suppressed === 1 ? '' : 's'}` : `${summary.open} Problem${summary.open === 1 ? '' : 's'} need attention`}</strong><span>{queueStatus === 'dismissed' ? 'Suppressed fingerprints stay hidden from the active queue until an administrator restores them.' : 'Work through the queue. A Problem disappears as soon as its evidence confirms it is solved.'}</span></div></div>
+    {queueStatus === 'open' && <nav className="problems-workflow-tabs" aria-label="Problem workflow filters">{workflowTabs.map((tab) => <button type="button" className={workflow === tab.value ? 'active' : ''} onClick={() => { setWorkflow(tab.value); setSelected('') }} key={tab.value}>{tab.label}<span>{tab.value === 'all' ? summary.open : summary.workflows[tab.value] ?? 0}</span></button>)}</nav>}
+    <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><Select value={reasonFilter} onChange={(event) => { setReasonFilter(event.target.value); setSelected('') }}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value); setSelected('') }}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></Select><span>Showing {visible.length} of {total}</span></div>
+    {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
+    <section className={`problems-layout ${selected ? 'show-detail' : ''}`}>
+      <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>{visible.length} shown</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong><span>{problem.subject}</span><small><b className={`problems-state state-${problem.workflow}`}>{problemWorkflowLabels[problem.workflow]}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'shield' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
+      <article className="problems-detail">{current ? <><header className="problems-detail-head"><button className="icon-button problems-back-button" type="button" onClick={() => setSelected('')} aria-label="Back to Problems"><Icon name="chevron" size={16} style={{ transform: 'rotate(180deg)' }} /></button><div><div className="eyebrow">{queueStatus === 'dismissed' ? 'SUPPRESSED' : problemWorkflowLabels[current.workflow].toUpperCase()}</div><h2>{current.title}</h2></div><details className="problems-admin-menu"><summary className="icon-button" aria-label="Administrative actions"><Icon name="menu" size={16} /></summary><div>{queueStatus === 'dismissed' ? <button onClick={() => void adminAction('restore')}>Restore to active queue</button> : <button onClick={() => void adminAction('dismiss')}>Suppress as debug/admin exception</button>}<button className="danger" onClick={() => void adminAction('delete')}>Delete problem record</button><p>Administrative actions do not fix the underlying media condition.</p></div></details></header><div className="problems-detail-body"><div className="problems-lead"><p>{current.detail}</p><div><span className={`problems-priority priority-${current.severity}`}>{current.severity} priority</span><span className={`problems-state state-${current.workflow}`}>{problemWorkflowLabels[current.workflow]}</span></div></div>
+        <ProblemKeyDetails problem={current} duplicateMovie={duplicateMovie} />
+        {queueStatus === 'open' && current.workflow === 'manual' && <div className="problems-resolution"><p>Delete the unwanted copy from your drive, then recheck. Medialogue will not delete media or choose a preferred copy for you.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
+        {queueStatus === 'open' && current.workflow === 'config' && <div className="problems-resolution"><p>Correct the relevant storage or path-mapping configuration, then recheck this Problem.</p><Button variant="primary" icon="settings" onClick={() => navigate('/settings?tab=Storage%20Roots')}>Open Storage settings</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
+        {queueStatus === 'open' && current.code === 'PLEX_IDENTITY_MISMATCH' && !editingPlexIdentity && <div className="problems-resolution"><p>Which system needs correcting?</p><Button variant="primary" icon="external" onClick={openPlex}>Medialogue is correct — open Plex</Button>{current.availableActions?.some((action) => action === 'confirm_movie_match' || action === 'confirm_show_match') && <Button variant="ghost" onClick={beginPlexIdentityChange}>Medialogue is wrong — change identity</Button>}<Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
+        {queueStatus === 'open' && current.workflow === 'waiting' && current.code !== 'PLEX_IDENTITY_MISMATCH' && <div className="problems-resolution"><p>Recheck the current external and filesystem evidence. If the condition is gone, this Problem will leave the queue.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
+        {queueStatus === 'open' && (current.workflow === 'choice' || editingPlexIdentity) && <ProblemsIdentityPicker problem={current} matches={tmdbMatches} selected={selectedTmdb} query={tmdbQuery} loading={loading} onQuery={setTmdbQuery} onSearch={() => void runTmdbSearch()} onSelect={setSelectedTmdb} onApply={() => void applyTmdbMatch()} onCancel={editingPlexIdentity ? () => setEditingPlexIdentity(false) : undefined} />}
+        <details className="problems-evidence"><summary><Icon name="chevron" size={15} /><strong>Evidence & technical details</strong><span>For troubleshooting</span></summary><ProblemEvidenceDetails problem={current} /></details>
+      </div></> : <EmptyState icon="alert" title="Select a Problem" detail="Choose an item from the queue to review its evidence and next action." />}</article>
+    </section>
+    {pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1 || loading} onClick={() => void load(page - 1)}>Previous</Button><span>Page {page} of {pages}</span><Button variant="ghost" disabled={page >= pages || loading} onClick={() => void load(page + 1)}>Next</Button></div>}
   </Page>
 }
 

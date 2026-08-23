@@ -11,6 +11,7 @@ class ProblemResponse(ORMModel):
     id: UUID
     reason: str
     status: str
+    workflow: str
     severity: str
     entity_type: str
     entity_id: UUID | None
@@ -26,3 +27,14 @@ class ProblemResponse(ORMModel):
 class ProblemResolveRequest(BaseModel):
     action: str = Field(min_length=1, max_length=128)
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProblemSummaryResponse(BaseModel):
+    open: int = 0
+    suppressed: int = 0
+    workflows: dict[str, int] = Field(default_factory=dict)
+
+
+class ProblemRecheckAllResponse(BaseModel):
+    requested: int
+    job_ids: list[UUID] = Field(default_factory=list)

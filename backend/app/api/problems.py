@@ -2,7 +2,7 @@ import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
@@ -25,6 +25,7 @@ from app.models.domain import (
     MovieReleaseTorrent,
     Problem,
     ProblemStatus,
+    ProblemWorkflow,
     Severity,
     Show,
     ShowRelease,
@@ -35,7 +36,12 @@ from app.models.domain import (
 )
 from app.schemas.common import Collection
 from app.services.integration_state import get_configured_download_client
-from app.schemas.problems import ProblemResolveRequest, ProblemResponse
+from app.schemas.problems import (
+    ProblemRecheckAllResponse,
+    ProblemResolveRequest,
+    ProblemResponse,
+    ProblemSummaryResponse,
+)
 from app.services.events import publish_live_event
 from app.services.jobs import create_job, publish_job_status, update_job
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
@@ -524,6 +530,7 @@ async def list_problems(
     entity_type: str | None = None,
     severity: str | None = None,
     category: str | None = None,
+    workflow: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -556,6 +563,13 @@ async def list_problems(
             category_filter = Problem.reason == category
         query = query.where(category_filter)
         count_query = count_query.where(category_filter)
+    if workflow and workflow != "all":
+        try:
+            parsed_workflow = ProblemWorkflow(workflow)
+        except ValueError as exc:
+            raise AppError("INVALID_WORKFLOW", "Unknown problem workflow.", status_code=422) from exc
+        query = query.where(Problem.workflow == parsed_workflow)
+        count_query = count_query.where(Problem.workflow == parsed_workflow)
     if status_filter:
         try:
             parsed = ProblemStatus(status_filter)
@@ -575,6 +589,7 @@ async def list_problems(
 @router.get("/count")
 async def count_problems(
     status_filter: str | None = Query(default="open", alias="status"),
+    workflow: str | None = None,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
@@ -585,62 +600,82 @@ async def count_problems(
         except ValueError as exc:
             raise AppError("INVALID_STATUS", "Unknown problem status.", status_code=422) from exc
         query = query.where(Problem.status == parsed)
+    if workflow and workflow != "all":
+        try:
+            query = query.where(Problem.workflow == ProblemWorkflow(workflow))
+        except ValueError as exc:
+            raise AppError("INVALID_WORKFLOW", "Unknown problem workflow.", status_code=422) from exc
     return {"count": int(await db.scalar(query) or 0)}
 
 
-@router.delete("")
-async def delete_problems(
-    status_filter: str | None = Query(default="open", alias="status"),
-    reason: str | None = None,
-    entity_type: str | None = None,
-    severity: str | None = None,
-    category: str | None = None,
+@router.get("/summary", response_model=ProblemSummaryResponse)
+async def problem_summary(
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ProblemSummaryResponse:
+    open_count = int(
+        await db.scalar(select(func.count()).select_from(Problem).where(Problem.status == ProblemStatus.OPEN)) or 0
+    )
+    suppressed_count = int(
+        await db.scalar(select(func.count()).select_from(Problem).where(Problem.status == ProblemStatus.DISMISSED)) or 0
+    )
+    workflow_rows = (
+        await db.execute(
+            select(Problem.workflow, func.count())
+            .where(Problem.status == ProblemStatus.OPEN)
+            .group_by(Problem.workflow)
+        )
+    ).all()
+    workflows = {item.value: 0 for item in ProblemWorkflow}
+    workflows.update({workflow.value: int(count) for workflow, count in workflow_rows})
+    return ProblemSummaryResponse(open=open_count, suppressed=suppressed_count, workflows=workflows)
+
+
+@router.post("/recheck", response_model=ProblemRecheckAllResponse)
+async def recheck_open_problems(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
-) -> dict[str, int]:
-    """Permanently remove Problem records only.
-
-    This never deletes, moves, renames, or otherwise changes media.  Problems
-    can be recreated later if a subsequent reconciliation observes the same
-    unresolved condition again.
-    """
-
-    filters = []
-    if status_filter:
-        try:
-            filters.append(Problem.status == ProblemStatus(status_filter))
-        except ValueError as exc:
-            raise AppError("INVALID_STATUS", "Unknown problem status.", status_code=422) from exc
-    if reason:
-        filters.append(Problem.reason == reason)
-    if entity_type:
-        filters.append(Problem.entity_type == entity_type)
-    if severity:
-        filters.append(Problem.severity == _parse_severity(severity))
-    if category and category != "all":
-        if category == "duplicates":
-            filters.append(Problem.reason.contains("DUPLICATE"))
-        elif category == "identity":
-            filters.append(
-                or_(
-                    Problem.reason.contains("IDENTITY"),
-                    Problem.reason.contains("CONFIDENCE"),
-                    Problem.reason.contains("TMDB"),
-                )
-            )
-        elif category == "paths":
-            filters.append(or_(Problem.reason.contains("PATH"), Problem.reason.contains("ROOT")))
-        else:
-            filters.append(Problem.reason == category)
-    statement = delete(Problem)
-    if filters:
-        statement = statement.where(*filters)
-    result = await db.execute(statement)
-    deleted_count = int(result.rowcount or 0)
+    tmdb_client_factory=Depends(get_tmdb_client_factory),
+    qbit_client_factory=Depends(get_qbittorrent_client_factory),
+    plex_client_factory=Depends(get_plex_client_factory),
+) -> ProblemRecheckAllResponse:
+    problems = (await db.scalars(select(Problem).where(Problem.status == ProblemStatus.OPEN))).all()
+    queued: list[tuple[Problem, Job]] = []
+    for problem in problems:
+        await resolve_explicit_problem_action(
+            db,
+            problem,
+            "recheck",
+            {},
+            tmdb_client_factory=tmdb_client_factory,
+        )
+        parent_job = await create_job(
+            db,
+            "problem_recheck",
+            cancellable=False,
+            summary={
+                "problem_id": str(problem.id),
+                "reason": problem.reason,
+                "trigger": "recheck_all_open_problems",
+                "message": "Checking all evidence sources for this Problem…",
+            },
+        )
+        problem.resolution = {**dict(problem.resolution or {}), "recheck_parent_job_id": str(parent_job.id)}
+        queued.append((problem, parent_job))
     await db.commit()
-    if deleted_count:
-        publish_live_event("problem.deleted", entity_type="problem", data={"count": deleted_count})
-    return {"deleted": deleted_count}
+    for problem, parent_job in queued:
+        publish_job_status(parent_job)
+        launch_runtime_job(
+            parent_job.id,
+            lambda problem=problem, parent_job=parent_job: run_problem_recheck(
+                parent_job.id,
+                problem.id,
+                tmdb_client_factory=tmdb_client_factory,
+                qbit_client_factory=qbit_client_factory,
+                plex_client_factory=plex_client_factory,
+            ),
+        )
+    return ProblemRecheckAllResponse(requested=len(queued), job_ids=[job.id for _, job in queued])
 
 
 @router.delete("/{problem_id}")

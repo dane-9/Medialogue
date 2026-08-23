@@ -333,7 +333,7 @@ def test_problem_actions_are_explicit_and_recheck_does_not_fake_resolution(clien
     problem_id = db_run(seed)
     listed = client.get("/api/v1/problems?status=open").json()["items"]
     problem = next(item for item in listed if item["id"] == str(problem_id))
-    assert problem["available_actions"] == ["recheck"]
+    assert problem["available_actions"] == ["dismiss", "recheck"]
 
     result = client.post(
         f"/api/v1/problems/{problem_id}/resolve",
@@ -355,7 +355,7 @@ def test_problem_actions_are_explicit_and_recheck_does_not_fake_resolution(clien
     assert invalid.status_code == 409
 
 
-def test_episode_winner_selection_keeps_physical_duplicate_open(client: TestClient) -> None:
+def test_episode_duplicate_requires_manual_file_removal_then_recheck(client: TestClient) -> None:
     headers = login(client)
     root = Path.cwd() / f"part15-episode-{uuid.uuid4().hex}"
     root.mkdir()
@@ -375,27 +375,33 @@ def test_episode_winner_selection_keeps_physical_duplicate_open(client: TestClie
                 media=MediaFile(media_directory_id=directory.id, relative_path=path.name, filename=path.name, media_role=MediaRole.EPISODE_VIDEO, exists=True)
                 db.add(media); await db.flush(); db.add(EpisodeMediaMap(episode_id=episode.id, media_file_id=media.id)); files.append(media)
             problem=Problem(reason="DUPLICATE_EPISODE_RELEASE", entity_type="episode", entity_id=episode.id, message="duplicate", details={"media_file_ids":[str(item.id) for item in files]})
-            db.add(problem); await db.flush(); return episode.id, files[0].id, problem.id
-        episode_id, winner_id, problem_id = db_run(seed)
+            db.add(problem); await db.flush(); return episode.id, files[0].id, files[1].id, problem.id
+        episode_id, winner_id, loser_id, problem_id = db_run(seed)
+        listed = client.get(f"/api/v1/problems/{problem_id}")
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["available_actions"] == ["dismiss", "recheck"]
+
         response = client.post(
             f"/api/v1/problems/{problem_id}/resolve",
             headers=headers,
             json={"action":"choose_episode_winner","payload":{"winner_media_file_id":str(winner_id)}},
         )
-        assert response.status_code == 200, response.text
-        assert response.json()["status"] == "open"
-        assert response.json()["details"]["preferred_media_file_id"] == str(winner_id)
-        assert response.json()["resolution"]["winner_manual_override_applied"] is True
+        assert response.status_code == 422, response.text
 
-        other_id = next(
-            item for item in response.json()["details"]["media_file_ids"] if item != str(winner_id)
-        )
-        changed = client.post(
+        async def loser_path(db):
+            media = await db.get(MediaFile, loser_id)
+            assert media is not None
+            return Path(root) / media.relative_path
+
+        db_run(loser_path).unlink()
+        recheck = client.post(
             f"/api/v1/problems/{problem_id}/resolve",
             headers=headers,
-            json={"action": "choose_episode_winner", "payload": {"winner_media_file_id": other_id}},
+            json={"action": "recheck", "payload": {}},
         )
-        assert changed.status_code == 200, changed.text
+        assert recheck.status_code == 200, recheck.text
+        parent_job = wait_job(client, recheck.json()["resolution"]["recheck_parent_job_id"])
+        assert parent_job["status"] == "completed", parent_job
 
         async def mapping_state(db):
             mappings = (
@@ -403,9 +409,12 @@ def test_episode_winner_selection_keeps_physical_duplicate_open(client: TestClie
                     select(EpisodeMediaMap).where(EpisodeMediaMap.episode_id == episode_id)
                 )
             ).all()
-            return {str(item.media_file_id): item.manual_override for item in mappings}
+            problem = await db.get(Problem, problem_id)
+            return {str(item.media_file_id): item.manual_override for item in mappings}, problem.status
 
-        assert db_run(mapping_state) == {str(winner_id): False, other_id: True}
+        overrides, status = db_run(mapping_state)
+        assert overrides == {str(winner_id): False, str(loser_id): False}
+        assert status == ProblemStatus.RESOLVED
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

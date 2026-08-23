@@ -273,6 +273,8 @@ export interface TMDBShowLookup {
   year?: number
   overview?: string
   posterRef?: string
+  director?: string
+  cast?: string[]
 }
 
 export interface Download {
@@ -334,6 +336,7 @@ export interface Problem {
   created: string
   reason?: string
   status?: string
+  workflow: 'manual' | 'choice' | 'config' | 'waiting'
   entityType?: string
   entityId?: string
   details?: Record<string, unknown>
@@ -589,6 +592,8 @@ export interface TMDBMovieLookup {
   year?: number
   overview?: string
   posterRef?: string
+  director?: string
+  cast?: string[]
 }
 
 export interface DuplicateFilePreview {
