@@ -79,6 +79,16 @@ class RemotePathMappingCreate(BaseModel):
     enabled: bool = True
 
 
+class RemotePathMappingUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=256)
+    integration_type: str | None = None
+    integration_id: UUID | None = None
+    remote_prefix: str | None = Field(default=None, min_length=1, max_length=4096)
+    local_prefix: str | None = Field(default=None, min_length=1, max_length=4096)
+    storage_root_id: UUID | None = None
+    enabled: bool | None = None
+
+
 class RemotePathMappingResponse(ORMModel):
     id: UUID
     name: str

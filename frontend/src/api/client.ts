@@ -480,6 +480,7 @@ function normalizeStorageRoot(value: unknown): StorageRoot {
     media_type: textValue(item.media_type || item.type, 'movies').toLowerCase() === 'shows' ? 'shows' : 'movies',
     access_mode: textValue(item.access_mode, 'read_only').toLowerCase() === 'read_write' ? 'read_write' : 'read_only',
     enabled: item.enabled !== false,
+    missing_grace_checks: optionalNumber(item.missing_grace_checks) ?? 2,
     last_health: textValue(item.last_health || item.health || item.status) || undefined,
     last_scan_at: dateValue(item.last_scan_at || item.lastScanAt),
     last_health_checked_at: dateValue(item.last_health_checked_at || item.lastHealthCheckedAt),
@@ -912,13 +913,15 @@ export const api = {
     return Array.isArray(payload) ? payload : payload.items ?? []
   },
   createRemotePathMapping: (mapping: { name: string; integration_type: 'qbittorrent' | 'plex'; integration_id?: string; remote_prefix: string; local_prefix: string; storage_root_id?: string; enabled?: boolean }) => request<RemotePathMapping>('/api/v1/remote-path-mappings', { method: 'POST', body: JSON.stringify(mapping) }),
+  updateRemotePathMapping: (id: string, mapping: { name: string; integration_type: 'qbittorrent' | 'plex'; integration_id: string | null; remote_prefix: string; local_prefix: string; storage_root_id: string | null; enabled: boolean }) => request<RemotePathMapping>(`/api/v1/remote-path-mappings/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(mapping) }),
   deleteRemotePathMapping: (id: string) => request<{ id: string }>(`/api/v1/remote-path-mappings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   storageRoots: async () => {
     const payload = await request<{ items?: unknown[] } | unknown[]>('/api/v1/storage-roots')
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeStorageRoot)
   },
-  createStorageRoot: (root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write' }) => request<StorageRoot>('/api/v1/storage-roots', { method: 'POST', body: JSON.stringify(root) }),
+  createStorageRoot: (root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>('/api/v1/storage-roots', { method: 'POST', body: JSON.stringify(root) }).then(normalizeStorageRoot),
+  updateStorageRoot: (rootId: string, root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'PATCH', body: JSON.stringify(root) }).then(normalizeStorageRoot),
   deleteStorageRoot: (rootId: string) => request<{ id: string }>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'DELETE' }),
   startScan: (rootId: string) => request<{ job_id: string }>(`/api/v1/storage-roots/${rootId}/scan`, { method: 'POST' }),
   plexConfiguration: () => request<PlexConfiguration>('/api/v1/integrations/plex'),

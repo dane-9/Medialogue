@@ -73,7 +73,7 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
             complete=bool(tmdb and tmdb.api_key and tmdb.enabled),
             optional=True,
             detail="TMDB is the primary identity source for newly discovered Movies and Shows.",
-            settings_tab="Metadata",
+            settings_tab="TMDB",
         ),
         SetupStep(
             key="plex",
@@ -106,14 +106,6 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
             optional=True,
             detail=f"{indexer_count} indexer(s) configured. Indexers are added individually; Prowlarr configuration is not imported wholesale.",
             settings_tab="Indexers",
-        ),
-        SetupStep(
-            key="schedules",
-            title="Review polling schedules",
-            complete=qbit_count > 0,
-            optional=True,
-            detail="qBittorrent polling is configured per client. Full storage-root scans remain manual unless a future explicit schedule is added.",
-            settings_tab="Schedules",
         ),
         SetupStep(
             key="first_scan",

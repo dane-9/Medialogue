@@ -176,6 +176,7 @@ export interface StorageRoot {
   media_type: 'movies' | 'shows'
   access_mode: 'read_only' | 'read_write'
   enabled: boolean
+  missing_grace_checks: number
   last_health?: string
   last_scan_at?: string
   last_health_checked_at?: string

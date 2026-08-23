@@ -742,8 +742,27 @@ def test_remote_path_mapping_can_be_managed_through_api(client: TestClient) -> N
     assert listed.status_code == 200, listed.text
     mapping = next(item for item in listed.json()["items"] if item["id"] == mapping_id)
     assert mapping["remote_prefix"] == "/downloads/movies"
-    assert mapping["local_prefix"] == "/media/movies"
+    assert mapping["local_prefix"] == str(Path("/media/movies").resolve())
     assert mapping["integration_id"] == str(client_id)
+
+    updated = client.patch(
+        f"/api/v1/remote-path-mappings/{mapping_id}",
+        headers=headers,
+        json={
+            "name": "qBit Movies updated",
+            "integration_type": "qbittorrent",
+            "integration_id": None,
+            "remote_prefix": "/completed/movies",
+            "storage_root_id": None,
+            "enabled": False,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["name"] == "qBit Movies updated"
+    assert updated.json()["remote_prefix"] == "/completed/movies"
+    assert updated.json()["integration_id"] is None
+    assert updated.json()["storage_root_id"] is None
+    assert updated.json()["enabled"] is False
 
     removed = client.delete(f"/api/v1/remote-path-mappings/{mapping_id}", headers=headers)
     assert removed.status_code == 200, removed.text
