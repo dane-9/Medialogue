@@ -21,6 +21,7 @@ from app.integrations.filesystem import DirectoryObservation
 from app.integrations.qbittorrent import TorrentObservation
 from app.integrations.tmdb import TMDBEpisodeMetadata, TMDBSeasonMetadata, TMDBShowDetails, TMDBShowMatch
 from app.main import create_app
+from app.api import problems as problems_api
 from app.models.domain import EpisodeMediaMap, MatchMethod, Problem, Show, StorageRoot, Torrent
 from app.services.shows import reconcile_show_directory
 
@@ -211,6 +212,78 @@ def test_ambiguous_show_problem_retains_selectable_tmdb_candidates(
             "/second.jpg",
         ]
         assert "confirm_show_match" in problem["available_actions"]
+
+        confirmed = client.post(
+            f"/api/v1/problems/{problem['id']}/resolve",
+            headers=headers,
+            json={"action": "confirm_show_match", "payload": {"tmdb_id": 194764}},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        job = wait_job(client, confirmed.json()["resolution"]["followup_job_id"])
+        assert job["status"] == "completed", job
+        assert job["summary"]["result"] in {"matched", "partial", "duplicates"}
+        assert detail(client)["seasons"][0]["episodes"][0]["presence_state"] == "present"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_confirmed_show_resolves_before_season_import_and_directory_reconciliation(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def ambiguous_search(_self, title: str, year: int | None = None):
+        return [
+            TMDBShowMatch(194764, "Dollface", "Dollface", 2019, "First candidate.", "/first.jpg"),
+            TMDBShowMatch(294764, "Dollface", "Dollface", 2019, "Second candidate.", "/second.jpg"),
+        ]
+
+    season_calls = 0
+    original_get_season = FakeTMDBClient.get_season
+
+    async def counted_get_season(self, tmdb_id: int, season_number: int):
+        nonlocal season_calls
+        season_calls += 1
+        return await original_get_season(self, tmdb_id, season_number)
+
+    monkeypatch.setattr(FakeTMDBClient, "search_show", ambiguous_search)
+    monkeypatch.setattr(FakeTMDBClient, "get_season", counted_get_season)
+    root = Path.cwd() / f"deferred-show-confirm-{uuid.uuid4().hex}"
+    show_dir = root / "Dollface 2019"
+    show_dir.mkdir(parents=True)
+    (show_dir / "Dollface S01E01 1080p WEB-DL H.264-HONE.mkv").write_bytes(b"episode")
+    try:
+        headers = login(client)
+        configure(client, headers)
+        configured = create_show_root(client, headers, root)
+        scan(client, headers, configured["id"])
+        problem = client.get(
+            "/api/v1/problems?reason=TMDB_SHOW_IDENTITY_UNRESOLVED&status=open"
+        ).json()["items"][0]
+
+        launched: dict[str, object] = {}
+
+        def defer_runtime_job(job_id, factory):
+            launched["job_id"] = str(job_id)
+            launched["factory"] = factory
+            return True
+
+        monkeypatch.setattr(problems_api, "launch_runtime_job", defer_runtime_job)
+        response = client.post(
+            f"/api/v1/problems/{problem['id']}/resolve",
+            headers=headers,
+            json={"action": "confirm_show_match", "payload": {"tmdb_id": 194764}},
+        )
+
+        assert response.status_code == 200, response.text
+        resolved = response.json()
+        assert resolved["status"] == "resolved"
+        followup_job_id = resolved["resolution"]["followup_job_id"]
+        assert launched["job_id"] == followup_job_id
+        assert season_calls == 0
+        assert client.get("/api/v1/problems?status=open").json()["total"] == 0
+        queued = client.get(f"/api/v1/jobs/{followup_job_id}").json()
+        assert queued["status"] == "queued"
+        assert queued["job_type"] == "confirmed_show_reconciliation"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
