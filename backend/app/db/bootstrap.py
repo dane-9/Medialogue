@@ -1,4 +1,4 @@
-from sqlalchemy import select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -68,6 +68,68 @@ async def ensure_quality_definitions(session: AsyncSession) -> None:
     for name, item in existing.items():
         if name not in canonical_names:
             item.enabled = False
+
+
+async def ensure_default_quality_profile(session: AsyncSession) -> None:
+    """Create the editable baseline profile once on a fresh installation.
+
+    The profile is deliberately not marked as application-owned. Once it
+    exists, operators can rename it, reorder qualities, and change every
+    score without the next application start undoing their choices.
+    """
+
+    from app.models.domain import CustomFormat, ProfileCustomFormatScore, QualityDefinition, QualityProfile
+    from app.services.builtin_formats import (
+        BUILTIN_FORMATS,
+        DEFAULT_EXCLUDED_QUALITY_DEFINITIONS,
+        DEFAULT_FORMAT_SCORES,
+        DEFAULT_QUALITY_PROFILE_MARKER,
+        DEFAULT_QUALITY_PROFILE_NAME,
+    )
+
+    existing = await session.scalar(
+        select(QualityProfile).where(func.lower(QualityProfile.name) == DEFAULT_QUALITY_PROFILE_NAME.casefold())
+    )
+    if existing is not None:
+        return
+    profiles = (await session.scalars(select(QualityProfile))).all()
+    if any((profile.settings or {}).get("system_profile") == DEFAULT_QUALITY_PROFILE_MARKER for profile in profiles):
+        return
+
+    qualities = (
+        await session.scalars(
+            select(QualityDefinition)
+            .where(QualityDefinition.enabled.is_(True))
+            .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
+        )
+    ).all()
+    formats = (await session.scalars(select(CustomFormat).where(CustomFormat.builtin.is_(True)))).all()
+    formats_by_key = {row.builtin_key: row for row in formats if row.builtin_key}
+
+    profile = QualityProfile(
+        name=DEFAULT_QUALITY_PROFILE_NAME,
+        settings={
+            "quality_definition_ids": [
+                str(item.id) for item in qualities
+                if item.name not in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+            ],
+            "system_profile": DEFAULT_QUALITY_PROFILE_MARKER,
+        },
+        revision=1,
+    )
+    session.add(profile)
+    await session.flush()
+    for builtin in BUILTIN_FORMATS:
+        row = formats_by_key.get(builtin.key)
+        if row is not None:
+            session.add(
+                ProfileCustomFormatScore(
+                    profile_id=profile.id,
+                    custom_format_id=row.id,
+                    score=DEFAULT_FORMAT_SCORES[builtin.key],
+                )
+            )
+    await session.flush()
 
 
 

@@ -53,12 +53,24 @@ def _section_id(name: str) -> str:
 
 
 def _default_layout(rows: list[CustomFormatModel]) -> CustomFormatLayout:
-    from app.services.builtin_formats import BUILTIN_FORMATS
+    from app.services.builtin_formats import BUILTIN_FORMATS, DEFAULT_FORMAT_SCORES
 
     builtin_groups = {item.key: item.group for item in BUILTIN_FORMATS}
+    builtin_order = {item.key: index for index, item in enumerate(BUILTIN_FORMATS)}
+    group_order = {name: index for index, name in enumerate(dict.fromkeys(item.group for item in BUILTIN_FORMATS))}
     names = list(dict.fromkeys(item.group for item in BUILTIN_FORMATS))
     grouped: dict[str, list[UUID]] = {name: [] for name in names}
-    for row in rows:
+    ordered_rows = sorted(
+        rows,
+        key=lambda row: (
+            group_order.get(builtin_groups.get(row.builtin_key, "Release"), len(group_order)),
+            -DEFAULT_FORMAT_SCORES.get(row.builtin_key, 0),
+            builtin_order.get(row.builtin_key, len(builtin_order)),
+            row.name.casefold(),
+            str(row.id),
+        ),
+    )
+    for row in ordered_rows:
         grouped[builtin_groups.get(row.builtin_key, "Release")].append(row.id)
     return CustomFormatLayout(
         sections=[

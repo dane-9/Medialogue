@@ -32,6 +32,7 @@ from app.models.domain import (
     Torrent,
 )
 from app.services.reconciliation import reconcile_movie_directory
+from app.services.builtin_formats import BUILTIN_FORMATS, DEFAULT_FORMAT_SCORES
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -251,6 +252,57 @@ def test_zero_and_negative_scores_are_valid_and_quality_definitions_are_read_onl
     values = {row["custom_format_name"]: row["score"] for row in profile.json()["custom_format_scores"]}
     assert values == {"Hybrid": 0, "NoGroup": -100000}
     assert client.post("/api/v1/quality-definitions", headers=headers, json={"name": "CAM"}).status_code == 405
+
+
+def test_default_quality_profile_is_seeded_once_and_remains_editable(client: TestClient):
+    headers = login(client)
+    response = client.get("/api/v1/quality-profiles", headers=headers)
+    assert response.status_code == 200, response.text
+    profiles = response.json()
+    default = next(item for item in profiles if item["name"] == "Default")
+
+    expected_scores = {builtin.name: DEFAULT_FORMAT_SCORES[builtin.key] for builtin in BUILTIN_FORMATS}
+    actual_scores = {item["custom_format_name"]: item["score"] for item in default["custom_format_scores"]}
+    assert actual_scores == expected_scores
+    # Every quality definition except the full-disc DVD rips, which the shipped
+    # profile deliberately leaves off.
+    from app.parser import list_quality_definitions
+    from app.services.builtin_formats import DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+
+    expected_qualities = {
+        item.name for item in list_quality_definitions()
+        if item.name not in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+    }
+    assert {item["name"] for item in default["qualities"]} == expected_qualities
+    assert not any(item["name"].startswith("Full Disc") for item in default["qualities"])
+    assert default["qualities"][0]["name"] == "2160p BluRay REMUX"
+
+    changed_scores = [
+        {"custom_format_id": item["custom_format_id"], "score": item["score"] + (1 if index == 0 else 0)}
+        for index, item in enumerate(default["custom_format_scores"])
+    ]
+    changed = client.patch(
+        f"/api/v1/quality-profiles/{default['id']}",
+        headers=headers,
+        json={
+            "name": "Home Default",
+            "custom_format_scores": changed_scores,
+            "expected_revision": default["revision"],
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["name"] == "Home Default"
+
+    from app.db.bootstrap import ensure_default_quality_profile
+
+    async def rerun_bootstrap():
+        async with db_session.async_session_factory() as db:
+            await ensure_default_quality_profile(db)
+            await db.commit()
+
+    asyncio.run(rerun_bootstrap())
+    profiles_after_restart = client.get("/api/v1/quality-profiles", headers=headers).json()
+    assert [item["name"] for item in profiles_after_restart] == ["Home Default"]
 
 
 def test_saved_profile_scores_are_returned_highest_first(client: TestClient):

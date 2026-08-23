@@ -114,9 +114,13 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
         description="A lossy 6.1 extension of DTS that adds a center-back surround channel. It appears in Discrete and Matrix variants and is most commonly found on DVDs.",
         conditions=(BuiltinCondition(type="audio_codec", value=["DTS-ES"]),)),
     BuiltinFormat(
+        key="audio-dtshd-hra", name="DTS-HD HRA", group="Audio",
+        description="DTS-HD High Resolution Audio. Lossy, but at a far higher bitrate than core DTS or Dolby Digital, and the usual fallback when a disc does not carry DTS-HD Master Audio.",
+        conditions=(BuiltinCondition(type="audio_codec", value=["DTS-HD HRA"]),)),
+    BuiltinFormat(
         key="audio-dts", name="DTS", group="Audio",
-        description="Lossy multichannel DTS surround, typically supporting 5.1 channels at a higher bitrate than Dolby Digital. This format also includes DTS-HD High Resolution audio.",
-        conditions=(BuiltinCondition(type="audio_codec", value=["DTS", "DTS-HD", "DTS-HD HRA"]),)),
+        description="Lossy multichannel DTS surround, typically supporting 5.1 channels at a higher bitrate than Dolby Digital. DTS-HD High Resolution has its own format. This format also includes the generic DTS-HD tag when no variant is named. Original note: Resolution audio.",
+        conditions=(BuiltinCondition(type="audio_codec", value=["DTS", "DTS-HD"]),)),
     BuiltinFormat(
         key="audio-dd", name="Dolby Digital", group="Audio",
         description="Lossy Dolby Digital, also called DD or AC-3. It supports up to 5.1 channels and is broadly compatible with broadcasts, DVDs, Blu-rays, and playback devices.",
@@ -138,6 +142,10 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
         key="hdr-dv-hdr10", name="DV HDR10", group="Dynamic Range",
         description="Dolby Vision paired with an HDR10 fallback, giving compatible displays dynamic HDR while retaining reliable playback on standard HDR10 equipment.",
         conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\b(HDR(10)?(?!\+))\b)"),)),
+    BuiltinFormat(
+        key="hdr-dv-hdr10-plus", name="DV HDR10+", group="Dynamic Range",
+        description="Dolby Vision paired with an HDR10+ base layer: dynamic metadata for Dolby Vision displays and dynamic metadata again for everything else. The best dynamic range a release can carry.",
+        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\bHDR10\+)"),)),
     BuiltinFormat(
         key="hdr-hdr10-plus", name="HDR10+", group="Dynamic Range",
         description="Dynamic HDR metadata that can tune color, brightness, and contrast for each frame. It falls back to standard HDR10 on unsupported displays.",
@@ -254,6 +262,81 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
 
 
 BUILTIN_KEYS = frozenset(item.key for item in BUILTIN_FORMATS)
+
+# This is the starting policy for the editable profile created on a fresh
+# install. These values are copied into the profile once; they are not part of
+# Custom Format evaluation and are never re-applied to an existing profile.
+DEFAULT_QUALITY_PROFILE_NAME = "Default"
+DEFAULT_QUALITY_PROFILE_MARKER = "medialogue-default-quality-profile-v1"
+# Full-disc DVD rips are whole ISO/VIDEO_TS structures rather than a playable
+# file, so the shipped profile leaves them off. The definitions still exist and
+# can be re-enabled on any profile; they are simply not part of the default.
+DEFAULT_EXCLUDED_QUALITY_DEFINITIONS: frozenset[str] = frozenset({
+    "Full Disc DVD5",
+    "Full Disc DVD9",
+    "Full Disc DVD5/DVD9",
+})
+
+
+DEFAULT_FORMAT_SCORES: dict[str, int] = {
+    # Video: efficient modern codecs first, legacy codecs last.
+    "video-av1": 40,
+    "video-hevc": 35,
+    "video-avc": 25,
+    "video-vc1": -20,
+    "video-mpeg2": -40,
+    # Audio: lossless/object-based formats first; compatibility codecs stay
+    # neutral or receive a small penalty rather than being rejected.
+    "audio-truehd-atmos": 60,
+    "audio-dtsx": 50,
+    "audio-truehd": 55,
+    "audio-dtshd-ma": 45,
+    "audio-pcm": 35,
+    "audio-flac": 40,
+    "audio-ddplus-atmos": 25,
+    "audio-dtshd-hra": 20,
+    "audio-ddplus": 15,
+    "audio-dts-es": 10,
+    "audio-dts": 5,
+    "audio-dd": 0,
+    "audio-aac": -5,
+    "audio-opus": -10,
+    # Dynamic range: Dolby Vision with a dynamic base layer is the ceiling,
+    # then Dolby Vision, then the static formats. SDR is preferred over HLG,
+    # which can look washed out on displays that do not handle it.
+    "hdr-dv-hdr10-plus": 60,
+    "hdr-dv-hdr10": 50,
+    "hdr-hdr10-plus": 40,
+    "hdr-dolby-vision": 45,
+    "hdr-hdr10": 20,
+    "hdr-hlg": 0,
+    "hdr-sdr": 10,
+    # Release traits: corrected releases are preferred; re-encodes are
+    # strongly discouraged. Internal/provider-neutral traits stay neutral.
+    "attr-repack-proper": 20,
+    "attr-proper": 18,
+    "attr-rerip": 16,
+    "attr-hybrid": 10,
+    "attr-internal-limited": 0,
+    "attr-re-encode": -40,
+    # Provider labels are evidence, not quality, so they stay neutral — with
+    # one exception: Bravia Core ships at bitrates no other service matches.
+    "web-amzn": 0,
+    "web-dsnp": 0,
+    "web-nf": 0,
+    "web-atvp": 0,
+    "web-bcore": 25,
+    "web-max": 0,
+    "web-hulu": 0,
+    "web-paramount": 0,
+    "web-sho": 0,
+    "web-peacock": 0,
+    "web-itunes": 0,
+    "web-movies-anywhere": 0,
+}
+
+if set(DEFAULT_FORMAT_SCORES) != BUILTIN_KEYS:
+    raise RuntimeError("Default Quality Profile scores must cover every built-in Custom Format exactly once")
 
 
 def condition_definition(builtin: BuiltinFormat) -> dict[str, Any]:
