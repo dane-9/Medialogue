@@ -51,6 +51,12 @@ class DownloadClientConfig:
     enabled: bool = True
     revision: int = 1
     poll_interval_seconds: int = 30
+    recent_priority: str = "last"
+    older_priority: str = "last"
+    sequential_order: bool = False
+    first_last_first: bool = False
+    content_layout: str = "default"
+    completed_download_handling: bool = True
     password: str | None = None
 
 
@@ -62,6 +68,12 @@ class IndexerConfig:
     scope: str
     enabled: bool = True
     timeout_seconds: int = 15
+    enable_rss: bool = True
+    enable_interactive_search: bool = True
+    categories: list[int] = field(default_factory=list)
+    minimum_seeders: int = 1
+    priority: int = 25
+    download_client_id: UUID | None = None
     revision: int = 1
     api_key: str | None = None
 
@@ -350,6 +362,12 @@ class IntegrationConfigStore:
                 enabled=bool(row.get("enabled", True)),
                 revision=int(row.get("revision", 1)),
                 poll_interval_seconds=int(row.get("poll_interval_seconds", 30)),
+                recent_priority=str(row.get("recent_priority") or "last"),
+                older_priority=str(row.get("older_priority") or "last"),
+                sequential_order=bool(row.get("sequential_order", False)),
+                first_last_first=bool(row.get("first_last_first", False)),
+                content_layout=str(row.get("content_layout") or "default"),
+                completed_download_handling=bool(row.get("completed_download_handling", True)),
                 password=passwords.get(str(item_id)) or None,
             ))
         return items
@@ -370,6 +388,9 @@ class IntegrationConfigStore:
             "id": str(item.id), "name": item.name, "url": item.url.rstrip("/"), "username": item.username,
             "scope": item.scope, "category": item.category, "tags": list(item.tags), "enabled": bool(item.enabled),
             "revision": revision, "poll_interval_seconds": int(item.poll_interval_seconds),
+            "recent_priority": item.recent_priority, "older_priority": item.older_priority,
+            "sequential_order": bool(item.sequential_order), "first_last_first": bool(item.first_last_first),
+            "content_layout": item.content_layout, "completed_download_handling": bool(item.completed_download_handling),
         }
         if index is None:
             rows.append(row)
@@ -406,6 +427,11 @@ class IntegrationConfigStore:
                 id=item_id, name=str(row.get("name") or ""), torznab_url=str(row.get("torznab_url") or ""),
                 scope=str(row.get("scope") or "both"), enabled=bool(row.get("enabled", True)),
                 timeout_seconds=int(row.get("timeout_seconds", 15)), revision=int(row.get("revision", 1)),
+                enable_rss=bool(row.get("enable_rss", True)),
+                enable_interactive_search=bool(row.get("enable_interactive_search", True)),
+                categories=[int(value) for value in (row.get("categories") or [])],
+                minimum_seeders=int(row.get("minimum_seeders", 1)), priority=int(row.get("priority", 25)),
+                download_client_id=self._uuid(row["download_client_id"]) if row.get("download_client_id") else None,
                 api_key=keys.get(str(item_id)) or None,
             ))
         return items
@@ -423,7 +449,10 @@ class IntegrationConfigStore:
             raise ValueError("revision_conflict")
         revision = int(current.get("revision", 1)) + 1 if current else 1
         row = {"id": str(item.id), "name": item.name, "torznab_url": item.torznab_url.rstrip("/"), "scope": item.scope,
-               "enabled": bool(item.enabled), "timeout_seconds": int(item.timeout_seconds), "revision": revision}
+               "enabled": bool(item.enabled), "timeout_seconds": int(item.timeout_seconds), "revision": revision,
+               "enable_rss": bool(item.enable_rss), "enable_interactive_search": bool(item.enable_interactive_search),
+               "categories": list(item.categories), "minimum_seeders": int(item.minimum_seeders), "priority": int(item.priority),
+               "download_client_id": str(item.download_client_id) if item.download_client_id else None}
         if index is None:
             rows.append(row)
         else:

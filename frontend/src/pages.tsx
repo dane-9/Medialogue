@@ -2066,6 +2066,12 @@ type DownloadClientDraft = {
   tags: string
   enabled: boolean
   pollIntervalSeconds: number
+  recentPriority: 'first' | 'last'
+  olderPriority: 'first' | 'last'
+  sequentialOrder: boolean
+  firstLastFirst: boolean
+  contentLayout: 'default' | 'original' | 'subfolder'
+  completedDownloadHandling: boolean
 }
 
 const emptyDownloadClient: DownloadClientDraft = {
@@ -2078,6 +2084,12 @@ const emptyDownloadClient: DownloadClientDraft = {
   tags: '',
   enabled: true,
   pollIntervalSeconds: 30,
+  recentPriority: 'last',
+  olderPriority: 'last',
+  sequentialOrder: false,
+  firstLastFirst: false,
+  contentLayout: 'default',
+  completedDownloadHandling: true,
 }
 
 function draftFromDownloadClient(client: DownloadClient): DownloadClientDraft {
@@ -2091,6 +2103,12 @@ function draftFromDownloadClient(client: DownloadClient): DownloadClientDraft {
     tags: client.tags.join(', '),
     enabled: client.enabled,
     pollIntervalSeconds: client.pollIntervalSeconds ?? 30,
+    recentPriority: client.recentPriority,
+    olderPriority: client.olderPriority,
+    sequentialOrder: client.sequentialOrder,
+    firstLastFirst: client.firstLastFirst,
+    contentLayout: client.contentLayout,
+    completedDownloadHandling: client.completedDownloadHandling,
   }
 }
 
@@ -2140,6 +2158,12 @@ function QBittorrentSettings() {
     tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
     enabled: draft.enabled,
     poll_interval_seconds: draft.pollIntervalSeconds,
+    recent_priority: draft.recentPriority,
+    older_priority: draft.olderPriority,
+    sequential_order: draft.sequentialOrder,
+    first_last_first: draft.firstLastFirst,
+    content_layout: draft.contentLayout,
+    completed_download_handling: draft.completedDownloadHandling,
   })
 
   const save = async () => {
@@ -2263,6 +2287,18 @@ function QBittorrentSettings() {
           <Field label="Polling interval" help={<>How often this client is polled for progress and completions. A shorter interval notices completions sooner and costs one lightweight Web UI call per tick. It has no effect on download speed.</>}>
             <Select value={String(draft.pollIntervalSeconds)} onChange={(event) => updateDraft('pollIntervalSeconds', Number(event.target.value))}><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></Select>
           </Field>
+          <Field label="Recent priority" help="Queue position for releases posted during the last 21 days.">
+            <Select value={draft.recentPriority} onChange={(event) => updateDraft('recentPriority', event.target.value as DownloadClientDraft['recentPriority'])}><option value="last">Last</option><option value="first">First</option></Select>
+          </Field>
+          <Field label="Older priority" help="Queue position for releases posted more than 21 days ago or without a publish date.">
+            <Select value={draft.olderPriority} onChange={(event) => updateDraft('olderPriority', event.target.value as DownloadClientDraft['olderPriority'])}><option value="last">Last</option><option value="first">First</option></Select>
+          </Field>
+          <Field label="Content layout" help="Use qBittorrent's default, preserve the torrent layout, or always create a subfolder.">
+            <Select value={draft.contentLayout} onChange={(event) => updateDraft('contentLayout', event.target.value as DownloadClientDraft['contentLayout'])}><option value="default">qBittorrent default</option><option value="original">Original</option><option value="subfolder">Create subfolder</option></Select>
+          </Field>
+          <Field label="Sequential order" help="Ask qBittorrent to download pieces sequentially."><div className="setting-control"><button type="button" aria-pressed={draft.sequentialOrder} className="toggle" onClick={() => updateDraft('sequentialOrder', !draft.sequentialOrder)}><span /></button><span className="toggle-label">{draft.sequentialOrder ? 'Enabled' : 'Disabled'}</span></div></Field>
+          <Field label="First and last first" help="Prioritize the first and last pieces before the rest."><div className="setting-control"><button type="button" aria-pressed={draft.firstLastFirst} className="toggle" onClick={() => updateDraft('firstLastFirst', !draft.firstLastFirst)}><span /></button><span className="toggle-label">{draft.firstLastFirst ? 'Enabled' : 'Disabled'}</span></div></Field>
+          <Field label="Completed Download Handling" wide help="Automatically attach and reconcile completed downloads. When disabled, progress is still observed but completed media is not imported."><div className="setting-control"><button type="button" aria-pressed={draft.completedDownloadHandling} className="toggle" onClick={() => updateDraft('completedDownloadHandling', !draft.completedDownloadHandling)}><span /></button><span className="toggle-label">{draft.completedDownloadHandling ? 'Enabled' : 'Disabled'}</span></div></Field>
         </div>
 
         {selected?.last_error && <Note message={{ tone: 'error', text: `Last connection error: ${selected.last_error}` }} />}
@@ -2281,6 +2317,12 @@ type IndexerDraft = {
   scope: IndexerScope
   enabled: boolean
   timeoutSeconds: number
+  enableRss: boolean
+  enableInteractiveSearch: boolean
+  categories: string
+  minimumSeeders: number
+  priority: number
+  downloadClientId: string
 }
 
 const emptyIndexer: IndexerDraft = {
@@ -2290,6 +2332,12 @@ const emptyIndexer: IndexerDraft = {
   scope: 'both',
   enabled: true,
   timeoutSeconds: 15,
+  enableRss: true,
+  enableInteractiveSearch: true,
+  categories: '',
+  minimumSeeders: 1,
+  priority: 25,
+  downloadClientId: '',
 }
 
 function draftFromIndexer(indexer: Indexer): IndexerDraft {
@@ -2300,11 +2348,18 @@ function draftFromIndexer(indexer: Indexer): IndexerDraft {
     scope: indexer.scope,
     enabled: indexer.enabled,
     timeoutSeconds: indexer.timeoutSeconds || 15,
+    enableRss: indexer.enableRss,
+    enableInteractiveSearch: indexer.enableInteractiveSearch,
+    categories: indexer.categories.join(', '),
+    minimumSeeders: indexer.minimumSeeders,
+    priority: indexer.priority,
+    downloadClientId: indexer.downloadClientId ?? '',
   }
 }
 
 function IndexerSettings() {
   const [indexers, setIndexers] = useState<Indexer[]>([])
+  const [downloadClients, setDownloadClients] = useState<DownloadClient[]>([])
   const [selectedId, setSelectedId] = useUrlState('indexer')
   const [draft, setDraft] = useState<IndexerDraft>(emptyIndexer)
   const [loading, setLoading] = useState(true)
@@ -2317,8 +2372,9 @@ function IndexerSettings() {
   const load = async () => {
     setLoading(true)
     try {
-      const items = await api.indexers()
+      const [items, clients] = await Promise.all([api.indexers(), api.downloadClients()])
       setIndexers(items)
+      setDownloadClients(clients)
       setError('')
       const selected = items.find((item) => item.id === selectedId) ?? items[0]
       setDraft(selected ? draftFromIndexer(selected) : emptyIndexer)
@@ -2354,6 +2410,12 @@ function IndexerSettings() {
         scope: draft.scope,
         enabled: draft.enabled,
         timeout_seconds: draft.timeoutSeconds,
+        enable_rss: draft.enableRss,
+        enable_interactive_search: draft.enableInteractiveSearch,
+        categories: draft.categories.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0),
+        minimum_seeders: draft.minimumSeeders,
+        priority: draft.priority,
+        download_client_id: draft.downloadClientId || null,
       }
       const value = selectedId
         ? await api.updateIndexer(selectedId, { ...base, ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}), expected_revision: selected?.revision })
@@ -2461,6 +2523,20 @@ function IndexerSettings() {
           </Field>
           <Field label="Timeout" help="How long to wait for a search response before this indexer is skipped. The remaining indexers still return their results.">
             <Select value={String(draft.timeoutSeconds)} onChange={(event) => updateDraft('timeoutSeconds', Number(event.target.value))}><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></Select>
+          </Field>
+          <Field label="Enable RSS" help="Allow this indexer to participate in periodic RSS release discovery."><div className="setting-control"><button type="button" aria-pressed={draft.enableRss} className="toggle" onClick={() => updateDraft('enableRss', !draft.enableRss)}><span /></button><span className="toggle-label">{draft.enableRss ? 'Enabled' : 'Disabled'}</span></div></Field>
+          <Field label="Enable Interactive Search" help="Allow user-triggered movie, season, and episode searches to query this indexer."><div className="setting-control"><button type="button" aria-pressed={draft.enableInteractiveSearch} className="toggle" onClick={() => updateDraft('enableInteractiveSearch', !draft.enableInteractiveSearch)}><span /></button><span className="toggle-label">{draft.enableInteractiveSearch ? 'Enabled' : 'Disabled'}</span></div></Field>
+          <Field label="Categories" help="Torznab category IDs sent with searches. Comma-separated; leave blank to let the indexer decide.">
+            <Input value={draft.categories} onChange={(event) => updateDraft('categories', event.target.value)} placeholder="2000, 5000" />
+          </Field>
+          <Field label="Minimum seeders" help="Results reporting fewer seeders are rejected. Results without a seeder count remain available.">
+            <Input type="number" min="0" value={String(draft.minimumSeeders)} onChange={(event) => updateDraft('minimumSeeders', Math.max(0, Number(event.target.value) || 0))} />
+          </Field>
+          <Field label="Indexer priority" help="Used as a tie-breaker from 1 (highest) to 50 (lowest). All eligible indexers are still searched.">
+            <Input type="number" min="1" max="50" value={String(draft.priority)} onChange={(event) => updateDraft('priority', Math.min(50, Math.max(1, Number(event.target.value) || 25)))} />
+          </Field>
+          <Field label="Download client" help="Grabs from this indexer use this client. Leave automatic to use the client selected for the release.">
+            <Select value={draft.downloadClientId} onChange={(event) => updateDraft('downloadClientId', event.target.value)}><option value="">Automatic / selected at grab</option>{downloadClients.map((client) => <option value={client.id} key={client.id}>{client.name} · {client.scope}</option>)}</Select>
           </Field>
         </div>
 

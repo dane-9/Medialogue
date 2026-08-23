@@ -432,6 +432,12 @@ function normalizeDownloadClient(value: unknown): DownloadClient {
     last_error: textValue(item.last_error || item.message) || undefined,
     revision: item.revision === undefined ? undefined : numberValue(item.revision),
     pollIntervalSeconds: optionalNumber(item.poll_interval_seconds ?? item.pollIntervalSeconds),
+    recentPriority: textValue(item.recent_priority ?? item.recentPriority, 'last') === 'first' ? 'first' : 'last',
+    olderPriority: textValue(item.older_priority ?? item.olderPriority, 'last') === 'first' ? 'first' : 'last',
+    sequentialOrder: Boolean(item.sequential_order ?? item.sequentialOrder),
+    firstLastFirst: Boolean(item.first_last_first ?? item.firstLastFirst),
+    contentLayout: (['original', 'subfolder'].includes(textValue(item.content_layout ?? item.contentLayout).toLowerCase()) ? textValue(item.content_layout ?? item.contentLayout).toLowerCase() : 'default') as DownloadClient['contentLayout'],
+    completedDownloadHandling: item.completed_download_handling !== false && item.completedDownloadHandling !== false,
   }
 }
 
@@ -662,6 +668,12 @@ function normalizeIndexer(value: unknown): Indexer {
     scope,
     enabled: item.enabled !== false,
     timeoutSeconds: numberValue(item.timeout_seconds ?? item.timeoutSeconds, 15),
+    enableRss: item.enable_rss !== false && item.enableRss !== false,
+    enableInteractiveSearch: item.enable_interactive_search !== false && item.enableInteractiveSearch !== false,
+    categories: Array.isArray(item.categories) ? item.categories.map((value) => numberValue(value)).filter((value) => value >= 0) : [],
+    minimumSeeders: numberValue(item.minimum_seeders ?? item.minimumSeeders, 1),
+    priority: numberValue(item.priority, 25),
+    downloadClientId: textValue(item.download_client_id ?? item.downloadClientId) || undefined,
     health: textValue(item.health, 'unknown'),
     lastCheckedAt: dateValue(item.last_checked_at || item.lastCheckedAt),
     lastSuccessAt: dateValue(item.last_success_at || item.lastSuccessAt),
@@ -975,8 +987,8 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeDownloadClient)
   },
-  createDownloadClient: (configuration: { name: string; url: string; username?: string; password?: string; scope: DownloadClientScope; category?: string; tags: string[]; enabled: boolean; poll_interval_seconds?: number }) => request<unknown>('/api/v1/download-clients', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeDownloadClient),
-  updateDownloadClient: (id: string, configuration: { name: string; url: string; username?: string; password?: string; scope: DownloadClientScope; category?: string; tags: string[]; enabled: boolean; poll_interval_seconds?: number; expected_revision?: number }) => request<unknown>(`/api/v1/download-clients/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(configuration) }).then(normalizeDownloadClient),
+  createDownloadClient: (configuration: { name: string; url: string; username?: string; password?: string; scope: DownloadClientScope; category?: string; tags: string[]; enabled: boolean; poll_interval_seconds?: number; recent_priority: 'first' | 'last'; older_priority: 'first' | 'last'; sequential_order: boolean; first_last_first: boolean; content_layout: 'default' | 'original' | 'subfolder'; completed_download_handling: boolean }) => request<unknown>('/api/v1/download-clients', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeDownloadClient),
+  updateDownloadClient: (id: string, configuration: { name: string; url: string; username?: string; password?: string; scope: DownloadClientScope; category?: string; tags: string[]; enabled: boolean; poll_interval_seconds?: number; recent_priority: 'first' | 'last'; older_priority: 'first' | 'last'; sequential_order: boolean; first_last_first: boolean; content_layout: 'default' | 'original' | 'subfolder'; completed_download_handling: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/download-clients/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(configuration) }).then(normalizeDownloadClient),
   testDownloadClient: (id?: string, configuration?: { url: string; username?: string; password?: string }) => request<DownloadClientTestResult>(id ? `/api/v1/download-clients/${encodeURIComponent(id)}/test` : '/api/v1/download-clients/test', { method: 'POST', ...(configuration ? { body: JSON.stringify(configuration) } : {}) }),
   refreshDownloadClient: (id: string) => request<DownloadClientTestResult>(`/api/v1/download-clients/${encodeURIComponent(id)}/health/refresh`, { method: 'POST' }),
   deleteDownloadClient: (id: string) => request<void>(`/api/v1/download-clients/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -985,8 +997,8 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeIndexer)
   },
-  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; timeout_seconds?: number }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
-  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; timeout_seconds?: number; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; timeout_seconds?: number; enable_rss: boolean; enable_interactive_search: boolean; categories: number[]; minimum_seeders: number; priority: number; download_client_id?: string | null }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; timeout_seconds?: number; enable_rss?: boolean; enable_interactive_search?: boolean; categories?: number[]; minimum_seeders?: number; priority?: number; download_client_id?: string | null; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
   deleteIndexer: (id: string) => request<void>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   testIndexer: async (id?: string, configuration?: { torznab_url: string; api_key: string; timeout_seconds?: number }): Promise<IndexerTestResult> => {
     const payload = await request<{ status: string; latency_ms?: number; title?: string; message?: string }>(id ? `/api/v1/indexers/${encodeURIComponent(id)}/test` : '/api/v1/indexers/test', { method: 'POST', ...(configuration ? { body: JSON.stringify(configuration) } : {}) })

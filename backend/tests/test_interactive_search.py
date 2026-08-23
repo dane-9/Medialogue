@@ -107,7 +107,7 @@ class FakeTorznabClient:
             raise RuntimeError(error)
         return {"status": "healthy", "title": self.behavior.health_title}
 
-    async def search(self, query: str, *, media_type: str, tmdb_id=None, season=None, episode=None):
+    async def search(self, query: str, *, media_type: str, tmdb_id=None, season=None, episode=None, categories=()):
         error = self.behavior.errors_by_url.get(self.url)
         if error:
             raise RuntimeError(error)
@@ -139,7 +139,7 @@ class FakeQBitClient:
         self.username = username
         self.password = password
 
-    async def add_torrent(self, torrent: bytes, *, filename="download.torrent", save_path=None, category=None, tags=()):
+    async def add_torrent(self, torrent: bytes, *, filename="download.torrent", save_path=None, category=None, tags=(), **options):
         self.behavior.submissions.append(
             {
                 "torrent": torrent,
@@ -147,11 +147,12 @@ class FakeQBitClient:
                 "save_path": save_path,
                 "category": category,
                 "tags": tuple(tags),
+                **options,
             }
         )
 
-    async def add_url(self, url: str, *, save_path=None, category=None, tags=()):
-        self.behavior.submissions.append({"url": url, "save_path": save_path, "category": category, "tags": tuple(tags)})
+    async def add_url(self, url: str, *, save_path=None, category=None, tags=(), **options):
+        self.behavior.submissions.append({"url": url, "save_path": save_path, "category": category, "tags": tuple(tags), **options})
 
     async def close(self):
         return None

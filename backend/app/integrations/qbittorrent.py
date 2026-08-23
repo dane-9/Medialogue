@@ -1,9 +1,65 @@
 from __future__ import annotations
 
+import asyncio
+import base64
+import hashlib
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
+
+
+def _bencode_value_end(payload: bytes, position: int) -> int:
+    token = payload[position:position + 1]
+    if token == b"i":
+        end = payload.index(b"e", position + 1)
+        return end + 1
+    if token in {b"l", b"d"}:
+        cursor = position + 1
+        while payload[cursor:cursor + 1] != b"e":
+            cursor = _bencode_value_end(payload, cursor)
+            if token == b"d":
+                cursor = _bencode_value_end(payload, cursor)
+        return cursor + 1
+    colon = payload.index(b":", position)
+    length = int(payload[position:colon])
+    return colon + 1 + length
+
+
+def _torrent_info_hash(payload: bytes) -> str | None:
+    try:
+        if not payload.startswith(b"d"):
+            return None
+        cursor = 1
+        while payload[cursor:cursor + 1] != b"e":
+            key_end = _bencode_value_end(payload, cursor)
+            colon = payload.index(b":", cursor)
+            key = payload[colon + 1:key_end]
+            value_start = key_end
+            value_end = _bencode_value_end(payload, value_start)
+            if key == b"info":
+                return hashlib.sha1(payload[value_start:value_end]).hexdigest()
+            cursor = value_end
+    except (ValueError, IndexError):
+        return None
+    return None
+
+
+def _magnet_info_hash(url: str) -> str | None:
+    try:
+        xt = next((value for value in parse_qs(urlparse(url).query).get("xt", []) if value.casefold().startswith("urn:btih:")), None)
+        if not xt:
+            return None
+        value = xt.rsplit(":", 1)[-1].strip()
+        if len(value) == 40:
+            bytes.fromhex(value)
+            return value.lower()
+        if len(value) == 32:
+            return base64.b32decode(value.upper()).hex()
+    except (ValueError, TypeError):
+        return None
+    return None
 
 
 class QBittorrentError(RuntimeError):
@@ -169,6 +225,10 @@ class QBittorrentClient:
         save_path: str | None = None,
         category: str | None = None,
         tags: tuple[str, ...] = (),
+        sequential_order: bool = False,
+        first_last_first: bool = False,
+        content_layout: str = "default",
+        add_to_top: bool = False,
     ) -> None:
         data: dict[str, str] = {}
         if save_path:
@@ -177,6 +237,12 @@ class QBittorrentClient:
             data["category"] = category
         if tags:
             data["tags"] = ",".join(tags)
+        if sequential_order:
+            data["sequentialDownload"] = "true"
+        if first_last_first:
+            data["firstLastPiecePrio"] = "true"
+        if content_layout in {"original", "subfolder"}:
+            data["contentLayout"] = content_layout.title()
         response = await self._request(
             "POST",
             "/api/v2/torrents/add",
@@ -185,6 +251,10 @@ class QBittorrentClient:
         )
         if response.text.strip() not in {"", "Ok."}:
             raise QBittorrentError("qBittorrent rejected the torrent")
+        if add_to_top:
+            info_hash = _torrent_info_hash(torrent)
+            if info_hash:
+                await self._move_to_top_when_visible(info_hash)
 
     async def add_url(
         self,
@@ -193,6 +263,10 @@ class QBittorrentClient:
         save_path: str | None = None,
         category: str | None = None,
         tags: tuple[str, ...] = (),
+        sequential_order: bool = False,
+        first_last_first: bool = False,
+        content_layout: str = "default",
+        add_to_top: bool = False,
     ) -> None:
         data: dict[str, str] = {"urls": url}
         if save_path:
@@ -201,9 +275,27 @@ class QBittorrentClient:
             data["category"] = category
         if tags:
             data["tags"] = ",".join(tags)
+        if sequential_order:
+            data["sequentialDownload"] = "true"
+        if first_last_first:
+            data["firstLastPiecePrio"] = "true"
+        if content_layout in {"original", "subfolder"}:
+            data["contentLayout"] = content_layout.title()
         response = await self._request("POST", "/api/v2/torrents/add", data=data)
         if response.text.strip() not in {"", "Ok."}:
             raise QBittorrentError("qBittorrent rejected the torrent URL")
+        if add_to_top:
+            info_hash = _magnet_info_hash(url)
+            if info_hash:
+                await self._move_to_top_when_visible(info_hash)
+
+    async def _move_to_top_when_visible(self, info_hash: str) -> None:
+        for attempt in range(8):
+            if await self.get_torrent(info_hash) is not None:
+                await self._request("POST", "/api/v2/torrents/topPrio", data={"hashes": info_hash.lower()})
+                return
+            if attempt < 7:
+                await asyncio.sleep(0.25)
 
     async def remove_torrent(self, info_hash: str, *, delete_files: bool = False) -> None:
         await self._request(

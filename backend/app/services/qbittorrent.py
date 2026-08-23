@@ -557,7 +557,7 @@ async def _poll_download_client(
                     scope=MediaType(client.scope.value),
                     complete=observed.complete,
                 )
-                if observed.complete:
+                if observed.complete and client.completed_download_handling:
                     await finalize_completed_torrent(
                         db,
                         torrent,
