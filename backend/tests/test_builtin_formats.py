@@ -220,3 +220,60 @@ def test_dts_variants_do_not_bleed_into_each_other() -> None:
     assert not _matches("audio-dts", "Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP")
     assert not _matches("audio-dts-es", "Movie 2024 1080p BluRay DTS 5.1 x264-GRP")
     assert not _matches("audio-dtshd-ma", "Movie 2024 1080p BluRay DTS-ES 6.1 x264-GRP")
+
+
+def test_default_profile_scores_reflect_the_intended_ranking() -> None:
+    """The orderings that were asked for explicitly, pinned so a later edit
+    cannot quietly invert them."""
+
+    from app.services.builtin_formats import DEFAULT_FORMAT_SCORES as scores
+
+    assert scores["audio-truehd"] > scores["audio-dtsx"]
+    assert scores["audio-flac"] > scores["audio-pcm"]
+    assert scores["hdr-dolby-vision"] > scores["hdr-hdr10-plus"]
+    assert scores["hdr-sdr"] == 10
+    assert scores["hdr-hlg"] == 0
+    # DV HDR10+ tops the dynamic range group outright.
+    dynamic = {key: value for key, value in scores.items() if key.startswith("hdr-")}
+    assert max(dynamic, key=lambda key: dynamic[key]) == "hdr-dv-hdr10-plus"
+    # Bravia Core is the only streaming source scored above neutral.
+    streaming = {key: value for key, value in scores.items() if key.startswith("web-")}
+    assert streaming["web-bcore"] > 0
+    assert all(value == 0 for key, value in streaming.items() if key != "web-bcore")
+
+
+def test_full_disc_dvd_is_left_out_of_the_default_profile() -> None:
+    from app.services.builtin_formats import DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+    from app.parser import list_quality_definitions
+
+    known = {item.name for item in list_quality_definitions()}
+    # Every excluded name must actually exist, or the filter silently does nothing.
+    assert DEFAULT_EXCLUDED_QUALITY_DEFINITIONS <= known
+    assert all(name.startswith("Full Disc") for name in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS)
+    assert {name for name in known if name.startswith("Full Disc")} == DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+
+
+@pytest.mark.parametrize(
+    ("key", "release"),
+    [
+        ("audio-dtshd-hra", "Movie 2024 1080p BluRay DTS-HD HRA 5.1 x264-GRP"),
+        ("hdr-dv-hdr10-plus", "Movie 2024 2160p WEB-DL DV HDR10+ x265-FLUX"),
+    ],
+)
+def test_new_builtins_match_their_releases(key: str, release: str) -> None:
+    assert _matches(key, release)
+
+
+@pytest.mark.parametrize(
+    ("key", "release"),
+    [
+        # HRA is no longer swept up by the plain DTS format.
+        ("audio-dts", "Movie 2024 1080p BluRay DTS-HD HRA 5.1 x264-GRP"),
+        # The two DV formats are mutually exclusive on the base layer.
+        ("hdr-dv-hdr10-plus", "Movie 2024 2160p WEB-DL DV HDR10 x265-FLUX"),
+        ("hdr-dv-hdr10", "Movie 2024 2160p WEB-DL DV HDR10+ x265-FLUX"),
+        ("hdr-dv-hdr10-plus", "Movie 2024 2160p WEB-DL HDR10+ x265-FLUX"),
+    ],
+)
+def test_new_builtins_stay_out_of_each_others_territory(key: str, release: str) -> None:
+    assert not _matches(key, release)

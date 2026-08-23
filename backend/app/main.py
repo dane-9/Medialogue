@@ -16,6 +16,7 @@ from app.core.integration_config import get_integration_config_store
 from app.core.logging import configure_logging
 from app.db.bootstrap import (
     ensure_default_admin,
+    ensure_default_quality_profile,
     ensure_builtin_custom_formats,
     ensure_quality_definitions,
     mark_running_jobs_interrupted,
@@ -69,6 +70,7 @@ async def lifespan(_: FastAPI):
                 await ensure_default_admin(db, settings)
             await ensure_quality_definitions(db)
             await ensure_builtin_custom_formats(db)
+            await ensure_default_quality_profile(db)
             await mark_running_jobs_interrupted(db)
             await ensure_configured_integration_states(db)
             await db.commit()
