@@ -7,7 +7,7 @@ import { Badge, Button, EmptyState, Input, Panel, Progress, Select, Stat } from 
 import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, duplicateLoserIds, normalizeMediaView, problemMatchesFilter, toggleIdSelection } from './lib/uiState'
-import { useUrlNumber, useUrlState } from './lib/urlState'
+import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, MediaProfileSettings, Movie, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
 
 
@@ -1338,12 +1338,13 @@ function ProblemsIdentityPicker({
 
 export function ProblemsPage() {
   const navigate = useNavigate()
+  const [, setProblemSearchParams] = useSearchParams()
   const [items, setItems] = useState<Problem[]>([])
   const [selected, setSelected] = useUrlState('problem')
-  const [workflow, setWorkflow] = useUrlState('workflow', 'all')
-  const [reasonFilter, setReasonFilter] = useUrlState('reason', 'all')
-  const [severityFilter, setSeverityFilter] = useUrlState('severity', 'all')
-  const [queueStatus, setQueueStatus] = useUrlState('problemStatus', 'open')
+  const [workflow] = useUrlState('workflow', 'all')
+  const [reasonFilter] = useUrlState('reason', 'all')
+  const [severityFilter] = useUrlState('severity', 'all')
+  const [queueStatus] = useUrlState('problemStatus', 'open')
   const [page, setPage] = useUrlNumber('page', 1)
   const [pages, setPages] = useState(0)
   const [total, setTotal] = useState(0)
@@ -1360,6 +1361,9 @@ export function ProblemsPage() {
   const [plexConfiguration, setPlexConfiguration] = useState<Awaited<ReturnType<typeof api.plexConfiguration>>>()
   const loadGeneration = useRef(0)
   const reloadCurrent = useRef<() => void>(() => undefined)
+  const updateProblemView = (changes: Record<string, string | null>) => {
+    setProblemSearchParams((current) => updateUrlParams(current, changes), { replace: true })
+  }
 
   const load = async (targetPage = page, preserveMessage = false) => {
     const generation = ++loadGeneration.current
@@ -1508,10 +1512,10 @@ export function ProblemsPage() {
     { value: 'all', label: 'Needs attention' }, { value: 'manual', label: 'Fix manually' }, { value: 'choice', label: 'Confirm identity' }, { value: 'config', label: 'Configuration' }, { value: 'waiting', label: 'Recheck' },
   ]
 
-  return <Page title="Problems" subtitle="See what is wrong, exactly where it is, and what to do next." action={<div className="page-actions"><Button variant="ghost" onClick={() => { setQueueStatus(queueStatus === 'dismissed' ? 'open' : 'dismissed'); setSelected('') }}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div>}>
+  return <Page title="Problems" subtitle="See what is wrong, exactly where it is, and what to do next." action={<div className="page-actions"><Button variant="ghost" onClick={() => updateProblemView({ problemStatus: queueStatus === 'dismissed' ? null : 'dismissed', problem: null, page: null })}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div>}>
     <div className={`problems-summary ${queueStatus === 'dismissed' ? 'suppressed' : ''}`}><div className="problems-summary-icon"><Icon name={queueStatus === 'dismissed' ? 'shield' : 'alert'} size={20} /></div><div><strong>{!loaded ? 'Loading Problems…' : queueStatus === 'dismissed' ? `${summary.suppressed} suppressed Problem${summary.suppressed === 1 ? '' : 's'}` : `${summary.open} Problem${summary.open === 1 ? '' : 's'} need attention`}</strong><span>{queueStatus === 'dismissed' ? 'Suppressed fingerprints stay hidden from the active queue until an administrator restores them.' : 'Work through the queue. A Problem disappears as soon as its evidence confirms it is solved.'}</span></div></div>
-    {queueStatus === 'open' && <nav className="problems-workflow-tabs" aria-label="Problem workflow filters">{workflowTabs.map((tab) => <button type="button" className={workflow === tab.value ? 'active' : ''} onClick={() => { setWorkflow(tab.value); setSelected('') }} key={tab.value}>{tab.label}<span>{tab.value === 'all' ? summary.open : summary.workflows[tab.value] ?? 0}</span></button>)}</nav>}
-    <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><Select value={reasonFilter} onChange={(event) => { setReasonFilter(event.target.value); setSelected('') }}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value); setSelected('') }}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></Select><span>Showing {visible.length} of {total}</span></div>
+    {queueStatus === 'open' && <nav className="problems-workflow-tabs" aria-label="Problem workflow filters">{workflowTabs.map((tab) => <button type="button" className={workflow === tab.value ? 'active' : ''} onClick={() => updateProblemView({ workflow: tab.value === 'all' ? null : tab.value, problem: null, page: null })} key={tab.value}>{tab.label}<span>{tab.value === 'all' ? summary.open : summary.workflows[tab.value] ?? 0}</span></button>)}</nav>}
+    <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><Select value={reasonFilter} onChange={(event) => updateProblemView({ reason: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => updateProblemView({ severity: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></Select><span>Showing {visible.length} of {total}</span></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     <section className={`problems-layout ${selected ? 'show-detail' : ''}`}>
       <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>{visible.length} shown</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong><span>{problem.subject}</span><small><b className={`problems-state state-${problem.workflow}`}>{problemWorkflowLabels[problem.workflow]}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'shield' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
