@@ -5,6 +5,7 @@ import type { Movie, Show, TMDBMovieLookup, TMDBShowLookup } from '../types'
 import { Icon } from './Icon'
 import { Badge, Button } from './ui'
 import { MovieAcquisitionWizard } from './MovieAcquisitionWizard'
+import { ShowAcquisitionWizard } from './ShowAcquisitionWizard'
 
 type Kind = 'movie' | 'show'
 
@@ -45,7 +46,6 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [results, setResults] = useState<Result[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [busyId, setBusyId] = useState('')
   const [active, setActive] = useState(0)
   const [acquisition, setAcquisition] = useState<Result | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -85,18 +85,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       return
     }
     if (!result.tmdbId) return
-    if (result.kind === 'movie') {
-      setAcquisition(result)
-      return
-    }
-    setBusyId(result.key); setError('')
-    try {
-      const added = await api.addShow(result.tmdbId)
-      navigate(`/shows/${added.id}`)
-      onClose()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not add this title.')
-    } finally { setBusyId('') }
+    setAcquisition(result)
   }
 
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -117,6 +106,13 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     onBack={() => setAcquisition(null)}
     onClose={onClose}
     onComplete={(movieId) => { navigate(`/movies/${movieId}`); onClose() }}
+  />
+
+  if (acquisition?.tmdbId && acquisition.kind === 'show') return <ShowAcquisitionWizard
+    show={{ tmdbId: acquisition.tmdbId, title: acquisition.title, year: acquisition.year, poster: acquisition.poster, overview: acquisition.overview }}
+    onBack={() => setAcquisition(null)}
+    onClose={onClose}
+    onComplete={(showId) => { navigate(`/shows/${showId}`); onClose() }}
   />
 
   return <div className="modal-backdrop" onClick={onClose}>
@@ -146,7 +142,6 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           className={`global-search-row ${index === active ? 'active' : ''}`}
           onMouseEnter={() => setActive(index)}
           onClick={() => void open(result)}
-          disabled={Boolean(busyId)}
         >
           <span className="global-search-poster">
             {posterUrl(result.poster)
@@ -162,7 +157,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             {result.present
               ? <Badge tone={result.state === 'Missing' ? 'amber' : 'green'}>{result.state ?? 'Present'}</Badge>
               : <Badge tone="neutral">Not in library</Badge>}
-            <span className="global-search-action">{busyId === result.key ? 'Adding…' : result.libraryId ? 'Open' : result.kind === 'movie' ? 'Select' : 'Add'}</span>
+            <span className="global-search-action">{result.libraryId ? 'Open' : 'Select'}</span>
           </span>
         </button>)}
         {!results.length && <div className="global-search-empty">{hint}</div>}

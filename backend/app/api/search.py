@@ -26,6 +26,7 @@ from app.models.domain import (
     Season,
     Show,
 )
+from app.parser import parse_release_name
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.search import (
     MovieAcquisitionSearchRequest,
@@ -34,13 +35,17 @@ from app.schemas.search import (
     SearchResultDownloadRequest,
     SearchResultDownloadResponse,
     SearchResultResponse,
+    ShowAcquisitionPreviewResponse,
+    ShowAcquisitionSeasonPreview,
+    ShowSeasonAcquisitionSearchRequest,
 )
 from app.services.events import create_event
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.services.jobs import create_job
 from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
-from app.services.tmdb import get_tmdb_configuration
+from app.services.shows import add_show_from_tmdb
+from app.services.tmdb import get_show_details, get_tmdb_configuration
 
 router = APIRouter(tags=["interactive search"])
 
@@ -130,6 +135,78 @@ async def search_unattached_movie(
             tmdb_id=metadata.tmdb_id,
             overview=metadata.overview,
             poster_ref=metadata.poster_path,
+        ),
+        background_tasks=background_tasks,
+        db=db,
+        client_factory=client_factory,
+    )
+
+
+@router.get("/interactive-search/shows/{tmdb_id}/preview", response_model=ShowAcquisitionPreviewResponse)
+async def preview_unattached_show(
+    tmdb_id: int,
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
+) -> ShowAcquisitionPreviewResponse:
+    if tmdb_id <= 0:
+        raise AppError("INVALID_TMDB_ID", "TMDB Show id must be positive.", status_code=422)
+    if await db.scalar(select(Show.id).where(Show.tmdb_id == tmdb_id)) is not None:
+        raise AppError("SHOW_ALREADY_EXISTS", "That TMDB Show is already in the library.", status_code=409)
+    details = await get_show_details(db, tmdb_id, client_factory=tmdb_factory)
+    if details is None:
+        raise AppError("TMDB_UNAVAILABLE", "TMDB Show lookup failed.", status_code=503)
+    return ShowAcquisitionPreviewResponse(
+        tmdb_id=details.tmdb_id,
+        title=details.title,
+        year=details.year,
+        overview=details.overview,
+        poster_ref=details.poster_path,
+        seasons=[
+            ShowAcquisitionSeasonPreview(
+                season_number=season.season_number,
+                title=season.title,
+                episode_count=season.episode_count,
+                air_date=season.air_date.isoformat() if season.air_date else None,
+                poster_ref=season.poster_path,
+            )
+            for season in details.seasons
+        ],
+    )
+
+
+@router.post("/interactive-search/shows/seasons", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
+async def search_unattached_show_season(
+    payload: ShowSeasonAcquisitionSearchRequest,
+    background_tasks: BackgroundTasks,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(indexers_api.get_torznab_client_factory),
+    tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
+) -> JobAcceptedResponse:
+    # This endpoint also remains usable after the first season pack has been
+    # committed. That lets a multi-season acquisition retry/re-search a later
+    # season while reusing the Show created by an earlier successful season.
+    if await db.get(QualityProfile, payload.quality_profile_id) is None:
+        raise AppError("INVALID_QUALITY_PROFILE", "Quality Profile does not exist.", status_code=422)
+    details = await get_show_details(db, payload.tmdb_id, client_factory=tmdb_factory)
+    if details is None:
+        raise AppError("TMDB_UNAVAILABLE", "TMDB Show lookup failed.", status_code=503)
+    if not any(season.season_number == payload.season_number for season in details.seasons):
+        label = "Specials" if payload.season_number == 0 else f"Season {payload.season_number}"
+        raise AppError("SEASON_NOT_FOUND", f"{label} does not exist for this TMDB Show.", status_code=404)
+    return await _start_search(
+        target=SearchTarget(
+            media_type=MediaType.SHOWS,
+            entity_type="tmdb_show_season",
+            entity_id=None,
+            quality_profile_id=payload.quality_profile_id,
+            title=details.title,
+            year=details.year,
+            tmdb_id=details.tmdb_id,
+            overview=details.overview,
+            poster_ref=details.poster_path,
+            season=payload.season_number,
         ),
         background_tasks=background_tasks,
         db=db,
@@ -325,6 +402,7 @@ async def download_search_result(
     db: AsyncSession = Depends(get_db),
     torznab_factory=Depends(indexers_api.get_torznab_client_factory),
     qbit_factory=Depends(downloads_api.get_qbit_client_factory),
+    tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
 ) -> SearchResultDownloadResponse:
     result = await db.scalar(
         select(InteractiveSearchResult)
@@ -358,12 +436,30 @@ async def download_search_result(
     job = await db.get(Job, result.job_id)
     target = dict((job.summary or {}).get("target") or {}) if job is not None else {}
     unattached_movie = result.target_entity_id is None and result.target_entity_type == "tmdb_movie"
+    unattached_show_season = result.target_entity_id is None and result.target_entity_type == "tmdb_show_season"
+    target_show: Show | None = None
+    target_season: Season | None = None
+    target_season_number: int | None = None
+    staged_new_show = False
     if unattached_movie:
         tmdb_id = int(target.get("tmdb_id") or 0)
         if not tmdb_id or not target.get("title"):
             raise AppError("SEARCH_TARGET_INVALID", "The TMDB search target is incomplete.", status_code=409)
         if await db.scalar(select(Movie.id).where(Movie.tmdb_id == tmdb_id)) is not None:
             raise AppError("MOVIE_ALREADY_EXISTS", "That TMDB Movie is already in the library.", status_code=409)
+    if unattached_show_season:
+        tmdb_id = int(target.get("tmdb_id") or 0)
+        target_season_number = int(target["season"]) if target.get("season") is not None else None
+        if not tmdb_id or not target.get("title") or target_season_number is None:
+            raise AppError("SEARCH_TARGET_INVALID", "The TMDB Show season search target is incomplete.", status_code=409)
+        parsed = parse_release_name(result.title)
+        if parsed.identity.season_numbers != (target_season_number,) or parsed.identity.episode_numbers:
+            raise AppError(
+                "NOT_A_SEASON_PACK",
+                "This result is not a single-season pack for the selected season.",
+                status_code=409,
+            )
+        target_show = await db.scalar(select(Show).where(Show.tmdb_id == tmdb_id))
     selected_category = payload.category.strip() if payload.category and payload.category.strip() else (client.category or None)
     if result.selected_at is not None:
         existing_category = str((result.selection_snapshot or {}).get("category") or "") or None
@@ -373,6 +469,13 @@ async def download_search_result(
                 "This result was already submitted with a different download destination.",
                 status_code=409,
             )
+        existing_show_id: UUID | None = None
+        existing_season_id: UUID | None = None
+        if result.target_entity_type == "season" and result.target_entity_id is not None:
+            existing_season = await db.get(Season, result.target_entity_id)
+            if existing_season is not None:
+                existing_season_id = existing_season.id
+                existing_show_id = existing_season.show_id
         return SearchResultDownloadResponse(
             search_result_id=result.id,
             download_client_id=client.id,
@@ -380,6 +483,8 @@ async def download_search_result(
             status="already_submitted",
             selected_at=result.selected_at,
             movie_id=result.target_entity_id if result.target_entity_type == "movie" else None,
+            show_id=existing_show_id,
+            season_id=existing_season_id,
             category=existing_category,
         )
     if not result.download_url:
@@ -403,6 +508,52 @@ async def download_search_result(
             await qbit.close()
             raise AppError("QBITTORRENT_CATEGORY_NOT_FOUND", "The selected qBittorrent category no longer exists.", status_code=409)
         category_destination = selected.resolved_save_path or None
+
+    # For a brand-new Show, fully stage the logical Show/Season/Episode metadata
+    # in the current DB transaction before touching qBittorrent. It remains
+    # invisible to other transactions until the torrent submission succeeds;
+    # a failed submission rolls the staged Show back completely.
+    if unattached_show_season:
+        if target_show is None:
+            try:
+                target_show = await add_show_from_tmdb(
+                    db,
+                    int(target["tmdb_id"]),
+                    monitored=True,
+                    client_factory=tmdb_factory,
+                )
+            except Exception as exc:
+                await qbit.close()
+                await db.rollback()
+                raise AppError("TMDB_UNAVAILABLE", f"Could not prepare Show metadata: {exc}", status_code=503) from exc
+            staged_new_show = True
+
+        target_season = await db.scalar(
+            select(Season).where(
+                Season.show_id == target_show.id,
+                Season.season_number == target_season_number,
+            )
+        )
+        if target_season is None:
+            await qbit.close()
+            if staged_new_show:
+                await db.rollback()
+            raise AppError("SEASON_NOT_FOUND", "The selected season is not present in Show metadata.", status_code=409)
+
+        profile_id_raw = target.get("quality_profile_id") or (result.custom_format_snapshot or {}).get("profile_id")
+        existing_assignment = await db.scalar(
+            select(MediaProfileOverride).where(MediaProfileOverride.show_id == target_show.id)
+        )
+        if existing_assignment is None and profile_id_raw:
+            db.add(
+                MediaProfileOverride(
+                    media_type=MediaType.SHOWS,
+                    show_id=target_show.id,
+                    quality_profile_id=UUID(str(profile_id_raw)),
+                    override_definition={},
+                    revision=1,
+                )
+            )
     qbit_options = {
         "category": selected_category,
         "tags": tuple(client.tags or []),
@@ -431,6 +582,8 @@ async def download_search_result(
                 **qbit_options,
             )
     except Exception as exc:
+        if unattached_show_season:
+            await db.rollback()
         raise AppError("DOWNLOAD_SUBMISSION_FAILED", f"Could not submit torrent: {exc}", status_code=503) from exc
     finally:
         if torznab is not None:
@@ -463,6 +616,11 @@ async def download_search_result(
             )
         result.target_entity_type = "movie"
         result.target_entity_id = committed_movie.id
+    elif unattached_show_season:
+        if target_show is None or target_season is None:
+            raise AppError("SEARCH_TARGET_INVALID", "The Show season target could not be committed.", status_code=409)
+        result.target_entity_type = "season"
+        result.target_entity_id = target_season.id
 
     result.selected_at = now
     result.selected_download_client_id = client.id
@@ -484,6 +642,7 @@ async def download_search_result(
         "download_client_name": client.name,
         "category": selected_category,
         "category_destination": category_destination,
+        "season_number": target_season_number if unattached_show_season else None,
         "download_client_options": {
             "recent": recent,
             "queue_position": "first" if add_to_top else "last",
@@ -518,5 +677,7 @@ async def download_search_result(
         status="submitted",
         selected_at=now,
         movie_id=result.target_entity_id if result.target_entity_type == "movie" else None,
+        show_id=target_show.id if target_show is not None else None,
+        season_id=target_season.id if target_season is not None else None,
         category=selected_category,
     )

@@ -12,6 +12,29 @@ class MovieAcquisitionSearchRequest(BaseModel):
     quality_profile_id: UUID
 
 
+class ShowSeasonAcquisitionSearchRequest(BaseModel):
+    tmdb_id: int = Field(gt=0)
+    quality_profile_id: UUID
+    season_number: int = Field(ge=0)
+
+
+class ShowAcquisitionSeasonPreview(BaseModel):
+    season_number: int
+    title: str | None = None
+    episode_count: int = 0
+    air_date: str | None = None
+    poster_ref: str | None = None
+
+
+class ShowAcquisitionPreviewResponse(BaseModel):
+    tmdb_id: int
+    title: str
+    year: int | None = None
+    overview: str | None = None
+    poster_ref: str | None = None
+    seasons: list[ShowAcquisitionSeasonPreview]
+
+
 
 class SearchResultResponse(BaseModel):
     id: UUID
@@ -78,4 +101,6 @@ class SearchResultDownloadResponse(BaseModel):
     status: str
     selected_at: datetime
     movie_id: UUID | None = None
+    show_id: UUID | None = None
+    season_id: UUID | None = None
     category: str | None = None
