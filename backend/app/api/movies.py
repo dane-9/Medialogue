@@ -80,13 +80,38 @@ async def list_movies(
             statement = statement.where(Movie.tags.any(Tag.id == tag_id))
     movies = list((await db.scalars(statement)).unique().all())
     problems = await _problem_counts(db, [movie.id for movie in movies])
-    items = [_summary(movie, problems.get(movie.id, 0)) for movie in movies]
+    incoming_rows = (
+        await db.execute(
+            select(MovieRelease.movie_id, MovieRelease.parse_snapshot)
+            .join(MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id == MovieRelease.id)
+            .where(
+                MovieRelease.movie_id.in_([movie.id for movie in movies]),
+                MovieReleaseTorrent.association_type == AssociationType.INCOMING,
+            )
+            .order_by(MovieReleaseTorrent.created_at.desc())
+        )
+    ).all() if movies else []
+    incoming_kinds: dict[UUID, str] = {}
+    for movie_id, parse_snapshot in incoming_rows:
+        raw_kind = (parse_snapshot or {}).get("incoming_kind")
+        kind = "replacement" if str(raw_kind).casefold() == "replacement" else "release"
+        # A replacement is the more useful card-level signal when a title has
+        # more than one incoming association.
+        if movie_id not in incoming_kinds or kind == "replacement":
+            incoming_kinds[movie_id] = kind
+    items = [_summary(movie, problems.get(movie.id, 0), incoming_kinds.get(movie.id)) for movie in movies]
     if state:
         items = [item for item in items if item.state.casefold() == state.casefold()]
     reverse = sort.startswith("-")
     key = sort.lstrip("-")
     if key == "year":
         items.sort(key=lambda item: (item.year or 0, item.title.casefold()), reverse=reverse)
+    elif key == "quality":
+        items.sort(key=lambda item: (item.current_quality or "", item.title.casefold()), reverse=reverse)
+    elif key == "last_observed":
+        items.sort(key=lambda item: (item.last_observed_at.isoformat() if item.last_observed_at else "", item.title.casefold()), reverse=reverse)
+    elif key == "problems":
+        items.sort(key=lambda item: (item.problem_count, item.title.casefold()), reverse=reverse)
     else:
         items.sort(key=lambda item: item.title.casefold(), reverse=reverse)
     total = len(items)
@@ -223,7 +248,7 @@ async def get_movie(
             .limit(20)
         )
     ).all()
-    summary = _summary(movie, problem_count).model_dump()
+    summary_model = _summary(movie, problem_count)
     incoming_rows = (
         await db.execute(
             select(MovieReleaseTorrent, MovieRelease, Torrent)
@@ -268,6 +293,14 @@ async def get_movie(
                 "incoming_kind": release.parse_snapshot.get("incoming_kind") or "release",
             }
         )
+
+    incoming_kind = next(
+        ("replacement" if str(item.get("incoming_kind")).casefold() == "replacement" else "release" for item in incoming),
+        None,
+    )
+    summary_model.incoming = bool(incoming)
+    summary_model.incoming_kind = incoming_kind
+    summary = summary_model.model_dump(exclude={"last_observed_at"})
 
     torrent_rows = (
         await db.execute(
@@ -431,19 +464,33 @@ async def get_movie_events(
 async def _problem_counts(db: AsyncSession, movie_ids: list[UUID]) -> dict[UUID, int]:
     if not movie_ids:
         return {}
-    rows = await db.execute(
-        select(Problem.entity_id, func.count())
-        .where(
-            Problem.entity_type == "movie",
-            Problem.entity_id.in_(movie_ids),
-            Problem.status == ProblemStatus.OPEN,
+    release_rows = (
+        await db.execute(
+            select(MovieRelease.id, MovieRelease.movie_id).where(MovieRelease.movie_id.in_(movie_ids))
         )
-        .group_by(Problem.entity_id)
+    ).all()
+    release_to_movie = {release_id: movie_id for release_id, movie_id in release_rows}
+    release_ids = list(release_to_movie)
+    rows = await db.execute(
+        select(Problem.entity_type, Problem.entity_id, func.count())
+        .where(
+            Problem.status == ProblemStatus.OPEN,
+            or_(
+                (Problem.entity_type == "movie") & Problem.entity_id.in_(movie_ids),
+                (Problem.entity_type == "movie_release") & Problem.entity_id.in_(release_ids),
+            ),
+        )
+        .group_by(Problem.entity_type, Problem.entity_id)
     )
-    return {entity_id: count for entity_id, count in rows}
+    counts: dict[UUID, int] = {}
+    for entity_type, entity_id, count in rows:
+        movie_id = entity_id if entity_type == "movie" else release_to_movie.get(entity_id)
+        if movie_id is not None:
+            counts[movie_id] = counts.get(movie_id, 0) + count
+    return counts
 
 
-def _summary(movie: Movie, problem_count: int) -> MovieSummaryResponse:
+def _summary(movie: Movie, problem_count: int, incoming_kind: str | None = None) -> MovieSummaryResponse:
     active = [
         release
         for release in movie.releases
@@ -488,6 +535,10 @@ def _summary(movie: Movie, problem_count: int) -> MovieSummaryResponse:
     if current:
         raw_confidence = current.parse_snapshot.get("identity_confidence")
         confidence = float(raw_confidence) if raw_confidence is not None else None
+    last_observed = max(
+        (directory.last_seen_at for release in active for directory in release.directories),
+        default=None,
+    )
     return MovieSummaryResponse(
         id=movie.id,
         resource_id=str(movie.tmdb_id or movie.id),
@@ -506,6 +557,9 @@ def _summary(movie: Movie, problem_count: int) -> MovieSummaryResponse:
         problem_count=problem_count,
         poster_ref=movie.poster_ref,
         tags=sorted(movie.tags, key=lambda item: item.name.casefold()),
+        incoming=incoming_kind is not None,
+        incoming_kind=incoming_kind,
+        last_observed_at=last_observed,
     )
 
 

@@ -112,6 +112,7 @@ class ShowSummaryResponse(BaseModel):
     problem_count: int = 0
     poster_ref: str | None = None
     revision: int
+    last_observed_at: datetime | None = None
 
 
 class ShowDetailResponse(ShowSummaryResponse):
