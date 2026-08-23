@@ -18,6 +18,19 @@ export type UrlSetter<T> = (next: T | ((previous: T) => T)) => void
 const resolve = <T,>(next: T | ((previous: T) => T), previous: T): T =>
   typeof next === 'function' ? (next as (previous: T) => T)(previous) : next
 
+/** Apply related query-string changes as one navigation. */
+export function updateUrlParams(
+  current: URLSearchParams,
+  changes: Record<string, string | null | undefined>,
+): URLSearchParams {
+  const updated = new URLSearchParams(current)
+  Object.entries(changes).forEach(([key, value]) => {
+    if (value) updated.set(key, value)
+    else updated.delete(key)
+  })
+  return updated
+}
+
 export function useUrlState(key: string, fallback = ''): [string, UrlSetter<string>] {
   const [params, setParams] = useSearchParams()
   const value = params.get(key) ?? fallback
