@@ -214,13 +214,15 @@ export default function CustomFormatsPageView() {
     setEditorOpen(true)
   }
 
-  const duplicateFormat = () => {
+  // Copying is offered both from the open editor and from a card, so the
+  // subject is passed in rather than assumed to be whatever is being edited.
+  const duplicateFormat = (source: CustomFormat = draft) => {
     setSelectedId('')
-    setDraft(cloneFormat(draft))
+    setDraft(cloneFormat(source))
     setEditorSectionId(editorSectionId || sections[0]?.id || '')
     setTestResult(null)
     setTestAllResult(null)
-    setMessage('Duplicated as an unsaved Custom Format.')
+    setMessage(`Copy of ${source.name} created. It is not saved yet.`)
     setEditorOpen(true)
   }
 
@@ -416,7 +418,7 @@ export default function CustomFormatsPageView() {
           if (filter.trim() && !sectionFormats.length) return null
           return <section className="cf-section" key={section.id}>
             <div className="cf-section-head"><div><h2>{section.name}</h2><span>{sectionFormats.length} format{sectionFormats.length === 1 ? '' : 's'}</span></div></div>
-            {sectionFormats.length ? <div className="cf-card-grid">{sectionFormats.map((format) => <FormatCard key={format.id} format={format} toggling={togglingIds.has(format.id)} onToggle={() => void toggleFormat(format)} onOpen={() => chooseFormat(format)} />)}</div> : <div className="cf-section-empty">No formats in this section.</div>}
+            {sectionFormats.length ? <div className="cf-card-grid">{sectionFormats.map((format) => <FormatCard key={format.id} format={format} toggling={togglingIds.has(format.id)} onToggle={() => void toggleFormat(format)} onOpen={() => chooseFormat(format)} onCopy={() => duplicateFormat(format)} />)}</div> : <div className="cf-section-empty">No formats in this section.</div>}
           </section>
         })}</div>}
 
@@ -457,7 +459,7 @@ export default function CustomFormatsPageView() {
           <strong>{draft.enabled ? 'Enabled' : 'Disabled'}</strong>
         </div>
         {draft.id && !draft.builtin ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
-        {draft.id ? <Button variant="ghost" onClick={duplicateFormat} disabled={saving}>Duplicate</Button> : null}
+        {draft.id ? <Button variant="ghost" icon="copy" onClick={() => duplicateFormat()} disabled={saving}>Create a Copy</Button> : null}
         {draft.id ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
         <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
@@ -537,12 +539,19 @@ export default function CustomFormatsPageView() {
 }
 
 /** One format at a glance: what it is, what it matches, and where it is used. */
-function FormatCard({ format, toggling, onToggle, onOpen }: { format: CustomFormat; toggling: boolean; onToggle: () => void; onOpen: () => void }) {
+function FormatCard({ format, toggling, onToggle, onOpen, onCopy }: { format: CustomFormat; toggling: boolean; onToggle: () => void; onOpen: () => void; onCopy: () => void }) {
   return <article className={`cf-card ${format.enabled ? '' : 'cf-card-off'}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen() } }}>
     <div className="cf-card-head">
       <strong>{format.name}</strong>
       <span className="cf-card-badges">
         {format.builtin && <Badge tone="blue">Built-in</Badge>}
+        <button
+          type="button"
+          className="icon-button cf-card-copy"
+          aria-label={`Create a copy of ${format.name}`}
+          title="Create a copy"
+          onClick={(event) => { event.stopPropagation(); onCopy() }}
+        ><Icon name="copy" size={15} /></button>
         <button type="button" className={`badge cf-card-toggle ${format.enabled ? 'badge-green' : ''}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}><span className="badge-dot" />{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>
       </span>
     </div>

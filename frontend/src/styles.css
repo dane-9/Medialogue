@@ -2626,3 +2626,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .problems-identity-poster { width: 74px; }
   .problems-tmdb-search { grid-template-columns: 1fr; }
 }
+
+/* Copy action on a format card — sits with the badges, above the card's own
+   click target so it never opens the editor by accident. */
+.cf-card-copy { width: 22px; height: 22px; color: var(--faint); }
+.cf-card-copy:hover { color: var(--accent-text); background: var(--accent-soft); }
