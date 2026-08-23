@@ -110,6 +110,11 @@ def test_tv_boundaries_and_multi_episode():
     assert season.episodes == ()
     assert season.provider == "AMZN"
 
+    worded_pack = parse_release("Tyler Perry's Zatima Season 4 2160p AMZN WEB-DL DD+ 5.1 H.265-Kitsune")
+    assert worded_pack.title == "Tyler Perry's Zatima"
+    assert worded_pack.season == 4
+    assert worded_pack.episodes == ()
+
     episode = parse_release("Hey Boo S01E02 Nikita Iman 2160p WOWP WEB-DL AAC 2.0 H.264-Kitsune")
     assert episode.title == "Hey Boo"
     assert episode.season == 1

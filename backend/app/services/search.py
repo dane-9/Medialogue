@@ -412,6 +412,15 @@ async def _query_indexer(
             result for result in results
             if result.seeders is None or result.seeders >= indexer.minimum_seeders
         ]
+        # Season interactive search is deliberately season-pack-only. Single
+        # episodes, multi-episode releases, and multi-season/complete-series
+        # torrents are not valid candidates for this workflow.
+        if target.media_type == MediaType.SHOWS and target.season is not None and target.episode is None:
+            eligible = [
+                result
+                for result in eligible
+                if _matches_single_season_pack(result.title, target.season)
+            ]
         return indexer.id, {
             "name": indexer.name,
             "status": "completed",
@@ -422,6 +431,14 @@ async def _query_indexer(
         }
     finally:
         await client.close()
+
+
+def _matches_single_season_pack(release_name: str, season_number: int) -> bool:
+    parsed = parse_release_name(release_name)
+    return (
+        parsed.identity.season_numbers == (season_number,)
+        and not parsed.identity.episode_numbers
+    )
 
 
 async def _store_results(

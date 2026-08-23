@@ -386,6 +386,14 @@ def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], 
     if one_x:
         return int(one_x.group("s")), (int(one_x.group("e")),), one_x.start(), one_x.end()
 
+    worded_season = re.search(
+        rf"(?<![A-Za-z0-9])Season[\s._-]*(?P<s>{_SEASON_NUMBER})(?![A-Za-z0-9])",
+        normalized,
+        re.IGNORECASE,
+    )
+    if worded_season:
+        return int(worded_season.group("s")), (), worded_season.start(), worded_season.end()
+
     season_only = re.search(rf"(?<![A-Za-z0-9])S(?P<s>{_SEASON_NUMBER})(?![A-Za-z0-9])", normalized, re.I)
     if season_only:
         return int(season_only.group("s")), (), season_only.start(), season_only.end()

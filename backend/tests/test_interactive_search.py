@@ -1,7 +1,7 @@
 import asyncio
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -16,10 +16,10 @@ from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.qbittorrent import TorrentCategory
-from app.integrations.tmdb import TMDBMovieMatch
+from app.integrations.tmdb import TMDBEpisodeMetadata, TMDBMovieMatch, TMDBSeasonMetadata, TMDBShowDetails
 from app.integrations.torznab import SearchResult
 from app.main import create_app
-from app.models.domain import IdentityState, MediaProfileOverride, Movie
+from app.models.domain import IdentityState, MediaProfileOverride, Movie, Season, Show
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -90,9 +90,13 @@ def _seed_movie() -> str:
 @dataclass
 class FakeTorznabBehavior:
     results_by_url: dict[str, list[SearchResult]] = field(default_factory=dict)
+    results_by_season: dict[int, list[SearchResult]] = field(default_factory=dict)
     errors_by_url: dict[str, str] = field(default_factory=dict)
     health_title: str = "Prowlarr Test Indexer"
     fetched: list[str] = field(default_factory=list)
+    expected_media_type: str = "movies"
+    expected_tmdb_id: int = 27205
+    expected_query_text: str = "Inception"
 
     def factory(self, url: str, api_key: str, *, timeout: float = 15.0):
         return FakeTorznabClient(self, url, api_key, timeout)
@@ -115,9 +119,11 @@ class FakeTorznabClient:
         error = self.behavior.errors_by_url.get(self.url)
         if error:
             raise RuntimeError(error)
-        assert media_type == "movies"
-        assert tmdb_id == 27205
-        assert "Inception" in query
+        assert media_type == self.behavior.expected_media_type
+        assert tmdb_id == self.behavior.expected_tmdb_id
+        assert self.behavior.expected_query_text in query
+        if season is not None and season in self.behavior.results_by_season:
+            return list(self.behavior.results_by_season[season])
         return list(self.behavior.results_by_url.get(self.url, []))
 
     async def fetch_torrent(self, download_url: str) -> bytes:
@@ -184,6 +190,38 @@ class FakeTMDBClient:
             overview="A dream within a dream.",
             poster_path="/inception.jpg",
         )
+
+    async def get_show(self, tmdb_id: int) -> TMDBShowDetails:
+        assert tmdb_id == 95396
+        return TMDBShowDetails(
+            tmdb_id=95396,
+            title="Severance",
+            original_title="Severance",
+            year=2022,
+            overview="Employees split their work and home memories.",
+            poster_path="/severance.jpg",
+            tvdb_id=371980,
+            seasons=(
+                TMDBSeasonMetadata(season_number=0, title="Specials", episode_count=1, air_date=date(2022, 2, 1)),
+                TMDBSeasonMetadata(season_number=1, title="Season 1", episode_count=9, air_date=date(2022, 2, 18)),
+                TMDBSeasonMetadata(season_number=2, title="Season 2", episode_count=10, air_date=date(2025, 1, 17)),
+            ),
+        )
+
+    async def get_season(self, tmdb_id: int, season_number: int) -> list[TMDBEpisodeMetadata]:
+        assert tmdb_id == 95396
+        counts = {0: 1, 1: 9, 2: 10}
+        return [
+            TMDBEpisodeMetadata(
+                tmdb_id=95396000 + season_number * 100 + episode,
+                season_number=season_number,
+                episode_number=episode,
+                title=f"Episode {episode}",
+                air_date=date(2025 if season_number == 2 else 2022, 1, min(episode, 28)),
+                overview=None,
+            )
+            for episode in range(1, counts[season_number] + 1)
+        ]
 
     async def close(self):
         return None
@@ -573,5 +611,161 @@ def test_unattached_movie_search_commits_only_after_explicit_qbit_download(clien
         assert repeated.json()["status"] == "already_submitted"
         assert repeated.json()["movie_id"] == submitted.json()["movie_id"]
         assert len(qbit_behavior.submissions) == 1
+    finally:
+        client.app.dependency_overrides.clear()
+
+
+def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(client: TestClient) -> None:
+    headers = _login(client)
+    configured = client.put(
+        "/api/v1/integrations/tmdb",
+        headers=headers,
+        json={"api_key": "test-key", "enabled": True},
+    )
+    assert configured.status_code == 200, configured.text
+
+    profile = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={"name": "Manual Show Search"},
+    )
+    assert profile.status_code == 201, profile.text
+    profile_id = profile.json()["id"]
+
+    indexer_url = "http://prowlarr.test/shows/api"
+    _create_indexer(client, headers, name="Shows", url=indexer_url, scope="shows")
+    behavior = FakeTorznabBehavior(
+        expected_media_type="shows",
+        expected_tmdb_id=95396,
+        expected_query_text="Severance",
+        results_by_season={
+            1: [
+                SearchResult(
+                    guid="s1-pack",
+                    title="Severance S01 2160p ATVP WEB-DL DDP5.1 H.265-GROUP",
+                    download_url="http://prowlarr.test/download/s1-pack",
+                    size=45_000_000_000,
+                    seeders=50,
+                    published=None,
+                ),
+                SearchResult(
+                    guid="s1-episode",
+                    title="Severance S01E01 2160p ATVP WEB-DL DDP5.1 H.265-GROUP",
+                    download_url="http://prowlarr.test/download/s1e1",
+                    size=5_000_000_000,
+                    seeders=100,
+                    published=None,
+                ),
+                SearchResult(
+                    guid="multi-season",
+                    title="Severance S01-S02 2160p ATVP WEB-DL DDP5.1 H.265-GROUP",
+                    download_url="http://prowlarr.test/download/s1-s2",
+                    size=90_000_000_000,
+                    seeders=70,
+                    published=None,
+                ),
+            ],
+            2: [
+                SearchResult(
+                    guid="s2-pack",
+                    title="Severance S02 2160p ATVP WEB-DL DDP5.1 H.265-GROUP",
+                    download_url="http://prowlarr.test/download/s2-pack",
+                    size=48_000_000_000,
+                    seeders=60,
+                    published=None,
+                ),
+            ],
+        },
+    )
+    qbit_behavior = FakeQBitBehavior(
+        categories=[TorrentCategory(name="tv", save_path="/downloads/tv", resolved_save_path="/downloads/tv")]
+    )
+    client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: qbit_behavior.factory
+    client.app.dependency_overrides[tmdb_api.get_tmdb_client_factory] = lambda: _fake_tmdb_factory
+    try:
+        qbit_client = client.post(
+            "/api/v1/download-clients",
+            headers=headers,
+            json={
+                "name": "TV",
+                "url": "http://qbit.test:8080",
+                "username": "media",
+                "password": "secret",
+                "scope": "shows",
+                "category": "tv",
+                "enabled": True,
+            },
+        )
+        assert qbit_client.status_code == 201, qbit_client.text
+        qbit_client_id = qbit_client.json()["id"]
+
+        preview = client.get("/api/v1/interactive-search/shows/95396/preview")
+        assert preview.status_code == 200, preview.text
+        assert [row["season_number"] for row in preview.json()["seasons"]] == [0, 1, 2]
+
+        s1 = client.post(
+            "/api/v1/interactive-search/shows/seasons",
+            headers=headers,
+            json={"tmdb_id": 95396, "quality_profile_id": profile_id, "season_number": 1},
+        )
+        assert s1.status_code == 202, s1.text
+        s1_job = client.get(f"/api/v1/search-jobs/{s1.json()['job_id']}")
+        assert s1_job.status_code == 200, s1_job.text
+        assert s1_job.json()["target"]["entity_type"] == "tmdb_show_season"
+        assert s1_job.json()["target"]["season"] == 1
+        # Single episodes and multi-season packs are deliberately filtered out.
+        assert [row["title"] for row in s1_job.json()["results"]] == [
+            "Severance S01 2160p ATVP WEB-DL DDP5.1 H.265-GROUP"
+        ]
+
+        s2 = client.post(
+            "/api/v1/interactive-search/shows/seasons",
+            headers=headers,
+            json={"tmdb_id": 95396, "quality_profile_id": profile_id, "season_number": 2},
+        )
+        assert s2.status_code == 202, s2.text
+        s2_job = client.get(f"/api/v1/search-jobs/{s2.json()['job_id']}")
+        assert s2_job.status_code == 200, s2_job.text
+
+        async def show_before_download():
+            async with db_session.async_session_factory() as db:
+                return await db.scalar(select(Show).where(Show.tmdb_id == 95396))
+
+        assert asyncio.run(show_before_download()) is None
+
+        first = client.post(
+            f"/api/v1/search-results/{s1_job.json()['results'][0]['id']}/download",
+            headers=headers,
+            json={"download_client_id": qbit_client_id, "category": "tv"},
+        )
+        assert first.status_code == 200, first.text
+        show_id = first.json()["show_id"]
+        assert show_id
+        assert first.json()["season_id"]
+
+        second = client.post(
+            f"/api/v1/search-results/{s2_job.json()['results'][0]['id']}/download",
+            headers=headers,
+            json={"download_client_id": qbit_client_id, "category": "tv"},
+        )
+        assert second.status_code == 200, second.text
+        assert second.json()["show_id"] == show_id
+        assert second.json()["season_id"] != first.json()["season_id"]
+        assert [submission["category"] for submission in qbit_behavior.submissions] == ["tv", "tv"]
+
+        async def committed_state():
+            async with db_session.async_session_factory() as db:
+                shows = (await db.scalars(select(Show).where(Show.tmdb_id == 95396))).all()
+                assignment = await db.scalar(select(MediaProfileOverride).where(MediaProfileOverride.show_id == shows[0].id))
+                seasons = (await db.scalars(select(Season).where(Season.show_id == shows[0].id))).all()
+                return shows, assignment, seasons
+
+        shows, assignment, seasons = asyncio.run(committed_state())
+        assert len(shows) == 1
+        assert str(shows[0].id) == show_id
+        assert assignment is not None
+        assert str(assignment.quality_profile_id) == profile_id
+        assert {season.season_number for season in seasons} == {0, 1, 2}
     finally:
         client.app.dependency_overrides.clear()

@@ -2724,6 +2724,80 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .acquisition-foot > span { color: var(--faint); font-size: var(--t-xs); line-height: 1.4; }
 .acquisition-foot > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s2); }
 
+/* Manual show acquisition — one lazy season-pack search per tab. */
+.show-acquisition-modal { width: min(1180px, calc(100vw - 32px)); }
+.acquisition-specials-toggle {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: #101012;
+}
+.acquisition-specials-toggle > span { display: grid; gap: 4px; }
+.acquisition-specials-toggle strong { color: var(--text); font-size: var(--t-sm); font-weight: 600; }
+.acquisition-specials-toggle small { color: var(--faint); font-size: var(--t-xs); line-height: 1.4; }
+.acquisition-specials-toggle input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.show-season-tabs {
+  display: flex;
+  gap: 7px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+.show-season-tabs button {
+  display: grid;
+  min-width: 108px;
+  min-height: 48px;
+  flex: none;
+  align-content: center;
+  gap: 4px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  background: var(--surface);
+  text-align: left;
+}
+.show-season-tabs button > span { display: flex; align-items: center; gap: 5px; color: var(--text); font-size: var(--t-xs); font-weight: 650; }
+.show-season-tabs button small { color: var(--faint); font: 500 var(--t-micro)/1.2 var(--mono); }
+.show-season-tabs button.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 -2px var(--accent); }
+.show-season-tabs button.selected { border-color: var(--ok-line); background: var(--ok-soft); }
+.show-season-tabs button.selected > span { color: var(--ok); }
+.show-season-tabs button.active.selected { box-shadow: inset 0 -2px var(--ok); }
+.show-season-tabs button.error { border-color: var(--warn-line); }
+.show-season-search-status {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #101012;
+}
+.show-season-search-status > div { display: grid; min-width: 0; gap: 3px; }
+.show-season-search-status strong { font-size: var(--t-sm); }
+.show-season-search-status span { overflow: hidden; color: var(--faint); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.show-season-tab-empty {
+  display: grid;
+  min-height: 360px;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 30px;
+  color: var(--faint);
+  text-align: center;
+}
+.show-season-tab-empty strong { color: var(--text); font-size: var(--t-sm); }
+.show-season-tab-empty p { max-width: 430px; margin: 0; color: var(--muted); font-size: var(--t-xs); line-height: 1.55; }
+.acquisition-result:disabled { opacity: .7; cursor: default; }
+
+
 @media (max-width: 820px) {
   .acquisition-modal { width: min(100% - 16px, 720px); max-height: calc(100vh - 16px); }
   .acquisition-head { grid-template-columns: 36px minmax(0, 1fr) 36px; }
@@ -2738,6 +2812,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .acquisition-result { grid-template-columns: minmax(0, 1fr) 95px 58px; }
   .acquisition-result-stat, .acquisition-result > .badge { display: none; }
   .acquisition-search-toolbar { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .show-season-search-status { align-items: flex-start; flex-direction: column; }
   .acquisition-foot { align-items: stretch; flex-direction: column; }
   .acquisition-foot > div { justify-content: stretch; }
   .acquisition-foot > div > button { flex: 1; }

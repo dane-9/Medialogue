@@ -336,6 +336,23 @@ export interface DownloadClientCategory {
   isDefault: boolean
 }
 
+export interface ShowAcquisitionSeasonPreview {
+  seasonNumber: number
+  title?: string
+  episodeCount: number
+  airDate?: string
+  posterRef?: string
+}
+
+export interface ShowAcquisitionPreview {
+  tmdbId: number
+  title: string
+  year?: number
+  overview?: string
+  posterRef?: string
+  seasons: ShowAcquisitionSeasonPreview[]
+}
+
 export interface InteractiveSearchResult {
   id: string
   jobId: string
