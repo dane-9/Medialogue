@@ -12,14 +12,14 @@ import { Badge, Button } from './ui'
  */
 export function Field({ label, help, badge, error, wide, children }: PropsWithChildren<{
   label: string
-  help: ReactNode
+  help?: ReactNode
   badge?: string
   error?: string
   wide?: boolean
 }>) {
   return <div className={`field ${wide ? 'field-wide' : ''}`}>
     <div className="field-head"><span>{label}</span>{badge && <span className="field-optional">{badge}</span>}</div>
-    <div className="field-help">{help}</div>
+    {help && <div className="field-help">{help}</div>}
     {children}
     {error && <div className="field-error"><Icon name="alert" size={13} />{error}</div>}
   </div>

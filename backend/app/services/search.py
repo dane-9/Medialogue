@@ -418,6 +418,8 @@ async def _store_results(
     profile_scores = {str(key): int(value) for key, value in (profile_snapshot.get("profile_scores") or {}).items()}
     score_overrides = {str(key): int(value) for key, value in (profile_snapshot.get("score_overrides") or {}).items()}
     minimum_quality = profile_snapshot.get("minimum_quality")
+    quality_order = [str(value) for value in (profile_snapshot.get("quality_order") or [])]
+    quality_preferences = {name: len(quality_order) - index for index, name in enumerate(quality_order)}
 
     for result in results:
         guid = (result.guid or result.download_url or result.title).strip()
@@ -426,6 +428,13 @@ async def _store_results(
         seen.add(guid)
         parsed = parse_release_name(result.title)
         warnings = list(parsed.warnings)
+        candidate_quality = parsed.quality.canonical
+        quality_allowed = not quality_order or candidate_quality in quality_preferences
+        quality_preference = quality_preferences.get(candidate_quality, -1 if quality_order else 0)
+        if quality_order and not quality_allowed:
+            warnings.append(
+                f"Quality not enabled in this profile: {candidate_quality or 'Unknown quality'}."
+            )
         if not result.download_url:
             warnings.append("No downloadable torrent URL was supplied by the indexer.")
 
@@ -456,9 +465,10 @@ async def _store_results(
             evidence["profile_score"] = configured
             evidence["override_score"] = int(override) if override is not None else None
             evidence["effective_score"] = effective
-            evidence["contribution"] = effective if item.matched else 0
-            # Avoid suggesting that the Custom Format itself owns a score; all
-            # score fields are explicitly named by their profile/override role.
+            evidence["score_offset"] = int(item.score_offset)
+            evidence["contribution"] = int(item.score_contribution)
+            # Keep the base score explicitly tied to its profile/override; the
+            # Custom Format contributes only its matched rule offset.
             evidence.pop("score", None)
             evidence.pop("configured_score", None)
             format_snapshots.append(evidence)
@@ -473,6 +483,8 @@ async def _store_results(
             "minimum_quality_definition_id": profile_snapshot.get("minimum_quality_definition_id"),
             "minimum_quality": minimum_quality,
             "candidate_quality": parsed.quality.canonical,
+            "quality_allowed": quality_allowed,
+            "quality_preference": quality_preference,
             "minimum_quality_met": floor_status,
             "score_evaluated": True,
             "total_score": int(evaluation.total_score),

@@ -85,6 +85,7 @@ _PROVIDERS: dict[str, str] = {
     "nf": "NF",
     "netflix": "NF",
     "atvp": "ATVP",
+    "bcore": "BCORE",
     "wowp": "WOWP",
     "hmax": "HMAX",
     "max": "MAX",

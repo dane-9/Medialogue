@@ -1,6 +1,5 @@
 import asyncio
 import os
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,8 +38,8 @@ def _user_formats(payload: dict) -> list[dict]:
 
 
 @pytest.fixture
-def client():
-    db_path = tempfile.mktemp(prefix="medialogue-search-", suffix=".db", dir=os.getcwd())
+def client(tmp_path):
+    db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(database_url=database_url, bootstrap_admin=True, config_dir=f"{db_path}.config", secret_key="test-secret-key-123456")
     engine = create_async_engine(database_url)

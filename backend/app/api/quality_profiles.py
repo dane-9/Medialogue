@@ -60,6 +60,21 @@ def _quality_response(row: QualityDefinition | None) -> QualityDefinitionRespons
     )
 
 
+async def _profile_qualities(db: AsyncSession, profile: QualityProfile) -> list[QualityDefinition]:
+    rows = (
+        await db.scalars(
+            select(QualityDefinition)
+            .where(QualityDefinition.enabled.is_(True))
+            .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
+        )
+    ).all()
+    by_id = {str(item.id): item for item in rows}
+    configured = (profile.settings or {}).get("quality_definition_ids")
+    if not isinstance(configured, list):
+        return list(rows)
+    return [by_id[str(item)] for item in configured if str(item) in by_id]
+
+
 async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityProfileResponse:
     # Ensure relationships are available for API calls that loaded a row via get().
     loaded = await db.scalar(
@@ -82,12 +97,15 @@ async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityPro
             )
             for item in loaded.custom_format_scores
         ),
-        key=lambda item: item.custom_format_name.casefold(),
+        # A profile is a ranking policy. Return its strongest preference first
+        # and its strongest penalty last so every client sees the saved order.
+        key=lambda item: (-item.score, item.custom_format_name.casefold()),
     )
     return QualityProfileResponse(
         id=loaded.id,
         name=loaded.name,
         minimum_quality_definition=_quality_response(loaded.minimum_quality_definition),
+        qualities=[_quality_response(item) for item in await _profile_qualities(db, loaded) if item is not None],
         custom_format_scores=scores,
         assigned_titles=await assigned_title_count(db, loaded.id),
         revision=loaded.revision,
@@ -140,11 +158,23 @@ async def create_quality_profile(
 ) -> QualityProfileResponse:
     if await profile_name_exists(db, payload.name):
         raise AppError("QUALITY_PROFILE_NAME_EXISTS", "A Quality Profile with this name already exists.", status_code=409)
+    quality_definition_ids = payload.quality_definition_ids
+    if quality_definition_ids is None:
+        quality_definition_ids = list(
+            (
+                await db.scalars(
+                    select(QualityDefinition.id)
+                    .where(QualityDefinition.enabled.is_(True))
+                    .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
+                )
+            ).all()
+        )
     try:
         await validate_profile_references(
             db,
             minimum_quality_definition_id=payload.minimum_quality_definition_id,
             score_format_ids=[item.custom_format_id for item in payload.custom_format_scores],
+            quality_definition_ids=quality_definition_ids,
         )
     except ValueError as exc:
         raise AppError("INVALID_QUALITY_PROFILE", str(exc), status_code=422) from exc
@@ -153,7 +183,7 @@ async def create_quality_profile(
     row = QualityProfile(
         name=payload.name,
         minimum_quality_definition_id=payload.minimum_quality_definition_id,
-        settings={},
+        settings={"quality_definition_ids": [str(item) for item in quality_definition_ids]},
         revision=1,
     )
     db.add(row)
@@ -196,6 +226,11 @@ async def update_quality_profile(
         raise AppError("NOT_FOUND", "Quality Profile was not found.", status_code=404)
     if payload.expected_revision is not None and payload.expected_revision != row.revision:
         raise AppError("REVISION_CONFLICT", "Quality Profile changed since it was loaded.", status_code=409)
+    requested_quality_ids = (
+        payload.quality_definition_ids
+        if "quality_definition_ids" in payload.model_fields_set and payload.quality_definition_ids is not None
+        else [item.id for item in await _profile_qualities(db, row)]
+    )
     if payload.name is not None:
         if await profile_name_exists(db, payload.name, excluding=row.id):
             raise AppError("QUALITY_PROFILE_NAME_EXISTS", "A Quality Profile with this name already exists.", status_code=409)
@@ -206,10 +241,25 @@ async def update_quality_profile(
                 db,
                 minimum_quality_definition_id=payload.minimum_quality_definition_id,
                 score_format_ids=[],
+                quality_definition_ids=requested_quality_ids,
             )
         except ValueError as exc:
             raise AppError("INVALID_QUALITY_PROFILE", str(exc), status_code=422) from exc
         row.minimum_quality_definition_id = payload.minimum_quality_definition_id
+    if "quality_definition_ids" in payload.model_fields_set and payload.quality_definition_ids is not None:
+        try:
+            await validate_profile_references(
+                db,
+                minimum_quality_definition_id=row.minimum_quality_definition_id,
+                score_format_ids=[],
+                quality_definition_ids=payload.quality_definition_ids,
+            )
+        except ValueError as exc:
+            raise AppError("INVALID_QUALITY_PROFILE", str(exc), status_code=422) from exc
+        row.settings = {
+            **dict(row.settings or {}),
+            "quality_definition_ids": [str(item) for item in payload.quality_definition_ids],
+        }
     if payload.custom_format_scores is not None:
         if len({item.custom_format_id for item in payload.custom_format_scores}) != len(payload.custom_format_scores):
             raise AppError("INVALID_QUALITY_PROFILE", "Each Custom Format can appear only once in a profile.", status_code=422)

@@ -61,11 +61,11 @@ describe('custom-format presentation rules', () => {
     expect(second).not.toBe(first)
   })
 
-  it('treats only Release Title and Release Group conditions as regex conditions', () => {
+  it('supports regex matching for every condition type', () => {
     expect(isRegexConditionType('release_title')).toBe(true)
     expect(isRegexConditionType('release_group')).toBe(true)
-    expect(isRegexConditionType('quality')).toBe(false)
-    expect(isRegexConditionType('release_attribute')).toBe(false)
+    expect(isRegexConditionType('quality')).toBe(true)
+    expect(isRegexConditionType('release_attribute')).toBe(true)
   })
 })
 

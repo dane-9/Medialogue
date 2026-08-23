@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
 import { Icon } from './components/Icon'
+import { PageTopbar } from './components/Shell'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select, Stat } from './components/ui'
 import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
@@ -174,7 +175,7 @@ export function MoviesPage() {
   const filtered = useMemo(() => movies.filter((movie) => (filter === 'All movies' || movie.status === filter) && movie.title.toLowerCase().includes(query.toLowerCase())), [movies, filter, query])
   const missing = movies.filter((movie) => movie.status === 'Missing').length
   const review = movies.filter((movie) => movie.status === 'Conflict' || movie.status === 'Duplicate').length
-  return <Page title="Movies" subtitle="Your library, exactly where it was downloaded." action={<Button variant="primary" icon="plus">Add movie</Button>}>
+  return <Page title="Movies" subtitle="Your library, exactly where it was downloaded.">
     <div className="stats-row stats-row-three"><Stat label="Movies" value={String(movies.length)} tone="blue" /><Stat label="Missing" value={String(missing)} tone="amber" /><Stat label="Needs review" value={String(review)} tone="red" /></div>
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search movies…" /></div><Select value={filter} onChange={(event) => setFilter(event.target.value)}><option>All movies</option><option>Present</option><option>Missing</option><option>Conflict</option><option>Duplicate</option></Select><Select value={tagFilter} onChange={(event) => updateTagFilter(event.target.value)}><option value="">All tags</option>{tags.map((tag) => <option value={tag.name} key={tag.id}>{tag.name}</option>)}</Select>{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')}><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')}><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void loadMovies()}>Refresh</Button></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
@@ -472,10 +473,6 @@ export function ShowsPage() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [adding, setAdding] = useState(false)
-  const [lookupQuery, setLookupQuery] = useState('')
-  const [lookupResults, setLookupResults] = useState<TMDBShowLookup[]>([])
-  const [lookupBusy, setLookupBusy] = useState(false)
   const [countSpecials, setCountSpecials] = useState(true)
   const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
@@ -502,25 +499,11 @@ export function ShowsPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not change Specials counting.') }
     finally { setSpecialsBusy(false) }
   }
-  const lookup = async () => {
-    if (!lookupQuery.trim()) return
-    setLookupBusy(true)
-    try { setLookupResults(await api.lookupShows(lookupQuery.trim())); setError('') }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
-    finally { setLookupBusy(false) }
-  }
-  const add = async (candidate: TMDBShowLookup) => {
-    setLookupBusy(true)
-    try { await api.addShow(candidate.tmdbId); setAdding(false); setLookupQuery(''); setLookupResults([]); await load() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not add show.') }
-    finally { setLookupBusy(false) }
-  }
   const present = items.filter((show) => show.status === 'Present').length
   const missingEpisodes = items.reduce((sum, show) => sum + (show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)), 0)
   const totalEpisodes = items.reduce((sum, show) => sum + show.episodesTotal, 0)
-  return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="primary" icon="plus" onClick={() => setAdding((value) => !value)}>Add show</Button>}>
+  return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files.">
     <div className="stats-row"><Stat label="Shows" value={String(items.length)} detail={`${present} fully present`} tone="blue" /><Stat label="Episodes" value={String(totalEpisodes)} detail={`${items.reduce((sum, show) => sum + show.episodesPresent, 0)} present`} tone="green" /><Stat label="Missing" value={String(missingEpisodes)} detail="Episode-level inventory" tone="amber" /><Stat label="Needs review" value={String(items.filter((show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0).length)} detail="Conflicts and mapping issues" tone="red" /></div>
-    {adding && <Panel title="Add Show from TMDB" eyebrow="METADATA"><div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={lookupQuery} onChange={(event) => setLookupQuery(event.target.value)} placeholder="Search TMDB for a show…" onKeyDown={(event) => { if (event.key === 'Enter') void lookup() }} /></div><Button variant="primary" onClick={() => void lookup()} disabled={lookupBusy}>{lookupBusy ? 'Searching…' : 'Search'}</Button></div>{lookupResults.length ? <div className="history-list">{lookupResults.map((candidate) => <div className="history-row" key={candidate.tmdbId}><span className="history-line" /><div><strong>{candidate.title} {candidate.year ? `(${candidate.year})` : ''}</strong><span>TMDB {candidate.tmdbId}{candidate.originalTitle && candidate.originalTitle !== candidate.title ? ` · ${candidate.originalTitle}` : ''}</span></div><Button variant="ghost" onClick={() => void add(candidate)} disabled={lookupBusy}>Add</Button></div>)}</div> : <span className="muted">Search TMDB, choose the exact Show, then Medialogue will create Seasons and Episodes as Missing until media is discovered.</span>}</Panel>}
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search shows…" /></div><div className="specials-toggle" title={countSpecials ? 'Specials count toward episode totals on every show' : 'Specials are excluded from episode totals. Monitoring is unaffected.'}><span className="specials-toggle-label">Count specials</span><button type="button" className="toggle" aria-pressed={countSpecials} aria-label="Count Specials toward episode totals on every show" disabled={specialsBusy} onClick={() => void toggleSpecials()}><span /></button><span className="toggle-label">{specialsBusy ? 'Applying…' : countSpecials ? 'Yes' : 'No'}</span></div><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }}><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }}><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button></div>
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{items.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>Plex</th><th>Seasons</th><th /></tr></thead><tbody>{items.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td><td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
@@ -2503,4 +2486,4 @@ function Page({ title, subtitle, action, back, backTo = '/movies', children }: {
   const navigate = useNavigate()
   const cameFromApp = typeof window !== 'undefined' && window.history.state?.idx > 0
   const goBack = () => { if (cameFromApp) navigate(-1); else navigate(backTo) }
-  return <div className="page"><div className="page-heading">{back && <button className="back-link" onClick={goBack}><Icon name="arrow" size={15} />{cameFromApp ? 'Back' : back}</button>}<div className="heading-copy"><div className="eyebrow">MEDIALOGUE / {title.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>{action && <div className="heading-actions">{action}</div>}</div>{children}</div> }
+  return <div className="page"><PageTopbar title={title} subtitle={subtitle} action={action} back={back ? (cameFromApp ? 'Back' : back) : undefined} onBack={goBack} />{children}</div> }

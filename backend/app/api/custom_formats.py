@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
+from app.core.custom_format_layout import read_custom_format_layout, save_custom_format_layout
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import CustomFormat as CustomFormatModel
@@ -23,6 +24,8 @@ from app.schemas.custom_formats import (
     CustomFormatExportItem,
     CustomFormatImportBundle,
     CustomFormatImportResponse,
+    CustomFormatLayout,
+    CustomFormatSection,
     CustomFormatResponse,
     CustomFormatScope,
     CustomFormatTestAllRequest,
@@ -43,6 +46,73 @@ from app.services.events import create_event
 from app.services.quality_profiles import refresh_all_release_scores
 
 router = APIRouter(prefix="/custom-formats", tags=["custom-formats"])
+
+
+def _section_id(name: str) -> str:
+    return "".join(character.lower() if character.isalnum() else "-" for character in name).strip("-") or "section"
+
+
+def _default_layout(rows: list[CustomFormatModel]) -> CustomFormatLayout:
+    from app.services.builtin_formats import BUILTIN_FORMATS
+
+    builtin_groups = {item.key: item.group for item in BUILTIN_FORMATS}
+    names = list(dict.fromkeys(item.group for item in BUILTIN_FORMATS))
+    grouped: dict[str, list[UUID]] = {name: [] for name in names}
+    for row in rows:
+        grouped[builtin_groups.get(row.builtin_key, "Release")].append(row.id)
+    return CustomFormatLayout(
+        sections=[
+            CustomFormatSection(id=_section_id(name), name=name, format_ids=grouped[name])
+            for name in names
+            if grouped[name]
+        ]
+    )
+
+
+def _reconciled_layout(rows: list[CustomFormatModel], stored: dict[str, Any] | None) -> CustomFormatLayout:
+    if stored is None:
+        return _default_layout(rows)
+    try:
+        layout = CustomFormatLayout.model_validate({"sections": stored.get("sections")})
+    except Exception as exc:
+        raise AppError("CUSTOM_FORMAT_LAYOUT_INVALID", f"Stored Custom Format layout is invalid: {exc}", status_code=500) from exc
+    known = {row.id for row in rows}
+    seen: set[UUID] = set()
+    sections: list[CustomFormatSection] = []
+    for section in layout.sections:
+        # Older installations had a permanent catch-all section named Custom.
+        # Formats now choose a meaningful section directly, so discard that
+        # legacy wrapper and reconcile its formats into Release below.
+        if section.id.casefold() == "custom" and section.name.strip().casefold() == "custom":
+            continue
+        section_id = section.id
+        section_name = section.name
+        if section.id.casefold() == "hdr" and section.name.strip().casefold() == "hdr":
+            section_id = "dynamic-range"
+            section_name = "Dynamic Range"
+        values = [format_id for format_id in section.format_ids if format_id in known and format_id not in seen]
+        seen.update(values)
+        sections.append(CustomFormatSection(id=section_id, name=section_name, format_ids=values))
+    if not sections:
+        return _default_layout(rows)
+    missing = [row for row in rows if row.id not in seen]
+    if missing:
+        from app.services.builtin_formats import BUILTIN_FORMATS
+
+        builtin_groups = {item.key: item.group for item in BUILTIN_FORMATS}
+        fallback = next((section for section in sections if section.id == "release" or section.name.casefold() == "release"), sections[-1])
+        for row in missing:
+            group = builtin_groups.get(row.builtin_key)
+            target = next(
+                (
+                    section
+                    for section in sections
+                    if group and (section.id == _section_id(group) or section.name.casefold() == group.casefold())
+                ),
+                fallback,
+            )
+            target.format_ids.append(row.id)
+    return CustomFormatLayout(sections=sections)
 
 
 def _scope(value: CustomFormatScope | str) -> MediaScope:
@@ -97,6 +167,7 @@ def _evaluation_response(value: Any, *, include_profile_score: bool = False) -> 
         matched=value.matched,
         conditions=[condition.to_dict() for condition in value.conditions],
         group_results=dict(value.group_results),
+        score_offset=int(value.score_offset),
         profile_score=int(value.score) if include_profile_score else None,
         contribution=int(value.score_contribution) if include_profile_score else None,
         error=value.error,
@@ -192,6 +263,55 @@ async def list_custom_formats(
         total=total,
         pages=(total + page_size - 1) // page_size,
     )
+
+
+@router.get("/layout", response_model=CustomFormatLayout)
+async def get_custom_format_layout(
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> CustomFormatLayout:
+    rows = (await db.scalars(select(CustomFormatModel).order_by(func.lower(CustomFormatModel.name)))).all()
+    return _reconciled_layout(rows, read_custom_format_layout())
+
+
+@router.put("/layout", response_model=CustomFormatLayout)
+async def update_custom_format_layout(
+    payload: CustomFormatLayout,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> CustomFormatLayout:
+    section_ids = [section.id.casefold() for section in payload.sections]
+    section_names = [section.name.strip().casefold() for section in payload.sections]
+    if len(set(section_ids)) != len(section_ids) or len(set(section_names)) != len(section_names):
+        raise AppError("CUSTOM_FORMAT_SECTION_DUPLICATE", "Section names and identifiers must be unique.", status_code=422)
+
+    format_ids = [format_id for section in payload.sections for format_id in section.format_ids]
+    if len(set(format_ids)) != len(format_ids):
+        raise AppError("CUSTOM_FORMAT_LAYOUT_DUPLICATE", "A Custom Format can appear in only one section.", status_code=422)
+    known_ids = set((await db.scalars(select(CustomFormatModel.id))).all())
+    if set(format_ids) != known_ids:
+        raise AppError(
+            "CUSTOM_FORMAT_LAYOUT_INCOMPLETE",
+            "The layout must contain every current Custom Format exactly once.",
+            status_code=409,
+        )
+
+    normalized = CustomFormatLayout(
+        sections=[
+            CustomFormatSection(id=section.id, name=section.name.strip(), format_ids=section.format_ids)
+            for section in payload.sections
+        ]
+    )
+    save_custom_format_layout([section.model_dump(mode="json") for section in normalized.sections])
+    await create_event(
+        db,
+        "custom_format.layout_updated",
+        entity_type="custom_format_layout",
+        message="Custom Format sections and ordering were updated.",
+        details={"section_count": len(normalized.sections), "format_count": len(format_ids)},
+    )
+    await db.commit()
+    return normalized
 
 
 @router.post("", response_model=CustomFormatResponse, status_code=status.HTTP_201_CREATED)

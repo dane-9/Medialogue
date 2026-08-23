@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { HealthIndicator, Job } from '../types'
@@ -29,12 +30,25 @@ const fallbackHealth: HealthIndicator[] = [
   { name: 'Indexers', state: 'unknown', detail: 'Not configured' },
 ]
 
+const PageTopbarHostContext = createContext<HTMLElement | null>(null)
+
+export function PageTopbar({ title, subtitle, action, back, onBack }: { title: string; subtitle?: string; action?: React.ReactNode; back?: string; onBack?: () => void }) {
+  const host = useContext(PageTopbarHostContext)
+  if (!host) return null
+  return createPortal(<div className="topbar-page-heading">
+    {back && <button className="topbar-back" type="button" onClick={onBack} aria-label={back} title={back}><Icon name="arrow" size={15} /></button>}
+    <div className="topbar-page-copy"><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
+    {action && <div className="topbar-page-actions">{action}</div>}
+  </div>, host)
+}
+
 export function AppShell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [jobsOpen, setJobsOpen] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [problemCount, setProblemCount] = useState(0)
+  const [pageTopbarHost, setPageTopbarHost] = useState<HTMLDivElement | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -78,9 +92,9 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   }, [])
 
   const activeJobs = jobs.filter((job) => job.state === 'running' || job.state === 'queued').length
-  const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Workspace'
+  const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
 
-  return <div className="app-shell">
+  return <PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-identity" onClick={() => navigate('/movies')} role="button" tabIndex={0}>
@@ -100,7 +114,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     </aside>
     <main className="main-area">
       <header className="topbar">
-        <div className="crumb"><span className="crumb-muted">Workspace</span><Icon name="chevron" size={13} /><strong>{currentTitle}</strong></div>
+        <div className="topbar-page-host" ref={setPageTopbarHost}>{!pageTopbarHost && <strong>{currentTitle}</strong>}</div>
         <div className="topbar-actions">
           <div className="health-strip">{health.map((item) => <HealthPill key={item.name} item={item} />)}</div>
           <button className="jobs-button" onClick={() => setJobsOpen(true)} aria-label="Open jobs drawer"><Icon name="activity" size={17} /><span>Jobs</span>{activeJobs > 0 && <b>{activeJobs}</b>}</button>
@@ -110,7 +124,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     </main>
     {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
     {jobsOpen && <JobsDrawer jobs={jobs} onClose={() => setJobsOpen(false)} onChanged={(next) => setJobs(next)} onOpenEvents={() => { setJobsOpen(false); navigate('/events') }} />}
-  </div>
+  </div></PageTopbarHostContext.Provider>
 }
 
 // Groups are separated by space alone. With ten destinations the headings were

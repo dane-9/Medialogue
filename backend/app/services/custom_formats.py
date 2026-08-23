@@ -72,6 +72,7 @@ class FormatCondition:
     case_sensitive: bool = False
     id: str = field(default_factory=_new_id)
     group: str | None = None
+    score_offset: int = 0
 
     @property
     def condition_type(self) -> str:
@@ -99,6 +100,7 @@ class FormatCondition:
             case_sensitive=bool(value.get("case_sensitive", False)),
             id=str(value.get("id") or _new_id()),
             group=value.get("group"),
+            score_offset=int(value.get("score_offset", 0) or 0),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -110,6 +112,7 @@ class FormatCondition:
             "required": self.required,
             "negate": self.negate,
             "case_sensitive": self.case_sensitive,
+            "score_offset": self.score_offset,
         }
         if self.pattern is not None:
             value["pattern"] = self.pattern
@@ -191,6 +194,7 @@ class ConditionResult:
     reason: str | None = None
     group: str | None = None
     regex_match: str | None = None
+    score_offset: int = 0
 
     @property
     def passed(self) -> bool:
@@ -218,6 +222,7 @@ class ConditionResult:
             "reason": self.reason,
             "group": self.group,
             "regex_match": self.regex_match,
+            "score_offset": self.score_offset,
         }
 
 
@@ -228,6 +233,7 @@ class CustomFormatEvaluation:
     matched: bool
     conditions: tuple[ConditionResult, ...]
     score: int = 0
+    score_offset: int = 0
     group_results: dict[str, bool] = field(default_factory=dict)
     error: str | None = None
 
@@ -245,7 +251,7 @@ class CustomFormatEvaluation:
 
     @property
     def score_contribution(self) -> int:
-        return self.score if self.matched else 0
+        return self.score + self.score_offset if self.matched else 0
 
     def explain(self) -> dict[str, Any]:
         return self.to_dict()
@@ -257,6 +263,7 @@ class CustomFormatEvaluation:
             "matched": self.matched,
             "score": self.score_contribution,
             "configured_score": self.score,
+            "score_offset": self.score_offset,
             "conditions": [condition.to_dict() for condition in self.conditions],
             "group_results": dict(self.group_results),
             "error": self.error,
@@ -375,7 +382,14 @@ def _structured_evidence(
     if ctype == "audio_channels":
         return ((parsed.audio.channels,) if parsed.audio.channels else ()), "audio channels"
     if ctype == "hdr_type":
-        return parsed.hdr.values, "HDR type"
+        values = list(parsed.hdr.values)
+        # Regexes run against parser evidence, but familiar release tags remain
+        # useful inputs even when the parser stores a descriptive canonical
+        # value.
+        for value in tuple(values):
+            if _fold(value) == "dolby vision":
+                values.extend(("DV", "DoVi"))
+        return tuple(dict.fromkeys(values)), "HDR type"
     if ctype == "release_attribute":
         return parsed.attributes.values, "release attribute"
     # Unknown condition types can still be used against explicit context
@@ -387,41 +401,34 @@ def _structured_evidence(
 def _matches_expected(
     condition: FormatCondition,
     evidence: Sequence[Any],
-) -> tuple[bool, str | None, str | None]:
+) -> tuple[bool, str | None, str | None, int | None]:
     expected = condition.expected
     if expected is None or expected == "":
-        return False, None, "condition has no value/pattern"
-    ctype = condition.condition_type
+        return False, None, "condition has no value/pattern", None
     flags = 0 if condition.case_sensitive else re.IGNORECASE
-    if ctype in {"release_title", "release_group"}:
+    patterns = _as_values(expected)
+    for wanted in patterns:
+        # Definitions saved before all condition types became regex-based used
+        # structured values. Preserve their exact semantics while allowing new
+        # definitions to provide an explicit pattern.
+        expression = str(wanted) if condition.pattern is not None else rf"^(?:{re.escape(str(wanted))})$"
         try:
-            regex = re.compile(str(expected), flags)
+            regex = re.compile(expression, flags)
         except re.error as exc:
-            return False, None, f"invalid regex: {exc}"
+            return False, None, f"invalid regex: {exc}", None
         for item in evidence:
             match = regex.search(str(item))
             if match:
-                return True, str(item), match.group(0)
-        return False, str(evidence[0]) if evidence else None, None
-
-    expected_values = _as_values(expected)
-    for actual in evidence:
-        if actual is None:
-            continue
-        for wanted in expected_values:
-            if _fold(actual) == _fold(wanted):
-                return True, actual, None
-            # HDR aliases and release attributes have a few intentional
-            # shorthand spellings that should remain structured conditions.
-            aliases = {
-                "dv": "dolby vision",
-                "dolbyvision": "dolby vision",
-                "webdl": "web-dl",
-                "webrip": "webrip",
-            }
-            if aliases.get(_fold(actual), _fold(actual)) == aliases.get(_fold(wanted), _fold(wanted)):
-                return True, actual, None
-    return False, evidence[0] if evidence else None, None
+                captured_offset: int | None = None
+                if "score_offset" in match.re.groupindex:
+                    raw_offset = match.group("score_offset")
+                    if raw_offset:
+                        try:
+                            captured_offset = max(-100000, min(100000, int(raw_offset)))
+                        except ValueError:
+                            captured_offset = None
+                return True, str(item), match.group(0), captured_offset
+    return False, evidence[0] if evidence else None, None, None
 
 
 def _evaluate_condition(
@@ -430,7 +437,7 @@ def _evaluate_condition(
     context: Mapping[str, Any],
 ) -> ConditionResult:
     evidence, evidence_label = _structured_evidence(condition, parsed, context)
-    underlying, evidence_value, regex_match = _matches_expected(condition, evidence)
+    underlying, evidence_value, regex_match, captured_offset = _matches_expected(condition, evidence)
     effective = not underlying if condition.negate else underlying
     validation_error = regex_match if regex_match and regex_match.startswith("invalid regex:") else None
     if validation_error:
@@ -457,6 +464,7 @@ def _evaluate_condition(
         reason=reason,
         group=condition.group,
         regex_match=regex_match,
+        score_offset=captured_offset if captured_offset is not None else condition.score_offset,
     )
 
 
@@ -501,12 +509,18 @@ def evaluate_custom_format(
             group_match = group_match and any(item.effective_result for item in optional)
         group_results[key] = group_match
     matched = bool(condition_results) and all(group_results.values())
+    matched_offsets = [
+        item.score_offset
+        for item in condition_results
+        if item.matched and not item.negated
+    ]
     return CustomFormatEvaluation(
         custom_format_id=fmt.id,
         custom_format_name=fmt.name,
         matched=matched,
         conditions=condition_results,
         score=int(score),
+        score_offset=max(matched_offsets) if matched and matched_offsets else 0,
         group_results=group_results,
     )
 
@@ -583,11 +597,12 @@ def validate_condition(condition: FormatCondition | Mapping[str, Any]) -> tuple[
         errors.append("condition type is required")
     if item.expected is None or item.expected == "":
         errors.append("condition value/pattern is required")
-    if item.condition_type in {"release_title", "release_group"} and item.expected:
-        try:
-            re.compile(str(item.expected), 0 if item.case_sensitive else re.IGNORECASE)
-        except re.error as exc:
-            errors.append(f"invalid regex: {exc}")
+    if item.expected:
+        for pattern in _as_values(item.expected):
+            try:
+                re.compile(str(pattern), 0 if item.case_sensitive else re.IGNORECASE)
+            except re.error as exc:
+                errors.append(f"invalid regex: {exc}")
     return tuple(errors)
 
 

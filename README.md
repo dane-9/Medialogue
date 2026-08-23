@@ -140,7 +140,7 @@ Unselected search results expire after 24 hours. Once a result is submitted, its
 
 ## Custom Formats
 
-Custom Formats are persistent, explainable release-matching definitions. A Custom Format itself **does not own a score**. It only answers whether a release matches; signed scores are assigned by Quality Profiles.
+Custom Formats are persistent, explainable release-matching definitions. A Quality Profile owns each format's base score. Individual match rules may add a relative score offset—for example, one Repack rule detects the numeric revision so REPACK contributes `+1`, REPACK2 contributes `+2`, and so on without creating separate formats.
 
 The editor supports these condition types:
 
@@ -155,7 +155,9 @@ Audio Channels      HDR Type
 Release Attribute
 ```
 
-Release Title and Release Group conditions use regular expressions. Regex matching is case-insensitive by default, with an optional case-sensitive setting. Structured types use the shared parser fields rather than regexing the raw release name whenever structured evidence exists.
+Every new condition uses a regular expression against the full raw release title, case-insensitive by default with an optional case-sensitive setting. Older imported or previously saved structured conditions remain supported internally for compatibility, but the editor no longer asks users to choose a parser field.
+
+When multiple rules match, only the highest matching rule offset is applied. A regex may provide an arbitrary numbered offset with the Python-style named group `(?P<score_offset>\d+)`; otherwise the rule's configured offset is used. The final contribution is the Quality Profile score plus that match offset.
 
 Condition behavior follows the intended Radarr-style mental model: required conditions are mandatory, optional conditions of the same type form an OR group, distinct groups combine with AND semantics, and any condition can be negated. Explicit group names are available for advanced cases where two groups of the same condition type must remain independent.
 

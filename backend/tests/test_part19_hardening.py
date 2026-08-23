@@ -1,6 +1,5 @@
 import asyncio
 import os
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -26,8 +25,8 @@ from app.models.domain import (
 
 
 @pytest.fixture
-def client():
-    db_path = tempfile.mktemp(prefix="medialogue-part19-", suffix=".db", dir=os.getcwd())
+def client(tmp_path):
+    db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(database_url=database_url, bootstrap_admin=True, config_dir=f"{db_path}.config", secret_key="part19-secret-key-123456789")
     engine = create_async_engine(database_url)

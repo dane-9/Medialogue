@@ -1,4 +1,4 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientScope, DownloadClientTestResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientScope, DownloadClientTestResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
 
 export class ApiError extends Error {
   status: number
@@ -58,6 +58,10 @@ function record(value: unknown): JsonRecord {
 
 function textValue(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : value === undefined || value === null ? fallback : String(value)
+}
+
+function regexLiteral(value: unknown): string {
+  return textValue(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function numberValue(value: unknown, fallback = 0): number {
@@ -568,11 +572,14 @@ function normalizeCustomFormatCondition(value: unknown): CustomFormatCondition {
     name: textValue(item.name) || undefined,
     type: rawType,
     value: Array.isArray(item.value) ? item.value.map((entry) => textValue(entry)) : (item.value === undefined || item.value === null ? undefined : textValue(item.value)),
-    pattern: textValue(item.pattern || item.regex) || undefined,
+    pattern: textValue(item.pattern || item.regex) || (Array.isArray(item.value)
+      ? `^(?:${item.value.map(regexLiteral).join('|')})$`
+      : item.value === undefined || item.value === null ? undefined : `^(?:${regexLiteral(item.value)})$`),
     required: Boolean(item.required),
     negate: Boolean(item.negate ?? item.negated),
     caseSensitive: Boolean(item.case_sensitive ?? item.caseSensitive),
     group: textValue(item.group) || undefined,
+    scoreOffset: numberValue(item.score_offset ?? item.scoreOffset),
   }
 }
 
@@ -598,6 +605,16 @@ function normalizeCustomFormat(value: unknown): CustomFormat {
   }
 }
 
+function normalizeCustomFormatSection(value: unknown): CustomFormatSection {
+  const item = record(value)
+  const rawIds = item.format_ids || item.formatIds
+  return {
+    id: textValue(item.id),
+    name: textValue(item.name, 'Untitled section'),
+    formatIds: (Array.isArray(rawIds) ? rawIds : []).map((entry) => textValue(entry)).filter(Boolean),
+  }
+}
+
 function normalizeConditionEvaluation(value: unknown): CustomFormatConditionEvaluation {
   const item = record(value)
   return {
@@ -613,6 +630,7 @@ function normalizeConditionEvaluation(value: unknown): CustomFormatConditionEval
     reason: textValue(item.reason) || undefined,
     group: textValue(item.group) || undefined,
     regexMatch: textValue(item.regex_match || item.regexMatch) || undefined,
+    scoreOffset: numberValue(item.score_offset ?? item.scoreOffset),
   }
 }
 
@@ -624,6 +642,7 @@ function normalizeCustomFormatEvaluation(value: unknown): CustomFormatEvaluation
     matched: Boolean(item.matched),
     conditions: Array.isArray(item.conditions) ? item.conditions.map(normalizeConditionEvaluation) : [],
     groupResults: Object.fromEntries(Object.entries(record(item.group_results || item.groupResults)).map(([key, result]) => [key, Boolean(result)])),
+    scoreOffset: numberValue(item.score_offset ?? item.scoreOffset),
     profileScore: optionalNumber(item.profile_score ?? item.profileScore),
     contribution: optionalNumber(item.contribution),
     error: textValue(item.error) || undefined,
@@ -669,10 +688,12 @@ function normalizeQualityProfile(value: unknown): QualityProfile {
   const item = record(value)
   const minimum = record(item.minimum_quality_definition || item.minimumQualityDefinition)
   const scores = Array.isArray(item.custom_format_scores || item.customFormatScores) ? (item.custom_format_scores || item.customFormatScores) as unknown[] : []
+  const qualities = Array.isArray(item.qualities) ? item.qualities : []
   return {
     id: textValue(item.id),
     name: textValue(item.name, 'Unnamed profile'),
     minimumQuality: Object.keys(minimum).length ? normalizeQualityDefinition(minimum) : undefined,
+    qualities: qualities.map(normalizeQualityDefinition),
     customFormatScores: scores.map((value) => {
       const score = record(value)
       return {
@@ -722,12 +743,13 @@ function customFormatConditionPayload(condition: CustomFormatCondition) {
     id: condition.id || undefined,
     name: condition.name || undefined,
     type: condition.type,
-    value: condition.type === 'release_title' || condition.type === 'release_group' ? undefined : condition.value,
-    pattern: condition.type === 'release_title' || condition.type === 'release_group' ? (condition.pattern || (typeof condition.value === 'string' ? condition.value : '')) : undefined,
+    value: undefined,
+    pattern: condition.pattern || (typeof condition.value === 'string' ? condition.value : ''),
     required: condition.required,
     negate: condition.negate,
     case_sensitive: condition.caseSensitive,
     group: condition.group || undefined,
+    score_offset: condition.scoreOffset,
   }
 }
 
@@ -972,9 +994,24 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeCustomFormat)
   },
+  customFormatLayout: async () => {
+    const payload = await request<{ sections?: unknown[] }>('/api/v1/custom-formats/layout')
+    return (payload.sections ?? []).map(normalizeCustomFormatSection)
+  },
+  saveCustomFormatLayout: async (sections: CustomFormatSection[]) => {
+    const payload = await request<{ sections?: unknown[] }>('/api/v1/custom-formats/layout', {
+      method: 'PUT',
+      body: JSON.stringify({ sections: sections.map((section) => ({ id: section.id, name: section.name, format_ids: section.formatIds })) }),
+    })
+    return (payload.sections ?? []).map(normalizeCustomFormatSection)
+  },
   customFormat: (id: string) => request<unknown>(`/api/v1/custom-formats/${encodeURIComponent(id)}`).then(normalizeCustomFormat),
   createCustomFormat: (format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'>) => request<unknown>('/api/v1/custom-formats', { method: 'POST', body: JSON.stringify(customFormatPayload(format)) }).then(normalizeCustomFormat),
   updateCustomFormat: (id: string, format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'> & { expectedRevision?: number }) => request<unknown>(`/api/v1/custom-formats/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ ...customFormatPayload(format), expected_revision: format.expectedRevision }) }).then(normalizeCustomFormat),
+  setCustomFormatEnabled: (id: string, enabled: boolean, expectedRevision?: number) => request<unknown>(`/api/v1/custom-formats/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled, expected_revision: expectedRevision }),
+  }).then(normalizeCustomFormat),
   deleteCustomFormat: (id: string) => request<void>(`/api/v1/custom-formats/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   testCustomFormat: async (format: Pick<CustomFormat, 'id' | 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'>, releaseName: string, indexer?: string): Promise<CustomFormatTestResult> => {
     const payload = await request<{ parsed: Record<string, unknown>; evaluation: unknown }>('/api/v1/custom-formats/test', { method: 'POST', body: JSON.stringify({ release_name: releaseName, indexer, custom_format: { id: format.id || undefined, ...customFormatPayload(format) } }) })
@@ -999,8 +1036,8 @@ export const api = {
   },
   qualityDefinitions: async () => (await request<unknown[]>('/api/v1/quality-definitions')).map(normalizeQualityDefinition),
   qualityProfiles: async () => (await request<unknown[]>('/api/v1/quality-profiles')).map(normalizeQualityProfile),
-  createQualityProfile: (payload: { name: string; minimum_quality_definition_id?: string | null; custom_format_scores: Array<{ custom_format_id: string; score: number }> }) => request<unknown>('/api/v1/quality-profiles', { method: 'POST', body: JSON.stringify(payload) }).then(normalizeQualityProfile),
-  updateQualityProfile: (id: string, payload: { name?: string; minimum_quality_definition_id?: string | null; custom_format_scores?: Array<{ custom_format_id: string; score: number }>; expected_revision?: number }) => request<unknown>(`/api/v1/quality-profiles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeQualityProfile),
+  createQualityProfile: (payload: { name: string; minimum_quality_definition_id?: string | null; quality_definition_ids?: string[]; custom_format_scores: Array<{ custom_format_id: string; score: number }> }) => request<unknown>('/api/v1/quality-profiles', { method: 'POST', body: JSON.stringify(payload) }).then(normalizeQualityProfile),
+  updateQualityProfile: (id: string, payload: { name?: string; minimum_quality_definition_id?: string | null; quality_definition_ids?: string[]; custom_format_scores?: Array<{ custom_format_id: string; score: number }>; expected_revision?: number }) => request<unknown>(`/api/v1/quality-profiles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeQualityProfile),
   deleteQualityProfile: (id: string) => request<void>(`/api/v1/quality-profiles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   movieProfileSettings: (resourceId: string) => request<unknown>(`/api/v1/movies/${encodeURIComponent(resourceId)}/profile-settings`).then(normalizeMediaProfileSettings),
   saveMovieProfileSettings: (resourceId: string, payload: { quality_profile_id?: string | null; minimum_quality_definition_override_id?: string | null; custom_format_score_overrides?: Record<string, number>; expected_revision?: number }) => request<unknown>(`/api/v1/movies/${encodeURIComponent(resourceId)}/profile-settings`, { method: 'PUT', body: JSON.stringify(payload) }).then(normalizeMediaProfileSettings),

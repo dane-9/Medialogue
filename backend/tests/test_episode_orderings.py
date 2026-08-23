@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -111,14 +110,14 @@ class FakeTMDB:
 
 
 @pytest.fixture()
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
     import app.api.tmdb as tmdb_api
     import app.services.tmdb as tmdb_service
 
     monkeypatch.setattr(tmdb_service, "TMDBClient", FakeTMDB)
     monkeypatch.setattr(tmdb_api, "TMDBClient", FakeTMDB)
 
-    db_path = tempfile.mktemp(prefix="medialogue-orderings-", suffix=".db", dir=os.getcwd())
+    db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(
         database_url=database_url,

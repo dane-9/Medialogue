@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -37,10 +38,7 @@ class CustomFormatConditionType(str, Enum):
     RELEASE_ATTRIBUTE = "release_attribute"
 
 
-REGEX_CONDITION_TYPES = {
-    CustomFormatConditionType.RELEASE_TITLE,
-    CustomFormatConditionType.RELEASE_GROUP,
-}
+REGEX_CONDITION_TYPES = set(CustomFormatConditionType)
 
 
 class CustomFormatConditionInput(BaseModel):
@@ -53,22 +51,22 @@ class CustomFormatConditionInput(BaseModel):
     negate: bool = False
     case_sensitive: bool = False
     group: str | None = Field(default=None, max_length=128)
+    score_offset: int = Field(default=0, ge=-100000, le=100000)
 
     @model_validator(mode="after")
     def validate_condition_shape(self) -> "CustomFormatConditionInput":
-        if self.type in REGEX_CONDITION_TYPES:
-            pattern = self.pattern if self.pattern is not None else (self.value if isinstance(self.value, str) else None)
-            if not pattern or not pattern.strip():
-                raise ValueError("release title/group conditions require a regex pattern")
-            self.pattern = pattern
-            self.value = None
-        else:
-            values = self.value if isinstance(self.value, list) else ([self.value] if self.value is not None else [])
-            if not any(str(item).strip() for item in values):
-                raise ValueError(f"{self.type.value} conditions require a value")
-            self.pattern = None
-            # Case sensitivity is an advanced regex setting only.
-            self.case_sensitive = False
+        pattern = self.pattern
+        if pattern is None and isinstance(self.value, str):
+            # A string value from an older definition becomes a literal,
+            # whole-field regex so upgrading never broadens its match.
+            pattern = rf"^(?:{re.escape(self.value)})$"
+        elif pattern is None and isinstance(self.value, list):
+            values = [str(item).strip() for item in self.value if str(item).strip()]
+            pattern = rf"^(?:{'|'.join(re.escape(item) for item in values)})$" if values else None
+        if not pattern or not pattern.strip():
+            raise ValueError(f"{self.type.value} conditions require a regex pattern")
+        self.pattern = pattern
+        self.value = None
         return self
 
 
@@ -99,6 +97,7 @@ class CustomFormatConditionResponse(ORMModel):
     negate: bool
     case_sensitive: bool
     group: str | None = None
+    score_offset: int = 0
 
 
 class CustomFormatResponse(ORMModel):
@@ -115,6 +114,16 @@ class CustomFormatResponse(ORMModel):
     revision: int
     created_at: datetime
     updated_at: datetime
+
+
+class CustomFormatSection(BaseModel):
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=128)
+    format_ids: list[UUID] = Field(default_factory=list, max_length=500)
+
+
+class CustomFormatLayout(BaseModel):
+    sections: list[CustomFormatSection] = Field(min_length=1, max_length=100)
 
 
 class CustomFormatTestDefinition(BaseModel):
@@ -148,6 +157,7 @@ class CustomFormatEvaluationResponse(BaseModel):
     matched: bool
     conditions: list[dict[str, Any]]
     group_results: dict[str, bool]
+    score_offset: int = 0
     profile_score: int | None = None
     contribution: int | None = None
     error: str | None = None

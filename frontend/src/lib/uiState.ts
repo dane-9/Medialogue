@@ -43,8 +43,8 @@ export function duplicatePreviewReady(releaseIds: readonly string[], winnerRelea
   return Boolean(winnerReleaseId) && releaseIds.includes(winnerReleaseId) && duplicateLoserIds(releaseIds, winnerReleaseId).length > 0
 }
 
-export function isRegexConditionType(type: CustomFormatConditionType): boolean {
-  return type === 'release_title' || type === 'release_group'
+export function isRegexConditionType(_type: CustomFormatConditionType): boolean {
+  return true
 }
 
 

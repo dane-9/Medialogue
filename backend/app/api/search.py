@@ -52,6 +52,8 @@ def _search_result_response(row: InteractiveSearchResult) -> SearchResultRespons
         seeders=row.seeders,
         published_at=row.published_at,
         quality=row.quality,
+        quality_allowed=bool((row.custom_format_snapshot or {}).get("quality_allowed", True)),
+        quality_preference=int((row.custom_format_snapshot or {}).get("quality_preference", 0)),
         edition=row.edition,
         release_group=row.release_group,
         custom_format_score=row.custom_format_score,
@@ -219,19 +221,26 @@ async def get_search_job(
         )
         or 0
     )
-    rows = (
+    all_rows = (
         await db.scalars(
             select(InteractiveSearchResult)
             .where(InteractiveSearchResult.job_id == job.id, active_clause)
-            .order_by(
-                InteractiveSearchResult.custom_format_score.desc().nullslast(),
-                InteractiveSearchResult.seeders.desc().nullslast(),
-                InteractiveSearchResult.created_at,
-            )
-            .offset((page - 1) * page_size)
-            .limit(page_size)
         )
     ).all()
+    # Quality order is profile-specific and lives in the immutable search
+    # snapshot. Rank eligible qualities first, then Custom Format score and
+    # seeders. Apply pagination only after that complete ordering.
+    ordered_rows = sorted(
+        all_rows,
+        key=lambda item: (
+            -int(bool((item.custom_format_snapshot or {}).get("quality_allowed", True))),
+            -int((item.custom_format_snapshot or {}).get("quality_preference", 0)),
+            -int(item.custom_format_score or 0),
+            -int(item.seeders or 0),
+            item.created_at,
+        ),
+    )
+    rows = ordered_rows[(page - 1) * page_size:page * page_size]
     summary = dict(job.summary or {})
     indexer_states = summary.get("indexers") or {}
     statuses = [
@@ -280,6 +289,12 @@ async def download_search_result(
     expires_at = result.expires_at if result.expires_at.tzinfo else result.expires_at.replace(tzinfo=timezone.utc)
     if result.selected_at is None and expires_at < now:
         raise AppError("SEARCH_RESULT_EXPIRED", "This search result has expired. Run a new search.", status_code=410)
+    if not bool((result.custom_format_snapshot or {}).get("quality_allowed", True)):
+        raise AppError(
+            "QUALITY_NOT_ALLOWED_BY_PROFILE",
+            f"{result.quality or 'This release quality'} is not enabled in the assigned Quality Profile.",
+            status_code=409,
+        )
     client = await get_configured_download_client(db, payload.download_client_id)
     if client is None or not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", "Download client is not available.", status_code=404)

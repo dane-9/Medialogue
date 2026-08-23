@@ -76,6 +76,31 @@ def test_signed_profile_scores_and_title_overrides():
     assert override.total_score == 550
 
 
+def test_highest_matching_rule_offset_is_added_to_the_profile_score():
+    custom_format = CustomFormat(
+        "Revision",
+        [
+            {"type": "release_title", "pattern": r"\bREPACK\b", "score_offset": 1},
+            {"type": "release_title", "pattern": r"\bREPACK2\b", "score_offset": 2},
+        ],
+    )
+    result = evaluate_custom_format(custom_format, "Show S01E01 REPACK2 1080p WEB-DL-GRP", score=10)
+    assert result.matched
+    assert result.score_offset == 2
+    assert result.score_contribution == 12
+
+
+def test_named_regex_group_can_supply_a_dynamic_score_offset():
+    custom_format = CustomFormat(
+        "Repack",
+        [{"type": "release_title", "pattern": r"\bREPACK(?P<score_offset>\d*)\b", "score_offset": 1}],
+    )
+    plain = evaluate_custom_format(custom_format, "Show S01E01 REPACK 1080p WEB-DL-GRP", score=5)
+    numbered = evaluate_custom_format(custom_format, "Show S01E01 REPACK27 1080p WEB-DL-GRP", score=5)
+    assert (plain.score_offset, plain.score_contribution) == (1, 6)
+    assert (numbered.score_offset, numbered.score_contribution) == (27, 32)
+
+
 def test_indexer_and_release_title_use_context_and_regex():
     custom_format = CustomFormat(
         "Indexer and release",

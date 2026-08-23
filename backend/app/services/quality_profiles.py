@@ -33,6 +33,7 @@ class EffectiveProfile:
     profile_minimum_quality_definition_id: UUID | None
     profile_minimum_quality_name: str | None
     minimum_quality_overridden: bool
+    quality_order: tuple[str, ...]
     profile_scores: dict[str, int]
     overrides: dict[str, int]
     effective_scores: dict[str, int]
@@ -54,6 +55,7 @@ class EffectiveProfile:
             "profile_minimum_quality_definition_id": str(self.profile_minimum_quality_definition_id) if self.profile_minimum_quality_definition_id else None,
             "profile_minimum_quality": self.profile_minimum_quality_name,
             "minimum_quality_overridden": self.minimum_quality_overridden,
+            "quality_order": list(self.quality_order),
             "profile_scores": dict(self.profile_scores),
             "score_overrides": dict(self.overrides),
             "effective_scores": dict(self.effective_scores),
@@ -130,6 +132,26 @@ async def load_effective_profile(
     effective_scores = dict(profile_scores)
     effective_scores.update(overrides)
 
+    quality_rows = (
+        await db.scalars(
+            select(QualityDefinition)
+            .where(QualityDefinition.enabled.is_(True))
+            .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
+        )
+    ).all()
+    quality_by_id = {str(item.id): item for item in quality_rows}
+    configured_quality_ids = (profile.settings or {}).get("quality_definition_ids") if profile else None
+    if isinstance(configured_quality_ids, list):
+        quality_order = tuple(
+            quality_by_id[str(quality_id)].name
+            for quality_id in configured_quality_ids
+            if str(quality_id) in quality_by_id
+        )
+    else:
+        # Profiles created before ordered qualities existed retain the former
+        # behavior: every enabled quality in the application-owned order.
+        quality_order = tuple(item.name for item in quality_rows)
+
     profile_minimum_id = profile.minimum_quality_definition_id if profile else None
     profile_minimum_name = profile.minimum_quality_definition.name if profile and profile.minimum_quality_definition else None
     override_minimum_raw = override_definition.get("minimum_quality_definition_id")
@@ -160,6 +182,7 @@ async def load_effective_profile(
         profile_minimum_quality_definition_id=profile_minimum_id,
         profile_minimum_quality_name=profile_minimum_name,
         minimum_quality_overridden=override_minimum_id is not None,
+        quality_order=quality_order,
         profile_scores=profile_scores,
         overrides=overrides,
         effective_scores=effective_scores,
@@ -202,6 +225,7 @@ async def validate_profile_references(
     *,
     minimum_quality_definition_id: UUID | None,
     score_format_ids: list[UUID],
+    quality_definition_ids: list[UUID] | None = None,
 ) -> None:
     if minimum_quality_definition_id is not None:
         quality = await db.get(QualityDefinition, minimum_quality_definition_id)
@@ -213,6 +237,24 @@ async def validate_profile_references(
         missing = [str(item) for item in score_format_ids if item not in found]
         if missing:
             raise ValueError(f"Custom Format does not exist: {', '.join(missing)}")
+    if quality_definition_ids is not None:
+        if not quality_definition_ids:
+            raise ValueError("A Quality Profile must use at least one quality")
+        if len(set(quality_definition_ids)) != len(quality_definition_ids):
+            raise ValueError("Each quality can appear only once in a profile")
+        rows = (
+            await db.scalars(
+                select(QualityDefinition.id).where(
+                    QualityDefinition.id.in_(quality_definition_ids),
+                    QualityDefinition.enabled.is_(True),
+                )
+            )
+        ).all()
+        missing = [str(item) for item in quality_definition_ids if item not in set(rows)]
+        if missing:
+            raise ValueError(f"Quality Definition does not exist or is disabled: {', '.join(missing)}")
+        if minimum_quality_definition_id is not None and minimum_quality_definition_id not in quality_definition_ids:
+            raise ValueError("The minimum quality warning must be one of the profile's enabled qualities")
 
 
 async def profile_name_exists(db: AsyncSession, name: str, *, excluding: UUID | None = None) -> bool:
@@ -288,7 +330,8 @@ async def evaluate_current_release_score(
                 "profile_score": profile_score,
                 "override_score": int(override) if override is not None else None,
                 "effective_score": effective_score,
-                "contribution": effective_score if item.matched else 0,
+                "score_offset": int(item.score_offset),
+                "contribution": int(item.score_contribution),
                 "conditions": [condition.to_dict() for condition in item.conditions],
             }
         )

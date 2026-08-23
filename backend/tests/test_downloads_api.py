@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,8 +66,8 @@ def _configure_fake_tmdb(monkeypatch):
 
 
 @pytest.fixture
-def client():
-    db_path = tempfile.mktemp(prefix="medialogue-downloads-", suffix=".db", dir=os.getcwd())
+def client(tmp_path):
+    db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
     settings = Settings(
         database_url=database_url,

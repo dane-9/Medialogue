@@ -333,6 +333,12 @@ def test_paramount_plus_is_recognised_under_its_scene_tag() -> None:
         assert parse_release_name(name).provider == "PMTP", name
 
 
+def test_bravia_core_is_recognised_under_its_scene_tag() -> None:
+    from app.parser import parse_release_name
+
+    assert parse_release_name("Movie 2024 2160p BCORE WEB-DL DDP5.1 H.265-GRP").provider == "BCORE"
+
+
 def test_short_provider_tags_are_bounded_by_the_web_dl_marker() -> None:
     from app.parser import parse_release_name
 

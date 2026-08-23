@@ -566,7 +566,12 @@ async def run_recovery_export(
 
         _write_json(temp_root / "config" / "application-config-export.json", configuration)
         config_store = get_integration_config_store()
-        for source in (config_store.config_path, config_store.secrets_path, Path(settings.config_dir) / "setup-state.json"):
+        for source in (
+            config_store.config_path,
+            config_store.secrets_path,
+            Path(settings.config_dir) / "setup-state.json",
+            Path(settings.config_dir) / "custom-format-layout.json",
+        ):
             if source.is_file():
                 destination = temp_root / "config" / "live" / source.name
                 destination.parent.mkdir(parents=True, exist_ok=True)
