@@ -1381,14 +1381,32 @@ export function ProblemsPage() {
   useEffect(() => { void load(1) }, [workflow, reasonFilter, severityFilter, queueStatus])
   useEffect(() => {
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const invalidate = () => reloadCurrent.current()
+    let timer: number | undefined
+    const invalidate = () => {
+      if (timer !== undefined) window.clearTimeout(timer)
+      timer = window.setTimeout(() => reloadCurrent.current(), 150)
+    }
     stream.addEventListener('problem.created', invalidate); stream.addEventListener('problem.updated', invalidate); stream.addEventListener('problem.resolved', invalidate); stream.addEventListener('problem.deleted', invalidate)
-    return () => stream.close()
+    return () => { if (timer !== undefined) window.clearTimeout(timer); stream.close() }
   }, [])
   useEffect(() => { api.plexConfiguration().then(setPlexConfiguration).catch(() => undefined) }, [])
 
   const visible = items.filter((problem) => !search.trim() || [problem.title, problem.subject, problem.detail, problem.code].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
   const current = visible.find((problem) => problem.id === selected) ?? visible[0]
+
+  const removeSolvedProblem = (problem: Problem) => {
+    setItems((existing) => existing.filter((item) => item.id !== problem.id))
+    setTotal((value) => Math.max(0, value - 1))
+    setSelected((value) => value === problem.id ? '' : value)
+    setSummary((value) => {
+      if (queueStatus === 'dismissed') return { ...value, suppressed: Math.max(0, value.suppressed - 1) }
+      return {
+        ...value,
+        open: Math.max(0, value.open - 1),
+        workflows: { ...value.workflows, [problem.workflow]: Math.max(0, (value.workflows[problem.workflow] ?? 0) - 1) },
+      }
+    })
+  }
 
   useEffect(() => {
     setDuplicateMovie(null); setSelectedTmdb(undefined); setEditingPlexIdentity(false); setTmdbMatches([])
@@ -1421,7 +1439,8 @@ export function ProblemsPage() {
     setLoading(true); setMessage('')
     try {
       await api.resolveProblem(current.id, action, { tmdb_id: selectedTmdb.tmdbId })
-      setSelected(''); await load(page, true); setMessage(`Matched to ${selectedTmdb.title}${selectedTmdb.year ? ` (${selectedTmdb.year})` : ''}.`)
+      removeSolvedProblem(current)
+      await load(page, true); setMessage(`Matched to ${selectedTmdb.title}${selectedTmdb.year ? ` (${selectedTmdb.year})` : ''}.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the selected identity.') }
     finally { setLoading(false) }
   }
@@ -1432,7 +1451,8 @@ export function ProblemsPage() {
     try {
       const response = await api.resolveProblem(current.id, 'recheck')
       const jobId = typeof response.resolution?.recheck_parent_job_id === 'string' ? response.resolution.recheck_parent_job_id : ''
-      if (jobId) await api.waitForJobs([jobId])
+      const jobs = jobId ? await api.waitForJobs([jobId]) : []
+      if (jobs.some((job) => job.summary?.condition_cleared === true)) removeSolvedProblem(current)
       await load(page, true)
       setMessage('Evidence recheck finished. Resolved Problems were removed from the queue.')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not recheck this Problem.') }
@@ -1454,7 +1474,8 @@ export function ProblemsPage() {
     try {
       if (action === 'delete') await api.deleteProblem(current.id)
       else await api.resolveProblem(current.id, action)
-      setSelected(''); await load(page, true); setMessage(action === 'dismiss' ? 'Problem suppressed.' : action === 'restore' ? 'Problem restored to the active queue.' : 'Problem record deleted.')
+      removeSolvedProblem(current)
+      await load(page, true); setMessage(action === 'dismiss' ? 'Problem suppressed.' : action === 'restore' ? 'Problem restored to the active queue.' : 'Problem record deleted.')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not ${action} the Problem.`) }
     finally { setLoading(false) }
   }
