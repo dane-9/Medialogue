@@ -15,6 +15,7 @@ from app.schemas.jobs import JobAcceptedResponse, JobResponse
 from app.schemas.storage import (
     RemotePathMappingCreate,
     RemotePathMappingResponse,
+    RemotePathMappingUpdate,
     StorageRootCreate,
     StorageRootResponse,
     StorageRootUpdate,
@@ -211,6 +212,40 @@ async def create_mapping(payload: RemotePathMappingCreate, _: object = Depends(r
         values["local_prefix"] = str(local_prefix)
     mapping = RemotePathMapping(**values)
     db.add(mapping)
+    await db.commit()
+    return RemotePathMappingResponse.model_validate(mapping)
+
+
+@router.patch("/remote-path-mappings/{mapping_id}", response_model=RemotePathMappingResponse)
+async def update_mapping(
+    mapping_id: UUID,
+    payload: RemotePathMappingUpdate,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> RemotePathMappingResponse:
+    mapping = await db.get(RemotePathMapping, mapping_id)
+    if mapping is None:
+        raise AppError("NOT_FOUND", "Remote path mapping was not found.", status_code=404)
+    values = payload.model_dump(exclude_unset=True)
+    target_root_id = values.get("storage_root_id", mapping.storage_root_id)
+    target_local_prefix = values.get("local_prefix", mapping.local_prefix)
+    if target_root_id is not None:
+        root = await db.get(StorageRoot, target_root_id)
+        if root is None:
+            raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected storage root was not found.", status_code=404)
+        local_prefix = Path(target_local_prefix).expanduser().resolve(strict=False)
+        root_path = Path(root.resolved_root_path).expanduser().resolve(strict=False)
+        try:
+            local_prefix.relative_to(root_path)
+        except ValueError as exc:
+            raise AppError(
+                "PATH_MAPPING_OUTSIDE_ROOT",
+                f"A mapping assigned to a storage root must translate into that root. Local prefix {local_prefix} is outside {root_path}.",
+                status_code=422,
+            ) from exc
+        values["local_prefix"] = str(local_prefix)
+    for key, value in values.items():
+        setattr(mapping, key, value)
     await db.commit()
     return RemotePathMappingResponse.model_validate(mapping)
 

@@ -469,7 +469,7 @@ async def reconcile_show_directory(
             if reason in {"not_configured", "unavailable"}:
                 raise TMDBUnavailable(
                     f"TMDB is {reason.replace('_', ' ')}; Show identity cannot be established. "
-                    "Check Settings -> Metadata, then run the scan again."
+                    "Check Settings -> TMDB, then run the scan again."
                 )
             await open_problem(
                 db,

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
 import { Icon } from './components/Icon'
+import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select, Stat } from './components/ui'
 import { ApiError, api } from './api/client'
@@ -1596,34 +1597,39 @@ export function TorrentArchivePage() {
 export function CustomFormatsPage() { return <CustomFormatsPageView /> }
 
 
-// The rail is grouped because nine destinations need the structure, and the
-// old General tab is gone: it held no settings at all, yet it was the tab you
-// landed on, so opening Settings showed you nothing you could change. Its
-// safeguard notice now lives on Storage Roots, beside the access controls it
-// describes.
+// Settings keeps one stable navigation rail. Per-integration collections such
+// as qBittorrent clients and indexers are selectors inside their destination,
+// not another competing navigation sidebar.
 const settingsGroups: Array<{ group: string; items: Array<{ name: string; icon: Parameters<typeof Icon>[0]['name'] }> }> = [
-  { group: 'Connections', items: [
+  { group: 'Media services', items: [
     { name: 'Plex', icon: 'server' },
+    { name: 'TMDB', icon: 'search' },
+  ] },
+  { group: 'Downloads', items: [
     { name: 'qBittorrent', icon: 'server' },
     { name: 'Indexers', icon: 'server' },
-    { name: 'Metadata', icon: 'search' },
   ] },
   { group: 'Library', items: [
     { name: 'Storage Roots', icon: 'folder' },
-    { name: 'Schedules', icon: 'clock' },
   ] },
   { group: 'System', items: [
     { name: 'Security', icon: 'shield' },
-    { name: 'Backup / Recovery', icon: 'shield' },
+    { name: 'Backups', icon: 'archive' },
   ] },
 ]
 const settingsTabs = settingsGroups.flatMap((section) => section.items.map((item) => item.name))
+const legacySettingsTabs: Record<string, string> = {
+  Metadata: 'TMDB',
+  Schedules: 'qBittorrent',
+  'Backup / Recovery': 'Backups',
+}
 
 export function SettingsPage() {
   const [tab, setTab] = useUrlState('tab', 'Plex')
   const [searchParams] = useSearchParams()
-  const current = settingsTabs.includes(tab) ? tab : 'Plex'
-  return <Page title="Settings" subtitle="Configure integrations, storage boundaries, and safe operating defaults.">
+  const normalizedTab = legacySettingsTabs[tab] ?? tab
+  const current = settingsTabs.includes(normalizedTab) ? normalizedTab : 'Plex'
+  return <Page title="Settings" subtitle="Connections, library paths, and system administration.">
     {searchParams.get('setup') === '1' && <div className="setup-return"><Icon name="activity" size={16} /><span>You are configuring first-run setup.</span><Link to="/setup">Back to setup checklist</Link></div>}
     <div className="split split-narrow">
       <nav className="settings-nav">{settingsGroups.map((section) => <div key={section.group}>
@@ -1632,11 +1638,10 @@ export function SettingsPage() {
       </div>)}</nav>
       <section className="panel settings-panel">
         {current === 'Storage Roots' ? <StorageSettings />
-          : current === 'Metadata' ? <MetadataSettings />
+          : current === 'TMDB' ? <MetadataSettings />
           : current === 'Plex' ? <PlexSettings />
           : current === 'qBittorrent' ? <QBittorrentSettings />
           : current === 'Indexers' ? <IndexerSettings />
-          : current === 'Schedules' ? <ScheduleSettings />
           : current === 'Security' ? <SecuritySettings />
           : <BackupRecoverySettings />}
       </section>
@@ -1690,42 +1695,28 @@ function SecuritySettings() {
     </div>
   </>
 }
-function ScheduleSettings() {
-  const [clients, setClients] = useState<DownloadClient[]>([])
-  const [message, setMessage] = useState('')
-  const load = () => api.downloadClients().then(setClients).catch((reason) => setMessage(reason instanceof Error ? reason.message : 'Could not load polling settings.'))
-  useEffect(() => { void load() }, [])
-  const updateInterval = async (client: DownloadClient, seconds: number) => {
-    try {
-      const updated = await api.updateDownloadClient(client.id, { name: client.name, url: client.url, username: client.username, scope: client.scope, category: client.category, tags: client.tags, enabled: client.enabled, poll_interval_seconds: seconds, expected_revision: client.revision })
-      setClients((items) => items.map((item) => item.id === updated.id ? updated : item)); setMessage(`${client.name} polling interval updated.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update polling interval.') }
-  }
-  return <>
-    <SectionHead icon="clock" title="Schedules"
-      description="How often each qBittorrent instance is polled for incoming downloads and completions. Polling is lightweight and set per instance."
-      autosave />
-    {clients.length ? <div className="root-list">{clients.map((client) => <div className="root-row" key={client.id}><div className="root-icon"><Icon name="download" size={16} /></div><div><strong>{client.name}</strong><span>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</span></div><Select value={String(client.pollIntervalSeconds ?? 30)} onChange={(event) => void updateInterval(client, Number(event.target.value))}><option value="5">Every 5 seconds</option><option value="10">Every 10 seconds</option><option value="15">Every 15 seconds</option><option value="30">Every 30 seconds</option><option value="60">Every minute</option><option value="300">Every 5 minutes</option></Select></div>)}</div> : <EmptyState icon="download" title="No polling schedules yet" detail="Add a qBittorrent client first; each client owns its actual reconciliation interval." />}
-    <div className="settings-note"><Icon name="clock" size={15} /><span>A shorter interval detects completions sooner and costs one lightweight Web UI call per instance per tick. It has no effect on download speed.</span></div>
-    <SectionHead icon="folder" title="Full library scans" divided
-      description="Full storage-root scans are deliberately manual. Medialogue never creates a scheduled scan just because a root exists, so a fresh install stays idle and no unexpected large NAS scan can start on its own."
-      status="Manual by design" statusTone="green" />
-    {message && <Note message={{ tone: message.includes('Could not') ? 'error' : 'ok', text: message }} />}
-  </>
-}
 function StorageSettings() {
   const [roots, setRoots] = useState<StorageRoot[]>([])
   const [mappings, setMappings] = useState<RemotePathMapping[]>([])
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [message, setMessage] = useState('')
-  const [adding, setAdding] = useState(false)
+  const [selectedRoot, setSelectedRoot] = useState<StorageRoot | null>(null)
+  const [rootModalOpen, setRootModalOpen] = useState(false)
+  const [rootDirty, setRootDirty] = useState(false)
+  const [rootBusy, setRootBusy] = useState(false)
   const [addingMapping, setAddingMapping] = useState(false)
+  const [selectedMapping, setSelectedMapping] = useState<RemotePathMapping | null>(null)
+  const [mappingDirty, setMappingDirty] = useState(false)
+  const [mappingBusy, setMappingBusy] = useState(false)
   const [name, setName] = useState('Movies')
   const [path, setPath] = useState('/media/movies')
   const [mediaType, setMediaType] = useState<'movies' | 'shows'>('movies')
   const [accessMode, setAccessMode] = useState<'read_only' | 'read_write'>('read_only')
+  const [rootEnabled, setRootEnabled] = useState(true)
+  const [missingGraceChecks, setMissingGraceChecks] = useState(2)
   const [mappingName, setMappingName] = useState('qBittorrent path')
   const [mappingClientId, setMappingClientId] = useState('')
+  const [mappingEnabled, setMappingEnabled] = useState(true)
   const [remotePrefix, setRemotePrefix] = useState('/downloads')
   const [localPrefix, setLocalPrefix] = useState('/media')
   const [mappingRootId, setMappingRootId] = useState('')
@@ -1753,15 +1744,30 @@ function StorageSettings() {
       // Scanning is gated on TMDB because it establishes the identity of
       // everything discovered. Point at the fix rather than restating the code.
       if (reason instanceof ApiError && reason.code === 'TMDB_NOT_CONFIGURED') {
-        setMessage('Configure TMDB before scanning — Medialogue cannot identify discovered media without it. Settings → Metadata.')
+        setMessage('Configure TMDB before scanning — Medialogue cannot identify discovered media without it. Settings → TMDB.')
       } else setMessage(reason instanceof Error ? reason.message : 'Could not start scan.')
     }
   }
-  const addRoot = async () => {
+  const beginAddRoot = () => {
+    setSelectedRoot(null); setName('Movies'); setPath('/media/movies'); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setMissingGraceChecks(2); setRootDirty(false); setRootModalOpen(true); setMessage('')
+  }
+  const editRoot = (root: StorageRoot) => {
+    setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); setMediaType(root.media_type); setAccessMode(root.access_mode); setRootEnabled(root.enabled); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootDirty(false); setRootModalOpen(true); setMessage('')
+  }
+  const closeRootModal = () => { if (!rootDirty || window.confirm('Discard unsaved changes?')) setRootModalOpen(false) }
+  const updateRootDraft = (update: () => void) => { update(); setRootDirty(true) }
+  const saveRoot = async () => {
+    if (!name.trim() || !path.trim()) { setMessage('Name and container path are required.'); return }
+    setRootBusy(true)
     try {
-      const created = await api.createStorageRoot({ name, path, media_type: mediaType, access_mode: accessMode })
-      setRoots((items) => [...items, created]); setAdding(false); setMappingRootId((value) => value || created.id); setMessage(`${created.name} added. Press Initialize & scan once before Medialogue will include this root in automatic reconciliation.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not add root.') }
+      const saved = selectedRoot
+        ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
+        : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
+      setRoots((items) => selectedRoot ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved])
+      setMappingRootId((value) => value || saved.id); setRootDirty(false); setRootModalOpen(false)
+      setMessage(selectedRoot ? `${saved.name} updated.` : `${saved.name} added. Initialize it once before Medialogue includes it in automatic reconciliation.`)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not ${selectedRoot ? 'update' : 'add'} root.`) }
+    finally { setRootBusy(false) }
   }
   const removeRoot = async (root: StorageRoot) => {
     if (!window.confirm(`Remove storage root “${root.name}”?\n\n${root.resolved_root_path}\n\nThis removes only the configured root. Existing media files are never deleted, and previously observed paths remain in Medialogue as detached history.`)) return
@@ -1770,109 +1776,138 @@ function StorageSettings() {
       setRoots((items) => items.filter((item) => item.id !== root.id))
       setMappings((items) => items.map((item) => item.storage_root_id === root.id ? { ...item, storage_root_id: undefined } : item))
       setMappingRootId((value) => value === root.id ? '' : value)
+      setRootModalOpen(false); setSelectedRoot(null)
       setMessage(`${root.name} removed. Media files were untouched.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not remove storage root.') }
   }
-  const addMapping = async () => {
-    if (!remotePrefix.trim() || !localPrefix.trim()) { setMessage('Remote and local prefixes are required.'); return }
+  const beginAddMapping = () => {
+    setSelectedMapping(null); setMappingName('qBittorrent path'); setMappingClientId(''); setMappingEnabled(true); setRemotePrefix('/downloads'); setLocalPrefix('/media'); setMappingRootId(roots[0]?.id ?? ''); setMappingDirty(false); setAddingMapping(true); setMessage('')
+  }
+  const editMapping = (mapping: RemotePathMapping) => {
+    setSelectedMapping(mapping); setMappingName(mapping.name); setMappingClientId(mapping.integration_id ?? ''); setMappingEnabled(mapping.enabled); setRemotePrefix(mapping.remote_prefix); setLocalPrefix(mapping.local_prefix); setMappingRootId(mapping.storage_root_id ?? ''); setMappingDirty(false); setAddingMapping(true); setMessage('')
+  }
+  const closeMapping = () => { if (!mappingDirty || window.confirm('Discard unsaved changes?')) setAddingMapping(false) }
+  const updateMappingDraft = (update: () => void) => { update(); setMappingDirty(true) }
+  const saveMapping = async () => {
+    if (!mappingName.trim() || !remotePrefix.trim() || !localPrefix.trim()) { setMessage('Name, remote prefix, and Medialogue prefix are required.'); return }
+    setMappingBusy(true)
     try {
-      const created = await api.createRemotePathMapping({
+      const payload = {
         name: mappingName.trim() || 'qBittorrent path',
-        integration_type: 'qbittorrent',
-        integration_id: mappingClientId || undefined,
+        integration_type: 'qbittorrent' as const,
+        integration_id: mappingClientId || null,
         remote_prefix: remotePrefix.trim(),
         local_prefix: localPrefix.trim(),
-        storage_root_id: mappingRootId || undefined,
-        enabled: true,
-      })
-      setMappings((items) => [...items, created]); setAddingMapping(false); setMessage('Remote path mapping added. Recheck the affected Problem after the next qBittorrent observation.')
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not add remote path mapping.') }
+        storage_root_id: mappingRootId || null,
+        enabled: mappingEnabled,
+      }
+      const saved = selectedMapping
+        ? await api.updateRemotePathMapping(selectedMapping.id, payload)
+        : await api.createRemotePathMapping({ ...payload, integration_id: mappingClientId || undefined, storage_root_id: mappingRootId || undefined })
+      setMappings((items) => selectedMapping ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved])
+      setMappingDirty(false); setAddingMapping(false); setMessage(selectedMapping ? `${saved.name} updated.` : 'Remote path mapping added. Recheck the affected Problem after the next qBittorrent observation.')
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not ${selectedMapping ? 'update' : 'add'} remote path mapping.`) }
+    finally { setMappingBusy(false) }
   }
   const removeMapping = async (mapping: RemotePathMapping) => {
-    try { await api.deleteRemotePathMapping(mapping.id); setMappings((items) => items.filter((item) => item.id !== mapping.id)); setMessage(`${mapping.name} removed.`) }
+    if (!window.confirm(`Remove remote path mapping “${mapping.name}”?`)) return
+    setMappingBusy(true)
+    try { await api.deleteRemotePathMapping(mapping.id); setMappings((items) => items.filter((item) => item.id !== mapping.id)); setAddingMapping(false); setSelectedMapping(null); setMessage(`${mapping.name} removed.`) }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not remove remote path mapping.') }
+    finally { setMappingBusy(false) }
   }
-
-  const rootRows = roots.map((root) => {
-    const initialized = Boolean(root.last_scan_at)
-    const health = (root.last_health ?? 'unchecked').toLowerCase()
-    const offline = initialized && (health === 'offline' || health === 'unavailable')
-    const affected = root.affected_media_count ?? root.media_affected ?? 0
-    return <div className={`root-row ${offline ? 'root-row-offline' : ''}`} key={root.id}>
-      <div className="root-icon"><Icon name="folder" size={17} /></div>
-      <div><strong>{root.name}</strong><span>{root.resolved_root_path}</span>
-        {!initialized && <small className="root-outage-copy">Not initialized · Medialogue will not scan or reconcile this root automatically</small>}
-        {offline && <small className="root-outage-copy">Storage Root Offline · {affected} media affected</small>}
-      </div>
-      <Badge tone={!initialized ? 'amber' : health === 'available' || health === 'healthy' ? 'green' : offline ? 'red' : health === 'degraded' ? 'amber' : 'neutral'}>{!initialized ? 'Not initialized' : root.last_health ?? 'Unchecked'}</Badge>
-      <Badge tone="neutral">{root.access_mode === 'read_only' ? 'Read-only' : 'Read/write'}</Badge>
-      <span className="root-items">{root.media_type}{root.missing_media_count !== undefined ? ` · ${root.missing_media_count} missing` : ''}</span>
-      <Button variant={initialized ? 'ghost' : 'primary'} icon="play" onClick={() => scan(root)}>{initialized ? 'Scan now' : 'Initialize & scan'}</Button>
-      <Button variant="danger" onClick={() => void removeRoot(root)}>Remove</Button>
-    </div>
-  })
 
   return <>
     <SectionHead icon="folder" title="Storage roots"
       description="The paths Medialogue is allowed to read. Media is never moved or renamed — a root only tells Medialogue where to look. A new root stays idle until you scan it once."
-      action={<Button variant={adding ? 'ghost' : 'primary'} icon="plus" onClick={() => setAdding((value) => !value)}>{adding ? 'Cancel' : 'Add root'}</Button>} />
-    <div className="root-list">{rootRows}{!roots.length && <EmptyState title="No storage roots configured" detail="Add an explicit container-visible Movie or Show root. It will remain idle until you initialize it with its first scan." />}</div>
+      action={<Button variant="primary" icon="plus" onClick={beginAddRoot}>Add root</Button>} />
+    <div className="provider-card-grid storage-root-grid">
+      {roots.map((root) => {
+        const initialized = Boolean(root.last_scan_at)
+        const health = (root.last_health ?? 'unchecked').toLowerCase()
+        const offline = initialized && (health === 'offline' || health === 'unavailable')
+        return <button type="button" className={`provider-card ${root.enabled ? '' : 'provider-card-disabled'} ${offline ? 'storage-root-card-offline' : ''}`} key={root.id} onClick={() => editRoot(root)}>
+          <div className="provider-card-head"><div className="provider-card-icon"><Icon name="folder" size={20} /></div><Badge tone={!initialized ? 'amber' : health === 'available' || health === 'healthy' ? 'green' : offline ? 'red' : health === 'degraded' ? 'amber' : 'neutral'}>{!initialized ? 'Not initialized' : root.last_health ?? 'Unchecked'}</Badge></div>
+          <strong>{root.name}</strong><span>{root.resolved_root_path}</span>
+          <div className="provider-card-meta"><Badge tone="neutral">{root.media_type === 'movies' ? 'Movies' : 'Shows'}</Badge><span>{root.access_mode === 'read_only' ? 'Read-only' : 'Read/write'}</span></div>
+        </button>
+      })}
+      <button type="button" className="provider-card provider-add-card" onClick={beginAddRoot}><Icon name="plus" size={28} /><strong>Add storage root</strong></button>
+    </div>
+    {!roots.length && <p className="provider-empty-copy">No roots configured yet. Add the path as Medialogue sees it inside its container.</p>}
 
-    {adding && <>
-      <SectionHead icon="plus" title="Add a storage root" divided
-        description="Adding a root does not scan it. You initialize the first scan explicitly, so a fresh install never starts a large NAS walk on its own." />
-      <div className="settings-form">
-        <Field label="Name" help="Shown in Medialogue only. Has no effect on the filesystem.">
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <Field label="Container path" help={<>The path <strong>as Medialogue sees it</strong>. Inside Docker this is the container-side mount, not the host path. Example: <code>/media/movies</code></>}>
-          <Input value={path} onChange={(event) => setPath(event.target.value)} />
-        </Field>
-        <Field label="Media type" help="Which library titles discovered under this root belong to.">
-          <Select value={mediaType} onChange={(event) => setMediaType(event.target.value as 'movies' | 'shows')}><option value="movies">Movies</option><option value="shows">Shows</option></Select>
-        </Field>
-        <Field label="Access" help={<><strong>Read-only</strong> detects and reports but can never delete. <strong>Read/write</strong> additionally permits deletion, and only after an explicit preview and confirmation.</>}>
-          <Select value={accessMode} onChange={(event) => setAccessMode(event.target.value as 'read_only' | 'read_write')}><option value="read_only">Read-only — detection only</option><option value="read_write">Read/write — allow explicit confirmed deletion</option></Select>
-        </Field>
+    {rootModalOpen && <Modal wide title={selectedRoot ? selectedRoot.name : 'Add storage root'} eyebrow={selectedRoot ? 'EDIT STORAGE ROOT' : 'NEW STORAGE ROOT'} onClose={closeRootModal} footer={<>
+      <div className="cf-editor-footer-toggle">
+        <button type="button" aria-pressed={rootEnabled} className="toggle" onClick={() => updateRootDraft(() => setRootEnabled((value) => !value))}><span /></button>
+        <strong>{rootEnabled ? 'Enabled' : 'Disabled'}</strong>
       </div>
-      <div className="settings-footer"><Button variant="primary" onClick={addRoot}>Save root</Button></div>
-    </>}
+      {selectedRoot && <Button variant="danger" onClick={() => void removeRoot(selectedRoot)} disabled={rootBusy}>Remove</Button>}
+      {selectedRoot && <Button variant={selectedRoot.last_scan_at ? 'secondary' : 'primary'} icon="play" onClick={() => void scan(selectedRoot)} disabled={rootBusy}>{selectedRoot.last_scan_at ? 'Scan now' : 'Initialize & scan'}</Button>}
+      <span className={`footer-state ${rootDirty ? '' : 'clean'}`}>{selectedRoot ? rootDirty ? 'Unsaved changes' : 'All changes saved' : 'Ready to add'}</span>
+      <Button variant="ghost" onClick={closeRootModal} disabled={rootBusy}>Cancel</Button>
+      <Button variant="primary" onClick={() => void saveRoot()} disabled={rootBusy || Boolean(selectedRoot && !rootDirty)}>{rootBusy ? 'Saving…' : selectedRoot ? 'Save root' : 'Add root'}</Button>
+    </>}>
+      <div className="provider-modal-editor">
+        <SectionHead icon="folder" title={selectedRoot ? selectedRoot.name : 'Add storage root'} description="The container-visible boundary Medialogue is allowed to inspect. Changing this configuration never moves or renames media." status={selectedRoot ? selectedRoot.enabled ? 'Enabled' : 'Disabled' : 'New root'} statusTone={selectedRoot?.enabled ? 'green' : 'neutral'} />
+        <div className="settings-form">
+          <Field label="Name" help="Shown in Medialogue only. Has no effect on the filesystem."><Input value={name} onChange={(event) => updateRootDraft(() => setName(event.target.value))} /></Field>
+          <Field label="Container path" help={<>The absolute path <strong>as Medialogue sees it</strong>, not the host-side Docker path.</>}><Input value={path} onChange={(event) => updateRootDraft(() => setPath(event.target.value))} placeholder="/media/movies" /></Field>
+          <Field label="Media type" help="The library that discoveries under this root belong to."><Select value={mediaType} onChange={(event) => updateRootDraft(() => setMediaType(event.target.value as 'movies' | 'shows'))}><option value="movies">Movies</option><option value="shows">Shows</option></Select></Field>
+          <Field label="Access" help="Read/write permits deletion only through an explicit destructive confirmation."><Select value={accessMode} onChange={(event) => updateRootDraft(() => setAccessMode(event.target.value as 'read_only' | 'read_write'))}><option value="read_only">Read-only — detection only</option><option value="read_write">Read/write — confirmed deletion allowed</option></Select></Field>
+          <Field label="Missing grace checks" help="How many consecutive checks must miss media before it is considered missing."><Select value={String(missingGraceChecks)} onChange={(event) => updateRootDraft(() => setMissingGraceChecks(Number(event.target.value)))}><option value="1">1 check</option><option value="2">2 checks</option><option value="3">3 checks</option><option value="5">5 checks</option><option value="10">10 checks</option></Select></Field>
+        </div>
+        {message && <Note message={{ tone: message.includes('required') || message.includes('Could not') ? 'error' : 'ok', text: message }} />}
+      </div>
+    </Modal>}
 
     <SectionHead icon="arrow" title="Remote path mappings" divided
       description="Only needed when qBittorrent reports a path that does not exist from Medialogue's point of view — typically a different container, or a different host entirely."
-      action={<Button variant="ghost" icon="plus" onClick={() => setAddingMapping((value) => !value)}>{addingMapping ? 'Cancel' : 'Add mapping'}</Button>} />
-    <div className="root-list">{mappings.map((mapping) => {
+      action={<Button variant="primary" icon="plus" onClick={beginAddMapping}>Add mapping</Button>} />
+    <div className="provider-card-grid remote-mapping-grid">{mappings.map((mapping) => {
       const client = clients.find((item) => item.id === mapping.integration_id)
       const root = roots.find((item) => item.id === mapping.storage_root_id)
-      return <div className="root-row" key={mapping.id}>
-        <div className="root-icon"><Icon name="arrow" size={17} /></div>
-        <div><strong>{mapping.name}</strong><span>{mapping.remote_prefix} → {mapping.local_prefix}</span><small>{client?.name ?? 'All qBittorrent clients'} · {root ? `root: ${root.name}` : 'all matching roots'}</small></div>
-        <Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'Enabled' : 'Disabled'}</Badge>
-        <span className="root-items">qBittorrent</span>
-        <Button variant="ghost" onClick={() => void removeMapping(mapping)}>Remove</Button>
-      </div>
-    })}{!mappings.length && <EmptyState title="No remote path mappings" detail="Only add one when qBittorrent reports a path that differs from the media path visible inside Medialogue." />}</div>
-
-    {addingMapping && <>
-    <div className="settings-form">
-      <Field label="Name" help="Shown in Medialogue only.">
-        <Input value={mappingName} onChange={(event) => setMappingName(event.target.value)} />
-      </Field>
-      <Field label="qBittorrent client" help="Which client's reported paths this mapping rewrites. Leave as all clients when every instance uses the same layout.">
-        <Select value={mappingClientId} onChange={(event) => setMappingClientId(event.target.value)}><option value="">All qBittorrent clients</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select>
-      </Field>
-      <Field label="Remote prefix reported by qBittorrent" help="The path prefix exactly as qBittorrent reports it. Copy it from a download's save path. Do not map a parent path that also contains libraries Medialogue cannot reach.">
-        <Input value={remotePrefix} onChange={(event) => setRemotePrefix(event.target.value)} placeholder="/downloads/movies" />
-      </Field>
-      <Field label="Local/container prefix" help="What that prefix corresponds to from Medialogue's point of view.">
-        <Input value={localPrefix} onChange={(event) => setLocalPrefix(event.target.value)} placeholder="/media/movies" />
-      </Field>
-      <Field label="Storage root" badge="optional" wide help="Optionally pin the rewritten path to one root. Leave unset to let Medialogue resolve it against every matching root.">
-        <Select value={mappingRootId} onChange={(event) => setMappingRootId(event.target.value)}><option value="">No explicit root</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
-      </Field>
+      return <button type="button" className={`provider-card ${mapping.enabled ? '' : 'provider-card-disabled'}`} key={mapping.id} onClick={() => editMapping(mapping)}>
+        <div className="provider-card-head"><div className="provider-card-icon"><Icon name="arrow" size={20} /></div><Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
+        <strong>{mapping.name}</strong><span className="remote-mapping-route"><b>{mapping.remote_prefix}</b><Icon name="arrow" size={13} /><b>{mapping.local_prefix}</b></span>
+        <div className="provider-card-meta"><span>{client?.name ?? 'All qBittorrent clients'}</span><span>{root?.name ?? 'Any matching root'}</span></div>
+      </button>
+    })}
+      <button type="button" className="provider-card provider-add-card" onClick={beginAddMapping}><Icon name="plus" size={28} /><strong>Add remote path mapping</strong></button>
     </div>
-    <div className="settings-footer"><Button variant="primary" onClick={addMapping}>Save mapping</Button></div>
-    </>}
+    {!mappings.length && <p className="provider-empty-copy">No mappings configured. Only add one when qBittorrent reports a path that differs from the path visible inside Medialogue.</p>}
+
+    {addingMapping && <Modal wide title={selectedMapping ? selectedMapping.name : 'Add remote path mapping'} eyebrow={selectedMapping ? 'EDIT REMOTE PATH MAPPING' : 'NEW REMOTE PATH MAPPING'} onClose={closeMapping} footer={<>
+      <div className="cf-editor-footer-toggle">
+        <button type="button" aria-pressed={mappingEnabled} className="toggle" onClick={() => updateMappingDraft(() => setMappingEnabled((value) => !value))}><span /></button>
+        <strong>{mappingEnabled ? 'Enabled' : 'Disabled'}</strong>
+      </div>
+      {selectedMapping && <Button variant="danger" onClick={() => void removeMapping(selectedMapping)} disabled={mappingBusy}>Delete</Button>}
+      <span className={`footer-state ${mappingDirty ? '' : 'clean'}`}>{selectedMapping ? mappingDirty ? 'Unsaved changes' : 'All changes saved' : 'Ready to add'}</span>
+      <Button variant="ghost" onClick={closeMapping} disabled={mappingBusy}>Cancel</Button>
+      <Button variant="primary" onClick={() => void saveMapping()} disabled={mappingBusy || Boolean(selectedMapping && !mappingDirty)}>{mappingBusy ? 'Saving…' : selectedMapping ? 'Save mapping' : 'Add mapping'}</Button>
+    </>}>
+      <div className="provider-modal-editor">
+        <SectionHead icon="arrow" title={selectedMapping ? selectedMapping.name : 'Map a reported path'} description="Translate the path reported by qBittorrent into the equivalent path visible to Medialogue." status={selectedMapping ? mappingEnabled ? 'Enabled' : 'Disabled' : 'New mapping'} statusTone={mappingEnabled ? 'green' : 'neutral'} />
+        <div className="settings-form">
+          <Field label="Name" help="Shown in Medialogue only.">
+            <Input value={mappingName} onChange={(event) => updateMappingDraft(() => setMappingName(event.target.value))} />
+          </Field>
+          <Field label="qBittorrent client" help="Which client's reported paths this mapping rewrites. Leave as all clients when every instance uses the same layout.">
+            <Select value={mappingClientId} onChange={(event) => updateMappingDraft(() => setMappingClientId(event.target.value))}><option value="">All qBittorrent clients</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select>
+          </Field>
+          <Field label="Remote prefix" help="The path prefix exactly as qBittorrent reports it. Copy it from a download's save path.">
+            <Input value={remotePrefix} onChange={(event) => updateMappingDraft(() => setRemotePrefix(event.target.value))} placeholder="/downloads/movies" />
+          </Field>
+          <Field label="Medialogue prefix" help="The equivalent path from Medialogue's point of view.">
+            <Input value={localPrefix} onChange={(event) => updateMappingDraft(() => setLocalPrefix(event.target.value))} placeholder="/media/movies" />
+          </Field>
+          <Field label="Storage root" badge="optional" wide help="Pin the rewritten path to one root, or leave unset to resolve it against every matching root.">
+            <Select value={mappingRootId} onChange={(event) => updateMappingDraft(() => setMappingRootId(event.target.value))}><option value="">No explicit root</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
+          </Field>
+        </div>
+        {message && <Note message={{ tone: message.includes('required') || message.includes('Could not') ? 'error' : 'ok', text: message }} />}
+      </div>
+    </Modal>}
 
     {message && <Note message={{ tone: message.includes('Could not') || message.includes('failed') ? 'error' : 'ok', text: message }} />}
     <div className="settings-note"><Icon name="shield" size={15} /><span>Scans and path mappings never move or rename media. Removing a root never touches the files on it — only Medialogue's index of that root is cleared.</span></div>
@@ -2068,6 +2103,7 @@ function QBittorrentSettings() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [dirty, setDirty] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
 
   const loadClients = async (keepSelection = true) => {
     setLoading(true)
@@ -2091,7 +2127,7 @@ function QBittorrentSettings() {
     const client = clients.find((item) => item.id === id)
     setSelectedId(id)
     setDraft(client ? draftFromDownloadClient(client) : emptyDownloadClient)
-    setMessage(''); setDirty(false)
+    setMessage(''); setDirty(false); setEditorOpen(true)
   }
   const updateDraft = <K extends keyof DownloadClientDraft>(key: K, value: DownloadClientDraft[K]) => { setDirty(true); setDraft((current) => ({ ...current, [key]: value })) }
   const payload = () => ({
@@ -2112,7 +2148,7 @@ function QBittorrentSettings() {
     try {
       const value = selectedId ? await api.updateDownloadClient(selectedId, { ...payload(), expected_revision: clients.find((item) => item.id === selectedId)?.revision }) : await api.createDownloadClient(payload())
       setClients((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value])
-      setSelectedId(value.id); setDraft(draftFromDownloadClient(value)); setDirty(false); setMessage(`${value.name} saved. Password is stored server-side and never returned to the browser.`)
+      setSelectedId(value.id); setDraft(draftFromDownloadClient(value)); setDirty(false); setEditorOpen(false); setMessage(`${value.name} saved. Password is stored server-side and never returned to the browser.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save qBittorrent client.'); setMessage('') }
     finally { setBusy(false) }
   }
@@ -2141,6 +2177,18 @@ function QBittorrentSettings() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not refresh qBittorrent health.'); setMessage('') }
     finally { setBusy(false) }
   }
+  const testAll = async () => {
+    if (!clients.length) return
+    setBusy(true); setError(''); setMessage('Testing all qBittorrent clients…')
+    const results = await Promise.allSettled(clients.map((client) => api.refreshDownloadClient(client.id)))
+    setClients((items) => items.map((item, index) => {
+      const result = results[index]
+      return result?.status === 'fulfilled' ? { ...item, health: result.value.status, latency_ms: result.value.latency_ms, last_error: result.value.message, last_checked_at: new Date().toISOString() } : item
+    }))
+    const failedCount = results.filter((result) => result.status === 'rejected').length
+    setMessage(failedCount ? `Tested ${clients.length} clients; ${failedCount} could not be reached.` : `All ${clients.length} qBittorrent clients tested.`)
+    setBusy(false)
+  }
   const remove = async () => {
     if (!selectedId || !window.confirm('Remove this qBittorrent client configuration? Existing torrent history is preserved.')) return
     setBusy(true); setError('')
@@ -2148,27 +2196,46 @@ function QBittorrentSettings() {
       await api.deleteDownloadClient(selectedId)
       const remaining = clients.filter((item) => item.id !== selectedId)
       setClients(remaining); const next = remaining[0]
-      setSelectedId(next?.id ?? ''); setDraft(next ? draftFromDownloadClient(next) : emptyDownloadClient); setMessage('Client configuration removed; torrent history was not changed.')
+      setSelectedId(next?.id ?? ''); setDraft(next ? draftFromDownloadClient(next) : emptyDownloadClient); setEditorOpen(false); setMessage('Client configuration removed; torrent history was not changed.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove qBittorrent client.') }
     finally { setBusy(false) }
   }
   const selected = clients.find((item) => item.id === selectedId)
   const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
   const connectionDetail = selected ? `${selected.health}${selected.latency_ms !== undefined ? ` · ${selected.latency_ms} ms` : ''}${selected.last_success_at ? ` · last success ${formatEvidenceDate(selected.last_success_at)}` : selected.last_checked_at ? ` · checked ${formatEvidenceDate(selected.last_checked_at)}` : ''}` : undefined
-  return <div className="qbit-settings">
-    <div className="split split-flush">
-      <div className="qbit-client-list">
-        <div className="qbit-list-head"><span className="eyebrow">DOWNLOAD CLIENTS</span><Button variant="ghost" icon="plus" onClick={() => { setSelectedId(''); setDraft(emptyDownloadClient); setDirty(false); setMessage(''); setError('') }}>Add client</Button></div>
-        {clients.map((client) => <button className={`qbit-client-item ${selectedId === client.id ? 'selected' : ''}`} key={client.id} onClick={() => selectClient(client.id)}><span className={`health-dot ${client.health === 'healthy' ? 'green' : client.health === 'unavailable' ? 'red' : 'amber'}`} /><span><strong>{client.name}</strong><small>{client.scope === 'movies' ? 'Movies' : 'Shows'} · {client.url}</small></span><Badge tone={client.enabled ? 'green' : 'neutral'}>{client.enabled ? 'On' : 'Off'}</Badge></button>)}
-        {!clients.length && !loading && <EmptyState icon="download" title="No qBittorrent clients" detail="Add a client to observe downloads." />}
-      </div>
+  const beginAdd = () => { setSelectedId(''); setDraft(emptyDownloadClient); setDirty(false); setMessage(''); setError(''); setEditorOpen(true) }
+  const closeEditor = () => { if (!dirty || window.confirm('Discard unsaved changes?')) setEditorOpen(false) }
+  return <div className="provider-settings">
+    <SectionHead icon="download" title="Download clients" description="qBittorrent instances Medialogue observes and uses for explicit grabs." action={<div className="button-row"><Button variant="secondary" onClick={() => void testAll()} disabled={busy || !clients.length}>{busy ? 'Testing…' : 'Test all'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add client</Button></div>} />
+    {error && !editorOpen && <Note message={{ tone: 'error', text: error }} />}
+    {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
+    <div className="provider-card-grid">
+      {clients.map((client) => <button type="button" className={`provider-card ${client.enabled ? '' : 'provider-card-disabled'}`} key={client.id} onClick={() => selectClient(client.id)}>
+        <div className="provider-card-head"><div className="provider-card-icon"><Icon name="download" size={20} /></div><Badge tone={client.enabled ? 'green' : 'neutral'}>{client.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
+        <strong>{client.name}</strong><span>{client.url}</span>
+        <div className="provider-card-meta"><Badge tone="neutral">{client.scope === 'movies' ? 'Movies' : 'Shows'}</Badge><span className={`provider-health ${client.health === 'healthy' ? 'healthy' : client.health === 'unavailable' ? 'error' : ''}`}><i />{client.health}</span></div>
+      </button>)}
+      <button type="button" className="provider-card provider-add-card" onClick={beginAdd}><Icon name="plus" size={28} /><strong>Add qBittorrent client</strong></button>
+    </div>
+    {!clients.length && !loading && <p className="provider-empty-copy">No clients configured yet. Add one to observe downloads and submit grabs.</p>}
 
-      <div className="qbit-editor">
+    {editorOpen && <Modal wide title={selected ? selected.name : 'Add qBittorrent client'} eyebrow={selected ? 'EDIT DOWNLOAD CLIENT' : 'NEW DOWNLOAD CLIENT'} onClose={closeEditor} footer={<>
+      <div className="cf-editor-footer-toggle">
+        <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button>
+        <strong>{draft.enabled ? 'Enabled' : 'Disabled'}</strong>
+      </div>
+      {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
+      {selected && <Button variant="ghost" onClick={refresh} disabled={busy}>Refresh health</Button>}
+      <Button variant="secondary" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test'}</Button>
+      <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+      <Button variant="ghost" onClick={closeEditor} disabled={busy}>Cancel</Button>
+      <Button variant="primary" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save client'}</Button>
+    </>}>
+      <div className="qbit-editor provider-modal-editor">
         <SectionHead icon="download" title={selected ? selected.name : 'Add qBittorrent client'}
           description="Medialogue reads every torrent in this client. It only ever adds torrents you explicitly grab, and never moves or renames what is already there."
           status={loading ? 'Loading' : selected ? selected.health : 'New client'} statusTone={selected ? healthTone : 'neutral'}
-          detail={connectionDetail} detailTone={selected?.health === 'healthy' ? 'ok' : selected?.last_error ? 'err' : undefined}
-          action={<Button variant="secondary" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test connection'}</Button>} />
+          detail={connectionDetail} detailTone={selected?.health === 'healthy' ? 'ok' : selected?.last_error ? 'err' : undefined} />
 
         <div className="settings-form">
           <Field label="Display name" help="Shown in Medialogue only. Has no effect on qBittorrent.">
@@ -2196,24 +2263,14 @@ function QBittorrentSettings() {
           <Field label="Polling interval" help={<>How often this client is polled for progress and completions. A shorter interval notices completions sooner and costs one lightweight Web UI call per tick. It has no effect on download speed.</>}>
             <Select value={String(draft.pollIntervalSeconds)} onChange={(event) => updateDraft('pollIntervalSeconds', Number(event.target.value))}><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></Select>
           </Field>
-          <Field label="Enabled" wide help="When off, this client is neither polled nor offered as a grab target. Existing torrents are left untouched.">
-            <div className="setting-control">
-              <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button>
-              <span className="toggle-label">{draft.enabled ? 'Enabled' : 'Disabled'}</span>
-            </div>
-          </Field>
         </div>
 
         {selected?.last_error && <Note message={{ tone: 'error', text: `Last connection error: ${selected.last_error}` }} />}
         {error && <Note message={{ tone: 'error', text: error }} />}
         {message && <Note message={{ tone: 'ok', text: message }} />}
 
-        <SaveFooter dirty={dirty} saving={busy} onSave={save} onRevert={() => void loadClients(true)}>
-          {selected && <Button variant="ghost" onClick={refresh} disabled={busy}>Refresh health</Button>}
-          {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
-        </SaveFooter>
       </div>
-    </div>
+    </Modal>}
   </div>
 }
 
@@ -2255,6 +2312,7 @@ function IndexerSettings() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [dirty, setDirty] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -2281,6 +2339,7 @@ function IndexerSettings() {
     setDirty(false)
     setMessage('')
     setError('')
+    setEditorOpen(true)
   }
   const updateDraft = <K extends keyof IndexerDraft>(key: K, value: IndexerDraft[K]) => { setDirty(true); setDraft((current) => ({ ...current, [key]: value })) }
 
@@ -2302,6 +2361,8 @@ function IndexerSettings() {
       setIndexers((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value].sort((a, b) => a.name.localeCompare(b.name)))
       setSelectedId(value.id)
       setDraft(draftFromIndexer(value))
+      setDirty(false)
+      setEditorOpen(false)
       setMessage(`${value.name} saved. The API key is stored server-side and never returned to the browser.`)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save indexer.')
@@ -2323,6 +2384,15 @@ function IndexerSettings() {
       setMessage('')
     } finally { setBusy(false) }
   }
+  const testAll = async () => {
+    if (!indexers.length) return
+    setBusy(true); setError(''); setMessage('Testing all indexers…')
+    const results = await Promise.allSettled(indexers.map((indexer) => api.testIndexer(indexer.id)))
+    await load()
+    const failedCount = results.filter((result) => result.status === 'rejected' || (result.status === 'fulfilled' && result.value.status !== 'healthy')).length
+    setMessage(failedCount ? `Tested ${indexers.length} indexers; ${failedCount} reported a problem.` : `All ${indexers.length} indexers tested successfully.`)
+    setBusy(false)
+  }
 
   const remove = async () => {
     if (!selectedId || !window.confirm('Remove this indexer configuration? Existing search history and selected-result evidence are preserved where applicable.')) return
@@ -2334,6 +2404,7 @@ function IndexerSettings() {
       const next = remaining[0]
       setSelectedId(next?.id ?? '')
       setDraft(next ? draftFromIndexer(next) : emptyIndexer)
+      setEditorOpen(false)
       setMessage('Indexer configuration removed.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove indexer.') }
     finally { setBusy(false) }
@@ -2341,20 +2412,38 @@ function IndexerSettings() {
 
   const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
   const indexerDetail = selected ? `${selected.health}${selected.latencyMs !== undefined ? ` · ${selected.latencyMs} ms` : ''}` : undefined
-  return <div className="qbit-settings indexer-settings">
-    <div className="split split-flush">
-      <div className="qbit-client-list">
-        <div className="qbit-list-head"><span className="eyebrow">INDEXERS</span><Button variant="ghost" icon="plus" onClick={() => { setSelectedId(''); setDraft(emptyIndexer); setDirty(false); setMessage(''); setError('') }}>Add indexer</Button></div>
-        {indexers.map((indexer) => <button className={`qbit-client-item ${selectedId === indexer.id ? 'selected' : ''}`} key={indexer.id} onClick={() => selectIndexer(indexer.id)}><span className={`health-dot ${indexer.health === 'healthy' ? 'green' : indexer.health === 'unavailable' ? 'red' : 'amber'}`} /><span><strong>{indexer.name}</strong><small>{indexer.torznabUrl}</small></span><Badge tone={indexer.enabled ? 'green' : 'neutral'}>{indexer.enabled ? 'On' : 'Off'}</Badge></button>)}
-        {!indexers.length && !loading && <EmptyState icon="search" title="No indexers configured" detail="Add a Torznab endpoint to run interactive searches." />}
-      </div>
+  const beginAdd = () => { setSelectedId(''); setDraft(emptyIndexer); setDirty(false); setMessage(''); setError(''); setEditorOpen(true) }
+  const closeEditor = () => { if (!dirty || window.confirm('Discard unsaved changes?')) setEditorOpen(false) }
+  return <div className="provider-settings indexer-settings">
+    <SectionHead icon="search" title="Indexers" description="Torznab endpoints used for interactive Movie and Show searches." action={<div className="button-row"><Button variant="secondary" onClick={() => void testAll()} disabled={busy || !indexers.length}>{busy ? 'Testing…' : 'Test all'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add indexer</Button></div>} />
+    {error && !editorOpen && <Note message={{ tone: 'error', text: error }} />}
+    {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
+    <div className="provider-card-grid">
+      {indexers.map((indexer) => <button type="button" className={`provider-card ${indexer.enabled ? '' : 'provider-card-disabled'}`} key={indexer.id} onClick={() => selectIndexer(indexer.id)}>
+        <div className="provider-card-head"><div className="provider-card-icon"><Icon name="search" size={20} /></div><Badge tone={indexer.enabled ? 'green' : 'neutral'}>{indexer.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
+        <strong>{indexer.name}</strong><span>{indexer.torznabUrl}</span>
+        <div className="provider-card-meta"><Badge tone="neutral">{indexer.scope === 'both' ? 'Movies + Shows' : indexer.scope === 'movies' ? 'Movies' : 'Shows'}</Badge><span className={`provider-health ${indexer.health === 'healthy' ? 'healthy' : indexer.health === 'unavailable' ? 'error' : ''}`}><i />{indexer.health}</span></div>
+      </button>)}
+      <button type="button" className="provider-card provider-add-card" onClick={beginAdd}><Icon name="plus" size={28} /><strong>Add indexer</strong></button>
+    </div>
+    {!indexers.length && !loading && <p className="provider-empty-copy">No indexers configured yet. Add a Torznab endpoint to run interactive searches.</p>}
 
-      <div className="qbit-editor">
+    {editorOpen && <Modal wide title={selected ? selected.name : 'Add indexer'} eyebrow={selected ? 'EDIT INDEXER' : 'NEW INDEXER'} onClose={closeEditor} footer={<>
+      <div className="cf-editor-footer-toggle">
+        <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button>
+        <strong>{draft.enabled ? 'Enabled' : 'Disabled'}</strong>
+      </div>
+      {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
+      <Button variant="secondary" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test'}</Button>
+      <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+      <Button variant="ghost" onClick={closeEditor} disabled={busy}>Cancel</Button>
+      <Button variant="primary" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save indexer'}</Button>
+    </>}>
+      <div className="qbit-editor provider-modal-editor">
         <SectionHead icon="search" title={selected ? selected.name : 'Add indexer'}
           description="A single Torznab endpoint. Medialogue does not import Prowlarr configuration automatically — each endpoint is added here by hand."
           status={loading ? 'Loading' : selected ? selected.health : 'New indexer'} statusTone={selected ? healthTone : 'neutral'}
-          detail={indexerDetail} detailTone={selected?.health === 'healthy' ? 'ok' : selected?.lastError ? 'err' : undefined}
-          action={<Button variant="secondary" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test connection'}</Button>} />
+          detail={indexerDetail} detailTone={selected?.health === 'healthy' ? 'ok' : selected?.lastError ? 'err' : undefined} />
 
         <div className="settings-form">
           <Field label="Display name" help="Shown in Medialogue and on every search result from this indexer.">
@@ -2373,23 +2462,14 @@ function IndexerSettings() {
           <Field label="Timeout" help="How long to wait for a search response before this indexer is skipped. The remaining indexers still return their results.">
             <Select value={String(draft.timeoutSeconds)} onChange={(event) => updateDraft('timeoutSeconds', Number(event.target.value))}><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></Select>
           </Field>
-          <Field label="Enabled" wide help="When off, this indexer is excluded from every search. Its configuration is kept.">
-            <div className="setting-control">
-              <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => updateDraft('enabled', !draft.enabled)}><span /></button>
-              <span className="toggle-label">{draft.enabled ? 'Enabled' : 'Disabled'}</span>
-            </div>
-          </Field>
         </div>
 
         {selected?.lastError && <Note message={{ tone: 'error', text: `Last connection error: ${selected.lastError}` }} />}
         {error && <Note message={{ tone: 'error', text: error }} />}
         {message && <Note message={{ tone: 'ok', text: message }} />}
 
-        <SaveFooter dirty={dirty} saving={busy} onSave={save} onRevert={() => void load()}>
-          {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
-        </SaveFooter>
       </div>
-    </div>
+    </Modal>}
   </div>
 }
 

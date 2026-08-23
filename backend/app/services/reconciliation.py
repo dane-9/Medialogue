@@ -819,7 +819,7 @@ async def reconcile_movie_directory(
             if tmdb_reason in {"not_configured", "unavailable"}:
                 raise TMDBUnavailable(
                     f"TMDB is {tmdb_reason.replace('_', ' ')}; identity cannot be established. "
-                    "Check Settings -> Metadata, then run the scan again."
+                    "Check Settings -> TMDB, then run the scan again."
                 )
             reason = "TMDB_IDENTITY_UNRESOLVED"
             await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
