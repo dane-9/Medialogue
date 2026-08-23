@@ -374,13 +374,15 @@ async def test_torznab_result_parsing():
       <enclosure url="http://indexer/download/1" length="123" />
       <torznab:attr name="seeders" value="42" />
     </item></channel></rss>'''
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, text=xml))
+    requests = []
+    transport = httpx.MockTransport(lambda request: requests.append(request) or httpx.Response(200, text=xml))
     client = TorznabClient("http://indexer/api", "key", transport=transport)
-    results = await client.search("Inception", media_type="movies", tmdb_id=27205)
+    results = await client.search("Inception", media_type="movies", tmdb_id=27205, categories=(2000, 2040))
     await client.close()
     assert results[0].guid == "g1"
     assert results[0].size == 123
     assert results[0].seeders == 42
+    assert requests[0].url.params["cat"] == "2000,2040"
 
 
 def test_plex_snapshot_title_lookup_ignores_punctuation_and_ampersand_variants() -> None:

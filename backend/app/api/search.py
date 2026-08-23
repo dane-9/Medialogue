@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
@@ -237,6 +237,7 @@ async def get_search_job(
             -int((item.custom_format_snapshot or {}).get("quality_preference", 0)),
             -int(item.custom_format_score or 0),
             -int(item.seeders or 0),
+            int((item.custom_format_snapshot or {}).get("indexer_priority", 25)),
             item.created_at,
         ),
     )
@@ -295,7 +296,11 @@ async def download_search_result(
             f"{result.quality or 'This release quality'} is not enabled in the assigned Quality Profile.",
             status_code=409,
         )
-    client = await get_configured_download_client(db, payload.download_client_id)
+    indexer = await get_configured_indexer(db, result.indexer_id) if result.indexer_id else None
+    if indexer is None or not indexer.api_key:
+        raise AppError("INDEXER_UNAVAILABLE", "The indexer configuration for this result no longer exists.", status_code=409)
+    target_client_id = indexer.download_client_id or payload.download_client_id
+    client = await get_configured_download_client(db, target_client_id)
     if client is None or not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", "Download client is not available.", status_code=404)
     if client.scope != result.media_type:
@@ -320,18 +325,26 @@ async def download_search_result(
         )
     if not result.download_url:
         raise AppError("SEARCH_RESULT_NOT_DOWNLOADABLE", "Indexer did not provide a download URL.", status_code=409)
-    indexer = await get_configured_indexer(db, result.indexer_id) if result.indexer_id else None
-    if indexer is None or not indexer.api_key:
-        raise AppError("INDEXER_UNAVAILABLE", "The indexer configuration for this result no longer exists.", status_code=409)
-
     qbit = qbit_factory(client.url, client.username or "", client.password or "")
     torznab = None
+    published_at = result.published_at
+    if published_at is not None and published_at.tzinfo is None:
+        published_at = published_at.replace(tzinfo=timezone.utc)
+    recent = bool(published_at and published_at >= now - timedelta(days=21))
+    add_to_top = (client.recent_priority if recent else client.older_priority) == "first"
+    qbit_options = {
+        "category": client.category,
+        "tags": tuple(client.tags or []),
+        "sequential_order": client.sequential_order,
+        "first_last_first": client.first_last_first,
+        "content_layout": client.content_layout,
+        "add_to_top": add_to_top,
+    }
     try:
         if result.download_url.casefold().startswith("magnet:"):
             await qbit.add_url(
                 result.download_url,
-                category=client.category,
-                tags=tuple(client.tags or []),
+                **qbit_options,
             )
         else:
             torznab = torznab_factory(
@@ -344,8 +357,7 @@ async def download_search_result(
             await qbit.add_torrent(
                 torrent_bytes,
                 filename=f"{safe_filename[:180] or 'download'}.torrent",
-                category=client.category,
-                tags=tuple(client.tags or []),
+                **qbit_options,
             )
     except Exception as exc:
         raise AppError("DOWNLOAD_SUBMISSION_FAILED", f"Could not submit torrent: {exc}", status_code=503) from exc
@@ -372,6 +384,14 @@ async def download_search_result(
         "custom_format_snapshot": dict(result.custom_format_snapshot or {}),
         "download_client_id": str(client.id),
         "download_client_name": client.name,
+        "download_client_options": {
+            "recent": recent,
+            "queue_position": "first" if add_to_top else "last",
+            "sequential_order": client.sequential_order,
+            "first_last_first": client.first_last_first,
+            "content_layout": client.content_layout,
+            "completed_download_handling": client.completed_download_handling,
+        },
         "selected_at": now.isoformat(),
     }
     # Selected results are immutable search-time evidence and therefore no

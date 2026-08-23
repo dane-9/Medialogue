@@ -109,9 +109,9 @@ async def run_search_job(
             [
                 indexer
                 for indexer in await list_configured_indexers(db)
-                if indexer.enabled and indexer.scope in scope_values
+                if indexer.enabled and indexer.enable_interactive_search and indexer.scope in scope_values
             ],
-            key=lambda item: item.name.casefold(),
+            key=lambda item: (item.priority, item.name.casefold()),
         )
         # Freeze both the profile scores/overrides and Custom Format
         # definitions at search start. Every indexer result in this job is
@@ -262,6 +262,7 @@ async def run_search_job(
                     results=outcome["results"],
                     profile_snapshot=dict(summary.get("quality_profile") or {}),
                     custom_format_definitions=list(summary.get("custom_formats") or []),
+                    indexer_priority=int(outcome.get("priority") or 25),
                 )
                 summary["result_count"] = int(summary.get("result_count") or 0) + len(stored)
                 percent = round((completed_count / len(indexers)) * 100, 1)
@@ -370,6 +371,7 @@ async def _query_indexer(
                     tmdb_id=target.tmdb_id,
                     season=target.season,
                     episode=target.episode,
+                    categories=tuple(indexer.categories),
                 ),
                 timeout=float(indexer.timeout_seconds),
             )
@@ -389,12 +391,17 @@ async def _query_indexer(
                 "elapsed_ms": round((perf_counter() - started) * 1000),
                 "error": str(exc),
             }
+        eligible = [
+            result for result in results
+            if result.seeders is None or result.seeders >= indexer.minimum_seeders
+        ]
         return indexer.id, {
             "name": indexer.name,
             "status": "completed",
-            "results": results,
+            "results": eligible,
             "elapsed_ms": round((perf_counter() - started) * 1000),
             "error": None,
+            "priority": indexer.priority,
         }
     finally:
         await client.close()
@@ -410,6 +417,7 @@ async def _store_results(
     results: list[TorznabSearchResult],
     profile_snapshot: dict[str, Any],
     custom_format_definitions: list[dict[str, Any]],
+    indexer_priority: int = 25,
 ) -> list[InteractiveSearchResult]:
     stored: list[InteractiveSearchResult] = []
     seen: set[str] = set()
@@ -485,6 +493,7 @@ async def _store_results(
             "candidate_quality": parsed.quality.canonical,
             "quality_allowed": quality_allowed,
             "quality_preference": quality_preference,
+            "indexer_priority": indexer_priority,
             "minimum_quality_met": floor_status,
             "score_evaluated": True,
             "total_score": int(evaluation.total_score),

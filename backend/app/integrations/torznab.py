@@ -68,6 +68,7 @@ class TorznabClient:
         tmdb_id: int | None = None,
         season: int | None = None,
         episode: int | None = None,
+        categories: tuple[int, ...] = (),
     ) -> list[SearchResult]:
         params: dict[str, str | int] = {
             "apikey": self.api_key,
@@ -80,6 +81,8 @@ class TorznabClient:
             params["season"] = season
         if episode is not None:
             params["ep"] = episode
+        if categories:
+            params["cat"] = ",".join(str(value) for value in categories)
         response = await self._client.get("", params=params)
         try:
             response.raise_for_status()

@@ -24,6 +24,12 @@ class DownloadClientCreate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=100)
     enabled: bool = True
     poll_interval_seconds: int = Field(default=30, ge=5, le=3600)
+    recent_priority: str = Field(default="last", pattern="^(first|last)$")
+    older_priority: str = Field(default="last", pattern="^(first|last)$")
+    sequential_order: bool = False
+    first_last_first: bool = False
+    content_layout: str = Field(default="default", pattern="^(default|original|subfolder)$")
+    completed_download_handling: bool = True
 
     @field_validator("tags")
     @classmethod
@@ -42,6 +48,12 @@ class DownloadClientUpdate(BaseModel):
     tags: list[str] | None = Field(default=None, max_length=100)
     enabled: bool | None = None
     poll_interval_seconds: int | None = Field(default=None, ge=5, le=3600)
+    recent_priority: str | None = Field(default=None, pattern="^(first|last)$")
+    older_priority: str | None = Field(default=None, pattern="^(first|last)$")
+    sequential_order: bool | None = None
+    first_last_first: bool | None = None
+    content_layout: str | None = Field(default=None, pattern="^(default|original|subfolder)$")
+    completed_download_handling: bool | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
     @field_validator("tags")
@@ -69,6 +81,12 @@ class DownloadClientResponse(ORMModel):
     last_error: str | None = None
     revision: int
     poll_interval_seconds: int
+    recent_priority: str
+    older_priority: str
+    sequential_order: bool
+    first_last_first: bool
+    content_layout: str
+    completed_download_handling: bool
     created_at: datetime
     updated_at: datetime
 

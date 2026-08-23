@@ -80,6 +80,12 @@ def _client_response(client: ConfiguredDownloadClient) -> DownloadClientResponse
         last_error=client.last_error,
         revision=client.revision,
         poll_interval_seconds=client.poll_interval_seconds,
+        recent_priority=client.recent_priority,
+        older_priority=client.older_priority,
+        sequential_order=client.sequential_order,
+        first_last_first=client.first_last_first,
+        content_layout=client.content_layout,
+        completed_download_handling=client.completed_download_handling,
         created_at=client.created_at,
         updated_at=client.updated_at,
     )
@@ -215,6 +221,12 @@ async def create_download_client(
             tags=list(payload.tags),
             enabled=payload.enabled,
             poll_interval_seconds=payload.poll_interval_seconds,
+            recent_priority=payload.recent_priority,
+            older_priority=payload.older_priority,
+            sequential_order=payload.sequential_order,
+            first_last_first=payload.first_last_first,
+            content_layout=payload.content_layout,
+            completed_download_handling=payload.completed_download_handling,
         )
     )
     db.add(DownloadClient(id=config.id))
@@ -263,6 +275,12 @@ async def update_download_client(
         enabled=(values["enabled"] if values.get("enabled") is not None else current.enabled),
         revision=current.revision,
         poll_interval_seconds=(values["poll_interval_seconds"] if values.get("poll_interval_seconds") is not None else current.poll_interval_seconds),
+        recent_priority=values.get("recent_priority", current.recent_priority),
+        older_priority=values.get("older_priority", current.older_priority),
+        sequential_order=values.get("sequential_order", current.sequential_order),
+        first_last_first=values.get("first_last_first", current.first_last_first),
+        content_layout=values.get("content_layout", current.content_layout),
+        completed_download_handling=values.get("completed_download_handling", current.completed_download_handling),
     )
     try:
         get_integration_config_store().save_download_client(updated, expected_revision=payload.expected_revision)

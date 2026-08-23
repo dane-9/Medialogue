@@ -318,6 +318,12 @@ export interface DownloadClient {
   last_error?: string
   revision?: number
   pollIntervalSeconds?: number
+  recentPriority: 'first' | 'last'
+  olderPriority: 'first' | 'last'
+  sequentialOrder: boolean
+  firstLastFirst: boolean
+  contentLayout: 'default' | 'original' | 'subfolder'
+  completedDownloadHandling: boolean
 }
 
 export interface DownloadClientTestResult {
@@ -581,6 +587,12 @@ export interface Indexer {
   scope: IndexerScope
   enabled: boolean
   timeoutSeconds: number
+  enableRss: boolean
+  enableInteractiveSearch: boolean
+  categories: number[]
+  minimumSeeders: number
+  priority: number
+  downloadClientId?: string
   health: string
   lastCheckedAt?: string
   lastSuccessAt?: string
