@@ -315,21 +315,48 @@ def _select_show_identity(
     matches: list[TMDBShowMatch] | tuple[TMDBShowMatch, ...],
 ) -> tuple[TMDBShowMatch | None, str, tuple[TMDBShowMatch, ...]]:
     target = normalize_identity_title(title)
-    exact = tuple(
+    compatible = tuple(
         item
         for item in matches
-        if target in {
-            normalize_identity_title(item.title),
-            normalize_identity_title(item.original_title),
-        }
-        and (year is None or item.year is None or item.year == year)
+        if year is None or item.year is None or item.year == year
     )
+    # TMDB localizes ``name`` but retains the source-language ``original_name``.
+    # Several adaptations can therefore share the queried title only through
+    # original_name. A direct display-title match is stronger evidence and must
+    # not be vetoed by those aliases.
+    primary = tuple(item for item in compatible if normalize_identity_title(item.title) == target)
+    aliases = tuple(
+        item
+        for item in compatible
+        if item not in primary and normalize_identity_title(item.original_title) == target
+    )
+
+    exact = primary or aliases
     if len(exact) == 1:
         return exact[0], "matched", exact
     if len(exact) > 1:
         with_year = tuple(item for item in exact if year is not None and item.year == year)
         if len(with_year) == 1:
             return with_year[0], "matched", exact
+
+        # Occasionally TMDB returns a second, effectively empty catalogue row
+        # with the same display title. Accept the first ranked exact result only
+        # when it is fully identified and every competing exact row has no date,
+        # poster, or overview. Two real dated editions (The Office, MacGyver,
+        # etc.) deliberately remain ambiguous without a year or stronger source.
+        ranked = exact[0]
+        if (
+            primary
+            and ranked is matches[0]
+            and ranked.year is not None
+            and bool(ranked.poster_path)
+            and bool(ranked.overview)
+            and all(
+                item.year is None and not item.poster_path and not item.overview
+                for item in exact[1:]
+            )
+        ):
+            return ranked, "matched", exact
         return None, "ambiguous", exact
     return None, "not_found", tuple(matches)
 
