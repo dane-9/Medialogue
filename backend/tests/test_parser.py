@@ -131,6 +131,28 @@ def test_tv_boundaries_and_multi_episode():
     assert multi_season.identity.to_dict()["seasons"] == [1, 2, 3, 4]
 
 
+def test_hyphenated_show_titles_are_not_mistaken_for_release_groups():
+    x_files = parse_release("The X-Files")
+    fresh_prince = parse_release("The Fresh Prince of Bel-Air")
+
+    assert x_files.title == "The X-Files"
+    assert x_files.release_group == "NoGroup"
+    assert fresh_prince.title == "The Fresh Prince of Bel-Air"
+    assert fresh_prince.release_group == "NoGroup"
+
+
+def test_worded_season_episode_scheme_is_parsed():
+    result = parse_release(
+        "The.Walking.Dead.Season.2.Episode.02.Bloodletting.REMUX-FraMeSToR"
+    )
+
+    assert result.title == "The Walking Dead"
+    assert result.season == 2
+    assert result.episodes == (2,)
+    assert result.identity.episode_title == "Bloodletting"
+    assert result.release_group == "FraMeSToR"
+
+
 def test_quality_precedence_and_encode_codec_preservation():
     remux = parse_release("Movie 2020 2160p UHD BluRay REMUX HEVC-G")
     assert remux.quality.canonical == "2160p BluRay REMUX"

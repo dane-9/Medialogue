@@ -335,9 +335,19 @@ def _extract_season_numbers(normalized: str, primary_season: int | None) -> tupl
 def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], int | None, int | None]:
     """Return season, episode numbers, and marker start/end.
 
-    Supported forms include S01, S01E02, S01E01E02, S01E01-E03 and 1x02.
-    A season pack marker is represented by a season and an empty episode tuple.
+    Supported forms include S01, S01E02, S01E01E02, S01E01-E03, 1x02,
+    and the explicit ``Season 1 Episode 2`` form. A season pack marker is
+    represented by a season and an empty episode tuple.
     """
+
+    worded = re.search(
+        rf"(?<![A-Za-z0-9])Season[\s._-]*(?P<s>{_SEASON_NUMBER})"
+        r"[\s._-]+Episode[\s._-]*(?P<e>\d{1,3})(?!\d)",
+        normalized,
+        re.IGNORECASE,
+    )
+    if worded:
+        return int(worded.group("s")), (int(worded.group("e")),), worded.start(), worded.end()
 
     # The compact range is deliberately handled before the repeated E form.
     range_match = re.search(
@@ -490,6 +500,12 @@ def _release_group(raw: str, normalized: str) -> tuple[str, str, bool]:
     if group.casefold() in {"dl", "ray", "rip", "hd"} and re.search(
         r"(?:WEB|Blu|DTS)\s*$", prefix, re.IGNORECASE
     ):
+        return "NoGroup", normalized, False
+    # A plain library title may legitimately end in a hyphenated word, such
+    # as ``The X-Files`` or ``The Fresh Prince of Bel-Air``. Only interpret
+    # the final segment as a scene release group when the preceding text also
+    # contains high-confidence release metadata (quality, codec, or TV marker).
+    if _technical_boundary(normalize_release_name(prefix)) is None:
         return "NoGroup", normalized, False
     without = raw[:cut].rstrip(" -")
     return group, normalize_release_name(without), True
