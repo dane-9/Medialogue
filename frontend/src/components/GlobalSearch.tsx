@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Movie, Show, TMDBMovieLookup, TMDBShowLookup } from '../types'
+import { evaluateShiftTap } from '../lib/doubleTap'
 import { Icon } from './Icon'
 import { Badge, Button } from './ui'
 import { MovieAcquisitionWizard } from './MovieAcquisitionWizard'
@@ -237,13 +238,27 @@ async function searchShows(term: string): Promise<Result[]> {
 /** Trigger that lives beside the brand mark and opens the modal. */
 export function GlobalSearchButton({ onOpen }: { onOpen: () => void }) {
   useEffect(() => {
+    // Held in a closure rather than state: this fires on every keystroke and
+    // must not re-render the shell.
+    let lastShiftAt: number | null = null
+
     const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); onOpen() }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        lastShiftAt = null
+        onOpen()
+        return
+      }
+      const result = evaluateShiftTap(event, lastShiftAt)
+      lastShiftAt = result.lastTapAt
+      if (result.triggered) onOpen()
     }
+
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onOpen])
-  return <button className="brand-search" onClick={onOpen} aria-label="Search movies and shows" title="Search (Ctrl+K)">
+
+  return <button className="brand-search" onClick={onOpen} aria-label="Search movies and shows" title="Search (Ctrl+K, or tap Shift twice)">
     <Icon name="search" size={16} />
   </button>
 }
