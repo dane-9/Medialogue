@@ -46,7 +46,7 @@ from app.services.events import publish_live_event
 from app.services.jobs import create_job, publish_job_status, update_job
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
 from app.services.plex import get_plex_configuration, recheck_movie_plex, recheck_show_plex
-from app.services.problem_resolution import available_actions, resolve_explicit_problem_action
+from app.services.problem_resolution import available_actions, resolve_explicit_problem_action, run_confirmed_show_reconciliation
 from app.services.qbittorrent import poll_download_client
 from app.services.reconciliation import resolve_problem as resolve_observed_problem
 from app.services.runtime_jobs import launch_runtime_job
@@ -751,5 +751,22 @@ async def resolve_problem(
         )
     else:
         await db.commit()
+        if payload.action == "confirm_show_match":
+            followup_value = (problem.resolution or {}).get("followup_job_id")
+            try:
+                followup_job_id = UUID(str(followup_value))
+            except (TypeError, ValueError):
+                followup_job_id = None
+            if followup_job_id is not None:
+                followup_job = await db.get(Job, followup_job_id)
+                if followup_job is not None:
+                    publish_job_status(followup_job)
+                launch_runtime_job(
+                    followup_job_id,
+                    lambda: run_confirmed_show_reconciliation(
+                        followup_job_id,
+                        tmdb_client_factory=tmdb_client_factory,
+                    ),
+                )
     subjects = await _problem_subjects(db, [problem])
     return _response(problem, subjects)

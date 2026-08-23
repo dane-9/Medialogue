@@ -44,10 +44,10 @@ from app.models.domain import (
     utcnow,
 )
 from app.services.events import create_event, queue_live_event
-from app.services.jobs import JobFailure, checkpoint_job, run_job
+from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job
 from app.services.reconciliation import open_problem, reconcile_movie_directory, resolve_problem
-from app.services.shows import add_show_from_tmdb, reconcile_show_directory
-from app.services.tmdb import get_tmdb_configuration
+from app.services.shows import reconcile_show_directory
+from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
 CONFIRMATION_TTL_SECONDS = 10 * 60
 
@@ -150,9 +150,19 @@ async def resolve_explicit_problem_action(
         return problem
 
     if action == "confirm_show_match":
-        await _confirm_show_match(db, problem, payload, tmdb_client_factory=tmdb_client_factory)
+        followup_job_id = await _confirm_show_match(
+            db,
+            problem,
+            payload,
+            tmdb_client_factory=tmdb_client_factory,
+        )
         problem.status = ProblemStatus.RESOLVED
-        problem.resolution = {"action": action, "tmdb_id": int(payload["tmdb_id"])}
+        problem.resolution = {
+            "action": action,
+            "tmdb_id": int(payload["tmdb_id"]),
+        }
+        if followup_job_id is not None:
+            problem.resolution["followup_job_id"] = str(followup_job_id)
         problem.resolved_at = utcnow()
         await _resolution_event(db, problem, "Show identity manually confirmed.")
         return problem
@@ -257,12 +267,13 @@ async def _confirm_show_match(
     payload: dict[str, Any],
     *,
     tmdb_client_factory: Callable[..., Any] | None,
-) -> None:
+) -> UUID | None:
     try:
         tmdb_id = int(payload["tmdb_id"])
     except (KeyError, TypeError, ValueError) as exc:
         raise AppError("TMDB_ID_REQUIRED", "confirm_show_match requires tmdb_id.", status_code=422) from exc
     show = await db.scalar(select(Show).where(Show.tmdb_id == tmdb_id))
+    directory_id: UUID | None = None
 
     if problem.entity_type == "show":
         target = await db.get(Show, problem.entity_id) if problem.entity_id else None
@@ -272,31 +283,184 @@ async def _confirm_show_match(
             raise AppError("TMDB_ID_ALREADY_USED", "That TMDB Show is already represented by another library record.", status_code=409)
         if show is None:
             # Existing logical record remains authoritative; metadata refresh
-            # is intentionally deferred to the normal Show metadata action.
+            # remains an explicit Show action rather than part of identity correction.
             target.tmdb_id = tmdb_id
             show = target
     elif problem.entity_type == "media_directory":
         directory = await db.get(MediaDirectory, problem.entity_id) if problem.entity_id else None
         if directory is None:
             raise AppError("NOT_FOUND", "Affected media directory no longer exists.", status_code=404)
+        directory_id = directory.id
         if show is None:
-            show = await add_show_from_tmdb(db, tmdb_id, monitored=True, client_factory=tmdb_client_factory)
+            metadata = await _tmdb_show(db, tmdb_id, tmdb_client_factory)
+            show = Show(
+                title=metadata.title,
+                year=metadata.year,
+                tmdb_id=metadata.tmdb_id,
+                tvdb_id=metadata.tvdb_id,
+                overview=metadata.overview,
+                poster_ref=metadata.poster_path,
+                monitored=True,
+                identity_state=IdentityState.MANUAL,
+                manual_identity_override=True,
+            )
+            db.add(show)
+            await db.flush()
         root = await db.get(StorageRoot, directory.storage_root_id)
         if root is None:
             raise AppError("NOT_FOUND", "The directory storage root no longer exists.", status_code=404)
-        try:
-            observation = FilesystemObserver().inspect_directory(Path(directory.resolved_path), Path(root.resolved_root_path))
-        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-            raise AppError("MEDIA_PATH_UNAVAILABLE", f"Could not inspect the selected directory: {exc}", status_code=409) from exc
-        result = await reconcile_show_directory(db, root, observation, show_hint=show)
-        if result not in {"matched", "partial", "duplicates"}:
-            raise AppError("MANUAL_MATCH_FAILED", "The selected Show could not be attached to this directory.", status_code=409)
     else:
         raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "This problem cannot be resolved as a Show match.", status_code=409)
 
     show.identity_state = IdentityState.MANUAL
     show.manual_identity_override = True
     show.revision += 1
+    if directory_id is None:
+        return None
+
+    job = await create_job(
+        db,
+        "confirmed_show_reconciliation",
+        cancellable=False,
+        summary={
+            "show_id": str(show.id),
+            "show_title": show.title,
+            "directory_id": str(directory_id) if directory_id else None,
+            "source_problem_id": str(problem.id),
+            "message": f"Importing metadata and reconciling files for {show.title}…",
+        },
+    )
+    return job.id
+
+
+async def _tmdb_show(db: AsyncSession, tmdb_id: int, factory: Callable[..., Any] | None) -> Any:
+    configuration = await get_tmdb_configuration(db)
+    if configuration is None or not configuration.enabled or not configuration.api_key:
+        raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before manually matching a Show.", status_code=409)
+    from app.integrations.tmdb import TMDBClient
+
+    client = (factory or TMDBClient)(configuration.api_key)
+    try:
+        return await client.get_show(tmdb_id)
+    except Exception as exc:
+        raise AppError("TMDB_UNAVAILABLE", f"Could not load the selected TMDB Show: {exc}", status_code=503) from exc
+    finally:
+        await client.close()
+
+
+async def run_confirmed_show_reconciliation(
+    job_id: UUID,
+    *,
+    tmdb_client_factory: Callable[..., Any] | None = None,
+) -> None:
+    """Finish a confirmed Show import without holding open the Problems action."""
+
+    async def worker(db: AsyncSession, job) -> None:
+        summary = dict(job.summary or {})
+        try:
+            show_id = UUID(str(summary["show_id"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise JobFailure("SHOW_ID_REQUIRED", "The confirmed Show follow-up job has no valid Show id.") from exc
+        show = await db.get(Show, show_id)
+        if show is None:
+            raise JobFailure("SHOW_NOT_FOUND", "The confirmed Show no longer exists.")
+
+        await checkpoint_job(
+            db,
+            job,
+            status=JobStatus.RUNNING,
+            progress={"current": 0, "total": 2, "percent": 0, "stage": "importing_metadata", "detail": f"Importing TMDB metadata for {show.title}…"},
+        )
+        try:
+            counts = await sync_show_metadata(db, show, client_factory=tmdb_client_factory)
+        except Exception as exc:
+            await db.rollback()
+            show = await db.get(Show, show_id)
+            if show is not None:
+                await open_problem(
+                    db,
+                    reason="TMDB_SHOW_METADATA_UNAVAILABLE",
+                    entity_type="show",
+                    entity_id=show.id,
+                    message="Show identity is confirmed, but TMDB episode metadata could not be refreshed.",
+                    details={"tmdb_id": show.tmdb_id, "error": str(exc)},
+                )
+                await db.commit()
+            raise JobFailure("TMDB_SHOW_METADATA_FAILED", str(exc)) from exc
+
+        await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
+        await checkpoint_job(
+            db,
+            job,
+            progress={"current": 1, "total": 2, "percent": 50, "stage": "reconciling_directory", "detail": f"Reconciling files for {show.title}…"},
+        )
+
+        result = "metadata_only"
+        directory_value = summary.get("directory_id")
+        if directory_value:
+            try:
+                directory_id = UUID(str(directory_value))
+            except ValueError as exc:
+                raise JobFailure("DIRECTORY_ID_INVALID", "The confirmed Show follow-up job has an invalid directory id.") from exc
+            directory = await db.get(MediaDirectory, directory_id)
+            if directory is None:
+                raise JobFailure("DIRECTORY_NOT_FOUND", "The matched Show directory no longer exists.")
+            root = await db.get(StorageRoot, directory.storage_root_id)
+            if root is None:
+                raise JobFailure("STORAGE_ROOT_NOT_FOUND", "The matched Show directory has no storage root.")
+            try:
+                observation = FilesystemObserver().inspect_directory(
+                    Path(directory.resolved_path),
+                    Path(root.resolved_root_path),
+                )
+                result = await reconcile_show_directory(db, root, observation, show_hint=show)
+                if result not in {"matched", "review", "partial", "duplicates"}:
+                    raise RuntimeError(f"Show directory reconciliation returned {result}.")
+                await resolve_problem(db, "SHOW_DIRECTORY_RECONCILIATION_FAILED", "media_directory", directory.id)
+            except Exception as exc:
+                await db.rollback()
+                directory = await db.get(MediaDirectory, directory_id)
+                if directory is not None:
+                    await open_problem(
+                        db,
+                        reason="SHOW_DIRECTORY_RECONCILIATION_FAILED",
+                        entity_type="media_directory",
+                        entity_id=directory.id,
+                        message="Show identity is confirmed, but its files could not be reconciled.",
+                        details={"show_id": str(show_id), "path": directory.resolved_path, "error": str(exc)},
+                    )
+                    await db.commit()
+                raise JobFailure("SHOW_DIRECTORY_RECONCILIATION_FAILED", str(exc)) from exc
+
+        await create_event(
+            db,
+            "show.confirmed_reconciliation_completed",
+            entity_type="show",
+            entity_id=show.id,
+            message=f"Imported metadata and reconciled files for {show.title}.",
+            details={**counts, "result": result},
+        )
+        completed = {
+            **summary,
+            **counts,
+            "result": result,
+            "message": f"Metadata and file reconciliation completed for {show.title}.",
+        }
+        await checkpoint_job(
+            db,
+            job,
+            status=JobStatus.COMPLETED,
+            progress={"current": 2, "total": 2, "percent": 100, "stage": "completed", "detail": completed["message"]},
+            summary=completed,
+        )
+
+    await run_job(
+        job_id,
+        worker,
+        failure_code="CONFIRMED_SHOW_RECONCILIATION_FAILED",
+        failure_message="Could not finish the confirmed Show import.",
+        failure_progress={"current": 0, "total": 2, "percent": 0, "stage": "failed", "detail": "Confirmed Show follow-up failed."},
+    )
 
 
 async def _choose_episode_winner(db: AsyncSession, problem: Problem, payload: dict[str, Any]) -> bool:

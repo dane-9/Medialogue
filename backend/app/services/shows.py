@@ -1001,6 +1001,10 @@ async def reconcile_show_directory(
             },
         )
 
+    # A previous post-confirmation worker may have failed before reaching this
+    # point. Any later successful directory pass clears that umbrella failure;
+    # file-specific mapping Problems remain independently truthful.
+    await resolve_problem(db, "SHOW_DIRECTORY_RECONCILIATION_FAILED", "media_directory", directory.id)
     return "review" if unresolved and mapped == 0 else "matched"
 
 

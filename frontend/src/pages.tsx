@@ -1438,9 +1438,11 @@ export function ProblemsPage() {
     const action = current.availableActions?.includes('confirm_show_match') ? 'confirm_show_match' : 'confirm_movie_match'
     setLoading(true); setMessage('')
     try {
-      await api.resolveProblem(current.id, action, { tmdb_id: selectedTmdb.tmdbId })
+      const resolved = await api.resolveProblem(current.id, action, { tmdb_id: selectedTmdb.tmdbId })
       removeSolvedProblem(current)
-      await load(page, true); setMessage(`Matched to ${selectedTmdb.title}${selectedTmdb.year ? ` (${selectedTmdb.year})` : ''}.`)
+      await load(page, true)
+      const followup = typeof resolved.resolution?.followup_job_id === 'string'
+      setMessage(`Matched to ${selectedTmdb.title}${selectedTmdb.year ? ` (${selectedTmdb.year})` : ''}.${followup ? ' Metadata import and file reconciliation are continuing in Jobs.' : ''}`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the selected identity.') }
     finally { setLoading(false) }
   }
