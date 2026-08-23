@@ -68,6 +68,8 @@ export interface Movie {
   monitored?: boolean
   tags?: Tag[]
   problemCount?: number
+  incomingReplacement?: boolean
+  incomingKind?: 'replacement' | 'release'
   overview?: string
   posterRef?: string
   storageRoot?: string
@@ -258,6 +260,7 @@ export interface Show {
   monitored?: boolean
   identityState?: string
   problemCount?: number
+  nextMissingEpisode?: string
   overview?: string
   revision?: number
   seasonDetail?: Season[]

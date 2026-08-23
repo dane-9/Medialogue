@@ -91,6 +91,15 @@ async def _summary(db: AsyncSession, show: Show) -> ShowSummaryResponse:
     counted = _counted_episodes(show)
     present = sum(episode.presence_state == PresenceState.PRESENT for episode in counted)
     missing = sum(episode.presence_state != PresenceState.PRESENT for episode in counted)
+    last_observed = max(
+        (
+            mapping.media_file.media_directory.last_seen_at
+            for episode in show.episodes
+            for mapping in episode.media_maps
+            if mapping.media_file is not None and mapping.media_file.media_directory is not None
+        ),
+        default=None,
+    )
     return ShowSummaryResponse(
         id=show.id,
         resource_id=str(show.tmdb_id or show.id),
@@ -110,6 +119,7 @@ async def _summary(db: AsyncSession, show: Show) -> ShowSummaryResponse:
         problem_count=await show_problem_count(db, show.id),
         poster_ref=show.poster_ref,
         revision=show.revision,
+        last_observed_at=last_observed,
     )
 
 
@@ -259,6 +269,10 @@ async def list_shows(
         items.sort(key=lambda item: (item.year or 0, item.title.casefold()), reverse=reverse)
     elif key == "missing":
         items.sort(key=lambda item: (item.episodes_missing, item.title.casefold()), reverse=reverse)
+    elif key == "problems":
+        items.sort(key=lambda item: (item.problem_count, item.title.casefold()), reverse=reverse)
+    elif key == "last_observed":
+        items.sort(key=lambda item: (item.last_observed_at.isoformat() if item.last_observed_at else "", item.title.casefold()), reverse=reverse)
     else:
         items.sort(key=lambda item: item.title.casefold(), reverse=reverse)
     total = len(items)
@@ -525,7 +539,7 @@ async def _detail(db: AsyncSession, resource_id: str) -> ShowDetailResponse:
     roots = (await db.scalars(select(StorageRoot).where(StorageRoot.id.in_(root_ids)))).all() if root_ids else []
     last_seen = max((directory.last_seen_at for directory in directories), default=None)
     return ShowDetailResponse(
-        **summary.model_dump(),
+        **summary.model_dump(exclude={"last_observed_at"}),
         overview=show.overview,
         seasons=seasons,
         recent_events=[{"id": str(event.id), "type": event.event_type, "message": event.message, "details": event.details, "created_at": event.created_at.isoformat()} for event in events],

@@ -49,6 +49,9 @@ class MovieSummaryResponse(BaseModel):
     problem_count: int = 0
     poster_ref: str | None = None
     tags: list[TagResponse] = Field(default_factory=list)
+    incoming: bool = False
+    incoming_kind: str | None = None
+    last_observed_at: datetime | None = None
 
 
 class MovieDetailResponse(MovieSummaryResponse):

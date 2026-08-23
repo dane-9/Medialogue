@@ -5,8 +5,8 @@ export function Button({ children, variant = 'secondary', icon, ...props }: Prop
   return <button className={`button button-${variant}`} {...props}>{icon && <Icon name={icon} size={16} />}{children}</button>
 }
 
-export function Badge({ children, tone = 'neutral' }: PropsWithChildren<{ tone?: 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple' }>) {
-  return <span className={`badge badge-${tone}`}><span className="badge-dot" />{children}</span>
+export function Badge({ children, tone = 'neutral', className = '' }: PropsWithChildren<{ tone?: 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple'; className?: string }>) {
+  return <span className={`badge badge-${tone} ${className}`}><span className="badge-dot" />{children}</span>
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) { return <input className="input" {...props} /> }

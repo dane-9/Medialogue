@@ -375,6 +375,8 @@ function normalizeMovie(value: unknown): Movie {
     monitored: optionalBoolean(item.monitored),
     tags: Array.isArray(item.tags) ? item.tags.map(normalizeTag) : [],
     problemCount: optionalNumber(item.problem_count ?? item.problems_count),
+    incomingReplacement: item.incoming === true || item.incoming_replacement === true || textValue(item.incoming_kind || item.incomingKind).toLowerCase() === 'replacement',
+    incomingKind: textValue(item.incoming_kind || item.incomingKind).toLowerCase() === 'replacement' ? 'replacement' : (item.incoming === true || item.incoming_replacement === true ? 'release' : undefined),
     overview: textValue(item.overview) || undefined,
     posterRef: textValue(item.poster_ref) || undefined,
     storageRoot: textValue(item.storage_root || item.root_name) || undefined,
@@ -879,10 +881,11 @@ export const api = {
     if (filters.entityType) params.set('entity_type', filters.entityType)
     return request<{ deleted: number }>(`/api/v1/events${params.size ? `?${params.toString()}` : ''}`, { method: 'DELETE' })
   },
-  movies: async (query = '', tag = '') => {
+  movies: async (query = '', tag = '', sort = 'title') => {
     const params = new URLSearchParams({ page_size: '250' })
     if (query) params.set('query', query)
     if (tag) params.set('tag', tag)
+    if (sort) params.set('sort', sort)
     const payload = await request<{ items: unknown[] }>(`/api/v1/movies?${params.toString()}`)
     return payload.items.map(normalizeMovie)
   },
@@ -901,8 +904,11 @@ export const api = {
   lookupMovies: async (query: string, year?: number) => (await request<unknown[]>(`/api/v1/movies/lookup?query=${encodeURIComponent(query)}${year ? `&year=${year}` : ''}`)).map(normalizeTMDBMovieLookup),
   previewMovieDuplicate: (movieId: string, payload: { winner_release_id: string; losing_release_ids: string[]; delete_media: boolean; remove_torrents: boolean }) => request<unknown>(`/api/v1/movies/${encodeURIComponent(movieId)}/duplicates/resolve-preview`, { method: 'POST', body: JSON.stringify(payload) }).then(normalizeDuplicatePreview),
   resolveMovieDuplicate: (movieId: string, confirmationToken: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(movieId)}/duplicates/resolve`, { method: 'POST', body: JSON.stringify({ confirmation_token: confirmationToken }) }),
-  shows: async (query = '') => {
-    const payload = await request<{ items?: unknown[] } | unknown[]>(`/api/v1/shows${query ? `?query=${encodeURIComponent(query)}` : ''}`)
+  shows: async (query = '', sort = 'title') => {
+    const params = new URLSearchParams()
+    if (query) params.set('query', query)
+    if (sort) params.set('sort', sort)
+    const payload = await request<{ items?: unknown[] } | unknown[]>(`/api/v1/shows${params.size ? `?${params.toString()}` : ''}`)
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeShow)
   },
@@ -946,6 +952,7 @@ export const api = {
   testTmdb: (configuration: { api_key?: string }) => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/test', { method: 'POST', body: JSON.stringify(configuration) }),
   refreshTmdbHealth: () => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/health/refresh', { method: 'POST' }),
   recheckMoviePlex: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
+  startMovieSearch: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/interactive-search`, { method: 'POST' }),
   reconcileMovie: (_id: string) => request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' }),
   reconcileAll: async () => {
     const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })
