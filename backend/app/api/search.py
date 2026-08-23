@@ -40,6 +40,7 @@ from app.schemas.search import (
     ShowSeasonAcquisitionSearchRequest,
 )
 from app.services.events import create_event
+from app.services.acquisition_paths import join_qbit_path, show_folder_with_year
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.services.jobs import create_job
 from app.services.movies import create_movie_from_metadata
@@ -497,7 +498,12 @@ async def download_search_result(
     recent = bool(published_at and published_at >= now - timedelta(days=21))
     add_to_top = (client.recent_priority if recent else client.older_priority) == "first"
     category_destination: str | None = None
-    if payload.category is not None:
+    show_folder_name: str | None = None
+    show_save_path: str | None = None
+    needs_show_destination = result.media_type == MediaType.SHOWS and (
+        unattached_show_season or payload.show_folder_name is not None
+    )
+    if payload.category is not None or needs_show_destination:
         try:
             categories = await qbit.list_categories()
         except Exception as exc:
@@ -508,6 +514,16 @@ async def download_search_result(
             await qbit.close()
             raise AppError("QBITTORRENT_CATEGORY_NOT_FOUND", "The selected qBittorrent category no longer exists.", status_code=409)
         category_destination = selected.resolved_save_path or None
+
+    if needs_show_destination:
+        base_folder = payload.show_folder_name or str(target.get("title") or "")
+        target_year = int(target["year"]) if target.get("year") is not None else None
+        show_folder_name = show_folder_with_year(
+            base_folder,
+            target_year,
+            payload.include_year_in_show_folder,
+        )
+        show_save_path = join_qbit_path(category_destination or "", show_folder_name)
 
     # For a brand-new Show, fully stage the logical Show/Season/Episode metadata
     # in the current DB transaction before touching qBittorrent. It remains
@@ -555,7 +571,12 @@ async def download_search_result(
                 )
             )
     qbit_options = {
+        # Movies deliberately keep their existing qBittorrent/category save
+        # behavior. Only Show season-pack acquisition derives a per-Show
+        # subdirectory beneath the selected category root.
+        "save_path": show_save_path,
         "category": selected_category,
+        "auto_tmm": False if show_save_path else None,
         "tags": tuple(client.tags or []),
         "sequential_order": client.sequential_order,
         "first_last_first": client.first_last_first,
@@ -642,10 +663,13 @@ async def download_search_result(
         "download_client_name": client.name,
         "category": selected_category,
         "category_destination": category_destination,
+        "show_folder_name": show_folder_name,
+        "save_path": show_save_path,
         "season_number": target_season_number if unattached_show_season else None,
         "download_client_options": {
             "recent": recent,
             "queue_position": "first" if add_to_top else "last",
+            "automatic_torrent_management": False if show_save_path else None,
             "sequential_order": client.sequential_order,
             "first_last_first": client.first_last_first,
             "content_layout": client.content_layout,
@@ -667,6 +691,7 @@ async def download_search_result(
             "indexer": result.indexer_name,
             "download_client_id": str(client.id),
             "category": selected_category,
+            "save_path": show_save_path,
         },
     )
     await db.commit()
@@ -680,4 +705,5 @@ async def download_search_result(
         show_id=target_show.id if target_show is not None else None,
         season_id=target_season.id if target_season is not None else None,
         category=selected_category,
+        save_path=show_save_path,
     )

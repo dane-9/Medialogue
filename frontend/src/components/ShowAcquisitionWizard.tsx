@@ -10,7 +10,7 @@ import type {
   ShowAcquisitionSeasonPreview,
 } from '../types'
 import { Icon } from './Icon'
-import { Badge, Button, Select } from './ui'
+import { Badge, Button, Input, Select } from './ui'
 
 type ShowChoice = {
   tmdbId: number
@@ -53,6 +53,32 @@ function seasonLabel(season: ShowAcquisitionSeasonPreview) {
   return season.seasonNumber === 0 ? 'Specials' : `Season ${season.seasonNumber}`
 }
 
+function sanitizeShowFolderName(value: string) {
+  return value
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .replace(/(?:\s+-\s+){2,}/g, ' - ')
+    .replace(/[ .]+$/g, '')
+    .slice(0, 240)
+}
+
+function showFolderName(base: string, year: number | undefined, includeYear: boolean) {
+  const safeBase = sanitizeShowFolderName(base)
+  if (!safeBase) return ''
+  if (!includeYear) return safeBase
+  if (!year) return ''
+  const suffix = ` ${year}`
+  if (safeBase.toLocaleLowerCase().endsWith(suffix.toLocaleLowerCase())) return safeBase
+  return `${safeBase.slice(0, Math.max(1, 240 - suffix.length)).replace(/[ .]+$/g, '')}${suffix}`
+}
+
+function joinQbitPath(root: string | undefined, folder: string) {
+  if (!root || !folder) return ''
+  const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/'
+  return `${root.replace(/[\\/]+$/g, '')}${separator}${folder}`
+}
+
 export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
   show: ShowChoice
   onBack: () => void
@@ -67,6 +93,8 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
   const [categories, setCategories] = useState<DownloadClientCategory[]>([])
   const [category, setCategory] = useState('')
   const [includeSpecials, setIncludeSpecials] = useState(false)
+  const [showFolderBaseName, setShowFolderBaseName] = useState(show.title)
+  const [includeYearInFolder, setIncludeYearInFolder] = useState(false)
   const [setupLoading, setSetupLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
   const [step, setStep] = useState<'setup' | 'search'>('setup')
@@ -80,11 +108,13 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
   useEffect(() => {
     let alive = true
     setSetupLoading(true)
-    Promise.all([api.showAcquisitionPreview(show.tmdbId), api.qualityProfiles(), api.downloadClients()])
-      .then(([showPreview, profileRows, clientRows]) => {
+    Promise.all([api.showAcquisitionPreview(show.tmdbId), api.qualityProfiles(), api.downloadClients(), api.showAcquisitionPreferences()])
+      .then(([showPreview, profileRows, clientRows, acquisitionPreferences]) => {
         if (!alive) return
         const showClients = clientRows.filter((client) => client.enabled && client.scope === 'shows')
         setPreview(showPreview)
+        setShowFolderBaseName(showPreview.title || show.title)
+        setIncludeYearInFolder(Boolean(acquisitionPreferences.include_year_in_folder_name) && Boolean(showPreview.year || show.year))
         setProfiles(profileRows)
         setClients(showClients)
         setProfileId((current) => current || profileRows[0]?.id || '')
@@ -98,6 +128,8 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
 
   const selectedClient = clients.find((client) => client.id === clientId)
   const selectedCategory = categories.find((item) => item.name === category)
+  const finalShowFolderName = showFolderName(showFolderBaseName, preview?.year || show.year, includeYearInFolder)
+  const finalDestination = joinQbitPath(selectedCategory?.resolvedSavePath, finalShowFolderName)
 
   useEffect(() => {
     if (!clientId) { setCategories([]); setCategory(''); return }
@@ -221,7 +253,15 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
   const selectedSeasons = visibleSeasons.filter((season) => Boolean(seasonStates[season.seasonNumber]?.selectedResultId))
   const pendingSeasons = selectedSeasons.filter((season) => !seasonStates[season.seasonNumber]?.submitted)
   const selectedResult = activeState?.job?.results.find((result) => result.id === activeState.selectedResultId)
-  const canContinue = Boolean(preview && profileId && clientId && category && visibleSeasons.length && !setupLoading && !categoryLoading)
+  const canContinue = Boolean(preview && profileId && clientId && category && finalShowFolderName && finalDestination && visibleSeasons.length && !setupLoading && !categoryLoading)
+
+  const changeIncludeYear = (checked: boolean) => {
+    setIncludeYearInFolder(checked)
+    setError('')
+    void api.saveShowAcquisitionPreferences(checked).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : 'Could not remember the Show folder year preference.')
+    })
+  }
 
   const startDownloads = async () => {
     if (!clientId || !category || !pendingSeasons.length) return
@@ -241,7 +281,12 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
         continue
       }
       try {
-        const response = await api.downloadSearchResult(result.id, { download_client_id: clientId, category })
+        const response = await api.downloadSearchResult(result.id, {
+          download_client_id: clientId,
+          category,
+          show_folder_name: showFolderBaseName,
+          include_year_in_show_folder: includeYearInFolder,
+        })
         showId = response.show_id || showId
         succeeded += 1
         setSeasonStates((states) => ({
@@ -289,15 +334,18 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
         </aside>
         <section className="acquisition-form">
           <label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading || Boolean(committedShowId)}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select><small>Applies to every season-pack search in this acquisition.</small></label>
-          <label><span className="field-label">qBittorrent</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)} disabled={setupLoading}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select><small>{selectedClient ? `${selectedClient.health} · ${selectedClient.url}` : 'Choose the client that should receive the selected season packs.'}</small></label>
-          <label><span className="field-label">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!clientId || categoryLoading}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select><small>The category owns the destination path in qBittorrent.</small></label>
-          <div className="acquisition-destination"><span>Destination</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Unavailable')}</strong>{selectedCategory && !selectedCategory.savePath && <small>Uses the qBittorrent default download directory because this category has no explicit path.</small>}</div>
+          <label><span className="field-label">qBittorrent</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)} disabled={setupLoading || Boolean(committedShowId)}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select><small>{selectedClient ? `${selectedClient.health} · ${selectedClient.url}` : 'Choose the client that should receive the selected season packs.'}</small></label>
+          <label><span className="field-label">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!clientId || categoryLoading || Boolean(committedShowId)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select><small>For Shows, the category destination is treated as the root that contains every Show folder.</small></label>
+          <div className="acquisition-destination"><span>Category root</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Unavailable')}</strong>{selectedCategory && !selectedCategory.savePath && <small>Uses the qBittorrent default download directory because this category has no explicit path.</small>}</div>
+          <label><span className="field-label">Show folder name</span><Input value={showFolderBaseName} maxLength={240} onChange={(event) => setShowFolderBaseName(event.target.value)} disabled={Boolean(committedShowId)} placeholder={preview?.title || show.title} /><small>Starts with the TMDB title. You can change it; Medialogue sanitizes invalid filesystem characters before submission.</small></label>
+          <label className="acquisition-specials-toggle"><span><strong>Include year in folder name</strong><small>{preview?.year || show.year ? `Appends ${preview?.year || show.year}. This preference is remembered for the next Show.` : 'This Show has no known premiere year.'}</small></span><input type="checkbox" checked={includeYearInFolder} disabled={Boolean(committedShowId) || !(preview?.year || show.year)} onChange={(event) => changeIncludeYear(event.target.checked)} /></label>
+          <div className="acquisition-destination"><span>Final destination</span><strong>{finalDestination || 'Unavailable'}</strong><small>Every selected season pack in this acquisition is submitted to this Show folder.</small></div>
           <label className="acquisition-specials-toggle"><span><strong>Include Specials</strong><small>Off by default. When enabled, Specials appears as its own season-pack search tab.</small></span><input type="checkbox" checked={includeSpecials} disabled={Boolean(seasonStates[0]?.submitted)} onChange={(event) => { setIncludeSpecials(event.target.checked); if (!event.target.checked && activeSeasonNumber === 0) setActiveSeasonNumber(null) }} /></label>
           {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         </section>
       </div> : <div className="acquisition-search show-acquisition-search">
         <div className="acquisition-search-toolbar">
-          <div><strong>{profiles.find((item) => item.id === profileId)?.name || 'Quality Profile'}</strong><span>{selectedClient?.name} · {category} · {selectedCategory?.resolvedSavePath || 'destination unavailable'}</span></div>
+          <div><strong>{profiles.find((item) => item.id === profileId)?.name || 'Quality Profile'}</strong><span>{selectedClient?.name} · {category} · {finalDestination || 'destination unavailable'}</span></div>
           <span>{selectedSeasons.length ? `${selectedSeasons.length} season${selectedSeasons.length === 1 ? '' : 's'} selected` : 'No seasons selected yet'}</span>
         </div>
         <div className="show-season-tabs" role="tablist" aria-label="Show seasons">
@@ -344,7 +392,7 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
                 {matchedFormatNames(selectedResult).length > 0 && <div className="acquisition-matches"><span>Matched formats</span><div>{matchedFormatNames(selectedResult).map((name) => <Badge key={name} tone="purple">{name}</Badge>)}</div></div>}
                 {selectedResult.warnings.length > 0 && <div className="acquisition-warnings">{selectedResult.warnings.map((warning) => <p key={warning}><Icon name="alert" size={13} />{warning}</p>)}</div>}
                 {activeState?.submissionError && <div className="acquisition-warnings"><p><Icon name="alert" size={13} />{activeState.submissionError}</p></div>}
-                <div className="acquisition-confirm-destination"><span>Download to</span><strong>{selectedClient?.name} / {category}</strong><small>{selectedCategory?.resolvedSavePath}</small></div>
+                <div className="acquisition-confirm-destination"><span>Download to</span><strong>{selectedClient?.name} / {category}</strong><small>{finalDestination}</small></div>
               </> : <div className="acquisition-evidence-empty"><Icon name="tv" size={24} /><strong>Select one season pack</strong><p>Each season can have exactly one selected pack. Selecting a pack turns its season tab green.</p></div>}
             </aside>
           </div>

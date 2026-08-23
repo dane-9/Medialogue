@@ -92,6 +92,8 @@ class SearchJobResponse(BaseModel):
 class SearchResultDownloadRequest(BaseModel):
     download_client_id: UUID
     category: str | None = Field(default=None, max_length=256)
+    show_folder_name: str | None = Field(default=None, min_length=1, max_length=240)
+    include_year_in_show_folder: bool = False
 
 
 class SearchResultDownloadResponse(BaseModel):
@@ -104,3 +106,4 @@ class SearchResultDownloadResponse(BaseModel):
     show_id: UUID | None = None
     season_id: UUID | None = None
     category: str | None = None
+    save_path: str | None = None

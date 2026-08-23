@@ -737,7 +737,12 @@ def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(clien
         first = client.post(
             f"/api/v1/search-results/{s1_job.json()['results'][0]['id']}/download",
             headers=headers,
-            json={"download_client_id": qbit_client_id, "category": "tv"},
+            json={
+                "download_client_id": qbit_client_id,
+                "category": "tv",
+                "show_folder_name": "Severance",
+                "include_year_in_show_folder": True,
+            },
         )
         assert first.status_code == 200, first.text
         show_id = first.json()["show_id"]
@@ -747,12 +752,22 @@ def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(clien
         second = client.post(
             f"/api/v1/search-results/{s2_job.json()['results'][0]['id']}/download",
             headers=headers,
-            json={"download_client_id": qbit_client_id, "category": "tv"},
+            json={
+                "download_client_id": qbit_client_id,
+                "category": "tv",
+                "show_folder_name": "Severance",
+                "include_year_in_show_folder": True,
+            },
         )
         assert second.status_code == 200, second.text
         assert second.json()["show_id"] == show_id
         assert second.json()["season_id"] != first.json()["season_id"]
         assert [submission["category"] for submission in qbit_behavior.submissions] == ["tv", "tv"]
+        assert [submission["save_path"] for submission in qbit_behavior.submissions] == [
+            "/downloads/tv/Severance 2022",
+            "/downloads/tv/Severance 2022",
+        ]
+        assert [submission["auto_tmm"] for submission in qbit_behavior.submissions] == [False, False]
 
         async def committed_state():
             async with db_session.async_session_factory() as db:

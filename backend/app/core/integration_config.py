@@ -103,7 +103,10 @@ class IntegrationConfigStore:
             "tmdb": None,
             "download_clients": [],
             "indexers": [],
-            "library": {"count_specials": True},
+            "library": {
+                "count_specials": True,
+                "show_folder_include_year": False,
+            },
         }
 
     def _default_secrets(self) -> dict[str, Any]:
@@ -347,6 +350,27 @@ class IntegrationConfigStore:
         if not isinstance(library, dict):
             library = {}
         library["count_specials"] = bool(value)
+        config["library"] = library
+        self._save(config, secrets)
+        return bool(value)
+
+    def get_show_folder_include_year(self) -> bool:
+        """Default folder-name preference for future manual Show acquisitions."""
+
+        config, _ = self._load()
+        library = config.get("library")
+        if not isinstance(library, dict):
+            return False
+        return bool(library.get("show_folder_include_year", False))
+
+    def save_show_folder_include_year(self, value: bool) -> bool:
+        """Persist the user's last-used Show folder year toggle immediately."""
+
+        config, secrets = self._load()
+        library = config.get("library")
+        if not isinstance(library, dict):
+            library = {}
+        library["show_folder_include_year"] = bool(value)
         config["library"] = library
         self._save(config, secrets)
         return bool(value)

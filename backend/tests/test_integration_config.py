@@ -113,7 +113,21 @@ def test_fresh_config_has_no_database_import_behavior(tmp_path: Path) -> None:
     assert store.get_tmdb() is None
     assert store.list_download_clients() == []
     assert store.list_indexers() == []
+    assert store.get_show_folder_include_year() is False
     assert not hasattr(store, "import_legacy")
+
+
+def test_show_folder_year_preference_is_persisted(tmp_path: Path) -> None:
+    store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    store.ensure_initialized()
+
+    assert store.get_show_folder_include_year() is False
+    assert store.save_show_folder_include_year(True) is True
+
+    restarted = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    assert restarted.get_show_folder_include_year() is True
+    assert restarted.save_show_folder_include_year(False) is False
+    assert restarted.get_show_folder_include_year() is False
 
 
 def test_unknown_config_schema_is_rejected(tmp_path: Path) -> None:

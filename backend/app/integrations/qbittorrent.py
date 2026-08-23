@@ -278,6 +278,7 @@ class QBittorrentClient:
         filename: str = "download.torrent",
         save_path: str | None = None,
         category: str | None = None,
+        auto_tmm: bool | None = None,
         tags: tuple[str, ...] = (),
         sequential_order: bool = False,
         first_last_first: bool = False,
@@ -289,6 +290,8 @@ class QBittorrentClient:
             data["savepath"] = save_path
         if category:
             data["category"] = category
+        if auto_tmm is not None:
+            data["autoTMM"] = str(auto_tmm).lower()
         if tags:
             data["tags"] = ",".join(tags)
         if sequential_order:
@@ -316,6 +319,7 @@ class QBittorrentClient:
         *,
         save_path: str | None = None,
         category: str | None = None,
+        auto_tmm: bool | None = None,
         tags: tuple[str, ...] = (),
         sequential_order: bool = False,
         first_last_first: bool = False,
@@ -327,6 +331,8 @@ class QBittorrentClient:
             data["savepath"] = save_path
         if category:
             data["category"] = category
+        if auto_tmm is not None:
+            data["autoTMM"] = str(auto_tmm).lower()
         if tags:
             data["tags"] = ",".join(tags)
         if sequential_order:

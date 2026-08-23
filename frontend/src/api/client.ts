@@ -1035,9 +1035,11 @@ export const api = {
       }),
     }
   },
+  showAcquisitionPreferences: () => request<{ include_year_in_folder_name: boolean }>('/api/v1/shows/acquisition-preferences'),
+  saveShowAcquisitionPreferences: (includeYearInFolderName: boolean) => request<{ include_year_in_folder_name: boolean }>('/api/v1/shows/acquisition-preferences', { method: 'PUT', body: JSON.stringify({ include_year_in_folder_name: includeYearInFolderName }) }),
   startUnattachedShowSeasonSearch: (tmdbId: number, qualityProfileId: string, seasonNumber: number) => request<{ job_id: string }>('/api/v1/interactive-search/shows/seasons', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, quality_profile_id: qualityProfileId, season_number: seasonNumber }) }),
   searchJob: (jobId: string) => request<unknown>(`/api/v1/search-jobs/${encodeURIComponent(jobId)}`).then(normalizeInteractiveSearchJob),
-  downloadSearchResult: (resultId: string, payload: { download_client_id: string; category?: string | null }) => request<{ search_result_id: string; download_client_id: string; client_name: string; status: string; selected_at: string; movie_id?: string; show_id?: string; season_id?: string; category?: string | null }>(`/api/v1/search-results/${encodeURIComponent(resultId)}/download`, { method: 'POST', body: JSON.stringify(payload) }),
+  downloadSearchResult: (resultId: string, payload: { download_client_id: string; category?: string | null; show_folder_name?: string; include_year_in_show_folder?: boolean }) => request<{ search_result_id: string; download_client_id: string; client_name: string; status: string; selected_at: string; movie_id?: string; show_id?: string; season_id?: string; category?: string | null; save_path?: string | null }>(`/api/v1/search-results/${encodeURIComponent(resultId)}/download`, { method: 'POST', body: JSON.stringify(payload) }),
   reconcileMovie: (_id: string) => request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' }),
   reconcileAll: async () => {
     const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })

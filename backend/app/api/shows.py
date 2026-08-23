@@ -132,6 +132,10 @@ class SpecialsCountingResult(SpecialsCountingState):
     shows_affected: int
 
 
+class ShowAcquisitionPreferences(BaseModel):
+    include_year_in_folder_name: bool = False
+
+
 @router.get("/shows/specials-counting", response_model=SpecialsCountingState)
 async def get_specials_counting(_: AdminUser = Depends(require_admin)) -> SpecialsCountingState:
     return SpecialsCountingState(count_specials=get_integration_config_store().get_count_specials())
@@ -173,6 +177,24 @@ async def set_specials_counting(
         seasons_changed=len(changed),
         shows_affected=len({season.show_id for season in changed}),
     )
+
+
+@router.get("/shows/acquisition-preferences", response_model=ShowAcquisitionPreferences)
+async def get_show_acquisition_preferences(_: AdminUser = Depends(require_admin)) -> ShowAcquisitionPreferences:
+    return ShowAcquisitionPreferences(
+        include_year_in_folder_name=get_integration_config_store().get_show_folder_include_year()
+    )
+
+
+@router.put("/shows/acquisition-preferences", response_model=ShowAcquisitionPreferences)
+async def set_show_acquisition_preferences(
+    payload: ShowAcquisitionPreferences,
+    _: object = Depends(require_csrf),
+) -> ShowAcquisitionPreferences:
+    value = get_integration_config_store().save_show_folder_include_year(
+        payload.include_year_in_folder_name
+    )
+    return ShowAcquisitionPreferences(include_year_in_folder_name=value)
 
 
 class EpisodeOrderingOption(BaseModel):
