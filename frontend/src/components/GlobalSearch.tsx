@@ -9,6 +9,9 @@ import { MovieAcquisitionWizard } from './MovieAcquisitionWizard'
 import { ShowAcquisitionWizard } from './ShowAcquisitionWizard'
 
 type Kind = 'movie' | 'show'
+/** What the search covers. 'all' is the default: you rarely know or care
+ *  which library a title belongs to before you have found it. */
+type Scope = Kind | 'all'
 
 /**
  * One row in the result list. A title already in the library carries its
@@ -43,7 +46,7 @@ const posterUrl = (reference?: string) => {
  */
 export function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('')
-  const [kind, setKind] = useState<Kind>('movie')
+  const [scope, setScope] = useState<Scope>('all')
   const [results, setResults] = useState<Result[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -67,7 +70,9 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     setLoading(true)
     const timer = window.setTimeout(async () => {
       try {
-        const merged = kind === 'movie' ? await searchMovies(term) : await searchShows(term)
+        const merged = scope === 'movie' ? await searchMovies(term)
+          : scope === 'show' ? await searchShows(term)
+          : await searchEverything(term)
         if (!alive) return
         setResults(merged); setActive(0); setError('')
       } catch (reason) {
@@ -77,7 +82,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       } finally { if (alive) setLoading(false) }
     }, 260)
     return () => { alive = false; window.clearTimeout(timer) }
-  }, [query, kind])
+  }, [query, scope])
 
   const open = async (result: Result) => {
     if (result.libraryId) {
@@ -124,13 +129,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           ref={inputRef}
           className="global-search-input"
           value={query}
-          placeholder={kind === 'movie' ? 'Search for a movie…' : 'Search for a show…'}
+          placeholder={scope === 'movie' ? 'Search for a movie…' : scope === 'show' ? 'Search for a show…' : 'Search for a movie or show…'}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onKeyDown}
         />
         <div className="filter-tabs">
-          <button className={kind === 'movie' ? 'active' : ''} onClick={() => setKind('movie')}>Movies</button>
-          <button className={kind === 'show' ? 'active' : ''} onClick={() => setKind('show')}>Shows</button>
+          <button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>All</button>
+          <button className={scope === 'movie' ? 'active' : ''} onClick={() => setScope('movie')}>Movies</button>
+          <button className={scope === 'show' ? 'active' : ''} onClick={() => setScope('show')}>Shows</button>
         </div>
         <button className="icon-button" onClick={onClose} aria-label="Close search"><Icon name="close" size={18} /></button>
       </div>
@@ -151,14 +157,18 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           </span>
           <span className="global-search-copy">
             <strong>{result.title}</strong>
-            <span>{[result.year || 'Year unknown', result.tmdbId ? `TMDB ${result.tmdbId}` : null].filter(Boolean).join(' · ')}</span>
+            <span>{[
+              scope === 'all' ? (result.kind === 'movie' ? 'Movie' : 'Show') : null,
+              result.year || 'Year unknown',
+              result.tmdbId ? `TMDB ${result.tmdbId}` : null,
+            ].filter(Boolean).join(' · ')}</span>
             {result.overview && <small>{result.overview}</small>}
           </span>
           <span className="global-search-state">
             {result.present
               ? <Badge tone={result.state === 'Missing' ? 'amber' : 'green'}>{result.state ?? 'Present'}</Badge>
               : <Badge tone="neutral">Not in library</Badge>}
-            <span className="global-search-action">{result.libraryId ? 'Open' : 'Select'}</span>
+            {result.libraryId && <span className="global-search-action">Open</span>}
           </span>
         </button>)}
         {!results.length && <div className="global-search-empty">{hint}</div>}
@@ -171,6 +181,28 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     </div>
   </div>
 }
+
+/**
+ * Both libraries at once.
+ *
+ * Titles you already have come first regardless of kind, then the remaining
+ * TMDB matches are interleaved. Concatenating instead would bury every show
+ * beneath every movie, which makes the All scope useless for half of what it
+ * covers.
+ */
+async function searchEverything(term: string): Promise<Result[]> {
+  const [movies, shows] = await Promise.all([searchMovies(term), searchShows(term)])
+  const owned = [...movies, ...shows].filter((item) => item.present)
+  const rest = { movies: movies.filter((item) => !item.present), shows: shows.filter((item) => !item.present) }
+
+  const interleaved: Result[] = []
+  for (let index = 0; index < Math.max(rest.movies.length, rest.shows.length); index += 1) {
+    if (rest.movies[index]) interleaved.push(rest.movies[index])
+    if (rest.shows[index]) interleaved.push(rest.shows[index])
+  }
+  return [...owned, ...interleaved]
+}
+
 
 async function searchMovies(term: string): Promise<Result[]> {
   const [library, tmdb] = await Promise.all([
