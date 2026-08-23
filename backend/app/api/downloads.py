@@ -29,6 +29,7 @@ from app.models.domain import (
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.downloads import (
+    DownloadClientCategoryResponse,
     DownloadClientCreate,
     DownloadClientResponse,
     DownloadClientSavedTestRequest,
@@ -234,6 +235,34 @@ async def create_download_client(
     client = await get_configured_download_client(db, config.id)
     assert client is not None
     return _client_response(client)
+
+
+@router.get("/download-clients/{client_id}/categories", response_model=list[DownloadClientCategoryResponse])
+async def get_download_client_categories(
+    client_id: UUID,
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_qbittorrent_client_factory),
+) -> list[DownloadClientCategoryResponse]:
+    client = await get_configured_download_client(db, client_id)
+    if client is None or not client.enabled:
+        raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", "Download client is not available.", status_code=404)
+    adapter = client_factory(client.url, client.username or "", client.password or "")
+    try:
+        rows = await adapter.list_categories()
+    except Exception as exc:
+        raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", f"Could not load qBittorrent categories: {exc}", status_code=503) from exc
+    finally:
+        await adapter.close()
+    return [
+        DownloadClientCategoryResponse(
+            name=row.name,
+            save_path=row.save_path,
+            resolved_save_path=row.resolved_save_path,
+            is_default=row.name == (client.category or ""),
+        )
+        for row in rows
+    ]
 
 
 @router.get("/download-clients/{client_id}", response_model=DownloadClientResponse)

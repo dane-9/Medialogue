@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import downloads as downloads_api
 from app.api import indexers as indexers_api
+from app.api import tmdb as tmdb_api
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
@@ -18,13 +19,16 @@ from app.models.domain import (
     InteractiveSearchResult,
     Job,
     JobStatus,
+    MediaProfileOverride,
     MediaType,
     Movie,
+    QualityProfile,
     Season,
     Show,
 )
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.search import (
+    MovieAcquisitionSearchRequest,
     SearchIndexerStatus,
     SearchJobResponse,
     SearchResultDownloadRequest,
@@ -34,7 +38,9 @@ from app.schemas.search import (
 from app.services.events import create_event
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.services.jobs import create_job
+from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
+from app.services.tmdb import get_tmdb_configuration
 
 router = APIRouter(tags=["interactive search"])
 
@@ -88,6 +94,47 @@ async def _start_search(
     await db.commit()
     background_tasks.add_task(run_search_job, job.id, client_factory=client_factory)
     return JobAcceptedResponse(job_id=job.id)
+
+
+@router.post("/interactive-search/movies", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
+async def search_unattached_movie(
+    payload: MovieAcquisitionSearchRequest,
+    background_tasks: BackgroundTasks,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(indexers_api.get_torznab_client_factory),
+    tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
+) -> JobAcceptedResponse:
+    if await db.scalar(select(Movie.id).where(Movie.tmdb_id == payload.tmdb_id)) is not None:
+        raise AppError("MOVIE_ALREADY_EXISTS", "That TMDB Movie is already in the library.", status_code=409)
+    if await db.get(QualityProfile, payload.quality_profile_id) is None:
+        raise AppError("INVALID_QUALITY_PROFILE", "Quality Profile does not exist.", status_code=422)
+    configuration = await get_tmdb_configuration(db)
+    if configuration is None or not configuration.enabled or not configuration.api_key:
+        raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before searching for new Movies.", status_code=409)
+    client = tmdb_factory(configuration.api_key)
+    try:
+        metadata = await client.get_movie(payload.tmdb_id)
+    except Exception as exc:
+        raise AppError("TMDB_UNAVAILABLE", f"TMDB Movie lookup failed: {exc}", status_code=503) from exc
+    finally:
+        await client.close()
+    return await _start_search(
+        target=SearchTarget(
+            media_type=MediaType.MOVIES,
+            entity_type="tmdb_movie",
+            entity_id=None,
+            quality_profile_id=payload.quality_profile_id,
+            title=metadata.title,
+            year=metadata.year,
+            tmdb_id=metadata.tmdb_id,
+            overview=metadata.overview,
+            poster_ref=metadata.poster_path,
+        ),
+        background_tasks=background_tasks,
+        db=db,
+        client_factory=client_factory,
+    )
 
 
 @router.post("/movies/{resource_id}/interactive-search", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -299,8 +346,7 @@ async def download_search_result(
     indexer = await get_configured_indexer(db, result.indexer_id) if result.indexer_id else None
     if indexer is None or not indexer.api_key:
         raise AppError("INDEXER_UNAVAILABLE", "The indexer configuration for this result no longer exists.", status_code=409)
-    target_client_id = indexer.download_client_id or payload.download_client_id
-    client = await get_configured_download_client(db, target_client_id)
+    client = await get_configured_download_client(db, payload.download_client_id)
     if client is None or not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", "Download client is not available.", status_code=404)
     if client.scope != result.media_type:
@@ -309,11 +355,22 @@ async def download_search_result(
             f"{client.name} is not eligible for {result.media_type.value} downloads.",
             status_code=409,
         )
+    job = await db.get(Job, result.job_id)
+    target = dict((job.summary or {}).get("target") or {}) if job is not None else {}
+    unattached_movie = result.target_entity_id is None and result.target_entity_type == "tmdb_movie"
+    if unattached_movie:
+        tmdb_id = int(target.get("tmdb_id") or 0)
+        if not tmdb_id or not target.get("title"):
+            raise AppError("SEARCH_TARGET_INVALID", "The TMDB search target is incomplete.", status_code=409)
+        if await db.scalar(select(Movie.id).where(Movie.tmdb_id == tmdb_id)) is not None:
+            raise AppError("MOVIE_ALREADY_EXISTS", "That TMDB Movie is already in the library.", status_code=409)
+    selected_category = payload.category.strip() if payload.category and payload.category.strip() else (client.category or None)
     if result.selected_at is not None:
-        if result.selected_download_client_id != client.id:
+        existing_category = str((result.selection_snapshot or {}).get("category") or "") or None
+        if result.selected_download_client_id != client.id or (payload.category is not None and existing_category != selected_category):
             raise AppError(
                 "SEARCH_RESULT_ALREADY_SELECTED",
-                "This result was already submitted to another download client.",
+                "This result was already submitted with a different download destination.",
                 status_code=409,
             )
         return SearchResultDownloadResponse(
@@ -322,6 +379,8 @@ async def download_search_result(
             client_name=client.name,
             status="already_submitted",
             selected_at=result.selected_at,
+            movie_id=result.target_entity_id if result.target_entity_type == "movie" else None,
+            category=existing_category,
         )
     if not result.download_url:
         raise AppError("SEARCH_RESULT_NOT_DOWNLOADABLE", "Indexer did not provide a download URL.", status_code=409)
@@ -332,8 +391,20 @@ async def download_search_result(
         published_at = published_at.replace(tzinfo=timezone.utc)
     recent = bool(published_at and published_at >= now - timedelta(days=21))
     add_to_top = (client.recent_priority if recent else client.older_priority) == "first"
+    category_destination: str | None = None
+    if payload.category is not None:
+        try:
+            categories = await qbit.list_categories()
+        except Exception as exc:
+            await qbit.close()
+            raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", f"Could not validate qBittorrent category: {exc}", status_code=503) from exc
+        selected = next((item for item in categories if item.name == selected_category), None)
+        if selected is None:
+            await qbit.close()
+            raise AppError("QBITTORRENT_CATEGORY_NOT_FOUND", "The selected qBittorrent category no longer exists.", status_code=409)
+        category_destination = selected.resolved_save_path or None
     qbit_options = {
-        "category": client.category,
+        "category": selected_category,
         "tags": tuple(client.tags or []),
         "sequential_order": client.sequential_order,
         "first_last_first": client.first_last_first,
@@ -366,6 +437,33 @@ async def download_search_result(
             await torznab.close()
         await qbit.close()
 
+    committed_movie: Movie | None = None
+    if unattached_movie:
+        committed_movie = await create_movie_from_metadata(
+            db,
+            tmdb_id=int(target["tmdb_id"]),
+            title=str(target["title"]),
+            year=int(target["year"]) if target.get("year") is not None else None,
+            overview=str(target["overview"]) if target.get("overview") is not None else None,
+            poster_ref=str(target["poster_ref"]) if target.get("poster_ref") is not None else None,
+            monitored=True,
+            source="manual_acquisition",
+        )
+        profile_id_raw = target.get("quality_profile_id") or (result.custom_format_snapshot or {}).get("profile_id")
+        if profile_id_raw:
+            profile_id = UUID(str(profile_id_raw))
+            db.add(
+                MediaProfileOverride(
+                    media_type=MediaType.MOVIES,
+                    movie_id=committed_movie.id,
+                    quality_profile_id=profile_id,
+                    override_definition={},
+                    revision=1,
+                )
+            )
+        result.target_entity_type = "movie"
+        result.target_entity_id = committed_movie.id
+
     result.selected_at = now
     result.selected_download_client_id = client.id
     result.selection_snapshot = {
@@ -384,6 +482,8 @@ async def download_search_result(
         "custom_format_snapshot": dict(result.custom_format_snapshot or {}),
         "download_client_id": str(client.id),
         "download_client_name": client.name,
+        "category": selected_category,
+        "category_destination": category_destination,
         "download_client_options": {
             "recent": recent,
             "queue_position": "first" if add_to_top else "last",
@@ -407,6 +507,7 @@ async def download_search_result(
             "job_id": str(result.job_id),
             "indexer": result.indexer_name,
             "download_client_id": str(client.id),
+            "category": selected_category,
         },
     )
     await db.commit()
@@ -416,4 +517,6 @@ async def download_search_result(
         client_name=client.name,
         status="submitted",
         selected_at=now,
+        movie_id=result.target_entity_id if result.target_entity_type == "movie" else None,
+        category=selected_category,
     )

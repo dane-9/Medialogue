@@ -27,7 +27,6 @@ class IndexerCreate(BaseModel):
     categories: list[int] = Field(default_factory=list, max_length=100)
     minimum_seeders: int = Field(default=1, ge=0, le=100000)
     priority: int = Field(default=25, ge=1, le=50)
-    download_client_id: UUID | None = None
 
 
 class IndexerUpdate(BaseModel):
@@ -43,7 +42,6 @@ class IndexerUpdate(BaseModel):
     categories: list[int] | None = Field(default=None, max_length=100)
     minimum_seeders: int | None = Field(default=None, ge=0, le=100000)
     priority: int | None = Field(default=None, ge=1, le=50)
-    download_client_id: UUID | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -60,7 +58,6 @@ class IndexerResponse(ORMModel):
     categories: list[int]
     minimum_seeders: int
     priority: int
-    download_client_id: UUID | None
     health: str
     last_checked_at: datetime | None
     last_success_at: datetime | None

@@ -22,6 +22,51 @@ def sort_title(title: str) -> str:
     return title
 
 
+async def create_movie_from_metadata(
+    db: AsyncSession,
+    *,
+    tmdb_id: int,
+    title: str,
+    year: int | None,
+    overview: str | None = None,
+    poster_ref: str | None = None,
+    monitored: bool = True,
+    source: str = "tmdb",
+) -> Movie:
+    """Create a Movie from already-validated TMDB metadata.
+
+    Manual acquisition search validates and snapshots TMDB metadata before any
+    torrent is selected. Reusing that snapshot after qBittorrent accepts the
+    release avoids a second remote call at the commit boundary.
+    """
+
+    existing = await db.scalar(select(Movie).where(Movie.tmdb_id == tmdb_id))
+    if existing is not None:
+        return existing
+    movie = Movie(
+        title=title,
+        sort_title=sort_title(title),
+        year=year,
+        tmdb_id=tmdb_id,
+        overview=overview,
+        poster_ref=poster_ref,
+        monitored=monitored,
+        identity_state=IdentityState.MATCHED,
+        metadata_refreshed_at=utcnow(),
+    )
+    db.add(movie)
+    await db.flush()
+    await create_event(
+        db,
+        "movie.added",
+        entity_type="movie",
+        entity_id=movie.id,
+        message=f"Added {movie.title} from TMDB.",
+        details={"tmdb_id": tmdb_id, "monitored": monitored, "source": source},
+    )
+    return movie
+
+
 async def add_movie_from_tmdb(
     db: AsyncSession,
     tmdb_id: int,
@@ -32,15 +77,11 @@ async def add_movie_from_tmdb(
 ) -> Movie:
     """Create a library Movie from a TMDB id.
 
-    Movies previously entered the library only by scanning a storage root, which
-    meant a title you did not already own could not be interactively searched:
-    the search endpoint resolves its target against this table. Adding the movie
-    first gives the search, the grab and everything downstream — reconciliation,
-    history, problems — a real entity to attach to.
+    This remains the explicit "add without downloading" path used by existing
+    callers. New manual acquisitions use an unattached TMDB search instead and
+    create the Movie only after qBittorrent accepts the selected release.
 
-    The movie is created with no releases and no media directory, so it reads as
-    Missing until a release is actually grabbed and discovered on disk. Nothing
-    is written to the filesystem here.
+    This function itself creates no release and writes nothing to the filesystem.
     """
     existing = await db.scalar(select(Movie).where(Movie.tmdb_id == tmdb_id))
     if existing is not None:
@@ -55,28 +96,12 @@ async def add_movie_from_tmdb(
     finally:
         await client.close()
 
-    movie = Movie(
-        title=metadata.title,
-        sort_title=sort_title(metadata.title),
-        year=metadata.year,
+    return await create_movie_from_metadata(
+        db,
         tmdb_id=metadata.tmdb_id,
+        title=metadata.title,
+        year=metadata.year,
         overview=metadata.overview,
         poster_ref=metadata.poster_path,
         monitored=monitored,
-        # The identity came straight from a TMDB id the operator picked, so it is
-        # matched rather than inferred from a filename.
-        identity_state=IdentityState.MATCHED,
-        metadata_refreshed_at=utcnow(),
     )
-    db.add(movie)
-    await db.flush()
-
-    await create_event(
-        db,
-        "movie.added",
-        entity_type="movie",
-        entity_id=movie.id,
-        message=f"Added {movie.title} from TMDB.",
-        details={"tmdb_id": tmdb_id, "monitored": monitored},
-    )
-    return movie

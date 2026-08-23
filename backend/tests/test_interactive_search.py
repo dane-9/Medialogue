@@ -6,16 +6,20 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api import downloads as downloads_api
 from app.api import indexers as indexers_api
+from app.api import tmdb as tmdb_api
 from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
+from app.integrations.qbittorrent import TorrentCategory
+from app.integrations.tmdb import TMDBMovieMatch
 from app.integrations.torznab import SearchResult
 from app.main import create_app
-from app.models.domain import IdentityState, Movie
+from app.models.domain import IdentityState, MediaProfileOverride, Movie
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -127,6 +131,9 @@ class FakeTorznabClient:
 @dataclass
 class FakeQBitBehavior:
     submissions: list[dict] = field(default_factory=list)
+    categories: list[TorrentCategory] = field(default_factory=lambda: [
+        TorrentCategory(name="movies", save_path="/downloads/movies", resolved_save_path="/downloads/movies")
+    ])
 
     def factory(self, url: str, username: str, password: str):
         return FakeQBitClient(self, url, username, password)
@@ -154,8 +161,36 @@ class FakeQBitClient:
     async def add_url(self, url: str, *, save_path=None, category=None, tags=(), **options):
         self.behavior.submissions.append({"url": url, "save_path": save_path, "category": category, "tags": tuple(tags), **options})
 
+    async def list_categories(self):
+        return list(self.behavior.categories)
+
     async def close(self):
         return None
+
+
+
+
+class FakeTMDBClient:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    async def get_movie(self, tmdb_id: int) -> TMDBMovieMatch:
+        assert tmdb_id == 27205
+        return TMDBMovieMatch(
+            tmdb_id=27205,
+            title="Inception",
+            original_title="Inception",
+            year=2010,
+            overview="A dream within a dream.",
+            poster_path="/inception.jpg",
+        )
+
+    async def close(self):
+        return None
+
+
+def _fake_tmdb_factory(api_key: str):
+    return FakeTMDBClient(api_key)
 
 
 def _create_indexer(client: TestClient, headers: dict[str, str], *, name: str, url: str, scope: str = "both") -> dict:
@@ -183,6 +218,7 @@ def test_indexer_crud_redacts_api_key_and_tests_connection(client: TestClient) -
         indexer = _create_indexer(client, headers, name="Movies + TV", url="http://prowlarr.test/1/api")
         assert indexer["scope"] == "both"
         assert indexer["api_key_configured"] is True
+        assert "download_client_id" not in indexer
         assert "api_key" not in indexer
         assert "secret-Movies + TV" not in str(indexer)
 
@@ -387,5 +423,155 @@ def test_selected_search_result_submits_to_eligible_qbit_and_is_idempotent(clien
         persisted = client.get(f"/api/v1/search-jobs/{started['job_id']}").json()["results"][0]
         assert persisted["selected_at"] is not None
         assert persisted["selected_download_client_id"] == qbit_client["id"]
+    finally:
+        client.app.dependency_overrides.clear()
+
+
+def test_unattached_movie_search_commits_only_after_explicit_qbit_download(client: TestClient) -> None:
+    headers = _login(client)
+    configured = client.put(
+        "/api/v1/integrations/tmdb",
+        headers=headers,
+        json={"api_key": "test-key", "enabled": True},
+    )
+    assert configured.status_code == 200, configured.text
+
+    profile = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={"name": "Manual Movie Search"},
+    )
+    assert profile.status_code == 201, profile.text
+    profile_id = profile.json()["id"]
+
+    indexer_url = "http://prowlarr.test/manual/api"
+    _create_indexer(client, headers, name="Manual", url=indexer_url, scope="movies")
+    search_behavior = FakeTorznabBehavior(
+        results_by_url={
+            indexer_url: [
+                SearchResult(
+                    guid="manual-result",
+                    title="Inception 2010 2160p UHD BluRay REMUX HEVC TrueHD 7.1-LM",
+                    download_url="http://prowlarr.test/download/manual",
+                    size=60_000_000_000,
+                    seeders=44,
+                    published=None,
+                )
+            ]
+        }
+    )
+    qbit_behavior = FakeQBitBehavior(
+        categories=[
+            TorrentCategory(
+                name="movies",
+                save_path="/downloads/movies",
+                resolved_save_path="/downloads/movies",
+            ),
+            TorrentCategory(
+                name="movies-4k",
+                save_path="/downloads/movies-4k",
+                resolved_save_path="/downloads/movies-4k",
+            ),
+        ]
+    )
+    client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: search_behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: qbit_behavior.factory
+    client.app.dependency_overrides[tmdb_api.get_tmdb_client_factory] = lambda: _fake_tmdb_factory
+    try:
+        qbit_client = client.post(
+            "/api/v1/download-clients",
+            headers=headers,
+            json={
+                "name": "Movies",
+                "url": "http://qbit.test:8080",
+                "username": "media",
+                "password": "secret",
+                "scope": "movies",
+                "category": "movies",
+                "enabled": True,
+            },
+        )
+        assert qbit_client.status_code == 201, qbit_client.text
+        qbit_client_id = qbit_client.json()["id"]
+
+        categories = client.get(f"/api/v1/download-clients/{qbit_client_id}/categories")
+        assert categories.status_code == 200, categories.text
+        assert categories.json() == [
+            {
+                "name": "movies",
+                "save_path": "/downloads/movies",
+                "resolved_save_path": "/downloads/movies",
+                "is_default": True,
+            },
+            {
+                "name": "movies-4k",
+                "save_path": "/downloads/movies-4k",
+                "resolved_save_path": "/downloads/movies-4k",
+                "is_default": False,
+            },
+        ]
+
+        started = client.post(
+            "/api/v1/interactive-search/movies",
+            headers=headers,
+            json={"tmdb_id": 27205, "quality_profile_id": profile_id},
+        )
+        assert started.status_code == 202, started.text
+        job_id = started.json()["job_id"]
+        job = client.get(f"/api/v1/search-jobs/{job_id}")
+        assert job.status_code == 200, job.text
+        payload = job.json()
+        assert payload["target"]["entity_type"] == "tmdb_movie"
+        assert payload["target"]["entity_id"] is None
+        assert payload["target"]["tmdb_id"] == 27205
+        assert payload["target"]["quality_profile_id"] == profile_id
+        assert payload["results"][0]["quality_profile_id"] == profile_id
+
+        async def movie_before_download():
+            async with db_session.async_session_factory() as db:
+                return await db.scalar(select(Movie).where(Movie.tmdb_id == 27205))
+
+        # Searching is evidence only; it must not create a library Movie.
+        assert asyncio.run(movie_before_download()) is None
+
+        result_id = payload["results"][0]["id"]
+        submitted = client.post(
+            f"/api/v1/search-results/{result_id}/download",
+            headers=headers,
+            json={"download_client_id": qbit_client_id, "category": "movies-4k"},
+        )
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.json()["status"] == "submitted"
+        assert submitted.json()["category"] == "movies-4k"
+        assert submitted.json()["movie_id"]
+        assert len(qbit_behavior.submissions) == 1
+        assert qbit_behavior.submissions[0]["category"] == "movies-4k"
+        assert qbit_behavior.submissions[0]["save_path"] is None
+
+        async def committed_state():
+            async with db_session.async_session_factory() as db:
+                movie = await db.scalar(select(Movie).where(Movie.tmdb_id == 27205))
+                assert movie is not None
+                assignment = await db.scalar(
+                    select(MediaProfileOverride).where(MediaProfileOverride.movie_id == movie.id)
+                )
+                return movie, assignment
+
+        movie, assignment = asyncio.run(committed_state())
+        assert str(movie.id) == submitted.json()["movie_id"]
+        assert movie.title == "Inception"
+        assert movie.overview == "A dream within a dream."
+        assert assignment is not None
+        assert str(assignment.quality_profile_id) == profile_id
+
+        repeated = client.post(
+            f"/api/v1/search-results/{result_id}/download",
+            headers=headers,
+            json={"download_client_id": qbit_client_id, "category": "movies-4k"},
+        )
+        assert repeated.status_code == 200, repeated.text
+        assert repeated.json()["status"] == "already_submitted"
+        assert repeated.json()["movie_id"] == submitted.json()["movie_id"]
+        assert len(qbit_behavior.submissions) == 1
     finally:
         client.app.dependency_overrides.clear()

@@ -27,7 +27,7 @@ from app.services.custom_formats import CustomFormat as EvaluationFormat, evalua
 from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
 from app.services.jobs import update_job
-from app.services.quality_profiles import load_effective_profile, minimum_quality_status
+from app.services.quality_profiles import load_effective_profile, load_quality_profile_for_search, minimum_quality_status
 
 TorznabClientFactory = Callable[..., TorznabClient]
 SEARCH_RESULT_TTL = timedelta(hours=24)
@@ -37,14 +37,17 @@ SEARCH_RESULT_TTL = timedelta(hours=24)
 class SearchTarget:
     media_type: MediaType
     entity_type: str
-    entity_id: UUID
+    entity_id: UUID | None
     title: str
     # Quality Profile assignments live on the logical Movie/Show. For Movie
     # searches this equals entity_id; episode/season searches point here to
     # their parent Show while retaining the episode/season target separately.
     profile_entity_id: UUID | None = None
+    quality_profile_id: UUID | None = None
     year: int | None = None
     tmdb_id: int | None = None
+    overview: str | None = None
+    poster_ref: str | None = None
     season: int | None = None
     episode: int | None = None
 
@@ -52,11 +55,14 @@ class SearchTarget:
         return {
             "media_type": self.media_type.value,
             "entity_type": self.entity_type,
-            "entity_id": str(self.entity_id),
+            "entity_id": str(self.entity_id) if self.entity_id else None,
             "profile_entity_id": str(self.profile_entity_id) if self.profile_entity_id else None,
+            "quality_profile_id": str(self.quality_profile_id) if self.quality_profile_id else None,
             "title": self.title,
             "year": self.year,
             "tmdb_id": self.tmdb_id,
+            "overview": self.overview,
+            "poster_ref": self.poster_ref,
             "season": self.season,
             "episode": self.episode,
         }
@@ -66,11 +72,14 @@ class SearchTarget:
         return cls(
             media_type=MediaType(value["media_type"]),
             entity_type=str(value["entity_type"]),
-            entity_id=UUID(str(value["entity_id"])),
+            entity_id=UUID(str(value["entity_id"])) if value.get("entity_id") else None,
             title=str(value["title"]),
             profile_entity_id=UUID(str(value["profile_entity_id"])) if value.get("profile_entity_id") else None,
+            quality_profile_id=UUID(str(value["quality_profile_id"])) if value.get("quality_profile_id") else None,
             year=int(value["year"]) if value.get("year") is not None else None,
             tmdb_id=int(value["tmdb_id"]) if value.get("tmdb_id") is not None else None,
+            overview=str(value["overview"]) if value.get("overview") is not None else None,
+            poster_ref=str(value["poster_ref"]) if value.get("poster_ref") is not None else None,
             season=int(value["season"]) if value.get("season") is not None else None,
             episode=int(value["episode"]) if value.get("episode") is not None else None,
         )
@@ -117,9 +126,17 @@ async def run_search_job(
         # definitions at search start. Every indexer result in this job is
         # therefore evaluated under the same rules even if settings are edited
         # while a slow indexer is still responding.
-        effective_profile = await load_effective_profile(
-            db, media_type=target.media_type, entity_id=target.profile_entity_id or target.entity_id
-        )
+        if target.quality_profile_id is not None:
+            effective_profile = await load_quality_profile_for_search(
+                db, media_type=target.media_type, profile_id=target.quality_profile_id
+            )
+        else:
+            profile_entity_id = target.profile_entity_id or target.entity_id
+            if profile_entity_id is None:
+                raise ValueError("Interactive search target has no Quality Profile context")
+            effective_profile = await load_effective_profile(
+                db, media_type=target.media_type, entity_id=profile_entity_id
+            )
         eligible_scopes = (
             (MediaScope.MOVIES, MediaScope.BOTH)
             if target.media_type == MediaType.MOVIES

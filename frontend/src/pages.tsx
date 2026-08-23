@@ -2305,8 +2305,8 @@ function QBittorrentSettings() {
           <Field label="Scope" help="Which library this client receives grabs for. Observation is unaffected — every client is always read.">
             <Select value={draft.scope} onChange={(event) => updateDraft('scope', event.target.value as DownloadClientDraft['scope'])}><option value="movies">Movies</option><option value="shows">Shows</option></Select>
           </Field>
-          <Field label="Category" badge="optional" help={<>Category assigned to torrents Medialogue adds. It does <strong>not</strong> filter what Medialogue observes — every torrent in this client is read regardless.</>}>
-            <Input value={draft.category} onChange={(event) => updateDraft('category', event.target.value)} placeholder="media" />
+          <Field label="Default category" badge="optional" help={<>Preselected for manual acquisitions. The category and its save path are owned by qBittorrent; Medialogue only reads and displays that destination.</>}>
+            <Input value={draft.category} onChange={(event) => updateDraft('category', event.target.value)} placeholder="movies" />
           </Field>
           <Field label="Tags" badge="optional" help="qBittorrent tags applied to torrents Medialogue adds. Comma-separated.">
             <Input value={draft.tags} onChange={(event) => updateDraft('tags', event.target.value)} placeholder="movies, managed" />
@@ -2349,7 +2349,6 @@ type IndexerDraft = {
   categories: string
   minimumSeeders: number
   priority: number
-  downloadClientId: string
 }
 
 const emptyIndexer: IndexerDraft = {
@@ -2364,7 +2363,6 @@ const emptyIndexer: IndexerDraft = {
   categories: '',
   minimumSeeders: 1,
   priority: 25,
-  downloadClientId: '',
 }
 
 function draftFromIndexer(indexer: Indexer): IndexerDraft {
@@ -2380,13 +2378,11 @@ function draftFromIndexer(indexer: Indexer): IndexerDraft {
     categories: indexer.categories.join(', '),
     minimumSeeders: indexer.minimumSeeders,
     priority: indexer.priority,
-    downloadClientId: indexer.downloadClientId ?? '',
   }
 }
 
 function IndexerSettings() {
   const [indexers, setIndexers] = useState<Indexer[]>([])
-  const [downloadClients, setDownloadClients] = useState<DownloadClient[]>([])
   const [selectedId, setSelectedId] = useUrlState('indexer')
   const [draft, setDraft] = useState<IndexerDraft>(emptyIndexer)
   const [loading, setLoading] = useState(true)
@@ -2399,9 +2395,8 @@ function IndexerSettings() {
   const load = async () => {
     setLoading(true)
     try {
-      const [items, clients] = await Promise.all([api.indexers(), api.downloadClients()])
+      const items = await api.indexers()
       setIndexers(items)
-      setDownloadClients(clients)
       setError('')
       const selected = items.find((item) => item.id === selectedId) ?? items[0]
       setDraft(selected ? draftFromIndexer(selected) : emptyIndexer)
@@ -2442,7 +2437,6 @@ function IndexerSettings() {
         categories: draft.categories.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0),
         minimum_seeders: draft.minimumSeeders,
         priority: draft.priority,
-        download_client_id: draft.downloadClientId || null,
       }
       const value = selectedId
         ? await api.updateIndexer(selectedId, { ...base, ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}), expected_revision: selected?.revision })
@@ -2561,9 +2555,6 @@ function IndexerSettings() {
           </Field>
           <Field label="Indexer priority" help="Used as a tie-breaker from 1 (highest) to 50 (lowest). All eligible indexers are still searched.">
             <Input type="number" min="1" max="50" value={String(draft.priority)} onChange={(event) => updateDraft('priority', Math.min(50, Math.max(1, Number(event.target.value) || 25)))} />
-          </Field>
-          <Field label="Download client" help="Grabs from this indexer use this client. Leave automatic to use the client selected for the release.">
-            <Select value={draft.downloadClientId} onChange={(event) => updateDraft('downloadClientId', event.target.value)}><option value="">Automatic / selected at grab</option>{downloadClients.map((client) => <option value={client.id} key={client.id}>{client.name} · {client.scope}</option>)}</Select>
           </Field>
         </div>
 

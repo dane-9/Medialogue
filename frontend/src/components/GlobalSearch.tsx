@@ -4,13 +4,14 @@ import { api } from '../api/client'
 import type { Movie, Show, TMDBMovieLookup, TMDBShowLookup } from '../types'
 import { Icon } from './Icon'
 import { Badge, Button } from './ui'
+import { MovieAcquisitionWizard } from './MovieAcquisitionWizard'
 
 type Kind = 'movie' | 'show'
 
 /**
  * One row in the result list. A title already in the library carries its
- * internal id; a TMDB-only title carries just the tmdbId and has to be added
- * before anything can be done with it.
+ * internal id; a TMDB-only movie carries just the tmdbId and can enter the
+ * manual acquisition flow without creating a library Movie first.
  */
 type Result = {
   key: string
@@ -46,6 +47,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState('')
   const [active, setActive] = useState(0)
+  const [acquisition, setAcquisition] = useState<Result | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
@@ -83,12 +85,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       return
     }
     if (!result.tmdbId) return
+    if (result.kind === 'movie') {
+      setAcquisition(result)
+      return
+    }
     setBusyId(result.key); setError('')
     try {
-      // Nothing can be searched or grabbed until the title exists in the
-      // library, so adding is the first step of acting on a TMDB result.
-      const added = result.kind === 'movie' ? await api.addMovie(result.tmdbId) : await api.addShow(result.tmdbId)
-      navigate(result.kind === 'movie' ? `/movies/${added.id}` : `/shows/${added.id}`)
+      const added = await api.addShow(result.tmdbId)
+      navigate(`/shows/${added.id}`)
       onClose()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not add this title.')
@@ -107,6 +111,13 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     if (!results.length) return 'No matches.'
     return `${results.length} result${results.length === 1 ? '' : 's'}`
   }, [loading, query, results.length])
+
+  if (acquisition?.tmdbId && acquisition.kind === 'movie') return <MovieAcquisitionWizard
+    movie={{ tmdbId: acquisition.tmdbId, title: acquisition.title, year: acquisition.year, poster: acquisition.poster, overview: acquisition.overview }}
+    onBack={() => setAcquisition(null)}
+    onClose={onClose}
+    onComplete={(movieId) => { navigate(`/movies/${movieId}`); onClose() }}
+  />
 
   return <div className="modal-backdrop" onClick={onClose}>
     <div className="global-search" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Search">
@@ -151,7 +162,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             {result.present
               ? <Badge tone={result.state === 'Missing' ? 'amber' : 'green'}>{result.state ?? 'Present'}</Badge>
               : <Badge tone="neutral">Not in library</Badge>}
-            <span className="global-search-action">{busyId === result.key ? 'Adding…' : result.libraryId ? 'Open' : 'Add & search'}</span>
+            <span className="global-search-action">{busyId === result.key ? 'Adding…' : result.libraryId ? 'Open' : result.kind === 'movie' ? 'Select' : 'Add'}</span>
           </span>
         </button>)}
         {!results.length && <div className="global-search-empty">{hint}</div>}

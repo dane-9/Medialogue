@@ -807,7 +807,7 @@ class InteractiveSearchResult(Base):
     indexer_name: Mapped[str] = mapped_column(String(256), nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
     target_entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    target_entity_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    target_entity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     guid: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     download_url: Mapped[str | None] = mapped_column(Text)

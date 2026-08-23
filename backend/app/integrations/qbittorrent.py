@@ -27,6 +27,26 @@ def _bencode_value_end(payload: bytes, position: int) -> int:
     return colon + 1 + length
 
 
+def _resolved_category_path(default_save_path: str, category_save_path: str) -> str:
+    """Resolve a qBittorrent category path for display without overriding it.
+
+    qBittorrent permits category paths relative to the client's default save
+    directory. Keep Windows/UNC paths intact even when Medialogue itself runs
+    on another platform; this value is informational only.
+    """
+
+    category = category_save_path.strip()
+    default = default_save_path.strip()
+    if not category:
+        return default
+    if category.startswith(("/", "\\")) or (len(category) >= 3 and category[1] == ":" and category[2] in {"/", "\\"}):
+        return category
+    if not default:
+        return category
+    separator = "\\" if "\\" in default and "/" not in default else "/"
+    return f"{default.rstrip('/\\')}{separator}{category.lstrip('/\\')}"
+
+
 def _torrent_info_hash(payload: bytes) -> str | None:
     try:
         if not payload.startswith(b"d"):
@@ -98,6 +118,13 @@ class TorrentObservation:
     @property
     def complete(self) -> bool:
         return self.progress >= 1 and not self.checking and self.state != "metaDL"
+
+
+@dataclass(frozen=True, slots=True)
+class TorrentCategory:
+    name: str
+    save_path: str
+    resolved_save_path: str
 
 
 class QBittorrentClient:
@@ -193,6 +220,33 @@ class QBittorrentClient:
     async def list_torrents(self) -> list[TorrentObservation]:
         response = await self._request("GET", "/api/v2/torrents/info")
         return [self._observation(item) for item in response.json()]
+
+    async def list_categories(self) -> list[TorrentCategory]:
+        """Return qBittorrent categories with their effective destination paths."""
+
+        categories_response, preferences_response = await asyncio.gather(
+            self._request("GET", "/api/v2/torrents/categories"),
+            self._request("GET", "/api/v2/app/preferences"),
+        )
+        categories = categories_response.json()
+        preferences = preferences_response.json()
+        default_save_path = str(preferences.get("save_path") or "")
+        rows: list[TorrentCategory] = []
+        if isinstance(categories, dict):
+            for key, raw in categories.items():
+                item = raw if isinstance(raw, dict) else {}
+                name = str(item.get("name") or key).strip()
+                if not name:
+                    continue
+                save_path = str(item.get("savePath") or item.get("save_path") or "").strip()
+                rows.append(
+                    TorrentCategory(
+                        name=name,
+                        save_path=save_path,
+                        resolved_save_path=_resolved_category_path(default_save_path, save_path),
+                    )
+                )
+        return sorted(rows, key=lambda item: item.name.casefold())
 
     async def get_torrent(self, info_hash: str) -> TorrentObservation | None:
         response = await self._request(

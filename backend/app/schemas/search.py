@@ -4,7 +4,13 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class MovieAcquisitionSearchRequest(BaseModel):
+    tmdb_id: int = Field(gt=0)
+    quality_profile_id: UUID
+
 
 
 class SearchResultResponse(BaseModel):
@@ -62,6 +68,7 @@ class SearchJobResponse(BaseModel):
 
 class SearchResultDownloadRequest(BaseModel):
     download_client_id: UUID
+    category: str | None = Field(default=None, max_length=256)
 
 
 class SearchResultDownloadResponse(BaseModel):
@@ -70,3 +77,5 @@ class SearchResultDownloadResponse(BaseModel):
     client_name: str
     status: str
     selected_at: datetime
+    movie_id: UUID | None = None
+    category: str | None = None
