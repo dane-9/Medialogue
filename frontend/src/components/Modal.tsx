@@ -9,9 +9,11 @@ import { Icon } from './Icon'
  * page behind it can stay a simple overview: you see everything at once, then
  * open exactly the one thing you are changing.
  */
-export function Modal({ title, eyebrow, onClose, footer, wide, className, children }: PropsWithChildren<{
+export function Modal({ title, eyebrow, icon, onClose, footer, wide, className, children }: PropsWithChildren<{
   title: string
   eyebrow?: string
+  /** Shown before the title, matching the icon of the section it belongs to. */
+  icon?: Parameters<typeof Icon>[0]['name']
   onClose: () => void
   footer?: ReactNode
   wide?: boolean
@@ -32,6 +34,7 @@ export function Modal({ title, eyebrow, onClose, footer, wide, className, childr
   return <div className="modal-backdrop" onClick={onClose}>
     <div className={`modal ${wide ? 'modal-wide' : ''} ${className ?? ''}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
       <div className="modal-head">
+        {icon && <span className="modal-head-icon"><Icon name={icon} size={18} /></span>}
         <div className="modal-head-copy">
           {eyebrow && <div className="eyebrow">{eyebrow}</div>}
           <h2>{title}</h2>

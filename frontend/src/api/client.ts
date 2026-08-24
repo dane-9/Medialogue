@@ -1,4 +1,4 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
 
 export class ApiError extends Error {
   status: number
@@ -558,6 +558,8 @@ function normalizeStorageRoot(value: unknown): StorageRoot {
     access_mode: textValue(item.access_mode, 'read_only').toLowerCase() === 'read_write' ? 'read_write' : 'read_only',
     enabled: item.enabled !== false,
     missing_grace_checks: optionalNumber(item.missing_grace_checks) ?? 2,
+    scanning: item.scanning === true,
+    media_count: optionalNumber(item.media_count) ?? 0,
     last_health: textValue(item.last_health || item.health || item.status) || undefined,
     last_scan_at: dateValue(item.last_scan_at || item.lastScanAt),
     last_health_checked_at: dateValue(item.last_health_checked_at || item.lastHealthCheckedAt),
@@ -1016,7 +1018,14 @@ export const api = {
   },
   createStorageRoot: (root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>('/api/v1/storage-roots', { method: 'POST', body: JSON.stringify(root) }).then(normalizeStorageRoot),
   updateStorageRoot: (rootId: string, root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'PATCH', body: JSON.stringify(root) }).then(normalizeStorageRoot),
-  deleteStorageRoot: (rootId: string) => request<{ id: string }>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'DELETE' }),
+  deleteStorageRoot: (rootId: string, removeEntries = false) => request<{ id: string }>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}${removeEntries ? '?remove_entries=true' : ''}`, { method: 'DELETE' }),
+  browseFilesystem: (path: string) => request<FilesystemListing>(`/api/v1/filesystem?path=${encodeURIComponent(path)}`),
+  librarySummary: () => request<LibrarySummary>('/api/v1/library/summary'),
+  checkStorageRootHealth: async () => {
+    const payload = await request<{ items?: unknown[] } | unknown[]>('/api/v1/storage-roots/health', { method: 'POST' })
+    const items = Array.isArray(payload) ? payload : payload.items ?? []
+    return items.map(normalizeStorageRoot)
+  },
   startScan: (rootId: string) => request<{ job_id: string }>(`/api/v1/storage-roots/${rootId}/scan`, { method: 'POST' }),
   plexConfiguration: () => request<PlexConfiguration>('/api/v1/integrations/plex'),
   savePlex: (configuration: { url: string; token?: string; enabled: boolean; expected_revision?: number }) => request<PlexConfiguration>('/api/v1/integrations/plex', { method: 'PUT', body: JSON.stringify(configuration) }),

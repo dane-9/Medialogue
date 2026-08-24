@@ -23,7 +23,7 @@ export function swarmHealth(seeders?: number | null): SwarmHealth {
 /**
  * Render the swarm as "seeders/leechers".
  *
- * A missing leecher count is common — plenty of trackers report only seeders —
+ * A missing leecher count is common, plenty of trackers report only seeders,
  * and is shown as an em dash rather than a zero, which would claim there is
  * nobody downloading.
  */

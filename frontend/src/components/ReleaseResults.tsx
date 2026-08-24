@@ -32,7 +32,7 @@ const signed = (score?: number) => `${(score ?? 0) > 0 ? '+' : ''}${score ?? 0}`
  *
  * Rows are a fixed height and never expand, and nothing unfolds below them:
  * clicking a row must never move the row under the cursor, or the next row you
- * meant to compare. Everything a release has to say is on its own row —
+ * meant to compare. Everything a release has to say is on its own row,
  * matched Custom Formats hang off the score, warnings off the alert pill.
  *
  * Captions live once in the header rather than being repeated on every row.
@@ -56,7 +56,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
   const sorted = useMemo(() => sortReleases(results, sort, desc), [results, sort, desc])
 
   // A new column opens at its useful direction, the active one flips, and a
-  // third click returns to the ranked order — which needs no column of its own
+  // third click returns to the ranked order, which needs no column of its own
   // in a grid whose column count has to stay fixed.
   const choose = (key: SortKey) => {
     if (key !== sort) { setSort(key); setDesc(DEFAULT_DESC[key]); return }

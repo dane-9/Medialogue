@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react'
 import { api } from './api/client'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
+import { useConfirm } from './components/Confirm'
 import { Badge, Button, EmptyState, Input, Select } from './components/ui'
 import { Field } from './components/settings'
 import { Modal } from './components/Modal'
@@ -126,6 +127,7 @@ function ConditionEvaluationRow({ condition }: { condition: CustomFormatConditio
 }
 
 export default function CustomFormatsPageView() {
+  const confirm = useConfirm()
   const [formats, setFormats] = useState<CustomFormat[]>([])
   const [sections, setSections] = useState<CustomFormatSection[]>([])
   const [sectionDraft, setSectionDraft] = useState<CustomFormatSection[]>([])
@@ -259,7 +261,11 @@ export default function CustomFormatsPageView() {
 
   const remove = async () => {
     if (!draft.id) { newFormat(); return }
-    if (!window.confirm(`Delete Custom Format “${draft.name}”? This does not delete media.`)) return
+    if (!await confirm({
+      title: `Delete "${draft.name}"?`,
+      body: 'Quality Profiles using this format lose its score. No media or existing releases change.',
+      confirmLabel: 'Delete format',
+    })) return
     setSaving(true); setError(''); setMessage('')
     try {
       await api.deleteCustomFormat(draft.id)

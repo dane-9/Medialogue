@@ -49,7 +49,7 @@ function compareRank(left: InteractiveSearchResult, right: InteractiveSearchResu
  * Order releases for display.
  *
  * One rule outranks the chosen column: a release the profile blocks cannot be
- * downloaded, so it sinks to the bottom whatever you sort by — otherwise
+ * downloaded, so it sinks to the bottom whatever you sort by, otherwise
  * sorting by score leads with an unusable release. Ties keep the order the
  * server sent.
  */

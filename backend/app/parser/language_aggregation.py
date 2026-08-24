@@ -43,7 +43,7 @@ def aggregate_languages(
     1. What the indexer declared. The tracker knows what it is serving, so this
        replaces the parse outright rather than merging with it.
     2. What the title declared, minus any language contributed only by the
-       media's own title — "The French Connection" is not a French release.
+       media's own title, "The French Connection" is not a French release.
     3. The indexer's multi-language setting, when the title carries a MULTI tag
        and nothing better is known.
     4. The work's original language from TMDB, when nothing above resolved.

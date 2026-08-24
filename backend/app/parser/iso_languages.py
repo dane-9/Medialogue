@@ -1,7 +1,7 @@
 """Mapping ISO language codes and names onto Medialogue's display names.
 
-Indexers report languages inconsistently — ``en``, ``eng``, ``English``,
-``english`` — and TMDB reports an ISO 639-1 code. Both are resolved here so the
+Indexers report languages inconsistently, ``en``, ``eng``, ``English``,
+``english``, and TMDB reports an ISO 639-1 code. Both are resolved here so the
 rest of the system only ever deals with one spelling per language.
 """
 

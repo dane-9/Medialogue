@@ -2,8 +2,8 @@ import { useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 /**
- * Keeps one piece of view state — which rail item is open, which filter is
- * applied, which page you are on — in the query string instead of component
+ * Keeps one piece of view state, which rail item is open, which filter is
+ * applied, which page you are on, in the query string instead of component
  * state, so a refresh, a bookmark or a pasted link all land where you left off.
  *
  * Writes use `replace` rather than `push`. Selecting rail items is browsing

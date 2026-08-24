@@ -35,7 +35,7 @@ const css = (rgb: [number, number, number], alpha?: number) =>
  * Derive a readable badge from one chosen colour.
  *
  * The colour is used as the text, with translucent border and background drawn
- * from the same hue — so a user can pick anything without producing an
+ * from the same hue, so a user can pick anything without producing an
  * unreadable badge. A colour too dark to read against the dark theme is
  * lightened toward white until it clears the threshold, which keeps the hue the
  * user chose while making it legible. Returns null for anything unparseable so

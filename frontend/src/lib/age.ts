@@ -21,7 +21,7 @@ const UNITS: Array<[size: number, name: string]> = [
 /**
  * Describe how long ago something was published, in one unit.
  *
- * A single coarse unit is what you actually compare releases on — "2 weeks ago"
+ * A single coarse unit is what you actually compare releases on, "2 weeks ago"
  * settles it, and "2 weeks 3 days 4 hours" does not settle it any better while
  * costing a column of width.
  *

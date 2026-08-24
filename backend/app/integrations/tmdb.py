@@ -97,8 +97,8 @@ class TMDBEpisodeGroupSummary:
 class TMDBEpisodeGroup:
     """A full ordering: seasons in order, each holding episodes in order.
 
-    The episodes are the same TMDB episodes as the default structure — the same
-    ``tmdb_id`` values — just arranged differently. That is what makes switching
+    The episodes are the same TMDB episodes as the default structure, the same
+    ``tmdb_id`` values, just arranged differently. That is what makes switching
     an ordering a renumbering rather than a rebuild.
     """
 

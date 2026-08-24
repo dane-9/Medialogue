@@ -414,6 +414,17 @@ h1, h2, h3, p { margin: 0; }
 .input:focus { border-color: var(--accent); }
 .input[readonly] { color: var(--muted); }
 .select { width: auto; min-width: 130px; color: var(--text); }
+/* Native option lists paint the current value with the system accent, which
+   reads as a stray blue bar against the dark palette. Chrome ignores
+   background-color on a checked option but honours a large inset shadow, so
+   both are set. Firefox and Safari keep their own highlight regardless. */
+.select option { color: var(--text); background: var(--raised); }
+.select option:checked,
+.select option[selected] {
+  color: var(--text);
+  background: var(--raised);
+  box-shadow: 0 0 0 100px var(--raised) inset;
+}
 textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); line-height: 1.5; }
 
 .search-field {
@@ -589,14 +600,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 /* Grouped settings rail. The destination remains stable while each page owns
    its integration-specific selectors and actions. */
-.settings-nav .nav-group {
-  padding: var(--s2) var(--s2) var(--s1);
-  font: 500 var(--t-micro)/1.4 var(--mono);
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-.settings-nav .nav-group:not(:first-child) { margin-top: var(--s2); }
 
 /* --------------------------------------------------------------------------
    Panels, tables, badges, stats — the shared surface vocabulary
@@ -823,7 +826,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   align-items: start;
 }
 /* Settings needs only room for destination labels, not descriptions. */
-.split.split-narrow { --rail: 210px; }
+.split.split-narrow {
+  --rail: 196px;
+  grid-template-columns: var(--rail) minmax(0, 1fr) var(--rail);
+}
+/* An empty third column, so the panel is centred rather than pushed right. */
+.split.split-narrow::after { content: ''; }
 /* Collection selectors can still collapse the shared split gap when needed. */
 .split-flush { gap: 0; }
 
@@ -1492,9 +1500,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .settings-nav button svg:first-child { flex: none; color: var(--faint); }
 .settings-nav button:hover { color: var(--text); background: var(--raised); }
-.settings-nav button.active { color: var(--text); background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); }
+.settings-nav button.active { color: var(--accent-text); background: var(--accent-soft); }
 .settings-nav button.active svg:first-child { color: var(--accent); }
-.settings-nav button svg:last-child { margin-left: auto; flex: none; color: var(--faint); }
 
 .settings-panel { min-height: 480px; overflow: hidden; }
 .settings-section { display: flex; gap: var(--s5); padding: var(--s4); border-bottom: 1px solid var(--line); }
@@ -1579,7 +1586,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .provider-card:hover { border-color: var(--accent-line); background: var(--raised-2); transform: translateY(-1px); }
 .provider-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .provider-card-disabled { opacity: .64; }
-.storage-root-card-offline { border-color: var(--err-line); background: var(--err-soft); }
 .remote-mapping-route { display: flex; align-items: center; gap: var(--s2); }
 .remote-mapping-route b { min-width: 0; overflow: hidden; color: var(--muted); font-weight: 500; text-overflow: ellipsis; }
 .remote-mapping-route svg { flex: none; color: var(--accent-text); }
@@ -1595,12 +1601,123 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .provider-add-card { align-items: center; justify-content: center; color: var(--faint); border-style: dashed; background: transparent; text-align: center; }
 .provider-add-card > strong { font-size: var(--t-sm); }
 .provider-add-card svg { color: var(--accent-text); }
+/* Root Storage is a list, not a card grid: these items have no visual
+   identity, and the one field that matters — the path — needs full width. */
+.root-list { display: grid; gap: var(--s2); }
+/* Removal dialog: the path, what happens, and the one choice worth offering. */
+/* Confirmation body: one short statement of the consequence. */
+.confirm-body { padding: var(--s4); color: var(--muted); font-size: var(--t-sm); line-height: 1.55; overflow-wrap: anywhere; }
+.root-remove { display: grid; gap: var(--s3); padding: var(--s4); }
+.root-remove > code { overflow-wrap: anywhere; color: var(--text); font: 600 var(--t-sm)/1.45 var(--mono); }
+.root-remove > p { margin: 0; color: var(--muted); font-size: var(--t-sm); line-height: 1.55; }
+.root-remove-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  cursor: pointer;
+}
+.root-remove-option input { margin-top: 2px; flex: none; }
+.root-remove-option > span { display: grid; gap: 4px; min-width: 0; }
+.root-remove-option strong { color: var(--err); font-size: var(--t-sm); }
+.root-remove-option small { color: var(--muted); font-size: var(--t-xs); line-height: 1.5; }
+.root-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.root-row:hover { border-color: var(--line-strong); background: var(--raised-2); }
+.root-row-disabled { opacity: .55; }
+.root-row-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: var(--surface);
+}
+.root-row-icon.bad { border-color: var(--err-line); color: var(--err); background: var(--err-soft); }
+.root-row-copy { display: grid; gap: 3px; min-width: 0; }
+.root-row-copy strong { font-size: var(--t-sm); }
+.root-row-copy code { overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.root-row-meta { display: flex; align-items: center; gap: var(--s2); flex: none; color: var(--faint); font-size: var(--t-xs); }
+.root-row-state { flex: none; }
+
+
+/* Folder picker: a bar saying where you are, and the folders inside it. */
+.root-browser { margin-top: var(--s2); border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.root-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+/* The commit action keeps its primary colour, so it reads as the thing to press. */
+.root-browser-bar > .button-primary { flex: none; height: 28px; padding: 0 var(--s3); font-size: var(--t-xs); }
+.root-browser-bar > code { flex: 1; overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.root-browser-bar > button:not(.button) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 4px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: var(--surface);
+  font: 600 var(--t-xs) inherit;
+  cursor: pointer;
+}
+.root-browser-bar > button:not(.button):hover:not(:disabled) { color: var(--text); border-color: var(--faint); }
+.root-browser-bar > button:not(.button):disabled { opacity: .4; cursor: default; }
+.root-browser-bar > button:not(.button) svg { transform: rotate(180deg); }
+.root-browser-list { display: grid; height: 268px; overflow-y: auto; align-content: start; }
+.root-browser-list > button {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 7px var(--s3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  background: transparent;
+  font-size: var(--t-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.root-browser-list > button:last-child { border-bottom: 0; }
+.root-browser-list > button:hover { background: var(--raised-2); }
+.root-browser-list > button svg { flex: none; color: var(--faint); }
+.root-browser-note { margin: 0; padding: var(--s4); color: var(--faint); font-size: var(--t-xs); text-align: center; }
+
+
 .provider-empty-copy { padding: 0 var(--s4) var(--s4); color: var(--muted); font-size: var(--t-xs); }
 .provider-modal-editor { padding: 0; }
 .provider-modal-editor > .settings-form { padding: var(--s4); }
+.provider-modal-editor > .root-browser,
+.provider-modal-editor > .settings-note { margin-inline: var(--s4); }
+.provider-modal-editor > .root-browser { margin-top: var(--s4); }
 
 @media (max-width: 860px) {
   .split.split-narrow { display: block; }
+  .split.split-narrow::after { display: none; }
   .settings-nav {
     position: static;
     display: grid;
@@ -1609,8 +1726,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
     margin-bottom: var(--s3);
   }
   .settings-nav > div { min-width: 0; }
-  .settings-nav .nav-group:not(:first-child) { margin-top: 0; }
-}
+  }
 
 @media (max-width: 560px) {
   .settings-nav { grid-template-columns: 1fr; }
@@ -2169,17 +2285,39 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
 }
 .modal-wide { width: min(880px, 100%); }
+/* A modal built around a file browser, which needs the height to be usable. */
+.modal-tall { max-height: 92vh; }
 .modal-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--s3);
-  padding: var(--s4);
+  padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
 }
-.modal-head-copy { min-width: 0; }
-.modal-head h2 { margin-top: 2px; font: 600 var(--t-xl)/1.25 var(--sans); overflow-wrap: anywhere; }
+/* A head that still carries an eyebrow is two lines, and aligns to the top. */
+.modal-head:has(.eyebrow) { align-items: flex-start; padding-block: var(--s4); }
+.modal-head-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  background: var(--raised);
+}
+.modal-head-copy { min-width: 0; flex: 1; }
+.modal-head h2 { margin-top: 0; font: 600 var(--t-xl)/1.25 var(--sans); overflow-wrap: anywhere; }
+.modal-head:has(.eyebrow) h2 { margin-top: 2px; }
 .modal-body { flex: 1; overflow: auto; }
+/* The selected path in the footer: it may be long, so it truncates from the
+   left — the end of a path is the part that identifies it. */
+.root-footer-path { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; overflow: hidden; color: var(--faint); }
+.root-footer-path > i { flex: none; color: var(--faint); font: 600 var(--t-micro)/1.3 var(--mono); font-style: normal; letter-spacing: .07em; text-transform: uppercase; }
+.root-footer-path > code { overflow: hidden; color: var(--text); font: 600 var(--t-xs)/1.4 var(--mono); letter-spacing: 0; text-transform: none; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+
 .modal-foot {
   display: flex;
   align-items: center;

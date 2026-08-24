@@ -27,7 +27,7 @@ export interface TapResult {
  * as a modifier:
  *
  *  - Any other key resets the sequence, so typing "AB" (Shift A Shift B) never
- *    triggers — the letters break it.
+ *    triggers, the letters break it.
  *  - Holding Shift repeats keydown; only a fresh press counts.
  *  - Ctrl+Shift / Alt+Shift are shortcuts in their own right, not taps.
  */

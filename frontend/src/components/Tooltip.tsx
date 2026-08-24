@@ -24,7 +24,7 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
  *
  * With `asChild` the tooltip attaches to the element you pass rather than
  * wrapping it. That matters wherever a wrapper would change layout or produce
- * invalid markup — a grid cell, a table cell, a flex item — so it is the right
+ * invalid markup, a grid cell, a table cell, a flex item, so it is the right
  * default for anything but a plain inline trigger.
  */
 export function Tooltip({ content, children, className, focusable = false, asChild = false, delay = 0 }: {
@@ -33,9 +33,9 @@ export function Tooltip({ content, children, className, focusable = false, asChi
   className?: string
   /** Milliseconds to hover before the tooltip opens. Use for explanations that
    *  would be noise if they appeared on every passing cursor. Keyboard focus
-   *  ignores the delay — that is a deliberate request to read it. */
+   *  ignores the delay, that is a deliberate request to read it. */
   delay?: number
-  /** Only when the trigger is not already inside something focusable — a nested
+  /** Only when the trigger is not already inside something focusable, a nested
    *  tab stop inside a button is worse than losing the keyboard hint. */
   focusable?: boolean
   /** Attach to the single child element instead of wrapping it in a span. */

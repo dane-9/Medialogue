@@ -8,7 +8,7 @@ import { Select } from './ui'
  * The qBittorrent picker for the download wizards, with a health recheck.
  *
  * A client that was healthy when the wizard opened can drop out before you
- * commit — the health shown here is whatever the last check recorded, which may
+ * commit, the health shown here is whatever the last check recorded, which may
  * be minutes old. Rechecking here avoids having to leave a half-filled wizard
  * for the settings page and start over.
  */

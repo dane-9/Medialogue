@@ -178,7 +178,7 @@ def test_switching_ordering_renumbers_the_same_episodes(client: TestClient) -> N
     after = client.get(f"/api/v1/shows/{SHOW_ID}").json()
     assert len(after["seasons"]) == 2, after["seasons"]
     assert [season["episode_count"] for season in after["seasons"]] == [4, 4]
-    # The same eight episodes, renumbered — not sixteen.
+    # The same eight episodes, renumbered, not sixteen.
     total = sum(season["episode_count"] for season in after["seasons"])
     assert total == len(EPISODE_IDS)
 

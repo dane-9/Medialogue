@@ -66,16 +66,16 @@ export function titleScore(query: string, title: string): number {
  * a stable measure of how well known it is, which is what tells the famous
  * title apart from the obscure one sharing its name.
  *
- * The scale is extreme — a blockbuster has millions of ratings, a small film a
- * few hundred — so it is compressed logarithmically rather than scaled. A
+ * The scale is extreme, a blockbuster has millions of ratings, a small film a
+ * few hundred, so it is compressed logarithmically rather than scaled. A
  * million ratings reaches 1; ten thousand still scores well over half.
  */
 export function reachScore(imdbVotes?: number, tmdbVotes?: number): number {
   const imdb = Math.max(imdbVotes ?? 0, 0)
   if (imdb) return Math.min(Math.log10(imdb + 1) / 6, 1)
 
-  // TMDB's counts run roughly two decades smaller than IMDb's — tens of
-  // thousands where IMDb has millions — so they get a shorter scale. Without
+  // TMDB's counts run roughly two decades smaller than IMDb's, tens of
+  // thousands where IMDb has millions, so they get a shorter scale. Without
   // it, a well-known title with no IMDb data would score as though nobody had
   // heard of it, which is worse than no fallback at all.
   const tmdb = Math.max(tmdbVotes ?? 0, 0)
@@ -87,7 +87,7 @@ export function reachScore(imdbVotes?: number, tmdbVotes?: number): number {
  * Total desirability of one result.
  *
  * The title score dominates deliberately. Popularity separates two titles that
- * match equally well — the real film from an obscure short of the same name —
+ * match equally well, the real film from an obscure short of the same name,
  * but must never lift a weak match above a strong one, which is the failure the
  * old alternating merge had.
  */

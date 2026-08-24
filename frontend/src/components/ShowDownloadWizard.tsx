@@ -440,7 +440,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
         {step === 'search' && activeState?.job
           ? <span className="wizard-foot-count">{activeState.job.resultTotal} Torrent{activeState.job.resultTotal === 1 ? '' : 's'} found</span>
           : null}
-        <span>{step === 'setup' ? 'Nothing is added to your library until qBittorrent accepts a season pack.' : committedShowId ? 'This show is in your library — a season download has started.' : null}</span>
+        <span>{step === 'setup' ? 'Nothing is added to your library until qBittorrent accepts a season pack.' : committedShowId ? 'This show is in your library, a season download has started.' : null}</span>
         <div>{step === 'setup' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={!canContinue} onClick={continueToSeasons}>Continue</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button>{committedShowId && pendingSeasons.length === 0 ? <Button variant="primary" type="button" onClick={() => onComplete(committedShowId)}>Open Show</Button> : <Button variant="primary" type="button" disabled={!pendingSeasons.length || submitting} onClick={() => void startDownloads()}>{submitting ? 'Starting downloads…' : `${committedShowId ? 'Retry' : 'Start'} Downloads (${pendingSeasons.length})`}</Button>}</>}</div>
       </footer>
     </div>

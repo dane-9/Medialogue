@@ -40,7 +40,7 @@ describe('evaluateShiftTap', () => {
   })
 
   it('does not trigger while typing capitals', () => {
-    // "AB" is Shift, A, Shift, B — the letters break the sequence.
+    // "AB" is Shift, A, Shift, B, the letters break the sequence.
     expect(run([shift(0), other('A', 20), shift(120), other('B', 140)])).toBe(false)
   })
 

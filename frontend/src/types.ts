@@ -171,6 +171,21 @@ export interface RemotePathMapping {
   enabled: boolean
 }
 
+/** One directory listing, for picking a root by browsing. */
+export interface FilesystemListing {
+  current_path: string
+  parent?: string | null
+  directories: { name: string; path: string }[]
+  problem?: string | null
+}
+
+/** Library counts, including what is no longer linked to any root. */
+export interface LibrarySummary {
+  movies: number
+  shows: number
+  unlinked_directories: number
+}
+
 export interface StorageRoot {
   id: string
   name: string
@@ -186,6 +201,10 @@ export interface StorageRoot {
   media_affected?: number
   missing_media_count?: number
   degraded_media_count?: number
+  /** A scan is queued or running for this root right now. */
+  scanning: boolean
+  /** Media directories recorded under this root. */
+  media_count: number
 }
 
 export interface EpisodeMedia {

@@ -8,7 +8,7 @@ all parse to ``DD+`` and are caught by one condition.
 These rows are owned by Medialogue. Their name, description and conditions are
 re-applied on every start, so a pattern fix reaches an existing install without
 any action. Only ``enabled`` belongs to the operator, and it is never
-overwritten. A built-in carries no score of its own — scoring is always a
+overwritten. A built-in carries no score of its own, scoring is always a
 Quality Profile decision.
 """
 
@@ -319,7 +319,7 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "attr-hybrid": 10,
     "attr-internal-limited": 0,
     "attr-re-encode": -40,
-    # Provider labels are evidence, not quality, so they stay neutral — with
+    # Provider labels are evidence, not quality, so they stay neutral, with
     # one exception: Bravia Core ships at bitrates no other service matches.
     "web-amzn": 0,
     "web-dsnp": 0,

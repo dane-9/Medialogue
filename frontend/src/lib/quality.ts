@@ -9,7 +9,7 @@ export interface QualityParts {
  * Source words the badge drops.
  *
  * The badge answers "what kind of release is this", and the disc or scan the
- * bits came off does not change that answer — "2160p BluRay REMUX" and
+ * bits came off does not change that answer, "2160p BluRay REMUX" and
  * "480i NTSC DVD REMUX" are both remuxes, and the resolution beside it already
  * distinguishes them.
  */

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from './api/client'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
+import { useConfirm } from './components/Confirm'
 import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
 import { Field } from './components/settings'
@@ -12,6 +13,7 @@ import type { CustomFormat, CustomFormatSection, QualityDefinition, QualityProfi
 const scoreLabel = (value: number) => `${value > 0 ? '+' : ''}${value}`
 
 export default function QualityProfilesPage() {
+  const confirm = useConfirm()
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [qualities, setQualities] = useState<QualityDefinition[]>([])
   const [formats, setFormats] = useState<CustomFormat[]>([])
@@ -130,7 +132,11 @@ export default function QualityProfilesPage() {
 
   const remove = async () => {
     if (!selected) return
-    if (!window.confirm(`Delete Quality Profile “${selected.name}”? Media files and torrents are untouched.`)) return
+    if (!await confirm({
+      title: `Delete "${selected.name}"?`,
+      body: 'Anything assigned to this profile falls back to the default. Media files and existing releases are never changed.',
+      confirmLabel: 'Delete profile',
+    })) return
     setBusy(true)
     try {
       await api.deleteQualityProfile(selected.id)
@@ -366,7 +372,7 @@ export default function QualityProfilesPage() {
 
 /** One profile at a glance: its floor, and what it actually rewards or avoids. */
 function ProfileCard({ profile, formatById, onOpen, onCopy }: { profile: QualityProfile; formatById: Map<string, CustomFormat>; onOpen: () => void; onCopy: () => void }) {
-  // Strongest opinions first — the scores that most change a release's ranking
+  // Strongest opinions first, the scores that most change a release's ranking
   // say more about a profile than an alphabetical list would.
   const ranked = [...profile.customFormatScores].sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
   return <article

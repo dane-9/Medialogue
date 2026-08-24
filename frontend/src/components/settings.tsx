@@ -6,9 +6,9 @@ import { Badge, Button } from './ui'
 /**
  * A labelled control with one line explaining what it actually does.
  *
- * Settings options are not guessable from their names — "Category" and "Scope"
+ * Settings options are not guessable from their names, "Category" and "Scope"
  * in particular mean something different here than they do in comparable
- * tools — so help is permanent text rather than a tooltip you have to discover.
+ * tools, so help is permanent text rather than a tooltip you have to discover.
  */
 export function Field({ label, help, badge, error, wide, children }: PropsWithChildren<{
   label: string
@@ -69,8 +69,8 @@ export function SectionHead({ icon, title, description, status, statusTone = 'ne
 }
 
 /**
- * Panel feedback carries a tone. Previously every message — saved, saving and
- * failed alike — rendered in the same neutral box, so success and failure were
+ * Panel feedback carries a tone. Previously every message, saved, saving and
+ * failed alike, rendered in the same neutral box, so success and failure were
  * indistinguishable at a glance.
  */
 export type Message = { tone: 'ok' | 'error' | 'busy'; text: string } | null

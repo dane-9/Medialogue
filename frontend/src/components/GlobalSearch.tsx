@@ -50,7 +50,7 @@ const posterUrl = (reference?: string) => {
 /**
  * Global search: TMDB first, library merged on top.
  *
- * The library is not the search index — it is an annotation on the results. You
+ * The library is not the search index, it is an annotation on the results. You
  * search everything TMDB knows about, and anything you already have is marked
  * Present so you can tell at a glance without it limiting what you can find.
  */
@@ -189,7 +189,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                     <span className="global-search-rating"><img src={imdbLogo} alt="IMDb" /> {result.imdbRating.toFixed(1)}</span>
                   </Tooltip>
                 : result.voteAverage
-                  ? <Tooltip asChild content={result.voteCount ? `${result.voteCount.toLocaleString()} TMDB ratings — no IMDb rating available` : 'TMDB rating — no IMDb rating available'}>
+                  ? <Tooltip asChild content={result.voteCount ? `${result.voteCount.toLocaleString()} TMDB ratings, no IMDb rating available` : 'TMDB rating, no IMDb rating available'}>
                       <span className="global-search-rating from-tmdb"><i>TMDB</i> {result.voteAverage.toFixed(1)}</span>
                     </Tooltip>
                   : null}
@@ -229,7 +229,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
  *
  * Titles you already have come first regardless of kind. The rest are scored
  * on how well the title answers the query, which is the one measure comparable
- * between a movie and a show — TMDB's own result position ranks within a type
+ * between a movie and a show, TMDB's own result position ranks within a type
  * and means nothing across types.
  */
 async function searchEverything(term: string): Promise<Result[]> {
@@ -270,7 +270,7 @@ async function searchMovies(term: string): Promise<Result[]> {
     }
   })
 
-  // A library title TMDB did not return — an unmatched local discovery, say —
+  // A library title TMDB did not return, an unmatched local discovery, say,
   // still belongs in the results rather than disappearing.
   library.forEach((movie) => {
     if (movie.tmdbId && rows.some((row) => row.tmdbId === movie.tmdbId)) return

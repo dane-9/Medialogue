@@ -8,7 +8,7 @@ import { horizontalWheelDelta } from './wheel'
  *
  *  - The listener is registered natively rather than through React's onWheel,
  *    because React attaches wheel handlers passively and a passive listener
- *    cannot call preventDefault — the page would scroll underneath as well.
+ *    cannot call preventDefault, the page would scroll underneath as well.
  *  - It is a callback ref, not an effect over a ref object. The strip may mount
  *    long after its component does (a later wizard step, a lazy tab), and an
  *    effect with no dependencies would have run once against a null ref and
