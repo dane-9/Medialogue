@@ -3,6 +3,12 @@ import type { CSSProperties } from 'react'
 import { badgeColor } from './lib/badgeColor'
 import { formatAge } from './lib/age'
 import { isGeneratedRootName, nextRootName } from './lib/rootName'
+import { moveItem } from './lib/reorder'
+import { rootBrowseStart, rootDraftChanged, rootPathAfterBrowse } from './lib/rootDraft'
+import type { RootDraft } from './lib/rootDraft'
+import { describeScan } from './lib/scanProgress'
+import { needsAttention, statusTone } from './lib/status'
+import { qualityMark } from './lib/qualityMark'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
@@ -20,7 +26,6 @@ import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingD
 
 
 
-const statusTone = (status: string) => status === 'Present' || status === 'Verified' || status === 'Completed' || status === 'Archived' ? 'green' : status === 'Missing' || status === 'Pending' || status === 'Multiple versions' || status === 'Downloading' || status === 'Active' ? 'amber' : status === 'Conflict' || status === 'Duplicate' || status === 'Error' ? 'red' : 'neutral'
 
 function tmdbPosterUrl(reference?: string) {
   if (!reference) return undefined
@@ -42,7 +47,7 @@ const libraryInvalidationEvents = [
   'show.metadata_refreshed', 'movie.monitoring_updated', 'movie.tags_updated',
 ] as const
 
-function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000) {
+function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000, watchScanJobs = false) {
   const refreshRef = useRef(refresh)
   refreshRef.current = refresh
 
@@ -64,6 +69,14 @@ function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollInterval
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
     libraryInvalidationEvents.forEach((name) => stream.addEventListener(name, invalidate))
+    const scanJobChanged = (event: MessageEvent<string>) => {
+      if (!watchScanJobs) return
+      try {
+        const payload = JSON.parse(event.data) as { data?: { job_type?: unknown } }
+        if (payload.data?.job_type === 'storage_root_scan' || payload.data?.job_type === 'reconciliation') invalidate()
+      } catch { /* The fallback poll repairs malformed or missed live events. */ }
+    }
+    if (watchScanJobs) stream.addEventListener('job.status', scanJobChanged)
     const poll = window.setInterval(run, pollIntervalMs)
     const onVisibility = () => { if (document.visibilityState === 'visible') invalidate() }
     document.addEventListener('visibilitychange', onVisibility)
@@ -73,9 +86,10 @@ function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollInterval
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
       window.clearInterval(poll)
       document.removeEventListener('visibilitychange', onVisibility)
+      if (watchScanJobs) stream.removeEventListener('job.status', scanJobChanged)
       stream.close()
     }
-  }, [pollIntervalMs])
+  }, [pollIntervalMs, watchScanJobs])
 }
 
 function FilterChips({ value, options, onChange, className = '' }: { value: string; options: string[]; onChange: (value: string) => void; className?: string }) {
@@ -211,7 +225,7 @@ export function MoviesPage() {
   return <Page title="Movies" subtitle="Your library, exactly where it was downloaded.">
     <div className="stats-row stats-row-three media-stats-row"><Stat label="Movies" value={String(movies.length)} tone="blue" /><Stat label="Missing" value={String(missing)} tone="amber" /><Stat label="Problems" value={String(review)} tone="red" /></div>
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search movies…" /></div><Select aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><FilterChips value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} className="toolbar-filter-row" />{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void loadMovies()}>Refresh</Button></div>
-    <div className="media-filter-row media-tag-filter"><span className="filter-label">Tags</span>{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
+    <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid">{filtered.map((movie) => <MovieCard key={movie.id} movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={runMovieCardAction} />)}</div> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
@@ -225,30 +239,13 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
   return <div className="tag-chip-row">{movie.tags.map((tag) => <span key={tag.id} className="tag-chip" role={onTagClick ? 'button' : undefined} tabIndex={onTagClick ? 0 : undefined} onClick={(event) => { if (!onTagClick) return; event.preventDefault(); event.stopPropagation(); onTagClick(tag.name) }} onKeyDown={(event) => { if (onTagClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onTagClick(tag.name) } }}>{tag.name}</span>)}</div>
 }
 
-// The quality mark on the artwork is the card's only statement of what the
-// file actually is, so it reads resolution first, then the source or the
-// modifier that distinguishes it: "2160p REMUX", "1080p WEB-DL".
-const sourceLabels: Record<string, string> = { WEBDL: 'WEB-DL', WEBRIP: 'WEBRIP', BLURAY: 'BLURAY', HDTV: 'HDTV', DVD: 'DVD', SDTV: 'SDTV' }
-
-export function qualityMark(quality?: string, edition?: string): string {
-  if (!quality) return ''
-  const parts = quality.split('-').map((part) => part.trim()).filter(Boolean)
-  const resolution = parts.find((part) => /^\d{3,4}[pi]$/i.test(part))
-  const source = parts.find((part) => part !== resolution)
-  // An edition such as Remux or Hybrid describes the file more precisely than
-  // the source it came from, so it wins the second slot when present.
-  const modifier = edition?.split('·')[0].trim()
-  const tail = modifier || (source ? sourceLabels[source.toUpperCase()] ?? source.toUpperCase() : '')
-  return [resolution?.toLowerCase(), tail?.toUpperCase()].filter(Boolean).join(' ')
-}
-
 function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'search' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
   const mark = qualityMark(movie.quality, movie.edition)
   const run = (action: 'search' | 'plex' | 'monitor' | 'unmonitor') => (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onAction(movie, action) }
-  return <article className={`media-card ${selected ? 'media-selected' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
+  return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <Link className="media-card-link" to={`/movies/${movie.id}`} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}>
-      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{mark && <span className="poster-mark">{mark}</span>}{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
-      <div className="media-card-body"><div className="media-card-title"><strong>{movie.title}</strong><span>{movie.year || 'Year unknown'}</span></div><div className="media-card-release"><Icon name="film" size={13} />{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</div><div className="media-card-meta"><Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex {movie.plex}</Badge>{movie.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="media-card-path"><Icon name="folder" size={13} />{movie.location}</div></div>
+      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
+      <div className="media-card-body"><div className="media-card-title"><strong>{movie.title}</strong><span className="media-card-sub">{movie.year || 'Year unknown'}{mark && <em className="media-card-quality">{mark}</em>}</span></div><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}<Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>{movie.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div></div>
     </Link>
     <div className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Interactive search"><button className="icon-button" aria-label={`Search for ${movie.title}`} disabled={busy} onClick={run('search')}><Icon name="search" size={14} /></button></Tooltip><Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={14} /></button></Tooltip><Tooltip asChild content={movie.monitored === false ? 'Monitor' : 'Unmonitor'}><button className="icon-button" aria-label={movie.monitored === false ? `Monitor ${movie.title}` : `Unmonitor ${movie.title}`} disabled={busy} onClick={run(movie.monitored === false ? 'monitor' : 'unmonitor')}><Icon name={movie.monitored === false ? 'eye' : 'eye-off'} size={14} /></button></Tooltip></div>
   </article>
@@ -516,8 +513,7 @@ export function ShowsPage() {
 
 function ShowCard({ show }: { show: Show }) {
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
-  const missing = show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)
-  return <article className="media-card"><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-mark">{show.seasons === 1 ? '1 SEASON' : `${show.seasons} SEASONS`}</span></div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div><div className="media-card-meta"><Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex {show.plex}</Badge>{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="episode-progress"><div><span>Episodes</span><strong>{show.episodesPresent} / {show.episodesTotal}{missing ? ` · ${missing} missing` : ''}</strong></div><Progress value={percent} tone={percent === 100 ? 'green' : 'amber'} /></div><div className="media-card-path"><Icon name="tv" size={13} />{(show.problemCount ?? 0) === 1 ? '1 problem' : `${show.problemCount ?? 0} problems`}</div></div></Link></article>
+  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-mark">{show.seasons === 1 ? '1 SEASON' : `${show.seasons} SEASONS`}</span></div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div><div className="media-card-meta">{needsAttention(show.status) && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="episode-progress"><div><span>Episodes</span><strong>{show.episodesPresent} / {show.episodesTotal}</strong></div><Progress value={percent} tone={percent === 100 ? 'green' : 'amber'} /></div><div className="media-card-path"><Icon name="tv" size={13} />{(show.problemCount ?? 0) === 1 ? '1 problem' : `${show.problemCount ?? 0} problems`}</div></div></Link></article>
 }
 
 export function ShowDetailPage({ id }: { id: string }) {
@@ -1735,12 +1731,21 @@ function SecuritySettings() {
 function StorageSettings() {
   const confirm = useConfirm()
   const [roots, setRoots] = useState<StorageRoot[]>([])
+  // Multiple progress events can overlap REST reads. Only the newest root
+  // snapshot may win, otherwise a slow stale response can resurrect Scanning.
+  const rootsLoadGeneration = useRef(0)
+  // Index currently being dragged. Null means no drag is in flight, which is
+  // also what suppresses the reorder request on a plain click.
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mappings, setMappings] = useState<RemotePathMapping[]>([])
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [message, setMessage] = useState('')
   const [selectedRoot, setSelectedRoot] = useState<StorageRoot | null>(null)
   const [rootModalOpen, setRootModalOpen] = useState(false)
-  const [rootDirty, setRootDirty] = useState(false)
+  // What the form held when it was opened. Dirtiness is a comparison against
+  // this rather than a flag, because opening the form triggers a browse that
+  // writes the path back and would trip any flag.
+  const [rootBaseline, setRootBaseline] = useState<RootDraft | null>(null)
   const [rootBusy, setRootBusy] = useState(false)
   const [listing, setListing] = useState<FilesystemListing | null>(null)
   // Scanning is gated on TMDB, so say it here rather than after a failure.
@@ -1768,20 +1773,36 @@ function StorageSettings() {
   const [localPrefix, setLocalPrefix] = useState('/media')
   const [mappingRootId, setMappingRootId] = useState('')
 
+  const loadRoots = async () => {
+    const generation = ++rootsLoadGeneration.current
+    try {
+      const nextRoots = await api.storageRoots()
+      if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
+    } catch (reason) {
+      if (generation === rootsLoadGeneration.current) setMessage(reason instanceof Error ? reason.message : 'Could not load root storage state.')
+    }
+  }
   const load = async () => {
+    const generation = ++rootsLoadGeneration.current
     try {
       const [nextRoots, nextMappings, nextClients] = await Promise.all([api.storageRoots(), api.remotePathMappings(), api.downloadClients()])
-      setRoots(nextRoots); setMappings(nextMappings); setClients(nextClients)
+      if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
+      setMappings(nextMappings); setClients(nextClients)
       setMappingRootId((value) => value || nextRoots[0]?.id || '')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load storage configuration.') }
   }
   useEffect(() => { void load() }, [])
   // Scans emit progress and completion events; without this the list only ever
   // showed what was true when the page opened.
-  useLiveLibraryRefresh(load)
+  useLiveLibraryRefresh(loadRoots, 15000, true)
   // Health used to be written only by a scan, so a root that dropped offline
   // stayed green. This is one directory stat per root, on open.
-  useEffect(() => { api.checkStorageRootHealth().then(setRoots).catch(() => undefined) }, [])
+  useEffect(() => {
+    const generation = ++rootsLoadGeneration.current
+    api.checkStorageRootHealth().then((nextRoots) => {
+      if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
+    }).catch(() => undefined)
+  }, [])
   useEffect(() => { api.librarySummary().then(setSummary).catch(() => undefined) }, [])
   useEffect(() => {
     api.tmdbConfiguration()
@@ -1806,35 +1827,39 @@ function StorageSettings() {
   }
 
   const beginAddRoot = () => {
-    setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setMissingGraceChecks(2); setRootDirty(false); setRootModalOpen(true); setMessage('')
+    setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', enabled: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage('')
   }
   const editRoot = (root: StorageRoot) => {
-    setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path); setMediaType(root.media_type); setAccessMode(root.access_mode); setRootEnabled(root.enabled); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootDirty(false); setRootModalOpen(true); setMessage('')
+    setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setRootEnabled(root.enabled); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, enabled: root.enabled, missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage('')
   }
+  const rootDirty = rootDraftChanged(
+    { name, path, mediaType, accessMode, enabled: rootEnabled, missingGraceChecks },
+    rootBaseline,
+  )
   const closeRootModal = async () => {
     if (rootDirty && !await confirm(DISCARD_CHANGES)) return
     setRootModalOpen(false)
   }
-  const updateRootDraft = (update: () => void) => { update(); setRootDirty(true) }
   /**
    * Walk the filesystem. Where you are is what you are choosing, so there is
    * no separate confirm step and no way for the two to disagree.
    */
-  const browseTo = async (target: string) => {
+  const browseTo = async (target: string, options: { updateDraftPath?: boolean; preservePathOnProblem?: boolean } = {}) => {
+    const updateDraftPath = options.updateDraftPath ?? true
+    const preservePathOnProblem = options.preservePathOnProblem ?? Boolean(selectedRoot)
     setBrowseBusy(true)
     try {
       const result = await api.browseFilesystem(target)
       setListing(result)
-      updateRootDraft(() => setPath(result.problem ? '' : result.current_path))
+      setPath((current) => rootPathAfterBrowse(current, result.current_path, Boolean(result.problem), updateDraftPath, preservePathOnProblem))
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : 'Could not read that folder.')
     } finally { setBrowseBusy(false) }
   }
 
   /** Open the browser where the root already points, or at the top of the tree. */
-  const openBrowser = (from: string) => {
-    const start = from.trim()
-    void browseTo(start.startsWith('/') || /^[A-Za-z]:/.test(start) ? start : '')
+  const openBrowser = (from: string, options: { updateDraftPath?: boolean; preservePathOnProblem?: boolean } = {}) => {
+    void browseTo(rootBrowseStart(from), options)
   }
 
   const saveRoot = async () => {
@@ -1845,9 +1870,12 @@ function StorageSettings() {
         ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
         : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
       setRoots((items) => selectedRoot ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved])
-      setMappingRootId((value) => value || saved.id); setRootDirty(false); setRootModalOpen(false)
+      setMappingRootId((value) => value || saved.id); setRootBaseline(null); setRootModalOpen(false)
       if (selectedRoot) {
-        setMessage(`${saved.name} updated.`)
+        const scanIdentityWasReset = Boolean(selectedRoot.last_scan_at && !saved.last_scan_at)
+        setMessage(scanIdentityWasReset
+          ? `${saved.name} updated. Scan it now to initialize the new ${mediaType === selectedRoot.media_type ? 'folder' : 'media type'}.`
+          : `${saved.name} updated.`)
       } else {
         // Scan straight away: a root that has never been scanned does nothing,
         // and leaving that as a second step people had to discover was the
@@ -1859,6 +1887,7 @@ function StorageSettings() {
         } else {
           try {
             await api.startScan(saved.id)
+            await loadRoots()
             setMessage(`${saved.name} added. Scanning it now.`)
           } catch {
             setMessage(`${saved.name} added, but the scan could not be started.`)
@@ -1867,6 +1896,16 @@ function StorageSettings() {
       }
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not ${selectedRoot ? 'update' : 'add'} root.`) }
     finally { setRootBusy(false) }
+  }
+  const scanRoot = async (root: StorageRoot) => {
+    setRootBusy(true)
+    try {
+      await api.startScan(root.id)
+      await loadRoots()
+      setMessage(`${root.name} is scanning now.`)
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : `Could not scan ${root.name}.`)
+    } finally { setRootBusy(false) }
   }
   /** "shows" / "movie", better than calling everything a library entry. */
   const mediaNoun = (root: StorageRoot) =>
@@ -1938,6 +1977,27 @@ function StorageSettings() {
     finally { setMappingBusy(false) }
   }
 
+  function dragOverRoot(index: number) {
+    // Reorder during the drag so the row follows the cursor, rather than
+    // snapping into place only on drop.
+    if (dragIndex === null || dragIndex === index) return
+    setRoots((items) => moveItem(items, dragIndex, index))
+    setDragIndex(index)
+  }
+
+  async function commitRootOrder() {
+    const wasDragging = dragIndex !== null
+    setDragIndex(null)
+    if (!wasDragging) return
+    const ids = roots.map((root) => root.id)
+    try { setRoots(await api.reorderStorageRoots(ids)) }
+    // The list already shows the new order, so a failed save must put the
+    // stored order back rather than leave the two disagreeing.
+    catch { setRoots(await api.storageRoots().catch(() => roots)) }
+  }
+
+  const liveSelectedRoot = selectedRoot ? roots.find((root) => root.id === selectedRoot.id) ?? selectedRoot : null
+
   return <>
     <SectionHead icon="folder" title="Root Storage"
       description="Where your media already lives. Medialogue only reads these folders, nothing is ever moved or renamed. Scan one to find what is inside it."
@@ -1954,46 +2014,56 @@ function StorageSettings() {
       </span>
     </div>}
     <div className="root-list">
-      {roots.map((root) => {
+      {roots.map((root, index) => {
         const scanned = Boolean(root.last_scan_at)
         const health = (root.last_health ?? 'unchecked').toLowerCase()
         const offline = scanned && (health === 'offline' || health === 'unavailable')
         // One plain sentence rather than a health word the reader has to decode.
-        const state = !root.enabled ? { tone: 'neutral' as const, text: 'Disabled' }
-          : root.scanning ? { tone: 'blue' as const, text: 'Scanning…' }
+        const state = root.scanning ? { tone: 'blue' as const, text: 'Scanning…' }
+          : !root.enabled ? { tone: 'neutral' as const, text: 'Disabled' }
           : offline ? { tone: 'red' as const, text: 'Path not reachable' }
           : !scanned ? { tone: 'amber' as const, text: 'Never scanned' }
           : health === 'degraded' ? { tone: 'amber' as const, text: 'Some files missing' }
           : { tone: 'green' as const, text: `Scanned ${formatAge(root.last_scan_at)}` }
-        return <button type="button" className={`root-row ${root.enabled ? '' : 'root-row-disabled'}`} key={root.id} onClick={() => editRoot(root)}>
+        return <button type="button" className={`root-row ${root.enabled ? '' : 'root-row-disabled'} ${dragIndex === index ? 'root-row-dragging' : ''}`} key={root.id} onClick={() => editRoot(root)}
+          draggable
+          onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; setDragIndex(index) }}
+          onDragOver={(event) => { event.preventDefault(); dragOverRoot(index) }}
+          onDragEnd={() => void commitRootOrder()}
+          onDrop={(event) => { event.preventDefault(); void commitRootOrder() }}>
+          <span className="root-row-grip" aria-hidden="true"><Icon name="menu" size={14} /></span>
           <span className={`root-row-icon ${offline ? 'bad' : ''}`}><Icon name="folder" size={18} /></span>
           <span className="root-row-copy">
-            <strong>{root.name}</strong>
+            <span className="root-row-title">
+              <strong>{root.name}</strong>
+              <span className={`kind-pill kind-pill-wide kind-${root.media_type === 'movies' ? 'movie' : 'show'}`}>
+                <Icon name={root.media_type === 'movies' ? 'clapper' : 'tv-screen'} size={12} />
+                <em>{root.media_type === 'movies' ? 'Movies' : 'Shows'}</em>
+              </span>
+            </span>
             <code>{root.resolved_root_path}</code>
           </span>
-          <span className="root-row-meta">
-            <Badge tone="neutral">{root.media_type === 'movies' ? 'Movies' : 'Shows'}</Badge>
-            {root.media_count > 0 && <span>{root.media_count} item{root.media_count === 1 ? '' : 's'}</span>}
-            <span>{root.access_mode === 'read_only' ? 'Read-only' : 'Read/write'}</span>
+          <span className="root-row-end">
+            {root.access_mode === 'read_write' && <Tooltip asChild content="Read/write. Medialogue is allowed to delete inside this folder."><span className="root-row-write"><Icon name="shield" size={14} /></span></Tooltip>}
+            {root.scanning
+              ? <Tooltip asChild content={describeScan(root.scan)}><span className={`root-row-state tone-${state.tone}`}><i /><span>{state.text}</span></span></Tooltip>
+              : <span className={`root-row-state tone-${state.tone}`}><i /><span>{state.text}</span></span>}
+            <span className="root-row-go"><Icon name="chevron" size={16} /></span>
           </span>
-          <span className="root-row-state"><Badge tone={state.tone}>{state.text}</Badge></span>
         </button>
       })}
     </div>
     {!roots.length && <p className="provider-empty-copy">No root storage yet. Add the folder where your media already lives, as Medialogue sees it, which inside a container is the container’s path.</p>}
 
-    {rootModalOpen && <Modal wide className="modal-tall" icon="folder" title={selectedRoot ? selectedRoot.name : 'Add root storage'} onClose={closeRootModal} footer={<>
-      <div className="cf-editor-footer-toggle">
-        <button type="button" aria-pressed={rootEnabled} className="toggle" onClick={() => updateRootDraft(() => setRootEnabled((value) => !value))}><span /></button>
+    {rootModalOpen && <Modal wide className="modal-tall" icon="folder" title={selectedRoot ? selectedRoot.name : 'Add root storage'} onClose={closeRootModal}
+      headerAction={<div className="cf-editor-footer-toggle">
+        <button type="button" aria-pressed={rootEnabled} className="toggle" onClick={() => setRootEnabled((value) => !value)}><span /></button>
         <strong>{rootEnabled ? 'Enabled' : 'Disabled'}</strong>
-      </div>
+      </div>}
+      footer={<>
       {selectedRoot && <Button variant="danger" onClick={() => beginRemoveRoot(selectedRoot)} disabled={rootBusy}>Remove</Button>}
-      {/* The folder being committed, next to the button that commits it. The
-          browser keeps moving after you choose, so this is the only thing that
-          says which folder Add root will actually use. */}
-      <span className="footer-state root-footer-path">
-        {path ? <><i>Adding</i><code>{path}</code></> : 'Browse to a folder'}
-      </span>
+      <span className="modal-foot-spacer" />
+      {liveSelectedRoot && <Button variant="ghost" icon="refresh" onClick={() => void scanRoot(liveSelectedRoot)} disabled={rootBusy || rootDirty || !liveSelectedRoot.enabled || liveSelectedRoot.scanning || !tmdbReady}>{liveSelectedRoot.scanning ? 'Scanning…' : 'Scan now'}</Button>}
       <Button variant="ghost" onClick={closeRootModal} disabled={rootBusy}>Cancel</Button>
       <Button variant="primary" onClick={() => void saveRoot()} disabled={rootBusy || !path.trim() || Boolean(selectedRoot && !rootDirty)}>{rootBusy ? 'Saving…' : selectedRoot ? 'Save root' : 'Add root'}</Button>
     </>}>
@@ -2018,16 +2088,16 @@ function StorageSettings() {
 
         <div className="settings-form">
           <Field label="Media type" help="Which library the files found here belong to.">
-            <Select value={mediaType} onChange={(event) => updateRootDraft(() => changeMediaType(event.target.value as 'movies' | 'shows'))}><option value="movies">Movies</option><option value="shows">Shows</option></Select>
+            <Select value={mediaType} onChange={(event) => changeMediaType(event.target.value as 'movies' | 'shows')}><option value="movies">Movies</option><option value="shows">Shows</option></Select>
           </Field>
           <Field label="Name" help="Shown in Medialogue only.">
-            <Input value={name} onChange={(event) => updateRootDraft(() => setName(event.target.value))} />
+            <Input value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
           <Field label="Access" help="Read-only is recommended. Read/write allows deletion.">
-            <Select value={accessMode} onChange={(event) => updateRootDraft(() => setAccessMode(event.target.value as 'read_only' | 'read_write'))}><option value="read_only">Read-only</option><option value="read_write">Read/write</option></Select>
+            <Select value={accessMode} onChange={(event) => setAccessMode(event.target.value as 'read_only' | 'read_write')}><option value="read_only">Read-only</option><option value="read_write">Read/write</option></Select>
           </Field>
           <Field label="Missing grace checks" help="How many scans in a row must miss a file before it counts as missing.">
-            <Select value={String(missingGraceChecks)} onChange={(event) => updateRootDraft(() => setMissingGraceChecks(Number(event.target.value)))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</Select>
+            <Select value={String(missingGraceChecks)} onChange={(event) => setMissingGraceChecks(Number(event.target.value))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</Select>
           </Field>
         </div>
         {message && <Note message={{ tone: message.includes('required') || message.includes('Could not') ? 'error' : 'ok', text: message }} />}

@@ -186,6 +186,15 @@ export interface LibrarySummary {
   unlinked_directories: number
 }
 
+export interface StorageRootScan {
+  job_id: string
+  status: string
+  stage?: string
+  current: number
+  total: number
+  percent: number
+}
+
 export interface StorageRoot {
   id: string
   name: string
@@ -203,6 +212,8 @@ export interface StorageRoot {
   degraded_media_count?: number
   /** A scan is queued or running for this root right now. */
   scanning: boolean
+  /** The job behind `scanning`, when there is one. */
+  scan?: StorageRootScan
   /** Media directories recorded under this root. */
   media_count: number
 }

@@ -1,4 +1,4 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, StorageRootScan, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
 
 export class ApiError extends Error {
   status: number
@@ -548,6 +548,21 @@ function normalizeInteractiveSearchJob(value: unknown): InteractiveSearchJob {
   }
 }
 
+function scanProgress(value: unknown): StorageRootScan | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const item = record(value)
+  const jobId = textValue(item.job_id)
+  if (!jobId) return undefined
+  return {
+    job_id: jobId,
+    status: textValue(item.status, 'running'),
+    stage: textValue(item.stage) || undefined,
+    current: optionalNumber(item.current) ?? 0,
+    total: optionalNumber(item.total) ?? 0,
+    percent: optionalNumber(item.percent) ?? 0,
+  }
+}
+
 function normalizeStorageRoot(value: unknown): StorageRoot {
   const item = record(value)
   return {
@@ -559,6 +574,7 @@ function normalizeStorageRoot(value: unknown): StorageRoot {
     enabled: item.enabled !== false,
     missing_grace_checks: optionalNumber(item.missing_grace_checks) ?? 2,
     scanning: item.scanning === true,
+    scan: scanProgress(item.scan),
     media_count: optionalNumber(item.media_count) ?? 0,
     last_health: textValue(item.last_health || item.health || item.status) || undefined,
     last_scan_at: dateValue(item.last_scan_at || item.lastScanAt),
@@ -1019,6 +1035,11 @@ export const api = {
   createStorageRoot: (root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>('/api/v1/storage-roots', { method: 'POST', body: JSON.stringify(root) }).then(normalizeStorageRoot),
   updateStorageRoot: (rootId: string, root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'PATCH', body: JSON.stringify(root) }).then(normalizeStorageRoot),
   deleteStorageRoot: (rootId: string, removeEntries = false) => request<{ id: string }>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}${removeEntries ? '?remove_entries=true' : ''}`, { method: 'DELETE' }),
+  reorderStorageRoots: async (ids: string[]) => {
+    const payload = await request<{ items?: unknown[] } | unknown[]>('/api/v1/storage-roots/reorder', { method: 'POST', body: JSON.stringify({ ids }) })
+    const items = Array.isArray(payload) ? payload : payload.items ?? []
+    return items.map(normalizeStorageRoot)
+  },
   browseFilesystem: (path: string) => request<FilesystemListing>(`/api/v1/filesystem?path=${encodeURIComponent(path)}`),
   librarySummary: () => request<LibrarySummary>('/api/v1/library/summary'),
   checkStorageRootHealth: async () => {

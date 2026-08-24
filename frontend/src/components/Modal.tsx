@@ -9,13 +9,15 @@ import { Icon } from './Icon'
  * page behind it can stay a simple overview: you see everything at once, then
  * open exactly the one thing you are changing.
  */
-export function Modal({ title, eyebrow, icon, onClose, footer, wide, className, children }: PropsWithChildren<{
+export function Modal({ title, eyebrow, icon, onClose, footer, headerAction, wide, className, children }: PropsWithChildren<{
   title: string
   eyebrow?: string
   /** Shown before the title, matching the icon of the section it belongs to. */
   icon?: Parameters<typeof Icon>[0]['name']
   onClose: () => void
   footer?: ReactNode
+  /** Shown beside the title, for state that belongs to the whole dialog. */
+  headerAction?: ReactNode
   wide?: boolean
   className?: string
 }>) {
@@ -39,6 +41,7 @@ export function Modal({ title, eyebrow, icon, onClose, footer, wide, className, 
           {eyebrow && <div className="eyebrow">{eyebrow}</div>}
           <h2>{title}</h2>
         </div>
+        {headerAction && <div className="modal-head-action">{headerAction}</div>}
         <button className="icon-button" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       </div>
       <div className="modal-body">{children}</div>

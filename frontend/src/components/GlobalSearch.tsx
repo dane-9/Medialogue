@@ -178,21 +178,16 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           </span>
           <span className="global-search-copy">
             <strong>
-              <span className={`global-search-kind kind-${result.kind} ${collapseKinds ? 'collapsible' : ''}`}>
+              <span className={`kind-pill kind-${result.kind} ${collapseKinds ? 'collapsible' : ''}`}>
                 <Icon name={result.kind === 'movie' ? 'clapper' : 'tv-screen'} size={12} />
                 <em>{result.kind === 'movie' ? 'Movie' : 'Show'}</em>
               </span>
               <span className="global-search-title">{result.title}</span>
               <span className={`global-search-year ${result.year ? '' : 'unknown'}`}>{result.year || 'Year unknown'}</span>
-              {result.imdbRating != null
-                ? <Tooltip asChild content={result.imdbVotes ? `${result.imdbVotes.toLocaleString()} IMDb ratings` : 'IMDb rating'}>
-                    <span className="global-search-rating"><img src={imdbLogo} alt="IMDb" /> {result.imdbRating.toFixed(1)}</span>
-                  </Tooltip>
-                : result.voteAverage
-                  ? <Tooltip asChild content={result.voteCount ? `${result.voteCount.toLocaleString()} TMDB ratings, no IMDb rating available` : 'TMDB rating, no IMDb rating available'}>
-                      <span className="global-search-rating from-tmdb"><i>TMDB</i> {result.voteAverage.toFixed(1)}</span>
-                    </Tooltip>
-                  : null}
+              {result.imdbRating != null &&
+                <Tooltip asChild content={result.imdbVotes ? `${result.imdbVotes.toLocaleString()} IMDb ratings` : 'IMDb rating'}>
+                  <span className="global-search-rating"><img src={imdbLogo} alt="IMDb" /> {result.imdbRating.toFixed(1)}</span>
+                </Tooltip>}
             </strong>
             {result.overview && <small>{result.overview}</small>}
           </span>
@@ -200,7 +195,6 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             {result.present
               ? <Badge tone={result.state === 'Missing' ? 'amber' : 'green'}>{result.state ?? 'Present'}</Badge>
               : <Badge tone="neutral">Not in library</Badge>}
-            {result.libraryId && <span className="global-search-action">Open</span>}
           </span>
         </button>)}
         {!results.length && <div className="global-search-empty">{hint}</div>}

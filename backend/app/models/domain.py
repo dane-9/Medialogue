@@ -378,6 +378,9 @@ class StorageRoot(TimestampMixin, Base):
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
     access_mode: Mapped[AccessMode] = mapped_column(SAEnum(AccessMode, native_enum=False), default=AccessMode.READ_ONLY, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Hand-chosen list position. Roots are a short, stable list a person curates,
+    #: so alphabetical order is the machine's preference rather than theirs.
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Number of consecutive successful root scans on which a known directory
     # may be absent before it is considered Missing.  A root outage never
     # increments this counter.

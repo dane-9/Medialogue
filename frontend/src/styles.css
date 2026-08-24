@@ -86,6 +86,13 @@
   --topbar: 52px;
   --rail: 260px;
 
+  /* Library card metrics. Width, poster height and body height are deliberately
+     independent: the poster used to derive its height from the card width via
+     aspect-ratio, so neither could be adjusted without moving the other. */
+  --card-w: 180px;
+  --card-poster-h: 200px;
+  --card-body-h: auto;
+
   --sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
@@ -413,7 +420,20 @@ h1, h2, h3, p { margin: 0; }
 .input::placeholder { color: var(--faint); }
 .input:focus { border-color: var(--accent); }
 .input[readonly] { color: var(--muted); }
-.select { width: auto; min-width: 130px; color: var(--text); }
+/* The platform's own chevron differs per OS and ignores the palette, so the
+   control is drawn with the app's own glyph instead. currentColor is not
+   available inside a data URI, hence the literal --muted value. */
+.select {
+  width: auto;
+  min-width: 130px;
+  padding-right: calc(var(--s3) + 18px);
+  color: var(--text);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%238a8a90' fill-rule='evenodd' d='M7 9a1 1 0 0 0-.707 1.707l5 5a1 1 0 0 0 1.414 0l5-5A1 1 0 0 0 17 9z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--s2) center;
+  background-size: 16px 16px;
+}
 /* Native option lists paint the current value with the system accent, which
    reads as a stray blue bar against the dark palette. Chrome ignores
    background-color on a checked option but honours a large inset shadow, so
@@ -930,18 +950,33 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 .media-grid, .show-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr));
   gap: var(--s3);
 }
 .media-card {
   position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-sm);
   background: var(--surface);
   transition: border-color .12s;
 }
 .media-card:hover { border-color: var(--line-strong); }
+/* Only items that are not settled are marked. An overlay rather than a border
+   colour, so it does not fight .media-selected for the same property, and
+   rather than an inset shadow, which paints under the poster and so only ever
+   showed along the body of the card. */
+.media-attention::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  border: 1px solid var(--warn-line);
+  border-radius: inherit;
+  pointer-events: none;
+  transition: border-color .12s;
+}
+.media-attention:hover::after { border-color: var(--warn); }
 .media-selected { border-color: var(--accent); }
 .media-card-link { display: block; color: inherit; }
 .media-card-link:hover { color: inherit; }
@@ -961,7 +996,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 .poster {
   position: relative;
-  aspect-ratio: 2 / 3;
+  height: var(--card-poster-h);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1010,12 +1045,19 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 /* The card body carries state and location only. Title, year and quality all
    live on the artwork, so nothing is stated twice. */
-.media-card-body { display: grid; gap: var(--s2); padding: var(--s3); }
-.media-card-title { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
-.media-card-title strong { overflow: hidden; color: var(--text); font-size: var(--t-md); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.media-card-title span { flex: none; color: var(--faint); font: var(--t-micro) var(--mono); }
-.media-card-release { display: flex; align-items: center; gap: var(--s1); overflow: hidden; color: var(--muted); font: 500 var(--t-micro) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-.media-card-release svg { flex: none; color: var(--accent-text); }
+.media-card-body { display: grid; gap: var(--s2); min-height: var(--card-body-h); padding: var(--s3); }
+/* Year on its own line: a long title now truncates against the card width
+   rather than against whatever the year leaves behind. */
+.media-card-title { display: grid; gap: 2px; min-width: 0; }
+.media-card-title strong { overflow: hidden; color: var(--text); font-size: var(--t-md); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.media-card-title span { color: var(--faint); font: var(--t-micro) var(--mono); }
+.media-card-sub { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+/* Quality reads as a fact about the file, not a state, so it stays quiet type
+   rather than becoming another badge competing with the meta row below. */
+.media-card-quality { overflow: hidden; color: var(--muted); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+/* Separator lives in CSS rather than the markup, so a movie with no quality
+   does not render a dot with nothing after it. */
+.media-card-quality::before { color: var(--faint); margin-right: var(--s1); font-family: var(--sans); content: "·"; }
 .media-card-meta { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
 .media-card-primary-badge { min-height: 22px; padding-inline: var(--s2); font-weight: 600; }
 .media-card-secondary-badge { opacity: .72; }
@@ -1549,11 +1591,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .recovery-hash { display: block; overflow-wrap: anywhere; }
 
 .root-list { margin: var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
-.root-row { display: flex; align-items: center; gap: var(--s3); padding: var(--s3); border-bottom: 1px solid var(--line); }
-.root-row:last-child { border-bottom: 0; }
-.root-row > div:nth-child(2) { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
-.root-row strong { font-size: var(--t-sm); font-weight: 500; }
-.root-row div span { color: var(--faint); font: var(--t-micro) var(--mono); }
 .root-items { color: var(--muted); font: var(--t-micro) var(--mono); }
 .root-row-offline { background: var(--err-soft); }
 .root-outage-copy { color: var(--err) !important; font: var(--t-micro) var(--mono) !important; }
@@ -1626,7 +1663,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .root-remove-option small { color: var(--muted); font-size: var(--t-xs); line-height: 1.5; }
 .root-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+  grid-template-columns: auto 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--s3);
   width: 100%;
@@ -1640,6 +1677,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   transition: border-color .12s, background .12s;
 }
 .root-row:hover { border-color: var(--line-strong); background: var(--raised-2); }
+/* Always present, so a single-root list still says it is draggable, but dim
+   until hover so it does not compete with the name beside it. */
+.root-row-grip { display: grid; place-items: center; width: 14px; color: var(--line-strong); cursor: grab; transition: color .12s; }
+.root-row:hover .root-row-grip { color: var(--faint); }
+.root-row-dragging { opacity: .5; border-color: var(--accent); cursor: grabbing; }
+.root-row-dragging .root-row-grip { color: var(--accent); cursor: grabbing; }
 .root-row-disabled { opacity: .55; }
 .root-row-icon {
   display: grid;
@@ -1652,11 +1695,21 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--surface);
 }
 .root-row-icon.bad { border-color: var(--err-line); color: var(--err); background: var(--err-soft); }
-.root-row-copy { display: grid; gap: 3px; min-width: 0; }
-.root-row-copy strong { font-size: var(--t-sm); }
+.root-row-copy { display: grid; gap: var(--s2); min-width: 0; }
+.root-row-title { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.root-row-copy strong { overflow: hidden; font-size: var(--t-sm); text-overflow: ellipsis; white-space: nowrap; }
 .root-row-copy code { overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-.root-row-meta { display: flex; align-items: center; gap: var(--s2); flex: none; color: var(--faint); font-size: var(--t-xs); }
-.root-row-state { flex: none; }
+.root-row-end { display: flex; align-items: center; gap: var(--s3); flex: none; color: var(--faint); font-size: var(--t-xs); }
+.root-row-write { display: grid; place-items: center; color: var(--warn); }
+/* Bare dot plus text: the dot carries the state, so the badge chrome is dead weight. */
+.root-row-state { display: flex; align-items: center; gap: var(--s2); flex: none; color: var(--muted); font-size: var(--t-xs); }
+.root-row-state i { width: 6px; height: 6px; flex: none; border-radius: var(--r-full); background: currentcolor; }
+.root-row-state.tone-green { color: var(--ok); }
+.root-row-state.tone-amber { color: var(--warn); }
+.root-row-state.tone-red { color: var(--err); }
+.root-row-state.tone-blue { color: var(--accent); }
+.root-row-go { display: grid; place-items: center; color: var(--faint); transition: color .12s, transform .12s; }
+.root-row:hover .root-row-go { color: var(--muted); transform: translateX(2px); }
 
 
 /* Folder picker: a bar saying where you are, and the folders inside it. */
@@ -2065,7 +2118,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .health-strip { display: none; }
   .page-content { padding: var(--s4); }
   .topbar { padding: 0 var(--s4); }
-  .media-grid, .show-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  /* Narrower cards on small viewports. Overriding the token rather than the
+     template keeps --card-w the single place the width is set. */
+  .media-grid, .show-grid { --card-w: 150px; }
 }
 @media (max-width: 1120px) { .selection-count { display: none; } }
 @media (max-width: 980px) {
@@ -2171,7 +2226,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    the first thing you check in a mixed list. */
 /* Both kinds are the same width whatever the word, so the titles beside them
    start on one line rather than stepping in and out. */
-.global-search-kind {
+.kind-pill {
   display: inline-flex;
   align-items: center;
   align-self: center;
@@ -2187,8 +2242,11 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-transform: uppercase;
   transition: width .16s ease, padding .16s ease;
 }
-.global-search-kind svg { flex: none; }
-.global-search-kind em {
+.kind-pill svg { flex: none; }
+/* A storage root holds many of them, so its pill says Movies/Shows and needs
+   the extra character to fit at the shared fixed width. */
+.kind-pill-wide { width: 74px; }
+.kind-pill em {
   flex: 1;
   overflow: hidden;
   font-style: normal;
@@ -2199,12 +2257,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-indent: .04em;
 }
 /* Collapsed to a square, unfurling on hover. */
-.global-search-kind.collapsible { width: 26px; justify-content: center; gap: 0; padding: 2px; }
-.global-search-kind.collapsible em { max-width: 0; opacity: 0; transition: max-width .16s ease, opacity .16s ease, margin-left .16s ease; }
-.global-search-kind.collapsible:hover,
-.global-search-kind.collapsible:focus-visible { width: 60px; justify-content: flex-start; padding: 2px 6px; }
-.global-search-kind.collapsible:hover em,
-.global-search-kind.collapsible:focus-visible em { max-width: 32px; margin-left: 4px; opacity: 1; }
+.kind-pill.collapsible { width: 26px; justify-content: center; gap: 0; padding: 2px; }
+.kind-pill.collapsible em { max-width: 0; opacity: 0; transition: max-width .16s ease, opacity .16s ease, margin-left .16s ease; }
+.kind-pill.collapsible:hover,
+.kind-pill.collapsible:focus-visible { width: 60px; justify-content: flex-start; padding: 2px 6px; }
+.kind-pill.collapsible:hover em,
+.kind-pill.collapsible:focus-visible em { max-width: 32px; margin-left: 4px; opacity: 1; }
 
 .kind-movie { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
 .kind-show { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
@@ -2224,16 +2282,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .global-search-year.unknown { color: var(--faint); }
 .global-search-rating { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--text); font: 600 var(--t-sm)/1.4 var(--mono); vertical-align: middle; }
 .global-search-rating img { width: 25px; height: 13px; object-fit: contain; }
-.global-search-rating.from-tmdb { color: var(--muted); }
-.global-search-rating i {
-  padding: 1px 4px;
-  border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  color: var(--faint);
-  font: 600 var(--t-micro)/1.3 var(--mono);
-  font-style: normal;
-  letter-spacing: .06em;
-}
 .global-search-copy small {
   display: -webkit-box;
   overflow: hidden;
@@ -2244,8 +2292,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   -webkit-line-clamp: 2;
 }
 .global-search-state { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: var(--s1); }
-.global-search-action { color: var(--faint); font: var(--t-micro) var(--mono); }
-.global-search-row.active .global-search-action { color: var(--accent-text); }
 .global-search-empty { padding: var(--s6) var(--s4); color: var(--muted); font-size: var(--t-sm); text-align: center; }
 .global-search-foot {
   display: grid;
@@ -2314,9 +2360,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .modal-body { flex: 1; overflow: auto; }
 /* The selected path in the footer: it may be long, so it truncates from the
    left — the end of a path is the part that identifies it. */
-.root-footer-path { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; overflow: hidden; color: var(--faint); }
-.root-footer-path > i { flex: none; color: var(--faint); font: 600 var(--t-micro)/1.3 var(--mono); font-style: normal; letter-spacing: .07em; text-transform: uppercase; }
-.root-footer-path > code { overflow: hidden; color: var(--text); font: 600 var(--t-xs)/1.4 var(--mono); letter-spacing: 0; text-transform: none; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 
 .modal-foot {
   display: flex;
@@ -2326,6 +2369,10 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-top: 1px solid var(--line);
 }
 .modal-foot .footer-state { text-align: right; }
+/* Pushes the confirming actions to the right now that no status text sits
+   between them and the destructive action on the left. */
+.modal-foot-spacer { flex: 1; }
+.modal-head-action { display: flex; flex: none; align-items: center; }
 
 /* --------------------------------------------------------------------------
    Custom Formats — a grid of what each format matches, edited in a dialog.

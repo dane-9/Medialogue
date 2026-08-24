@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from uuid import UUID
 
@@ -53,6 +53,12 @@ class StorageRootUpdate(BaseModel):
         return value
 
 
+class StorageRootReorder(BaseModel):
+    """Ids in the order the list should be shown, top first."""
+
+    ids: list[UUID] = Field(min_length=1)
+
+
 class LibrarySummary(BaseModel):
     """Counts the Root Storage page needs to explain the library's state."""
 
@@ -89,6 +95,21 @@ class FilesystemListing(BaseModel):
     problem: str | None = None
 
 
+class StorageRootScan(BaseModel):
+    """The scan running against a root right now.
+
+    A boolean was enough to grey out a row, but not to say what the scan is
+    doing, so the row could show "Scanning" for minutes with nothing behind it.
+    """
+
+    job_id: UUID
+    status: str
+    stage: str | None = None
+    current: int = 0
+    total: int = 0
+    percent: float = 0
+
+
 class StorageRootResponse(ORMModel):
     id: UUID
     name: str
@@ -105,11 +126,21 @@ class StorageRootResponse(ORMModel):
     #: progress is indistinguishable from one that never happened, because
     #: last_scan_at is only written when a scan succeeds.
     scanning: bool = False
+    #: The job behind `scanning`, so a row can report its progress.
+    scan: StorageRootScan | None = None
     #: Total media directories recorded under this root, so a row can say what
     #: is actually in it rather than only when it was last read.
     media_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("last_scan_at", "last_health_checked_at", mode="after")
+    @classmethod
+    def timestamps_are_utc(cls, value: datetime | None) -> datetime | None:
+        # SQLite drops timezone metadata even though these columns contain UTC.
+        # Returning an explicit offset keeps browser-relative ages correct in
+        # every local timezone, matching PostgreSQL production responses.
+        return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
 
 
 class RemotePathMappingCreate(BaseModel):

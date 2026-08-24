@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
@@ -13,11 +13,16 @@ from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
     AccessMode,
+    Episode,
+    EpisodeMediaMap,
     Job,
     MediaDirectory,
+    MediaFile,
     MediaType,
     Movie,
     MovieRelease,
+    Problem,
+    Season,
     RemotePathMapping,
     Show,
     ShowRelease,
@@ -33,7 +38,9 @@ from app.schemas.storage import (
     RemotePathMappingResponse,
     RemotePathMappingUpdate,
     StorageRootCreate,
+    StorageRootReorder,
     StorageRootResponse,
+    StorageRootScan,
     StorageRootUpdate,
 )
 from app.services.jobs import create_job, publish_job_status
@@ -59,9 +66,25 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
         or 0
     )
     affected = media_count if root.last_health == "unavailable" else 0
-    scanning = await active_storage_root_scan_job(db, root.id) is not None
+    job = await active_storage_root_scan_job(db, root.id)
+    scan = None
+    if job is not None:
+        progress = job.progress or {}
+        scan = StorageRootScan(
+            job_id=job.id,
+            status=job.status.value if hasattr(job.status, "value") else str(job.status),
+            stage=progress.get("stage"),
+            current=int(progress.get("current") or 0),
+            total=int(progress.get("total") or 0),
+            percent=float(progress.get("percent") or 0),
+        )
     return StorageRootResponse.model_validate(root).model_copy(
-        update={"affected_media_count": affected, "media_count": media_count, "scanning": scanning}
+        update={
+            "affected_media_count": affected,
+            "media_count": media_count,
+            "scanning": job is not None,
+            "scan": scan,
+        }
     )
 
 
@@ -113,7 +136,7 @@ async def list_storage_roots(
 ) -> Collection[StorageRootResponse]:
     del admin
     total = await db.scalar(select(func.count()).select_from(StorageRoot)) or 0
-    rows = (await db.scalars(select(StorageRoot).order_by(StorageRoot.name).offset((page - 1) * page_size).limit(page_size))).all()
+    rows = (await db.scalars(select(StorageRoot).order_by(StorageRoot.sort_order, StorageRoot.name).offset((page - 1) * page_size).limit(page_size))).all()
     pages = (total + page_size - 1) // page_size
     return Collection(items=[await _root_response(db, row) for row in rows], page=page, page_size=page_size, total=total, pages=pages)
 
@@ -153,7 +176,7 @@ async def check_storage_root_health(
     stayed green until something scanned it again. This is a directory stat per
     root, cheap enough to run whenever the page is opened.
     """
-    roots = (await db.scalars(select(StorageRoot).order_by(StorageRoot.name))).all()
+    roots = (await db.scalars(select(StorageRoot).order_by(StorageRoot.sort_order, StorageRoot.name))).all()
     for root in roots:
         if not root.enabled:
             continue
@@ -246,6 +269,7 @@ async def create_storage_root(
         enabled=payload.enabled,
         missing_grace_checks=payload.missing_grace_checks,
         last_health="unavailable" if not Path(payload.path).exists() else "available",
+        sort_order=int(await db.scalar(select(func.max(StorageRoot.sort_order))) or 0) + 1,
     )
     db.add(root)
     try:
@@ -255,6 +279,38 @@ async def create_storage_root(
         raise AppError("STORAGE_ROOT_EXISTS", "A storage root with this name already exists.", status_code=409) from exc
     await _adopt_unlinked_directories(db, root)
     return await _root_response(db, root)
+
+
+@router.post("/storage-roots/reorder", response_model=Collection[StorageRootResponse])
+async def reorder_storage_roots(
+    payload: StorageRootReorder,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> Collection[StorageRootResponse]:
+    """Persist a hand-dragged list order.
+
+    Ids missing from the payload keep a position after the ones given, so a
+    reorder raced against another admin's newly added root cannot silently
+    drop that root to an arbitrary place.
+    """
+    roots = (await db.scalars(select(StorageRoot))).all()
+    by_id = {root.id: root for root in roots}
+    unknown = [str(root_id) for root_id in payload.ids if root_id not in by_id]
+    if unknown:
+        raise AppError("STORAGE_ROOT_NOT_FOUND", f"Unknown storage root: {', '.join(unknown)}", status_code=404)
+
+    ordered = [by_id[root_id] for root_id in payload.ids]
+    ordered += [root for root in sorted(roots, key=lambda r: (r.sort_order, r.name)) if root.id not in set(payload.ids)]
+    for position, root in enumerate(ordered):
+        root.sort_order = position
+    await db.commit()
+    return Collection(
+        items=[await _root_response(db, root) for root in ordered],
+        page=1,
+        page_size=len(ordered),
+        total=len(ordered),
+        pages=1,
+    )
 
 
 @router.get("/storage-roots/{root_id}", response_model=StorageRootResponse)
@@ -282,10 +338,73 @@ async def update_storage_root(
         values["media_type"] = MediaType(values["media_type"])
     if "access_mode" in values:
         values["access_mode"] = AccessMode(values["access_mode"])
+    scan_identity_changed = (
+        values.get("resolved_root_path", root.resolved_root_path) != root.resolved_root_path
+        or values.get("media_type", root.media_type) != root.media_type
+    )
+    if scan_identity_changed and await active_storage_root_scan_job(db, root.id) is not None:
+        raise AppError(
+            "STORAGE_ROOT_SCANNING",
+            "Wait for the current scan to finish before changing this root's path or media type.",
+            status_code=409,
+        )
     for key, value in values.items():
         setattr(root, key, value)
+    if scan_identity_changed:
+        # The timestamp describes the path/type that was actually scanned. A
+        # new scan identity must initialize independently rather than inherit
+        # a successful scan from the previous folder.
+        root.last_scan_at = None
     await db.commit()
     return await _root_response(db, root)
+
+
+async def _show_ids_in(db: AsyncSession, condition) -> set[UUID]:
+    """Shows that have a directory matching ``condition``.
+
+    A show reaches its directory by two different routes and both have to be
+    followed. A scan of a show folder records the folder, the files inside it,
+    and an episode match per file, so the link runs
+    directory -> file -> episode map -> season -> show. Only a season pack that
+    was matched as a whole also sets MediaDirectory.show_release_id, so looking
+    at the release link alone finds nothing for an ordinary scanned library.
+    """
+    ids: set[UUID] = set()
+    ids.update(
+        (
+            await db.scalars(
+                select(ShowRelease.show_id)
+                .join(MediaDirectory, MediaDirectory.show_release_id == ShowRelease.id)
+                .where(condition)
+            )
+        ).all()
+    )
+    ids.update(
+        (
+            await db.scalars(
+                select(Season.show_id)
+                .join(Episode, Episode.season_id == Season.id)
+                .join(EpisodeMediaMap, EpisodeMediaMap.episode_id == Episode.id)
+                .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
+                .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+                .where(condition)
+            )
+        ).all()
+    )
+    return ids
+
+
+async def _movie_ids_in(db: AsyncSession, condition) -> set[UUID]:
+    """Movies that have a directory matching ``condition``."""
+    return set(
+        (
+            await db.scalars(
+                select(MovieRelease.movie_id)
+                .join(MediaDirectory, MediaDirectory.movie_release_id == MovieRelease.id)
+                .where(condition)
+            )
+        ).all()
+    )
 
 
 async def _remove_entries_under(db: AsyncSession, root: StorageRoot) -> None:
@@ -298,52 +417,58 @@ async def _remove_entries_under(db: AsyncSession, root: StorageRoot) -> None:
     Files are never touched. These rows are derived from a scan and a scan
     rebuilds them.
     """
-    directories = (
-        await db.scalars(select(MediaDirectory).where(MediaDirectory.storage_root_id == root.id))
-    ).all()
+    here = MediaDirectory.storage_root_id == root.id
+    elsewhere = and_(
+        MediaDirectory.storage_root_id.is_not(None),
+        MediaDirectory.storage_root_id != root.id,
+    )
 
-    movie_ids: set[UUID] = set()
-    show_ids: set[UUID] = set()
-    for directory in directories:
-        if directory.movie_release_id:
-            release = await db.get(MovieRelease, directory.movie_release_id)
-            if release:
-                movie_ids.add(release.movie_id)
-        if directory.show_release_id:
-            release = await db.get(ShowRelease, directory.show_release_id)
-            if release:
-                show_ids.add(release.show_id)
+    movie_ids = await _movie_ids_in(db, here) - await _movie_ids_in(db, elsewhere)
+    show_ids = await _show_ids_in(db, here) - await _show_ids_in(db, elsewhere)
+    movie_release_ids = set(
+        (await db.scalars(select(MovieRelease.id).where(MovieRelease.movie_id.in_(movie_ids)))).all()
+    ) if movie_ids else set()
+    show_release_ids = set(
+        (await db.scalars(select(ShowRelease.id).where(ShowRelease.show_id.in_(show_ids)))).all()
+    ) if show_ids else set()
+    episode_ids = set(
+        (await db.scalars(select(Episode.id).where(Episode.show_id.in_(show_ids)))).all()
+    ) if show_ids else set()
+    directory_ids = set((await db.scalars(select(MediaDirectory.id).where(here))).all())
+    media_file_ids = set(
+        (await db.scalars(select(MediaFile.id).where(MediaFile.media_directory_id.in_(directory_ids)))).all()
+    ) if directory_ids else set()
 
-    async def survives_elsewhere(release_model, owner_column, link_column, owner_id: UUID) -> bool:
-        """Whether this movie/show still has a directory under another root."""
-        release_ids = (await db.scalars(select(release_model.id).where(owner_column == owner_id))).all()
-        if not release_ids:
-            return False
-        remaining = await db.scalar(
-            select(func.count())
-            .select_from(MediaDirectory)
-            .where(
-                link_column.in_(release_ids),
-                MediaDirectory.storage_root_id.is_not(None),
-                MediaDirectory.storage_root_id != root.id,
-            )
-        )
-        return bool(int(remaining or 0))
+    problem_subjects = {
+        "movie": movie_ids,
+        "movie_release": movie_release_ids,
+        "show": show_ids,
+        "show_release": show_release_ids,
+        "episode": episode_ids,
+        "media_directory": directory_ids,
+        "media_file": media_file_ids,
+    }
+    problem_conditions = [
+        and_(Problem.entity_type == entity_type, Problem.entity_id.in_(entity_ids))
+        for entity_type, entity_ids in problem_subjects.items()
+        if entity_ids
+    ]
+    if problem_conditions:
+        # Problem.entity_id is deliberately polymorphic and therefore has no
+        # foreign key. Delete its rows explicitly before their subjects vanish.
+        await db.execute(delete(Problem).where(or_(*problem_conditions)))
 
     for owner_id in movie_ids:
-        if await survives_elsewhere(MovieRelease, MovieRelease.movie_id, MediaDirectory.movie_release_id, owner_id):
-            continue
         row = await db.get(Movie, owner_id)
         if row is not None:
             await db.delete(row)
 
     for owner_id in show_ids:
-        if await survives_elsewhere(ShowRelease, ShowRelease.show_id, MediaDirectory.show_release_id, owner_id):
-            continue
         row = await db.get(Show, owner_id)
         if row is not None:
             await db.delete(row)
 
+    directories = (await db.scalars(select(MediaDirectory).where(here))).all()
     for directory in directories:
         await db.delete(directory)
     await db.flush()
@@ -367,6 +492,11 @@ async def delete_storage_root(
         )
     if remove_entries:
         await _remove_entries_under(db, root)
+    # Root Problems are polymorphic too, so deleting the configuration cannot
+    # cascade to them. A removed root can no longer have an actionable warning.
+    await db.execute(
+        delete(Problem).where(Problem.entity_type == "storage_root", Problem.entity_id == root.id)
+    )
     # Removing a configured root never removes media files. Any directory left
     # is detached rather than deleted, so its observed path stays available.
     await db.execute(
