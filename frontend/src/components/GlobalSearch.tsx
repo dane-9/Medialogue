@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Movie, Show, TMDBMovieLookup, TMDBShowLookup } from '../types'
 import { evaluateShiftTap } from '../lib/doubleTap'
+import { rankResults } from '../lib/searchRank'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
 import { Badge, Button } from './ui'
@@ -21,6 +22,10 @@ type Scope = Kind | 'all'
  */
 type Result = {
   key: string
+  /** Position in the list its own type came back in, for tie-breaking. */
+  index: number
+  popularity?: number
+  voteCount?: number
   kind: Kind
   tmdbId?: number
   libraryId?: string
@@ -199,24 +204,18 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
 }
 
 /**
- * Both libraries at once.
+ * Both libraries at once, as one ranked list.
  *
- * Titles you already have come first regardless of kind, then the remaining
- * TMDB matches are interleaved. Concatenating instead would bury every show
- * beneath every movie, which makes the All scope useless for half of what it
- * covers.
+ * Titles you already have come first regardless of kind. The rest are scored
+ * on how well the title answers the query, which is the one measure comparable
+ * between a movie and a show — TMDB's own result position ranks within a type
+ * and means nothing across types.
  */
 async function searchEverything(term: string): Promise<Result[]> {
   const [movies, shows] = await Promise.all([searchMovies(term), searchShows(term)])
-  const owned = [...movies, ...shows].filter((item) => item.present)
-  const rest = { movies: movies.filter((item) => !item.present), shows: shows.filter((item) => !item.present) }
-
-  const interleaved: Result[] = []
-  for (let index = 0; index < Math.max(rest.movies.length, rest.shows.length); index += 1) {
-    if (rest.movies[index]) interleaved.push(rest.movies[index])
-    if (rest.shows[index]) interleaved.push(rest.shows[index])
-  }
-  return [...owned, ...interleaved]
+  // One ranked list rather than an alternating merge: how well a title answers
+  // the query is comparable between types, its position in TMDB's own list is not.
+  return rankResults([...movies, ...shows], term)
 }
 
 
@@ -228,10 +227,13 @@ async function searchMovies(term: string): Promise<Result[]> {
   const byTmdb = new Map<number, Movie>()
   library.forEach((movie) => { if (movie.tmdbId) byTmdb.set(movie.tmdbId, movie) })
 
-  const rows: Result[] = tmdb.map((match) => {
+  const rows: Result[] = tmdb.map((match, index) => {
     const owned = byTmdb.get(match.tmdbId)
     return {
       key: `tmdb-${match.tmdbId}`,
+      index,
+      popularity: match.popularity,
+      voteCount: match.voteCount,
       kind: 'movie',
       tmdbId: match.tmdbId,
       libraryId: owned?.id,
@@ -248,7 +250,7 @@ async function searchMovies(term: string): Promise<Result[]> {
   // still belongs in the results rather than disappearing.
   library.forEach((movie) => {
     if (movie.tmdbId && rows.some((row) => row.tmdbId === movie.tmdbId)) return
-    rows.unshift({ key: `library-${movie.id}`, kind: 'movie', libraryId: movie.id, tmdbId: movie.tmdbId, title: movie.title, year: movie.year, poster: movie.poster, present: true, state: movie.status })
+    rows.unshift({ key: `library-${movie.id}`, index: 0, kind: 'movie', libraryId: movie.id, tmdbId: movie.tmdbId, title: movie.title, year: movie.year, poster: movie.poster, present: true, state: movie.status })
   })
   return rows
 }
@@ -261,10 +263,13 @@ async function searchShows(term: string): Promise<Result[]> {
   const byTmdb = new Map<number, Show>()
   library.forEach((show) => { if (show.tmdbId) byTmdb.set(show.tmdbId, show) })
 
-  const rows: Result[] = tmdb.map((match) => {
+  const rows: Result[] = tmdb.map((match, index) => {
     const owned = byTmdb.get(match.tmdbId)
     return {
       key: `tmdb-${match.tmdbId}`,
+      index,
+      popularity: match.popularity,
+      voteCount: match.voteCount,
       kind: 'show',
       tmdbId: match.tmdbId,
       libraryId: owned?.id,
@@ -278,7 +283,7 @@ async function searchShows(term: string): Promise<Result[]> {
   })
   library.forEach((show) => {
     if (show.tmdbId && rows.some((row) => row.tmdbId === show.tmdbId)) return
-    rows.unshift({ key: `library-${show.id}`, kind: 'show', libraryId: show.id, tmdbId: show.tmdbId, title: show.title, year: show.year, poster: show.poster, present: true, state: show.status })
+    rows.unshift({ key: `library-${show.id}`, index: 0, kind: 'show', libraryId: show.id, tmdbId: show.tmdbId, title: show.title, year: show.year, poster: show.poster, present: true, state: show.status })
   })
   return rows
 }

@@ -18,6 +18,11 @@ class TMDBMovieMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
+    #: TMDB's own popularity metric and rating volume. Unlike search position
+    #: these are comparable between movies and shows, which is what lets one
+    #: ranked list mix the two.
+    popularity: float | None = None
+    vote_count: int | None = None
     #: TMDB's ISO 639-1 original language, the fallback when a release
     #: name declares none.
     original_language: str | None = None
@@ -31,6 +36,11 @@ class TMDBShowMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
+    #: TMDB's own popularity metric and rating volume. Unlike search position
+    #: these are comparable between movies and shows, which is what lets one
+    #: ranked list mix the two.
+    popularity: float | None = None
+    vote_count: int | None = None
     #: TMDB's ISO 639-1 original language, the fallback when a release
     #: name declares none.
     original_language: str | None = None
@@ -160,6 +170,8 @@ class TMDBClient:
                     overview=item.get("overview") if isinstance(item.get("overview"), str) else None,
                     poster_path=item.get("poster_path") if isinstance(item.get("poster_path"), str) else None,
                     original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
+                    popularity=_number(item.get("popularity")),
+                    vote_count=_int(item.get("vote_count")),
                 )
             )
         return matches
@@ -235,6 +247,8 @@ class TMDBClient:
                     overview=item.get("overview") if isinstance(item.get("overview"), str) else None,
                     poster_path=item.get("poster_path") if isinstance(item.get("poster_path"), str) else None,
                     original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
+                    popularity=_number(item.get("popularity")),
+                    vote_count=_int(item.get("vote_count")),
                 )
             )
         return matches
@@ -368,6 +382,14 @@ class TMDBClient:
         except httpx.HTTPError as exc:
             raise TMDBError(f"TMDB request failed: {response.status_code}") from exc
         return response
+
+
+def _number(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _int(value: object) -> int | None:
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _year(value: object) -> int | None:

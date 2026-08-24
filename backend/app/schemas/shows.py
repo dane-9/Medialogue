@@ -37,6 +37,9 @@ class TMDBShowLookupResponse(BaseModel):
     poster_ref: str | None = None
     director: str | None = None
     cast: list[str] = Field(default_factory=list)
+    #: Comparable across movies and shows, so one ranked list can mix them.
+    popularity: float | None = None
+    vote_count: int | None = None
 
 
 class EpisodeMediaResponse(BaseModel):

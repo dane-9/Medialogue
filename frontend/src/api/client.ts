@@ -300,6 +300,8 @@ function normalizeTMDBShowLookup(value: unknown): TMDBShowLookup {
     year: optionalNumber(item.year),
     overview: textValue(item.overview) || undefined,
     posterRef: textValue(item.poster_ref) || undefined,
+    popularity: optionalNumber(item.popularity),
+    voteCount: optionalNumber(item.vote_count ?? item.voteCount),
     director: textValue(item.director) || undefined,
     cast: Array.isArray(item.cast) ? item.cast.map((entry) => textValue(entry)).filter(Boolean) : undefined,
   }
@@ -599,6 +601,8 @@ function normalizeTMDBMovieLookup(value: unknown): TMDBMovieLookup {
     year: optionalNumber(item.year),
     overview: textValue(item.overview) || undefined,
     posterRef: textValue(item.poster_ref ?? item.posterRef) || undefined,
+    popularity: optionalNumber(item.popularity),
+    voteCount: optionalNumber(item.vote_count ?? item.voteCount),
     director: textValue(item.director) || undefined,
     cast: Array.isArray(item.cast) ? item.cast.map((entry) => textValue(entry)).filter(Boolean) : undefined,
   }

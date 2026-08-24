@@ -338,6 +338,8 @@ async def lookup_shows(
             poster_ref=item.poster_path,
             director=credits.get(item.tmdb_id, (None, ()))[0],
             cast=list(credits.get(item.tmdb_id, (None, ()))[1]),
+            popularity=item.popularity,
+            vote_count=item.vote_count,
         )
         for item in matches[:25]
     ]
