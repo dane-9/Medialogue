@@ -476,6 +476,7 @@ async def sync_show_metadata(
         show.year = details.year
         show.overview = details.overview
         show.poster_ref = details.poster_path
+        show.original_language = details.original_language
         show.tvdb_id = details.tvdb_id
         show.metadata_refreshed_at = utcnow()
 

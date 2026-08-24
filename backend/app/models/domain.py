@@ -219,6 +219,9 @@ class Movie(TimestampMixin, Base):
     tvdb_id: Mapped[int | None] = mapped_column()
     overview: Mapped[str | None] = mapped_column(Text)
     poster_ref: Mapped[str | None] = mapped_column(String(1024))
+    #: TMDB ISO 639-1 code, used as the language fallback for releases whose
+    #: names declare none.
+    original_language: Mapped[str | None] = mapped_column(String(16))
     monitored: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     identity_state: Mapped[IdentityState] = mapped_column(SAEnum(IdentityState, native_enum=False), default=IdentityState.UNMATCHED, nullable=False)
     manual_identity_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -279,6 +282,9 @@ class Show(TimestampMixin, Base):
     tmdb_episode_group_id: Mapped[str | None] = mapped_column(String(64))
     overview: Mapped[str | None] = mapped_column(Text)
     poster_ref: Mapped[str | None] = mapped_column(String(1024))
+    #: TMDB ISO 639-1 code, used as the language fallback for releases whose
+    #: names declare none.
+    original_language: Mapped[str | None] = mapped_column(String(16))
     monitored: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     identity_state: Mapped[IdentityState] = mapped_column(SAEnum(IdentityState, native_enum=False), default=IdentityState.UNMATCHED, nullable=False)
     manual_identity_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -813,6 +819,7 @@ class InteractiveSearchResult(Base):
     download_url: Mapped[str | None] = mapped_column(Text)
     size: Mapped[int | None] = mapped_column(BigInteger)
     seeders: Mapped[int | None] = mapped_column(Integer)
+    leechers: Mapped[int | None] = mapped_column(Integer)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     parser_version: Mapped[str | None] = mapped_column(String(64))
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)

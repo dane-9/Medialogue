@@ -358,11 +358,13 @@ export interface InteractiveSearchResult {
   jobId: string
   indexerId?: string
   indexerName: string
+  indexerColor?: string
   mediaType: 'movies' | 'shows'
   targetEntityType: string
   title: string
   size?: number
   seeders?: number
+  leechers?: number
   publishedAt?: string
   quality?: string
   qualityAllowed: boolean
@@ -671,6 +673,8 @@ export interface Indexer {
   enableInteractiveSearch: boolean
   categories: number[]
   minimumSeeders: number
+  color?: string
+  multiLanguages: string[]
   priority: number
   health: string
   lastCheckedAt?: string

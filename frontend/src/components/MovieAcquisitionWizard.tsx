@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { DownloadClient, DownloadClientCategory, InteractiveSearchJob, InteractiveSearchResult, QualityProfile } from '../types'
 import { Icon } from './Icon'
-import { Badge, Button, Select } from './ui'
+import { Button, Select } from './ui'
+import { ReleaseResults, formatBytes } from './ReleaseResults'
+import { DownloadClientField } from './DownloadClientField'
 
 type MovieChoice = {
   tmdbId: number
@@ -16,20 +18,6 @@ function posterUrl(reference?: string) {
   if (!reference) return undefined
   if (reference.startsWith('http')) return reference
   return `https://image.tmdb.org/t/p/w185${reference.startsWith('/') ? reference : `/${reference}`}`
-}
-
-function formatBytes(bytes?: number) {
-  if (!bytes) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
-  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
-}
-
-function matchedFormatNames(result: InteractiveSearchResult): string[] {
-  const raw = result.customFormatSnapshot.matched_format_names ?? result.customFormatSnapshot.matchedFormatNames
-  return Array.isArray(raw) ? raw.map(String).filter(Boolean) : []
 }
 
 export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
@@ -46,6 +34,10 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
   const [category, setCategory] = useState('')
   const [setupLoading, setSetupLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
+  // Bumped by a client health recheck, so categories are fetched again after a
+  // client that was down comes back. The client id does not change, so nothing
+  // else would retry the load that failed while it was unreachable.
+  const [clientReload, setClientReload] = useState(0)
   const [step, setStep] = useState<'setup' | 'search'>('setup')
   const [jobId, setJobId] = useState('')
   const [searchedProfileId, setSearchedProfileId] = useState('')
@@ -96,7 +88,7 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
       })
       .finally(() => { if (alive) setCategoryLoading(false) })
     return () => { alive = false }
-  }, [clientId, selectedClient?.category])
+  }, [clientId, selectedClient?.category, clientReload])
 
   useEffect(() => {
     if (!jobId || step !== 'search') return
@@ -117,9 +109,9 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
     return () => { alive = false; if (timer) window.clearTimeout(timer) }
   }, [jobId, step])
 
-  const search = async () => {
+  const search = async (force = false) => {
     if (!profileId || !clientId || !category) return
-    if (jobId && searchedProfileId === profileId) {
+    if (!force && jobId && searchedProfileId === profileId) {
       setError('')
       setStep('search')
       return
@@ -150,18 +142,27 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
     } finally { setStarting(false) }
   }
 
-  const indexerSummary = useMemo(() => {
-    if (!job) return ''
-    const done = job.indexers.filter((item) => ['completed', 'failed', 'timeout'].includes(item.status)).length
-    return `${done}/${job.indexers.length} indexers · ${job.resultTotal} result${job.resultTotal === 1 ? '' : 's'}`
-  }, [job])
-
   return <div className="modal-backdrop" onClick={onClose}>
     <div className="acquisition-modal" role="dialog" aria-modal="true" aria-label={`Acquire ${movie.title}`} onClick={(event) => event.stopPropagation()}>
       <header className="acquisition-head">
-        <button className="icon-button" type="button" onClick={step === 'setup' ? onBack : () => { setStep('setup'); setError('') }} aria-label="Back"><Icon name="chevron" size={17} /></button>
-        <div className="acquisition-title-block"><span className="eyebrow">MANUAL ACQUISITION</span><h2>{movie.title}{movie.year ? <span> ({movie.year})</span> : null}</h2></div>
-        <div className="acquisition-steps" aria-label="Acquisition steps"><span className={step === 'setup' ? 'active' : 'done'}>1 Setup</span><i /><span className={step === 'search' ? 'active' : ''}>2 Select release</span></div>
+        <div className="acquisition-title-block">
+          <h2>{movie.title}{movie.year ? <span> ({movie.year})</span> : null}</h2>
+        </div>
+        <nav className="acquisition-steps" aria-label="Acquisition steps">
+          <button
+            type="button"
+            className={step === 'setup' ? 'active' : ''}
+            aria-current={step === 'setup' ? 'step' : undefined}
+            onClick={() => { setStep('setup'); setError('') }}
+          ><i>1</i>Setup</button>
+          <button
+            type="button"
+            className={step === 'search' ? 'active' : ''}
+            aria-current={step === 'search' ? 'step' : undefined}
+            disabled={!canSearch || starting}
+            onClick={() => void search()}
+          ><i>2</i>Select release</button>
+        </nav>
         <button className="icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       </header>
 
@@ -172,44 +173,41 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
         </aside>
         <section className="acquisition-form">
           <label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select><small>Controls quality ordering and Custom Format scoring for this search.</small></label>
-          <label><span className="field-label">qBittorrent</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)} disabled={setupLoading}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select><small>{selectedClient ? `${selectedClient.health} · ${selectedClient.url}` : 'Choose the client that should receive the selected torrent.'}</small></label>
+          <DownloadClientField
+            clients={clients}
+            clientId={clientId}
+            scope="movies"
+            disabled={setupLoading}
+            onChange={setClientId}
+            onRefreshed={(rows) => { setClients(rows); setClientReload((value) => value + 1) }}
+          />
           <label><span className="field-label">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!clientId || categoryLoading}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select><small>The category is owned by qBittorrent; Medialogue does not override its save path.</small></label>
           <div className="acquisition-destination"><span>Destination</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Unavailable')}</strong>{selectedCategory && !selectedCategory.savePath && <small>Uses the qBittorrent default download directory because this category has no explicit path.</small>}</div>
           {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         </section>
       </div> : <div className="acquisition-search">
-        <div className="acquisition-search-toolbar">
-          <div><strong>{profiles.find((item) => item.id === profileId)?.name || 'Quality Profile'}</strong><span>{selectedClient?.name} · {category} · {selectedCategory?.resolvedSavePath || 'destination unavailable'}</span></div>
-          <span>{job ? indexerSummary : 'Starting search…'}</span>
-        </div>
         {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
-        <div className="acquisition-search-body">
-          <div className="acquisition-results" role="listbox" aria-label="Torrent search results">
-            {job?.results.map((result) => <button key={result.id} type="button" role="option" aria-selected={selectedResultId === result.id} className={`acquisition-result ${selectedResultId === result.id ? 'selected' : ''}`} onClick={() => setSelectedResultId(result.id)}>
-              <span className="acquisition-result-main"><strong>{result.title}</strong><span>{result.indexerName}{result.releaseGroup ? ` · ${result.releaseGroup}` : ''}</span></span>
-              <span className="acquisition-result-quality">{result.quality || 'Unknown'}{result.edition ? <small>{result.edition}</small> : null}</span>
-              <span className={`acquisition-result-score ${(result.customFormatScore ?? 0) >= 0 ? 'positive' : 'negative'}`}>{(result.customFormatScore ?? 0) > 0 ? '+' : ''}{result.customFormatScore ?? 0}<small>CF</small></span>
-              <span className="acquisition-result-stat">{formatBytes(result.size)}<small>size</small></span>
-              <span className="acquisition-result-stat">{result.seeders ?? '—'}<small>seeders</small></span>
-              {!result.qualityAllowed && <Badge tone="red">Not allowed</Badge>}
-            </button>)}
-            {!job?.results.length && <div className="acquisition-results-empty">{job && ['completed', 'failed'].includes(job.status) ? 'No releases were returned.' : 'Searching configured indexers…'}</div>}
-          </div>
-          <aside className="acquisition-evidence">
-            {selectedResult ? <>
-              <div className="eyebrow">SELECTED RELEASE</div><h3>{selectedResult.quality || 'Unknown quality'}</h3><p className="acquisition-release-name">{selectedResult.title}</p>
-              <dl><div><dt>Custom Format score</dt><dd>{(selectedResult.customFormatScore ?? 0) > 0 ? '+' : ''}{selectedResult.customFormatScore ?? 0}</dd></div><div><dt>Seeders</dt><dd>{selectedResult.seeders ?? '—'}</dd></div><div><dt>Size</dt><dd>{formatBytes(selectedResult.size)}</dd></div><div><dt>Indexer</dt><dd>{selectedResult.indexerName}</dd></div></dl>
-              {matchedFormatNames(selectedResult).length > 0 && <div className="acquisition-matches"><span>Matched formats</span><div>{matchedFormatNames(selectedResult).map((name) => <Badge key={name} tone="purple">{name}</Badge>)}</div></div>}
-              {selectedResult.warnings.length > 0 && <div className="acquisition-warnings">{selectedResult.warnings.map((warning) => <p key={warning}><Icon name="alert" size={13} />{warning}</p>)}</div>}
-              <div className="acquisition-confirm-destination"><span>Download to</span><strong>{selectedClient?.name} / {category}</strong><small>{selectedCategory?.resolvedSavePath}</small></div>
-            </> : <div className="acquisition-evidence-empty"><Icon name="search" size={24} /><strong>Select a release</strong><p>Review the parsed quality, Custom Format score, size, seeders and warnings before starting the download.</p></div>}
-          </aside>
-        </div>
+        <ReleaseResults
+          results={job?.results ?? []}
+          selectedId={selectedResultId}
+          onSelect={setSelectedResultId}
+          label="Torrent search results"
+          onRefresh={() => void search(true)}
+          refreshing={starting}
+          empty={job && ['completed', 'failed'].includes(job.status) ? 'No releases were returned.' : 'Searching configured indexers…'}
+        />
       </div>}
 
       <footer className="acquisition-foot">
-        <span>{step === 'setup' ? 'Nothing is added to Medialogue until Start Download succeeds.' : job?.status === 'completed' ? 'Search complete.' : 'Results appear as each indexer finishes.'}</span>
-        <div>{step === 'setup' ? <><Button variant="ghost" type="button" onClick={onClose}>Cancel</Button><Button variant="primary" type="button" disabled={!canSearch || starting} onClick={() => void search()}>{starting ? 'Starting…' : (jobId && searchedProfileId === profileId ? 'Return to results' : 'Search releases')}</Button></> : <><Button variant="ghost" type="button" onClick={() => { setStep('setup'); setError('') }}>Edit setup</Button><Button variant="primary" type="button" disabled={!selectedResult || !selectedResult.qualityAllowed || starting} onClick={() => void startDownload()}>{starting ? 'Starting download…' : 'Start Download'}</Button></>}</div>
+        {step === 'search' && job
+          ? <span className="acquisition-foot-count">{job.resultTotal} Torrent{job.resultTotal === 1 ? '' : 's'} found</span>
+          : null}
+        <span>{step === 'setup'
+          ? 'Nothing is added to Medialogue until Start Download succeeds.'
+          : selectedResult
+            ? <>Downloading to <strong>{selectedClient?.name} / {category}</strong> · {formatBytes(selectedResult.size)}</>
+            : job?.status === 'completed' ? null : 'Results appear as each indexer finishes.'}</span>
+        <div>{step === 'setup' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={!canSearch || starting} onClick={() => void search()}>{starting ? 'Starting…' : (jobId && searchedProfileId === profileId ? 'Return to results' : 'Search releases')}</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button><Button variant="primary" type="button" disabled={!selectedResult || !selectedResult.qualityAllowed || starting} onClick={() => void startDownload()}>{starting ? 'Starting download…' : 'Start Download'}</Button></>}</div>
       </footer>
     </div>
   </div>

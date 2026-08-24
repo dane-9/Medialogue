@@ -27,6 +27,10 @@ class IndexerCreate(BaseModel):
     categories: list[int] = Field(default_factory=list, max_length=100)
     minimum_seeders: int = Field(default=1, ge=0, le=100000)
     priority: int = Field(default=25, ge=1, le=50)
+    #: Badge colour for this indexer's search results. None uses the default.
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    #: Languages a MULTI-tagged release from this indexer contains.
+    multi_languages: list[str] = Field(default_factory=list, max_length=20)
 
 
 class IndexerUpdate(BaseModel):
@@ -42,6 +46,9 @@ class IndexerUpdate(BaseModel):
     categories: list[int] | None = Field(default=None, max_length=100)
     minimum_seeders: int | None = Field(default=None, ge=0, le=100000)
     priority: int | None = Field(default=None, ge=1, le=50)
+    # An empty string clears the colour; omitting the field leaves it alone.
+    color: str | None = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
+    multi_languages: list[str] | None = Field(default=None, max_length=20)
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -58,6 +65,8 @@ class IndexerResponse(ORMModel):
     categories: list[int]
     minimum_seeders: int
     priority: int
+    color: str | None
+    multi_languages: list[str]
     health: str
     last_checked_at: datetime | None
     last_success_at: datetime | None

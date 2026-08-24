@@ -490,7 +490,9 @@ function normalizeInteractiveSearchResult(value: unknown): InteractiveSearchResu
     targetEntityType: textValue(item.target_entity_type ?? item.targetEntityType),
     title: textValue(item.title),
     size: optionalNumber(item.size),
+    indexerColor: textValue(item.indexer_color ?? item.indexerColor) || undefined,
     seeders: optionalNumber(item.seeders),
+    leechers: optionalNumber(item.leechers),
     publishedAt: dateValue(item.published_at ?? item.publishedAt),
     quality: textValue(item.quality) || undefined,
     qualityAllowed: item.quality_allowed !== false && item.qualityAllowed !== false,
@@ -735,6 +737,8 @@ function normalizeIndexer(value: unknown): Indexer {
     enableInteractiveSearch: item.enable_interactive_search !== false && item.enableInteractiveSearch !== false,
     categories: Array.isArray(item.categories) ? item.categories.map((value) => numberValue(value)).filter((value) => value >= 0) : [],
     minimumSeeders: numberValue(item.minimum_seeders ?? item.minimumSeeders, 1),
+    color: textValue(item.color) || undefined,
+    multiLanguages: ((value) => Array.isArray(value) ? value.map(String).filter(Boolean) : [])(item.multi_languages ?? item.multiLanguages),
     priority: numberValue(item.priority, 25),
     health: textValue(item.health, 'unknown'),
     lastCheckedAt: dateValue(item.last_checked_at || item.lastCheckedAt),
@@ -1103,8 +1107,8 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeIndexer)
   },
-  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; timeout_seconds?: number; enable_rss: boolean; enable_interactive_search: boolean; categories: number[]; minimum_seeders: number; priority: number }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
-  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; timeout_seconds?: number; enable_rss?: boolean; enable_interactive_search?: boolean; categories?: number[]; minimum_seeders?: number; priority?: number; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; timeout_seconds?: number; enable_rss: boolean; enable_interactive_search: boolean; categories: number[]; minimum_seeders: number; priority: number; color?: string; multi_languages?: string[] }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; timeout_seconds?: number; enable_rss?: boolean; enable_interactive_search?: boolean; categories?: number[]; minimum_seeders?: number; priority?: number; color?: string; multi_languages?: string[]; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
   deleteIndexer: (id: string) => request<void>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   testIndexer: async (id?: string, configuration?: { torznab_url: string; api_key: string; timeout_seconds?: number }): Promise<IndexerTestResult> => {
     const payload = await request<{ status: string; latency_ms?: number; title?: string; message?: string }>(id ? `/api/v1/indexers/${encodeURIComponent(id)}/test` : '/api/v1/indexers/test', { method: 'POST', ...(configuration ? { body: JSON.stringify(configuration) } : {}) })

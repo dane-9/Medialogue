@@ -5,6 +5,8 @@ from xml.etree import ElementTree
 
 import httpx
 
+from app.parser.iso_languages import resolve_languages
+
 TORZNAB_NS = "http://torznab.com/schemas/2015/feed"
 
 
@@ -20,6 +22,12 @@ class SearchResult:
     size: int | None
     seeders: int | None
     published: str | None
+    # Trails the required fields so existing construction sites stay valid;
+    # plenty of trackers report no leecher count at all.
+    leechers: int | None = None
+    #: Languages the indexer declared. Authoritative over anything parsed from
+    #: the title, because the tracker knows what it is serving.
+    languages: tuple[str, ...] = ()
 
 
 class TorznabClient:
@@ -111,15 +119,41 @@ class TorznabClient:
             node.attrib.get("name"): node.attrib.get("value")
             for node in item.findall(f"{{{TORZNAB_NS}}}attr")
         }
+        # A language may be repeated rather than comma-joined, and indexers that
+        # ignore the spec put it in a plain <language> element instead.
+        language_values = [
+            node.attrib.get("value") or ""
+            for node in item.findall(f"{{{TORZNAB_NS}}}attr")
+            if (node.attrib.get("name") or "").lower() == "language"
+        ]
+        if not language_values:
+            language_values = [element.text or "" for element in item.findall("language")]
+        languages: list[str] = []
+        for value in language_values:
+            for name in resolve_languages(value):
+                if name not in languages:
+                    languages.append(name)
         enclosure = item.find("enclosure")
         size_raw = attrs.get("size") or (enclosure.attrib.get("length") if enclosure is not None else None)
         seeders_raw = attrs.get("seeders")
+        seeders = _safe_int(seeders_raw)
+        # Trackers report either `leechers` directly or only `peers`, which is
+        # the swarm total. Derive the leecher count from the latter, clamping at
+        # zero because the two attributes are sampled independently and can
+        # disagree by the time they reach us.
+        leechers = _safe_int(attrs.get("leechers"))
+        if leechers is None:
+            peers = _safe_int(attrs.get("peers"))
+            if peers is not None and seeders is not None:
+                leechers = max(peers - seeders, 0)
         return SearchResult(
             guid=item.findtext("guid") or item.findtext("link") or item.findtext("title") or "",
             title=item.findtext("title") or "",
             download_url=(enclosure.attrib.get("url") if enclosure is not None else item.findtext("link")),
             size=_safe_int(size_raw),
-            seeders=_safe_int(seeders_raw),
+            seeders=seeders,
+            leechers=leechers,
+            languages=tuple(languages),
             published=item.findtext("pubDate"),
         )
 

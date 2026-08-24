@@ -18,6 +18,9 @@ class TMDBMovieMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
+    #: TMDB's ISO 639-1 original language, the fallback when a release
+    #: name declares none.
+    original_language: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +31,9 @@ class TMDBShowMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
+    #: TMDB's ISO 639-1 original language, the fallback when a release
+    #: name declares none.
+    original_language: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +110,9 @@ class TMDBShowDetails:
     poster_path: str | None
     tvdb_id: int | None
     seasons: tuple[TMDBSeasonMetadata, ...]
+    #: TMDB's ISO 639-1 original language, the fallback when a release
+    #: name declares none.
+    original_language: str | None = None
 
 
 class TMDBClient:
@@ -150,6 +159,7 @@ class TMDBClient:
                     year=_year(item.get("release_date")),
                     overview=item.get("overview") if isinstance(item.get("overview"), str) else None,
                     poster_path=item.get("poster_path") if isinstance(item.get("poster_path"), str) else None,
+                    original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
                 )
             )
         return matches
@@ -166,6 +176,7 @@ class TMDBClient:
             year=_year(payload.get("release_date")),
             overview=payload.get("overview") if isinstance(payload.get("overview"), str) else None,
             poster_path=payload.get("poster_path") if isinstance(payload.get("poster_path"), str) else None,
+            original_language=payload.get("original_language") if isinstance(payload.get("original_language"), str) else None,
         )
 
     async def get_movie_credits(self, tmdb_id: int) -> tuple[str | None, tuple[str, ...]]:
@@ -223,6 +234,7 @@ class TMDBClient:
                     year=_year(item.get("first_air_date")),
                     overview=item.get("overview") if isinstance(item.get("overview"), str) else None,
                     poster_path=item.get("poster_path") if isinstance(item.get("poster_path"), str) else None,
+                    original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
                 )
             )
         return matches
@@ -255,6 +267,7 @@ class TMDBClient:
             poster_path=payload.get("poster_path") if isinstance(payload.get("poster_path"), str) else None,
             tvdb_id=int(external["tvdb_id"]) if isinstance(external.get("tvdb_id"), int) else None,
             seasons=tuple(sorted(seasons, key=lambda item: item.season_number)),
+            original_language=payload.get("original_language") if isinstance(payload.get("original_language"), str) else None,
         )
 
     async def get_show_credits(self, tmdb_id: int) -> tuple[str | None, tuple[str, ...]]:

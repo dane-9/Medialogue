@@ -87,7 +87,14 @@ async def lifespan(_: FastAPI):
     finally:
         stop_event.set()
         cancel_all_runtime_jobs()
-        await poll_task
+        # A poll already in flight is waiting on a qBittorrent HTTP call, which
+        # can hang for as long as that host feels like. Shutdown must not depend
+        # on a remote server answering: give the loop a short grace period, then
+        # cancel it. wait_for cancels the task itself on timeout.
+        try:
+            await asyncio.wait_for(poll_task, timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("qBittorrent poll loop did not stop in time; cancelled")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

@@ -673,6 +673,11 @@ async def poll_due_download_clients(
             or "rejected WebAPI authentication" in client.last_error
         ):
             continue
+        # SQLite does not preserve tzinfo, so a stored timestamp comes back naive
+        # while utcnow() is aware. Treat a naive value as UTC rather than letting
+        # the subtraction raise and kill the whole polling cycle.
+        if last is not None and last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
         if last is not None and (now - last).total_seconds() < interval:
             continue
         try:

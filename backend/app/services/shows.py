@@ -511,6 +511,7 @@ async def reconcile_show_directory(
                 tmdb_id=match.tmdb_id,
                 overview=match.overview,
                 poster_ref=match.poster_path,
+                original_language=match.original_language,
                 monitored=True,
                 identity_state=IdentityState.MATCHED,
                 metadata_refreshed_at=utcnow(),

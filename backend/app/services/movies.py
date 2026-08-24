@@ -30,6 +30,7 @@ async def create_movie_from_metadata(
     year: int | None,
     overview: str | None = None,
     poster_ref: str | None = None,
+    original_language: str | None = None,
     monitored: bool = True,
     source: str = "tmdb",
 ) -> Movie:
@@ -50,6 +51,7 @@ async def create_movie_from_metadata(
         tmdb_id=tmdb_id,
         overview=overview,
         poster_ref=poster_ref,
+        original_language=original_language,
         monitored=monitored,
         identity_state=IdentityState.MATCHED,
         metadata_refreshed_at=utcnow(),
@@ -103,5 +105,6 @@ async def add_movie_from_tmdb(
         year=metadata.year,
         overview=metadata.overview,
         poster_ref=metadata.poster_path,
+        original_language=metadata.original_language,
         monitored=monitored,
     )

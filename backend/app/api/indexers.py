@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.core.integration_config import IndexerConfig, get_integration_config_store
+from app.parser.iso_languages import resolve_language
 from app.db.session import get_db
 from app.integrations.torznab import TorznabClient
 from app.models.auth import AdminUser
@@ -23,6 +24,16 @@ from app.schemas.indexers import (
 )
 from app.services.indexers import refresh_indexer_health, test_indexer_connection
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
+
+def _clean_languages(values: list[str] | None) -> list[str]:
+    """Normalise configured languages, dropping anything unrecognised."""
+    resolved: list[str] = []
+    for value in values or []:
+        name = resolve_language(value)
+        if name and name not in resolved:
+            resolved.append(name)
+    return resolved
+
 
 router = APIRouter(prefix="/indexers", tags=["indexers"])
 
@@ -45,6 +56,8 @@ def _response(indexer: ConfiguredIndexer) -> IndexerResponse:
         categories=list(indexer.categories),
         minimum_seeders=indexer.minimum_seeders,
         priority=indexer.priority,
+        color=indexer.color,
+        multi_languages=list(indexer.multi_languages),
         health=indexer.health,
         last_checked_at=indexer.last_checked_at,
         last_success_at=indexer.last_success_at,
@@ -99,6 +112,8 @@ async def create_indexer(
             categories=list(payload.categories),
             minimum_seeders=payload.minimum_seeders,
             priority=payload.priority,
+            color=payload.color,
+            multi_languages=_clean_languages(payload.multi_languages),
         )
     )
     state = Indexer(id=config.id)
@@ -146,6 +161,8 @@ async def update_indexer(
         categories=(list(payload.categories) if payload.categories is not None else list(current.categories)),
         minimum_seeders=(payload.minimum_seeders if payload.minimum_seeders is not None else current.minimum_seeders),
         priority=(payload.priority if payload.priority is not None else current.priority),
+        color=((payload.color or None) if payload.color is not None else current.color),
+        multi_languages=(_clean_languages(payload.multi_languages) if payload.multi_languages is not None else list(current.multi_languages)),
         revision=current.revision,
     )
     try:

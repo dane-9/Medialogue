@@ -23,6 +23,7 @@ from app.models.domain import (
     MediaType,
 )
 from app.parser import parse_release_name
+from app.parser.language_aggregation import aggregate_languages
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
 from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
@@ -50,6 +51,8 @@ class SearchTarget:
     poster_ref: str | None = None
     season: int | None = None
     episode: int | None = None
+    #: TMDB ISO 639-1 code, the fallback for releases whose names name no language.
+    original_language: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -280,6 +283,7 @@ async def run_search_job(
                     profile_snapshot=dict(summary.get("quality_profile") or {}),
                     custom_format_definitions=list(summary.get("custom_formats") or []),
                     indexer_priority=int(outcome.get("priority") or 25),
+                    indexer_multi_languages=tuple(outcome.get("multi_languages") or ()),
                 )
                 summary["result_count"] = int(summary.get("result_count") or 0) + len(stored)
                 percent = round((completed_count / len(indexers)) * 100, 1)
@@ -317,6 +321,7 @@ async def run_search_job(
                             "release_group": row.release_group,
                             "size": row.size,
                             "seeders": row.seeders,
+                            "leechers": row.leechers,
                             "custom_format_score": row.custom_format_score,
                             "quality_profile_name": (row.custom_format_snapshot or {}).get("profile_name"),
                             "minimum_quality_met": (row.custom_format_snapshot or {}).get("minimum_quality_met"),
@@ -428,6 +433,7 @@ async def _query_indexer(
             "elapsed_ms": round((perf_counter() - started) * 1000),
             "error": None,
             "priority": indexer.priority,
+            "multi_languages": list(indexer.multi_languages),
         }
     finally:
         await client.close()
@@ -452,6 +458,7 @@ async def _store_results(
     profile_snapshot: dict[str, Any],
     custom_format_definitions: list[dict[str, Any]],
     indexer_priority: int = 25,
+    indexer_multi_languages: tuple[str, ...] = (),
 ) -> list[InteractiveSearchResult]:
     stored: list[InteractiveSearchResult] = []
     seen: set[str] = set()
@@ -470,6 +477,16 @@ async def _store_results(
         seen.add(guid)
         parsed = parse_release_name(result.title)
         warnings = list(parsed.warnings)
+        # The parsed title is only the weakest signal; the indexer, the media
+        # title and TMDB's original language all outrank or refine it.
+        languages = aggregate_languages(
+            release_title=result.title,
+            parsed_languages=parsed.languages,
+            indexer_languages=tuple(result.languages),
+            indexer_multi_languages=indexer_multi_languages,
+            media_title=target.title,
+            original_language=target.original_language,
+        )
         candidate_quality = parsed.quality.canonical
         quality_allowed = not quality_order or candidate_quality in quality_preferences
         quality_preference = quality_preferences.get(candidate_quality, -1 if quality_order else 0)
@@ -547,9 +564,10 @@ async def _store_results(
             download_url=result.download_url,
             size=result.size,
             seeders=result.seeders,
+            leechers=result.leechers,
             published_at=_published_at(result.published),
             parser_version=parsed.parser_version,
-            parse_snapshot=parsed.to_dict(),
+            parse_snapshot={**parsed.to_dict(), "languages": list(languages)},
             quality=parsed.quality.canonical,
             edition=parsed.edition,
             release_group=parsed.release_group,

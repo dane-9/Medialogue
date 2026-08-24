@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { badgeColor } from './lib/badgeColor'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
@@ -392,52 +394,6 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   </Panel>
 }
 
-function MovieTagsPanel({ resourceId, assigned, onChanged }: { resourceId: string; assigned: Tag[]; onChanged: (tags: Tag[]) => void }) {
-  const [allTags, setAllTags] = useState<Tag[]>([])
-  const [selectedTag, setSelectedTag] = useState('')
-  const [newTag, setNewTag] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
-  const load = async () => {
-    try { setAllTags(await api.tags()) }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load tags.') }
-  }
-  useEffect(() => { void load() }, [])
-  const available = allTags.filter((tag) => !assigned.some((item) => item.id === tag.id))
-  const add = async () => {
-    if (!selectedTag) return
-    setBusy(true); setMessage('')
-    try { onChanged(await api.addMovieTag(resourceId, selectedTag)); setSelectedTag(''); setMessage('Tag added.') }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not add tag.') }
-    finally { setBusy(false) }
-  }
-  const remove = async (tagId: string) => {
-    setBusy(true); setMessage('')
-    try { onChanged(await api.removeMovieTag(resourceId, tagId)); setMessage('Tag removed.') }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not remove tag.') }
-    finally { setBusy(false) }
-  }
-  const create = async () => {
-    if (!newTag.trim()) return
-    setBusy(true); setMessage('')
-    try {
-      const row = await api.createTag(newTag.trim())
-      setAllTags((items) => [...items, row].sort((a, b) => a.name.localeCompare(b.name)))
-      onChanged(await api.addMovieTag(resourceId, row.id))
-      setNewTag('')
-      setMessage(`Created and added ${row.name}.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not create tag.') }
-    finally { setBusy(false) }
-  }
-  return <Panel title="Tags" eyebrow="MOVIE ORGANIZATION">
-    {assigned.length ? <div className="tag-management-list">{assigned.map((tag) => <div className="tag-management-row" key={tag.id}><Link className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link><button className="icon-button" aria-label={`Remove ${tag.name}`} disabled={busy} onClick={() => void remove(tag.id)}><Icon name="close" size={13} /></button></div>)}</div> : <span className="muted">No tags assigned to this movie.</span>}
-    <div className="context-inline tag-add-row"><Select value={selectedTag} onChange={(event) => setSelectedTag(event.target.value)}><option value="">Add existing tag…</option>{available.map((tag) => <option value={tag.id} key={tag.id}>{tag.name}</option>)}</Select><Button variant="ghost" disabled={busy || !selectedTag} onClick={() => void add()}>Add</Button></div>
-    <div className="context-inline"><Input value={newTag} onChange={(event) => setNewTag(event.target.value)} placeholder="Create a new tag…" onKeyDown={(event) => { if (event.key === 'Enter') void create() }} /><Button variant="ghost" disabled={busy || !newTag.trim()} onClick={() => void create()}>Create + add</Button></div>
-    <div className="settings-note"><Icon name="sliders" size={16} /><span>Tags are Movies-only in v1. Clicking a tag filters the Movies library.</span></div>
-    {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
-  </Panel>
-}
-
 export function MovieDetailPage({ id }: { id: string }) {
   const [movie, setMovie] = useState<Movie | null>(null)
   const [error, setError] = useState('')
@@ -496,7 +452,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Storage Root Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the root is reachable.</span></div></div>}
-    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'The filesystem remains the source of truth. Reconciliation preserves old paths and release evidence without moving or deleting media.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><MovieTagsPanel resourceId={id} assigned={movie.tags ?? []} onChanged={(tags) => setMovie((current) => current ? { ...current, tags } : current)} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
+    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'The filesystem remains the source of truth. Reconciliation preserves old paths and release evidence without moving or deleting media.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -705,6 +661,8 @@ export function DownloadsPage() {
 
 export function EventHistoryPage() {
   const [events, setEvents] = useState<EventHistoryItem[]>([])
+  // Events store the indexer by name, so the colour is looked up by name.
+  const [indexerColors, setIndexerColors] = useState<Record<string, string>>({})
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(0)
   const [page, setPage] = useUrlNumber('page', 1)
@@ -712,6 +670,18 @@ export function EventHistoryPage() {
   const [severity, setSeverity] = useUrlState('severity')
   const [entityType, setEntityType] = useUrlState('entity')
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    api.indexers()
+      .then((items) => {
+        if (!alive) return
+        setIndexerColors(Object.fromEntries(items.map((item) => [item.name, item.color ?? ''])))
+      })
+      // A missing colour map only costs the tint, so a failure here stays quiet.
+      .catch(() => undefined)
+    return () => { alive = false }
+  }, [])
   const [error, setError] = useState('')
   const pageSize = 100
 
@@ -776,10 +746,16 @@ export function EventHistoryPage() {
       <div className="toolbar-spacer" /><span className="muted">{total} durable events · page {pages ? page : 0} of {pages}</span>
     </div>
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
-    {!loading && <Panel className="table-panel event-history-panel"><table className="data-table event-history-table"><thead><tr><th>When</th><th>Severity</th><th>Event</th><th>Entity</th><th>Message</th><th /></tr></thead><tbody>{events.map((item) => <tr key={item.id}><td className="event-time">{new Date(item.createdAt).toLocaleString()}</td><td><Badge tone={item.severity === 'error' ? 'red' : item.severity === 'warning' ? 'amber' : 'neutral'}>{item.severity}</Badge></td><td><code>{item.eventType}</code></td><td><span className="event-entity">{item.entityType}{item.entityId ? ` · ${item.entityId.slice(0, 8)}…` : ''}</span></td><td><strong>{item.message}</strong></td><td><div className="row-actions">{Object.keys(item.details).length > 0 && <details className="event-details"><summary>Details</summary><pre>{JSON.stringify(item.details, null, 2)}</pre></details>}<Button variant="ghost" onClick={() => void removeEvent(item)}>Delete</Button></div></td></tr>)}</tbody></table>{!events.length && <div className="history-empty">No durable events match the selected filters.</div>}</Panel>}
+    {!loading && <Panel className="table-panel event-history-panel"><table className="data-table event-history-table"><thead><tr><th>When</th><th>Severity</th><th>Event</th><th>Entity</th><th>Message</th><th /></tr></thead><tbody>{events.map((item) => <tr key={item.id}><td className="event-time">{new Date(item.createdAt).toLocaleString()}</td><td><Badge tone={item.severity === 'error' ? 'red' : item.severity === 'warning' ? 'amber' : 'neutral'}>{item.severity}</Badge></td><td><code>{item.eventType}</code></td><td><span className="event-entity">{item.entityType}{item.entityId ? ` · ${item.entityId.slice(0, 8)}…` : ''}</span></td><td><strong>{item.message}</strong>{eventIndexerName(item.details) ? <span className="release-pill release-pill-indexer event-indexer" style={indexerBadgePreview(indexerColors[eventIndexerName(item.details)!] ?? '')}><i>Indexer</i>{eventIndexerName(item.details)}</span> : null}</td><td><div className="row-actions">{Object.keys(item.details).length > 0 && <details className="event-details"><summary>Details</summary><pre>{JSON.stringify(item.details, null, 2)}</pre></details>}<Button variant="ghost" onClick={() => void removeEvent(item)}>Delete</Button></div></td></tr>)}</tbody></table>{!events.length && <div className="history-empty">No durable events match the selected filters.</div>}</Panel>}
     {!loading && pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button><span>Page {page} of {pages} · {total} events</span><Button variant="ghost" disabled={page >= pages} onClick={() => setPage((value) => Math.min(pages, value + 1))}>Next</Button></div>}
     {loading && <EmptyState icon="clock" title="Loading event history" detail="Reading persisted state changes from PostgreSQL." />}
   </Page>
+}
+
+/** The indexer an event names, when it names one. */
+function eventIndexerName(details: Record<string, unknown>): string | undefined {
+  const value = details.indexer_name ?? details.indexerName
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
 function problemRecord(value: unknown): Record<string, unknown> {
@@ -2348,6 +2324,8 @@ type IndexerDraft = {
   categories: string
   minimumSeeders: number
   priority: number
+  color: string
+  multiLanguages: string
 }
 
 const emptyIndexer: IndexerDraft = {
@@ -2362,6 +2340,15 @@ const emptyIndexer: IndexerDraft = {
   categories: '',
   minimumSeeders: 1,
   priority: 25,
+  color: '',
+  multiLanguages: '',
+}
+
+/** Live preview of the badge as it will look in search results. */
+function indexerBadgePreview(color: string): CSSProperties | undefined {
+  const badge = badgeColor(color)
+  if (!badge) return undefined
+  return { color: badge.text, borderColor: badge.border, background: badge.background }
 }
 
 function draftFromIndexer(indexer: Indexer): IndexerDraft {
@@ -2377,6 +2364,8 @@ function draftFromIndexer(indexer: Indexer): IndexerDraft {
     categories: indexer.categories.join(', '),
     minimumSeeders: indexer.minimumSeeders,
     priority: indexer.priority,
+    color: indexer.color ?? '',
+    multiLanguages: indexer.multiLanguages.join(', '),
   }
 }
 
@@ -2436,6 +2425,9 @@ function IndexerSettings() {
         categories: draft.categories.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0),
         minimum_seeders: draft.minimumSeeders,
         priority: draft.priority,
+        // An empty string clears any stored colour rather than keeping it.
+        color: draft.color,
+        multi_languages: draft.multiLanguages.split(',').map((value) => value.trim()).filter(Boolean),
       }
       const value = selectedId
         ? await api.updateIndexer(selectedId, { ...base, ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}), expected_revision: selected?.revision })
@@ -2502,7 +2494,7 @@ function IndexerSettings() {
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
     <div className="provider-card-grid">
       {indexers.map((indexer) => <button type="button" className={`provider-card ${indexer.enabled ? '' : 'provider-card-disabled'}`} key={indexer.id} onClick={() => selectIndexer(indexer.id)}>
-        <div className="provider-card-head"><div className="provider-card-icon"><Icon name="search" size={20} /></div><Badge tone={indexer.enabled ? 'green' : 'neutral'}>{indexer.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
+        <div className="provider-card-head"><div className="provider-card-icon" style={indexerBadgePreview(indexer.color ?? '')}><Icon name="search" size={20} /></div><Badge tone={indexer.enabled ? 'green' : 'neutral'}>{indexer.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
         <strong>{indexer.name}</strong><span>{indexer.torznabUrl}</span>
         <div className="provider-card-meta"><Badge tone="neutral">{indexer.scope === 'both' ? 'Movies + Shows' : indexer.scope === 'movies' ? 'Movies' : 'Shows'}</Badge><span className={`provider-health ${indexer.health === 'healthy' ? 'healthy' : indexer.health === 'unavailable' ? 'error' : ''}`}><i />{indexer.health}</span></div>
       </button>)}
@@ -2554,6 +2546,29 @@ function IndexerSettings() {
           </Field>
           <Field label="Indexer priority" help="Used as a tie-breaker from 1 (highest) to 50 (lowest). All eligible indexers are still searched.">
             <Input type="number" min="1" max="50" value={String(draft.priority)} onChange={(event) => updateDraft('priority', Math.min(50, Math.max(1, Number(event.target.value) || 25)))} />
+          </Field>
+          <Field label="MULTI languages" help="What a MULTI-tagged release from this indexer actually contains. Trackers disagree, so it is set per indexer. Comma-separated; unrecognised names are dropped.">
+            <Input value={draft.multiLanguages} onChange={(event) => updateDraft('multiLanguages', event.target.value)} placeholder="English, French" />
+          </Field>
+          <Field label="Badge colour" help="Tints this indexer's badge in search results so its releases are easy to pick out. Dark colours are lightened to stay readable.">
+            <div className="color-field">
+              <input
+                type="color"
+                aria-label="Badge colour"
+                value={draft.color || '#7C8CF8'}
+                onChange={(event) => updateDraft('color', event.target.value)}
+              />
+              <Input
+                value={draft.color}
+                onChange={(event) => updateDraft('color', event.target.value)}
+                placeholder="Default"
+                spellCheck={false}
+              />
+              <span className="release-pill release-pill-indexer" style={indexerBadgePreview(draft.color)}>
+                <i>Indexer</i>{draft.name.trim() || 'Preview'}
+              </span>
+              {draft.color ? <button type="button" className="button button-ghost" onClick={() => updateDraft('color', '')}>Clear</button> : null}
+            </div>
           </Field>
         </div>
 

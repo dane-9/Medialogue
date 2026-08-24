@@ -10,6 +10,9 @@ import type {
   ShowAcquisitionSeasonPreview,
 } from '../types'
 import { Icon } from './Icon'
+import { ReleaseResults, formatBytes } from './ReleaseResults'
+import { DownloadClientField } from './DownloadClientField'
+import { useHorizontalWheelScroll } from '../lib/useHorizontalWheelScroll'
 import { Badge, Button, Input, Select } from './ui'
 
 type ShowChoice = {
@@ -35,19 +38,7 @@ function posterUrl(reference?: string) {
   return `https://image.tmdb.org/t/p/w185${reference.startsWith('/') ? reference : `/${reference}`}`
 }
 
-function formatBytes(bytes?: number) {
-  if (!bytes) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
-  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
-}
 
-function matchedFormatNames(result: InteractiveSearchResult): string[] {
-  const raw = result.customFormatSnapshot.matched_format_names ?? result.customFormatSnapshot.matchedFormatNames
-  return Array.isArray(raw) ? raw.map(String).filter(Boolean) : []
-}
 
 function seasonLabel(season: ShowAcquisitionSeasonPreview) {
   return season.seasonNumber === 0 ? 'Specials' : `Season ${season.seasonNumber}`
@@ -97,6 +88,10 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
   const [includeYearInFolder, setIncludeYearInFolder] = useState(false)
   const [setupLoading, setSetupLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
+  // Bumped by a client health recheck, so categories are fetched again after a
+  // client that was down comes back. The client id does not change, so nothing
+  // else would retry the load that failed while it was unreachable.
+  const [clientReload, setClientReload] = useState(0)
   const [step, setStep] = useState<'setup' | 'search'>('setup')
   const [searchProfileId, setSearchProfileId] = useState('')
   const [activeSeasonNumber, setActiveSeasonNumber] = useState<number | null>(null)
@@ -152,7 +147,7 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
       })
       .finally(() => { if (alive) setCategoryLoading(false) })
     return () => { alive = false }
-  }, [clientId, selectedClient?.category])
+  }, [clientId, selectedClient?.category, clientReload])
 
   const visibleSeasons = useMemo(() => {
     const rows = (preview?.seasons ?? []).filter((season) => includeSpecials || season.seasonNumber !== 0)
@@ -311,19 +306,30 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
     if (failed > 0) setError(`${succeeded} season pack${succeeded === 1 ? '' : 's'} started; ${failed} failed. Successful downloads are already running. Review the marked season tab${failed === 1 ? '' : 's'} and retry.`)
   }
 
-  const activeIndexerSummary = useMemo(() => {
-    const job = activeState?.job
-    if (!job) return activeState?.starting ? 'Starting search…' : ''
-    const done = job.indexers.filter((item) => ['completed', 'failed', 'timeout'].includes(item.status)).length
-    return `${done}/${job.indexers.length} indexers · ${job.resultTotal} season pack${job.resultTotal === 1 ? '' : 's'}`
-  }, [activeState])
+  // A show with many seasons overflows the tab strip, so the wheel scrolls it.
+  const seasonTabsRef = useHorizontalWheelScroll<HTMLDivElement>()
 
   return <div className="modal-backdrop" onClick={onClose}>
     <div className="acquisition-modal show-acquisition-modal" role="dialog" aria-modal="true" aria-label={`Acquire ${show.title}`} onClick={(event) => event.stopPropagation()}>
       <header className="acquisition-head">
-        <button className="icon-button" type="button" onClick={step === 'setup' ? onBack : () => { setStep('setup'); setError('') }} aria-label="Back"><Icon name="chevron" size={17} /></button>
-        <div className="acquisition-title-block"><span className="eyebrow">MANUAL SHOW ACQUISITION</span><h2>{preview?.title || show.title}{(preview?.year || show.year) ? <span> ({preview?.year || show.year})</span> : null}</h2></div>
-        <div className="acquisition-steps" aria-label="Acquisition steps"><span className={step === 'setup' ? 'active' : 'done'}>1 Setup</span><i /><span className={step === 'search' ? 'active' : ''}>2 Select seasons</span></div>
+        <div className="acquisition-title-block">
+          <h2>{preview?.title || show.title}{(preview?.year || show.year) ? <span> ({preview?.year || show.year})</span> : null}</h2>
+        </div>
+        <nav className="acquisition-steps" aria-label="Acquisition steps">
+          <button
+            type="button"
+            className={step === 'setup' ? 'active' : ''}
+            aria-current={step === 'setup' ? 'step' : undefined}
+            onClick={() => { setStep('setup'); setError('') }}
+          ><i>1</i>Setup</button>
+          <button
+            type="button"
+            className={step === 'search' ? 'active' : ''}
+            aria-current={step === 'search' ? 'step' : undefined}
+            disabled={!canContinue}
+            onClick={continueToSeasons}
+          ><i>2</i>Select seasons</button>
+        </nav>
         <button className="icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       </header>
 
@@ -334,7 +340,14 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
         </aside>
         <section className="acquisition-form">
           <label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading || Boolean(committedShowId)}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select><small>Applies to every season-pack search in this acquisition.</small></label>
-          <label><span className="field-label">qBittorrent</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)} disabled={setupLoading || Boolean(committedShowId)}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select><small>{selectedClient ? `${selectedClient.health} · ${selectedClient.url}` : 'Choose the client that should receive the selected season packs.'}</small></label>
+          <DownloadClientField
+            clients={clients}
+            clientId={clientId}
+            scope="shows"
+            disabled={setupLoading || Boolean(committedShowId)}
+            onChange={setClientId}
+            onRefreshed={(rows) => { setClients(rows); setClientReload((value) => value + 1) }}
+          />
           <label><span className="field-label">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!clientId || categoryLoading || Boolean(committedShowId)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select><small>For Shows, the category destination is treated as the root that contains every Show folder.</small></label>
           <div className="acquisition-destination"><span>Category root</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Unavailable')}</strong>{selectedCategory && !selectedCategory.savePath && <small>Uses the qBittorrent default download directory because this category has no explicit path.</small>}</div>
           <label><span className="field-label">Show folder name</span><Input value={showFolderBaseName} maxLength={240} onChange={(event) => setShowFolderBaseName(event.target.value)} disabled={Boolean(committedShowId)} placeholder={preview?.title || show.title} /><small>Starts with the TMDB title. You can change it; Medialogue sanitizes invalid filesystem characters before submission.</small></label>
@@ -344,11 +357,7 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
           {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         </section>
       </div> : <div className="acquisition-search show-acquisition-search">
-        <div className="acquisition-search-toolbar">
-          <div><strong>{profiles.find((item) => item.id === profileId)?.name || 'Quality Profile'}</strong><span>{selectedClient?.name} · {category} · {finalDestination || 'destination unavailable'}</span></div>
-          <span>{selectedSeasons.length ? `${selectedSeasons.length} season${selectedSeasons.length === 1 ? '' : 's'} selected` : 'No seasons selected yet'}</span>
-        </div>
-        <div className="show-season-tabs" role="tablist" aria-label="Show seasons">
+        <div className="show-season-tabs" ref={seasonTabsRef} role="tablist" aria-label="Show seasons">
           {visibleSeasons.map((season) => {
             const state = seasonStates[season.seasonNumber]
             const isActive = activeSeasonNumber === season.seasonNumber
@@ -362,46 +371,37 @@ export function ShowAcquisitionWizard({ show, onBack, onClose, onComplete }: {
               onClick={() => void startSeasonSearch(season)}
             >
               <span>{isSelected && <Icon name="check" size={12} />}{seasonLabel(season)}</span>
-              <small>{state?.submitted ? 'Started' : state?.starting ? 'Searching…' : state?.job ? `${state.job.resultTotal} packs` : `${season.episodeCount} eps`}</small>
+              <small>{state?.submitted ? 'Started' : state?.starting ? 'Searching…' : `${season.episodeCount} eps`}</small>
             </button>
           })}
         </div>
         {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         {activeSeason ? <>
-          <div className="show-season-search-status">
-            <div><strong>{seasonLabel(activeSeason)}</strong><span>{activeState?.submissionError || activeIndexerSummary || 'Search starts when this tab is opened.'}</span></div>
-            {activeState?.job && !activeState.submitted && <Button variant="ghost" type="button" disabled={activeState.starting} onClick={() => void startSeasonSearch(activeSeason, true)}>Search again</Button>}
-          </div>
-          <div className="acquisition-search-body">
-            <div className="acquisition-results" role="listbox" aria-label={`${seasonLabel(activeSeason)} season-pack results`}>
-              {activeState?.job?.results.map((result) => <button key={result.id} type="button" role="option" aria-selected={activeState.selectedResultId === result.id} disabled={Boolean(activeState.submitted) || !result.qualityAllowed} className={`acquisition-result ${activeState.selectedResultId === result.id ? 'selected' : ''}`} onClick={() => selectResult(activeSeason.seasonNumber, result.id)}>
-                <span className="acquisition-result-main"><strong>{result.title}</strong><span>{result.indexerName}{result.releaseGroup ? ` · ${result.releaseGroup}` : ''}</span></span>
-                <span className="acquisition-result-quality">{result.quality || 'Unknown'}<small>Season pack</small></span>
-                <span className={`acquisition-result-score ${(result.customFormatScore ?? 0) >= 0 ? 'positive' : 'negative'}`}>{(result.customFormatScore ?? 0) > 0 ? '+' : ''}{result.customFormatScore ?? 0}<small>CF</small></span>
-                <span className="acquisition-result-stat">{formatBytes(result.size)}<small>size</small></span>
-                <span className="acquisition-result-stat">{result.seeders ?? '—'}<small>seeders</small></span>
-                {!result.qualityAllowed ? <Badge tone="red">Not allowed</Badge> : <Badge tone="green">Pack</Badge>}
-              </button>)}
-              {!activeState?.job?.results.length && <div className="acquisition-results-empty">{activeState?.starting || (activeState?.job && !['completed', 'failed'].includes(activeState.job.status)) ? `Searching for ${seasonLabel(activeSeason)} season packs…` : activeState?.job ? `No ${seasonLabel(activeSeason)} season packs were returned.` : 'Search starts when you open this season tab.'}</div>}
-            </div>
-            <aside className="acquisition-evidence">
-              {selectedResult ? <>
-                <div className="eyebrow">SELECTED SEASON PACK</div><h3>{seasonLabel(activeSeason)}</h3><p className="acquisition-release-name">{selectedResult.title}</p>
-                <div className="badge-row"><Badge tone="green">Season pack</Badge>{activeState?.submitted && <Badge tone="green">Download started</Badge>}</div>
-                <dl><div><dt>Quality</dt><dd>{selectedResult.quality || 'Unknown'}</dd></div><div><dt>Custom Format score</dt><dd>{(selectedResult.customFormatScore ?? 0) > 0 ? '+' : ''}{selectedResult.customFormatScore ?? 0}</dd></div><div><dt>Seeders</dt><dd>{selectedResult.seeders ?? '—'}</dd></div><div><dt>Size</dt><dd>{formatBytes(selectedResult.size)}</dd></div><div><dt>Indexer</dt><dd>{selectedResult.indexerName}</dd></div></dl>
-                {matchedFormatNames(selectedResult).length > 0 && <div className="acquisition-matches"><span>Matched formats</span><div>{matchedFormatNames(selectedResult).map((name) => <Badge key={name} tone="purple">{name}</Badge>)}</div></div>}
-                {selectedResult.warnings.length > 0 && <div className="acquisition-warnings">{selectedResult.warnings.map((warning) => <p key={warning}><Icon name="alert" size={13} />{warning}</p>)}</div>}
-                {activeState?.submissionError && <div className="acquisition-warnings"><p><Icon name="alert" size={13} />{activeState.submissionError}</p></div>}
-                <div className="acquisition-confirm-destination"><span>Download to</span><strong>{selectedClient?.name} / {category}</strong><small>{finalDestination}</small></div>
-              </> : <div className="acquisition-evidence-empty"><Icon name="tv" size={24} /><strong>Select one season pack</strong><p>Each season can have exactly one selected pack. Selecting a pack turns its season tab green.</p></div>}
-            </aside>
-          </div>
+          {activeState?.submissionError && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{activeState.submissionError}</span></div>}
+          <ReleaseResults
+            results={activeState?.job?.results ?? []}
+            selectedId={activeState?.selectedResultId ?? ''}
+            onSelect={(id) => selectResult(activeSeason.seasonNumber, id)}
+            disabled={Boolean(activeState?.submitted)}
+            label={`${seasonLabel(activeSeason)} season-pack results`}
+            tag="Season pack"
+            onRefresh={activeState?.submitted ? undefined : () => void startSeasonSearch(activeSeason, true)}
+            refreshing={Boolean(activeState?.starting)}
+            empty={activeState?.starting || (activeState?.job && !['completed', 'failed'].includes(activeState.job.status))
+              ? `Searching for ${seasonLabel(activeSeason)} season packs…`
+              : activeState?.job
+                ? `No ${seasonLabel(activeSeason)} season packs were returned.`
+                : 'Search starts when you open this season tab.'}
+          />
         </> : <div className="show-season-tab-empty"><Icon name="search" size={26} /><strong>Choose a season</strong><p>Each season is searched lazily. Opening a season tab starts that season's indexer search; unopened seasons do not generate searches.</p></div>}
       </div>}
 
       <footer className="acquisition-foot">
-        <span>{step === 'setup' ? 'Nothing is added to Medialogue until at least one selected season pack is accepted by qBittorrent.' : committedShowId ? 'The Show now exists in Medialogue because at least one season download has started.' : 'Select one pack in any season you want to download. Green tabs are selected.'}</span>
-        <div>{step === 'setup' ? <><Button variant="ghost" type="button" onClick={onClose}>Cancel</Button><Button variant="primary" type="button" disabled={!canContinue} onClick={continueToSeasons}>Continue</Button></> : <><Button variant="ghost" type="button" onClick={() => { setStep('setup'); setError('') }}>Edit setup</Button>{committedShowId && pendingSeasons.length === 0 ? <Button variant="primary" type="button" onClick={() => onComplete(committedShowId)}>Open Show</Button> : <Button variant="primary" type="button" disabled={!pendingSeasons.length || submitting} onClick={() => void startDownloads()}>{submitting ? 'Starting downloads…' : `${committedShowId ? 'Retry' : 'Start'} Downloads (${pendingSeasons.length})`}</Button>}</>}</div>
+        {step === 'search' && activeState?.job
+          ? <span className="acquisition-foot-count">{activeState.job.resultTotal} Torrent{activeState.job.resultTotal === 1 ? '' : 's'} found</span>
+          : null}
+        <span>{step === 'setup' ? 'Nothing is added to Medialogue until at least one selected season pack is accepted by qBittorrent.' : committedShowId ? 'The Show now exists in Medialogue because at least one season download has started.' : null}</span>
+        <div>{step === 'setup' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={!canContinue} onClick={continueToSeasons}>Continue</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button>{committedShowId && pendingSeasons.length === 0 ? <Button variant="primary" type="button" onClick={() => onComplete(committedShowId)}>Open Show</Button> : <Button variant="primary" type="button" disabled={!pendingSeasons.length || submitting} onClick={() => void startDownloads()}>{submitting ? 'Starting downloads…' : `${committedShowId ? 'Retry' : 'Start'} Downloads (${pendingSeasons.length})`}</Button>}</>}</div>
       </footer>
     </div>
   </div>

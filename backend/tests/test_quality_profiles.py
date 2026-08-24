@@ -714,3 +714,52 @@ def test_deleting_custom_format_cleans_live_overrides_but_preserves_historical_r
     assert current == 0
     assert history["custom_format_score"] == 777
     assert history["custom_format_snapshot"]["total_score"] == 777
+
+
+def test_indexer_colour_round_trips_and_distinguishes_clearing_from_omitting(client: TestClient):
+    """The badge colour is optional, validated, and clearable.
+
+    Clearing and omitting have to stay distinct: PATCH bodies are partial, so an
+    absent ``color`` must leave the stored one alone while an empty string is a
+    deliberate reset to the default badge.
+    """
+    headers = login(client)
+    created = client.post("/api/v1/indexers", headers=headers, json={
+        "name": "Coloured", "torznab_url": "http://indexer.test/api", "api_key": "secret",
+        "scope": "movies", "enabled": True, "color": "#7C8CF8",
+    })
+    assert created.status_code == 201, created.text
+    indexer_id = created.json()["id"]
+    assert created.json()["color"] == "#7C8CF8"
+
+    # Survives a round trip through the config file.
+    assert client.get(f"/api/v1/indexers/{indexer_id}").json()["color"] == "#7C8CF8"
+
+    # An unrelated edit must not disturb it.
+    kept = client.patch(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"priority": 30})
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["color"] == "#7C8CF8"
+
+    changed = client.patch(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"color": "#ff0000"})
+    assert changed.json()["color"] == "#ff0000"
+
+    cleared = client.patch(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"color": ""})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["color"] is None
+
+
+def test_indexer_colour_defaults_to_none_and_rejects_malformed_values(client: TestClient):
+    headers = login(client)
+    plain = client.post("/api/v1/indexers", headers=headers, json={
+        "name": "Plain", "torznab_url": "http://plain.test/api", "api_key": "secret",
+        "scope": "movies", "enabled": True,
+    })
+    assert plain.status_code == 201, plain.text
+    assert plain.json()["color"] is None
+
+    for bad in ("red", "#fff", "#12345g", "7C8CF8", "#7C8CF8FF"):
+        rejected = client.post("/api/v1/indexers", headers=headers, json={
+            "name": f"Bad {bad}", "torznab_url": "http://bad.test/api", "api_key": "secret",
+            "scope": "movies", "enabled": True, "color": bad,
+        })
+        assert rejected.status_code == 422, f"{bad} should be rejected, got {rejected.status_code}"

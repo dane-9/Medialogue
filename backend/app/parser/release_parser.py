@@ -711,16 +711,99 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
     )
 
 
+# Language detection follows Radarr's LanguageParser: a set of names that may
+# appear anywhere in the title, a set of abbreviations that must appear as whole
+# tokens, and a small set of codes that only count in upper case because their
+# lower-case forms collide with ordinary words ("es", "de", "pl").
+_LANGUAGE_NAMES: tuple[tuple[str, str], ...] = (
+    ("english", "English"), ("spanish", "Spanish"), ("danish", "Danish"),
+    ("dutch", "Dutch"), ("japanese", "Japanese"), ("icelandic", "Icelandic"),
+    ("mandarin", "Chinese"), ("cantonese", "Chinese"), ("chinese", "Chinese"),
+    ("korean", "Korean"), ("russian", "Russian"), ("romanian", "Romanian"),
+    ("hindi", "Hindi"), ("arabic", "Arabic"), ("thai", "Thai"),
+    ("bulgarian", "Bulgarian"), ("polish", "Polish"), ("vietnamese", "Vietnamese"),
+    ("swedish", "Swedish"), ("norwegian", "Norwegian"), ("finnish", "Finnish"),
+    ("turkish", "Turkish"), ("portuguese", "Portuguese"), ("brazilian", "Portuguese (BR)"),
+    ("hungarian", "Hungarian"), ("hebrew", "Hebrew"), ("ukrainian", "Ukrainian"),
+    ("persian", "Persian"), ("bengali", "Bengali"), ("slovak", "Slovak"),
+    ("latvian", "Latvian"), ("latino", "Spanish (Latino)"), ("tamil", "Tamil"),
+    ("telugu", "Telugu"), ("malayalam", "Malayalam"), ("kannada", "Kannada"),
+    ("albanian", "Albanian"), ("afrikaans", "Afrikaans"), ("marathi", "Marathi"),
+    ("tagalog", "Tagalog"), ("italian", "Italian"), ("german", "German"),
+    ("french", "French"), ("greek", "Greek"), ("flemish", "Flemish"),
+    ("czech", "Czech"), ("lithuanian", "Lithuanian"), ("catalan", "Catalan"),
+    ("castellano", "Spanish"), ("urdu", "Urdu"), ("mongolian", "Mongolian"),
+    ("georgian", "Georgian"), ("romansh", "Romansh"), ("rumantsch", "Romansh"),
+    ("romansch", "Romansh"),
+)
+
+#: Abbreviations recognised as whole tokens, case-insensitively.
+_LANGUAGE_TOKENS: dict[str, str] = {
+    "ENG": "English", "ITA": "Italian", "GER": "German", "VIDEOMANN": "German",
+    "FRE": "French", "FRA": "French", "TRUEFRENCH": "French", "VF": "French",
+    "VFF": "French", "VFQ": "French", "VFI": "French", "VF2": "French", "VO": "French",
+    "RUS": "Russian", "HUN": "Hungarian", "HUNDUB": "Hungarian",
+    "HEBDUB": "Hebrew", "HEBDUBBED": "Hebrew", "UKR": "Ukrainian",
+    "LAV": "Latvian", "TEL": "Telugu", "VIE": "Vietnamese", "JAP": "Japanese",
+    "KOR": "Korean", "KAT": "Georgian", "GEO": "Georgian", "KHALKHA": "Mongolian",
+    "BGAUDIO": "Bulgarian", "RODUBBED": "Romanian", "DUBLADO": "Portuguese (BR)",
+    "PT-BR": "Portuguese (BR)", "PLDUB": "Polish", "DUBPL": "Polish",
+    "LEKPL": "Polish", "PLLEK": "Polish", "CHS": "Chinese", "CHT": "Chinese",
+    "BIG5": "Chinese", "ORIG": "Original", "ORIGINAL": "Original",
+}
+
+#: Only counted when the token is upper case; lower-case forms are common words.
+_LANGUAGE_CODES_UPPER: dict[str, str] = {
+    "EN": "English", "LT": "Lithuanian", "CZ": "Czech", "PL": "Polish",
+    "BG": "Bulgarian", "SK": "Slovak", "DE": "German", "ES": "Spanish",
+}
+
+#: Shown when a release name says nothing about its language.
+UNKNOWN_LANGUAGE = "Unknown"
+
+
 def _language_and_regions(normalized: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    tokens = _tokens(normalized)
+    """Detect spoken languages and regions in a release name.
+
+    Mirrors Radarr's behaviour, including its fallback: a name that declares no
+    language yields ``Unknown`` rather than an empty list, so the UI always has
+    something honest to show instead of silently assuming English.
+    """
+    lowered = normalized.lower()
     languages: list[str] = []
+
+    def add(name: str) -> None:
+        if name not in languages:
+            languages.append(name)
+
+    for needle, name in _LANGUAGE_NAMES:
+        if needle in lowered:
+            add(name)
+
+    tokens = _tokens(normalized)
     regions: list[str] = []
     for token in tokens:
-        clean = token.strip("[](){}.,").upper()
-        if clean in _LANGUAGES and clean not in languages:
-            languages.append(clean)
-        if clean in _REGIONS and clean not in regions:
-            regions.append(clean)
+        clean = token.strip("[](){}.,")
+        upper = clean.upper()
+
+        # "ES" is Spanish, but "DTS-ES" is an audio format.
+        if upper in _LANGUAGE_CODES_UPPER and clean == upper:
+            add(_LANGUAGE_CODES_UPPER[upper])
+        if upper in _LANGUAGE_TOKENS:
+            add(_LANGUAGE_TOKENS[upper])
+        if upper in _REGIONS and upper not in regions:
+            regions.append(upper)
+
+    # A German release tagged DL carries the original audio too; ML adds English.
+    if languages == ["German"]:
+        if re.search(r"(?<![a-z])(?<!web[-_. ])dl(?![a-z])", lowered):
+            add("Original")
+        elif re.search(r"(?<![a-z])ml(?![a-z])", lowered):
+            add("Original")
+            add("English")
+
+    if not languages:
+        languages.append(UNKNOWN_LANGUAGE)
     return tuple(languages), tuple(regions)
 
 

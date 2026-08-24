@@ -75,6 +75,11 @@ class IndexerConfig:
     priority: int = 25
     revision: int = 1
     api_key: str | None = None
+    #: Optional "#rrggbb" badge colour, shown against this indexer's results.
+    color: str | None = None
+    #: Languages a MULTI-tagged release from this indexer contains. Trackers
+    #: differ on what MULTI means, so it is configured per indexer.
+    multi_languages: list[str] = field(default_factory=list)
 
 
 class IntegrationConfigStore:
@@ -463,6 +468,8 @@ class IntegrationConfigStore:
                 enable_interactive_search=bool(row.get("enable_interactive_search", True)),
                 categories=[int(value) for value in (row.get("categories") or [])],
                 minimum_seeders=int(row.get("minimum_seeders", 1)), priority=int(row.get("priority", 25)),
+                color=(str(row["color"]) or None) if row.get("color") else None,
+                multi_languages=[str(value) for value in (row.get("multi_languages") or [])],
                 api_key=keys.get(str(item_id)) or None,
             ))
         return items
@@ -482,7 +489,8 @@ class IntegrationConfigStore:
         row = {"id": str(item.id), "name": item.name, "torznab_url": item.torznab_url.rstrip("/"), "scope": item.scope,
                "enabled": bool(item.enabled), "timeout_seconds": int(item.timeout_seconds), "revision": revision,
                "enable_rss": bool(item.enable_rss), "enable_interactive_search": bool(item.enable_interactive_search),
-               "categories": list(item.categories), "minimum_seeders": int(item.minimum_seeders), "priority": int(item.priority)}
+               "categories": list(item.categories), "minimum_seeders": int(item.minimum_seeders), "priority": int(item.priority),
+               "color": item.color or None, "multi_languages": list(item.multi_languages)}
         if index is None:
             rows.append(row)
         else:

@@ -42,6 +42,7 @@ from app.schemas.search import (
 from app.services.events import create_event
 from app.services.acquisition_paths import join_qbit_path, show_folder_with_year
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
+from app.core.integration_config import get_integration_config_store
 from app.services.jobs import create_job
 from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
@@ -51,17 +52,22 @@ from app.services.tmdb import get_show_details, get_tmdb_configuration
 router = APIRouter(tags=["interactive search"])
 
 
-def _search_result_response(row: InteractiveSearchResult) -> SearchResultResponse:
+def _search_result_response(
+    row: InteractiveSearchResult,
+    colors: dict[UUID, str | None] | None = None,
+) -> SearchResultResponse:
     return SearchResultResponse(
         id=row.id,
         job_id=row.job_id,
         indexer_id=row.indexer_id,
+        indexer_color=(colors or {}).get(row.indexer_id) if row.indexer_id else None,
         indexer_name=row.indexer_name,
         media_type=row.media_type.value,
         target_entity_type=row.target_entity_type,
         title=row.title,
         size=row.size,
         seeders=row.seeders,
+        leechers=row.leechers,
         published_at=row.published_at,
         quality=row.quality,
         quality_allowed=bool((row.custom_format_snapshot or {}).get("quality_allowed", True)),
@@ -134,6 +140,7 @@ async def search_unattached_movie(
             title=metadata.title,
             year=metadata.year,
             tmdb_id=metadata.tmdb_id,
+            original_language=metadata.original_language,
             overview=metadata.overview,
             poster_ref=metadata.poster_path,
         ),
@@ -205,6 +212,7 @@ async def search_unattached_show_season(
             title=details.title,
             year=details.year,
             tmdb_id=details.tmdb_id,
+            original_language=details.original_language,
             overview=details.overview,
             poster_ref=details.poster_path,
             season=payload.season_number,
@@ -243,6 +251,7 @@ async def search_movie(
             title=movie.title,
             year=movie.year,
             tmdb_id=movie.tmdb_id,
+            original_language=movie.original_language,
         ),
         background_tasks=background_tasks,
         db=db,
@@ -277,6 +286,7 @@ async def search_episode(
             title=show.title,
             year=show.year,
             tmdb_id=show.tmdb_id,
+            original_language=show.original_language,
             season=episode.season_number,
             episode=episode.episode_number,
         ),
@@ -313,6 +323,7 @@ async def search_season(
             title=show.title,
             year=show.year,
             tmdb_id=show.tmdb_id,
+            original_language=show.original_language,
             season=season_row.season_number,
         ),
         background_tasks=background_tasks,
@@ -380,13 +391,18 @@ async def get_search_job(
         )
         for key, value in indexer_states.items()
     ]
+    indexer_colors = {
+        item.id: item.color
+        for item in get_integration_config_store().list_indexers()
+    }
     return SearchJobResponse(
         id=job.id,
         status=job.status.value,
         target=dict(summary.get("target") or {}),
         progress=dict(job.progress or {}),
         indexers=statuses,
-        results=[_search_result_response(row) for row in rows],
+        # Built once for the whole response rather than looked up per row.
+        results=[_search_result_response(row, indexer_colors) for row in rows],
         result_total=total,
         error=dict(job.error) if job.error else None,
         created_at=job.created_at,
@@ -653,6 +669,7 @@ async def download_search_result(
         "release_name": result.title,
         "size": result.size,
         "seeders": result.seeders,
+        "leechers": result.leechers,
         "parser": dict(result.parse_snapshot or {}),
         "quality": result.quality,
         "edition": result.edition,
