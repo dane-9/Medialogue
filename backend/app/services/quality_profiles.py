@@ -199,7 +199,7 @@ async def load_quality_profile_for_search(
 ) -> EffectiveProfile:
     """Load a Quality Profile without requiring a persisted Movie/Show.
 
-    Manual acquisition searches can begin from a TMDB result before the Movie
+    Manual download searches can begin from a TMDB result before the Movie
     exists in Medialogue. Those searches still need the same immutable quality
     and Custom Format policy snapshot as library searches, but there is no
     per-title assignment or override yet.

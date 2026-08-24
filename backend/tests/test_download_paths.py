@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.errors import AppError
-from app.services.acquisition_paths import join_qbit_path, sanitize_show_folder_name, show_folder_with_year
+from app.services.download_paths import join_qbit_path, sanitize_show_folder_name, show_folder_with_year
 
 
 def test_show_folder_path_uses_category_as_root_and_appends_year_without_parentheses() -> None:

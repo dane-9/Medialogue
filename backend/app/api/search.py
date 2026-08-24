@@ -29,18 +29,18 @@ from app.models.domain import (
 from app.parser import parse_release_name
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.search import (
-    MovieAcquisitionSearchRequest,
+    MovieDownloadSearchRequest,
     SearchIndexerStatus,
     SearchJobResponse,
     SearchResultDownloadRequest,
     SearchResultDownloadResponse,
     SearchResultResponse,
-    ShowAcquisitionPreviewResponse,
-    ShowAcquisitionSeasonPreview,
-    ShowSeasonAcquisitionSearchRequest,
+    ShowDownloadPreviewResponse,
+    ShowDownloadSeasonPreview,
+    ShowSeasonDownloadSearchRequest,
 )
 from app.services.events import create_event
-from app.services.acquisition_paths import join_qbit_path, show_folder_with_year
+from app.services.download_paths import join_qbit_path, show_folder_with_year
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.core.integration_config import get_integration_config_store
 from app.services.jobs import create_job
@@ -110,7 +110,7 @@ async def _start_search(
 
 @router.post("/interactive-search/movies", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def search_unattached_movie(
-    payload: MovieAcquisitionSearchRequest,
+    payload: MovieDownloadSearchRequest,
     background_tasks: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
@@ -150,13 +150,13 @@ async def search_unattached_movie(
     )
 
 
-@router.get("/interactive-search/shows/{tmdb_id}/preview", response_model=ShowAcquisitionPreviewResponse)
+@router.get("/interactive-search/shows/{tmdb_id}/preview", response_model=ShowDownloadPreviewResponse)
 async def preview_unattached_show(
     tmdb_id: int,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
     tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
-) -> ShowAcquisitionPreviewResponse:
+) -> ShowDownloadPreviewResponse:
     if tmdb_id <= 0:
         raise AppError("INVALID_TMDB_ID", "TMDB Show id must be positive.", status_code=422)
     if await db.scalar(select(Show.id).where(Show.tmdb_id == tmdb_id)) is not None:
@@ -164,14 +164,14 @@ async def preview_unattached_show(
     details = await get_show_details(db, tmdb_id, client_factory=tmdb_factory)
     if details is None:
         raise AppError("TMDB_UNAVAILABLE", "TMDB Show lookup failed.", status_code=503)
-    return ShowAcquisitionPreviewResponse(
+    return ShowDownloadPreviewResponse(
         tmdb_id=details.tmdb_id,
         title=details.title,
         year=details.year,
         overview=details.overview,
         poster_ref=details.poster_path,
         seasons=[
-            ShowAcquisitionSeasonPreview(
+            ShowDownloadSeasonPreview(
                 season_number=season.season_number,
                 title=season.title,
                 episode_count=season.episode_count,
@@ -185,7 +185,7 @@ async def preview_unattached_show(
 
 @router.post("/interactive-search/shows/seasons", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def search_unattached_show_season(
-    payload: ShowSeasonAcquisitionSearchRequest,
+    payload: ShowSeasonDownloadSearchRequest,
     background_tasks: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
@@ -193,7 +193,7 @@ async def search_unattached_show_season(
     tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
 ) -> JobAcceptedResponse:
     # This endpoint also remains usable after the first season pack has been
-    # committed. That lets a multi-season acquisition retry/re-search a later
+    # committed. That lets a multi-season download retry/re-search a later
     # season while reusing the Show created by an earlier successful season.
     if await db.get(QualityProfile, payload.quality_profile_id) is None:
         raise AppError("INVALID_QUALITY_PROFILE", "Quality Profile does not exist.", status_code=422)
@@ -588,7 +588,7 @@ async def download_search_result(
             )
     qbit_options = {
         # Movies deliberately keep their existing qBittorrent/category save
-        # behavior. Only Show season-pack acquisition derives a per-Show
+        # behavior. Only Show season-pack download derives a per-Show
         # subdirectory beneath the selected category root.
         "save_path": show_save_path,
         "category": selected_category,
@@ -637,7 +637,7 @@ async def download_search_result(
             overview=str(target["overview"]) if target.get("overview") is not None else None,
             poster_ref=str(target["poster_ref"]) if target.get("poster_ref") is not None else None,
             monitored=True,
-            source="manual_acquisition",
+            source="manual_download",
         )
         profile_id_raw = target.get("quality_profile_id") or (result.custom_format_snapshot or {}).get("profile_id")
         if profile_id_raw:

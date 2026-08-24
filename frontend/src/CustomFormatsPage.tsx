@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { api } from './api/client'
 import { Icon } from './components/Icon'
+import { Tooltip } from './components/Tooltip'
 import { Badge, Button, EmptyState, Input, Select } from './components/ui'
 import { Field } from './components/settings'
 import { Modal } from './components/Modal'
@@ -506,9 +507,9 @@ export default function CustomFormatsPageView() {
                   <div className="cf-rule-number"><span>{index + 1}</span><div>{draft.builtin ? <strong>{condition.name || typeLabel(condition.type)}</strong> : <Input className="cf-rule-title-input" aria-label={`Rule ${index + 1} name`} value={condition.name ?? ''} onChange={(event) => updateCondition(condition.id, { name: event.target.value || undefined })} placeholder={`Rule ${index + 1}`} />}</div></div>
                   <div className="cf-rule-header-actions">
                     <div className="cf-rule-header-options" aria-label={`Rule ${index + 1} options`}>
-                      <button type="button" className={condition.required ? 'active' : ''} aria-pressed={condition.required} title="Every required rule must pass for this format to match." onClick={() => updateCondition(condition.id, { required: !condition.required })} disabled={draft.builtin}>Required</button>
-                      <button type="button" className={condition.negate ? 'active' : ''} aria-pressed={condition.negate} title="Pass this rule only when the regular expression does not match." onClick={() => updateCondition(condition.id, { negate: !condition.negate })} disabled={draft.builtin}>Negate</button>
-                      <button type="button" className={condition.caseSensitive ? 'active' : ''} aria-pressed={condition.caseSensitive} title="Match uppercase and lowercase characters exactly." onClick={() => updateCondition(condition.id, { caseSensitive: !condition.caseSensitive })} disabled={draft.builtin}>Case sensitive</button>
+                      <Tooltip asChild content="Every required rule must pass for this format to match."><button type="button" className={condition.required ? 'active' : ''} aria-pressed={condition.required} onClick={() => updateCondition(condition.id, { required: !condition.required })} disabled={draft.builtin}>Required</button></Tooltip>
+                      <Tooltip asChild content="Pass this rule only when the regular expression does not match."><button type="button" className={condition.negate ? 'active' : ''} aria-pressed={condition.negate} onClick={() => updateCondition(condition.id, { negate: !condition.negate })} disabled={draft.builtin}>Negate</button></Tooltip>
+                      <Tooltip asChild content="Match uppercase and lowercase characters exactly."><button type="button" className={condition.caseSensitive ? 'active' : ''} aria-pressed={condition.caseSensitive} onClick={() => updateCondition(condition.id, { caseSensitive: !condition.caseSensitive })} disabled={draft.builtin}>Case sensitive</button></Tooltip>
                     </div>
                     {!draft.builtin && <button className="icon-button" aria-label={`Remove rule ${index + 1}`} onClick={() => setDraft((current) => ({ ...current, conditions: current.conditions.filter((item) => item.id !== condition.id) }))}><Icon name="close" size={15} /></button>}
                   </div>
@@ -545,13 +546,12 @@ function FormatCard({ format, toggling, onToggle, onOpen, onCopy }: { format: Cu
       <strong>{format.name}</strong>
       <span className="cf-card-badges">
         {format.builtin && <Badge tone="blue">Built-in</Badge>}
-        <button
+        <Tooltip asChild content="Create a copy"><button
           type="button"
           className="icon-button cf-card-copy"
           aria-label={`Create a copy of ${format.name}`}
-          title="Create a copy"
           onClick={(event) => { event.stopPropagation(); onCopy() }}
-        ><Icon name="copy" size={15} /></button>
+        ><Icon name="copy" size={15} /></button></Tooltip>
         <button type="button" className={`badge cf-card-toggle ${format.enabled ? 'badge-green' : ''}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}><span className="badge-dot" />{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>
       </span>
     </div>

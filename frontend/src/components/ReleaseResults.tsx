@@ -28,7 +28,7 @@ export function matchedFormatNames(result: InteractiveSearchResult): string[] {
 const signed = (score?: number) => `${(score ?? 0) > 0 ? '+' : ''}${score ?? 0}`
 
 /**
- * The release list for both acquisition wizards.
+ * The release list for both download wizards.
  *
  * Rows are a fixed height and never expand, and nothing unfolds below them:
  * clicking a row must never move the row under the cursor, or the next row you
@@ -65,48 +65,43 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
     setDesc(DEFAULT_DESC[DEFAULT_SORT])
   }
 
-  const header = (key: SortKey, text: string, centred = false) => <button
-    type="button"
-    className={`release-sort ${centred ? 'release-centred' : ''} ${sort === key ? 'active' : ''}`}
-    onClick={() => choose(key)}
-    title={sort === key ? 'Click again to reverse, once more for the ranked order' : `Sort by ${text.toLowerCase()}`}
-  >{text}{sort === key ? <i>{desc ? '▾' : '▴'}</i> : null}</button>
+  const header = (key: SortKey, text: string, centred = false) => <Tooltip
+    asChild
+    content={sort === key ? 'Click again to reverse, once more for the ranked order' : `Sort by ${text.toLowerCase()}`}
+  >
+    <button
+      type="button"
+      className={`release-sort ${centred ? 'release-centred' : ''} ${sort === key ? 'active' : ''}`}
+      onClick={() => choose(key)}
+    >{text}{sort === key ? <i>{desc ? '▾' : '▴'}</i> : null}</button>
+  </Tooltip>
+
+  const refreshButton = onRefresh
+    ? <Tooltip asChild content="Search the indexers again">
+        <button
+          type="button"
+          className="release-refresh"
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label="Search the indexers again"
+        ><Icon name="reload" size={15} /></button>
+      </Tooltip>
+    : null
 
   if (!results.length) return <div className="release-list">
-    {onRefresh ? <div className="release-head release-head-bare">{onRefresh
-        ? <button
-            type="button"
-            className="release-refresh"
-            onClick={onRefresh}
-            disabled={refreshing}
-            title="Search the indexers again"
-            aria-label="Search the indexers again"
-          ><Icon name="reload" size={15} /></button>
-        : null}</div> : null}
+    {onRefresh ? <div className="release-head release-head-bare">{refreshButton}</div> : null}
     <div className="release-empty">{empty}</div>
   </div>
 
   return <div className="release-list" role="listbox" aria-label={label}>
-    <div
-      className="release-head"
-      title="Ranked best first: quality tier, then Custom Format score, then seeders. Releases the profile blocks stay at the bottom whichever column you sort by."
-    >
+    <div className="release-head">
       {header('quality', 'Format', true)}
       {header('title', 'Name')}
       {header('score', 'CF Score', true)}
       {header('size', 'Size', true)}
       {header('seeders', 'Peers', true)}
       {header('age', 'Age', true)}
-      {onRefresh
-        ? <button
-            type="button"
-            className="release-refresh"
-            onClick={onRefresh}
-            disabled={refreshing}
-            title="Search the indexers again"
-            aria-label="Search the indexers again"
-          ><Icon name="reload" size={15} /></button>
-        : null}
+      {refreshButton}
     </div>
 
     {sorted.map((result) => {
@@ -127,10 +122,12 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
         className={`release-row ${selected ? 'selected' : ''}`}
         onClick={() => onSelect(selected ? '' : result.id)}
       >
-        <span className="release-quality" title={result.quality}>
-          {resolution ? <strong>{resolution}</strong> : null}
-          <small>{type || 'Unknown'}</small>
-        </span>
+        <Tooltip asChild content={result.quality || 'Unknown quality'}>
+          <span className="release-quality">
+            {resolution ? <strong>{resolution}</strong> : null}
+            <small>{type || 'Unknown'}</small>
+          </span>
+        </Tooltip>
         <span className="release-name">
           <strong>{result.title}</strong>
           <span className="release-tags">
@@ -145,7 +142,6 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
               ? <Tooltip
                   className="release-pill release-pill-language"
                   content={<>
-                    <span className="tooltip-title">Languages</span>
                     <ul>{languages.map((name) => <li key={name}>{name}</li>)}</ul>
                   </>}
                 >{languageLabel(languages)}</Tooltip>
@@ -157,7 +153,6 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
               ? <Tooltip
                   className={`release-pill ${result.qualityAllowed ? 'release-warned' : 'release-blocked'}`}
                   content={<>
-                    <span className="tooltip-title">{warnings.length === 1 ? 'Warning' : 'Warnings'}</span>
                     <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
                   </>}
                 ><Icon name="alert" size={11} />{result.qualityAllowed ? warnings.length : 'Blocked by profile'}</Tooltip>
@@ -168,25 +163,20 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
           className={`release-numeric release-score ${score < 0 ? 'negative' : score > 0 ? 'positive' : ''} ${formats.length ? 'has-formats' : ''}`}
           content={formats.length
             ? <>
-                <span className="tooltip-title">Matched formats</span>
                 <ul>{formats.map((name) => <li key={name}>{name}</li>)}</ul>
               </>
-            : <span className="tooltip-title">No Custom Formats matched</span>}
+            : 'No Custom Formats matched'}
         >{signed(score)}</Tooltip>
         <span className="release-numeric">{formatBytes(result.size)}</span>
         <span className="release-numeric">
           <Tooltip
             className={`release-pill release-pill-swarm swarm-${swarmHealth(result.seeders)}`}
-            content={<span className="tooltip-title">
-              {result.seeders ?? 'No'} seeders, {result.leechers ?? 'an unknown number of'} leechers
-            </span>}
+            content={`${result.seeders ?? 'N/A'} seeders, ${result.leechers ?? 'N/A'} leechers`}
           >{formatPeers(result.seeders, result.leechers)}</Tooltip>
         </span>
         <Tooltip
           className="release-numeric release-age"
-          content={<span className="tooltip-title">
-            {result.publishedAt ? new Date(result.publishedAt).toLocaleString() : 'This indexer reported no publication date'}
-          </span>}
+          content={result.publishedAt ? new Date(result.publishedAt).toLocaleString() : 'This indexer reported no publication date'}
         >{formatAge(result.publishedAt)}</Tooltip>
       </button>
     })}

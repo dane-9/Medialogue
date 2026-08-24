@@ -20,7 +20,7 @@ function posterUrl(reference?: string) {
   return `https://image.tmdb.org/t/p/w185${reference.startsWith('/') ? reference : `/${reference}`}`
 }
 
-export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
+export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
   movie: MovieChoice
   onBack: () => void
   onClose: () => void
@@ -59,7 +59,7 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
         setClientId((current) => current || movieClients[0]?.id || '')
         setError(profileRows.length ? (movieClients.length ? '' : 'Configure an enabled Movies qBittorrent client before acquiring a movie.') : 'Create a Movie Quality Profile before acquiring a movie.')
       })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load acquisition settings.'))
+      .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load download settings.'))
       .finally(() => { if (alive) setSetupLoading(false) })
     return () => { alive = false }
   }, [])
@@ -127,6 +127,11 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
     } finally { setStarting(false) }
   }
 
+  useEffect(() => {
+    if (step !== 'search' || !profileId || searchedProfileId === profileId) return
+    void search()
+  }, [profileId, step, searchedProfileId])
+
   const selectedResult = job?.results.find((result) => result.id === selectedResultId)
   const canSearch = Boolean(profileId && clientId && category && !setupLoading && !categoryLoading)
 
@@ -143,12 +148,21 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
   }
 
   return <div className="modal-backdrop" onClick={onClose}>
-    <div className="acquisition-modal" role="dialog" aria-modal="true" aria-label={`Acquire ${movie.title}`} onClick={(event) => event.stopPropagation()}>
-      <header className="acquisition-head">
-        <div className="acquisition-title-block">
+    <div className="wizard-modal" role="dialog" aria-modal="true" aria-label={`Acquire ${movie.title}`} onClick={(event) => event.stopPropagation()}>
+      <header className="wizard-head">
+        <div className="wizard-title-block">
           <h2>{movie.title}{movie.year ? <span> ({movie.year})</span> : null}</h2>
         </div>
-        <nav className="acquisition-steps" aria-label="Acquisition steps">
+        {step === 'search' && <label className="wizard-profile">
+          <span>Quality Profile</span>
+          <Select
+            value={profileId}
+            aria-label="Quality Profile"
+            disabled={starting}
+            onChange={(event) => setProfileId(event.target.value)}
+          >{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select>
+        </label>}
+        <nav className="wizard-steps" aria-label="Download steps">
           <button
             type="button"
             className={step === 'setup' ? 'active' : ''}
@@ -166,26 +180,24 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
         <button className="icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       </header>
 
-      {step === 'setup' ? <div className="acquisition-setup">
-        <aside className="acquisition-movie-card">
-          <div className="acquisition-poster">{posterUrl(movie.poster) ? <img src={posterUrl(movie.poster)} alt="" /> : <Icon name="film" size={28} />}</div>
+      {step === 'setup' ? <div className="wizard-setup">
+        <aside className="wizard-movie-card">
+          <div className="wizard-poster">{posterUrl(movie.poster) ? <img src={posterUrl(movie.poster)} alt="" /> : <Icon name="film" size={28} />}</div>
           <div><strong>{movie.title}</strong><span>{movie.year || 'Year unknown'} · TMDB {movie.tmdbId}</span>{movie.overview && <p>{movie.overview}</p>}</div>
         </aside>
-        <section className="acquisition-form">
-          <label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select><small>Controls quality ordering and Custom Format scoring for this search.</small></label>
-          <DownloadClientField
+        <section className="wizard-form">
+          <div className="wizard-box"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select><small>Controls quality ordering and Custom Format scoring for this search.</small></label></div>
+          <div className="wizard-destination"><DownloadClientField
             clients={clients}
             clientId={clientId}
             scope="movies"
             disabled={setupLoading}
             onChange={setClientId}
             onRefreshed={(rows) => { setClients(rows); setClientReload((value) => value + 1) }}
-          />
-          <label><span className="field-label">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!clientId || categoryLoading}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select><small>The category is owned by qBittorrent; Medialogue does not override its save path.</small></label>
-          <div className="acquisition-destination"><span>Destination</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Unavailable')}</strong>{selectedCategory && !selectedCategory.savePath && <small>Uses the qBittorrent default download directory because this category has no explicit path.</small>}</div>
+          /><label><span className="field-label">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!clientId || categoryLoading}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select></label><div className="wizard-destination-path"><span>Destination</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Unavailable')}</strong>{selectedCategory && !selectedCategory.savePath && <small>Uses the qBittorrent default download directory because this category has no explicit path.</small>}</div></div>
           {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         </section>
-      </div> : <div className="acquisition-search">
+      </div> : <div className="wizard-search">
         {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         <ReleaseResults
           results={job?.results ?? []}
@@ -198,9 +210,9 @@ export function MovieAcquisitionWizard({ movie, onBack, onClose, onComplete }: {
         />
       </div>}
 
-      <footer className="acquisition-foot">
+      <footer className="wizard-foot">
         {step === 'search' && job
-          ? <span className="acquisition-foot-count">{job.resultTotal} Torrent{job.resultTotal === 1 ? '' : 's'} found</span>
+          ? <span className="wizard-foot-count">{job.resultTotal} Torrent{job.resultTotal === 1 ? '' : 's'} found</span>
           : null}
         <span>{step === 'setup'
           ? 'Nothing is added to Medialogue until Start Download succeeds.'

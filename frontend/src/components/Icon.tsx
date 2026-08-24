@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'film' | 'tv' | 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'shield' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'reload'
+type IconName = 'film' | 'tv' | 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'shield' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'reload' | 'clapper' | 'tv-screen'
 
 const paths: Record<IconName, JSX.Element> = {
   film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4" /></>,
@@ -36,6 +36,25 @@ const paths: Record<IconName, JSX.Element> = {
     <path d="M18.327 7.286h-8.044a1.93 1.93 0 0 0-1.925 1.938v10.088c0 1.07.862 1.938 1.925 1.938h8.044a1.93 1.93 0 0 0 1.925-1.938V9.224c0-1.07-.862-1.938-1.925-1.938" />
     <path d="M15.642 7.286V4.688c0-.514-.203-1.007-.564-1.37a1.92 1.92 0 0 0-1.361-.568H5.673c-.51 0-1 .204-1.36.568a1.95 1.95 0 0 0-.565 1.37v10.088c0 .514.203 1.007.564 1.37s.85.568 1.361.568h2.685" />
   </>,
+  // Stroked clapperboard, with its own weight: the supplied artwork is drawn
+  // at 1.5 and thickens badly at the set default.
+  clapper: <path
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeMiterlimit={10}
+    d="m15 9l2-6M7 9l2-6M1 9h22M3.4 3h17.2A2.4 2.4 0 0 1 23 5.4v13.2a2.4 2.4 0 0 1-2.4 2.4H3.4A2.4 2.4 0 0 1 1 18.6V5.4A2.4 2.4 0 0 1 3.4 3"
+  />,
+  // Outlined, and drawn on a 512 grid rather than 24.
+  'tv-screen': <>
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={32}
+      d="M488 384H24a8 8 0 0 1-8-8V88a8 8 0 0 1 8-8h464a8 8 0 0 1 8 8v288a8 8 0 0 1-8 8"
+    />
+    <path fill="none" stroke="currentColor" strokeWidth={32} d="M128 416h256" />
+  </>,
   reload: <path
     fill="currentColor"
     stroke="none"
@@ -44,6 +63,9 @@ const paths: Record<IconName, JSX.Element> = {
   spark: <><path d="m12 3-1.5 5.5L5 10l5.5 1.5L12 17l1.5-5.5L19 10l-5.5-1.5L12 3Z" /><path d="m19 16-.6 2.4L16 19l2.4.6L19 22l.6-2.4L22 19l-2.4-.6L19 16Z" /></>,
 }
 
+/** Icons drawn on a grid other than 24x24. */
+const VIEW_BOXES: Partial<Record<IconName, string>> = { 'tv-screen': '0 0 512 512' }
+
 export function Icon({ name, size = 18, strokeWidth = 1.8, ...props }: { name: IconName; size?: number; strokeWidth?: number } & SVGProps<SVGSVGElement>) {
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" {...props}>{paths[name]}</svg>
+  return <svg aria-hidden="true" width={size} height={size} viewBox={VIEW_BOXES[name] ?? '0 0 24 24'} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" {...props}>{paths[name]}</svg>
 }

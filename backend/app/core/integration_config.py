@@ -183,7 +183,7 @@ class IntegrationConfigStore:
                 # Force a read/decrypt so startup fails clearly if the secret
                 # key changed or either file is corrupt. Also discard the old
                 # indexer -> download-client coupling: download destination is
-                # now chosen explicitly by the acquisition workflow.
+                # now chosen explicitly by the download workflow.
                 config, secrets = self._load()
                 changed = False
                 for row in config.get("indexers") or []:
@@ -360,7 +360,7 @@ class IntegrationConfigStore:
         return bool(value)
 
     def get_show_folder_include_year(self) -> bool:
-        """Default folder-name preference for future manual Show acquisitions."""
+        """Default folder-name preference for future manual Show downloads."""
 
         config, _ = self._load()
         library = config.get("library")

@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import type { HealthIndicator, Job } from '../types'
 import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
 import { Icon } from './Icon'
+import { Tooltip } from './Tooltip'
 import { Button, Progress } from './ui'
 
 const primary = [
@@ -36,7 +37,7 @@ export function PageTopbar({ title, subtitle, action, back, onBack }: { title: s
   const host = useContext(PageTopbarHostContext)
   if (!host) return null
   return createPortal(<div className="topbar-page-heading">
-    {back && <button className="topbar-back" type="button" onClick={onBack} aria-label={back} title={back}><Icon name="arrow" size={15} /></button>}
+    {back && <Tooltip asChild content={back}><button className="topbar-back" type="button" onClick={onBack} aria-label={back}><Icon name="arrow" size={15} /></button></Tooltip>}
     <div className="topbar-page-copy"><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
     {action && <div className="topbar-page-actions">{action}</div>}
   </div>, host)
@@ -135,7 +136,7 @@ function NavSection({ items }: { items: Array<{ to: string; label: string; icon:
 
 function HealthPill({ item }: { item: HealthIndicator }) {
   const tone = item.state === 'healthy' ? 'green' : item.state === 'offline' ? 'red' : item.state === 'degraded' ? 'amber' : 'neutral'
-  return <div className="health-pill" title={item.detail}><span className={`health-dot ${tone}`} />{item.name}</div>
+  return <Tooltip asChild content={item.detail}><div className="health-pill"><span className={`health-dot ${tone}`} />{item.name}</div></Tooltip>
 }
 
 function JobsDrawer({ jobs, onClose, onChanged, onOpenEvents }: { jobs: Job[]; onClose: () => void; onChanged: (jobs: Job[]) => void; onOpenEvents: () => void }) {

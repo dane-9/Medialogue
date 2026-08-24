@@ -132,7 +132,7 @@ class SpecialsCountingResult(SpecialsCountingState):
     shows_affected: int
 
 
-class ShowAcquisitionPreferences(BaseModel):
+class ShowDownloadPreferences(BaseModel):
     include_year_in_folder_name: bool = False
 
 
@@ -179,22 +179,22 @@ async def set_specials_counting(
     )
 
 
-@router.get("/shows/acquisition-preferences", response_model=ShowAcquisitionPreferences)
-async def get_show_acquisition_preferences(_: AdminUser = Depends(require_admin)) -> ShowAcquisitionPreferences:
-    return ShowAcquisitionPreferences(
+@router.get("/shows/download-preferences", response_model=ShowDownloadPreferences)
+async def get_show_download_preferences(_: AdminUser = Depends(require_admin)) -> ShowDownloadPreferences:
+    return ShowDownloadPreferences(
         include_year_in_folder_name=get_integration_config_store().get_show_folder_include_year()
     )
 
 
-@router.put("/shows/acquisition-preferences", response_model=ShowAcquisitionPreferences)
-async def set_show_acquisition_preferences(
-    payload: ShowAcquisitionPreferences,
+@router.put("/shows/download-preferences", response_model=ShowDownloadPreferences)
+async def set_show_download_preferences(
+    payload: ShowDownloadPreferences,
     _: object = Depends(require_csrf),
-) -> ShowAcquisitionPreferences:
+) -> ShowDownloadPreferences:
     value = get_integration_config_store().save_show_folder_include_year(
         payload.include_year_in_folder_name
     )
-    return ShowAcquisitionPreferences(include_year_in_folder_name=value)
+    return ShowDownloadPreferences(include_year_in_folder_name=value)
 
 
 class EpisodeOrderingOption(BaseModel):

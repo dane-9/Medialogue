@@ -7,18 +7,18 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-class MovieAcquisitionSearchRequest(BaseModel):
+class MovieDownloadSearchRequest(BaseModel):
     tmdb_id: int = Field(gt=0)
     quality_profile_id: UUID
 
 
-class ShowSeasonAcquisitionSearchRequest(BaseModel):
+class ShowSeasonDownloadSearchRequest(BaseModel):
     tmdb_id: int = Field(gt=0)
     quality_profile_id: UUID
     season_number: int = Field(ge=0)
 
 
-class ShowAcquisitionSeasonPreview(BaseModel):
+class ShowDownloadSeasonPreview(BaseModel):
     season_number: int
     title: str | None = None
     episode_count: int = 0
@@ -26,13 +26,13 @@ class ShowAcquisitionSeasonPreview(BaseModel):
     poster_ref: str | None = None
 
 
-class ShowAcquisitionPreviewResponse(BaseModel):
+class ShowDownloadPreviewResponse(BaseModel):
     tmdb_id: int
     title: str
     year: int | None = None
     overview: str | None = None
     poster_ref: str | None = None
-    seasons: list[ShowAcquisitionSeasonPreview]
+    seasons: list[ShowDownloadSeasonPreview]
 
 
 

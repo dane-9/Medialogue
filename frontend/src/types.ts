@@ -336,7 +336,7 @@ export interface DownloadClientCategory {
   isDefault: boolean
 }
 
-export interface ShowAcquisitionSeasonPreview {
+export interface ShowDownloadSeasonPreview {
   seasonNumber: number
   title?: string
   episodeCount: number
@@ -344,13 +344,13 @@ export interface ShowAcquisitionSeasonPreview {
   posterRef?: string
 }
 
-export interface ShowAcquisitionPreview {
+export interface ShowDownloadPreview {
   tmdbId: number
   title: string
   year?: number
   overview?: string
   posterRef?: string
-  seasons: ShowAcquisitionSeasonPreview[]
+  seasons: ShowDownloadSeasonPreview[]
 }
 
 export interface InteractiveSearchResult {

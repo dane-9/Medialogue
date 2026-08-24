@@ -1018,7 +1018,7 @@ export const api = {
   recheckMoviePlex: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
   startMovieSearch: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/interactive-search`, { method: 'POST' }),
   startUnattachedMovieSearch: (tmdbId: number, qualityProfileId: string) => request<{ job_id: string }>('/api/v1/interactive-search/movies', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, quality_profile_id: qualityProfileId }) }),
-  showAcquisitionPreview: async (tmdbId: number) => {
+  showDownloadPreview: async (tmdbId: number) => {
     const payload = record(await request<unknown>(`/api/v1/interactive-search/shows/${encodeURIComponent(String(tmdbId))}/preview`))
     const seasons = Array.isArray(payload.seasons) ? payload.seasons : []
     return {
@@ -1039,8 +1039,8 @@ export const api = {
       }),
     }
   },
-  showAcquisitionPreferences: () => request<{ include_year_in_folder_name: boolean }>('/api/v1/shows/acquisition-preferences'),
-  saveShowAcquisitionPreferences: (includeYearInFolderName: boolean) => request<{ include_year_in_folder_name: boolean }>('/api/v1/shows/acquisition-preferences', { method: 'PUT', body: JSON.stringify({ include_year_in_folder_name: includeYearInFolderName }) }),
+  showDownloadPreferences: () => request<{ include_year_in_folder_name: boolean }>('/api/v1/shows/download-preferences'),
+  saveShowDownloadPreferences: (includeYearInFolderName: boolean) => request<{ include_year_in_folder_name: boolean }>('/api/v1/shows/download-preferences', { method: 'PUT', body: JSON.stringify({ include_year_in_folder_name: includeYearInFolderName }) }),
   startUnattachedShowSeasonSearch: (tmdbId: number, qualityProfileId: string, seasonNumber: number) => request<{ job_id: string }>('/api/v1/interactive-search/shows/seasons', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, quality_profile_id: qualityProfileId, season_number: seasonNumber }) }),
   searchJob: (jobId: string) => request<unknown>(`/api/v1/search-jobs/${encodeURIComponent(jobId)}`).then(normalizeInteractiveSearchJob),
   downloadSearchResult: (resultId: string, payload: { download_client_id: string; category?: string | null; show_folder_name?: string; include_year_in_show_folder?: boolean }) => request<{ search_result_id: string; download_client_id: string; client_name: string; status: string; selected_at: string; movie_id?: string; show_id?: string; season_id?: string; category?: string | null; save_path?: string | null }>(`/api/v1/search-results/${encodeURIComponent(resultId)}/download`, { method: 'POST', body: JSON.stringify(payload) }),

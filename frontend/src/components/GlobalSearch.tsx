@@ -4,9 +4,10 @@ import { api } from '../api/client'
 import type { Movie, Show, TMDBMovieLookup, TMDBShowLookup } from '../types'
 import { evaluateShiftTap } from '../lib/doubleTap'
 import { Icon } from './Icon'
+import { Tooltip } from './Tooltip'
 import { Badge, Button } from './ui'
-import { MovieAcquisitionWizard } from './MovieAcquisitionWizard'
-import { ShowAcquisitionWizard } from './ShowAcquisitionWizard'
+import { MovieDownloadWizard } from './MovieDownloadWizard'
+import { ShowDownloadWizard } from './ShowDownloadWizard'
 
 type Kind = 'movie' | 'show'
 /** What the search covers. 'all' is the default: you rarely know or care
@@ -16,7 +17,7 @@ type Scope = Kind | 'all'
 /**
  * One row in the result list. A title already in the library carries its
  * internal id; a TMDB-only movie carries just the tmdbId and can enter the
- * manual acquisition flow without creating a library Movie first.
+ * manual download flow without creating a library Movie first.
  */
 type Result = {
   key: string
@@ -48,10 +49,13 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<Scope>('all')
   const [results, setResults] = useState<Result[]>([])
+  // Off by default: the type reads at a glance when it is spelled out, and
+  // collapsing is a preference for people who want the extra width.
+  const [collapseKinds, setCollapseKinds] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [active, setActive] = useState(0)
-  const [acquisition, setAcquisition] = useState<Result | null>(null)
+  const [downloadTarget, setDownloadTarget] = useState<Result | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
@@ -91,7 +95,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       return
     }
     if (!result.tmdbId) return
-    setAcquisition(result)
+    setDownloadTarget(result)
   }
 
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -107,16 +111,16 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     return `${results.length} result${results.length === 1 ? '' : 's'}`
   }, [loading, query, results.length])
 
-  if (acquisition?.tmdbId && acquisition.kind === 'movie') return <MovieAcquisitionWizard
-    movie={{ tmdbId: acquisition.tmdbId, title: acquisition.title, year: acquisition.year, poster: acquisition.poster, overview: acquisition.overview }}
-    onBack={() => setAcquisition(null)}
+  if (downloadTarget?.tmdbId && downloadTarget.kind === 'movie') return <MovieDownloadWizard
+    movie={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview }}
+    onBack={() => setDownloadTarget(null)}
     onClose={onClose}
     onComplete={(movieId) => { navigate(`/movies/${movieId}`); onClose() }}
   />
 
-  if (acquisition?.tmdbId && acquisition.kind === 'show') return <ShowAcquisitionWizard
-    show={{ tmdbId: acquisition.tmdbId, title: acquisition.title, year: acquisition.year, poster: acquisition.poster, overview: acquisition.overview }}
-    onBack={() => setAcquisition(null)}
+  if (downloadTarget?.tmdbId && downloadTarget.kind === 'show') return <ShowDownloadWizard
+    show={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview }}
+    onBack={() => setDownloadTarget(null)}
     onClose={onClose}
     onComplete={(showId) => { navigate(`/shows/${showId}`); onClose() }}
   />
@@ -156,12 +160,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
               : <Icon name={result.kind === 'movie' ? 'film' : 'tv'} size={18} />}
           </span>
           <span className="global-search-copy">
-            <strong>{result.title}</strong>
-            <span>{[
-              scope === 'all' ? (result.kind === 'movie' ? 'Movie' : 'Show') : null,
-              result.year || 'Year unknown',
-              result.tmdbId ? `TMDB ${result.tmdbId}` : null,
-            ].filter(Boolean).join(' · ')}</span>
+            <strong>
+              <span className={`global-search-kind kind-${result.kind} ${collapseKinds ? 'collapsible' : ''}`}>
+                <Icon name={result.kind === 'movie' ? 'clapper' : 'tv-screen'} size={12} />
+                <em>{result.kind === 'movie' ? 'Movie' : 'Show'}</em>
+              </span>
+              <span className="global-search-title">{result.title}</span>
+              <span className={`global-search-year ${result.year ? '' : 'unknown'}`}>{result.year || 'Year unknown'}</span>
+            </strong>
             {result.overview && <small>{result.overview}</small>}
           </span>
           <span className="global-search-state">
@@ -177,6 +183,16 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       <div className="global-search-foot">
         <span>{hint}</span>
         <span className="global-search-keys"><kbd>↑</kbd><kbd>↓</kbd> navigate <kbd>enter</kbd> select <kbd>esc</kbd> close</span>
+        <div className="global-search-toggle">
+          <span>Collapse type</span>
+          <button
+            type="button"
+            className="toggle"
+            aria-pressed={collapseKinds}
+            aria-label="Collapse the Movie and Show labels to icons"
+            onClick={() => setCollapseKinds((value) => !value)}
+          ><span /></button>
+        </div>
       </div>
     </div>
   </div>
@@ -290,7 +306,7 @@ export function GlobalSearchButton({ onOpen }: { onOpen: () => void }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onOpen])
 
-  return <button className="brand-search" onClick={onOpen} aria-label="Search movies and shows" title="Search (Ctrl+K, or tap Shift twice)">
+  return <Tooltip asChild content="Search (Ctrl+K, or tap Shift twice)"><button className="brand-search" onClick={onOpen} aria-label="Search movies and shows">
     <Icon name="search" size={16} />
-  </button>
+  </button></Tooltip>
 }

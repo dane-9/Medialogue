@@ -36,7 +36,7 @@ async def create_movie_from_metadata(
 ) -> Movie:
     """Create a Movie from already-validated TMDB metadata.
 
-    Manual acquisition search validates and snapshots TMDB metadata before any
+    Manual download search validates and snapshots TMDB metadata before any
     torrent is selected. Reusing that snapshot after qBittorrent accepts the
     release avoids a second remote call at the commit boundary.
     """
@@ -80,7 +80,7 @@ async def add_movie_from_tmdb(
     """Create a library Movie from a TMDB id.
 
     This remains the explicit "add without downloading" path used by existing
-    callers. New manual acquisitions use an unattached TMDB search instead and
+    callers. New manual downloads use an unattached TMDB search instead and
     create the Movie only after qBittorrent accepts the selected release.
 
     This function itself creates no release and writes nothing to the filesystem.

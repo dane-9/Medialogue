@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api/client'
 import { Icon } from './components/Icon'
+import { Tooltip } from './components/Tooltip'
 import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
 import { Field } from './components/settings'
@@ -316,7 +317,7 @@ export default function QualityProfilesPage() {
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={() => { if (draggedQualityId) moveQuality(draggedQualityId, quality.id); setDraggedQualityId('') }}
                 >
-                  <span className="qp-quality-handle" title="Drag to reorder"><Icon name="menu" size={16} /></span>
+                  <Tooltip asChild content="Drag to reorder"><span className="qp-quality-handle"><Icon name="menu" size={16} /></span></Tooltip>
                   <label className="qp-format-check"><input type="checkbox" checked={enabled} onChange={() => toggleQuality(quality.id)} /><span /></label>
                   <div className="qp-quality-copy"><strong>{quality.name}</strong></div>
                   {enabled ? <strong className="qp-quality-position">#{position + 1}</strong> : <span className="muted">Not used</span>}
@@ -379,13 +380,12 @@ function ProfileCard({ profile, formatById, onOpen, onCopy }: { profile: Quality
       <strong>{profile.name}</strong>
       <span className="cf-card-badges">
         <Badge tone={profile.minimumQuality ? 'blue' : 'neutral'}>{profile.minimumQuality?.name ?? 'No minimum'}</Badge>
-        <button
+        <Tooltip asChild content="Create a copy"><button
           type="button"
           className="icon-button cf-card-copy"
           aria-label={`Create a copy of ${profile.name}`}
-          title="Create a copy"
           onClick={(event) => { event.stopPropagation(); onCopy() }}
-        ><Icon name="copy" size={15} /></button>
+        ><Icon name="copy" size={15} /></button></Tooltip>
       </span>
     </div>
     <div className="cf-card-conditions">
