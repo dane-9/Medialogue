@@ -566,12 +566,12 @@ function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { forma
       <span className="cf-card-badges">
         {format.builtin && <Badge tone="blue">Built-in</Badge>}
         <button type="button" className={`badge cf-card-toggle ${format.enabled ? 'badge-green' : ''}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}><span className="badge-dot" />{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>
-        <Tooltip asChild content="Save a copy of this format"><button
+        <Tooltip asChild content="Create a copy of this format"><button
           type="button"
           className="badge cf-card-duplicate"
-          aria-label={`Duplicate ${format.name}`}
+          aria-label={`Create a copy of ${format.name}`}
           onClick={(event) => { event.stopPropagation(); onDuplicate() }}
-        ><Icon name="copy" size={13} />Duplicate</button></Tooltip>
+        ><Icon name="copy" size={13} /></button></Tooltip>
       </span>
     </div>
     <p className="cf-card-description">{format.description || 'No description provided.'}</p>

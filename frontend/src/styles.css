@@ -804,6 +804,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .settings-note svg, .drawer-note svg, .cf-banner svg, .problem-summary svg,
 .archive-callout svg, .reconciliation-banner svg { flex: none; color: var(--faint); }
+/* A callout dropped straight into a page has no parent gap to space it, since
+   .page is block flow, so it carries its own. Nested uses sit inside flex or
+   grid containers that already space their children and are left alone. */
+.page > .settings-note, .page > .drawer-note, .page > .cf-banner,
+.page > .problem-summary, .page > .archive-callout,
+.page > .reconciliation-banner, .page > .setup-return { margin-bottom: var(--s4); }
 .settings-note.error-note, .cf-banner-error, .reconciliation-banner-red {
   color: var(--err);
   border-color: var(--err-line);
@@ -2157,11 +2163,14 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   inset: 0;
   display: grid;
   justify-items: center;
-  align-content: start;
-  padding: 10vh var(--s4) var(--s4);
+  align-content: center;
+  padding: var(--s4);
   background: rgba(3, 3, 4, .65);
   backdrop-filter: blur(2px);
 }
+/* The command palette is not a dialog: it belongs near the top, under the
+   caret, rather than centred on the screen. Everything else centres. */
+.modal-backdrop:has(.global-search) { align-content: start; padding-top: 10vh; }
 .global-search {
   width: min(720px, 100%);
   max-height: 74vh;
@@ -2487,13 +2496,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-editor-modal .modal-body { min-height: 0; overflow: hidden; }
 .cf-editor-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); height: min(680px, calc(88vh - 154px)); min-height: 480px; }
 .cf-editor-rail { display: flex; min-width: 0; flex-direction: column; gap: var(--s4); padding: var(--s4); border-right: 1px solid var(--line); background: #101012; }
-.cf-editor-summary { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }
-.cf-editor-summary > strong { overflow: hidden; color: var(--text); font-size: var(--t-md); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.cf-editor-summary > small { color: var(--faint); font: var(--t-micro)/1.45 var(--mono); }
-.cf-editor-status { display: flex; align-items: center; gap: 6px; width: fit-content; color: var(--faint); font: 600 var(--t-micro)/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
-.cf-editor-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.cf-editor-status.enabled { color: var(--ok); }
-.cf-editor-status.enabled i { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
 .cf-editor-rail nav { display: grid; gap: var(--s1); }
 .cf-editor-rail nav button { display: grid; grid-template-columns: 28px minmax(0, 1fr) 14px; align-items: center; gap: 9px; width: 100%; padding: 10px; border: 1px solid transparent; border-radius: var(--r-md); color: var(--muted); background: transparent; text-align: left; }
 .cf-editor-rail nav button:hover { color: var(--text); background: var(--raised); }
@@ -2559,7 +2561,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .cf-editor-modal { width: min(100% - 16px, 720px); max-height: 94vh; }
   .cf-editor-shell { grid-template-columns: 1fr; height: calc(94vh - 154px); min-height: 0; }
   .cf-editor-rail { gap: var(--s2); padding: var(--s3); border-right: 0; border-bottom: 1px solid var(--line); }
-  .cf-editor-summary { display: none; }
   .cf-editor-rail nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cf-editor-rail nav button { grid-template-columns: 24px minmax(0, 1fr); padding: 8px; }
   .cf-editor-rail nav button > svg, .cf-editor-rail nav button small { display: none; }
@@ -2617,14 +2618,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .qp-editor-modal { width: min(1140px, calc(100% - 32px)); max-height: 88vh; }
 .qp-editor-modal .modal-body { min-height: 0; overflow: hidden; }
 .qp-editor-shell { height: min(700px, calc(88vh - 154px)); min-height: 500px; }
-.qp-editor-rail-note { display: flex; align-items: flex-start; gap: var(--s2); padding: var(--s2); margin-top: auto; color: var(--faint); font-size: var(--t-micro); line-height: 1.45; }
-.qp-editor-rail-note svg { flex: none; color: var(--accent-text); }
 .qp-details-panel { gap: var(--s5); }
 .qp-details-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .8fr); gap: var(--s4); max-width: 760px; }
-.qp-warning-note { display: flex; align-items: flex-start; gap: var(--s3); max-width: 760px; padding: var(--s3); border: 1px solid var(--warn-line); border-radius: var(--r-lg); color: var(--warn); background: var(--warn-soft); }
-.qp-warning-note > div { display: flex; flex-direction: column; gap: 3px; }
-.qp-warning-note strong { color: var(--text); font-size: var(--t-xs); font-weight: 600; }
-.qp-warning-note span { color: var(--muted); font-size: var(--t-xs); line-height: 1.45; }
 .qp-qualities-panel { gap: var(--s3); padding-top: 20px; }
 .qp-quality-toolbar { display: flex; max-width: 760px; align-items: center; justify-content: space-between; gap: var(--s3); }
 .qp-quality-toolbar > span { color: var(--muted); font-size: var(--t-xs); }
@@ -2680,7 +2675,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 @media (max-width: 860px) {
   .qp-editor-modal { width: min(100% - 16px, 720px); max-height: 94vh; }
   .qp-editor-shell { height: calc(94vh - 154px); min-height: 0; }
-  .qp-editor-rail-note { display: none; }
   .qp-details-fields { grid-template-columns: 1fr; }
 }
 
@@ -2881,7 +2875,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-card-copy:hover { color: var(--accent-text); background: var(--accent-soft); }
 /* Reads as a sibling of the On/Off badge beside it, rather than as a second,
    differently shaped control. */
-.cf-card-duplicate { display: inline-flex; align-items: center; gap: var(--s1); color: var(--faint); cursor: pointer; }
+.cf-card-duplicate { display: inline-flex; align-items: center; justify-content: center; width: 20px; padding: 0; color: var(--faint); cursor: pointer; }
 .cf-card-duplicate:hover { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
 
 /* Manual movie download */

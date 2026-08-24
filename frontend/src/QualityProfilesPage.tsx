@@ -294,17 +294,11 @@ export default function QualityProfilesPage() {
     >
       <div className="cf-editor-shell qp-editor-shell">
         <aside className="cf-editor-rail">
-          <div className="cf-editor-summary">
-            <span className={`cf-editor-status ${selectedFormatCount ? 'enabled' : ''}`}><i />{selectedFormatCount ? 'Scoring enabled' : 'Warning only'}</span>
-            <strong>{name || 'Untitled profile'}</strong>
-            <small>{qualityIds.length} qualit{qualityIds.length === 1 ? 'y' : 'ies'} · {selectedFormatCount} scored format{selectedFormatCount === 1 ? '' : 's'}</small>
-          </div>
           <nav aria-label="Quality Profile editor sections">
             <button className={editorView === 'details' ? 'active' : ''} onClick={() => setEditorView('details')}><span>1</span><div><strong>Details</strong><small>Name and warning floor</small></div><Icon name="chevron" size={14} /></button>
             <button className={editorView === 'qualities' ? 'active' : ''} onClick={() => setEditorView('qualities')}><span>2</span><div><strong>Qualities</strong><small>{qualityIds.length} enabled</small></div><Icon name="chevron" size={14} /></button>
             <button className={editorView === 'formats' ? 'active' : ''} onClick={() => setEditorView('formats')}><span>3</span><div><strong>Format scores</strong><small>{selectedFormatCount} selected</small></div><Icon name="chevron" size={14} /></button>
           </nav>
-          <div className="qp-editor-rail-note"><Icon name="activity" size={15} /><span>Scores only rank results. Nothing is hidden or blocked.</span></div>
         </aside>
 
         <div className="cf-editor-content">
@@ -314,7 +308,7 @@ export default function QualityProfilesPage() {
               <Field label="Profile name" help="Shown when assigning this profile to a movie or show.">
                 <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Remux first" autoFocus={creating} />
               </Field>
-              <Field label="Minimum quality warning" help="Lower qualities remain visible and downloadable; they are only marked with a warning.">
+              <Field label="Minimum quality warning" help="Qualities lower than this are marked with a warning.">
                 <Select value={minimumId} onChange={(event) => setMinimumId(event.target.value)}>
                   <option value="">No minimum warning</option>
                   {qualityIds.map((qualityId) => {
@@ -324,7 +318,6 @@ export default function QualityProfilesPage() {
                 </Select>
               </Field>
             </div>
-            <div className="qp-warning-note"><Icon name="alert" size={16} /><div><strong>This profile never blocks a release</strong><span>The minimum is informational, while scores change result ordering only.</span></div></div>
             <div className="cf-editor-next"><Button variant="primary" onClick={() => setEditorView('qualities')} disabled={!name.trim()}>Continue to qualities</Button></div>
           </section>}
 
@@ -411,12 +404,12 @@ function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: Qu
       <strong>{profile.name}</strong>
       <span className="cf-card-badges">
         <Badge tone={profile.minimumQuality ? 'blue' : 'neutral'}>{profile.minimumQuality?.name ?? 'No minimum'}</Badge>
-        <Tooltip asChild content="Save a copy of this profile"><button
+        <Tooltip asChild content="Create a copy of this Quality Profile"><button
           type="button"
           className="badge cf-card-duplicate"
-          aria-label={`Duplicate ${profile.name}`}
+          aria-label={`Create a copy of ${profile.name}`}
           onClick={(event) => { event.stopPropagation(); onDuplicate() }}
-        ><Icon name="copy" size={13} />Duplicate</button></Tooltip>
+        ><Icon name="copy" size={13} /></button></Tooltip>
       </span>
     </div>
     <div className="cf-card-conditions">
