@@ -109,9 +109,17 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     if (event.key === 'Enter' && results[active]) { event.preventDefault(); void open(results[active]) }
   }
 
+  /** Fills the empty panel, where there is room to explain what this searches. */
   const hint = useMemo(() => {
     if (loading) return 'Searching TMDB…'
     if (!query.trim()) return 'Search every title on TMDB. Anything already in your library is marked Present.'
+    return 'No matches.'
+  }, [loading, query])
+
+  /** The footer states the count and nothing else. */
+  const count = useMemo(() => {
+    if (!query.trim()) return ''
+    if (loading) return 'Searching…'
     if (!results.length) return 'No matches.'
     return `${results.length} result${results.length === 1 ? '' : 's'}`
   }, [loading, query, results.length])
@@ -186,7 +194,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="global-search-foot">
-        <span>{hint}</span>
+        <span>{count}</span>
         <span className="global-search-keys"><kbd>↑</kbd><kbd>↓</kbd> navigate <kbd>enter</kbd> select <kbd>esc</kbd> close</span>
         <div className="global-search-toggle">
           <span>Collapse type</span>
@@ -311,7 +319,7 @@ export function GlobalSearchButton({ onOpen }: { onOpen: () => void }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onOpen])
 
-  return <Tooltip asChild content="Search (Ctrl+K, or tap Shift twice)"><button className="brand-search" onClick={onOpen} aria-label="Search movies and shows">
+  return <Tooltip asChild content="Search (Ctrl+K, or double-tap Shift)"><button className="brand-search" onClick={onOpen} aria-label="Search movies and shows">
     <Icon name="search" size={16} />
   </button></Tooltip>
 }
