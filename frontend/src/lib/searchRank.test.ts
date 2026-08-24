@@ -32,20 +32,27 @@ describe('titleScore', () => {
 })
 
 describe('reachScore', () => {
-  it('rises with popularity but compresses the long tail', () => {
-    const small = reachScore(5, 100)
-    const big = reachScore(500, 100)
+  it('rises with the rating count but compresses the long tail', () => {
+    const small = reachScore(1_000)
+    const big = reachScore(1_000_000)
     expect(big).toBeGreaterThan(small)
-    // 100x the popularity must not be 100x the score.
-    expect(big).toBeLessThan(small * 4)
+    // A thousand times the ratings must not be a thousand times the score.
+    expect(big).toBeLessThan(small * 3)
   })
 
-  it('holds back a popularity figure backed by almost no votes', () => {
-    expect(reachScore(100, 1)).toBeLessThan(reachScore(100, 500))
+  it('reaches the top of the scale for a title everyone has rated', () => {
+    expect(reachScore(1_000_000)).toBeCloseTo(1, 1)
+    expect(reachScore(10_000_000)).toBe(1)
   })
 
-  it('is zero for a result with no popularity at all', () => {
-    expect(reachScore(undefined, undefined)).toBe(0)
+  it('still scores a well-known title well above an obscure one', () => {
+    expect(reachScore(10_000)).toBeGreaterThan(0.5)
+    expect(reachScore(200)).toBeLessThan(reachScore(10_000))
+  })
+
+  it('is zero when IMDb reports no ratings', () => {
+    expect(reachScore(undefined)).toBe(0)
+    expect(reachScore(0)).toBe(0)
   })
 })
 
@@ -59,25 +66,25 @@ describe('rankResults', () => {
     expect(titles(rankResults(list, 'the thing'))).toEqual(['The Thing', 'The Thing About Pam'])
   })
 
-  it('separates equal titles by popularity', () => {
+  it('separates equal titles by how many people rated them', () => {
     const list = [
-      item({ title: 'The Thing', index: 0, popularity: 1, voteCount: 8 }),
-      item({ title: 'The Thing', index: 3, popularity: 90, voteCount: 900 }),
+      item({ title: 'The Thing', index: 0, imdbVotes: 400 }),
+      item({ title: 'The Thing', index: 3, imdbVotes: 420_000 }),
     ]
-    expect(rankResults(list, 'the thing')[0].popularity).toBe(90)
+    expect(rankResults(list, 'the thing')[0].imdbVotes).toBe(420_000)
   })
 
-  it('never lets popularity lift a weak match over a strong one', () => {
+  it('never lets rating count lift a weak match over a strong one', () => {
     const list = [
-      item({ title: 'Thingamajig', index: 0, popularity: 9999, voteCount: 9999 }),
-      item({ title: 'The Thing', index: 9, popularity: 0, voteCount: 0 }),
+      item({ title: 'Thingamajig', index: 0, imdbVotes: 5_000_000 }),
+      item({ title: 'The Thing', index: 9, imdbVotes: 0 }),
     ]
     expect(titles(rankResults(list, 'the thing'))[0]).toBe('The Thing')
   })
 
   it('pins library items above everything', () => {
     const list = [
-      item({ title: 'The Thing', index: 0, popularity: 500, voteCount: 900 }),
+      item({ title: 'The Thing', index: 0, imdbVotes: 500_000 }),
       item({ title: 'Some Unrelated Film', present: true, index: 7 }),
     ]
     expect(titles(rankResults(list, 'the thing'))[0]).toBe('Some Unrelated Film')
@@ -111,7 +118,41 @@ describe('rankResults', () => {
 describe('rankScore', () => {
   it('is dominated by the title match', () => {
     const strong = rankScore(item({ title: 'The Thing', index: 20 }), 'the thing')
-    const weak = rankScore(item({ title: 'Thing Time', index: 0, popularity: 999, voteCount: 999 }), 'the thing')
+    const weak = rankScore(item({ title: 'Thing Time', index: 0, imdbVotes: 2_000_000 }), 'the thing')
     expect(strong).toBeGreaterThan(weak)
+  })
+})
+
+describe('the TMDB fallback', () => {
+  it('uses the TMDB rating count when IMDb has nothing', () => {
+    expect(reachScore(undefined, 5_000)).toBeGreaterThan(0)
+  })
+
+  it('prefers IMDb when both are present', () => {
+    // Same call, two sources: the IMDb figure must decide it.
+    const imdbLed = reachScore(1_000_000, 1)
+    const tmdbOnly = reachScore(undefined, 1)
+    expect(imdbLed).toBeGreaterThan(tmdbOnly)
+  })
+
+  it('puts the two scales on comparable footing', () => {
+    // A title with 20k TMDB votes is well known; it should not be buried under
+    // one with 20k IMDb votes just because the source differs.
+    const tmdbKnown = reachScore(undefined, 20_000)
+    const imdbKnown = reachScore(20_000)
+    expect(Math.abs(tmdbKnown - imdbKnown)).toBeLessThan(0.35)
+  })
+
+  it('scores zero only when neither source knows anything', () => {
+    expect(reachScore(undefined, undefined)).toBe(0)
+    expect(reachScore(0, 0)).toBe(0)
+  })
+
+  it('still cannot lift a weak title match', () => {
+    const list = [
+      item({ title: 'Thingamajig', index: 0, voteCount: 90_000 }),
+      item({ title: 'The Thing', index: 9 }),
+    ]
+    expect(titles(rankResults(list, 'the thing'))[0]).toBe('The Thing')
   })
 })

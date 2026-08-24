@@ -47,6 +47,7 @@ from app.schemas.shows import (
     ShowUpdate,
     TMDBShowLookupResponse,
 )
+from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.events import scope_predicate, show_event_scope
 from app.services.shows import add_show_from_tmdb, resolve_show_resource, set_media_file_episode_mappings, show_plex_state, show_problem_count
 from app.services.jobs import create_job, publish_job_status
@@ -328,6 +329,7 @@ async def lookup_shows(
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Show lookup failed: {exc}", status_code=503) from exc
     finally:
         await client.close()
+    ratings = await lookup_tmdb_ratings(db, [item.tmdb_id for item in matches[:25]], "show")
     return [
         TMDBShowLookupResponse(
             tmdb_id=item.tmdb_id,
@@ -340,6 +342,10 @@ async def lookup_shows(
             cast=list(credits.get(item.tmdb_id, (None, ()))[1]),
             popularity=item.popularity,
             vote_count=item.vote_count,
+            vote_average=item.vote_average,
+            imdb_id=ratings.get(item.tmdb_id).imdb_id if item.tmdb_id in ratings else None,
+            imdb_rating=ratings.get(item.tmdb_id).rating if item.tmdb_id in ratings else None,
+            imdb_votes=ratings.get(item.tmdb_id).votes if item.tmdb_id in ratings else None,
         )
         for item in matches[:25]
     ]

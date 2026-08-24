@@ -2096,7 +2096,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .global-search-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
 .global-search-copy strong {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--s2);
   min-width: 0;
   color: var(--text);
@@ -2106,6 +2106,18 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .global-search-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .global-search-year { flex: none; color: var(--muted); font: 500 var(--t-sm)/1.4 var(--mono); }
 .global-search-year.unknown { color: var(--faint); }
+.global-search-rating { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--text); font: 600 var(--t-sm)/1.4 var(--mono); vertical-align: middle; }
+.global-search-rating img { width: 25px; height: 13px; object-fit: contain; }
+.global-search-rating.from-tmdb { color: var(--muted); }
+.global-search-rating i {
+  padding: 1px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--faint);
+  font: 600 var(--t-micro)/1.3 var(--mono);
+  font-style: normal;
+  letter-spacing: .06em;
+}
 .global-search-copy small {
   display: -webkit-box;
   overflow: hidden;
@@ -2756,7 +2768,10 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .wizard-poster { display: grid; width: min(100%, 220px); aspect-ratio: 2/3; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-lg); color: var(--faint); background: var(--raised); }
 .wizard-poster img { width: 100%; height: 100%; object-fit: cover; }
 .wizard-movie-card strong { display: block; font-size: var(--t-lg); line-height: 1.3; }
+.wizard-movie-card strong.wizard-title-line { display: flex; align-items: center; gap: 8px; min-height: 24px; flex-wrap: wrap; line-height: 1.2; }
 .wizard-movie-card span { display: block; margin-top: 4px; color: var(--faint); font-size: var(--t-xs); }
+.wizard-movie-card .wizard-imdb-rating { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 20px; margin-top: 0; color: var(--text); font: 600 var(--t-xs)/1 var(--mono); white-space: nowrap; }
+.wizard-imdb-rating img { display: block; flex: none; width: 25px; height: 13px; object-fit: contain; }
 .wizard-movie-card p { display: -webkit-box; margin: 11px 0 0; overflow: hidden; color: var(--muted); font-size: var(--t-sm); line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
 .wizard-form { display: grid; align-content: start; gap: 16px; min-width: 0; }
 .wizard-form > label { display: grid; gap: 7px; }

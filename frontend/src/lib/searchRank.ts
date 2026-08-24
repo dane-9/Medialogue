@@ -6,7 +6,9 @@ export interface Rankable {
   present: boolean
   /** Position in the list its own type came back in, 0 first. */
   index: number
-  popularity?: number
+  /** How many people have rated it on IMDb. */
+  imdbVotes?: number
+  /** TMDB's rating count, the fallback where IMDb has nothing. */
   voteCount?: number
 }
 
@@ -56,17 +58,29 @@ export function titleScore(query: string, title: string): number {
 }
 
 /**
- * Popularity, compressed to 0..1.
+ * How widely known a title is, from its IMDb rating count, compressed to 0..1.
  *
- * TMDB popularity is unbounded and long-tailed — a blockbuster can be hundreds
- * of times a small title's value — so it is squashed rather than scaled, and a
- * result with few votes is held back because its popularity is noise.
+ * The count of ratings is a better signal than a rating or a popularity score:
+ * a score says how much people liked it, and TMDB popularity is a trending
+ * figure that moves week to week. How many people have bothered to rate it is
+ * a stable measure of how well known it is, which is what tells the famous
+ * title apart from the obscure one sharing its name.
+ *
+ * The scale is extreme — a blockbuster has millions of ratings, a small film a
+ * few hundred — so it is compressed logarithmically rather than scaled. A
+ * million ratings reaches 1; ten thousand still scores well over half.
  */
-export function reachScore(popularity?: number, voteCount?: number): number {
-  const raw = Math.max(popularity ?? 0, 0)
-  const compressed = Math.log10(raw + 1) / 3
-  const confidence = Math.min((voteCount ?? 0) / 50, 1)
-  return Math.min(compressed, 1) * (0.4 + 0.6 * confidence)
+export function reachScore(imdbVotes?: number, tmdbVotes?: number): number {
+  const imdb = Math.max(imdbVotes ?? 0, 0)
+  if (imdb) return Math.min(Math.log10(imdb + 1) / 6, 1)
+
+  // TMDB's counts run roughly two decades smaller than IMDb's — tens of
+  // thousands where IMDb has millions — so they get a shorter scale. Without
+  // it, a well-known title with no IMDb data would score as though nobody had
+  // heard of it, which is worse than no fallback at all.
+  const tmdb = Math.max(tmdbVotes ?? 0, 0)
+  if (!tmdb) return 0
+  return Math.min(Math.log10(tmdb + 1) / 4.2, 1)
 }
 
 /**
@@ -79,7 +93,7 @@ export function reachScore(popularity?: number, voteCount?: number): number {
  */
 export function rankScore(item: Rankable, query: string): number {
   const title = titleScore(query, item.title)
-  const reach = reachScore(item.popularity, item.voteCount)
+  const reach = reachScore(item.imdbVotes, item.voteCount)
   // Own-list position is a weak tiebreaker; it is only meaningful within a type.
   const position = 1 / (1 + item.index)
   const dated = item.year ? 0.02 : 0

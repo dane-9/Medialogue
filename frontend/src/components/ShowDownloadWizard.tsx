@@ -15,6 +15,7 @@ import { ReleaseResults, formatBytes } from './ReleaseResults'
 import { DownloadClientField } from './DownloadClientField'
 import { useHorizontalWheelScroll } from '../lib/useHorizontalWheelScroll'
 import { Badge, Button, Input, Select } from './ui'
+import imdbLogo from '../assets/imdb.svg'
 
 type ShowChoice = {
   tmdbId: number
@@ -22,6 +23,9 @@ type ShowChoice = {
   year?: number
   poster?: string
   overview?: string
+  imdbId?: string
+  imdbRating?: number
+  imdbVotes?: number
 }
 
 type SeasonSearchState = {
@@ -357,7 +361,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
       {step === 'setup' ? <div className="wizard-setup">
         <aside className="wizard-movie-card">
           <div className="wizard-poster">{posterUrl(preview?.posterRef || show.poster) ? <img src={posterUrl(preview?.posterRef || show.poster)} alt="" /> : <Icon name="tv" size={28} />}</div>
-          <div><strong>{preview?.title || show.title}</strong><span>{preview?.year || show.year || 'Year unknown'} · TMDB {show.tmdbId}</span>{(preview?.overview || show.overview) && <p>{preview?.overview || show.overview}</p>}</div>
+          <div><strong className="wizard-title-line">{preview?.title || show.title}{show.imdbRating != null && <span className="wizard-imdb-rating"><img src={imdbLogo} alt="IMDb" /> {show.imdbRating.toFixed(1)}{show.imdbVotes != null ? ` · ${show.imdbVotes.toLocaleString()} Ratings` : ''}</span>}</strong><span>{preview?.year || show.year || 'Year unknown'} · TMDB {show.tmdbId}</span>{(preview?.overview || show.overview) && <p>{preview?.overview || show.overview}</p>}</div>
         </aside>
         <section className="wizard-form">
           <div className="wizard-box"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading || Boolean(committedShowId)}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></label></div>

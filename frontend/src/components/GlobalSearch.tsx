@@ -9,6 +9,7 @@ import { Tooltip } from './Tooltip'
 import { Badge, Button } from './ui'
 import { MovieDownloadWizard } from './MovieDownloadWizard'
 import { ShowDownloadWizard } from './ShowDownloadWizard'
+import imdbLogo from '../assets/imdb.svg'
 
 type Kind = 'movie' | 'show'
 /** What the search covers. 'all' is the default: you rarely know or care
@@ -24,8 +25,11 @@ type Result = {
   key: string
   /** Position in the list its own type came back in, for tie-breaking. */
   index: number
-  popularity?: number
+  imdbId?: string
+  imdbRating?: number
+  imdbVotes?: number
   voteCount?: number
+  voteAverage?: number
   kind: Kind
   tmdbId?: number
   libraryId?: string
@@ -125,14 +129,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   }, [loading, query, results.length])
 
   if (downloadTarget?.tmdbId && downloadTarget.kind === 'movie') return <MovieDownloadWizard
-    movie={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview }}
+    movie={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId, imdbRating: downloadTarget.imdbRating, imdbVotes: downloadTarget.imdbVotes }}
     onBack={() => setDownloadTarget(null)}
     onClose={onClose}
     onComplete={(movieId) => { navigate(`/movies/${movieId}`); onClose() }}
   />
 
   if (downloadTarget?.tmdbId && downloadTarget.kind === 'show') return <ShowDownloadWizard
-    show={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview }}
+    show={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId, imdbRating: downloadTarget.imdbRating, imdbVotes: downloadTarget.imdbVotes }}
     onBack={() => setDownloadTarget(null)}
     onClose={onClose}
     onComplete={(showId) => { navigate(`/shows/${showId}`); onClose() }}
@@ -180,6 +184,15 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
               </span>
               <span className="global-search-title">{result.title}</span>
               <span className={`global-search-year ${result.year ? '' : 'unknown'}`}>{result.year || 'Year unknown'}</span>
+              {result.imdbRating != null
+                ? <Tooltip asChild content={result.imdbVotes ? `${result.imdbVotes.toLocaleString()} IMDb ratings` : 'IMDb rating'}>
+                    <span className="global-search-rating"><img src={imdbLogo} alt="IMDb" /> {result.imdbRating.toFixed(1)}</span>
+                  </Tooltip>
+                : result.voteAverage
+                  ? <Tooltip asChild content={result.voteCount ? `${result.voteCount.toLocaleString()} TMDB ratings — no IMDb rating available` : 'TMDB rating — no IMDb rating available'}>
+                      <span className="global-search-rating from-tmdb"><i>TMDB</i> {result.voteAverage.toFixed(1)}</span>
+                    </Tooltip>
+                  : null}
             </strong>
             {result.overview && <small>{result.overview}</small>}
           </span>
@@ -240,8 +253,11 @@ async function searchMovies(term: string): Promise<Result[]> {
     return {
       key: `tmdb-${match.tmdbId}`,
       index,
-      popularity: match.popularity,
+      imdbId: match.imdbId,
+      imdbRating: match.imdbRating,
+      imdbVotes: match.imdbVotes,
       voteCount: match.voteCount,
+      voteAverage: match.voteAverage,
       kind: 'movie',
       tmdbId: match.tmdbId,
       libraryId: owned?.id,
@@ -276,8 +292,11 @@ async function searchShows(term: string): Promise<Result[]> {
     return {
       key: `tmdb-${match.tmdbId}`,
       index,
-      popularity: match.popularity,
+      imdbId: match.imdbId,
+      imdbRating: match.imdbRating,
+      imdbVotes: match.imdbVotes,
       voteCount: match.voteCount,
+      voteAverage: match.voteAverage,
       kind: 'show',
       tmdbId: match.tmdbId,
       libraryId: owned?.id,

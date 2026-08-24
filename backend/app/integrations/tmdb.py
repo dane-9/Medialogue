@@ -18,11 +18,10 @@ class TMDBMovieMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
-    #: TMDB's own popularity metric and rating volume. Unlike search position
-    #: these are comparable between movies and shows, which is what lets one
-    #: ranked list mix the two.
+    #: TMDB's own figures, used only where IMDb has nothing to say.
     popularity: float | None = None
     vote_count: int | None = None
+    vote_average: float | None = None
     #: TMDB's ISO 639-1 original language, the fallback when a release
     #: name declares none.
     original_language: str | None = None
@@ -36,11 +35,10 @@ class TMDBShowMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
-    #: TMDB's own popularity metric and rating volume. Unlike search position
-    #: these are comparable between movies and shows, which is what lets one
-    #: ranked list mix the two.
+    #: TMDB's own figures, used only where IMDb has nothing to say.
     popularity: float | None = None
     vote_count: int | None = None
+    vote_average: float | None = None
     #: TMDB's ISO 639-1 original language, the fallback when a release
     #: name declares none.
     original_language: str | None = None
@@ -172,6 +170,7 @@ class TMDBClient:
                     original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
                     popularity=_number(item.get("popularity")),
                     vote_count=_int(item.get("vote_count")),
+                    vote_average=_number(item.get("vote_average")),
                 )
             )
         return matches
@@ -249,6 +248,7 @@ class TMDBClient:
                     original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
                     popularity=_number(item.get("popularity")),
                     vote_count=_int(item.get("vote_count")),
+                    vote_average=_number(item.get("vote_average")),
                 )
             )
         return matches

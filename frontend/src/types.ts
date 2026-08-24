@@ -279,8 +279,12 @@ export interface TMDBShowLookup {
   posterRef?: string
   director?: string
   cast?: string[]
+  imdbId?: string
+  imdbRating?: number
+  imdbVotes?: number
   popularity?: number
   voteCount?: number
+  voteAverage?: number
 }
 
 export interface Download {
@@ -702,8 +706,12 @@ export interface TMDBMovieLookup {
   posterRef?: string
   director?: string
   cast?: string[]
+  imdbId?: string
+  imdbRating?: number
+  imdbVotes?: number
   popularity?: number
   voteCount?: number
+  voteAverage?: number
 }
 
 export interface DuplicateFilePreview {

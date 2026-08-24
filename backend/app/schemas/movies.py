@@ -83,6 +83,10 @@ class TMDBMovieLookupResponse(BaseModel):
     poster_ref: str | None = None
     director: str | None = None
     cast: list[str] = Field(default_factory=list)
-    #: Comparable across movies and shows, so one ranked list can mix them.
+    imdb_id: str | None = None
+    imdb_rating: float | None = None
+    imdb_votes: int | None = None
+    #: TMDB's own figures, shown only where IMDb has nothing.
     popularity: float | None = None
     vote_count: int | None = None
+    vote_average: float | None = None

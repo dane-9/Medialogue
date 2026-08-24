@@ -41,6 +41,7 @@ from app.schemas.movies import (
 )
 
 from app.services.movies import add_movie_from_tmdb
+from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
 
@@ -192,6 +193,7 @@ async def lookup_movies(
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Movie lookup failed: {exc}", status_code=503) from exc
     finally:
         await client.close()
+    ratings = await lookup_tmdb_ratings(db, [item.tmdb_id for item in matches[:25]], "movie")
     return [
         TMDBMovieLookupResponse(
             tmdb_id=item.tmdb_id,
@@ -204,6 +206,10 @@ async def lookup_movies(
             cast=list(credits.get(item.tmdb_id, (None, ()))[1]),
             popularity=item.popularity,
             vote_count=item.vote_count,
+            vote_average=item.vote_average,
+            imdb_id=ratings.get(item.tmdb_id).imdb_id if item.tmdb_id in ratings else None,
+            imdb_rating=ratings.get(item.tmdb_id).rating if item.tmdb_id in ratings else None,
+            imdb_votes=ratings.get(item.tmdb_id).votes if item.tmdb_id in ratings else None,
         )
         for item in matches[:25]
     ]
