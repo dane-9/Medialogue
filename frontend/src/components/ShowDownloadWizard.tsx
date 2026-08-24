@@ -377,7 +377,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
           <label className="wizard-specials-toggle"><span><strong>Include year in folder name</strong></span><input type="checkbox" checked={includeYearInFolder} disabled={Boolean(committedShowId) || !(preview?.year || show.year)} onChange={(event) => changeIncludeYear(event.target.checked)} /></label>
           <Tooltip
             asChild
-            delay={600}
+           
             content={<>
               <p>Off by default. When enabled, Specials (season 0) appears as its own season-pack search tab, and is searched and downloaded like any other season.</p>
               <p>This applies to this download only. Whether Specials count toward episode totals is a separate, library-wide setting.</p>
@@ -387,7 +387,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
           </Tooltip>
           <Tooltip
             asChild
-            delay={600}
+           
             content={<>
               <p>Every season you download goes into this folder, with a subfolder per season.</p>
             </>}

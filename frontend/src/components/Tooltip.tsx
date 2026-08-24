@@ -27,13 +27,23 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
  * invalid markup, a grid cell, a table cell, a flex item, so it is the right
  * default for anything but a plain inline trigger.
  */
-export function Tooltip({ content, children, className, focusable = false, asChild = false, delay = 0 }: {
+/**
+ * How long a cursor must rest before any tooltip opens.
+ *
+ * One value for the whole app: tooltips that appear while the cursor is merely
+ * passing over a control are noise, and a delay that varies per trigger reads
+ * as the interface being inconsistent rather than considerate.
+ */
+export const TOOLTIP_DELAY = 1000
+
+export function Tooltip({ content, children, className, focusable = false, asChild = false, delay = TOOLTIP_DELAY }: {
   content: ReactNode
   children: ReactNode
   className?: string
-  /** Milliseconds to hover before the tooltip opens. Use for explanations that
-   *  would be noise if they appeared on every passing cursor. Keyboard focus
-   *  ignores the delay, that is a deliberate request to read it. */
+  /** Milliseconds to hover before the tooltip opens. Defaults to
+   *  TOOLTIP_DELAY; pass a different value only when a trigger genuinely needs
+   *  one. Keyboard focus ignores the delay, that is a deliberate request to
+   *  read it. */
   delay?: number
   /** Only when the trigger is not already inside something focusable, a nested
    *  tab stop inside a button is worse than losing the keyboard hint. */

@@ -9,6 +9,7 @@ import { Field } from './components/settings'
 import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
 import { browserSafeId } from './lib/uiState'
+import { copyName } from './lib/copyName'
 import { useUrlState } from './lib/urlState'
 import type {
   CustomFormat,
@@ -217,16 +218,30 @@ export default function CustomFormatsPageView() {
     setEditorOpen(true)
   }
 
-  // Copying is offered both from the open editor and from a card, so the
-  // subject is passed in rather than assumed to be whatever is being edited.
-  const duplicateFormat = (source: CustomFormat = draft) => {
-    setSelectedId('')
-    setDraft(cloneFormat(source))
-    setEditorSectionId(editorSectionId || sections[0]?.id || '')
-    setTestResult(null)
-    setTestAllResult(null)
-    setMessage(`Copy of ${source.name} created. It is not saved yet.`)
-    setEditorOpen(true)
+  /**
+   * Duplicate a format outright, without opening the editor.
+   *
+   * Duplicating is a one-click action from a card, so it saves outright rather
+   * than opening an unsaved clone the operator then has to remember to commit.
+   */
+  const duplicateFormatNow = async (source: CustomFormat) => {
+    setError(''); setMessage('')
+    try {
+      const clone = { ...cloneFormat(source), name: copyName(source.name, formats.map((item) => item.name)) }
+      const saved = await api.createCustomFormat(clone)
+      // Land beside the format it was copied from rather than at the end of an
+      // unrelated section.
+      const section = sections.find((item) => item.formatIds.includes(source.id))
+      if (section) {
+        await api.saveCustomFormatLayout(sections.map((item) => item.id === section.id
+          ? { ...item, formatIds: item.formatIds.flatMap((id) => id === source.id ? [id, saved.id] : [id]) }
+          : item))
+      }
+      await loadFormats(saved.id)
+      setMessage(`${saved.name} created.`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not duplicate the Custom Format.')
+    }
   }
 
   const updateCondition = (id: string, patch: Partial<CustomFormatCondition>) => {
@@ -425,7 +440,7 @@ export default function CustomFormatsPageView() {
           if (filter.trim() && !sectionFormats.length) return null
           return <section className="cf-section" key={section.id}>
             <div className="cf-section-head"><div><h2>{section.name}</h2><span>{sectionFormats.length} format{sectionFormats.length === 1 ? '' : 's'}</span></div></div>
-            {sectionFormats.length ? <div className="cf-card-grid">{sectionFormats.map((format) => <FormatCard key={format.id} format={format} toggling={togglingIds.has(format.id)} onToggle={() => void toggleFormat(format)} onOpen={() => chooseFormat(format)} onCopy={() => duplicateFormat(format)} />)}</div> : <div className="cf-section-empty">No formats in this section.</div>}
+            {sectionFormats.length ? <div className="cf-card-grid">{sectionFormats.map((format) => <FormatCard key={format.id} format={format} toggling={togglingIds.has(format.id)} onToggle={() => void toggleFormat(format)} onOpen={() => chooseFormat(format)} onDuplicate={() => void duplicateFormatNow(format)} />)}</div> : <div className="cf-section-empty">No formats in this section.</div>}
           </section>
         })}</div>}
 
@@ -457,16 +472,14 @@ export default function CustomFormatsPageView() {
     {editorOpen && <Modal
       wide
       className="cf-editor-modal"
-      eyebrow={draft.id ? 'EDIT CUSTOM FORMAT' : 'NEW CUSTOM FORMAT'}
       title={draft.name || 'Untitled Custom Format'}
       onClose={closeEditor}
+      headerAction={<div className="cf-editor-footer-toggle">
+        <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => setDraft((current) => ({ ...current, enabled: !current.enabled }))}><span /></button>
+        <strong>{draft.enabled ? 'Enabled' : 'Disabled'}</strong>
+      </div>}
       footer={<>
-        <div className="cf-editor-footer-toggle">
-          <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => setDraft((current) => ({ ...current, enabled: !current.enabled }))}><span /></button>
-          <strong>{draft.enabled ? 'Enabled' : 'Disabled'}</strong>
-        </div>
         {draft.id && !draft.builtin ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
-        {draft.id ? <Button variant="ghost" icon="copy" onClick={() => duplicateFormat()} disabled={saving}>Create a Copy</Button> : null}
         {draft.id ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
         <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
@@ -546,19 +559,19 @@ export default function CustomFormatsPageView() {
 }
 
 /** One format at a glance: what it is, what it matches, and where it is used. */
-function FormatCard({ format, toggling, onToggle, onOpen, onCopy }: { format: CustomFormat; toggling: boolean; onToggle: () => void; onOpen: () => void; onCopy: () => void }) {
+function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { format: CustomFormat; toggling: boolean; onToggle: () => void; onOpen: () => void; onDuplicate: () => void }) {
   return <article className={`cf-card ${format.enabled ? '' : 'cf-card-off'}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen() } }}>
     <div className="cf-card-head">
       <strong>{format.name}</strong>
       <span className="cf-card-badges">
         {format.builtin && <Badge tone="blue">Built-in</Badge>}
-        <Tooltip asChild content="Create a copy"><button
-          type="button"
-          className="icon-button cf-card-copy"
-          aria-label={`Create a copy of ${format.name}`}
-          onClick={(event) => { event.stopPropagation(); onCopy() }}
-        ><Icon name="copy" size={15} /></button></Tooltip>
         <button type="button" className={`badge cf-card-toggle ${format.enabled ? 'badge-green' : ''}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}><span className="badge-dot" />{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>
+        <Tooltip asChild content="Save a copy of this format"><button
+          type="button"
+          className="badge cf-card-duplicate"
+          aria-label={`Duplicate ${format.name}`}
+          onClick={(event) => { event.stopPropagation(); onDuplicate() }}
+        ><Icon name="copy" size={13} />Duplicate</button></Tooltip>
       </span>
     </div>
     <p className="cf-card-description">{format.description || 'No description provided.'}</p>

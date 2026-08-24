@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api/client'
+import { copyName } from './lib/copyName'
+import { fitChips } from './lib/chipBudget'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
 import { useConfirm } from './components/Confirm'
@@ -107,6 +109,28 @@ export default function QualityProfilesPage() {
     setEditorView('details'); setFormatFilter(''); setScoreView('all')
     setMessage(`Copy of ${source.name} created. It is not saved yet.`)
     setEditorOpen(true)
+  }
+
+  /**
+   * Duplicate a profile outright, without opening the editor.
+   *
+   * The card's button is a one-click action, so it saves. The editor's own copy
+   * button still opens an unsaved profile, which is the right behaviour there.
+   */
+  const duplicateProfileNow = async (source: QualityProfile) => {
+    setBusy(true); setMessage('')
+    try {
+      const created = await api.createQualityProfile({
+        name: copyName(source.name, profiles.map((item) => item.name)),
+        minimum_quality_definition_id: source.minimumQuality?.id ?? null,
+        quality_definition_ids: source.qualities.map((quality) => quality.id),
+        custom_format_scores: source.customFormatScores.map((item) => ({ custom_format_id: item.customFormatId, score: item.score })),
+      })
+      setProfiles((items) => [...items, created].sort((a, b) => a.name.localeCompare(b.name)))
+      setMessage(`${created.name} created.`)
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : 'Could not duplicate the Quality Profile.')
+    } finally { setBusy(false) }
   }
 
   const closeEditor = () => { setEditorOpen(false); setCreating(false); setSelectedId('') }
@@ -246,7 +270,7 @@ export default function QualityProfilesPage() {
     {!profiles.length
       ? <EmptyState icon="spark" title="No Quality Profiles yet" detail="Create one when you want minimum-quality warnings or Custom Format scoring on your searches." action={<Button variant="primary" icon="plus" onClick={beginNew}>Create the first one</Button>} />
       : <div className="cf-card-grid">
-          {profiles.map((profile) => <ProfileCard key={profile.id} profile={profile} formatById={formatById} onOpen={() => openProfile(profile)} onCopy={() => duplicateProfile(profile)} />)}
+          {profiles.map((profile) => <ProfileCard key={profile.id} profile={profile} formatById={formatById} onOpen={() => openProfile(profile)} onDuplicate={() => void duplicateProfileNow(profile)} />)}
           <button className="cf-card cf-card-add" onClick={beginNew}>
             <Icon name="plus" size={22} />
             <strong>New profile</strong>
@@ -371,10 +395,11 @@ export default function QualityProfilesPage() {
 }
 
 /** One profile at a glance: its floor, and what it actually rewards or avoids. */
-function ProfileCard({ profile, formatById, onOpen, onCopy }: { profile: QualityProfile; formatById: Map<string, CustomFormat>; onOpen: () => void; onCopy: () => void }) {
+function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: QualityProfile; formatById: Map<string, CustomFormat>; onOpen: () => void; onDuplicate: () => void }) {
   // Strongest opinions first, the scores that most change a release's ranking
   // say more about a profile than an alphabetical list would.
   const ranked = [...profile.customFormatScores].sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
+  const shown = fitChips(ranked.map((entry) => formatById.get(entry.customFormatId)?.name ?? 'Deleted format'))
   return <article
     className="cf-card"
     role="button"
@@ -386,25 +411,21 @@ function ProfileCard({ profile, formatById, onOpen, onCopy }: { profile: Quality
       <strong>{profile.name}</strong>
       <span className="cf-card-badges">
         <Badge tone={profile.minimumQuality ? 'blue' : 'neutral'}>{profile.minimumQuality?.name ?? 'No minimum'}</Badge>
-        <Tooltip asChild content="Create a copy"><button
+        <Tooltip asChild content="Save a copy of this profile"><button
           type="button"
-          className="icon-button cf-card-copy"
-          aria-label={`Create a copy of ${profile.name}`}
-          onClick={(event) => { event.stopPropagation(); onCopy() }}
-        ><Icon name="copy" size={15} /></button></Tooltip>
+          className="badge cf-card-duplicate"
+          aria-label={`Duplicate ${profile.name}`}
+          onClick={(event) => { event.stopPropagation(); onDuplicate() }}
+        ><Icon name="copy" size={13} />Duplicate</button></Tooltip>
       </span>
     </div>
     <div className="cf-card-conditions">
-      {ranked.slice(0, 5).map((entry) => <span className="cf-condition-chip" key={entry.customFormatId}>
+      {ranked.slice(0, shown).map((entry) => <span className="cf-condition-chip" key={entry.customFormatId}>
         {formatById.get(entry.customFormatId)?.name ?? 'Deleted format'}
         <code className={entry.score < 0 ? 'score-negative' : entry.score > 0 ? 'score-positive' : undefined}>{scoreLabel(entry.score)}</code>
       </span>)}
-      {ranked.length > 5 && <span className="cf-condition-chip cf-condition-more">+{ranked.length - 5} more</span>}
+      {ranked.length > shown && <span className="cf-condition-chip cf-condition-more">+{ranked.length - shown} more</span>}
       {!ranked.length && <span className="cf-condition-chip cf-condition-more">No scored formats</span>}
-    </div>
-    <div className="cf-card-foot">
-      <span>{profile.assignedTitles} title{profile.assignedTitles === 1 ? '' : 's'}</span>
-      <span>{profile.customFormatScores.length} scored format{profile.customFormatScores.length === 1 ? '' : 's'}</span>
     </div>
   </article>
 }
