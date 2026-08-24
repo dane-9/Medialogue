@@ -115,7 +115,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
         setClients(showClients)
         setProfileId((current) => current || profileRows[0]?.id || '')
         setClientId((current) => current || showClients[0]?.id || '')
-        setError(profileRows.length ? (showClients.length ? '' : 'Configure an enabled Shows qBittorrent client before acquiring a show.') : 'Create a Quality Profile before acquiring a show.')
+        setError(profileRows.length ? (showClients.length ? '' : 'Configure an enabled Shows qBittorrent client before downloading a show.') : 'Create a Quality Profile before downloading a show.')
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load download settings.'))
       .finally(() => { if (alive) setSetupLoading(false) })
@@ -264,7 +264,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
     setIncludeYearInFolder(checked)
     setError('')
     void api.saveShowDownloadPreferences(checked).catch((reason) => {
-      setError(reason instanceof Error ? reason.message : 'Could not remember the Show folder year preference.')
+      setError(reason instanceof Error ? reason.message : 'Could not save the folder-year preference.')
     })
   }
 
@@ -281,7 +281,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
         failed += 1
         setSeasonStates((states) => ({
           ...states,
-          [season.seasonNumber]: { ...(states[season.seasonNumber] ?? {}), submissionError: 'The selected release is no longer available or allowed by this Quality Profile.' },
+          [season.seasonNumber]: { ...(states[season.seasonNumber] ?? {}), submissionError: 'This release is no longer available, or this profile no longer allows it.' },
         }))
         continue
       }
@@ -385,7 +385,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
             asChild
             delay={600}
             content={<>
-              <p>Every season you download in this download goes into this one folder, named per season inside it.</p>
+              <p>Every season you download goes into this folder, with a subfolder per season.</p>
             </>}
           >
             <div className="wizard-destination wizard-summary"><span>Final destination</span><strong>{finalDestination || 'Unavailable'}</strong></div>
@@ -436,7 +436,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
         {step === 'search' && activeState?.job
           ? <span className="wizard-foot-count">{activeState.job.resultTotal} Torrent{activeState.job.resultTotal === 1 ? '' : 's'} found</span>
           : null}
-        <span>{step === 'setup' ? 'Nothing is added to Medialogue until at least one selected season pack is accepted by qBittorrent.' : committedShowId ? 'The Show now exists in Medialogue because at least one season download has started.' : null}</span>
+        <span>{step === 'setup' ? 'Nothing is added to your library until qBittorrent accepts a season pack.' : committedShowId ? 'This show is in your library — a season download has started.' : null}</span>
         <div>{step === 'setup' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={!canContinue} onClick={continueToSeasons}>Continue</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button>{committedShowId && pendingSeasons.length === 0 ? <Button variant="primary" type="button" onClick={() => onComplete(committedShowId)}>Open Show</Button> : <Button variant="primary" type="button" disabled={!pendingSeasons.length || submitting} onClick={() => void startDownloads()}>{submitting ? 'Starting downloads…' : `${committedShowId ? 'Retry' : 'Start'} Downloads (${pendingSeasons.length})`}</Button>}</>}</div>
       </footer>
     </div>

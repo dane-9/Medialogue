@@ -57,7 +57,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
         setClients(movieClients)
         setProfileId((current) => current || profileRows[0]?.id || '')
         setClientId((current) => current || movieClients[0]?.id || '')
-        setError(profileRows.length ? (movieClients.length ? '' : 'Configure an enabled Movies qBittorrent client before acquiring a movie.') : 'Create a Movie Quality Profile before acquiring a movie.')
+        setError(profileRows.length ? (movieClients.length ? '' : 'Configure an enabled Movies qBittorrent client before downloading a movie.') : 'Create a Movie Quality Profile before downloading a movie.')
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load download settings.'))
       .finally(() => { if (alive) setSetupLoading(false) })
@@ -140,7 +140,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
     setStarting(true); setError('')
     try {
       const response = await api.downloadSearchResult(selectedResult.id, { download_client_id: clientId, category })
-      if (!response.movie_id) throw new Error('qBittorrent accepted the release, but Medialogue did not return the new Movie id.')
+      if (!response.movie_id) throw new Error('qBittorrent accepted the release, but no movie was created.')
       onComplete(response.movie_id)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not start this download.')
@@ -215,7 +215,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
           ? <span className="wizard-foot-count">{job.resultTotal} Torrent{job.resultTotal === 1 ? '' : 's'} found</span>
           : null}
         <span>{step === 'setup'
-          ? 'Nothing is added to Medialogue until Start Download succeeds.'
+          ? 'Nothing is added to your library until the download starts.'
           : selectedResult
             ? <>Downloading to <strong>{selectedClient?.name} / {category}</strong> · {formatBytes(selectedResult.size)}</>
             : job?.status === 'completed' ? null : 'Results appear as each indexer finishes.'}</span>

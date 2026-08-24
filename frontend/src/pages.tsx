@@ -2516,7 +2516,7 @@ function IndexerSettings() {
     </>}>
       <div className="qbit-editor provider-modal-editor">
         <SectionHead icon="search" title={selected ? selected.name : 'Add indexer'}
-          description="A single Torznab endpoint. Medialogue does not import Prowlarr configuration automatically — each endpoint is added here by hand."
+          description="A single Torznab endpoint. Prowlarr configuration is not imported automatically — add each endpoint here by hand."
           status={loading ? 'Loading' : selected ? selected.health : 'New indexer'} statusTone={selected ? healthTone : 'neutral'}
           detail={indexerDetail} detailTone={selected?.health === 'healthy' ? 'ok' : selected?.lastError ? 'err' : undefined} />
 
