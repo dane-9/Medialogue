@@ -11,6 +11,7 @@ import { Button, Progress } from './ui'
 const primary = [
   { to: '/movies', label: 'Movies', icon: 'film' as const },
   { to: '/shows', label: 'Shows', icon: 'tv' as const },
+  { to: '/review', label: 'Review', icon: 'check' as const },
   { to: '/downloads', label: 'Downloads', icon: 'download' as const },
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
 ]
@@ -49,6 +50,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [problemCount, setProblemCount] = useState(0)
+  const [reviewCount, setReviewCount] = useState(0)
   const [pageTopbarHost, setPageTopbarHost] = useState<HTMLDivElement | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
@@ -56,14 +58,16 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   useEffect(() => {
     let alive = true
     const refreshProblemCount = () => api.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
+    const refreshReviewCount = () => api.discoveryCount().then((count) => { if (alive) setReviewCount(count) }).catch(() => undefined)
     const refreshHealth = () => api.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
     const refreshJobs = () => api.jobs().then((payload) => { if (alive) setJobs(payload) }).catch(() => undefined)
     void refreshHealth()
     void refreshJobs()
     void refreshProblemCount()
+    void refreshReviewCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const jobListener = () => void refreshJobs()
+    const jobListener = () => { void refreshJobs(); void refreshReviewCount() }
     // Problem SSE events are invalidation signals only. PostgreSQL remains the
     // authoritative count, so reconnects, rollbacks and duplicate-resolution
     // events can never leave the badge drifting from the queue.
@@ -81,19 +85,23 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     // REST remains the recovery source when SSE reconnects or a browser was
     // asleep. These slow polls are a fallback, not the primary update path.
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
+    window.addEventListener('medialogue-review-changed', refreshReviewCount)
+    const reviewTimer = window.setInterval(refreshReviewCount, 60000)
     const jobTimer = window.setInterval(refreshJobs, 30000)
     const healthTimer = window.setInterval(refreshHealth, 60000)
     return () => {
       alive = false
       stream.close()
       window.clearInterval(problemTimer)
+      window.clearInterval(reviewTimer)
+      window.removeEventListener('medialogue-review-changed', refreshReviewCount)
       window.clearInterval(jobTimer)
       window.clearInterval(healthTimer)
     }
   }, [])
 
   const activeJobs = jobs.filter((job) => job.state === 'running' || job.state === 'queued').length
-  const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
+  const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/review') ? 'Review' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
 
   return <PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
     <aside className="sidebar">
@@ -105,7 +113,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <GlobalSearchButton onOpen={() => setSearchOpen(true)} />
       </div>
       <div className="sidebar-scroll">
-        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item)} />
+        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item.to === '/review' ? { ...item, count: reviewCount } : item)} />
         <NavSection items={tools} />
         <NavSection items={system} />
       </div>

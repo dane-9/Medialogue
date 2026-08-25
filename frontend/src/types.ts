@@ -201,6 +201,7 @@ export interface StorageRoot {
   resolved_root_path: string
   media_type: 'movies' | 'shows'
   access_mode: 'read_only' | 'read_write'
+  discovery_mode: 'automatic' | 'review'
   enabled: boolean
   missing_grace_checks: number
   last_health?: string
@@ -742,6 +743,28 @@ export interface TMDBMovieLookup {
   popularity?: number
   voteCount?: number
   voteAverage?: number
+}
+
+
+export interface MediaDiscovery {
+  id: string
+  directoryId: string
+  path: string
+  rootName: string
+  exists: boolean
+  mediaType: 'movies' | 'shows'
+  reviewState: 'pending' | 'approved' | 'ignored'
+  parsedTitle?: string
+  parsedYear?: number
+  confidence?: number
+  quality?: string
+  edition?: string
+  hdr: string[]
+  suggested?: TMDBMovieLookup | TMDBShowLookup
+  selected?: TMDBMovieLookup | TMDBShowLookup
+  candidates: Array<TMDBMovieLookup | TMDBShowLookup>
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface DuplicateFilePreview {

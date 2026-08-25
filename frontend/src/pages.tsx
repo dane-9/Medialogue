@@ -22,7 +22,7 @@ import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, duplicateLoserIds, normalizeMediaView, problemMatchesFilter, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
 
 
 
@@ -972,7 +972,7 @@ function LegacyProblemsPage() {
   const [deleteMedia, setDeleteMedia] = useState(false)
   const [removeTorrents, setRemoveTorrents] = useState(false)
   const [tmdbQuery, setTmdbQuery] = useState('')
-  const [tmdbMatches, setTmdbMatches] = useState<TMDBMovieLookup[]>([])
+  const [tmdbMatches, setTmdbMatches] = useState<TMDBCandidate[]>([])
   const [tmdbShowMatches, setTmdbShowMatches] = useState<TMDBShowLookup[]>([])
   const [selectedTmdbMatch, setSelectedTmdbMatch] = useState<TMDBMovieLookup | undefined>()
   const [selectedTmdbShowMatch, setSelectedTmdbShowMatch] = useState<TMDBShowLookup | undefined>()
@@ -1319,6 +1319,43 @@ function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; dupl
   return <section className="problems-key-details">{rows.map(([label, value, note], index) => <div className="problems-detail-row" key={`${label}-${index}`}><span>{label}</span><div><strong>{value}</strong>{note && <small>{note}</small>}</div></div>)}</section>
 }
 
+function IdentityPicker({
+  kind,
+  matches,
+  selected,
+  query,
+  loading,
+  onQuery,
+  onSearch,
+  onSelect,
+  onApply,
+  onCancel,
+  submitLabel,
+}: {
+  kind: 'movie' | 'show'
+  matches: TMDBCandidate[]
+  selected?: TMDBCandidate
+  query: string
+  loading: boolean
+  onQuery: (value: string) => void
+  onSearch: () => void
+  onSelect: (match: TMDBCandidate) => void
+  onApply: () => void
+  onCancel?: () => void
+  submitLabel: string
+}) {
+  return <section className="problems-identity-resolver">
+    <div className="problems-resolver-head"><div><div className="eyebrow">POSSIBLE MATCHES</div><p>Choose the exact {kind}. Media will not be renamed or moved.</p></div>{onCancel && <Button variant="ghost" onClick={onCancel}>Cancel</Button>}</div>
+    {matches.length ? <div className="problems-identity-grid">{matches.slice(0, 6).map((match) => <button type="button" className={`problems-identity-card ${selected?.tmdbId === match.tmdbId ? 'selected' : ''}`} key={match.tmdbId} onClick={() => onSelect(match)} aria-pressed={selected?.tmdbId === match.tmdbId}>
+      <span className="problems-identity-poster">{match.posterRef ? <img src={tmdbPosterUrl(match.posterRef)} alt={`${match.title} poster`} loading="lazy" referrerPolicy="no-referrer" /> : <Icon name={kind === 'show' ? 'tv' : 'film'} size={26} />}</span>
+      <span className="problems-identity-copy"><span className="problems-identity-title"><strong>{match.title}</strong>{match.year && <span>{match.year}</span>}</span>{match.overview && <span className="problems-identity-overview">{match.overview}</span>}<span className="problems-identity-credits"><span><strong>{kind === 'show' ? 'Creator' : 'Director'}:</strong> {match.director ?? 'Not listed'}</span><span><strong>Cast:</strong> {match.cast?.length ? match.cast.join(' · ') : 'Not listed'}</span></span><span className="problems-identity-meta">TMDB {match.tmdbId}</span></span>
+      <span className="problems-identity-radio" aria-hidden="true" />
+    </button>)}</div> : <div className="problems-candidate-empty">{loading ? 'Loading TMDB suggestions…' : 'Search TMDB to load possible matches.'}</div>}
+    <div className="problems-tmdb-search"><div><strong>Not one of these?</strong><span>Search TMDB directly</span></div><Input value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} placeholder="Title or title + year" /><Button variant="ghost" icon="search" onClick={onSearch} disabled={loading || !query.trim()}>{loading ? 'Searching…' : 'Search TMDB'}</Button></div>
+    <div className="problems-identity-submit"><Button variant="primary" onClick={onApply} disabled={loading || !selected}>{submitLabel}</Button></div>
+  </section>
+}
+
 function ProblemsIdentityPicker({
   problem,
   matches,
@@ -1342,17 +1379,7 @@ function ProblemsIdentityPicker({
   onApply: () => void
   onCancel?: () => void
 }) {
-  return <section className="problems-identity-resolver">
-    <div className="problems-resolver-head"><div><div className="eyebrow">POSSIBLE MATCHES</div><p>Choose the identity Medialogue should use. Media will not be renamed or moved.</p></div>{onCancel && <Button variant="ghost" onClick={onCancel}>Cancel</Button>}</div>
-    {matches.length ? <div className="problems-identity-grid">{matches.slice(0, 6).map((match) => <button type="button" className={`problems-identity-card ${selected?.tmdbId === match.tmdbId ? 'selected' : ''}`} key={match.tmdbId} onClick={() => onSelect(match)} aria-pressed={selected?.tmdbId === match.tmdbId}>
-      <span className="problems-identity-poster">{match.posterRef ? <img src={tmdbPosterUrl(match.posterRef)} alt={`${match.title} poster`} loading="lazy" referrerPolicy="no-referrer" /> : <Icon name={problem.entityType === 'show' ? 'tv' : 'film'} size={26} />}</span>
-      <span className="problems-identity-copy"><span className="problems-identity-title"><strong>{match.title}</strong>{match.year && <span>{match.year}</span>}</span>{match.overview && <span className="problems-identity-overview">{match.overview}</span>}<span className="problems-identity-credits"><span><strong>{problem.entityType === 'show' ? 'Creator' : 'Director'}:</strong> {match.director ?? 'Not listed'}</span><span><strong>Cast:</strong> {match.cast?.length ? match.cast.join(' · ') : 'Not listed'}</span></span><span className="problems-identity-meta">TMDB {match.tmdbId}</span></span>
-      <span className="problems-identity-radio" aria-hidden="true" />
-    </button>)}</div> : <div className="problems-candidate-empty">{loading ? 'Loading TMDB suggestions…' : 'Search TMDB to load possible matches.'}</div>}
-    <div className="problems-tmdb-search"><div><strong>Not one of these?</strong><span>Search TMDB directly</span></div><Input value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} placeholder="Title or title + year" /><Button variant="ghost" icon="search" onClick={onSearch} disabled={loading || !query.trim()}>{loading ? 'Searching…' : 'Search TMDB'}</Button></div>
-    <div className="problems-identity-submit"><Button variant="primary" onClick={onApply} disabled={loading || !selected}>Use selected match</Button></div>
-  const confirm = useConfirm()
-  </section>
+  return <IdentityPicker kind={problem.entityType === 'show' ? 'show' : 'movie'} matches={matches} selected={selected} query={query} loading={loading} onQuery={onQuery} onSearch={onSearch} onSelect={onSelect} onApply={onApply} onCancel={onCancel} submitLabel="Use selected match" />
 }
 
 export function ProblemsPage() {
@@ -1550,6 +1577,114 @@ export function ProblemsPage() {
       </div></> : <EmptyState icon="alert" title="Select a Problem" detail="Choose an item to see the details and what to do next." />}</article>
     </section>
     {pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1 || loading} onClick={() => void load(page - 1)}>Previous</Button><span>Page {page} of {pages}</span><Button variant="ghost" disabled={page >= pages || loading} onClick={() => void load(page + 1)}>Next</Button></div>}
+  </Page>
+}
+
+
+function reviewFolderName(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
+
+export function ReviewPage() {
+  const [items, setItems] = useState<MediaDiscovery[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState('')
+  const [expandedId, setExpandedId] = useState('')
+  const [tmdbQuery, setTmdbQuery] = useState('')
+  const [tmdbMatches, setTmdbMatches] = useState<TMDBCandidate[]>([])
+  const [selectedTmdb, setSelectedTmdb] = useState<TMDBCandidate>()
+  const [message, setMessage] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    try { setItems(await api.discoveries()); setMessage('') }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Review.') }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { void load() }, [])
+
+  const remove = (id: string) => {
+    setItems((current) => current.filter((item) => item.id !== id))
+    window.dispatchEvent(new Event('medialogue-review-changed'))
+  }
+
+  const openAlternatives = async (item: MediaDiscovery) => {
+    if (expandedId === item.id) { setExpandedId(''); return }
+    setExpandedId(item.id)
+    setSelectedTmdb(item.selected)
+    const query = item.parsedTitle ?? item.selected?.title ?? ''
+    setTmdbQuery(query)
+    setTmdbMatches(item.candidates)
+    if (!query) return
+    try {
+      const fresh = item.mediaType === 'shows' ? await api.lookupShows(query, item.parsedYear) : await api.lookupMovies(query, item.parsedYear)
+      const merged = [...fresh, ...item.candidates].filter((candidate, index, all) => all.findIndex((other) => other.tmdbId === candidate.tmdbId) === index)
+      setTmdbMatches(merged.slice(0, 6))
+    } catch { /* Stored candidates remain usable when a refresh fails. */ }
+  }
+
+  const searchTmdb = async () => {
+    if (!tmdbQuery.trim()) return
+    setBusyId(expandedId)
+    try {
+      const item = items.find((entry) => entry.id === expandedId)
+      if (!item) return
+      const matches = item.mediaType === 'shows' ? await api.lookupShows(tmdbQuery.trim()) : await api.lookupMovies(tmdbQuery.trim())
+      setTmdbMatches(matches.slice(0, 6))
+    }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
+    finally { setBusyId('') }
+  }
+
+  const saveSelection = async (item: MediaDiscovery) => {
+    if (!selectedTmdb) return
+    setBusyId(item.id)
+    try {
+      const updated = await api.selectDiscovery(item.id, selectedTmdb.tmdbId)
+      setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
+      setExpandedId('')
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not change the match.') }
+    finally { setBusyId('') }
+  }
+
+  const approve = async (item: MediaDiscovery) => {
+    setBusyId(item.id)
+    try { await api.approveDiscovery(item.id); remove(item.id) }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not add this ${item.mediaType === 'shows' ? 'show' : 'movie'}.`) }
+    finally { setBusyId('') }
+  }
+
+  const ignore = async (item: MediaDiscovery) => {
+    setBusyId(item.id)
+    try { await api.ignoreDiscovery(item.id); remove(item.id) }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not ignore this item.') }
+    finally { setBusyId('') }
+  }
+
+  return <Page title="Review" subtitle="Approve newly detected movies and shows before they enter your library.">
+    {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
+    {loading ? <div className="review-loading">Loading detected media…</div> : !items.length ? <EmptyState icon="check" title="Nothing to review" detail="New media from review-enabled roots will appear here after a scan." /> : <div className="review-feed">
+      {items.map((item) => {
+        const match = item.selected
+        const facts = [item.quality, item.edition, ...item.hdr].filter(Boolean)
+        const busy = busyId === item.id
+        return <article className="review-card" key={item.id}>
+          <div className="review-card-main">
+            <div className="review-poster">{match?.posterRef ? <img src={tmdbPosterUrl(match.posterRef)} alt={`${match.title} poster`} loading="lazy" referrerPolicy="no-referrer" /> : <Icon name={item.mediaType === 'shows' ? 'tv' : 'film'} size={28} />}</div>
+            <div className="review-copy" title={item.path}>
+              <div className="review-title"><span className={`review-state ${!item.exists ? 'missing' : match ? 'ready' : 'needs-match'}`}>{!item.exists ? 'Directory missing' : match ? `${item.suggested?.tmdbId === match.tmdbId ? 'Suggested' : 'Selected'} ${item.mediaType === 'shows' ? 'show' : 'movie'}` : `Choose ${item.mediaType === 'shows' ? 'show' : 'movie'}`}</span><h2>{match?.title ?? item.parsedTitle ?? reviewFolderName(item.path)}{match?.year ? <small>{match.year}</small> : item.parsedYear ? <small>{item.parsedYear}</small> : null}</h2></div>
+              {facts.length > 0 && <div className="review-facts">{facts.map((fact) => <span key={String(fact)}>{fact}</span>)}</div>}
+            </div>
+            <div className="review-actions">
+              <Button variant="ghost" onClick={() => void openAlternatives(item)} disabled={busy}>{match ? 'Other matches' : 'Choose match'}</Button>
+              <Button variant="ghost" onClick={() => void ignore(item)} disabled={busy}>Ignore</Button>
+              <Button variant="primary" onClick={() => void approve(item)} disabled={busy || !match || !item.exists}>{busy ? 'Working…' : `Add ${item.mediaType === 'shows' ? 'show' : 'movie'}`}</Button>
+            </div>
+          </div>
+          {expandedId === item.id && <IdentityPicker kind={item.mediaType === 'shows' ? 'show' : 'movie'} matches={tmdbMatches} selected={selectedTmdb} query={tmdbQuery} loading={busy} onQuery={setTmdbQuery} onSearch={() => void searchTmdb()} onSelect={(candidate) => setSelectedTmdb(candidate)} onApply={() => void saveSelection(item)} onCancel={() => setExpandedId('')} submitLabel="Use selected match" />}
+        </article>
+      })}
+    </div>}
   </Page>
 }
 
@@ -1765,6 +1900,7 @@ function StorageSettings() {
   const [mediaType, setMediaType] = useState<'movies' | 'shows'>('movies')
   const [accessMode, setAccessMode] = useState<'read_only' | 'read_write'>('read_only')
   const [rootEnabled, setRootEnabled] = useState(true)
+  const [reviewNewMedia, setReviewNewMedia] = useState(false)
   const [missingGraceChecks, setMissingGraceChecks] = useState(2)
   const [mappingName, setMappingName] = useState('qBittorrent path')
   const [mappingClientId, setMappingClientId] = useState('')
@@ -1827,13 +1963,13 @@ function StorageSettings() {
   }
 
   const beginAddRoot = () => {
-    setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', enabled: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage('')
+    setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setReviewNewMedia(false); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', enabled: true, reviewNewMedia: false, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage('')
   }
   const editRoot = (root: StorageRoot) => {
-    setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setRootEnabled(root.enabled); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, enabled: root.enabled, missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage('')
+    setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setRootEnabled(root.enabled); setReviewNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, enabled: root.enabled, reviewNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage('')
   }
   const rootDirty = rootDraftChanged(
-    { name, path, mediaType, accessMode, enabled: rootEnabled, missingGraceChecks },
+    { name, path, mediaType, accessMode, enabled: rootEnabled, reviewNewMedia, missingGraceChecks },
     rootBaseline,
   )
   const closeRootModal = async () => {
@@ -1866,9 +2002,16 @@ function StorageSettings() {
     if (!name.trim() || !path.trim()) { setMessage('A folder path and a name are required.'); return }
     setRootBusy(true)
     try {
+      const requestedDiscoveryMode = reviewNewMedia ? 'review' : 'automatic'
       const saved = selectedRoot
-        ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
-        : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
+        ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
+        : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
+      // A Vite page can outlive its backend process during development. Older
+      // servers ignore unknown request fields, which previously closed the
+      // modal as if Review had been persisted when it had not.
+      if (saved.discovery_mode !== requestedDiscoveryMode) {
+        throw new Error('The backend did not save the new-media setting. Restart the backend and try again.')
+      }
       setRoots((items) => selectedRoot ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved])
       setMappingRootId((value) => value || saved.id); setRootBaseline(null); setRootModalOpen(false)
       if (selectedRoot) {
@@ -1894,7 +2037,11 @@ function StorageSettings() {
           }
         }
       }
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not ${selectedRoot ? 'update' : 'add'} root.`) }
+    } catch (reason) {
+      const action = selectedRoot ? 'update' : 'add'
+      const detail = reason instanceof Error ? reason.message : 'The request failed.'
+      setMessage(`Could not ${action} root: ${detail}`)
+    }
     finally { setRootBusy(false) }
   }
   const scanRoot = async (root: StorageRoot) => {
@@ -2095,6 +2242,12 @@ function StorageSettings() {
           </Field>
           <Field label="Access" help="Read-only is recommended. Read/write allows deletion.">
             <Select value={accessMode} onChange={(event) => setAccessMode(event.target.value as 'read_only' | 'read_write')}><option value="read_only">Read-only</option><option value="read_write">Read/write</option></Select>
+          </Field>
+          <Field label="New media" help="Hold newly detected titles in Review until you approve them.">
+            <div className="setting-control">
+              <button type="button" aria-pressed={reviewNewMedia} className="toggle" onClick={() => setReviewNewMedia((value) => !value)}><span /></button>
+              <span className="toggle-label">{reviewNewMedia ? 'Review before adding' : 'Add automatically'}</span>
+            </div>
           </Field>
           <Field label="Missing grace checks" help="How many scans in a row must miss a file before it counts as missing.">
             <Select value={String(missingGraceChecks)} onChange={(event) => setMissingGraceChecks(Number(event.target.value))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</Select>

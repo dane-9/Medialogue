@@ -504,7 +504,11 @@ async def _store_results(
             score_overrides=score_overrides,
             context={"indexer": indexer_name},
         )
-        floor_status = minimum_quality_status(parsed.quality.canonical, str(minimum_quality) if minimum_quality else None)
+        floor_status = minimum_quality_status(
+            parsed.quality.canonical,
+            str(minimum_quality) if minimum_quality else None,
+            quality_order,
+        )
         if minimum_quality and floor_status is False:
             warnings.append(
                 f"Below minimum quality: {parsed.quality.canonical or 'Unknown'} is below {minimum_quality}."

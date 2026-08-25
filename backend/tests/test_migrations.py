@@ -45,6 +45,7 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
             torrent_columns = {column["name"]: column for column in inspector.get_columns("torrents")}
             movie_columns = {column["name"] for column in inspector.get_columns("movies")}
             show_columns = {column["name"] for column in inspector.get_columns("shows")}
+            storage_root_columns = {column["name"] for column in inspector.get_columns("storage_roots")}
         finally:
             engine.dispose()
     finally:
@@ -61,7 +62,9 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
         "download_clients",
         "storage_roots",
         "media_directories",
-    } <= tables
+        } <= tables
+    assert "media_discoveries" in tables
+    assert "discovery_mode" in storage_root_columns
     assert {
         "last_health_checked_at",
         "last_success_at",

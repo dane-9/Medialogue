@@ -5,6 +5,7 @@ export interface RootDraft {
   mediaType: 'movies' | 'shows'
   accessMode: 'read_only' | 'read_write'
   enabled: boolean
+  reviewNewMedia: boolean
   missingGraceChecks: number
 }
 
@@ -24,6 +25,7 @@ export function rootDraftChanged(draft: RootDraft, baseline: RootDraft | null): 
     || draft.mediaType !== baseline.mediaType
     || draft.accessMode !== baseline.accessMode
     || draft.enabled !== baseline.enabled
+    || draft.reviewNewMedia !== baseline.reviewNewMedia
     || draft.missingGraceChecks !== baseline.missingGraceChecks
 }
 

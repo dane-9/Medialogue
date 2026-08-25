@@ -283,8 +283,8 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "video-av1": 40,
     "video-hevc": 35,
     "video-avc": 25,
-    "video-vc1": -20,
-    "video-mpeg2": -40,
+    "video-vc1": 0,
+    "video-mpeg2": -5,
     # Audio: lossless/object-based formats first; compatibility codecs stay
     # neutral or receive a small penalty rather than being rejected.
     "audio-truehd-atmos": 60,

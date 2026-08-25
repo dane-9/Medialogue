@@ -9,14 +9,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.identity import identity_titles_equivalent
 from app.integrations.filesystem import DirectoryObservation
 from app.models.domain import (
+    DiscoveryMode,
+    DiscoveryReviewState,
     Episode,
     EpisodeMediaMap,
     IdentityState,
     MatchMethod,
     AssociationType,
     MediaDirectory,
+    MediaDiscovery,
     MediaFile,
     MediaRole,
     MediaType,
@@ -39,6 +43,7 @@ from app.models.domain import (
     StorageRoot,
 )
 from app.parser import extract_episode_numbers, parse_release_name, parse_season_folder
+from app.services.discoveries import stage_media_discovery
 from app.services.events import create_event
 from app.services.quality_profiles import evaluate_current_release_score
 from app.services.reconciliation import open_problem, resolve_problem
@@ -47,6 +52,43 @@ from app.services.tmdb import TMDBUnavailable, resolve_show_identity_detailed, s
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def _find_show_by_identity(db: AsyncSession, title: str, year: int | None) -> Show | None:
+    statement = select(Show)
+    if year is not None:
+        statement = statement.where(Show.year == year)
+    candidates = (await db.scalars(statement)).all()
+    matches = [item for item in candidates if identity_titles_equivalent(item.title, title)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _sync_discovery_files(directory: MediaDirectory, observation: DirectoryObservation) -> None:
+    """Persist the physical episode-file inventory before a Show is admitted."""
+
+    existing = {item.relative_path: item for item in directory.files}
+    seen = set(observation.media_files)
+    now = utcnow()
+    for relative_path in observation.media_files:
+        item = existing.get(relative_path)
+        if item is None:
+            item = MediaFile(
+                media_directory_id=directory.id,
+                relative_path=relative_path,
+                filename=Path(relative_path).name,
+                media_role=MediaRole.OTHER_MEDIA,
+                exists=True,
+            )
+            directory.files.append(item)
+        item.exists = True
+        item.last_seen_at = now
+        item.last_exists_check_at = now
+        item.missing_since = None
+        item.missing_check_count = 0
+    for relative_path, item in existing.items():
+        if relative_path not in seen:
+            item.last_exists_check_at = now
+
 
 
 async def resolve_show_resource(db: AsyncSession, resource_id: str) -> Show | None:
@@ -458,6 +500,24 @@ async def reconcile_show_directory(
                     break
             if show is not None:
                 break
+
+    if show is None and title:
+        show = await _find_show_by_identity(db, title, year)
+
+    if show is None and root.discovery_mode == DiscoveryMode.REVIEW:
+        _sync_discovery_files(directory, observation)
+        discovery = await stage_media_discovery(
+            db,
+            directory,
+            folder_parse,
+            media_type=MediaType.SHOWS,
+            title=title,
+            year=year,
+        )
+        # A review item is expected work. Do not duplicate it in Problems.
+        await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
+        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
+        return "review" if discovery.review_state == DiscoveryReviewState.PENDING else "matched"
 
     if show is None:
         tmdb_resolution = await resolve_show_identity_detailed(db, title, year)
@@ -1006,6 +1066,14 @@ async def reconcile_show_directory(
     # point. Any later successful directory pass clears that umbrella failure;
     # file-specific mapping Problems remain independently truthful.
     await resolve_problem(db, "SHOW_DIRECTORY_RECONCILIATION_FAILED", "media_directory", directory.id)
+    discovery = await db.scalar(
+        select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
+    )
+    if discovery is not None and discovery.review_state != DiscoveryReviewState.APPROVED:
+        discovery.review_state = DiscoveryReviewState.APPROVED
+        discovery.selected_tmdb_id = show.tmdb_id
+        discovery.approved_media_id = show.id
+        discovery.reviewed_at = utcnow()
     return "review" if unresolved and mapped == 0 else "matched"
 
 

@@ -203,14 +203,77 @@ def test_progressive_dvd_remux_qualities_are_canonical_supported_values():
     ntsc = parse_release("Movie 2000 480p NTSC DVD REMUX MPEG-2 DD 2.0-GROUP")
     pal = parse_release("Movie 2000 576p PAL DVD REMUX MPEG-2 DD 2.0-GROUP")
 
-    assert ntsc.quality.canonical == "480p NTSC DVD REMUX"
-    assert pal.quality.canonical == "576p PAL DVD REMUX"
+    # The broadcast standard is evidence, not part of the quality.
+    assert ntsc.quality.canonical == "480p DVD REMUX"
+    assert pal.quality.canonical == "576p DVD REMUX"
+    assert ntsc.quality.tv_standard == "NTSC"
+    assert pal.quality.tv_standard == "PAL"
 
     # The parser must not emit a canonical value absent from the hardcoded catalog.
     from app.parser.quality import QUALITY_BY_NAME
 
     assert ntsc.quality.canonical in QUALITY_BY_NAME
     assert pal.quality.canonical in QUALITY_BY_NAME
+
+
+def test_the_same_resolution_is_one_quality_whatever_the_broadcast_standard():
+    pal = parse_release("Movie 2000 576p PAL DVD MPEG-2 DD 2.0-GROUP")
+    ntsc = parse_release("Movie 2000 576p NTSC DVD MPEG-2 DD 2.0-GROUP")
+
+    assert pal.quality.canonical == ntsc.quality.canonical == "576p DVD Encode"
+    # Still recorded, so a release name that states the standard is not lost.
+    assert (pal.quality.tv_standard, ntsc.quality.tv_standard) == ("PAL", "NTSC")
+
+
+def test_a_dvd_release_without_a_standard_token_is_still_classified():
+    # The old parser inferred PAL/NTSC from the resolution purely to build the
+    # quality name. Nothing infers it now, and the quality is unaffected.
+    parsed = parse_release("Movie 2000 480p DVD MPEG-2 DD 2.0-GROUP")
+
+    assert parsed.quality.canonical == "480p DVD Encode"
+    assert parsed.quality.tv_standard is None
+
+
+def test_extended_resolution_and_source_combinations_are_structured():
+    from app.parser.quality import QUALITY_BY_NAME
+
+    cases = {
+        "Movie 2026 2160p WEB-DL AV1-GROUP": "2160p WEB-DL",
+        "Movie 2026 1440p WEBRip H.265-GROUP": "1440p WEBRip",
+        "Movie 2026 1080i HDTV MPEG-2-GROUP": "1080i HDTV",
+        "Movie 2026 540p WEB-DL H.264-GROUP": "540p WEB-DL",
+        "Movie 2020 720p BluRay REMUX AVC-GROUP": "720p BluRay REMUX",
+        "Movie 2000 576i PAL DVD MPEG-2-GROUP": "576i DVD Encode",
+        "Movie 2000 480p DVD REMUX MPEG-2-GROUP": "480p DVD REMUX",
+    }
+
+    for release_name, expected in cases.items():
+        parsed = parse_release(release_name)
+        assert parsed.quality.canonical == expected
+        assert expected in QUALITY_BY_NAME
+
+
+def test_full_disc_dvd_counts_are_evidence_not_separate_qualities():
+    cases = {
+        "Movie 2000 2xDVD9 MPEG-2-GROUP": ("Full Disc DVD9", "2xDVD9"),
+        "Movie 2000 3xDVD5 MPEG-2-GROUP": ("Full Disc DVD5", "3xDVD5"),
+        "Movie 2000 DVD9x2 MPEG-2-GROUP": ("Full Disc DVD9", "2xDVD9"),
+        "Movie 2000 2xDVD5 DVD9 MPEG-2-GROUP": ("Full Disc DVD5/DVD9", "2xDVD5 + DVD9"),
+    }
+
+    for release_name, (quality, layout) in cases.items():
+        parsed = parse_release(release_name)
+        assert parsed.title == "Movie"
+        assert parsed.quality.canonical == quality
+        assert parsed.quality.disc_type == layout
+
+
+def test_unlisted_numeric_resolution_keeps_its_structured_source():
+    parsed = parse_release("Movie 2026 900p WEB-DL H.264-GROUP")
+
+    assert parsed.quality.canonical == "900p WEB-DL"
+    assert parsed.quality.resolution == "900p"
+    assert parsed.quality.source == "WEB-DL"
 
 
 def test_leading_year_movie_directory_names_keep_the_title_candidate():

@@ -14,6 +14,16 @@ import type { CustomFormat, CustomFormatSection, QualityDefinition, QualityProfi
 
 const scoreLabel = (value: number) => `${value > 0 ? '+' : ''}${value}`
 
+const qualityGroup = (quality: QualityDefinition) => {
+  if (quality.source === 'BluRay') return 'Blu-ray'
+  if (quality.source === 'WEB-DL' || quality.source === 'WEBRip') return 'Web'
+  if (quality.source === 'HDTV') return 'Broadcast'
+  if (quality.source === 'DVD') return 'DVD'
+  return 'Other'
+}
+
+const QUALITY_GROUP_ORDER = ['Blu-ray', 'Web', 'Broadcast', 'DVD', 'Other']
+
 export default function QualityProfilesPage() {
   const confirm = useConfirm()
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
@@ -30,6 +40,7 @@ export default function QualityProfilesPage() {
   const [savedScores, setSavedScores] = useState<Record<string, number>>({})
   const [editorView, setEditorView] = useState<'details' | 'qualities' | 'formats'>('details')
   const [formatFilter, setFormatFilter] = useState('')
+  const [qualityFilter, setQualityFilter] = useState('')
   const [scoreView, setScoreView] = useState<'all' | 'selected'>('all')
   const [draggedQualityId, setDraggedQualityId] = useState('')
   const [creating, setCreating] = useState(false)
@@ -87,35 +98,18 @@ export default function QualityProfilesPage() {
     const persisted = Object.fromEntries(profile.customFormatScores.map((item) => [item.customFormatId, item.score]))
     setScores(persisted)
     setSavedScores(persisted)
-    setEditorView('formats'); setFormatFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
+    setEditorView('formats'); setFormatFilter(''); setQualityFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
   }
   const beginNew = () => {
     const allQualityIds = qualities.map((quality) => quality.id)
     setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setQualityIds(allQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
-    setEditorView('details'); setFormatFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
+    setEditorView('details'); setFormatFilter(''); setQualityFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
   }
-  // Copying opens an unsaved profile rather than writing one immediately, so a
-  // near-duplicate can be renamed and adjusted before it joins the list.
-  const duplicateProfile = (source: QualityProfile) => {
-    setCreating(true)
-    setSelectedId('')
-    setName(`${source.name} Copy`)
-    setMinimumId(source.minimumQuality?.id ?? '')
-    const sourceQualityIds = source.qualities.map((quality) => quality.id)
-    setQualityIds(sourceQualityIds)
-    setQualityOrderIds([...sourceQualityIds, ...qualities.map((quality) => quality.id).filter((id) => !sourceQualityIds.includes(id))])
-    setScores(Object.fromEntries(source.customFormatScores.map((item) => [item.customFormatId, item.score])))
-    setSavedScores({})
-    setEditorView('details'); setFormatFilter(''); setScoreView('all')
-    setMessage(`Copy of ${source.name} created. It is not saved yet.`)
-    setEditorOpen(true)
-  }
-
   /**
    * Duplicate a profile outright, without opening the editor.
    *
-   * The card's button is a one-click action, so it saves. The editor's own copy
-   * button still opens an unsaved profile, which is the right behaviour there.
+   * Duplicating is a one-click action from a card, so it saves outright rather
+   * than opening an unsaved copy the operator then has to remember to commit.
    */
   const duplicateProfileNow = async (source: QualityProfile) => {
     setBusy(true); setMessage('')
@@ -262,6 +256,32 @@ export default function QualityProfilesPage() {
     return [...ordered, ...missing]
   }, [qualities, qualityOrderIds])
 
+  const visibleQualities = useMemo(() => {
+    const term = qualityFilter.trim().toLocaleLowerCase()
+    if (!term) return orderedQualities
+    return orderedQualities.filter((quality) => [
+      quality.name,
+      quality.resolution,
+      quality.source,
+      quality.modifier,
+      quality.scanType,
+      qualityGroup(quality),
+    ].some((value) => value?.toLocaleLowerCase().includes(term)))
+  }, [orderedQualities, qualityFilter])
+
+  const minimumQualityGroups = useMemo(() => {
+    const selected = new Set(qualityIds)
+    return QUALITY_GROUP_ORDER.map((name) => ({
+      name,
+      qualities: orderedQualities.filter((quality) => selected.has(quality.id) && qualityGroup(quality) === name),
+    })).filter((group) => group.qualities.length)
+  }, [orderedQualities, qualityIds])
+
+  const selectVisibleQualities = () => {
+    const selected = new Set([...qualityIds, ...visibleQualities.map((quality) => quality.id)])
+    setQualityIds(qualityOrderIds.filter((id) => selected.has(id)))
+  }
+
   return <main className="page">
     <PageTopbar title="Quality Profiles" subtitle="Set a warning floor and base scores for matching Custom Formats. Rule offsets are added automatically." action={<Button variant="primary" icon="plus" onClick={beginNew}>New profile</Button>} />
 
@@ -281,12 +301,10 @@ export default function QualityProfilesPage() {
     {editorOpen && <Modal
       wide
       className="qp-editor-modal"
-      eyebrow={creating ? 'NEW QUALITY PROFILE' : 'EDIT QUALITY PROFILE'}
       title={name || 'Untitled Quality Profile'}
       onClose={closeEditor}
       footer={<>
         {!creating && selected && <Button variant="danger" onClick={() => void remove()} disabled={busy}>Delete</Button>}
-        {!creating && selected && <Button variant="ghost" icon="copy" onClick={() => duplicateProfile(selected)} disabled={busy}>Create a Copy</Button>}
         <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
         <Button variant="secondary" onClick={closeEditor} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || !name.trim() || !qualityIds.length}>{busy ? 'Saving…' : 'Save profile'}</Button>
@@ -311,10 +329,9 @@ export default function QualityProfilesPage() {
               <Field label="Minimum quality warning" help="Qualities lower than this are marked with a warning.">
                 <Select value={minimumId} onChange={(event) => setMinimumId(event.target.value)}>
                   <option value="">No minimum warning</option>
-                  {qualityIds.map((qualityId) => {
-                    const quality = qualities.find((item) => item.id === qualityId)
-                    return quality ? <option value={quality.id} key={quality.id}>{quality.name}</option> : null
-                  })}
+                  {minimumQualityGroups.map((group) => <optgroup label={group.name} key={group.name}>
+                    {group.qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}
+                  </optgroup>)}
                 </Select>
               </Field>
             </div>
@@ -324,11 +341,12 @@ export default function QualityProfilesPage() {
           {editorView === 'qualities' && <section className="cf-editor-panel qp-qualities-panel">
             <div className="cf-editor-panel-head cf-editor-panel-head-compact"><div><div className="eyebrow">STEP 2 OF 3</div><h3>Quality order</h3></div><p>Enabled qualities rank from top to bottom. Drag them into your preferred order.</p></div>
             <div className="qp-quality-toolbar">
+              <div className="search-field"><Icon name="search" size={15} /><Input aria-label="Filter qualities" value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value)} placeholder="Filter by resolution or source…" /></div>
               <span><strong>{qualityIds.length}</strong> of {qualities.length} enabled</span>
-              <Button variant="secondary" onClick={() => setQualityIds(qualityOrderIds)} disabled={qualityIds.length === qualities.length}>Select all</Button>
+              <Button variant="secondary" onClick={selectVisibleQualities} disabled={visibleQualities.every((quality) => qualityIds.includes(quality.id))}>{qualityFilter.trim() ? 'Select results' : 'Select all'}</Button>
             </div>
             <div className="qp-quality-list">
-              {orderedQualities.map((quality) => {
+              {visibleQualities.map((quality) => {
                 const enabled = qualityIds.includes(quality.id)
                 const position = qualityIds.indexOf(quality.id)
                 return <div
@@ -350,6 +368,7 @@ export default function QualityProfilesPage() {
                   </div>
                 </div>
               })}
+              {!visibleQualities.length && <div className="qp-quality-empty"><Icon name="search" size={17} /><span>No qualities match “{qualityFilter.trim()}”.</span></div>}
             </div>
             {!qualityIds.length && <div className="settings-note error"><Icon name="alert" size={15} /><span>Select at least one quality before saving this profile.</span></div>}
             <div className="cf-editor-next"><Button variant="secondary" onClick={() => setEditorView('details')}>Back to details</Button><Button variant="primary" onClick={() => setEditorView('formats')} disabled={!qualityIds.length}>Continue to format scores</Button></div>

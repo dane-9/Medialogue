@@ -33,6 +33,7 @@ from app.models.domain import (
 )
 from app.services.reconciliation import reconcile_movie_directory
 from app.services.builtin_formats import BUILTIN_FORMATS, DEFAULT_FORMAT_SCORES
+from app.services.quality_profiles import minimum_quality_status
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -109,6 +110,15 @@ def create_cf(client: TestClient, headers: dict[str, str]) -> dict:
 def quality_id(client: TestClient, name: str) -> str:
     rows = client.get("/api/v1/quality-definitions").json()
     return next(item["id"] for item in rows if item["name"] == name)
+
+
+def test_minimum_quality_uses_the_profile_order():
+    order = ["1080p WEB-DL", "2160p BluRay REMUX", "720p WEB-DL"]
+
+    assert minimum_quality_status("1080p WEB-DL", "1080p WEB-DL", order) is True
+    assert minimum_quality_status("2160p BluRay REMUX", "1080p WEB-DL", order) is False
+    assert minimum_quality_status("720p WEB-DL", "2160p BluRay REMUX", order) is False
+    assert minimum_quality_status("900p WEB-DL", "1080p WEB-DL", order) is None
 
 
 @dataclass

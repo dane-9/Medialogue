@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
@@ -13,6 +14,7 @@ from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
     AccessMode,
+    DiscoveryMode,
     Episode,
     EpisodeMediaMap,
     Job,
@@ -266,6 +268,7 @@ async def create_storage_root(
         resolved_root_path=_resolved_path(payload.path),
         media_type=MediaType(payload.media_type.value),
         access_mode=AccessMode(payload.access_mode.value),
+        discovery_mode=DiscoveryMode(payload.discovery_mode.value),
         enabled=payload.enabled,
         missing_grace_checks=payload.missing_grace_checks,
         last_health="unavailable" if not Path(payload.path).exists() else "available",
@@ -274,7 +277,7 @@ async def create_storage_root(
     db.add(root)
     try:
         await db.commit()
-    except Exception as exc:
+    except IntegrityError as exc:
         await db.rollback()
         raise AppError("STORAGE_ROOT_EXISTS", "A storage root with this name already exists.", status_code=409) from exc
     await _adopt_unlinked_directories(db, root)
@@ -338,6 +341,8 @@ async def update_storage_root(
         values["media_type"] = MediaType(values["media_type"])
     if "access_mode" in values:
         values["access_mode"] = AccessMode(values["access_mode"])
+    if "discovery_mode" in values:
+        values["discovery_mode"] = DiscoveryMode(values["discovery_mode"])
     scan_identity_changed = (
         values.get("resolved_root_path", root.resolved_root_path) != root.resolved_root_path
         or values.get("media_type", root.media_type) != root.media_type
@@ -355,7 +360,11 @@ async def update_storage_root(
         # new scan identity must initialize independently rather than inherit
         # a successful scan from the previous folder.
         root.last_scan_at = None
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise AppError("STORAGE_ROOT_EXISTS", "A storage root with this name already exists.", status_code=409) from exc
     return await _root_response(db, root)
 
 

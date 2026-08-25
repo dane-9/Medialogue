@@ -2622,6 +2622,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .qp-details-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .8fr); gap: var(--s4); max-width: 760px; }
 .qp-qualities-panel { gap: var(--s3); padding-top: 20px; }
 .qp-quality-toolbar { display: flex; max-width: 760px; align-items: center; justify-content: space-between; gap: var(--s3); }
+.qp-quality-toolbar .search-field { min-width: 220px; flex: 1; }
 .qp-quality-toolbar > span { color: var(--muted); font-size: var(--t-xs); }
 .qp-quality-toolbar > span strong { color: var(--text); font-family: var(--mono); }
 .qp-quality-list { display: grid; max-width: 760px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
@@ -2633,6 +2634,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .qp-quality-handle:active { cursor: grabbing; }
 .qp-quality-copy { min-width: 0; }
 .qp-quality-copy strong { overflow: hidden; color: inherit; font-size: var(--t-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.qp-quality-empty { display: flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 92px; padding: var(--s4); color: var(--faint); font-size: var(--t-sm); }
 .qp-quality-position { color: var(--accent-text); font: 600 var(--t-xs) var(--mono); text-align: right; }
 .qp-quality-actions { display: flex; gap: var(--s1); justify-content: flex-end; }
 .qp-quality-actions .icon-button { width: 30px; height: 30px; }
@@ -3373,3 +3375,36 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .tooltip:has(p) { max-width: 320px; }
 .tooltip ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .tooltip li { color: var(--accent-text); font: var(--t-xs) var(--mono); overflow-wrap: anywhere; }
+
+/* Movie review queue: one decision per card; identity alternatives reuse the Problems picker. */
+.review-feed { display: grid; gap: var(--s3); max-width: 1120px; }
+.review-loading { padding: var(--s8) 0; color: var(--muted); }
+.review-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--surface); }
+.review-card-main { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: var(--s4); align-items: center; padding: var(--s3); }
+.review-poster { display: grid; width: 92px; aspect-ratio: 2/3; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-md); color: var(--faint); background: linear-gradient(155deg, #263743, #10171c 50%, #080a0b); }
+.review-poster img { width: 100%; height: 100%; object-fit: cover; }
+.review-copy { min-width: 0; }
+.review-title { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.review-title h2 { display: flex; align-items: baseline; gap: var(--s2); margin: 0; font-size: 19px; line-height: 1.25; }
+.review-title h2 small { color: var(--muted); font-size: var(--t-sm); font-weight: 500; }
+.review-state { display: inline-flex; min-height: 20px; align-items: center; padding: 0 7px; border: 1px solid var(--line-strong); border-radius: var(--r-full); font-size: var(--t-micro); font-weight: 600; }
+.review-state.ready { color: #b8c1ff; border-color: var(--accent-line); background: var(--accent-soft); }
+.review-state.needs-match { color: #d1a45e; border-color: var(--warn-line); background: var(--warn-soft); }
+.review-state.missing { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+.review-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
+.review-facts span { color: var(--muted); font-size: var(--t-xs); }
+.review-facts span + span::before { margin-right: 6px; color: var(--faint); content: '·'; }
+.review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s2); }
+.review-card > .problems-identity-resolver { margin: 0; border-width: 1px 0 0; border-radius: 0; background: #101012; }
+
+@media (max-width: 900px) {
+  .review-card-main { grid-template-columns: 78px minmax(0, 1fr); align-items: start; }
+  .review-poster { width: 78px; }
+  .review-actions { grid-column: 1 / -1; justify-content: flex-start; padding-left: 94px; }
+}
+@media (max-width: 560px) {
+  .review-card-main { grid-template-columns: 64px minmax(0, 1fr); gap: var(--s3); }
+  .review-poster { width: 64px; }
+  .review-actions { padding-left: 0; }
+  .review-actions .button { flex: 1; }
+}

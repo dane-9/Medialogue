@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
-from app.api import auth, bulk, custom_formats, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tmdb, torrent_archive
+from app.api import auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tmdb, torrent_archive
 from app.core.config import Settings, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.integration_config import get_integration_config_store
@@ -123,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(storage.router, prefix="/api/v1")
     app.include_router(jobs.router, prefix="/api/v1")
     app.include_router(problems.router, prefix="/api/v1")
+    app.include_router(discoveries.router, prefix="/api/v1")
     app.include_router(duplicates.router, prefix="/api/v1")
     app.include_router(parser.router, prefix="/api/v1")
     app.include_router(movies.router, prefix="/api/v1")

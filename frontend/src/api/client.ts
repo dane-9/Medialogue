@@ -1,4 +1,4 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, StorageRootScan, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MediaDiscovery, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, StorageRootScan, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
 
 export class ApiError extends Error {
   status: number
@@ -571,6 +571,7 @@ function normalizeStorageRoot(value: unknown): StorageRoot {
     resolved_root_path: textValue(item.resolved_root_path || item.path, 'Unknown path'),
     media_type: textValue(item.media_type || item.type, 'movies').toLowerCase() === 'shows' ? 'shows' : 'movies',
     access_mode: textValue(item.access_mode, 'read_only').toLowerCase() === 'read_write' ? 'read_write' : 'read_only',
+    discovery_mode: textValue(item.discovery_mode, 'automatic').toLowerCase() === 'review' ? 'review' : 'automatic',
     enabled: item.enabled !== false,
     missing_grace_checks: optionalNumber(item.missing_grace_checks) ?? 2,
     scanning: item.scanning === true,
@@ -631,6 +632,33 @@ function normalizeTMDBMovieLookup(value: unknown): TMDBMovieLookup {
     voteAverage: optionalNumber(item.vote_average ?? item.voteAverage),
     director: textValue(item.director) || undefined,
     cast: Array.isArray(item.cast) ? item.cast.map((entry) => textValue(entry)).filter(Boolean) : undefined,
+  }
+}
+
+function normalizeMediaDiscovery(value: unknown): MediaDiscovery {
+  const item = record(value)
+  const mediaType = textValue(item.media_type ?? item.mediaType) === 'shows' ? 'shows' : 'movies'
+  const normalizeCandidate = mediaType === 'shows' ? normalizeTMDBShowLookup : normalizeTMDBMovieLookup
+  const candidates = Array.isArray(item.candidates) ? item.candidates.map(normalizeCandidate) : []
+  return {
+    id: textValue(item.id),
+    directoryId: textValue(item.directory_id ?? item.directoryId),
+    path: textValue(item.path),
+    rootName: textValue(item.root_name ?? item.rootName, 'Unlinked root'),
+    exists: item.exists !== false,
+    mediaType,
+    reviewState: (['pending', 'approved', 'ignored'].includes(textValue(item.review_state ?? item.reviewState)) ? textValue(item.review_state ?? item.reviewState) : 'pending') as MediaDiscovery['reviewState'],
+    parsedTitle: textValue(item.parsed_title ?? item.parsedTitle) || undefined,
+    parsedYear: optionalNumber(item.parsed_year ?? item.parsedYear),
+    confidence: optionalNumber(item.confidence),
+    quality: textValue(item.quality) || undefined,
+    edition: textValue(item.edition) || undefined,
+    hdr: Array.isArray(item.hdr) ? item.hdr.map((entry) => textValue(entry)).filter(Boolean) : [],
+    suggested: item.suggested ? normalizeCandidate(item.suggested) : undefined,
+    selected: item.selected ? normalizeCandidate(item.selected) : undefined,
+    candidates,
+    createdAt: dateValue(item.created_at ?? item.createdAt),
+    updatedAt: dateValue(item.updated_at ?? item.updatedAt),
   }
 }
 
@@ -1009,7 +1037,7 @@ export const api = {
   show: (resourceId: string) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}`).then(normalizeShow),
   specialsCounting: () => request<{ count_specials: boolean }>('/api/v1/shows/specials-counting'),
   setSpecialsCounting: (countSpecials: boolean) => request<{ count_specials: boolean; seasons_changed: number; shows_affected: number }>('/api/v1/shows/specials-counting', { method: 'PUT', body: JSON.stringify({ count_specials: countSpecials }) }),
-  lookupShows: async (query: string) => (await request<unknown[]>(`/api/v1/shows/lookup?query=${encodeURIComponent(query)}`)).map(normalizeTMDBShowLookup),
+  lookupShows: async (query: string, year?: number) => (await request<unknown[]>(`/api/v1/shows/lookup?query=${encodeURIComponent(query)}${year ? `&year=${year}` : ''}`)).map(normalizeTMDBShowLookup),
   addShow: (tmdbId: number) => request<unknown>('/api/v1/shows', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, monitored: true }) }).then(normalizeShow),
   episodeOrderings: (resourceId: string) => request<Array<{ id: string | null; name: string; type_label: string; season_count: number; episode_count: number; description?: string; network?: string; selected: boolean }>>(`/api/v1/shows/${encodeURIComponent(resourceId)}/episode-orderings`),
   updateShow: (resourceId: string, payload: { monitored?: boolean; tmdb_episode_group_id?: string; expected_revision?: number }) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeShow),
@@ -1032,8 +1060,8 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeStorageRoot)
   },
-  createStorageRoot: (root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>('/api/v1/storage-roots', { method: 'POST', body: JSON.stringify(root) }).then(normalizeStorageRoot),
-  updateStorageRoot: (rootId: string, root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; enabled: boolean; missing_grace_checks: number }) => request<unknown>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'PATCH', body: JSON.stringify(root) }).then(normalizeStorageRoot),
+  createStorageRoot: (root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; discovery_mode: 'automatic' | 'review'; enabled: boolean; missing_grace_checks: number }) => request<unknown>('/api/v1/storage-roots', { method: 'POST', body: JSON.stringify(root) }).then(normalizeStorageRoot),
+  updateStorageRoot: (rootId: string, root: { name: string; path: string; media_type: 'movies' | 'shows'; access_mode: 'read_only' | 'read_write'; discovery_mode: 'automatic' | 'review'; enabled: boolean; missing_grace_checks: number }) => request<unknown>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}`, { method: 'PATCH', body: JSON.stringify(root) }).then(normalizeStorageRoot),
   deleteStorageRoot: (rootId: string, removeEntries = false) => request<{ id: string }>(`/api/v1/storage-roots/${encodeURIComponent(rootId)}${removeEntries ? '?remove_entries=true' : ''}`, { method: 'DELETE' }),
   reorderStorageRoots: async (ids: string[]) => {
     const payload = await request<{ items?: unknown[] } | unknown[]>('/api/v1/storage-roots/reorder', { method: 'POST', body: JSON.stringify({ ids }) })
@@ -1227,6 +1255,21 @@ export const api = {
   torrentArchiveItem: async (id: string) => normalizeTorrentArchiveItem(await request<unknown>(`/api/v1/torrent-archive/${encodeURIComponent(id)}`)),
   retryTorrentArchive: (id: string) => request<{ job_id: string }>(`/api/v1/torrent-archive/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   restoreTorrentArchive: (id: string, payload: { download_client_id: string; save_path: string; category?: string; tags?: string[] }) => request<{ job_id: string }>(`/api/v1/torrent-archive/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify(payload) }),
+  discoveries: async (state: 'pending' | 'approved' | 'ignored' = 'pending') => {
+    const loadPage = (page: number) => request<{ items?: unknown[]; pages?: number }>(`/api/v1/discoveries?state=${encodeURIComponent(state)}&page=${page}&page_size=250`)
+    const first = await loadPage(1)
+    const items = [...(first.items ?? [])]
+    const pages = Math.max(1, numberValue(first.pages))
+    if (pages > 1) {
+      const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, index) => loadPage(index + 2)))
+      rest.forEach((page) => items.push(...(page.items ?? [])))
+    }
+    return items.map(normalizeMediaDiscovery)
+  },
+  discoveryCount: async () => numberValue((await request<{ count: number }>('/api/v1/discoveries/count')).count),
+  selectDiscovery: (id: string, tmdbId: number) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/select`, { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId }) }).then(normalizeMediaDiscovery),
+  approveDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/approve`, { method: 'POST' }).then(normalizeMediaDiscovery),
+  ignoreDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/ignore`, { method: 'POST' }).then(normalizeMediaDiscovery),
   problemCount: async (status = 'open') => {
     const payload = await request<{ count: number }>(`/api/v1/problems/count?status=${encodeURIComponent(status)}`)
     return numberValue(payload.count)

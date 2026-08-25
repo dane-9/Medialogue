@@ -17,11 +17,17 @@ class AccessMode(str, Enum):
     READ_WRITE = "read_write"
 
 
+class DiscoveryMode(str, Enum):
+    AUTOMATIC = "automatic"
+    REVIEW = "review"
+
+
 class StorageRootCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     path: str = Field(min_length=1, max_length=4096)
     media_type: MediaType
     access_mode: AccessMode = AccessMode.READ_ONLY
+    discovery_mode: DiscoveryMode = DiscoveryMode.AUTOMATIC
     enabled: bool = True
     missing_grace_checks: int = Field(default=2, ge=1, le=100)
 
@@ -40,6 +46,7 @@ class StorageRootUpdate(BaseModel):
     path: str | None = Field(default=None, min_length=1, max_length=4096)
     media_type: MediaType | None = None
     access_mode: AccessMode | None = None
+    discovery_mode: DiscoveryMode | None = None
     enabled: bool | None = None
     missing_grace_checks: int | None = Field(default=None, ge=1, le=100)
 
@@ -116,6 +123,7 @@ class StorageRootResponse(ORMModel):
     resolved_root_path: str
     media_type: MediaType
     access_mode: AccessMode
+    discovery_mode: DiscoveryMode
     enabled: bool
     missing_grace_checks: int
     last_health: str | None

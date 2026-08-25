@@ -62,6 +62,17 @@ class AccessMode(StrEnum):
     READ_WRITE = "read_write"
 
 
+class DiscoveryMode(StrEnum):
+    AUTOMATIC = "automatic"
+    REVIEW = "review"
+
+
+class DiscoveryReviewState(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    IGNORED = "ignored"
+
+
 class IdentityState(StrEnum):
     MATCHED = "matched"
     MANUAL = "manual"
@@ -377,6 +388,7 @@ class StorageRoot(TimestampMixin, Base):
     resolved_root_path: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
     access_mode: Mapped[AccessMode] = mapped_column(SAEnum(AccessMode, native_enum=False), default=AccessMode.READ_ONLY, nullable=False)
+    discovery_mode: Mapped[DiscoveryMode] = mapped_column(SAEnum(DiscoveryMode, native_enum=False), default=DiscoveryMode.AUTOMATIC, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     #: Hand-chosen list position. Roots are a short, stable list a person curates,
     #: so alphabetical order is the machine's preference rather than theirs.
@@ -391,6 +403,33 @@ class StorageRoot(TimestampMixin, Base):
 
     directories: Mapped[list["MediaDirectory"]] = relationship(back_populates="storage_root")
     mappings: Mapped[list["RemotePathMapping"]] = relationship(back_populates="storage_root")
+
+
+class MediaDiscovery(TimestampMixin, Base):
+    """A detected media directory waiting for an explicit library decision."""
+
+    __tablename__ = "media_discoveries"
+    __table_args__ = (
+        UniqueConstraint("media_directory_id", name="uq_media_discoveries_directory"),
+        Index("ix_media_discoveries_state", "review_state"),
+        Index("ix_media_discoveries_type_state", "media_type", "review_state"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    media_directory_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("media_directories.id", ondelete="CASCADE"), nullable=False)
+    media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
+    review_state: Mapped[DiscoveryReviewState] = mapped_column(SAEnum(DiscoveryReviewState, native_enum=False), default=DiscoveryReviewState.PENDING, nullable=False)
+    parsed_title: Mapped[str | None] = mapped_column(String(512))
+    parsed_year: Mapped[int | None] = mapped_column(Integer)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    suggested_tmdb_id: Mapped[int | None] = mapped_column(Integer)
+    selected_tmdb_id: Mapped[int | None] = mapped_column(Integer)
+    candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
+    parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    approved_media_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    media_directory: Mapped["MediaDirectory"] = relationship(back_populates="discovery")
 
 
 class RemotePathMapping(TimestampMixin, Base):
@@ -433,6 +472,7 @@ class MediaDirectory(Base):
     movie_release: Mapped[MovieRelease | None] = relationship(back_populates="directories")
     show_release: Mapped[ShowRelease | None] = relationship(back_populates="directories")
     files: Mapped[list["MediaFile"]] = relationship(back_populates="media_directory", cascade="all, delete-orphan")
+    discovery: Mapped["MediaDiscovery | None"] = relationship(back_populates="media_directory", cascade="all, delete-orphan", uselist=False)
 
 
 class MediaFile(Base):

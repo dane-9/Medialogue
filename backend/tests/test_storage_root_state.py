@@ -98,6 +98,33 @@ def test_changing_a_scanned_root_path_resets_its_scan_age(client: TestClient, tm
     assert moved.json()["last_scan_at"] is None
 
 
+def test_discovery_mode_persists_across_create_update_and_reload(client: TestClient, tmp_path):
+    headers = login(client)
+    root_path = tmp_path / "review-movies"
+    root_path.mkdir()
+
+    created = client.post("/api/v1/storage-roots", headers=headers, json={
+        "name": "Review Movies",
+        "path": str(root_path),
+        "media_type": "movies",
+        "discovery_mode": "review",
+    })
+    assert created.status_code == 201, created.text
+    root_id = created.json()["id"]
+    assert created.json()["discovery_mode"] == "review"
+    assert client.get(f"/api/v1/storage-roots/{root_id}").json()["discovery_mode"] == "review"
+    assert client.get("/api/v1/storage-roots").json()["items"][0]["discovery_mode"] == "review"
+
+    changed = client.patch(
+        f"/api/v1/storage-roots/{root_id}",
+        headers=headers,
+        json={"discovery_mode": "automatic"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["discovery_mode"] == "automatic"
+    assert client.get(f"/api/v1/storage-roots/{root_id}").json()["discovery_mode"] == "automatic"
+
+
 def test_scan_state_clears_after_terminal_job_and_blocks_path_races(client: TestClient, tmp_path):
     from app.models.domain import Job, JobStatus
 

@@ -4,7 +4,7 @@ import type { RootDraft } from './rootDraft'
 
 const base: RootDraft = {
   name: 'Movies', path: '\\TRUENAS\Movies', mediaType: 'movies',
-  accessMode: 'read_only', enabled: true, missingGraceChecks: 2,
+  accessMode: 'read_only', enabled: true, reviewNewMedia: false, missingGraceChecks: 2,
 }
 const draft = (over: Partial<RootDraft> = {}): RootDraft => ({ ...base, ...over })
 
@@ -27,6 +27,7 @@ describe('rootDraftChanged', () => {
     expect(rootDraftChanged(draft({ mediaType: 'shows' }), base)).toBe(true)
     expect(rootDraftChanged(draft({ accessMode: 'read_write' }), base)).toBe(true)
     expect(rootDraftChanged(draft({ enabled: false }), base)).toBe(true)
+    expect(rootDraftChanged(draft({ reviewNewMedia: true }), base)).toBe(true)
     expect(rootDraftChanged(draft({ missingGraceChecks: 3 }), base)).toBe(true)
   })
 

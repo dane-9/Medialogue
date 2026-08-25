@@ -14,6 +14,7 @@ from dataclasses import replace
 from pathlib import PurePath
 from typing import Iterable
 
+from .quality import QUALITY_DEFINITIONS
 from .types import (
     AudioInfo,
     HDRInfo,
@@ -26,28 +27,17 @@ from .types import (
 )
 
 
-# The order is intentional.  It is the parser's quality precedence contract.
+# Full-disc markers win regardless of any resolution in the name. The rest of
+# this public parser contract follows the generated catalog, so adding a
+# supported combination cannot leave a stale parallel precedence list behind.
 QUALITY_PRECEDENCE: tuple[str, ...] = (
     "full_disc_dvd5_dvd9",
     "full_disc_dvd9",
     "full_disc_dvd5",
-    "2160p_bluray_remux",
-    "1080p_bluray_remux",
-    "2160p_encode",
-    "1080p_encode",
-    "2160p_web_dl",
-    "1080p_web_dl",
-    "720p_web_dl",
-    "2160p_webrip",
-    "1080p_webrip",
-    "720p_webrip",
-    "2160p_hdtv",
-    "1080p_hdtv",
-    "720p_hdtv",
-    "480i_ntsc_dvd_remux",
-    "576i_pal_dvd_remux",
-    "480p_ntsc_dvd_remux",
-    "576p_pal_dvd_remux",
+) + tuple(
+    re.sub(r"[^a-z0-9]+", "_", definition.name.casefold()).strip("_")
+    for definition in QUALITY_DEFINITIONS
+    if not definition.name.startswith("Full Disc")
 )
 
 _EDITION_ALIASES: tuple[tuple[str, str], ...] = (
@@ -177,6 +167,8 @@ _KNOWN_NON_TITLE = {
     "480p",
     "576i",
     "480i",
+    "4k",
+    "8k",
     "2160",
     "1080",
     "720",
@@ -472,8 +464,9 @@ def _technical_boundary(normalized: str, *, start: int = 0) -> int | None:
     """Locate the earliest high-confidence release token after ``start``."""
 
     patterns = (
-        r"\b(?:2160|1080|720|576|480)p\b",
-        r"\b(?:576|480)i\b",
+        r"\b\d{3,4}[pi]\b",
+        r"\b(?:4K|8K)\b",
+        r"\b\d+\s*[x×]\s*DVD\s*[59]\b",
         rf"\b(?:S{_SEASON_NUMBER}(?:E\d{{1,3}})?|\d{{1,2}}x\d{{1,3}})\b",
         r"\b(?:WEB[- ]?DL|WEB[- ]?Rip|HDTV|Blu[- ]?Ray|DVD(?:5|9)?|REMUX)\b",
         r"\b(?:x26[45]|AVC|HEVC|H\.26[45]|MPEG[- ]?2|VC[- ]?1|TrueHD|DTS[- ]?HD|DD\+?|FLAC|AAC)\b",
@@ -521,12 +514,44 @@ def _release_group(raw: str, normalized: str) -> tuple[str, str, bool]:
 
 
 def _resolution(normalized: str) -> str | None:
-    match = re.search(r"\b(2160|1080|720|576|480)(p|i)\b", normalized, re.I)
-    return f"{match.group(1)}{match.group(2).lower()}" if match else None
+    match = re.search(r"\b(\d{3,4})(p|i)\b", normalized, re.I)
+    if match:
+        return f"{match.group(1)}{match.group(2).lower()}"
+    if re.search(r"\b8K\b", normalized, re.I):
+        return "4320p"
+    if re.search(r"\b4K\b", normalized, re.I):
+        return "2160p"
+    return None
 
 
 def _token_values(normalized: str) -> set[str]:
     return {_casefold_token(token.strip("[](){}")) for token in _tokens(normalized)}
+
+
+def _dvd_disc_layout(normalized: str) -> tuple[bool, bool, str | None]:
+    """Return DVD capacities and a count-aware evidence label.
+
+    Disc count is evidence, not a separate quality definition: 3xDVD5 is still
+    the Full Disc DVD5 quality. Prefix and suffix count spellings are accepted.
+    """
+
+    counts = {"5": 0, "9": 0}
+    pattern = r"(?<![A-Za-z0-9])(?:(\d+)\s*[x×]\s*)?DVD\s*([59])(?:\s*[x×]\s*(\d+))?(?!\d)"
+    for match in re.finditer(pattern, normalized, re.I):
+        count = int(match.group(1) or match.group(3) or "1")
+        counts[match.group(2)] += count
+    has_dvd5 = counts["5"] > 0
+    has_dvd9 = counts["9"] > 0
+    if not has_dvd5 and not has_dvd9:
+        return False, False, None
+    if counts["5"] == 1 and counts["9"] == 1:
+        return True, True, "DVD5/DVD9"
+    parts = [
+        f"{count}xDVD{kind}" if count > 1 else f"DVD{kind}"
+        for kind, count in counts.items()
+        if count
+    ]
+    return has_dvd5, has_dvd9, " + ".join(parts)
 
 
 def _quality(normalized: str) -> QualityInfo:
@@ -535,8 +560,8 @@ def _quality(normalized: str) -> QualityInfo:
     values = _token_values(normalized)
     raw_tokens = tuple(_tokens(normalized))
 
-    has_dvd5 = bool(re.search(r"\bDVD\s*5\b|\bDVD5\b", normalized, re.I))
-    has_dvd9 = bool(re.search(r"\bDVD\s*9\b|\bDVD9\b", normalized, re.I))
+    has_dvd5, has_dvd9, disc_layout = _dvd_disc_layout(normalized)
+    has_dvd = bool(re.search(r"\bDVD(?:\s*[59])?\b", normalized, re.I))
     has_bluray = bool(re.search(r"\b(?:UHD\s+)?Blu[- ]?Ray\b", normalized, re.I))
     has_remux = bool(re.search(r"\bREMUX\b", normalized, re.I))
     has_webdl = bool(re.search(r"\bWEB[- ]?DL\b|\bWEB-DL\b", normalized, re.I))
@@ -550,31 +575,24 @@ def _quality(normalized: str) -> QualityInfo:
 
     # Full-disc precedence is explicit and independent of resolution.
     if has_dvd5 and has_dvd9:
-        return QualityInfo("Full Disc DVD5/DVD9", resolution, "DVD", None, "DVD5/DVD9", standard, raw_tokens)
+        return QualityInfo("Full Disc DVD5/DVD9", resolution, "DVD", None, disc_layout, standard, raw_tokens)
     if has_dvd9 and not has_dvd_remux:
-        return QualityInfo("Full Disc DVD9", resolution, "DVD", None, "DVD9", standard, raw_tokens)
+        return QualityInfo("Full Disc DVD9", resolution, "DVD", None, disc_layout, standard, raw_tokens)
     if has_dvd5 and not has_dvd_remux:
-        return QualityInfo("Full Disc DVD5", resolution, "DVD", None, "DVD5", standard, raw_tokens)
+        return QualityInfo("Full Disc DVD5", resolution, "DVD", None, disc_layout, standard, raw_tokens)
 
-    if has_remux and has_bluray and resolution in {"2160p", "1080p"}:
+    if has_remux and has_bluray and resolution:
         return QualityInfo(f"{resolution} BluRay REMUX", resolution, "BluRay", "REMUX", None, standard, raw_tokens)
 
-    # DVD REMUX carries the SD standard in its canonical value.  Fall back to
-    # the resolution when a release name omits NTSC/PAL.
+    # The SD standard is evidence, not part of the quality: PAL and NTSC of the
+    # same resolution rank identically, so the canonical value omits it.
     if has_dvd_remux:
-        if standard == "NTSC" and resolution:
-            canonical = f"{resolution} NTSC DVD REMUX"
-        elif standard == "PAL" and resolution:
-            canonical = f"{resolution} PAL DVD REMUX"
-        elif resolution:
-            canonical = f"{resolution} DVD REMUX"
-        else:
-            canonical = "DVD REMUX"
+        canonical = f"{resolution} DVD REMUX" if resolution else "DVD REMUX"
         return QualityInfo(canonical, resolution, "DVD", "REMUX", None, standard, raw_tokens)
 
     # BluRay without REMUX is an encode in this application's taxonomy.  The
     # codec evidence is intentionally left untouched by this classification.
-    if has_bluray and resolution in {"2160p", "1080p"}:
+    if has_bluray and resolution:
         return QualityInfo(f"{resolution} Encode", resolution, "BluRay", "Encode", None, standard, raw_tokens)
 
     for source, marker, canonical_source in (
@@ -582,8 +600,12 @@ def _quality(normalized: str) -> QualityInfo:
         ("WEBRip", has_webrip, "WEBRip"),
         ("HDTV", has_hdtv, "HDTV"),
     ):
-        if marker and resolution in {"2160p", "1080p", "720p"}:
+        if marker and resolution:
             return QualityInfo(f"{resolution} {canonical_source}", resolution, source, None, None, standard, raw_tokens)
+
+    # Plain DVD releases are encodes rather than full-disc images.
+    if has_dvd and resolution:
+        return QualityInfo(f"{resolution} DVD Encode", resolution, "DVD", "Encode", None, standard, raw_tokens)
 
     # A token-only DVD5/DVD9 name was already handled above; retain the
     # resolution/source even when the quality is not yet part of the taxonomy.
@@ -597,7 +619,7 @@ def _provider(normalized: str, quality: QualityInfo) -> str | None:
         -1,
     )
     resolution_index = next(
-        (idx for idx, token in enumerate(tokens) if re.fullmatch(r"(?:2160|1080|720|576|480)[pi]", token, re.I)),
+        (idx for idx, token in enumerate(tokens) if re.fullmatch(r"\d{3,4}[pi]|(?:4K|8K)", token, re.I)),
         -1,
     )
     for index, token in enumerate(tokens):
@@ -838,6 +860,9 @@ def _unknown_tokens(
         known.update(_normalise_punctuation_phrase(quality.source).split())
     if quality.modifier:
         known.add(quality.modifier.casefold())
+    if quality.disc_type:
+        known.add(quality.disc_type.casefold())
+        known.update(re.findall(r"(?:\d+x)?dvd[59]", quality.disc_type.casefold()))
     if quality.tv_standard:
         known.add(quality.tv_standard.casefold())
     if video.codec:

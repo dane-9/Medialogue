@@ -268,17 +268,27 @@ async def load_quality_profile_for_search(
     )
 
 
-def minimum_quality_status(candidate_quality: str | None, minimum_quality: str | None) -> bool | None:
+def minimum_quality_status(
+    candidate_quality: str | None,
+    minimum_quality: str | None,
+    quality_order: tuple[str, ...] | list[str] | None = None,
+) -> bool | None:
     """Return whether a classified candidate satisfies the configured warning floor.
 
-    The hardcoded rank is used only for this explicit minimum-quality warning.
-    It is never an automatic upgrade preference or a download rejection rule.
+    A profile's top-to-bottom quality order is authoritative. Hardcoded ranks
+    remain only as a compatibility fallback for legacy callers without an
+    order snapshot.
     """
 
     if not minimum_quality:
         return None
     if not candidate_quality:
         return None
+    if quality_order:
+        try:
+            return quality_order.index(candidate_quality) <= quality_order.index(minimum_quality)
+        except ValueError:
+            return None
     candidate = QUALITY_BY_NAME.get(candidate_quality)
     minimum = QUALITY_BY_NAME.get(minimum_quality)
     if candidate is None or minimum is None:
@@ -392,7 +402,11 @@ async def evaluate_current_release_score(
         score_overrides=effective.overrides,
         context={"indexer": indexer} if indexer else {},
     )
-    floor = minimum_quality_status(parsed.quality.canonical, effective.minimum_quality_name)
+    floor = minimum_quality_status(
+        parsed.quality.canonical,
+        effective.minimum_quality_name,
+        effective.quality_order,
+    )
     breakdown: list[dict[str, Any]] = []
     for item in evaluation.formats:
         key = str(item.custom_format_id)

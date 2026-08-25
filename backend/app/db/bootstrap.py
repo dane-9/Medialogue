@@ -42,11 +42,28 @@ async def mark_running_jobs_interrupted(session: AsyncSession) -> None:
     )
 
 
+#: Old DVD quality names, mapped to the resolution-only names that replaced them.
+_DVD_STANDARD_RENAMES: dict[str, str] = {
+    f"{resolution} {standard} DVD {modifier}": f"{resolution} DVD {modifier}"
+    for resolution, standard in (("576i", "PAL"), ("576p", "PAL"), ("480i", "NTSC"), ("480p", "NTSC"))
+    for modifier in ("REMUX", "Encode")
+}
+
+
 async def ensure_quality_definitions(session: AsyncSession) -> None:
     from app.models.domain import QualityDefinition
     from app.parser import list_quality_definitions
 
-    existing = {item.name: item for item in (await session.scalars(select(QualityDefinition))).all()}
+    rows = (await session.scalars(select(QualityDefinition))).all()
+    # PAL and NTSC stopped being part of a DVD quality's identity. Renaming in
+    # place keeps every profile score and release reference attached, where
+    # letting the old names fall out of the catalog would disable eight rows and
+    # silently drop whatever they were scored at.
+    for row in rows:
+        renamed = _DVD_STANDARD_RENAMES.get(row.name)
+        if renamed and not any(item.name == renamed for item in rows):
+            row.name = renamed
+    existing = {item.name: item for item in rows}
     canonical_names: set[str] = set()
     for definition in list_quality_definitions():
         canonical_names.add(definition.name)

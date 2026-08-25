@@ -26,10 +26,13 @@ from app.integrations.filesystem import DirectoryObservation, FilesystemObserver
 from app.integrations.plex import PlexClient, PlexMediaMatch
 from app.models.domain import (
     AssociationType,
+    DiscoveryMode,
+    DiscoveryReviewState,
     Event,
     IdentityState,
     InteractiveSearchResult,
     MediaDirectory,
+    MediaDiscovery,
     MediaFile,
     EpisodeMediaMap,
     MediaType,
@@ -67,6 +70,7 @@ from app.reconciliation.types import (
 from app.services.events import create_event, publish_live_event, queue_live_event
 from app.services.integration_state import get_configured_plex
 from app.services.tmdb import TMDBUnavailable, resolve_movie_identity, resolve_movie_identity_detailed
+from app.services.discoveries import stage_media_discovery
 from app.services.quality_profiles import evaluate_current_release_score
 
 
@@ -627,6 +631,8 @@ async def _persist_plex_candidate_evidence(
         )
 
 
+
+
 async def reconcile_movie_directory(
     db: AsyncSession,
     root: StorageRoot,
@@ -763,6 +769,21 @@ async def reconcile_movie_directory(
         title = movie.title
         year = movie.year
         confidence = 1.0
+
+    if (
+        root.media_type == MediaType.MOVIES
+        and root.discovery_mode == DiscoveryMode.REVIEW
+        and movie is None
+        and not manual_identity
+    ):
+        discovery = await stage_media_discovery(
+            db, directory, folder_parse, media_type=MediaType.MOVIES, title=title, year=year, confidence=confidence
+        )
+        # Review is expected work, not a Problem. Clear stale identity rows if this
+        # directory was previously scanned while automatic admission was enabled.
+        for reason in ("LOW_CONFIDENCE_MATCH", "TMDB_IDENTITY_UNRESOLVED", "PLEX_IDENTITY_MISMATCH"):
+            await resolve_problem(db, reason, "media_directory", directory.id)
+        return "review" if discovery.review_state.value == "pending" else "matched"
 
     # Title + year is enough evidence to ask an authoritative identity source.
     # A folder-only parse naturally scores 0.80; do not block it before TMDB or
@@ -983,6 +1004,14 @@ async def reconcile_movie_directory(
                 "incoming": False,
             }
         directory.movie_release_id = release.id
+        discovery = await db.scalar(
+            select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
+        )
+        if discovery is not None and discovery.review_state != DiscoveryReviewState.APPROVED:
+            discovery.review_state = DiscoveryReviewState.APPROVED
+            discovery.selected_tmdb_id = movie.tmdb_id
+            discovery.approved_media_id = movie.id
+            discovery.reviewed_at = utcnow()
         await _persist_plex_candidate_evidence(db, movie, release, plex_evidence)
         # Plex metadata cannot dispute a TMDB/manual movie identity.
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "movie", movie.id)
