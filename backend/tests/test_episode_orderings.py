@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -84,10 +85,42 @@ class FakeTMDB:
                 episode_count=8,
                 description="Production order.",
                 network=None,
-            )
+            ),
+            # A longer single season, which is the shape that matters for
+            # detection: release groups often number every segment of an
+            # episode, so their files run past the end of the broadcast season.
+            TMDBEpisodeGroupSummary(
+                id="group-segments",
+                name="Segments",
+                type=1,
+                group_count=1,
+                episode_count=16,
+                description="Every segment numbered.",
+                network=None,
+            ),
         ]
 
     async def get_episode_group(self, group_id: str):
+        if group_id == "group-segments":
+            return TMDBEpisodeGroup(
+                id=group_id,
+                name="Segments",
+                type=1,
+                seasons=((
+                    1,
+                    "Season 1",
+                    tuple(
+                        TMDBEpisodeMetadata(
+                            tmdb_id=9000 + index,
+                            season_number=1,
+                            episode_number=index + 1,
+                            title=f"Segment {index + 1}",
+                            air_date=None,
+                        )
+                        for index in range(16)
+                    ),
+                ),),
+            )
         assert group_id == "group-production"
         seasons = []
         for season_number in (1, 2):
@@ -210,3 +243,87 @@ def test_switching_back_restores_the_default_structure(client: TestClient) -> No
     assert restored["tmdb_episode_group_id"] is None
     assert len(restored["seasons"]) == 1
     assert restored["seasons"][0]["episode_count"] == 8
+
+
+def test_a_scan_adopts_the_ordering_the_files_are_numbered_by(client: TestClient, tmp_path) -> None:
+    headers = _login(client)
+
+    # The TMDB record says season one holds eight episodes. These files number
+    # segments and run to twelve, which only the Segments ordering can hold.
+    root = tmp_path / "shows"
+    folder = root / "Dexters Laboratory"
+    folder.mkdir(parents=True)
+    for episode in range(9, 13):
+        (folder / f"Dexters.Laboratory.S01E{episode:02d}.1080p.WEB-DL.mkv").write_bytes(b"episode")
+
+    created = client.post(
+        "/api/v1/storage-roots",
+        headers=headers,
+        json={
+            "name": "Shows", "path": str(root), "media_type": "shows",
+            "access_mode": "read_only", "discovery_mode": "automatic",
+            "enabled": True, "missing_grace_checks": 2,
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    started = client.post(f"/api/v1/storage-roots/{created.json()['id']}/scan", headers=headers)
+    assert started.status_code == 202, started.text
+    for _ in range(200):
+        job = client.get(f"/api/v1/jobs/{started.json()['job_id']}").json()
+        if job["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "completed", job
+
+    detail = client.get(f"/api/v1/shows/{SHOW_ID}").json()
+    # Adopted without anybody being asked: the files say which ordering they
+    # were numbered by, and the default cannot hold them.
+    assert detail["tmdb_episode_group_id"] == "group-segments"
+    season_one = next(season for season in detail["seasons"] if season["season_number"] == 1)
+    assert season_one["episode_count"] == 16
+
+    # Nothing left open for numbers that turned out to be perfectly valid. The
+    # listing returns resolved rows too, so the status filter is the point.
+    problems = client.get("/api/v1/problems?status=open&page_size=250").json()["items"]
+    assert [item for item in problems if item["reason"] == "EPISODE_MAPPING_UNRESOLVED"] == []
+
+
+def test_a_hand_picked_ordering_is_not_overruled_by_a_scan(client: TestClient, tmp_path) -> None:
+    headers = _login(client)
+    created = client.post("/api/v1/shows", headers=headers, json={"tmdb_id": SHOW_ID, "monitored": True})
+    assert created.status_code == 201, created.text
+    detail = client.get(f"/api/v1/shows/{SHOW_ID}").json()
+
+    # Someone chose the production ordering deliberately.
+    switched = client.patch(
+        f"/api/v1/shows/{SHOW_ID}",
+        headers=headers,
+        json={"tmdb_episode_group_id": "group-production", "expected_revision": detail["revision"]},
+    )
+    assert switched.status_code == 200, switched.text
+
+    root = tmp_path / "shows"
+    folder = root / "Dexters Laboratory"
+    folder.mkdir(parents=True)
+    # Numbers that fit neither ordering, so the scan finds a mismatch and still
+    # must not overrule the choice that was made.
+    (folder / "Dexters.Laboratory.S01E99.1080p.WEB-DL.mkv").write_bytes(b"episode")
+
+    storage = client.post(
+        "/api/v1/storage-roots",
+        headers=headers,
+        json={
+            "name": "Shows", "path": str(root), "media_type": "shows",
+            "access_mode": "read_only", "discovery_mode": "automatic",
+            "enabled": True, "missing_grace_checks": 2,
+        },
+    )
+    started = client.post(f"/api/v1/storage-roots/{storage.json()['id']}/scan", headers=headers)
+    for _ in range(200):
+        job = client.get(f"/api/v1/jobs/{started.json()['job_id']}").json()
+        if job["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+
+    assert client.get(f"/api/v1/shows/{SHOW_ID}").json()["tmdb_episode_group_id"] == "group-production"

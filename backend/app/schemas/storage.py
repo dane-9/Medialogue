@@ -37,7 +37,7 @@ class StorageRootCreate(BaseModel):
         from pathlib import Path
 
         if not Path(value).is_absolute():
-            raise ValueError("storage root path must be absolute")
+            raise ValueError("media folder path must be absolute")
         return value
 
 
@@ -56,7 +56,7 @@ class StorageRootUpdate(BaseModel):
         from pathlib import Path
 
         if value is not None and not Path(value).is_absolute():
-            raise ValueError("storage root path must be absolute")
+            raise ValueError("media folder path must be absolute")
         return value
 
 
@@ -67,7 +67,7 @@ class StorageRootReorder(BaseModel):
 
 
 class LibrarySummary(BaseModel):
-    """Counts the Root Storage page needs to explain the library's state."""
+    """Counts the Media Folders page needs to explain the library's state."""
 
     movies: int = 0
     shows: int = 0

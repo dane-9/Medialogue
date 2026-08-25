@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { badgeColor } from './lib/badgeColor'
 import { formatAge } from './lib/age'
 import { isGeneratedRootName, nextRootName } from './lib/rootName'
 import { moveItem } from './lib/reorder'
+import { CONFIDENT, reviewRoots } from './lib/reviewTriage'
 import { rootBrowseStart, rootDraftChanged, rootPathAfterBrowse } from './lib/rootDraft'
 import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
@@ -229,7 +230,7 @@ export function MoviesPage() {
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid">{filtered.map((movie) => <MovieCard key={movie.id} movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={runMovieCardAction} />)}</div> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
-    {!error && !loading && !filtered.length && <EmptyState title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie root storage, then scan it once to find your files.'} />}
+    {!error && !loading && !filtered.length && <EmptyState title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><MovieBulkContextMenu position={context} count={selected.size} profiles={profiles} tags={tags} busy={bulkBusy} onRun={runBulk} onCreateTag={createTag} onClear={() => { setSelected(new Set()); setContext(null) }} /></>}
   </Page>
 }
@@ -339,7 +340,7 @@ function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
   const evidence = [...(movie.problems ?? [])]
   const aggregate = movie.reconciliation
   if (aggregate?.qbitMediaDisagreement && !evidence.some((item) => item.code === 'QBIT_MEDIA_DISAGREEMENT')) evidence.push({ code: 'QBIT_MEDIA_DISAGREEMENT', title: 'qBittorrent / media disagreement', detail: aggregate.qbitMediaDetail ?? 'qBittorrent reports a completed item but the expected media path is not present.', severity: 'high', source: 'qBittorrent + filesystem' })
-  if ((aggregate?.rootOffline || movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable') && !evidence.some((item) => item.code === 'ROOT_OFFLINE')) evidence.push({ code: 'ROOT_OFFLINE', title: 'Root storage offline', detail: `${aggregate?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media items are affected; absence is not treated as Missing while the root is offline.`, severity: 'high', source: 'Storage root' })
+  if ((aggregate?.rootOffline || movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable') && !evidence.some((item) => item.code === 'ROOT_OFFLINE')) evidence.push({ code: 'ROOT_OFFLINE', title: 'Media folder offline', detail: `${aggregate?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media items are affected; absence is not treated as Missing while the folder is offline.`, severity: 'high', source: 'Media folder' })
   return evidence
 }
 
@@ -431,7 +432,7 @@ export function MovieDetailPage({ id }: { id: string }) {
       await load()
       const failures = jobs.filter((job) => job.state !== 'completed')
       if (failures.length) setMessage(`Reconciliation finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`)
-      else if (refresh.uninitialized_root_ids?.length) setMessage(`Reconciliation refresh complete. ${refresh.uninitialized_root_ids.length} root storage${refresh.uninitialized_root_ids.length === 1 ? ' was' : 's were'} skipped, scan ${refresh.uninitialized_root_ids.length === 1 ? 'it' : 'them'} once first.`)
+      else if (refresh.uninitialized_root_ids?.length) setMessage(`Reconciliation refresh complete. ${refresh.uninitialized_root_ids.length} media folder${refresh.uninitialized_root_ids.length === 1 ? ' was' : 's were'} skipped; scan ${refresh.uninitialized_root_ids.length === 1 ? 'it' : 'them'} once first.`)
       else if (!jobs.length) setMessage('Nothing needed rechecking. No files were changed.')
       else setMessage('Recheck complete. No files were changed.')
     } catch (reason) {
@@ -452,8 +453,8 @@ export function MovieDetailPage({ id }: { id: string }) {
   const currentSummary = <div className="release-row"><div className="release-icon"><Icon name="film" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
-    {(movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Storage Root Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the root is reachable.</span></div></div>}
-    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Storage root" value={movie.storageRoot ?? 'Unknown root'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
+    {(movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
+    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Media folder" value={movie.storageRoot ?? 'Unknown folder'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -507,7 +508,7 @@ export function ShowsPage() {
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search shows…" /></div><Select aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><FilterChips value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} className="toolbar-filter-row" onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals on every show' : 'Specials are excluded from episode totals. Monitoring is unaffected.'}><div className="specials-toggle"><span className="specials-toggle-label">Count specials</span><button type="button" className="toggle" aria-pressed={countSpecials} aria-label="Count Specials toward episode totals on every show" disabled={specialsBusy} onClick={() => void toggleSpecials()}><span /></button><span className="toggle-label">{specialsBusy ? 'Applying…' : countSpecials ? 'Yes' : 'No'}</span></div></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button></div>
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>Plex</th><th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td><td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
-    {!error && !loading && !filtered.length && <EmptyState title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show root storage to find existing files.'} />}
+    {!error && !loading && !filtered.length && <EmptyState title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
 
@@ -588,7 +589,7 @@ export function ShowDetailPage({ id }: { id: string }) {
       await api.updateShow(id, { tmdb_episode_group_id: option.id ?? '', expected_revision: show.revision })
       setOrderings(null)
       await load()
-      setMessage(`Episode ordering switched to ${option.name}. Re-scan this show's root storage if file matches look off.`)
+      setMessage(`Episode ordering switched to ${option.name}. Re-scan this show's media folder if file matches look off.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not switch episode ordering.') }
     finally { setOrderingBusy(false) }
   }
@@ -762,7 +763,7 @@ export function EventHistoryPage() {
   return <Page title="Event History" subtitle="Every change worth keeping. Live progress is not recorded here." action={<div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void load()}>Refresh</Button><Button variant="danger" onClick={() => void clearHistory()}>Clear history</Button></div>}>
     <div className="toolbar event-toolbar">
       <Select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">All severities</option><option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option></Select>
-      <Select value={entityType} onChange={(event) => setEntityType(event.target.value)}><option value="">All entities</option><option value="movie">Movies</option><option value="show">Shows</option><option value="episode">Episodes</option><option value="movie_release">Movie releases</option><option value="show_release">Show releases</option><option value="torrent">Torrents</option><option value="storage_root">Storage roots</option><option value="download_client">Download clients</option><option value="tag">Tags</option><option value="bulk_operation">Bulk operations</option></Select>
+      <Select value={entityType} onChange={(event) => setEntityType(event.target.value)}><option value="">All entities</option><option value="movie">Movies</option><option value="show">Shows</option><option value="episode">Episodes</option><option value="movie_release">Movie releases</option><option value="show_release">Show releases</option><option value="torrent">Torrents</option><option value="storage_root">Media folders</option><option value="download_client">Download clients</option><option value="tag">Tags</option><option value="bulk_operation">Bulk operations</option></Select>
       <Input value={eventType} onChange={(event) => setEventType(event.target.value)} placeholder="Exact event type, e.g. release.replaced" />
       <div className="toolbar-spacer" /><span className="muted">{total} durable events · page {pages ? page : 0} of {pages}</span>
     </div>
@@ -1067,7 +1068,7 @@ function LegacyProblemsPage() {
       await load(page, true)
       const failures = jobs.filter((job) => job.state !== 'completed')
       if (failures.length) setMessage(`Reconciliation finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`)
-      else if (refresh.uninitializedRootIds.length) setMessage(`Reconciliation refresh complete. ${refresh.uninitializedRootIds.length} new root storage${refresh.uninitializedRootIds.length === 1 ? ' was' : 's were'} skipped, scan ${refresh.uninitializedRootIds.length === 1 ? 'it' : 'them'} once first.`)
+      else if (refresh.uninitializedRootIds.length) setMessage(`Reconciliation refresh complete. ${refresh.uninitializedRootIds.length} new media folder${refresh.uninitializedRootIds.length === 1 ? ' was' : 's were'} skipped; scan ${refresh.uninitializedRootIds.length === 1 ? 'it' : 'them'} once first.`)
       else if (refresh.skippedRootIds.length && !refresh.activeJobIds.length) setMessage('Problems refreshed. A scan was already running, so this one was not started.')
       else setMessage('Recheck complete. No files were changed.')
     }
@@ -1263,7 +1264,7 @@ function LegacyProblemsPage() {
 
         {current.availableActions?.includes('confirm_show_match') && <TMDBMatchPicker kind="Show" query={tmdbQuery} matches={tmdbShowMatches} selected={selectedTmdbShowMatch} loading={loading} onQueryChange={setTmdbQuery} onSearch={() => void searchTmdbShows()} onSelect={(match) => setSelectedTmdbShowMatch(match as TMDBShowLookup)} onApply={() => { if (selectedTmdbShowMatch) void confirmShow(selectedTmdbShowMatch) }} />}
 
-        {current.code === 'PATH_MAPPING_FAILED' && <div className="resolution-block"><div className="eyebrow">PATH MAPPING</div><p>Add or adjust the qBittorrent remote path mapping under Settings → Storage Roots, then recheck this Problem. Medialogue will never guess a filesystem translation.</p></div>}
+        {current.code === 'PATH_MAPPING_FAILED' && <div className="resolution-block"><div className="eyebrow">PATH MAPPING</div><p>Add or adjust the qBittorrent remote path mapping under Settings → Media Folders, then recheck this Problem. Medialogue will never guess a filesystem translation.</p></div>}
 
         {current.availableActions?.includes('choose_episode_winner') && Array.isArray(current.details?.media_file_ids) && <div className="resolution-block"><div className="eyebrow">EPISODE DUPLICATE</div><p>Choose the file Medialogue should protect as the authoritative mapping. No file is deleted; remove the unwanted copy yourself, then recheck.</p><div className="detail-actions">{current.details.media_file_ids.map((id) => { const file = Array.isArray(current.details?.media_files) ? current.details.media_files.map(problemRecord).find((item) => problemText(item.media_file_id) === String(id)) : undefined; const label = problemText(file?.path) ?? problemText(file?.filename); const selectedFile = problemText(current.details?.preferred_media_file_id) === String(id); return <Button variant={selectedFile ? 'primary' : 'ghost'} key={String(id)} onClick={() => void chooseEpisodeWinner(String(id))} disabled={loading || selectedFile || !label}>{selectedFile ? 'Preferred: ' : label ? 'Prefer ' : ''}{label ?? 'Recheck to load file details'}</Button> })}</div></div>}
 
@@ -1569,7 +1570,7 @@ export function ProblemsPage() {
       <article className="problems-detail">{current ? <><header className="problems-detail-head"><button className="icon-button problems-back-button" type="button" onClick={() => setSelected('')} aria-label="Back to Problems"><Icon name="chevron" size={16} style={{ transform: 'rotate(180deg)' }} /></button><div><div className="eyebrow">{queueStatus === 'dismissed' ? 'SUPPRESSED' : problemWorkflowLabels[current.workflow].toUpperCase()}</div><h2>{current.title}</h2></div><details className="problems-admin-menu"><summary className="icon-button" aria-label="Administrative actions"><Icon name="menu" size={16} /></summary><div>{queueStatus === 'dismissed' ? <button onClick={() => void adminAction('restore')}>Restore to active queue</button> : <button onClick={() => void adminAction('dismiss')}>Suppress as debug/admin exception</button>}<button className="danger" onClick={() => void adminAction('delete')}>Delete problem record</button><p>Administrative actions do not fix the underlying media condition.</p></div></details></header><div className="problems-detail-body"><div className="problems-lead"><p>{current.detail}</p><div><span className={`problems-priority priority-${current.severity}`}>{current.severity} priority</span><span className={`problems-state state-${current.workflow}`}>{problemWorkflowLabels[current.workflow]}</span></div></div>
         <ProblemKeyDetails problem={current} duplicateMovie={duplicateMovie} />
         {queueStatus === 'open' && current.workflow === 'manual' && <div className="problems-resolution"><p>Delete the unwanted copy from your drive, then recheck. Medialogue will not delete media or choose a preferred copy for you.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
-        {queueStatus === 'open' && current.workflow === 'config' && <div className="problems-resolution"><p>Correct the relevant storage or path-mapping configuration, then recheck this Problem.</p><Button variant="primary" icon="settings" onClick={() => navigate('/settings?tab=Storage%20Roots')}>Open Storage settings</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
+        {queueStatus === 'open' && current.workflow === 'config' && <div className="problems-resolution"><p>Correct the relevant media-folder or path-mapping configuration, then recheck this Problem.</p><Button variant="primary" icon="settings" onClick={() => navigate('/settings?tab=Media%20Folders')}>Open Media Folders</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && current.code === 'PLEX_IDENTITY_MISMATCH' && !editingPlexIdentity && <div className="problems-resolution"><p>Which system needs correcting?</p><Button variant="primary" icon="external" onClick={openPlex}>Medialogue is correct, open Plex</Button>{current.availableActions?.some((action) => action === 'confirm_movie_match' || action === 'confirm_show_match') && <Button variant="ghost" onClick={beginPlexIdentityChange}>Medialogue is wrong, change identity</Button>}<Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && current.workflow === 'waiting' && current.code !== 'PLEX_IDENTITY_MISMATCH' && <div className="problems-resolution"><p>Recheck the current external and filesystem evidence. If the condition is gone, this Problem will leave the queue.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && (current.workflow === 'choice' || editingPlexIdentity) && <ProblemsIdentityPicker problem={current} matches={tmdbMatches} selected={selectedTmdb} query={tmdbQuery} loading={loading} onQuery={setTmdbQuery} onSearch={() => void runTmdbSearch()} onSelect={setSelectedTmdb} onApply={() => void applyTmdbMatch()} onCancel={editingPlexIdentity ? () => setEditingPlexIdentity(false) : undefined} />}
@@ -1585,107 +1586,282 @@ function reviewFolderName(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path
 }
 
+/**
+ * Review: three tall panes, one row per title.
+ *
+ * The folder and the identity Medialogue picked for it sit on the same line, in
+ * one scrolling surface, because they are two halves of a single question. The
+ * third pane is full height and belongs to whichever row is selected, so a
+ * search for something ordinary like "Friends" can show all of its results at
+ * once rather than three of them in a row-sized box.
+ *
+ * Nothing is approved one at a time. A scan produces a root's worth of folders
+ * and the answer is almost always "yes, all of these", so the unit of work is
+ * the import button and the checkbox that leaves one out.
+ */
+/** Sentence-cased media noun, for labels that name the thing being added. */
+function capitalise(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
 export function ReviewPage() {
   const [items, setItems] = useState<MediaDiscovery[]>([])
   const [loading, setLoading] = useState(true)
-  const [busyId, setBusyId] = useState('')
-  const [expandedId, setExpandedId] = useState('')
-  const [tmdbQuery, setTmdbQuery] = useState('')
-  const [tmdbMatches, setTmdbMatches] = useState<TMDBCandidate[]>([])
-  const [selectedTmdb, setSelectedTmdb] = useState<TMDBCandidate>()
+  const [importing, setImporting] = useState(false)
+  const [rootName, setRootName] = useState('')
+  const [selectedId, setSelectedId] = useState('')
+  const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState('')
-
-  const load = async () => {
-    setLoading(true)
-    try { setItems(await api.discoveries()); setMessage('') }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Review.') }
-    finally { setLoading(false) }
+  const [error, setError] = useState('')
+  /**
+   * Reload the queue.
+   *
+   * A quiet reload leaves the spinner alone, because a scan finishing while
+   * someone is halfway through reviewing must not blank the panes they are
+   * working in. Selection and exclusions are held by id, so they survive it.
+   */
+  const load = async (quiet = false) => {
+    if (!quiet) setLoading(true)
+    try { setItems(await api.discoveries()); setError('') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load Review.') }
+    finally { if (!quiet) setLoading(false) }
   }
   useEffect(() => { void load() }, [])
+  // A scan running elsewhere adds folders to this queue, and the page you are
+  // looking at should show them without being reopened.
+  useLiveLibraryRefresh(() => load(true))
 
-  const remove = (id: string) => {
-    setItems((current) => current.filter((item) => item.id !== id))
-    window.dispatchEvent(new Event('medialogue-review-changed'))
+  // Confirmed-missing directories are not actionable review work. The API
+  // excludes them too; this guard also prevents an already-loaded stale row
+  // from lingering until the next refresh.
+  const actionableItems = useMemo(() => items.filter((item) => item.exists), [items])
+  const roots = useMemo(() => reviewRoots(actionableItems), [actionableItems])
+  useEffect(() => {
+    // Keep a valid root selected as the queue empties out from under it.
+    if (!roots.length) { setRootName(''); return }
+    if (!roots.some((root) => root.name === rootName)) setRootName(roots[0].name)
+  }, [roots, rootName])
+
+  const root = roots.find((entry) => entry.name === rootName)
+  const rows = useMemo(() => actionableItems.filter((item) => item.rootName === rootName), [actionableItems, rootName])
+  const selected = rows.find((item) => item.id === selectedId)
+  const importable = rows.filter((item) => !excluded.has(item.id) && item.selected && item.exists)
+  const noun = root?.mediaType === 'shows' ? 'show' : 'movie'
+
+  const toggle = (id: string) => setExcluded((current) => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+
+  const runImport = async () => {
+    const ids = importable.map((item) => item.id)
+    if (!ids.length) return
+    setImporting(true); setError(''); setMessage('')
+    try {
+      const result = await api.bulkReviewDiscoveries(ids, 'approve')
+      setItems((current) => current.filter((item) => !result.succeeded.includes(item.id)))
+      window.dispatchEvent(new Event('medialogue-review-changed'))
+      setMessage(`${result.succeeded.length} ${result.succeeded.length === 1 ? noun : `${noun}s`} imported.`)
+      if (result.failed.length) {
+        // Named rather than counted: a partial import is only useful if you can
+        // tell which folders still need you.
+        setError(`${result.failed.length} could not be imported: ${result.failed.map((failure) => failure.message).join(' ')}`)
+        await load()
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import those.') }
+    finally { setImporting(false) }
   }
 
-  const openAlternatives = async (item: MediaDiscovery) => {
-    if (expandedId === item.id) { setExpandedId(''); return }
-    setExpandedId(item.id)
-    setSelectedTmdb(item.selected)
-    const query = item.parsedTitle ?? item.selected?.title ?? ''
-    setTmdbQuery(query)
-    setTmdbMatches(item.candidates)
-    if (!query) return
+  /**
+   * Record a chosen identity.
+   *
+   * The row updates before the request, because the candidate that was clicked
+   * already carries everything the row displays. Waiting on a server round trip
+   * to redraw a title you are looking at is a delay with nothing behind it.
+   */
+  const choose = async (item: MediaDiscovery, candidate: TMDBCandidate) => {
+    setError('')
+    const previous = item.selected
+    setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, selected: candidate } : entry))
     try {
-      const fresh = item.mediaType === 'shows' ? await api.lookupShows(query, item.parsedYear) : await api.lookupMovies(query, item.parsedYear)
-      const merged = [...fresh, ...item.candidates].filter((candidate, index, all) => all.findIndex((other) => other.tmdbId === candidate.tmdbId) === index)
-      setTmdbMatches(merged.slice(0, 6))
-    } catch { /* Stored candidates remain usable when a refresh fails. */ }
-  }
-
-  const searchTmdb = async () => {
-    if (!tmdbQuery.trim()) return
-    setBusyId(expandedId)
-    try {
-      const item = items.find((entry) => entry.id === expandedId)
-      if (!item) return
-      const matches = item.mediaType === 'shows' ? await api.lookupShows(tmdbQuery.trim()) : await api.lookupMovies(tmdbQuery.trim())
-      setTmdbMatches(matches.slice(0, 6))
-    }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
-    finally { setBusyId('') }
-  }
-
-  const saveSelection = async (item: MediaDiscovery) => {
-    if (!selectedTmdb) return
-    setBusyId(item.id)
-    try {
-      const updated = await api.selectDiscovery(item.id, selectedTmdb.tmdbId)
+      const updated = await api.selectDiscovery(item.id, candidate)
       setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
-      setExpandedId('')
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not change the match.') }
-    finally { setBusyId('') }
+    } catch (reason) {
+      // Put the old match back rather than leaving the row claiming a choice
+      // that was never recorded.
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, selected: previous } : entry))
+      setError(reason instanceof Error ? reason.message : 'Could not change the match.')
+    }
   }
 
-  const approve = async (item: MediaDiscovery) => {
-    setBusyId(item.id)
-    try { await api.approveDiscovery(item.id); remove(item.id) }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not add this ${item.mediaType === 'shows' ? 'show' : 'movie'}.`) }
-    finally { setBusyId('') }
-  }
-
-  const ignore = async (item: MediaDiscovery) => {
-    setBusyId(item.id)
-    try { await api.ignoreDiscovery(item.id); remove(item.id) }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not ignore this item.') }
-    finally { setBusyId('') }
-  }
-
-  return <Page title="Review" subtitle="Approve newly detected movies and shows before they enter your library.">
-    {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
-    {loading ? <div className="review-loading">Loading detected media…</div> : !items.length ? <EmptyState icon="check" title="Nothing to review" detail="New media from review-enabled roots will appear here after a scan." /> : <div className="review-feed">
-      {items.map((item) => {
-        const match = item.selected
-        const facts = [item.quality, item.edition, ...item.hdr].filter(Boolean)
-        const busy = busyId === item.id
-        return <article className="review-card" key={item.id}>
-          <div className="review-card-main">
-            <div className="review-poster">{match?.posterRef ? <img src={tmdbPosterUrl(match.posterRef)} alt={`${match.title} poster`} loading="lazy" referrerPolicy="no-referrer" /> : <Icon name={item.mediaType === 'shows' ? 'tv' : 'film'} size={28} />}</div>
-            <div className="review-copy" title={item.path}>
-              <div className="review-title"><span className={`review-state ${!item.exists ? 'missing' : match ? 'ready' : 'needs-match'}`}>{!item.exists ? 'Directory missing' : match ? `${item.suggested?.tmdbId === match.tmdbId ? 'Suggested' : 'Selected'} ${item.mediaType === 'shows' ? 'show' : 'movie'}` : `Choose ${item.mediaType === 'shows' ? 'show' : 'movie'}`}</span><h2>{match?.title ?? item.parsedTitle ?? reviewFolderName(item.path)}{match?.year ? <small>{match.year}</small> : item.parsedYear ? <small>{item.parsedYear}</small> : null}</h2></div>
-              {facts.length > 0 && <div className="review-facts">{facts.map((fact) => <span key={String(fact)}>{fact}</span>)}</div>}
-            </div>
-            <div className="review-actions">
-              <Button variant="ghost" onClick={() => void openAlternatives(item)} disabled={busy}>{match ? 'Other matches' : 'Choose match'}</Button>
-              <Button variant="ghost" onClick={() => void ignore(item)} disabled={busy}>Ignore</Button>
-              <Button variant="primary" onClick={() => void approve(item)} disabled={busy || !match || !item.exists}>{busy ? 'Working…' : `Add ${item.mediaType === 'shows' ? 'show' : 'movie'}`}</Button>
-            </div>
-          </div>
-          {expandedId === item.id && <IdentityPicker kind={item.mediaType === 'shows' ? 'show' : 'movie'} matches={tmdbMatches} selected={selectedTmdb} query={tmdbQuery} loading={busy} onQuery={setTmdbQuery} onSearch={() => void searchTmdb()} onSelect={(candidate) => setSelectedTmdb(candidate)} onApply={() => void saveSelection(item)} onCancel={() => setExpandedId('')} submitLabel="Use selected match" />}
-        </article>
-      })}
-    </div>}
+  if (loading) return <Page title="Review" subtitle="Check what a scan found, then import it in one go.">
+    <div className="review-loading">Loading detected media…</div>
   </Page>
+
+  if (!actionableItems.length) return <Page title="Review" subtitle="Check what a scan found, then import it in one go.">
+    <EmptyState icon="check" title="Nothing to review" detail="New media from review-enabled media folders will appear here after a scan." />
+  </Page>
+
+  return <Page title="Review" subtitle="Check what a scan found, then import it in one go.">
+    {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
+    {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
+
+    <div className="review-roots-label">Media folders</div>
+    <div className="review-roots">
+      {roots.map((entry) => <button
+        type="button"
+        key={entry.name}
+        className={`review-root ${entry.name === rootName ? 'active' : ''}`}
+        onClick={() => { setRootName(entry.name); setSelectedId('') }}
+      >
+        <span className="review-root-name">
+          <span className={`kind-box kind-${entry.mediaType === 'movies' ? 'movie' : 'show'}`} aria-label={entry.mediaType === 'movies' ? 'Movies folder' : 'Shows folder'}>
+            <Icon name={entry.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={13} />
+          </span>
+          <strong>{entry.name}</strong>
+        </span>
+        <small>{entry.count} {entry.count === 1 ? 'folder' : 'folders'}</small>
+      </button>)}
+    </div>
+
+    <div className="review-workspace">
+      {/* Panes one and two are one scrolling surface: two lists side by side
+          would drift apart, and a row has to mean the same thing across both. */}
+      <div className="review-scroll">
+        <span className="review-col-head">{noun === 'show' ? 'Show' : 'Movie'} folder</span>
+        <span className="review-col-head">Detected {noun}</span>
+        {rows.map((item) => {
+            const match = item.selected
+            const active = item.id === selectedId
+            const blocked = !item.exists || !match
+            const included = !excluded.has(item.id)
+            const state = !item.exists ? { tone: 'missing', text: 'Folder is gone' }
+              : !match ? { tone: 'needs-match', text: 'No results' }
+              : item.confidence !== undefined && item.confidence < CONFIDENT ? { tone: 'unsure', text: `${Math.round(item.confidence * 100)}%` }
+              : null
+            return <Fragment key={item.id}>
+              <div className={`review-folder-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}>
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={included && !blocked}
+                  aria-label={`Import ${reviewFolderName(item.path)}`}
+                  className={`review-check ${included && !blocked ? 'on' : ''}`}
+                  onClick={() => toggle(item.id)}
+                  disabled={blocked}
+                >{included && !blocked && <Icon name="check" size={11} />}</button>
+                <Tooltip content={item.path}><code>{reviewFolderName(item.path)}</code></Tooltip>
+              </div>
+              <button
+                type="button"
+                className={`review-match-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
+                onClick={() => setSelectedId(active ? '' : item.id)}
+              >
+                <span className="review-poster">{match?.posterRef
+                  ? <img src={tmdbPosterUrl(match.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  : <Icon name={item.mediaType === 'shows' ? 'tv' : 'film'} size={16} />}</span>
+                <span className="review-match-copy">
+                  <strong>{match?.title ?? item.parsedTitle ?? 'Nothing found'}</strong>
+                  <small>{match?.year ?? item.parsedYear ?? '—'}</small>
+                </span>
+                {state && <span className={`review-state ${state.tone}`}>{state.text}</span>}
+              </button>
+            </Fragment>
+        })}
+      </div>
+
+      <div className="review-import">
+        {/* The count is on the button, so restating it beside the button only
+            said the same number twice. */}
+        <Button variant="primary" icon="check" onClick={() => void runImport()} disabled={importing || !importable.length}>
+          {importing ? 'Adding…' : `Add ${importable.length} ${importable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
+        </Button>
+      </div>
+
+      {selected
+        ? <ReviewAlternatives key={selected.id} item={selected} onChoose={(candidate) => void choose(selected, candidate)} onSearched={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} onError={setError} />
+        : <aside className="review-alt-pane review-alt-idle">
+          <div className="review-col-head review-alt-title">Possible matches</div>
+          <div className="review-alt-empty">
+            <Icon name="search" size={28} />
+            <p>Select a detected {noun} to see the alternatives.</p>
+          </div>
+        </aside>}
+    </div>
+  </Page>
+}
+
+/**
+ * The candidates for the selected row, down the full height of the pane.
+ *
+ * Poster, title and year only. The decision is made by recognition, and a plot
+ * summary would push the next candidate off the screen.
+ */
+function ReviewAlternatives({ item, onChoose, onSearched, onError }: {
+  item: MediaDiscovery
+  onChoose: (candidate: TMDBCandidate) => void
+  onSearched: (item: MediaDiscovery) => void
+  onError: (message: string) => void
+}) {
+  const [query, setQuery] = useState(item.parsedTitle ?? item.selected?.title ?? '')
+  const [searching, setSearching] = useState(false)
+  const matches = item.candidates
+
+  /**
+   * Search TMDB and keep the answer on the item.
+   *
+   * Results are stored server-side, so they are the same for anyone looking at
+   * this queue, they survive a reload, and they last until someone searches
+   * again or the folder leaves review. Nothing here depends on this browser.
+   */
+  const search = async (term?: string) => {
+    setSearching(true)
+    try { onSearched(await api.searchDiscoveryCandidates(item.id, term)) }
+    catch (reason) { onError(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
+    finally { setSearching(false) }
+  }
+
+  return <aside className="review-alt-pane">
+    <div className="review-col-head review-alt-title">Possible matches</div>
+    <div className="review-alt-head">
+      <div className="search-field">
+        <Icon name="search" size={14} />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') void search(query) }}
+          disabled={searching}
+          placeholder={`Search TMDB for a ${item.mediaType === 'shows' ? 'show' : 'movie'}…`}
+        />
+      </div>
+    </div>
+    <div className="review-alt-list">
+      {searching && <p className="review-alt-note">Searching…</p>}
+      {!searching && !matches.length && <p className="review-alt-note">No candidates. Search above.</p>}
+      {matches.map((candidate) => {
+        const chosen = item.selected?.tmdbId === candidate.tmdbId
+        const yearMatches = item.parsedYear !== undefined && candidate.year === item.parsedYear
+        return <button
+          type="button"
+          key={candidate.tmdbId}
+          className={`review-candidate ${chosen ? 'chosen' : ''}`}
+          disabled={chosen}
+          onClick={() => onChoose(candidate)}
+        >
+          <span className="review-poster">{candidate.posterRef
+            ? <img src={tmdbPosterUrl(candidate.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />
+            : <Icon name={item.mediaType === 'shows' ? 'tv' : 'film'} size={16} />}</span>
+          <span className="review-candidate-copy">
+            <strong>{candidate.title}</strong>
+            <small>{candidate.year ?? 'Year unknown'}{yearMatches ? ' · matches folder' : ''}</small>
+          </span>
+          {chosen && <Icon name="check" size={14} />}
+        </button>
+      })}
+    </div>
+  </aside>
 }
 
 export function TorrentArchivePage() {
@@ -1758,7 +1934,7 @@ export function TorrentArchivePage() {
   return <Page title="Torrent Archive" subtitle="Kept separately from qBittorrent, so it survives a torrent being removed there." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
     <div className="archive-callout"><div className="archive-callout-icon"><Icon name="shield" size={22} /></div><div><strong>{health.status === 'healthy' ? 'Archive mount is healthy' : 'Archive mount needs attention'}</strong><span>{health.archived ?? items.filter((item) => item.archiveState === 'archived').length} archived · {health.missing_or_failed ?? items.filter((item) => item.archiveState !== 'archived').length} pending/failed · retention: indefinite · {health.path ?? '/torrent-archive'}</span></div><Badge tone={archiveTone}>{health.status === 'healthy' ? 'Protected' : health.status ?? 'Unknown'}</Badge></div>
     {message && <div className="settings-note"><Icon name="activity" size={16} /><span>{message}</span></div>}
-    {restoreItem && <Panel title="Restore archived torrent" eyebrow="EXPLICIT QBITTORRENT RESTORE"><div className="settings-form"><label><span className="field-label">Torrent</span><Input value={restoreItem.torrentName} readOnly /></label><label><span className="field-label">qBittorrent client</span><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></label><label><span className="field-label">qBittorrent save path</span><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></label></div><div className="settings-note"><Icon name="shield" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} storage root. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
+    {restoreItem && <Panel title="Restore archived torrent" eyebrow="EXPLICIT QBITTORRENT RESTORE"><div className="settings-form"><label><span className="field-label">Torrent</span><Input value={restoreItem.torrentName} readOnly /></label><label><span className="field-label">qBittorrent client</span><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></label><label><span className="field-label">qBittorrent save path</span><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></label></div><div className="settings-note"><Icon name="shield" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
     <Panel className="table-panel" title="Archived torrents" eyebrow="RECOVERY INVENTORY" action={<div className="search-field compact"><Icon name="search" size={14} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter archive…" /></div>}>
       {error ? <EmptyState title="Could not load torrent archive" detail={error} /> : !loading && !items.length ? <EmptyState icon="archive" title="No torrent recovery records yet" detail="Relevant qBittorrent torrents will be archived automatically when they are observed." /> : <table className="data-table"><thead><tr><th>Release</th><th>Media</th><th>Info hash</th><th>Source</th><th>Size</th><th>Archive</th><th>qBit</th><th /></tr></thead><tbody>{items.map((torrent) => <tr key={torrent.id}><td><strong>{torrent.releaseName ?? torrent.torrentName}</strong>{torrent.quality && <span className="table-sub">{torrent.quality}{torrent.edition ? ` · ${torrent.edition}` : ''}</span>}</td><td>{torrent.mediaTitle ?? 'Unassociated'}{torrent.tmdbId && <span className="table-sub">TMDB {torrent.tmdbId}</span>}</td><Tooltip asChild content={torrent.infoHash}><td className="mono">{shortHash(torrent.infoHash)}</td></Tooltip><td>{torrent.originalDownloadClient ?? 'Unknown client'}</td><td>{formatSize(torrent.totalSize)}</td><td><Badge tone={torrent.archiveState === 'archived' ? 'green' : torrent.archiveState === 'failed' ? 'red' : 'amber'}>{torrent.archiveState.replaceAll('_', ' ')}</Badge></td><td><Badge tone={torrent.qbitPresent ? 'green' : 'neutral'}>{torrent.qbitPresent ? 'Present' : 'Removed'}</Badge></td><td><div className="button-row">{torrent.archiveState === 'archived' ? <Button variant="ghost" icon="download" onClick={() => beginRestore(torrent)}>Restore</Button> : <Button variant="ghost" icon="refresh" onClick={() => void retryArchive(torrent)} disabled={busy}>Retry</Button>}</div></td></tr>)}</tbody></table>}
     </Panel>
@@ -1775,7 +1951,7 @@ export function CustomFormatsPage() { return <CustomFormatsPageView /> }
 const DISCARD_CHANGES = { title: 'Discard unsaved changes?', confirmLabel: 'Discard' } as const
 
 const settingsTabItems: Array<{ name: string; icon: Parameters<typeof Icon>[0]['name'] }> = [
-  { name: 'Root Storage', icon: 'folder' },
+  { name: 'Media', icon: 'folder' },
   { name: 'qBittorrent', icon: 'download' },
   { name: 'TMDB', icon: 'database' },
   { name: 'Plex', icon: 'server' },
@@ -1788,13 +1964,16 @@ const legacySettingsTabs: Record<string, string> = {
   Metadata: 'TMDB',
   Schedules: 'qBittorrent',
   'Backup / Recovery': 'Backups',
+  'Root Storage': 'Media',
+  'Storage Roots': 'Media',
+  'Media Folders': 'Media',
 }
 
 export function SettingsPage() {
-  const [tab, setTab] = useUrlState('tab', 'Root Storage')
+  const [tab, setTab] = useUrlState('tab', 'Media')
   const [searchParams] = useSearchParams()
   const normalizedTab = legacySettingsTabs[tab] ?? tab
-  const current = settingsTabs.includes(normalizedTab) ? normalizedTab : 'Root Storage'
+  const current = settingsTabs.includes(normalizedTab) ? normalizedTab : 'Media'
   return <Page title="Settings" subtitle="Connections, library paths, and system administration.">
     {searchParams.get('setup') === '1' && <div className="setup-return"><Icon name="activity" size={16} /><span>You are configuring first-run setup.</span><Link to="/setup">Back to setup checklist</Link></div>}
     <div className="split split-narrow">
@@ -1804,7 +1983,7 @@ export function SettingsPage() {
         key={item.name}
       ><Icon name={item.icon} size={16} />{item.name}</button>)}</nav>
       <section className="panel settings-panel">
-        {current === 'Root Storage' ? <StorageSettings />
+        {current === 'Media' ? <StorageSettings />
           : current === 'TMDB' ? <MetadataSettings />
           : current === 'Plex' ? <PlexSettings />
           : current === 'qBittorrent' ? <QBittorrentSettings />
@@ -1915,7 +2094,7 @@ function StorageSettings() {
       const nextRoots = await api.storageRoots()
       if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
     } catch (reason) {
-      if (generation === rootsLoadGeneration.current) setMessage(reason instanceof Error ? reason.message : 'Could not load root storage state.')
+      if (generation === rootsLoadGeneration.current) setMessage(reason instanceof Error ? reason.message : 'Could not load media folder state.')
     }
   }
   const load = async () => {
@@ -1963,7 +2142,7 @@ function StorageSettings() {
   }
 
   const beginAddRoot = () => {
-    setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setReviewNewMedia(false); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', enabled: true, reviewNewMedia: false, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage('')
+    setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setReviewNewMedia(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', enabled: true, reviewNewMedia: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage('')
   }
   const editRoot = (root: StorageRoot) => {
     setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setRootEnabled(root.enabled); setReviewNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, enabled: root.enabled, reviewNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage('')
@@ -2040,7 +2219,7 @@ function StorageSettings() {
     } catch (reason) {
       const action = selectedRoot ? 'update' : 'add'
       const detail = reason instanceof Error ? reason.message : 'The request failed.'
-      setMessage(`Could not ${action} root: ${detail}`)
+      setMessage(`Could not ${action} media folder: ${detail}`)
     }
     finally { setRootBusy(false) }
   }
@@ -2066,9 +2245,10 @@ function StorageSettings() {
     const root = removing
     if (!root) return
     setRootBusy(true)
-    try {
-      await api.deleteStorageRoot(root.id, removeEntries)
-      setRoots((items) => items.filter((item) => item.id !== root.id))
+      try {
+        await api.deleteStorageRoot(root.id, removeEntries)
+        if (removeEntries) window.dispatchEvent(new Event('medialogue-review-changed'))
+        setRoots((items) => items.filter((item) => item.id !== root.id))
       setRemoving(null)
       setRootModalOpen(false)
       setSelectedRoot(null)
@@ -2077,7 +2257,7 @@ function StorageSettings() {
         ? `${root.name} removed, along with ${root.media_count} ${mediaNoun(root)}.`
         : `${root.name} removed. Its ${root.media_count} ${mediaNoun(root)} ${root.media_count === 1 ? 'is' : 'are'} still in your library.`)
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : 'Could not remove this root storage.')
+      setMessage(reason instanceof Error ? reason.message : 'Could not remove this media folder.')
     } finally { setRootBusy(false) }
   }
   const beginAddMapping = () => {
@@ -2146,9 +2326,9 @@ function StorageSettings() {
   const liveSelectedRoot = selectedRoot ? roots.find((root) => root.id === selectedRoot.id) ?? selectedRoot : null
 
   return <>
-    <SectionHead icon="folder" title="Root Storage"
+    <SectionHead icon="folder" title="Media Folders"
       description="Where your media already lives. Medialogue only reads these folders, nothing is ever moved or renamed. Scan one to find what is inside it."
-      action={<Button variant="primary" icon="plus" onClick={beginAddRoot}>Add root</Button>} />
+      action={<Button variant="primary" icon="plus" onClick={beginAddRoot}>Add media folder</Button>} />
     {!tmdbReady && <div className="settings-note error-note">
       <Icon name="alert" size={15} />
       <span>Scanning needs TMDB. Medialogue cannot identify what it finds without it, so scans will not start. <Link to="/settings?tab=TMDB">Configure TMDB</Link></span>
@@ -2156,7 +2336,7 @@ function StorageSettings() {
     {summary && summary.unlinked_directories > 0 && <div className="settings-note">
       <Icon name="alert" size={15} />
       <span>
-        {summary.unlinked_directories} folder{summary.unlinked_directories === 1 ? '' : 's'} {summary.unlinked_directories === 1 ? 'is' : 'are'} no longer inside any root storage, usually because a root was removed.
+        {summary.unlinked_directories} folder{summary.unlinked_directories === 1 ? '' : 's'} {summary.unlinked_directories === 1 ? 'is' : 'are'} no longer inside a configured media folder, usually because one was removed.
         {' '}Their movies and shows stay in your library but are not scanned or checked. Add the folder back to reconnect them.
       </span>
     </div>}
@@ -2179,14 +2359,16 @@ function StorageSettings() {
           onDragEnd={() => void commitRootOrder()}
           onDrop={(event) => { event.preventDefault(); void commitRootOrder() }}>
           <span className="root-row-grip" aria-hidden="true"><Icon name="menu" size={14} /></span>
-          <span className={`root-row-icon ${offline ? 'bad' : ''}`}><Icon name="folder" size={18} /></span>
+          {/* The icon carries the media type, so the row does not also spend a
+              pillbox saying the same word beside the name. */}
+          <Tooltip asChild content={root.media_type === 'movies' ? 'Movies folder' : 'Shows folder'}>
+            <span className={`root-row-icon kind-${root.media_type === 'movies' ? 'movie' : 'show'} ${offline ? 'bad' : ''}`}>
+              <Icon name={root.media_type === 'movies' ? 'clapper' : 'tv-screen'} size={18} />
+            </span>
+          </Tooltip>
           <span className="root-row-copy">
             <span className="root-row-title">
               <strong>{root.name}</strong>
-              <span className={`kind-pill kind-pill-wide kind-${root.media_type === 'movies' ? 'movie' : 'show'}`}>
-                <Icon name={root.media_type === 'movies' ? 'clapper' : 'tv-screen'} size={12} />
-                <em>{root.media_type === 'movies' ? 'Movies' : 'Shows'}</em>
-              </span>
             </span>
             <code>{root.resolved_root_path}</code>
           </span>
@@ -2200,9 +2382,9 @@ function StorageSettings() {
         </button>
       })}
     </div>
-    {!roots.length && <p className="provider-empty-copy">No root storage yet. Add the folder where your media already lives, as Medialogue sees it, which inside a container is the container’s path.</p>}
+    {!roots.length && <p className="provider-empty-copy">No media folders yet. Add the folder where your media already lives, as Medialogue sees it, which inside a container is the container’s path.</p>}
 
-    {rootModalOpen && <Modal wide className="modal-tall" icon="folder" title={selectedRoot ? selectedRoot.name : 'Add root storage'} onClose={closeRootModal}
+    {rootModalOpen && <Modal wide className="modal-tall" icon="folder" title={selectedRoot ? selectedRoot.name : 'Add media folder'} onClose={closeRootModal}
       headerAction={<div className="cf-editor-footer-toggle">
         <button type="button" aria-pressed={rootEnabled} className="toggle" onClick={() => setRootEnabled((value) => !value)}><span /></button>
         <strong>{rootEnabled ? 'Enabled' : 'Disabled'}</strong>
@@ -2212,7 +2394,7 @@ function StorageSettings() {
       <span className="modal-foot-spacer" />
       {liveSelectedRoot && <Button variant="ghost" icon="refresh" onClick={() => void scanRoot(liveSelectedRoot)} disabled={rootBusy || rootDirty || !liveSelectedRoot.enabled || liveSelectedRoot.scanning || !tmdbReady}>{liveSelectedRoot.scanning ? 'Scanning…' : 'Scan now'}</Button>}
       <Button variant="ghost" onClick={closeRootModal} disabled={rootBusy}>Cancel</Button>
-      <Button variant="primary" onClick={() => void saveRoot()} disabled={rootBusy || !path.trim() || Boolean(selectedRoot && !rootDirty)}>{rootBusy ? 'Saving…' : selectedRoot ? 'Save root' : 'Add root'}</Button>
+      <Button variant="primary" onClick={() => void saveRoot()} disabled={rootBusy || !path.trim() || Boolean(selectedRoot && !rootDirty)}>{rootBusy ? 'Saving…' : selectedRoot ? 'Save media folder' : 'Add media folder'}</Button>
     </>}>
       <div className="provider-modal-editor">
         <div className="root-browser">
@@ -2243,9 +2425,15 @@ function StorageSettings() {
           <Field label="Access" help="Read-only is recommended. Read/write allows deletion.">
             <Select value={accessMode} onChange={(event) => setAccessMode(event.target.value as 'read_only' | 'read_write')}><option value="read_only">Read-only</option><option value="read_write">Read/write</option></Select>
           </Field>
-          <Field label="New media" help="Hold newly detected titles in Review until you approve them.">
+          {/* The help describes the setting as it currently stands, not one of
+              its two states: a fixed sentence about Review is wrong half the
+              time, and wrong in the direction that matters, since adding
+              automatically is the option with consequences. */}
+          <Field label="New media" help={reviewNewMedia
+            ? 'Newly detected titles wait in Review until you approve them.'
+            : 'Newly detected titles are added to your library as soon as a scan finds them.'}>
             <div className="setting-control">
-              <button type="button" aria-pressed={reviewNewMedia} className="toggle" onClick={() => setReviewNewMedia((value) => !value)}><span /></button>
+              <button type="button" aria-pressed={reviewNewMedia} className="toggle discovery-mode-toggle" onClick={() => setReviewNewMedia((value) => !value)}><span /></button>
               <span className="toggle-label">{reviewNewMedia ? 'Review before adding' : 'Add automatically'}</span>
             </div>
           </Field>
@@ -2292,7 +2480,7 @@ function StorageSettings() {
       return <button type="button" className={`provider-card ${mapping.enabled ? '' : 'provider-card-disabled'}`} key={mapping.id} onClick={() => editMapping(mapping)}>
         <div className="provider-card-head"><div className="provider-card-icon"><Icon name="arrow" size={20} /></div><Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
         <strong>{mapping.name}</strong><span className="remote-mapping-route"><b>{mapping.remote_prefix}</b><Icon name="arrow" size={13} /><b>{mapping.local_prefix}</b></span>
-        <div className="provider-card-meta"><span>{client?.name ?? 'All qBittorrent clients'}</span><span>{root?.name ?? 'Any matching root'}</span></div>
+        <div className="provider-card-meta"><span>{client?.name ?? 'All qBittorrent clients'}</span><span>{root?.name ?? 'Any matching media folder'}</span></div>
       </button>
     })}
       <button type="button" className="provider-card provider-add-card" onClick={beginAddMapping}><Icon name="plus" size={28} /><strong>Add remote path mapping</strong></button>
@@ -2324,8 +2512,8 @@ function StorageSettings() {
           <Field label="Medialogue prefix" help="The equivalent path from Medialogue's point of view.">
             <Input value={localPrefix} onChange={(event) => updateMappingDraft(() => setLocalPrefix(event.target.value))} placeholder="/media/movies" />
           </Field>
-          <Field label="Root storage" badge="optional" wide help="Limit the rewritten path to one root storage, or leave unset to try them all.">
-            <Select value={mappingRootId} onChange={(event) => updateMappingDraft(() => setMappingRootId(event.target.value))}><option value="">No explicit root</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
+          <Field label="Media folder" badge="optional" wide help="Limit the rewritten path to one media folder, or leave unset to try them all.">
+            <Select value={mappingRootId} onChange={(event) => updateMappingDraft(() => setMappingRootId(event.target.value))}><option value="">No specific media folder</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
           </Field>
         </div>
         {message && <Note message={{ tone: message.includes('required') || message.includes('Could not') ? 'error' : 'ok', text: message }} />}
@@ -2333,7 +2521,7 @@ function StorageSettings() {
     </Modal>}
 
     {message && <Note message={{ tone: message.includes('Could not') || message.includes('failed') ? 'error' : 'ok', text: message }} />}
-    <div className="settings-note"><Icon name="shield" size={15} /><span>Scans and path mappings never move or rename media. Removing a root never touches the files on it, only Medialogue's index of that root is cleared.</span></div>
+    <div className="settings-note"><Icon name="shield" size={15} /><span>Scans and path mappings never move or rename media. Removing a media folder never touches its files; only Medialogue's index of that folder is cleared.</span></div>
 
 
   </>
@@ -2452,7 +2640,7 @@ function PlexSettings() {
   const live = configuration?.configured && configuration.enabled
   return <>
     <SectionHead icon="tv" title="Plex connection"
-      description="Read-only verification. Medialogue checks exact paths first, then storage-root-relative paths across Docker mount prefixes, and only then falls back to matching on title and year."
+      description="Read-only verification. Medialogue checks exact paths first, then media-folder-relative paths across Docker mount prefixes, and only then falls back to matching on title and year."
       status={loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
       detail={tested?.text} detailTone={tested?.tone}
       action={<Button variant="secondary" onClick={() => void test()} disabled={working}>{working ? 'Working…' : 'Test connection'}</Button>} />
@@ -2473,7 +2661,7 @@ function PlexSettings() {
     </div>
     {configuration?.last_error && <Note message={{ tone: 'error', text: configuration.last_error }} />}
     <Note message={message} />
-    <div className="settings-note"><Icon name="tv" size={15} /><span>A manual storage-root scan automatically queues a read-only Plex verification for that root. “Sync library verification” checks everything immediately without asking Plex to rescan.</span></div>
+    <div className="settings-note"><Icon name="tv" size={15} /><span>A manual media-folder scan automatically queues a read-only Plex verification for that folder. “Sync library verification” checks everything immediately without asking Plex to rescan.</span></div>
     <SaveFooter dirty={dirty} saving={working} onSave={() => void save()} onRevert={() => void load()}>
       {live && <Button variant="ghost" onClick={() => void refreshHealth()} disabled={working}>Refresh health</Button>}
       {live && <Button variant="secondary" onClick={() => void syncLibrary()} disabled={working}>Sync library verification</Button>}

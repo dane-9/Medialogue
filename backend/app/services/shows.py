@@ -43,10 +43,11 @@ from app.models.domain import (
     StorageRoot,
 )
 from app.parser import extract_episode_numbers, parse_release_name, parse_season_folder
-from app.services.discoveries import stage_media_discovery
+from app.services.discoveries import retire_missing_review_discovery, stage_media_discovery
 from app.services.events import create_event
 from app.services.quality_profiles import evaluate_current_release_score
 from app.services.reconciliation import open_problem, resolve_problem
+from app.services.episode_ordering import auto_select_episode_ordering
 from app.services.tmdb import TMDBUnavailable, resolve_show_identity_detailed, sync_show_metadata
 
 
@@ -695,6 +696,9 @@ async def reconcile_show_directory(
 
     seen_paths = set(observation.media_files)
     mapped = unresolved = 0
+    # Season number -> the episode numbers the files claim, kept so an ordering
+    # mismatch can be recognised from the whole folder rather than file by file.
+    observed_numbers: dict[int, set[int]] = {}
     touched_episode_ids: set[UUID] = set()
     touched_release_ids: set[UUID] = set()
 
@@ -926,6 +930,7 @@ async def reconcile_show_directory(
                     link.association_type = AssociationType.ATTACHED
         touched_release_ids.add(release.id)
 
+        observed_numbers.setdefault(season_number, set()).update(episode_numbers)
         unresolved_numbers: list[int] = []
         resolved_episodes: list[Episode] = []
         for episode_number in episode_numbers:
@@ -1074,6 +1079,31 @@ async def reconcile_show_directory(
         discovery.selected_tmdb_id = show.tmdb_id
         discovery.approved_media_id = show.id
         discovery.reviewed_at = utcnow()
+
+    # Files numbering episodes the season does not contain usually means the
+    # release group used a different TMDB ordering, not that the files are
+    # wrong. Recognise that once for the folder rather than filing a problem per
+    # file, and map again against the ordering that actually fits.
+    if unresolved:
+        adopted = await auto_select_episode_ordering(db, show, observed_numbers)
+        if adopted is not None:
+            await create_event(
+                db,
+                "show.metadata_refreshed",
+                entity_type="show",
+                entity_id=show.id,
+                message=f"Episode ordering switched to {adopted} to match the files on disk.",
+                details={"show_id": str(show.id), "ordering": adopted},
+            )
+            return await reconcile_show_directory(
+                db,
+                root,
+                observation,
+                torrent=torrent,
+                show_hint=show,
+                incoming_release=incoming_release,
+                torrent_member_paths=torrent_member_paths,
+            )
     return "review" if unresolved and mapped == 0 else "matched"
 
 
@@ -1200,6 +1230,7 @@ async def mark_absent_show_directories(
         for media_file in directory.files:
             await resolve_problem(db, "EPISODE_CONTAINER_MISMATCH", "media_file", media_file.id)
         if not directory.exists:
+            await retire_missing_review_discovery(db, directory.id)
             continue
         if directory.missing_since is None:
             directory.missing_since = now
@@ -1211,6 +1242,7 @@ async def mark_absent_show_directories(
             continue
         directory.exists = False
         missing += 1
+        await retire_missing_review_discovery(db, directory.id)
         affected: set[UUID] = set()
         for media_file in directory.files:
             media_file.exists = False

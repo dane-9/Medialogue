@@ -238,12 +238,12 @@ async def resolve_movie_identity_detailed(
             queries.append(query_label)
             for item in await client.search_movie(query_title, year):
                 collected[item.tmdb_id] = item
-            match, reason, evidence = _select_movie_identity(title, year, list(collected.values()))
+            match, reason, _evidence = _select_movie_identity(title, year, list(collected.values()))
             if match is not None or reason == "ambiguous":
                 configuration.health = "healthy"
                 configuration.last_success_at = utcnow()
                 configuration.last_error = None
-                return TMDBMovieIdentityResolution(match, reason, evidence, tuple(queries))
+                return TMDBMovieIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
         # A TMDB year filter can occasionally exclude a valid result when its
         # release-date metadata differs from the filename convention. Retry
@@ -254,12 +254,12 @@ async def resolve_movie_identity_detailed(
                 queries.append(query_title)
                 for item in await client.search_movie(query_title, None):
                     collected[item.tmdb_id] = item
-                match, reason, evidence = _select_movie_identity(title, year, list(collected.values()))
+                match, reason, _evidence = _select_movie_identity(title, year, list(collected.values()))
                 if match is not None or reason == "ambiguous":
                     configuration.health = "healthy"
                     configuration.last_success_at = utcnow()
                     configuration.last_error = None
-                    return TMDBMovieIdentityResolution(match, reason, evidence, tuple(queries))
+                    return TMDBMovieIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
         alias_match, alias_reason = await _select_movie_by_alternative_title(
             client,
@@ -287,8 +287,8 @@ async def resolve_movie_identity_detailed(
         return TMDBMovieIdentityResolution(None, "unavailable", tuple(collected.values()), tuple(queries))
     finally:
         await client.close()
-    match, reason, evidence = _select_movie_identity(title, year, list(collected.values()))
-    return TMDBMovieIdentityResolution(match, reason, evidence, tuple(queries))
+    match, reason, _evidence = _select_movie_identity(title, year, list(collected.values()))
+    return TMDBMovieIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
 
 async def resolve_show_identity(
@@ -383,12 +383,12 @@ async def resolve_show_identity_detailed(
             queries.append(f"{query_title} ({year})" if year is not None else query_title)
             for item in await client.search_show(query_title, year):
                 collected[item.tmdb_id] = item
-            match, reason, evidence = _select_show_identity(title, year, list(collected.values()))
+            match, reason, _evidence = _select_show_identity(title, year, list(collected.values()))
             if match is not None or reason == "ambiguous":
                 configuration.health = "healthy"
                 configuration.last_success_at = utcnow()
                 configuration.last_error = None
-                return TMDBShowIdentityResolution(match, reason, evidence, tuple(queries))
+                return TMDBShowIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
         # TMDB's first-air-year filter can omit the intended series. Retry the
         # title without that filter, while retaining the same strict year check
@@ -398,12 +398,12 @@ async def resolve_show_identity_detailed(
                 queries.append(query_title)
                 for item in await client.search_show(query_title, None):
                     collected[item.tmdb_id] = item
-                match, reason, evidence = _select_show_identity(title, year, list(collected.values()))
+                match, reason, _evidence = _select_show_identity(title, year, list(collected.values()))
                 if match is not None or reason == "ambiguous":
                     configuration.health = "healthy"
                     configuration.last_success_at = utcnow()
                     configuration.last_error = None
-                    return TMDBShowIdentityResolution(match, reason, evidence, tuple(queries))
+                    return TMDBShowIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
         configuration.health = "healthy"
         configuration.last_success_at = utcnow()
@@ -419,8 +419,8 @@ async def resolve_show_identity_detailed(
         )
     finally:
         await client.close()
-    match, reason, evidence = _select_show_identity(title, year, list(collected.values()))
-    return TMDBShowIdentityResolution(match, reason, evidence, tuple(queries))
+    match, reason, _evidence = _select_show_identity(title, year, list(collected.values()))
+    return TMDBShowIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
 
 async def get_show_details(

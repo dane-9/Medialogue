@@ -38,7 +38,7 @@ class FilesystemObserver:
         try:
             resolved.relative_to(allowed_root)
         except ValueError as exc:
-            raise PermissionError("directory is outside the configured storage root") from exc
+            raise PermissionError("directory is outside the configured media folder") from exc
 
         media: list[str] = []
         has_dvd = False

@@ -763,6 +763,10 @@ export interface MediaDiscovery {
   suggested?: TMDBMovieLookup | TMDBShowLookup
   selected?: TMDBMovieLookup | TMDBShowLookup
   candidates: Array<TMDBMovieLookup | TMDBShowLookup>
+  /** What is inside the folder, which is the evidence a match is judged against. */
+  files: Array<{ relativePath: string; role: string }>
+  fileCount: number
+  videoCount: number
   createdAt?: string
   updatedAt?: string
 }

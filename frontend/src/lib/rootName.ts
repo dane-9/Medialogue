@@ -1,4 +1,4 @@
-/** Default naming for Root Storage, kept pure so the numbering is testable. */
+/** Default naming for Media Folders, kept pure so the numbering is testable. */
 
 /** The two names a root is offered automatically. */
 export type RootNameBase = 'Movies' | 'Shows'

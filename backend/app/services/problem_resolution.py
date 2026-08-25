@@ -238,7 +238,7 @@ async def _confirm_movie_match(
             await db.flush()
         root = await db.get(StorageRoot, directory.storage_root_id)
         if root is None:
-            raise AppError("NOT_FOUND", "The directory storage root no longer exists.", status_code=404)
+            raise AppError("NOT_FOUND", "The directory's media folder no longer exists.", status_code=404)
         try:
             observation = FilesystemObserver().inspect_directory(Path(directory.resolved_path), Path(root.resolved_root_path))
         except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
@@ -308,7 +308,7 @@ async def _confirm_show_match(
             await db.flush()
         root = await db.get(StorageRoot, directory.storage_root_id)
         if root is None:
-            raise AppError("NOT_FOUND", "The directory storage root no longer exists.", status_code=404)
+            raise AppError("NOT_FOUND", "The directory's media folder no longer exists.", status_code=404)
     else:
         raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "This problem cannot be resolved as a Show match.", status_code=409)
 
@@ -407,7 +407,7 @@ async def run_confirmed_show_reconciliation(
                 raise JobFailure("DIRECTORY_NOT_FOUND", "The matched Show directory no longer exists.")
             root = await db.get(StorageRoot, directory.storage_root_id)
             if root is None:
-                raise JobFailure("STORAGE_ROOT_NOT_FOUND", "The matched Show directory has no storage root.")
+                raise JobFailure("STORAGE_ROOT_NOT_FOUND", "The matched Show directory has no media folder.")
             try:
                 observation = FilesystemObserver().inspect_directory(
                     Path(directory.resolved_path),
@@ -680,11 +680,11 @@ async def duplicate_preview(
             for directory in loser.directories:
                 root = await db.get(StorageRoot, directory.storage_root_id)
                 if root is None or root.access_mode != AccessMode.READ_WRITE:
-                    raise AppError("ROOT_READ_ONLY", f"Storage root for {directory.resolved_path} is not configured read-write.", status_code=409)
+                    raise AppError("ROOT_READ_ONLY", f"Media folder for {directory.resolved_path} is not configured read-write.", status_code=409)
                 path = Path(directory.resolved_path)
                 root_path = Path(root.resolved_root_path)
                 if not _inside_root(path, root_path) or path.resolve() == root_path.resolve():
-                    raise AppError("UNSAFE_DELETE_TARGET", "A losing directory is not a safe child directory of its configured storage root.", status_code=409)
+                    raise AppError("UNSAFE_DELETE_TARGET", "A losing directory is not safely inside its configured media folder.", status_code=409)
     if remove_torrents:
         for preview in loser_previews:
             for torrent in preview["torrents"]:
@@ -868,11 +868,11 @@ async def commit_duplicate_resolution(
             for directory in loser.directories:
                 root = await db.get(StorageRoot, directory.storage_root_id)
                 if root is None or root.access_mode != AccessMode.READ_WRITE:
-                    raise AppError("ROOT_READ_ONLY", "Storage root is no longer writable; generate a new preview.", status_code=409)
+                    raise AppError("ROOT_READ_ONLY", "Media folder is no longer writable; generate a new preview.", status_code=409)
                 path = Path(directory.resolved_path)
                 root_path = Path(root.resolved_root_path)
                 if not _inside_root(path, root_path) or path.resolve() == root_path.resolve() or path.is_symlink():
-                    raise AppError("UNSAFE_DELETE_TARGET", "Refusing to delete a path that is not a safe child directory of the configured storage root.", status_code=409)
+                    raise AppError("UNSAFE_DELETE_TARGET", "Refusing to delete a path that is not safely inside the configured media folder.", status_code=409)
                 if path.exists():
                     await asyncio.to_thread(shutil.rmtree, path)
                     deleted_directories.append(str(path))

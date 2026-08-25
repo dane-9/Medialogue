@@ -657,6 +657,14 @@ function normalizeMediaDiscovery(value: unknown): MediaDiscovery {
     suggested: item.suggested ? normalizeCandidate(item.suggested) : undefined,
     selected: item.selected ? normalizeCandidate(item.selected) : undefined,
     candidates,
+    files: Array.isArray(item.files)
+      ? item.files.map((entry) => {
+        const file = record(entry)
+        return { relativePath: textValue(file.relative_path ?? file.relativePath), role: textValue(file.role) }
+      }).filter((file) => file.relativePath)
+      : [],
+    fileCount: optionalNumber(item.file_count ?? item.fileCount) ?? 0,
+    videoCount: optionalNumber(item.video_count ?? item.videoCount) ?? 0,
     createdAt: dateValue(item.created_at ?? item.createdAt),
     updatedAt: dateValue(item.updated_at ?? item.updatedAt),
   }
@@ -1266,8 +1274,31 @@ export const api = {
     }
     return items.map(normalizeMediaDiscovery)
   },
+  bulkReviewDiscoveries: async (ids: string[], action: 'approve' | 'ignore') => {
+    const payload = await request<{ succeeded?: string[]; failed?: Array<{ id: string; code: string; message: string }> }>(
+      '/api/v1/discoveries/bulk',
+      { method: 'POST', body: JSON.stringify({ ids, action }) },
+    )
+    return { succeeded: payload.succeeded ?? [], failed: payload.failed ?? [] }
+  },
+  /** Search TMDB for one folder and keep the results on the item, server-side. */
+  searchDiscoveryCandidates: (id: string, query?: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/search`, {
+    method: 'POST',
+    body: JSON.stringify({ query: query ?? null }),
+  }).then(normalizeMediaDiscovery),
+  restoreDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/restore`, { method: 'POST' }).then(normalizeMediaDiscovery),
   discoveryCount: async () => numberValue((await request<{ count: number }>('/api/v1/discoveries/count')).count),
-  selectDiscovery: (id: string, tmdbId: number) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/select`, { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId }) }).then(normalizeMediaDiscovery),
+  /** Display values ride along so the server need not re-fetch what the reviewer just clicked. */
+  selectDiscovery: (id: string, candidate: { tmdbId: number; title?: string; originalTitle?: string; year?: number; posterRef?: string }) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/select`, {
+    method: 'POST',
+    body: JSON.stringify({
+      tmdb_id: candidate.tmdbId,
+      title: candidate.title ?? null,
+      original_title: candidate.originalTitle ?? null,
+      year: candidate.year ?? null,
+      poster_ref: candidate.posterRef ?? null,
+    }),
+  }).then(normalizeMediaDiscovery),
   approveDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/approve`, { method: 'POST' }).then(normalizeMediaDiscovery),
   ignoreDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/ignore`, { method: 'POST' }).then(normalizeMediaDiscovery),
   problemCount: async (status = 'open') => {

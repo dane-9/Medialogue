@@ -94,7 +94,7 @@ def _path_inside(path: str, root: str) -> bool:
     """Whether a recorded path sits inside a root, on this platform.
 
     Not path_mapping.is_inside_root: that one is deliberately PurePosixPath,
-    because it compares container paths. Root storage paths are whatever the
+    because it compares container paths. Media folder paths are whatever the
     host uses, drive letters and UNC shares on Windows, so this comparison
     has to be platform-aware.
     """
@@ -279,7 +279,7 @@ async def create_storage_root(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise AppError("STORAGE_ROOT_EXISTS", "A storage root with this name already exists.", status_code=409) from exc
+        raise AppError("STORAGE_ROOT_EXISTS", "A media folder with this name already exists.", status_code=409) from exc
     await _adopt_unlinked_directories(db, root)
     return await _root_response(db, root)
 
@@ -300,7 +300,7 @@ async def reorder_storage_roots(
     by_id = {root.id: root for root in roots}
     unknown = [str(root_id) for root_id in payload.ids if root_id not in by_id]
     if unknown:
-        raise AppError("STORAGE_ROOT_NOT_FOUND", f"Unknown storage root: {', '.join(unknown)}", status_code=404)
+        raise AppError("STORAGE_ROOT_NOT_FOUND", f"Unknown media folder: {', '.join(unknown)}", status_code=404)
 
     ordered = [by_id[root_id] for root_id in payload.ids]
     ordered += [root for root in sorted(roots, key=lambda r: (r.sort_order, r.name)) if root.id not in set(payload.ids)]
@@ -320,7 +320,7 @@ async def reorder_storage_roots(
 async def get_storage_root(root_id: UUID, _: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> StorageRootResponse:
     root = await db.get(StorageRoot, root_id)
     if root is None:
-        raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
+        raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
     return await _root_response(db, root)
 
 
@@ -333,7 +333,7 @@ async def update_storage_root(
 ) -> StorageRootResponse:
     root = await db.get(StorageRoot, root_id)
     if root is None:
-        raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
+        raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
     values = payload.model_dump(exclude_unset=True)
     if "path" in values:
         values["resolved_root_path"] = _resolved_path(values.pop("path"))
@@ -364,7 +364,7 @@ async def update_storage_root(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise AppError("STORAGE_ROOT_EXISTS", "A storage root with this name already exists.", status_code=409) from exc
+        raise AppError("STORAGE_ROOT_EXISTS", "A media folder with this name already exists.", status_code=409) from exc
     return await _root_response(db, root)
 
 
@@ -492,7 +492,7 @@ async def delete_storage_root(
 ) -> DeleteResponse:
     root = await db.get(StorageRoot, root_id)
     if root is None:
-        raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
+        raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
     if await active_storage_root_scan_job(db, root.id) is not None:
         raise AppError(
             "STORAGE_ROOT_SCANNING",
@@ -531,9 +531,9 @@ async def scan_storage_root(
 ) -> JobAcceptedResponse:
     root = await db.get(StorageRoot, root_id)
     if root is None:
-        raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
+        raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
     if not root.enabled:
-        raise AppError("STORAGE_ROOT_DISABLED", "Storage root is disabled.", status_code=409)
+        raise AppError("STORAGE_ROOT_DISABLED", "Media folder is disabled.", status_code=409)
     # TMDB establishes the identity of everything a scan discovers. Without it,
     # every directory would be recorded as an unidentified Problem, one global
     # misconfiguration turning into thousands of individually actionable rows.
@@ -574,7 +574,7 @@ async def create_mapping(payload: RemotePathMappingCreate, _: object = Depends(r
     if payload.storage_root_id is not None:
         root = await db.get(StorageRoot, payload.storage_root_id)
         if root is None:
-            raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected storage root was not found.", status_code=404)
+            raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected media folder was not found.", status_code=404)
         local_prefix = Path(payload.local_prefix).expanduser().resolve(strict=False)
         root_path = Path(root.resolved_root_path).expanduser().resolve(strict=False)
         try:
@@ -583,7 +583,7 @@ async def create_mapping(payload: RemotePathMappingCreate, _: object = Depends(r
             raise AppError(
                 "PATH_MAPPING_OUTSIDE_ROOT",
                 (
-                    "A mapping assigned to a storage root must translate into that root. "
+                    "A mapping assigned to a media folder must translate into that folder. "
                     f"Local prefix {local_prefix} is outside {root_path}."
                 ),
                 status_code=422,
@@ -611,7 +611,7 @@ async def update_mapping(
     if target_root_id is not None:
         root = await db.get(StorageRoot, target_root_id)
         if root is None:
-            raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected storage root was not found.", status_code=404)
+            raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected media folder was not found.", status_code=404)
         local_prefix = Path(target_local_prefix).expanduser().resolve(strict=False)
         root_path = Path(root.resolved_root_path).expanduser().resolve(strict=False)
         try:
@@ -619,7 +619,7 @@ async def update_mapping(
         except ValueError as exc:
             raise AppError(
                 "PATH_MAPPING_OUTSIDE_ROOT",
-                f"A mapping assigned to a storage root must translate into that root. Local prefix {local_prefix} is outside {root_path}.",
+                f"A mapping assigned to a media folder must translate into that folder. Local prefix {local_prefix} is outside {root_path}.",
                 status_code=422,
             ) from exc
         values["local_prefix"] = str(local_prefix)

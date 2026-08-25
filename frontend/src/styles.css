@@ -496,6 +496,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 .filter-tabs { display: flex; gap: 2px; }
 .filter-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
   height: var(--control);
   padding: 0 var(--s3);
   border: 1px solid transparent;
@@ -527,6 +530,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .toggle[aria-pressed=true] { border-color: var(--ok); background: var(--ok-soft); }
 .toggle[aria-pressed=true] span { transform: translateX(12px); background: var(--ok); }
+.discovery-mode-toggle[aria-pressed=false] { border-color: var(--accent); background: var(--accent-soft); }
+.discovery-mode-toggle[aria-pressed=false] span { background: var(--accent); }
 .toggle.disabled { display: inline-block; opacity: .5; }
 .toggle.disabled span { display: block; }
 .toggle-label { color: var(--muted); font-size: var(--t-sm); }
@@ -1644,7 +1649,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .provider-add-card { align-items: center; justify-content: center; color: var(--faint); border-style: dashed; background: transparent; text-align: center; }
 .provider-add-card > strong { font-size: var(--t-sm); }
 .provider-add-card svg { color: var(--accent-text); }
-/* Root Storage is a list, not a card grid: these items have no visual
+/* Media Folders is a list, not a card grid: these items have no visual
    identity, and the one field that matters — the path — needs full width. */
 .root-list { display: grid; gap: var(--s2); }
 /* Removal dialog: the path, what happens, and the one choice worth offering. */
@@ -1690,6 +1695,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .root-row-dragging { opacity: .5; border-color: var(--accent); cursor: grabbing; }
 .root-row-dragging .root-row-grip { color: var(--accent); cursor: grabbing; }
 .root-row-disabled { opacity: .55; }
+/* Tinted by media type, using the same tokens as the pill it replaces, so the
+   colour still means what it means everywhere else in the app. */
 .root-row-icon {
   display: grid;
   width: 36px;
@@ -1700,7 +1707,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--muted);
   background: var(--surface);
 }
-.root-row-icon.bad { border-color: var(--err-line); color: var(--err); background: var(--err-soft); }
+/* An unreachable folder outranks its media type: the colour is a warning
+   before it is a category. */
+.root-row-icon.bad { color: var(--err) !important; border-color: var(--err-line) !important; background: var(--err-soft) !important; }
 .root-row-copy { display: grid; gap: var(--s2); min-width: 0; }
 .root-row-title { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .root-row-copy strong { overflow: hidden; font-size: var(--t-sm); text-overflow: ellipsis; white-space: nowrap; }
@@ -2233,45 +2242,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 /* Type sits on the title line, at the same weight as the year, because it is
    the first thing you check in a mixed list. */
-/* Both kinds are the same width whatever the word, so the titles beside them
-   start on one line rather than stepping in and out. */
-.kind-pill {
-  display: inline-flex;
-  align-items: center;
-  align-self: center;
-  gap: 4px;
-  flex: none;
-  width: 60px;
-  min-height: 20px;
-  padding: 2px 6px;
-  border: 1px solid;
-  border-radius: var(--r-sm);
-  font: 600 var(--t-xs)/1.4 var(--mono);
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  transition: width .16s ease, padding .16s ease;
-}
-.kind-pill svg { flex: none; }
-/* A storage root holds many of them, so its pill says Movies/Shows and needs
-   the extra character to fit at the shared fixed width. */
-.kind-pill-wide { width: 74px; }
-.kind-pill em {
-  flex: 1;
-  overflow: hidden;
-  font-style: normal;
-  white-space: nowrap;
-  text-align: center;
-  /* letter-spacing trails the final character, which drags centred text left;
-     indenting by the same amount puts it back. */
-  text-indent: .04em;
-}
-/* Collapsed to a square, unfurling on hover. */
-.kind-pill.collapsible { width: 26px; justify-content: center; gap: 0; padding: 2px; }
-.kind-pill.collapsible em { max-width: 0; opacity: 0; transition: max-width .16s ease, opacity .16s ease, margin-left .16s ease; }
-.kind-pill.collapsible:hover,
-.kind-pill.collapsible:focus-visible { width: 60px; justify-content: flex-start; padding: 2px 6px; }
-.kind-pill.collapsible:hover em,
-.kind-pill.collapsible:focus-visible em { max-width: 32px; margin-left: 4px; opacity: 1; }
+/* The boxed glyph, used wherever a media type needs stating without the word.
+   Same tokens as the pill, so the colour keeps its meaning. */
+.kind-box { display: grid; width: 20px; height: 20px; flex: none; place-items: center; border: 1px solid; border-radius: var(--r-sm); }
 
 .kind-movie { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
 .kind-show { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
@@ -2313,8 +2286,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font-size: var(--t-xs);
 }
 /* Bare toggle: the footer is plain text, so a bordered control would shout. */
-.global-search-toggle { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); }
-.global-search-toggle > span { color: var(--faint); font-size: var(--t-xs); }
 .global-search-keys { display: flex; align-items: center; gap: var(--s1); }
 .global-search-keys kbd {
   padding: 1px 5px;
@@ -3377,34 +3348,139 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .tooltip li { color: var(--accent-text); font: var(--t-xs) var(--mono); overflow-wrap: anywhere; }
 
 /* Movie review queue: one decision per card; identity alternatives reuse the Problems picker. */
-.review-feed { display: grid; gap: var(--s3); max-width: 1120px; }
 .review-loading { padding: var(--s8) 0; color: var(--muted); }
-.review-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--surface); }
-.review-card-main { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: var(--s4); align-items: center; padding: var(--s3); }
-.review-poster { display: grid; width: 92px; aspect-ratio: 2/3; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-md); color: var(--faint); background: linear-gradient(155deg, #263743, #10171c 50%, #080a0b); }
-.review-poster img { width: 100%; height: 100%; object-fit: cover; }
-.review-copy { min-width: 0; }
-.review-title { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
-.review-title h2 { display: flex; align-items: baseline; gap: var(--s2); margin: 0; font-size: 19px; line-height: 1.25; }
-.review-title h2 small { color: var(--muted); font-size: var(--t-sm); font-weight: 500; }
-.review-state { display: inline-flex; min-height: 20px; align-items: center; padding: 0 7px; border: 1px solid var(--line-strong); border-radius: var(--r-full); font-size: var(--t-micro); font-weight: 600; }
-.review-state.ready { color: #b8c1ff; border-color: var(--accent-line); background: var(--accent-soft); }
-.review-state.needs-match { color: #d1a45e; border-color: var(--warn-line); background: var(--warn-soft); }
-.review-state.missing { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
-.review-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
-.review-facts span { color: var(--muted); font-size: var(--t-xs); }
-.review-facts span + span::before { margin-right: 6px; color: var(--faint); content: '·'; }
-.review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s2); }
-.review-card > .problems-identity-resolver { margin: 0; border-width: 1px 0 0; border-radius: 0; background: #101012; }
 
-@media (max-width: 900px) {
-  .review-card-main { grid-template-columns: 78px minmax(0, 1fr); align-items: start; }
-  .review-poster { width: 78px; }
-  .review-actions { grid-column: 1 / -1; justify-content: flex-start; padding-left: 94px; }
+/* Root tabs: one root at a time, so the import button always means one
+   unambiguous batch. */
+.review-roots-label { margin-bottom: var(--s2); color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.review-roots { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s3); }
+.review-root { display: grid; gap: 3px; min-width: 118px; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); text-align: left; }
+.review-root:hover { border-color: var(--line-strong); background: var(--raised); }
+.review-root.active { border-color: var(--accent); background: var(--accent-soft); }
+.review-root-name { display: flex; align-items: center; gap: var(--s2); }
+.review-root strong { font-size: var(--t-sm); font-weight: 600; }
+.review-root small { color: var(--faint); font: var(--t-micro) var(--mono); }
+.review-root.active small { color: var(--accent-text); }
+
+/* Three tall panes, side by side, with a real gap between them. Panes one and
+   two share a single scroll container so a row means the same title on both,
+   which two independently scrolling lists could not guarantee. Each column
+   still draws its own borders, so what you see is three panes. */
+.review-workspace {
+  display: grid;
+  /* The middle column is a token because two grids need it: the workspace sizes
+     the track, and the scrolling surface inside it draws the pane. */
+  --review-detected: 260px;
+  grid-template-columns: 820px var(--review-detected) 340px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--s3);
+  height: calc(100vh - 260px);
+  min-height: 420px;
 }
-@media (max-width: 560px) {
-  .review-card-main { grid-template-columns: 64px minmax(0, 1fr); gap: var(--s3); }
-  .review-poster { width: 64px; }
-  .review-actions { padding-left: 0; }
-  .review-actions .button { flex: 1; }
+.review-scroll {
+  display: grid;
+  grid-column: 1 / 3;
+  grid-row: 1;
+  /* The folder column takes whatever is left rather than a fixed width, so a
+     scrollbar appearing shrinks it instead of overflowing the container. That
+     is what lets the reserved scrollbar gutter go: the gutter was real space
+     inside this pane, which read as a wider gap before the pane beside it. */
+  grid-template-columns: minmax(0, 1fr) var(--review-detected);
+  gap: 0 var(--s3);
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+}
+.review-alt-pane {
+  display: flex;
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/* Column headers ride along inside the same grid, so they cannot drift out of
+   alignment with the rows the way a separate header row would. */
+.review-col-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  color: var(--faint);
+  background: var(--surface);
+  font: 600 var(--t-micro) var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.review-folder-cell, .review-match-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  min-height: 42px;
+  padding: var(--s1) var(--s3);
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: var(--surface);
+}
+.review-scroll > :nth-last-child(2), .review-scroll > :last-child { border-radius: 0 0 var(--r-md) var(--r-md); }
+/* The tooltip wraps the name in a span of its own, which needs to be a flex
+   item that can shrink, or the folder name stops truncating and stops centring
+   with the rest of the row. */
+.review-folder-cell > span { display: flex; align-items: center; min-width: 0; }
+/* Sans, not mono: these are folder names people read, not paths they compare
+   character by character, and the monospace made them the loudest thing in a
+   pane that is mostly reading. */
+.review-folder-cell code { display: block; overflow: hidden; color: var(--text); font: var(--t-sm)/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.review-match-cell { text-align: left; }
+.review-folder-cell.active, .review-match-cell.active { border-color: var(--accent-line); background: var(--accent-soft); }
+.review-match-cell:hover:not(.active) { background: var(--raised); }
+.review-folder-cell.excluded, .review-match-cell.excluded { opacity: .45; }
+
+.review-check { display: grid; width: 16px; height: 16px; flex: none; align-self: center; place-items: center; padding: 0; border: 1px solid var(--line-strong); border-radius: 3px; color: #fff; background: var(--raised); cursor: pointer; }
+.review-check svg { display: block; }
+.review-check.on { border-color: var(--accent); background: var(--accent); }
+.review-check:disabled { cursor: not-allowed; opacity: .4; }
+
+.review-match-copy { display: grid; flex: 1; gap: 1px; min-width: 0; }
+.review-match-copy strong { overflow: hidden; font-size: var(--t-xs); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.review-match-copy small { color: var(--faint); font: var(--t-micro) var(--mono); }
+
+.review-state { display: inline-flex; flex: none; min-height: 18px; align-items: center; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r-full); font-size: var(--t-micro); font-weight: 600; }
+.review-state.unsure, .review-state.needs-match { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
+.review-state.missing { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+
+.review-poster { display: grid; width: 28px; aspect-ratio: 2/3; flex: none; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--faint); background: linear-gradient(155deg, #263743, #10171c 50%, #080a0b); }
+.review-poster img { width: 100%; height: 100%; object-fit: cover; }
+
+.review-import { display: flex; grid-column: 1 / 3; grid-row: 2; align-items: center; justify-content: flex-end; gap: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); font-size: var(--t-xs); }
+
+/* The full height of this pane is the point: a common title has many results
+   and they should all be reachable by scrolling one list. */
+.review-alt-title { flex: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.review-alt-head { flex: none; display: grid; gap: var(--s2); padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); }
+.review-alt-head .search-field { width: 100%; }
+.review-alt-list { display: grid; flex: 1; align-content: start; gap: var(--s1); min-height: 0; overflow-y: auto; padding: var(--s2); }
+.review-alt-note { padding: var(--s2); margin: 0; color: var(--faint); font-size: var(--t-xs); }
+/* The idle pane is mostly empty, so its prompt sits in the middle of it rather
+   than clinging to the top left corner. */
+.review-alt-empty { display: grid; flex: 1; align-content: center; justify-items: center; gap: var(--s3); padding: var(--s5); color: var(--faint); text-align: center; }
+.review-alt-empty p { margin: 0; font-size: var(--t-xs); }
+.review-alt-idle .review-alt-head { gap: 0; }
+.review-candidate { display: flex; width: 100%; align-items: center; gap: var(--s2); padding: var(--s2); border: 1px solid transparent; border-radius: var(--r-sm); color: var(--accent-text); text-align: left; }
+.review-candidate:hover:not(:disabled) { border-color: var(--line-strong); background: var(--raised); }
+.review-candidate.chosen { border-color: var(--accent-line); background: var(--accent-soft); }
+.review-candidate-copy { display: grid; flex: 1; gap: 1px; min-width: 0; }
+.review-candidate-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-xs); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.review-candidate-copy small { color: var(--faint); font: var(--t-micro) var(--mono); }
+
+@media (max-width: 1400px) {
+  .review-workspace { --review-detected: 220px; grid-template-columns: 220px var(--review-detected) 300px; }
 }

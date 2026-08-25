@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Runtime configuration.
 
     All paths are resolved by the application inside the container.  A storage
-    root is never implicitly created; users explicitly add roots through the
+    media folder is never implicitly created; users explicitly add folders through the
     API and scans are read-only observations.
     """
 

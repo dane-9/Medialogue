@@ -388,6 +388,9 @@ class StorageRoot(TimestampMixin, Base):
     resolved_root_path: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
     access_mode: Mapped[AccessMode] = mapped_column(SAEnum(AccessMode, native_enum=False), default=AccessMode.READ_ONLY, nullable=False)
+    #: What a scan does with media it has never seen. The API defaults to adding
+    #: it, which is what a caller that says nothing means; the UI offers review
+    #: as its default instead, and says so explicitly on every request.
     discovery_mode: Mapped[DiscoveryMode] = mapped_column(SAEnum(DiscoveryMode, native_enum=False), default=DiscoveryMode.AUTOMATIC, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     #: Hand-chosen list position. Roots are a short, stable list a person curates,

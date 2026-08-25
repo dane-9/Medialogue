@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterator
 
 
-PARSER_VERSION = "1.2.0"
+PARSER_VERSION = "1.3.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +109,7 @@ class ReleaseAttributes:
     real: bool = False
     internal: bool = False
     limited: bool = False
+    complete: bool = False
 
     def __contains__(self, value: object) -> bool:
         return any(str(value).casefold() == item.casefold() for item in self.values)
@@ -139,6 +140,7 @@ class ReleaseAttributes:
             "real": self.real,
             "internal": self.internal,
             "limited": self.limited,
+            "complete": self.complete,
         }
 
 

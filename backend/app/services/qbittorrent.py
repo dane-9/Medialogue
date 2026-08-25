@@ -83,7 +83,7 @@ def _clean_path(value: str | None) -> str:
 
 
 def _inside_local_root(path: str | None, root: str) -> bool:
-    """Check a resolved *local* path against a local storage root.
+    """Check a resolved *local* path against a configured media folder.
 
     Remote qBittorrent prefixes are matched case-insensitively, but after
     mapping Medialogue is operating in a Linux container.  The local mount
@@ -254,7 +254,7 @@ async def _poll_download_client(
         )
     ).all()
     root_by_id = {root.id: root for root in roots}
-    # A mapping explicitly attached to a storage root must not remain active
+    # A mapping explicitly attached to a media folder must not remain active
     # for a different/disabled root.  Unscoped mappings remain available, but
     # the translated result is still checked against enabled roots below.
     mappings = [
@@ -360,7 +360,7 @@ async def _poll_download_client(
                         },
                     )
             continue
-        # Configured storage roots are the hard boundary for reconciliation.
+        # Configured media folders are the hard boundary for reconciliation.
         # qBittorrent often contains torrents for libraries Medialogue cannot
         # and should not see.  Even a historically-known torrent must not
         # generate path/parser Problems after it moves outside those roots.

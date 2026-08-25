@@ -60,7 +60,6 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [results, setResults] = useState<Result[]>([])
   // Off by default: the type reads at a glance when it is spelled out, and
   // collapsing is a preference for people who want the extra width.
-  const [collapseKinds, setCollapseKinds] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [active, setActive] = useState(0)
@@ -156,8 +155,12 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
         />
         <div className="filter-tabs">
           <button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>All</button>
-          <button className={scope === 'movie' ? 'active' : ''} onClick={() => setScope('movie')}>Movies</button>
-          <button className={scope === 'show' ? 'active' : ''} onClick={() => setScope('show')}>Shows</button>
+          <button className={scope === 'movie' ? 'active' : ''} onClick={() => setScope('movie')}>
+            <span className="kind-box kind-movie"><Icon name="clapper" size={12} /></span>Movies
+          </button>
+          <button className={scope === 'show' ? 'active' : ''} onClick={() => setScope('show')}>
+            <span className="kind-box kind-show"><Icon name="tv-screen" size={12} /></span>Shows
+          </button>
         </div>
         <button className="icon-button" onClick={onClose} aria-label="Close search"><Icon name="close" size={18} /></button>
       </div>
@@ -178,10 +181,11 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           </span>
           <span className="global-search-copy">
             <strong>
-              <span className={`kind-pill kind-${result.kind} ${collapseKinds ? 'collapsible' : ''}`}>
-                <Icon name={result.kind === 'movie' ? 'clapper' : 'tv-screen'} size={12} />
-                <em>{result.kind === 'movie' ? 'Movie' : 'Show'}</em>
-              </span>
+              <Tooltip asChild content={result.kind === 'movie' ? 'Movie' : 'Show'}>
+                <span className={`kind-box kind-${result.kind}`} aria-label={result.kind === 'movie' ? 'Movie' : 'Show'}>
+                  <Icon name={result.kind === 'movie' ? 'clapper' : 'tv-screen'} size={13} />
+                </span>
+              </Tooltip>
               <span className="global-search-title">{result.title}</span>
               <span className={`global-search-year ${result.year ? '' : 'unknown'}`}>{result.year || 'Year unknown'}</span>
               {result.imdbRating != null &&
@@ -203,16 +207,6 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       <div className="global-search-foot">
         <span>{count}</span>
         <span className="global-search-keys"><kbd>↑</kbd><kbd>↓</kbd> navigate <kbd>enter</kbd> select <kbd>esc</kbd> close</span>
-        <div className="global-search-toggle">
-          <span>Collapse type</span>
-          <button
-            type="button"
-            className="toggle"
-            aria-pressed={collapseKinds}
-            aria-label="Collapse the Movie and Show labels to icons"
-            onClick={() => setCollapseKinds((value) => !value)}
-          ><span /></button>
-        </div>
       </div>
     </div>
   </div>

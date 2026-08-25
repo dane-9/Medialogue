@@ -70,7 +70,7 @@ from app.reconciliation.types import (
 from app.services.events import create_event, publish_live_event, queue_live_event
 from app.services.integration_state import get_configured_plex
 from app.services.tmdb import TMDBUnavailable, resolve_movie_identity, resolve_movie_identity_detailed
-from app.services.discoveries import stage_media_discovery
+from app.services.discoveries import retire_missing_review_discovery, stage_media_discovery
 from app.services.quality_profiles import evaluate_current_release_score
 
 
@@ -307,7 +307,7 @@ async def mark_root_unavailable(db: AsyncSession, root: StorageRoot, *, error: s
         reason="ROOT_UNREACHABLE",
         entity_type="storage_root",
         entity_id=root.id,
-        message=f"Storage root is unavailable: {root.resolved_root_path}",
+        message=f"Media folder is unavailable: {root.resolved_root_path}",
         details={"path": root.resolved_root_path, "affected_count": affected, "error": error},
         severity=Severity.ERROR,
     )
@@ -323,7 +323,7 @@ async def mark_root_unavailable(db: AsyncSession, root: StorageRoot, *, error: s
             "storage_root.unavailable",
             entity_type="storage_root",
             entity_id=root.id,
-            message=f"Storage root {root.name} is unavailable.",
+            message=f"Media folder {root.name} is unavailable.",
             severity=Severity.ERROR,
             details={"reason": "ROOT_UNREACHABLE", "affected_count": affected, "path": root.resolved_root_path},
         )
@@ -353,7 +353,7 @@ async def mark_root_available(db: AsyncSession, root: StorageRoot) -> None:
             "storage_root.restored",
             entity_type="storage_root",
             entity_id=root.id,
-            message=f"Storage root {root.name} is available again.",
+            message=f"Media folder {root.name} is available again.",
             details={"affected_count": affected, "path": root.resolved_root_path},
         )
 
@@ -402,6 +402,7 @@ async def mark_absent_known_directories(
                 )
             continue
         if not directory.exists:
+            await retire_missing_review_discovery(db, directory.id)
             continue
         if directory.missing_since is None:
             directory.missing_since = now
@@ -413,6 +414,7 @@ async def mark_absent_known_directories(
             continue
         directory.exists = False
         committed += 1
+        await retire_missing_review_discovery(db, directory.id)
         release = directory.movie_release
         if release and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}:
             release.release_state = ReleaseState.MISSING
@@ -651,7 +653,7 @@ async def reconcile_movie_directory(
         .where(MediaDirectory.resolved_path == observation.path)
     )
     if existing_directory is not None:
-        # A storage root can be removed from configuration while its durable
+        # A media folder can be removed from configuration while its durable
         # path inventory is intentionally retained. Re-adding/scanning the
         # same container path should reattach that evidence instead of
         # creating a second logical directory.
@@ -1321,7 +1323,7 @@ async def finalize_completed_torrent(
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
     if root is None:
         # qBittorrent may manage many libraries that are intentionally outside
-        # Medialogue's configured storage roots.  Such a path is out of scope,
+        # Medialogue's configured media folders. Such a path is out of scope,
         # not missing.  Never manufacture a filesystem-access Problem for it.
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
         await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
@@ -1569,7 +1571,7 @@ async def reconcile_torrent_disagreements(
     """Surface qBit/media disagreement without changing logical media state.
 
     ``qbit_present=None`` means qBittorrent still reports the torrent but its
-    resolved path is outside every enabled Medialogue storage root.  In that
+    resolved path is outside every enabled Medialogue media folder. In that
     state qBittorrent is deliberately out of scope, so stale disagreement
     Problems are cleared rather than reclassified as a removal/missing-path
     fault.

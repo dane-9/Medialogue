@@ -108,7 +108,7 @@ async def run_reconciliation(
         query = query.where(StorageRoot.id == payload.root_id)
     candidate_roots = (await db.scalars(query.order_by(StorageRoot.name))).all()
     if payload.root_id is not None and not candidate_roots:
-        raise AppError("NOT_FOUND", "Storage root was not found.", status_code=404)
+        raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
 
     # A newly configured root is inert until its first explicit Scan action
     # succeeds.  last_scan_at is durable and only set at the end of a
@@ -155,14 +155,14 @@ async def manual_attach(
     movie = await db.get(Movie, movie_id)
     root = await db.get(StorageRoot, payload.root_id)
     if movie is None or root is None:
-        raise AppError("NOT_FOUND", "Movie or storage root was not found.", status_code=404)
+        raise AppError("NOT_FOUND", "Movie or media folder was not found.", status_code=404)
     if payload.expected_revision is not None and payload.expected_revision != movie.revision:
         raise AppError("REVISION_CONFLICT", "Movie changed; refresh before applying the manual match.", status_code=409)
     path = Path(payload.path).resolve(strict=False)
     try:
         path.relative_to(Path(root.resolved_root_path).resolve(strict=False))
     except ValueError as exc:
-        raise AppError("OUTSIDE_MANAGED_ROOT", "The path is outside the selected storage root.", status_code=422) from exc
+        raise AppError("OUTSIDE_MANAGED_ROOT", "The path is outside the selected media folder.", status_code=422) from exc
     if not path.is_dir():
         raise AppError("TORRENT_PATH_NOT_FOUND", "The selected media directory is not accessible.", status_code=422)
     try:

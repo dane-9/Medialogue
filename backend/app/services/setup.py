@@ -93,11 +93,11 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
         ),
         SetupStep(
             key="storage",
-            title="Add storage roots",
+            title="Add media folders",
             complete=root_count > 0,
             optional=True,
-            detail=f"{root_count} explicit storage root(s) configured. Medialogue never scans outside them.",
-            settings_tab="Storage Roots",
+            detail=f"{root_count} media folder(s) configured. Medialogue never scans outside them.",
+            settings_tab="Media Folders",
         ),
         SetupStep(
             key="indexers",
@@ -113,11 +113,11 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
             complete=scanned_count > 0,
             optional=True,
             detail=(
-                f"{scanned_count} root(s) have been scanned."
+                f"{scanned_count} media folder(s) have been scanned."
                 if scanned_count
-                else "Explicitly choose Scan now on each new storage root once. Setup never starts the initialization scan automatically."
+                else "Explicitly choose Scan now on each new media folder once. Setup never starts the initialization scan automatically."
             ),
-            settings_tab="Storage Roots",
+            settings_tab="Media Folders",
         ),
     ]
     complete = read_setup_complete()

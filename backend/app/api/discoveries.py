@@ -19,17 +19,24 @@ from app.models.domain import (
     DiscoveryReviewState,
     MediaDirectory,
     MediaDiscovery,
+    MediaRole,
     MediaType,
     Movie,
     Show,
 )
 from app.schemas.common import Collection
 from app.schemas.discoveries import (
+    MediaDiscoveryBulk,
+    MediaDiscoveryBulkFailure,
+    MediaDiscoveryBulkResult,
     MediaDiscoveryCandidate,
     MediaDiscoveryCount,
+    MediaDiscoveryFile,
     MediaDiscoveryResponse,
+    MediaDiscoverySearch,
     MediaDiscoverySelection,
 )
+from app.services.discoveries import DISCOVERY_CANDIDATE_LIMIT, refresh_discovery_parse
 from app.services.movies import add_movie_from_tmdb
 from app.services.reconciliation import reconcile_movie_directory
 from app.services.shows import add_show_from_tmdb, reconcile_show_directory
@@ -84,6 +91,11 @@ def _response(discovery: MediaDiscovery) -> MediaDiscoveryResponse:
     quality = parse.get("quality") if isinstance(parse.get("quality"), dict) else {}
     hdr = parse.get("hdr") if isinstance(parse.get("hdr"), dict) else {}
     hdr_values = hdr.get("values") if isinstance(hdr.get("values"), list) else []
+    present = [file for file in directory.files if file.exists]
+    videos = {MediaRole.MOVIE_VIDEO, MediaRole.EPISODE_VIDEO, MediaRole.MULTI_EPISODE_VIDEO}
+    # Video first, then everything else, each alphabetical: the media is what a
+    # reviewer looks for, and subtitles should never push it off the list.
+    ordered = sorted(present, key=lambda file: (file.media_role not in videos, file.relative_path.casefold()))
     return MediaDiscoveryResponse(
         id=discovery.id,
         directory_id=directory.id,
@@ -100,7 +112,10 @@ def _response(discovery: MediaDiscovery) -> MediaDiscoveryResponse:
         hdr=[str(value) for value in hdr_values if value],
         suggested=by_id.get(discovery.suggested_tmdb_id),
         selected=by_id.get(discovery.selected_tmdb_id),
-        candidates=candidates[:6],
+        candidates=candidates[:DISCOVERY_CANDIDATE_LIMIT],
+        files=[MediaDiscoveryFile(relative_path=file.relative_path, role=file.media_role.value) for file in ordered[:40]],
+        file_count=len(present),
+        video_count=sum(1 for file in present if file.media_role in videos),
         created_at=discovery.created_at,
         updated_at=discovery.updated_at,
     )
@@ -117,6 +132,7 @@ async def _get_discovery(db: AsyncSession, discovery_id: UUID) -> MediaDiscovery
     discovery = await db.scalar(_query().where(MediaDiscovery.id == discovery_id))
     if discovery is None:
         raise AppError("DISCOVERY_NOT_FOUND", "That review item no longer exists.", status_code=404)
+    refresh_discovery_parse(discovery)
     return discovery
 
 
@@ -127,7 +143,13 @@ async def count_discoveries(
 ) -> MediaDiscoveryCount:
     count = int(
         await db.scalar(
-            select(func.count()).select_from(MediaDiscovery).where(MediaDiscovery.review_state == DiscoveryReviewState.PENDING)
+            select(func.count())
+            .select_from(MediaDiscovery)
+            .join(MediaDirectory, MediaDirectory.id == MediaDiscovery.media_directory_id)
+            .where(
+                MediaDiscovery.review_state == DiscoveryReviewState.PENDING,
+                MediaDirectory.exists.is_(True),
+            )
         )
         or 0
     )
@@ -148,6 +170,13 @@ async def list_discoveries(
     except ValueError as exc:
         raise AppError("INVALID_DISCOVERY_STATE", "Unknown review state.", status_code=422) from exc
     statement = _query().where(MediaDiscovery.review_state == review_state)
+    if review_state == DiscoveryReviewState.PENDING:
+        # A confirmed-missing folder is not actionable Review work. Legacy
+        # rows are retired by the next scan, but must disappear from the queue
+        # and its badge as soon as the inventory says the path is gone.
+        statement = statement.join(
+            MediaDirectory, MediaDirectory.id == MediaDiscovery.media_directory_id
+        ).where(MediaDirectory.exists.is_(True))
     if media_type is not None:
         try:
             statement = statement.where(MediaDiscovery.media_type == MediaType(media_type))
@@ -155,6 +184,11 @@ async def list_discoveries(
             raise AppError("INVALID_MEDIA_TYPE", "Unknown media type.", status_code=422) from exc
     statement = statement.order_by(MediaDiscovery.created_at)
     rows = (await db.scalars(statement)).unique().all()
+    reparsed = False
+    for item in rows:
+        reparsed = refresh_discovery_parse(item) or reparsed
+    if reparsed:
+        await db.commit()
     total = len(rows)
     start = (page - 1) * page_size
     items = [_response(item) for item in rows[start : start + page_size]]
@@ -173,25 +207,53 @@ async def select_discovery(
     discovery = await _get_discovery(db, discovery_id)
     if discovery.review_state != DiscoveryReviewState.PENDING:
         raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
-    configuration = await get_tmdb_configuration(db)
-    if configuration is None or not configuration.enabled or not configuration.api_key:
-        raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before changing a match.", status_code=409)
-    client = client_factory(configuration.api_key)
-    try:
-        metadata = (
-            await client.get_movie(payload.tmdb_id)
-            if discovery.media_type == MediaType.MOVIES
-            else await client.get_show(payload.tmdb_id)
-        )
-    except Exception as exc:
-        label = "movie" if discovery.media_type == MediaType.MOVIES else "show"
-        raise AppError("TMDB_UNAVAILABLE", f"Could not load that TMDB {label}: {exc}", status_code=503) from exc
-    finally:
-        await client.close()
-    values = [item for item in discovery.candidates if isinstance(item, dict) and item.get("tmdb_id") != metadata.tmdb_id]
-    values.insert(0, _candidate_payload(metadata))
-    discovery.candidates = values[:6]
-    discovery.selected_tmdb_id = metadata.tmdb_id
+    # Recording a choice should cost nothing. The reviewer picked a row that was
+    # already on their screen, so its display values either sit in the stored
+    # candidates or arrive with the request. Only a bare id for a title nobody
+    # has seen needs TMDB, and approving re-fetches real metadata regardless.
+    known = next(
+        (item for item in discovery.candidates if isinstance(item, dict) and item.get("tmdb_id") == payload.tmdb_id),
+        None,
+    )
+    if known is not None:
+        chosen = dict(known)
+    elif payload.title:
+        chosen = {
+            "tmdb_id": payload.tmdb_id,
+            "title": payload.title,
+            "original_title": payload.original_title,
+            "year": payload.year,
+            "overview": None,
+            "poster_ref": payload.poster_ref,
+        }
+    else:
+        configuration = await get_tmdb_configuration(db)
+        if configuration is None or not configuration.enabled or not configuration.api_key:
+            raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before changing a match.", status_code=409)
+        client = client_factory(configuration.api_key)
+        try:
+            metadata = (
+                await client.get_movie(payload.tmdb_id)
+                if discovery.media_type == MediaType.MOVIES
+                else await client.get_show(payload.tmdb_id)
+            )
+        except Exception as exc:
+            label = "movie" if discovery.media_type == MediaType.MOVIES else "show"
+            raise AppError("TMDB_UNAVAILABLE", f"Could not load that TMDB {label}: {exc}", status_code=503) from exc
+        finally:
+            await client.close()
+        chosen = _candidate_payload(metadata)
+
+    # Choosing does not reorder the list. Promoting the pick to the top moves
+    # every other row under the cursor at the moment of clicking, so the next
+    # candidate you wanted to compare is somewhere else than where you saw it.
+    values = [item for item in discovery.candidates if isinstance(item, dict)]
+    if any(item.get("tmdb_id") == payload.tmdb_id for item in values):
+        values = [chosen if item.get("tmdb_id") == payload.tmdb_id else item for item in values]
+    else:
+        values.append(chosen)
+    discovery.candidates = values[:DISCOVERY_CANDIDATE_LIMIT]
+    discovery.selected_tmdb_id = payload.tmdb_id
     await db.commit()
     await db.refresh(discovery)
     return _response(discovery)
@@ -209,21 +271,19 @@ def _directory_observation(directory: MediaDirectory) -> DirectoryObservation:
     )
 
 
-@router.post("/{discovery_id}/approve", response_model=MediaDiscoveryResponse)
-async def approve_discovery(
-    discovery_id: UUID,
-    _: object = Depends(require_csrf),
-    __: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_tmdb_client_factory),
-) -> MediaDiscoveryResponse:
-    discovery = await _get_discovery(db, discovery_id)
+async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_factory) -> MediaDiscovery:
+    """Add one reviewed directory to the library.
+
+    Extracted from the single-item route so bulk approval runs exactly the same
+    checks. A queue of thirty confident matches should not be a different code
+    path from approving one of them, or the two drift.
+    """
     if discovery.review_state != DiscoveryReviewState.PENDING:
         raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
     directory = discovery.media_directory
     root = directory.storage_root
     if root is None:
-        raise AppError("DISCOVERY_UNLINKED", "Reconnect this directory to a storage root before adding it.", status_code=409)
+        raise AppError("DISCOVERY_UNLINKED", "Reconnect this directory to a media folder before adding it.", status_code=409)
     if not directory.exists:
         raise AppError("DISCOVERY_MISSING", "This directory is no longer present on disk.", status_code=409)
     if discovery.selected_tmdb_id is None:
@@ -268,6 +328,137 @@ async def approve_discovery(
     discovery.reviewed_at = utcnow()
     await db.commit()
     await db.refresh(discovery)
+    return discovery
+
+
+async def _ignore_one(db: AsyncSession, discovery: MediaDiscovery) -> MediaDiscovery:
+    if discovery.review_state != DiscoveryReviewState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+    discovery.review_state = DiscoveryReviewState.IGNORED
+    discovery.reviewed_at = utcnow()
+    await db.commit()
+    await db.refresh(discovery)
+    return discovery
+
+
+@router.post("/{discovery_id}/search", response_model=MediaDiscoveryResponse)
+async def search_discovery_candidates(
+    discovery_id: UUID,
+    payload: MediaDiscoverySearch,
+    _: object = Depends(require_csrf),
+    __: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_tmdb_client_factory),
+) -> MediaDiscoveryResponse:
+    """Search TMDB for a folder and keep the results on the discovery.
+
+    The results live with the item rather than in whoever's browser happened to
+    run the search: they are the same for every viewer, they survive a reload,
+    and they stay until someone searches again or the item leaves the queue.
+    A scan only records the handful of candidates it considered, which is why
+    opening a row otherwise offered the one answer you already had.
+    """
+    discovery = await _get_discovery(db, discovery_id)
+    if discovery.review_state != DiscoveryReviewState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+
+    query = (payload.query or discovery.parsed_title or "").strip()
+    if not query:
+        raise AppError("DISCOVERY_QUERY_REQUIRED", "There is nothing to search for.", status_code=422)
+
+    configuration = await get_tmdb_configuration(db)
+    if configuration is None or not configuration.enabled or not configuration.api_key:
+        raise AppError("TMDB_NOT_CONFIGURED", "Configure TMDB before searching.", status_code=409)
+    client = client_factory(configuration.api_key)
+    try:
+        matches = (
+            await client.search_movie(query, None)
+            if discovery.media_type == MediaType.MOVIES
+            else await client.search_show(query, None)
+        )
+    except Exception as exc:
+        label = "Movie" if discovery.media_type == MediaType.MOVIES else "Show"
+        raise AppError("TMDB_UNAVAILABLE", f"TMDB {label} lookup failed: {exc}", status_code=503) from exc
+    finally:
+        await client.close()
+
+    candidates = [_candidate_payload(item) for item in matches[:DISCOVERY_CANDIDATE_LIMIT]]
+    # A selection the search did not return must survive, or choosing something
+    # then searching again would erase the choice from the list it is in.
+    if discovery.selected_tmdb_id is not None and not any(item["tmdb_id"] == discovery.selected_tmdb_id for item in candidates):
+        kept = next(
+            (item for item in discovery.candidates if isinstance(item, dict) and item.get("tmdb_id") == discovery.selected_tmdb_id),
+            None,
+        )
+        if kept is not None:
+            candidates.insert(0, dict(kept))
+    discovery.candidates = candidates[:DISCOVERY_CANDIDATE_LIMIT]
+    # A search that returns something always leaves a row with a match to judge,
+    # never an empty one the reviewer has to fill in themselves.
+    if discovery.selected_tmdb_id is None and discovery.candidates:
+        discovery.selected_tmdb_id = int(discovery.candidates[0]["tmdb_id"])
+    await db.commit()
+    await db.refresh(discovery)
+    return _response(discovery)
+
+
+@router.post("/{discovery_id}/approve", response_model=MediaDiscoveryResponse)
+async def approve_discovery(
+    discovery_id: UUID,
+    _: object = Depends(require_csrf),
+    __: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_tmdb_client_factory),
+) -> MediaDiscoveryResponse:
+    discovery = await _get_discovery(db, discovery_id)
+    return _response(await _approve_one(db, discovery, client_factory))
+
+
+@router.post("/bulk", response_model=MediaDiscoveryBulkResult)
+async def bulk_review(
+    payload: MediaDiscoveryBulk,
+    _: object = Depends(require_csrf),
+    __: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_tmdb_client_factory),
+) -> MediaDiscoveryBulkResult:
+    """Approve or ignore many reviewed directories in one request.
+
+    Each item is committed on its own and a failure does not stop the rest: one
+    title whose metadata fetch times out must not discard the twenty-nine that
+    already succeeded, and the caller is told exactly which ones failed and why.
+    """
+    approved: list[UUID] = []
+    failures: list[MediaDiscoveryBulkFailure] = []
+    for discovery_id in payload.ids:
+        try:
+            discovery = await _get_discovery(db, discovery_id)
+            if payload.action == "approve":
+                await _approve_one(db, discovery, client_factory)
+            else:
+                await _ignore_one(db, discovery)
+            approved.append(discovery_id)
+        except AppError as exc:
+            await db.rollback()
+            failures.append(MediaDiscoveryBulkFailure(id=discovery_id, code=exc.code, message=exc.message))
+    return MediaDiscoveryBulkResult(succeeded=approved, failed=failures)
+
+
+@router.post("/{discovery_id}/restore", response_model=MediaDiscoveryResponse)
+async def restore_discovery(
+    discovery_id: UUID,
+    _: object = Depends(require_csrf),
+    __: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MediaDiscoveryResponse:
+    """Put an ignored item back in the queue, so a mis-click is recoverable."""
+    discovery = await _get_discovery(db, discovery_id)
+    if discovery.review_state != DiscoveryReviewState.IGNORED:
+        raise AppError("DISCOVERY_NOT_IGNORED", "Only an ignored item can be restored.", status_code=409)
+    discovery.review_state = DiscoveryReviewState.PENDING
+    discovery.reviewed_at = None
+    await db.commit()
+    await db.refresh(discovery)
     return _response(discovery)
 
 
@@ -279,10 +470,4 @@ async def ignore_discovery(
     db: AsyncSession = Depends(get_db),
 ) -> MediaDiscoveryResponse:
     discovery = await _get_discovery(db, discovery_id)
-    if discovery.review_state != DiscoveryReviewState.PENDING:
-        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
-    discovery.review_state = DiscoveryReviewState.IGNORED
-    discovery.reviewed_at = utcnow()
-    await db.commit()
-    await db.refresh(discovery)
-    return _response(discovery)
+    return _response(await _ignore_one(db, discovery))

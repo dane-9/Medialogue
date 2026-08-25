@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
@@ -9,8 +9,8 @@ import { Tooltip } from './Tooltip'
 import { Button, Progress } from './ui'
 
 const primary = [
-  { to: '/movies', label: 'Movies', icon: 'film' as const },
-  { to: '/shows', label: 'Shows', icon: 'tv' as const },
+  { to: '/movies', label: 'Movies', icon: 'clapper' as const },
+  { to: '/shows', label: 'Shows', icon: 'tv-screen' as const },
   { to: '/review', label: 'Review', icon: 'check' as const },
   { to: '/downloads', label: 'Downloads', icon: 'download' as const },
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
@@ -51,14 +51,29 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [problemCount, setProblemCount] = useState(0)
   const [reviewCount, setReviewCount] = useState(0)
+  const reviewCountGeneration = useRef(0)
   const [pageTopbarHost, setPageTopbarHost] = useState<HTMLDivElement | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
 
+  // Job events, explicit Review changes, route changes and the fallback poll
+  // can overlap. Only the newest request may update the badge, otherwise a
+  // slower pre-import response can restore a stale non-zero count.
+  const refreshReviewCount = useCallback(async () => {
+    const generation = ++reviewCountGeneration.current
+    try {
+      const count = await api.discoveryCount()
+      if (generation === reviewCountGeneration.current) setReviewCount(count)
+    } catch { /* The next invalidation or fallback poll retries. */ }
+  }, [])
+
+  useEffect(() => {
+    void refreshReviewCount()
+  }, [location.pathname, refreshReviewCount])
+
   useEffect(() => {
     let alive = true
     const refreshProblemCount = () => api.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
-    const refreshReviewCount = () => api.discoveryCount().then((count) => { if (alive) setReviewCount(count) }).catch(() => undefined)
     const refreshHealth = () => api.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
     const refreshJobs = () => api.jobs().then((payload) => { if (alive) setJobs(payload) }).catch(() => undefined)
     void refreshHealth()
@@ -85,8 +100,9 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     // REST remains the recovery source when SSE reconnects or a browser was
     // asleep. These slow polls are a fallback, not the primary update path.
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
-    window.addEventListener('medialogue-review-changed', refreshReviewCount)
-    const reviewTimer = window.setInterval(refreshReviewCount, 60000)
+    const reviewChangedListener = () => void refreshReviewCount()
+    window.addEventListener('medialogue-review-changed', reviewChangedListener)
+    const reviewTimer = window.setInterval(() => void refreshReviewCount(), 60000)
     const jobTimer = window.setInterval(refreshJobs, 30000)
     const healthTimer = window.setInterval(refreshHealth, 60000)
     return () => {
@@ -94,11 +110,12 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       stream.close()
       window.clearInterval(problemTimer)
       window.clearInterval(reviewTimer)
-      window.removeEventListener('medialogue-review-changed', refreshReviewCount)
+      window.removeEventListener('medialogue-review-changed', reviewChangedListener)
       window.clearInterval(jobTimer)
       window.clearInterval(healthTimer)
+      reviewCountGeneration.current += 1
     }
-  }, [])
+  }, [refreshReviewCount])
 
   const activeJobs = jobs.filter((job) => job.state === 'running' || job.state === 'queued').length
   const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/review') ? 'Review' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'

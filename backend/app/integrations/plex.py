@@ -87,7 +87,7 @@ class PlexLibrarySnapshot:
         Plex reports the path visible inside the Plex container, while Medialogue
         stores the path visible inside its own container.  Exact absolute paths
         are preferred.  If those differ and the caller supplies the configured
-        Medialogue storage root, compare the root-relative path instead.  A
+        Medialogue media folder, compare the folder-relative path instead.  A
         relative match is accepted only when it is unique in Plex, so two Plex
         libraries with the same tail path remain unresolved instead of being
         guessed.

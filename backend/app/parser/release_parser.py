@@ -157,6 +157,7 @@ _ATTRIBUTE_CANONICAL = {
     "rerip": "RERIP",
     "reencode": "RE-ENCODE",
     "remastered": "REMASTERED",
+    "complete": "COMPLETE",
 }
 
 _KNOWN_NON_TITLE = {
@@ -227,6 +228,7 @@ _KNOWN_NON_TITLE = {
     "real",
     "internal",
     "limited",
+    "complete",
     "aka",
 }
 
@@ -648,6 +650,7 @@ def _attributes(normalized: str) -> ReleaseAttributes:
         real="REAL" in found,
         internal="INTERNAL" in found,
         limited="LIMITED" in found,
+        complete="COMPLETE" in found,
     )
 
 
@@ -921,6 +924,12 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
     if season is not None and marker_start is not None and marker_end is not None:
         title_end = marker_start
         title_part = normalized[:title_end].strip(" -")
+        # Complete-series releases commonly put COMPLETE immediately before
+        # their season range (``Show.COMPLETE.S01-S04``). It describes the
+        # release scope and must not become part of the show identity.
+        title_part = re.sub(
+            r"(?i)(?<![a-z0-9])complete\s*$", "", title_part
+        ).strip(" -")
         # A year before an Sxx marker is usually metadata, not part of a show
         # title.  Keep the title text before that year for consistency with
         # movie identity parsing.

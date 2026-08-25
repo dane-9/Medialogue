@@ -1,4 +1,4 @@
-/** The editable fields of a root storage form. */
+/** The editable fields of a media folder form. */
 export interface RootDraft {
   name: string
   path: string

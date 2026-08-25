@@ -28,7 +28,7 @@ Extract this source release (or clone the repository) into one directory; the su
 6. Configure only the integrations you use. TMDB is recommended before the first scan because it establishes external identity for newly discovered titles.
 7. Finish or skip optional setup items, then explicitly start the first storage-root scan. A newly added root remains uninitialized and is ignored by automatic reconciliation until that first scan succeeds.
 
-There is no global Active Operations switch. Integration observations can run automatically, while root discovery remains opt-in: every newly added storage root requires one explicit successful scan before automatic reconciliation can use it.
+There is no global Active Operations switch. Integration observations can run automatically, while folder discovery remains opt-in: every newly added media folder requires one explicit successful scan before automatic reconciliation can use it.
 
 ## Local frontend development
 
@@ -42,7 +42,7 @@ Vite proxies `/api` to `http://localhost:8000`. Run `npm run build` to create th
 
 ## Storage and persistence
 
-Medialogue only scans storage roots explicitly configured in Settings.
+Medialogue only scans media folders explicitly configured in Settings.
 
 - PostgreSQL is the authoritative persistent store for library state, history, jobs, Problems, observations, and integration **runtime health**.
 - `/config/medialogue.json` is the source of truth for Plex, TMDB, qBittorrent-client, and indexer configuration. It contains no passwords/tokens/API keys.
@@ -69,7 +69,7 @@ Recovery manifests are versioned (`schema_version: 1`) and retain the torrent id
 
 Torrent backups are retained independently from the logical Movie/Show record. `Remove From App Only`, a replaced release, or a torrent being removed from qBittorrent does not delete the archived `.torrent` or its recovery manifest. When the database association disappears, later manifest refreshes preserve the last known media identity/path evidence already recorded on disk.
 
-The **Torrent Archive** page is the global expert view. A Movie detail page also shows its associated torrent history. Archived torrents can be submitted back to an explicitly selected qBittorrent client. Restore requires an explicit save path and Medialogue verifies that the resolved destination is inside an enabled storage root matching that client's Movie/Show scope before sending anything to qBittorrent.
+The **Torrent Archive** page is the global expert view. A Movie detail page also shows its associated torrent history. Archived torrents can be submitted back to an explicitly selected qBittorrent client. Restore requires an explicit save path and Medialogue verifies that the resolved destination is inside an enabled media folder matching that client's Movie/Show scope before sending anything to qBittorrent.
 
 The `/torrent-archive` mount should therefore be durable and writable. It is recovery data, not disposable cache.
 
@@ -203,7 +203,7 @@ When a selected result becomes an attached release, Medialogue preserves the sel
 
 Show libraries are tracked as a real **Show → Season → Episode** hierarchy. TMDB is the primary metadata source and TMDB's external IDs are used to retain TVDB IDs as supporting identity evidence where available.
 
-A Show can be added directly from TMDB or discovered by explicitly scanning a configured **Shows** storage root. Files remain exactly where they already exist; Medialogue never renames, moves, copies, imports, or hardlinks them. Ordinary single-episode names such as `S01E01` are mapped to individual Episode records and each episode keeps its own Present/Missing and monitored state.
+A Show can be added directly from TMDB or discovered by explicitly scanning a configured **Shows** media folder. Files remain exactly where they already exist; Medialogue never renames, moves, copies, imports, or hardlinks them. Ordinary single-episode names such as `S01E01` are mapped to individual Episode records and each episode keeps its own Present/Missing and monitored state.
 
 Missing detection is episode-aware. If one episode file disappears while the Show directory remains available, only that mapped episode is affected after the configured missing-grace checks. A whole-root outage is still handled as a root-health failure rather than mass-marking episodes Missing.
 
@@ -243,9 +243,9 @@ A `DUPLICATE_PHYSICAL_RELEASE` is deliberately left untouched. Review the paths 
 
 ### Path mapping problems
 
-Remote qBittorrent path mappings can be configured under **Settings → Storage Roots**. The UI stores the reported remote prefix and its container-visible local prefix, optionally scoped to one qBittorrent client and one storage root. Medialogue never guesses a path translation. After adding or correcting a mapping, recheck the affected Problem/reconciliation evidence.
+Remote qBittorrent path mappings can be configured under **Settings → Media Folders**. The UI stores the reported remote prefix and its container-visible local prefix, optionally scoped to one qBittorrent client and one media folder. Medialogue never guesses a path translation. After adding or correcting a mapping, recheck the affected Problem/reconciliation evidence.
 
-Storage roots can be described as **Read-only** or **Read/write** in the UI, but reconciliation and Problem handling require only read access. Medialogue does not use Problems to delete media.
+Media folders can be described as **Read-only** or **Read/write** in the UI, but reconciliation and Problem handling require only read access. Medialogue does not use Problems to delete media.
 
 ## Tags and bulk Movie administration
 

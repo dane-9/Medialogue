@@ -136,6 +136,23 @@ def test_tv_boundaries_and_multi_episode():
     assert multi_season.identity.to_dict()["seasons"] == [1, 2, 3, 4]
 
 
+def test_complete_multi_season_show_release_is_structured():
+    result = parse_release(
+        "Batman.The.Animated.Series.COMPLETE.S01-S04.1080p.BluRay."
+        "DTS-HD.MA.H.264-BTN"
+    )
+
+    assert result.title == "Batman The Animated Series"
+    assert result.season == 1
+    assert result.identity.season_numbers == (1, 2, 3, 4)
+    assert result.quality.canonical == "1080p Encode"
+    assert result.release_group == "BTN"
+    assert result.attributes.complete
+    assert "COMPLETE" in result.attributes
+    assert result.attributes.to_dict()["complete"] is True
+    assert "COMPLETE" not in result.unknown_tokens
+
+
 def test_hyphenated_show_titles_are_not_mistaken_for_release_groups():
     x_files = parse_release("The X-Files")
     fresh_prince = parse_release("The Fresh Prince of Bel-Air")

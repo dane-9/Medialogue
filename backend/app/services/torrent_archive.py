@@ -605,7 +605,7 @@ async def prepare_torrent_restore(
     if not resolved_save_path or not any(_inside_restore_path(resolved_save_path, root.resolved_root_path) for root in roots):
         raise AppError(
             "RESTORE_PATH_OUTSIDE_CONFIGURED_ROOTS",
-            "The restore destination must resolve inside an enabled storage root for this qBittorrent client scope.",
+            "The restore destination must resolve inside an enabled media folder for this qBittorrent client scope.",
             status_code=422,
         )
 
