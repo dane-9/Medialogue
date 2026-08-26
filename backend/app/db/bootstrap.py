@@ -1,9 +1,18 @@
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.problem_types import RETIRED_PROBLEM_REASONS
 from app.core.security import hash_password
 from app.models.auth import AdminUser
+
+
+async def remove_retired_problem_types(session: AsyncSession) -> None:
+    """Remove diagnostics that are no longer part of the Problems product."""
+
+    from app.models.domain import Problem
+
+    await session.execute(delete(Problem).where(Problem.reason.in_(RETIRED_PROBLEM_REASONS)))
 
 
 async def ensure_default_admin(session: AsyncSession, settings: Settings) -> AdminUser:

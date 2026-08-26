@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,9 @@ from app.services.quality_profiles import evaluate_current_release_score
 from app.services.reconciliation import open_problem, resolve_problem
 from app.services.episode_ordering import auto_select_episode_ordering
 from app.services.tmdb import TMDBUnavailable, resolve_show_identity_detailed, sync_show_metadata
+
+
+logger = logging.getLogger(__name__)
 
 
 def utcnow() -> datetime:
@@ -844,10 +848,6 @@ async def reconcile_show_directory(
                 episode = await db.get(Episode, mapping.episode_id)
                 if episode is not None:
                     episode.presence_state = PresenceState.PRESENT
-            for reason in (
-                "EPISODE_MAPPING_UNRESOLVED",
-            ):
-                await resolve_problem(db, reason, "media_file", media_file.id)
             mapped += 1
             continue
 
@@ -862,13 +862,9 @@ async def reconcile_show_directory(
             episode_numbers = extract_episode_numbers(Path(relative_path).stem)
         if season_number is None or not episode_numbers:
             unresolved += 1
-            await open_problem(
-                db,
-                reason="EPISODE_MAPPING_UNRESOLVED",
-                entity_type="media_file",
-                entity_id=media_file.id,
-                message="The file does not contain a confident season/episode mapping.",
-                details={"path": str(Path(observation.path) / relative_path), "parse": parsed.to_dict()},
+            logger.warning(
+                "Skipping episode mapping for %s: no confident season/episode numbers were parsed",
+                str(Path(observation.path) / relative_path),
             )
             continue
         season = await _ensure_season(db, show, season_number)
@@ -1008,20 +1004,12 @@ async def reconcile_show_directory(
 
         if unresolved_numbers:
             unresolved += 1
-            await open_problem(
-                db,
-                reason="EPISODE_MAPPING_UNRESOLVED",
-                entity_type="media_file",
-                entity_id=media_file.id,
-                message="Some episode numbers in this file could not be verified against the known season.",
-                details={
-                    "path": str(Path(observation.path) / relative_path),
-                    "mapped_episode_numbers": [item for item in episode_numbers if item not in unresolved_numbers],
-                    "unresolved_episode_numbers": unresolved_numbers,
-                },
+            logger.warning(
+                "Skipping unknown episode numbers %s for %s; mapped known numbers %s",
+                unresolved_numbers,
+                str(Path(observation.path) / relative_path),
+                [item for item in episode_numbers if item not in unresolved_numbers],
             )
-        else:
-            await resolve_problem(db, "EPISODE_MAPPING_UNRESOLVED", "media_file", media_file.id)
         if newly_mapped or not unresolved_numbers:
             mapped += 1
 
@@ -1173,8 +1161,6 @@ async def set_media_file_episode_mappings(
         episode = await db.get(Episode, episode_id)
         if episode is not None:
             await _refresh_episode_presence(db, episode)
-    for reason in ("EPISODE_MAPPING_UNRESOLVED",):
-        await resolve_problem(db, reason, "media_file", media_file.id)
     await create_event(
         db,
         "episode.mapping_corrected",

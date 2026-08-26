@@ -2,7 +2,7 @@
 /.local/
 **/__pycache__/
 *.py[cod]
-.pytest_cache/
+.pytest*
 *.egg-info/
 backend/*.db
 backend/*.db-*

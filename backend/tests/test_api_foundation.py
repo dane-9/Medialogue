@@ -371,7 +371,7 @@ def test_show_root_scan_tracks_episode_presence_independently(client: TestClient
             shutil.rmtree(fixture_root)
 
 
-def test_show_scan_maps_multi_episode_and_flags_episode_less_video(client: TestClient) -> None:
+def test_show_scan_maps_multi_episode_and_silently_skips_episode_less_video(client: TestClient) -> None:
     fixture_root = Path.cwd() / f"show-pack-fixture-{uuid.uuid4().hex}"
     show_dir = fixture_root / "Dollface 2019"
     show_dir.mkdir(parents=True)
@@ -388,11 +388,10 @@ def test_show_scan_maps_multi_episode_and_flags_episode_less_video(client: TestC
         ).json()
         job = _scan(client, headers, root["id"])
         assert job["status"] == "completed", job
-        # Part 14 maps the valid E01E02 file immediately while isolating the
-        # episode-less S01 video as an unresolved member instead of rejecting
-        # the whole directory.
+        # The valid E01E02 file maps immediately. The episode-less S01 video is
+        # skipped without turning a parser limitation into a user-facing Problem.
         assert job["summary"]["matched"] == 1
-        assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 1
+        assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
         show = client.get("/api/v1/shows").json()["items"][0]
         assert show["episodes_present"] == 2
         assert show["episodes_missing"] == 0

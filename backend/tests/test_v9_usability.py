@@ -190,7 +190,7 @@ def test_media_file_problem_subject_is_human_readable(client: TestClient) -> Non
             await db.flush()
             db.add(
                 Problem(
-                    reason="EPISODE_MAPPING_UNRESOLVED",
+                    reason="EPISODE_CONTAINER_MISMATCH",
                     entity_type="media_file",
                     entity_id=media_file.id,
                     message="Episode needs review.",
@@ -199,9 +199,28 @@ def test_media_file_problem_subject_is_human_readable(client: TestClient) -> Non
             await db.commit()
 
     asyncio.run(seed())
-    response = client.get("/api/v1/problems?status=open&reason=EPISODE_MAPPING_UNRESOLVED")
+    response = client.get("/api/v1/problems?status=open&reason=EPISODE_CONTAINER_MISMATCH")
     assert response.status_code == 200, response.text
     assert response.json()["items"][0]["subject"] == "Example.Show.S01E01.mkv · /shows/Example Show/Season 01"
+
+
+def test_retired_episode_mapping_problem_is_hidden_from_problem_apis(client: TestClient) -> None:
+    _headers(client)
+
+    async def seed():
+        async with db_session.async_session_factory() as db:
+            db.add(Problem(
+                reason="EPISODE_MAPPING_UNRESOLVED",
+                entity_type="media_file",
+                entity_id=uuid.uuid4(),
+                message="Retired parser diagnostic.",
+            ))
+            await db.commit()
+
+    asyncio.run(seed())
+    assert client.get("/api/v1/problems?status=open&reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
+    assert client.get("/api/v1/problems/count?status=open").json()["count"] == 0
+    assert client.get("/api/v1/problems/summary").json()["open"] == 0
 
 
 def test_recheck_all_targets_only_existing_open_problems(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -502,7 +502,7 @@ def test_multi_episode_file_maps_one_media_file_to_every_episode(client: TestCli
         shutil.rmtree(root, ignore_errors=True)
 
 
-def test_partial_multi_episode_mapping_keeps_valid_episode_and_flags_only_unresolved_number(client: TestClient) -> None:
+def test_partial_multi_episode_mapping_keeps_valid_episode_and_skips_unknown_number(client: TestClient) -> None:
     root = Path.cwd() / f"partial-multi-{uuid.uuid4().hex}"
     show_dir = root / "Dollface 2019"
     show_dir.mkdir(parents=True)
@@ -514,12 +514,7 @@ def test_partial_multi_episode_mapping_keeps_valid_episode_and_flags_only_unreso
         scan(client, headers, configured["id"])
         show = detail(client)
         assert episode_by_number(show, 1)["presence_state"] == "present"
-        unresolved = client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED")
-        assert unresolved.status_code == 200, unresolved.text
-        assert unresolved.json()["total"] == 1
-        problem = unresolved.json()["items"][0]
-        assert problem["details"]["mapped_episode_numbers"] == [1]
-        assert problem["details"]["unresolved_episode_numbers"] == [99]
+        assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
