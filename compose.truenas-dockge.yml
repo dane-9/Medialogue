@@ -17,12 +17,11 @@ services:
       TZ: "${TZ:-UTC}"
 
       MEDIALOGUE_ENVIRONMENT: production
-      MEDIALOGUE_DATABASE_URL: "postgresql+asyncpg://medialogue:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dockge .env}@postgres:5432/medialogue"
+      MEDIALOGUE_DATABASE_URL: sqlite+aiosqlite:////config/medialogue.db
       MEDIALOGUE_CONFIG_DIR: /config
       MEDIALOGUE_TORRENT_ARCHIVE_DIR: /torrent-archive
       MEDIALOGUE_RECOVERY_EXPORT_DIR: /config/recovery-exports
       MEDIALOGUE_RECOVERY_EXPORT_RETENTION_HOURS: "24"
-      MEDIALOGUE_PG_BASEBACKUP_BIN: /usr/lib/postgresql/16/bin/pg_basebackup
       MEDIALOGUE_SECRET_KEY: "${MEDIALOGUE_SECRET_KEY:?Set MEDIALOGUE_SECRET_KEY in Dockge .env}"
       MEDIALOGUE_LOG_LEVEL: INFO
       MEDIALOGUE_COOKIE_SECURE: "false"
@@ -35,32 +34,9 @@ services:
       - ${MOVIES_HOST_PATH:?Set MOVIES_HOST_PATH in Dockge .env}:/media/movies:ro
       - ${SHOWS_HOST_PATH:?Set SHOWS_HOST_PATH in Dockge .env}:/media/shows:ro
 
-    depends_on:
-      postgres:
-        condition: service_healthy
-
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
-
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: medialogue
-      POSTGRES_USER: medialogue
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dockge .env}"
-      TZ: "${TZ:-UTC}"
-    volumes:
-      - medialogue-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U medialogue -d medialogue"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-volumes:
-  medialogue-postgres-data:

@@ -133,7 +133,7 @@ def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> 
     assert "Base.metadata.create_all" in migrations[0].read_text(encoding="utf-8")
 
 
-def test_online_postgres_migrations_use_installed_asyncpg_driver() -> None:
+def test_online_sqlite_migrations_use_installed_aiosqlite_driver() -> None:
     backend_dir = _backend_dir()
     source = (backend_dir / "alembic" / "env.py").read_text(encoding="utf-8")
     assert "async_engine_from_config" in source

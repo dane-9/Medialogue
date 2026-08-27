@@ -3499,16 +3499,16 @@ function BackupRecoverySettings() {
 
     <div className="settings-section">
       <div><h3>What the bundle contains</h3><p>Enough to rebuild this installation on a new host. Your media is <strong>not</strong> included, the bundle describes your library, it does not copy it. Intended for disaster recovery and manual verification, not automatic mass redownload.</p></div>
-      <div className="recovery-content-list"><span>database/physical-base-backup/</span><span>torrent-archive/</span><span>manifests/</span><span>config/application-config-export.json</span><span>inventory/library-inventory.json</span><span>inventory/torrent-archive-inventory.json</span><span>backup-metadata.json</span></div>
+      <div className="recovery-content-list"><span>database/medialogue.db</span><span>torrent-archive/</span><span>manifests/</span><span>config/application-config-export.json</span><span>inventory/library-inventory.json</span><span>inventory/torrent-archive-inventory.json</span><span>backup-metadata.json</span></div>
     </div>
 
-    <Note message={{ tone: 'error', text: 'The bundle contains a physical PostgreSQL base backup and integration credentials. Treat anyone holding the ZIP as having full access to your Medialogue configuration and database.' }} />
+    <Note message={{ tone: 'error', text: 'The bundle contains a complete SQLite database backup and integration credentials. Treat anyone holding the ZIP as having full access to your Medialogue configuration and database.' }} />
 
     {capabilities && <div className="settings-section">
-      <div><h3>Backup compatibility</h3><p>Medialogue uses PostgreSQL-supported physical backup tooling. It never recursively copies a live PGDATA directory.</p></div>
+      <div><h3>Backup compatibility</h3><p>Medialogue uses SQLite's online backup API to create a consistent database file while the application is running.</p></div>
       <div className="settings-form">
-        <Field label="PostgreSQL server" help="Detected server version the bundle will be restorable against."><Input readOnly value={capabilities.postgresServerVersion ?? capabilities.databaseBackend} /></Field>
-        <Field label="pg_basebackup" help="Version of the tool used to take the physical backup. Must be present for export to run."><Input readOnly value={capabilities.pgBasebackupVersion ?? 'Unavailable'} /></Field>
+        <Field label="SQLite version" help="SQLite library version used to create the online backup."><Input readOnly value={capabilities.sqliteVersion ?? 'Unknown'} /></Field>
+        <Field label="Database file" help="Application-owned database included in the Recovery Bundle."><Input readOnly value={capabilities.databasePath ?? 'Unavailable'} /></Field>
         <Field label="Migration revision" help="Schema revision captured in the bundle. Restore onto this revision or later."><Input readOnly value={capabilities.migrationRevision ?? 'Unknown'} /></Field>
         <Field label="Temporary download retention" help="How long a finished bundle stays downloadable before it is deleted from the server."><Input readOnly value={`${capabilities.retentionHours} hours`} /></Field>
       </div>

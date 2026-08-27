@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import sqlite3
 import tempfile
 import uuid
 import zipfile
@@ -34,7 +35,6 @@ from app.models.domain import (
 )
 from app.services.jobs import create_job
 from app.services.recovery import (
-    _pg_connection_args,
     cleanup_expired_recovery_exports,
     recovery_bundle_path,
     run_recovery_export,
@@ -55,7 +55,6 @@ def recovery_env():
         secret_key="test-secret-key-123456",
         torrent_archive_dir=str(archive),
         recovery_export_dir=str(export_dir),
-        pg_basebackup_bin=str(root / "missing-pg-basebackup"),
     )
     engine = create_async_engine(settings.database_url)
 
@@ -79,8 +78,8 @@ def login_headers(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": login.json()["csrf_token"]}
 
 
-def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(recovery_env) -> None:
-    client, settings, _ = recovery_env
+def test_recovery_bundle_contains_sqlite_backup_archive_config_and_inventory(recovery_env) -> None:
+    client, settings, root_path = recovery_env
     login_headers(client)
     info_hash = "ab" + uuid.uuid4().hex + "123456"
     torrent_path = Path(settings.torrent_archive_dir) / "torrents" / info_hash[:2] / f"{info_hash}.torrent"
@@ -143,32 +142,7 @@ def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(r
 
     job_id = asyncio.run(seed())
 
-    async def fake_base_backup(destination: Path, _settings: Settings, progress):
-        destination.mkdir(parents=True)
-        (destination / "PG_VERSION").write_text("16\n", encoding="utf-8")
-        (destination / "global").mkdir()
-        (destination / "global" / "pg_control").write_bytes(b"physical-backup-evidence")
-        if progress:
-            await progress(50, "50/100 kB (50%)")
-            await progress(100, "100/100 kB (100%)")
-        return {"tool": "pg_basebackup", "format": "plain", "wal_method": "stream", "test": True}
-
-    metadata = {
-        "backend": "postgresql",
-        "server_version": "16.10",
-        "server_version_num": "160010",
-        "server_major": 16,
-        "migration_revision": "0001",
-        "custom_tablespaces": [],
-    }
-    asyncio.run(
-        run_recovery_export(
-            job_id,
-            base_backup_runner=fake_base_backup,
-            settings=settings,
-            database_metadata_override=metadata,
-        )
-    )
+    asyncio.run(run_recovery_export(job_id, settings=settings))
 
     async def read_job():
         async with db_session.async_session_factory() as db:
@@ -184,8 +158,7 @@ def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(r
 
     with zipfile.ZipFile(bundle_path) as bundle:
         names = set(bundle.namelist())
-        assert "database/physical-base-backup/PG_VERSION" in names
-        assert "database/physical-base-backup/global/pg_control" in names
+        assert "database/medialogue.db" in names
         assert "config/application-config-export.json" in names
         assert "inventory/library-inventory.json" in names
         assert "inventory/torrent-archive-inventory.json" in names
@@ -205,10 +178,18 @@ def test_recovery_bundle_contains_physical_backup_archive_config_and_inventory(r
         assert any(movie["tmdb_id"] == 27205 for movie in inventory["movies"])
         assert any(path["resolved_path"].startswith("/media/movies/Inception") for path in inventory["media_directories"])
         backup_meta = json.loads(bundle.read("backup-metadata.json"))
-        assert backup_meta["postgresql"]["major_version"] == 16
-        assert backup_meta["schema_migration_revision"] == "0001"
+        assert backup_meta["recovery_schema_version"] == 2
+        assert backup_meta["sqlite"]["database_file"] == "database/medialogue.db"
+        assert backup_meta["sqlite"]["backup"]["tool"] == "sqlite3_backup"
+        assert backup_meta["schema_migration_revision"] is None
         assert backup_meta["torrent_manifest_schema_version"] == 1
         assert backup_meta["sensitive"] is True
+
+        restored = root_path / "restored-medialogue.db"
+        restored.write_bytes(bundle.read("database/medialogue.db"))
+        with sqlite3.connect(restored) as restored_db:
+            assert restored_db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+            assert restored_db.execute("SELECT title FROM movies WHERE tmdb_id = 27205").fetchone() == ("Inception",)
 
     history = client.get("/api/v1/events?event_type=recovery.export_completed")
     assert history.status_code == 200
@@ -243,30 +224,20 @@ def test_completed_recovery_bundle_download_is_authenticated_and_no_store(recove
     assert blocked.status_code == 401
 
 
-def test_recovery_export_api_refuses_non_postgres_database(recovery_env) -> None:
-    client, _, _ = recovery_env
-    headers = login_headers(client)
+def test_recovery_capabilities_accept_file_backed_sqlite(recovery_env) -> None:
+    client, settings, _ = recovery_env
+    login_headers(client)
     capability = client.get("/api/v1/recovery/capabilities")
     assert capability.status_code == 200
-    assert capability.json()["supported"] is False
+    assert capability.json()["supported"] is True
     assert capability.json()["database_backend"] == "sqlite"
-    started = client.post("/api/v1/recovery/export", headers=headers)
-    assert started.status_code == 409
-    assert started.json()["error"]["code"] == "RECOVERY_EXPORT_UNAVAILABLE"
+    assert capability.json()["database_readable"] is True
+    assert capability.json()["database_path"] == str(Path(settings.database_url.removeprefix("sqlite+aiosqlite:///")))
 
 
-def test_database_password_is_not_put_on_pg_basebackup_command_line() -> None:
-    settings = Settings(
-        database_url="postgresql+asyncpg://backup_user:p%40ssword@postgres:5432/medialogue?sslmode=require",
-        secret_key="test-secret-key-123456",
-    )
-    args, env = _pg_connection_args(settings)
-    rendered = " ".join(args)
-    assert "p@ssword" not in rendered
-    assert "p%40ssword" not in rendered
-    assert env["PGPASSWORD"] == "p@ssword"
-    assert env["PGSSLMODE"] == "require"
-    assert args == ["--host", "postgres", "--port", "5432", "--username", "backup_user", "--dbname", "medialogue"]
+def test_settings_reject_non_sqlite_database_urls() -> None:
+    with pytest.raises(ValueError, match="SQLite databases only"):
+        Settings(database_url="postgresql://example.invalid/medialogue", secret_key="test-secret-key-123456")
 
 
 def test_expired_recovery_exports_are_cleaned_up(recovery_env) -> None:
@@ -290,14 +261,11 @@ def test_recovery_export_api_creates_persistent_job_and_prevents_overlap(recover
     async def supported_capabilities(_db):
         return {
             "supported": True,
-            "database_backend": "postgresql",
-            "postgres_server_version": "16.10",
-            "postgres_server_major": 16,
-            "pg_basebackup_available": True,
-            "pg_basebackup_version": "pg_basebackup (PostgreSQL) 16.10",
-            "pg_basebackup_major": 16,
+            "database_backend": "sqlite",
+            "sqlite_version": sqlite3.sqlite_version,
+            "database_path": "/config/medialogue.db",
+            "database_readable": True,
             "migration_revision": "0001",
-            "custom_tablespaces": [],
             "torrent_archive_readable": True,
             "export_directory_writable": True,
             "export_directory": "/tmp",

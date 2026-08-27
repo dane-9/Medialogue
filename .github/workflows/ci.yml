@@ -8,20 +8,6 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: medialogue_test
-          POSTGRES_USER: medialogue
-          POSTGRES_PASSWORD: medialogue-test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U medialogue -d medialogue_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,21 +22,7 @@ jobs:
         run: python -m compileall -q app tests
       - name: Run fast regression suite
         working-directory: backend
-        run: pytest -q --ignore=tests/test_postgres_integration.py
-      - name: Build fresh production schema on PostgreSQL 16
-        working-directory: backend
-        env:
-          MEDIALOGUE_DATABASE_URL: postgresql+asyncpg://medialogue:medialogue-test@127.0.0.1:5432/medialogue_test
-        run: |
-          # v9 intentionally supports clean databases only.  Exercise exactly
-          # the schema path used by a fresh TrueNAS deployment.
-          alembic upgrade head
-          alembic current
-      - name: Run PostgreSQL-specific integration tests
-        working-directory: backend
-        env:
-          MEDIALOGUE_TEST_POSTGRES_URL: postgresql+asyncpg://medialogue:medialogue-test@127.0.0.1:5432/medialogue_test
-        run: pytest -q tests/test_postgres_integration.py
+        run: pytest -q
 
   frontend:
     runs-on: ubuntu-latest
@@ -77,7 +49,6 @@ jobs:
       - name: Prepare release-smoke environment
         run: |
           cp .env.example .env
-          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-release-password/' .env
           sed -i 's/^SECRET_KEY=.*/SECRET_KEY=ci-release-secret-0123456789abcdefghijklmnopqrstuvwxyz/' .env
           mkdir -p .ci-media .local/config .local/torrent-archive
       - name: Validate Compose configuration

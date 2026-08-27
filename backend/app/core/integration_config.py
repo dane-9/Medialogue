@@ -91,7 +91,7 @@ class IntegrationConfigStore:
 
     Non-secret settings live in ``/config/medialogue.json``. Secrets are kept
     in a separate AES-GCM encrypted file keyed from ``MEDIALOGUE_SECRET_KEY``.
-    PostgreSQL stores only runtime/health state and durable references by UUID.
+    SQLite stores only runtime/health state and durable references by UUID.
     """
 
     def __init__(self, config_dir: str | Path, secret_key: str):

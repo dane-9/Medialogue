@@ -1,3 +1,11 @@
+## SQLite-only persistence
+
+- Replace the PostgreSQL service and `asyncpg` runtime with one file-backed SQLite database at `/config/medialogue.db`.
+- Enable foreign keys, WAL journaling, a 30-second busy timeout, and `NORMAL` synchronous mode on application connections.
+- Replace `pg_basebackup` Recovery Bundles with SQLite online backups that are integrity-checked before packaging.
+- Remove PostgreSQL container tooling, credentials, CI coverage, frontend capability fields, and operator instructions.
+- This is an intentionally fresh database baseline; existing PostgreSQL data is not imported.
+
 ## v9 qBittorrent connection stability hotfix
 
 - Prevent the qBittorrent authentication socket from being reused for the first API read, avoiding stale post-login keep-alive sockets after HTTP 204 login responses.
@@ -82,4 +90,3 @@ Initial integrated Medialogue build covering the v1 roadmap through packaging/re
 - Prevent a stale `backend/alembic/__init__.py` from colliding with the real Alembic dependency.
 - Docker builds now fail immediately if the real Alembic import/CLI is broken.
 - Manual GHCR publishing now builds and validates the image locally before any tag is pushed.
-

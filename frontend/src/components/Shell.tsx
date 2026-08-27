@@ -83,7 +83,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
     const jobListener = () => { void refreshJobs(); void refreshReviewCount() }
-    // Problem SSE events are invalidation signals only. PostgreSQL remains the
+    // Problem SSE events are invalidation signals only. SQLite remains the
     // authoritative count, so reconnects, rollbacks and duplicate-resolution
     // events can never leave the badge drifting from the queue.
     const problemChangedListener = () => void refreshProblemCount()

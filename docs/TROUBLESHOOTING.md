@@ -7,7 +7,6 @@ Check:
 ```sh
 docker compose ps
 docker compose logs media-manager
-docker compose logs postgres
 ```
 
 `/healthz` is process liveness. `/readyz` also verifies the database and is the container healthcheck target.
@@ -42,7 +41,7 @@ Check per-indexer status in the search job. Indexers time out independently; suc
 
 ## Recovery export is unsupported
 
-Open Settings → Backup / Recovery and inspect the capability reasons. Physical export requires PostgreSQL, matching `pg_basebackup` major version, a readable torrent archive, a writable export directory, and no unsupported custom tablespaces.
+Open Settings → Backup / Recovery and inspect the capability reasons. Export requires a readable file-backed SQLite database, a readable torrent archive, and a writable export directory.
 ## Medialogue exits during startup with `cannot import name '__version__' from 'alembic'`
 
 This was caused by an older packaging configuration accidentally treating Medialogue's `backend/alembic/` migration-script directory as a Python package. A stale `backend/alembic/__init__.py` left behind by GitHub web uploads could then collide with the real Alembic dependency.

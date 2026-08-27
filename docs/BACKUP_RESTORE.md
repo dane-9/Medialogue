@@ -18,7 +18,7 @@ Do not treat this directory as disposable cache.
 
 Settings → Backup / Recovery creates a ZIP containing:
 
-- a PostgreSQL physical base backup produced with `pg_basebackup`;
+- a consistent `database/medialogue.db` created with SQLite's online backup API;
 - `config/live/medialogue.json` and `config/live/secrets.enc`;
 - torrent archive data and recovery manifests;
 - a sensitive human-readable configuration export for disaster recovery;
@@ -29,13 +29,13 @@ The bundle contains credentials and database contents. Store it as sensitive bac
 
 ## Restore overview
 
-1. Stop Medialogue and PostgreSQL.
-2. Read `backup-metadata.json` and provision the recorded PostgreSQL major version.
-3. Restore the physical base backup into an empty PostgreSQL data volume. During the current clean-baseline development phase, restore only a database produced by the same compatible Medialogue schema; old database schemas are not converted in place.
+1. Stop Medialogue.
+2. Preserve the current `/config/medialogue.db` separately if it may still be needed.
+3. Restore `database/medialogue.db` from the bundle to `/config/medialogue.db` with ownership matching the configured `PUID`/`PGID`.
 4. Restore `config/live/medialogue.json` and `config/live/secrets.enc` to `/config` and configure the same `MEDIALOGUE_SECRET_KEY`.
 5. Restore `/torrent-archive` contents.
 6. Recreate deployment paths/media mounts and remote path mappings for the new host.
-7. Start PostgreSQL, then Medialogue.
+7. Start Medialogue.
 8. Verify storage/integration health; newly added roots still require one explicit initialization scan.
 
 Medialogue deliberately does not offer a one-click in-place database restore in the web UI.

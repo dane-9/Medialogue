@@ -41,7 +41,7 @@ async def active_storage_root_scan_job(db: AsyncSession, root_id: UUID) -> Job |
 
     This protects against duplicate clicks and against a second request being
     queued behind the per-root runtime lock.  The summary field is inspected
-    in Python so the query stays portable between PostgreSQL and SQLite tests.
+    in Python so path comparison behavior stays explicit and testable.
     """
 
     rows = (
@@ -111,7 +111,7 @@ async def execute_storage_root_scan(
     await update_job(db, job, status=JobStatus.RUNNING, progress={"current": 0, "total": 0, "percent": 0, "stage": "enumerating"})
     # Commit the RUNNING transition immediately.  Holding this write until the
     # end of a large scan made other sessions see the job as eternally QUEUED
-    # and also blocked cancellation on PostgreSQL.
+    # and also blocked cancellation while database work was in flight.
     await db.commit()
     publish_job_status(job)
     publish_live_event(

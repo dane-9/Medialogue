@@ -40,7 +40,7 @@ def upgrade() -> None:
 
     if "media_discoveries" not in set(sa.inspect(bind).get_table_names()):
         # Reuse the application-owned table definition so UUID/JSON types stay
-        # portable between SQLite development and PostgreSQL production.
+        # aligned with the application-owned SQLite schema.
         from app.models.domain import MediaDiscovery
 
         MediaDiscovery.__table__.create(bind=bind, checkfirst=True)

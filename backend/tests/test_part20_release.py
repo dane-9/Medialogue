@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import Settings
@@ -97,6 +98,20 @@ def test_readiness_reports_database_availability(client) -> None:
     response = test_client.get("/readyz")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "database": "available"}
+
+
+def test_runtime_sqlite_connections_enable_integrity_and_contention_pragmas(client) -> None:
+    async def read_pragmas():
+        async with db_session.engine.connect() as connection:
+            foreign_keys = await connection.scalar(text("PRAGMA foreign_keys"))
+            journal_mode = await connection.scalar(text("PRAGMA journal_mode"))
+            busy_timeout = await connection.scalar(text("PRAGMA busy_timeout"))
+            return foreign_keys, journal_mode, busy_timeout
+
+    foreign_keys, journal_mode, busy_timeout = asyncio.run(read_pragmas())
+    assert foreign_keys == 1
+    assert str(journal_mode).casefold() == "wal"
+    assert busy_timeout == 30_000
 
 
 def test_backend_distribution_does_not_claim_alembic_namespace() -> None:

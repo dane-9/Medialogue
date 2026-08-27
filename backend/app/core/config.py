@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,12 +18,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     secret_key: str = Field(default="change-me-in-production", min_length=16)
-    database_url: str = "postgresql+asyncpg://medialogue:medialogue@postgres:5432/medialogue"
+    database_url: str = "sqlite+aiosqlite:////config/medialogue.db"
     config_dir: str = "/config"
     torrent_archive_dir: str = "/torrent-archive"
     recovery_export_dir: str = "/config/recovery-exports"
     recovery_export_retention_hours: int = 24
-    pg_basebackup_bin: str = "/usr/lib/postgresql/16/bin/pg_basebackup"
     session_cookie_name: str = "medialogue_session"
     csrf_cookie_name: str = "medialogue_csrf"
     session_ttl_hours: int = 24 * 14
@@ -34,6 +33,13 @@ class Settings(BaseSettings):
     bootstrap_admin: bool = True
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
+
+    @field_validator("database_url")
+    @classmethod
+    def sqlite_only(cls, value: str) -> str:
+        if not value.startswith(("sqlite+aiosqlite://", "sqlite://")):
+            raise ValueError("Medialogue supports SQLite databases only")
+        return value
 
     @property
     def is_production(self) -> bool:

@@ -17,12 +17,9 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Generate SQL without importing or requiring a synchronous PG driver."""
+    """Generate SQLite SQL without requiring the asynchronous DBAPI."""
 
-    # Alembic only needs the dialect while operating offline.  Using the
-    # synchronous dialect spelling keeps generated SQL conventional while the
-    # runtime application continues to depend only on asyncpg.
-    url = get_settings().database_url.replace("+asyncpg", "")
+    url = get_settings().database_url.replace("+aiosqlite", "")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -41,13 +38,7 @@ def _run_migrations(connection) -> None:
 
 
 async def _run_async_migrations() -> None:
-    """Run online migrations through SQLAlchemy's async engine.
-
-    Production uses ``postgresql+asyncpg``.  Earlier revisions stripped the
-    ``+asyncpg`` suffix and accidentally required an uninstalled synchronous
-    PostgreSQL DBAPI during container startup.  Keeping the async URL here
-    means the same installed driver is used by both FastAPI and Alembic.
-    """
+    """Run online migrations through the same async SQLite driver as FastAPI."""
 
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = get_settings().database_url
@@ -65,13 +56,11 @@ async def _run_async_migrations() -> None:
 
 def run_migrations_online() -> None:
     url = get_settings().database_url
-    if "+asyncpg" in url or "+aiosqlite" in url:
+    if "+aiosqlite" in url:
         asyncio.run(_run_async_migrations())
         return
 
-    # Keep synchronous URLs usable for lightweight migration regression tests
-    # and operator-supplied synchronous databases, while production's
-    # postgresql+asyncpg path remains fully async.
+    # Keep synchronous SQLite URLs usable for migration regression tests.
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = url
     connectable = engine_from_config(configuration, prefix="sqlalchemy.", poolclass=pool.NullPool)

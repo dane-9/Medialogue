@@ -514,13 +514,10 @@ export interface Job {
 export interface RecoveryCapabilities {
   supported: boolean
   databaseBackend: string
-  postgresServerVersion?: string
-  postgresServerMajor?: number
-  pgBasebackupAvailable: boolean
-  pgBasebackupVersion?: string
-  pgBasebackupMajor?: number
+  sqliteVersion?: string
+  databasePath?: string
+  databaseReadable: boolean
   migrationRevision?: string
-  customTablespaces: Array<Record<string, unknown>>
   torrentArchiveReadable: boolean
   exportDirectoryWritable: boolean
   exportDirectory: string

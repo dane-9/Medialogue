@@ -7,7 +7,7 @@ cd "$ROOT"
 python -m compileall -q backend/app backend/tests
 (
   cd backend
-  pytest -q --ignore=tests/test_postgres_integration.py
+  pytest -q
 )
 
 if command -v npm >/dev/null 2>&1; then

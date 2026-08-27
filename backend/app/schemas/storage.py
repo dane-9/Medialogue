@@ -147,7 +147,7 @@ class StorageRootResponse(ORMModel):
     def timestamps_are_utc(cls, value: datetime | None) -> datetime | None:
         # SQLite drops timezone metadata even though these columns contain UTC.
         # Returning an explicit offset keeps browser-relative ages correct in
-        # every local timezone, matching PostgreSQL production responses.
+        # every local timezone.
         return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
 
 

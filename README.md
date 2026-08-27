@@ -15,7 +15,7 @@ For TrueNAS SCALE with Dockge installed as an App, use the GHCR deployment path 
 
 Extract this source release (or clone the repository) into one directory; the supplied Compose file builds the production image from the included Dockerfile, backend, and frontend.
 
-1. Copy `.env.example` to `.env` and set a strong `POSTGRES_PASSWORD` and `SECRET_KEY`.
+1. Copy `.env.example` to `.env` and set a strong `SECRET_KEY`.
 2. Review `PUID`/`PGID` and the persistent directory paths. The container prepares `/config` and `/torrent-archive` before dropping privileges; media roots are never chowned.
 3. Add only the media bind mounts Medialogue should be allowed to inspect to `docker-compose.yml`. The example mounts `/media` read-only.
 4. Start the stack:
@@ -44,7 +44,7 @@ Vite proxies `/api` to `http://localhost:8000`. Run `npm run build` to create th
 
 Medialogue only scans media folders explicitly configured in Settings.
 
-- PostgreSQL is the authoritative persistent store for library state, history, jobs, Problems, observations, and integration **runtime health**.
+- `/config/medialogue.db` is the authoritative SQLite store for library state, history, jobs, Problems, observations, and integration **runtime health**.
 - `/config/medialogue.json` is the source of truth for Plex, TMDB, qBittorrent-client, and indexer configuration. It contains no passwords/tokens/API keys.
 - `/config/secrets.enc` stores those integration secrets encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`. Keep the same secret key with the config volume; changing it makes the encrypted secrets unreadable.
 - `/config` also stores the setup marker and temporary Recovery Bundle ZIPs under `/config/recovery-exports`.
@@ -83,7 +83,7 @@ The bundle contains:
 medialogue-recovery-<job-id>.zip
 ├── backup-metadata.json
 ├── database/
-│   └── physical-base-backup/
+│   └── medialogue.db
 ├── torrent-archive/
 │   └── torrents/...
 ├── manifests/...
@@ -98,26 +98,26 @@ medialogue-recovery-<job-id>.zip
     └── torrent-archive-inventory.json
 ```
 
-The database backup is a **PostgreSQL physical base backup created with `pg_basebackup`**. Medialogue does not recursively copy a live PostgreSQL data directory. The production image includes PostgreSQL 16 `pg_basebackup`, matching the PostgreSQL 16 service in the supplied Compose stack. Before export, Medialogue verifies the database backend, client/server major-version compatibility, the torrent-archive mount, the export directory, and rejects custom PostgreSQL tablespaces until explicit tablespace mapping is implemented.
+The database backup is a consistent SQLite file created with SQLite's online backup API. It can be produced while Medialogue is running and is verified with `PRAGMA integrity_check` before packaging. Export also verifies the database file, torrent-archive mount, and export directory.
 
-`backup-metadata.json` records the application version, PostgreSQL version/major, Alembic schema revision, torrent-manifest schema version, export timestamp, and temporary-download expiry. Recovery Bundles include the live file-backed integration configuration (`config/live/medialogue.json` and `config/live/secrets.enc`) plus a human-readable sensitive configuration export, the runtime database URL, and the application secret key. **The Recovery Bundle is therefore highly sensitive and should be protected like a database/password backup.**
+`backup-metadata.json` records the application and SQLite versions, Alembic schema revision, torrent-manifest schema version, export timestamp, and temporary-download expiry. Recovery Bundles include the live file-backed integration configuration (`config/live/medialogue.json` and `config/live/secrets.enc`) plus a human-readable sensitive configuration export, the runtime database URL, and the application secret key. **The Recovery Bundle is therefore highly sensitive and should be protected like a database/password backup.**
 
-The library inventory is deliberately readable without PostgreSQL and records Movies, Shows, releases, Episodes, paths, media files, torrent associations, Plex observations, parse evidence, and Problems. It is secondary evidence; the physical PostgreSQL backup remains the authoritative application-state backup.
+The library inventory is deliberately readable without SQLite tooling and records Movies, Shows, releases, Episodes, paths, media files, torrent associations, Plex observations, parse evidence, and Problems. It is secondary evidence; the SQLite backup remains the authoritative application-state backup.
 
 ### Restoring a Recovery Bundle
 
 Medialogue does not perform an automatic in-place database restore from the web UI. Restore is intentionally an administrator operation:
 
-1. Stop Medialogue and the target PostgreSQL instance.
-2. Read `backup-metadata.json` and use the same PostgreSQL **major** version recorded by the bundle.
-3. Restore `database/physical-base-backup/` into an empty PostgreSQL data directory/volume, preserving the files and assigning them to the PostgreSQL service account. Do not merge the backup into a running or non-empty cluster.
+1. Stop Medialogue.
+2. Keep the current `/config/medialogue.db` separately if it may still be needed.
+3. Copy `database/medialogue.db` from the bundle to `/config/medialogue.db` and give it the configured `PUID`/`PGID` ownership.
 4. Recreate/adapt deployment environment values from `config/application-config-export.json`. Hostnames/paths may need to change on the new host.
 5. Restore archived torrents to the configured archive mount by copying `torrent-archive/torrents/` into `/torrent-archive/torrents/` and `manifests/` into `/torrent-archive/manifests/`.
 6. Restore `config/live/medialogue.json` and `config/live/secrets.enc` to the configured `/config` volume and use the same `MEDIALOGUE_SECRET_KEY` recorded/protected with the backup.
-7. Start PostgreSQL, verify it is healthy, then start Medialogue. During the current clean-baseline development phase, restore only a database created by the same compatible Medialogue schema; older schemas and DB-backed integration settings are not upgraded/imported in place.
+7. Start Medialogue. Restore only a database created by a compatible Medialogue schema; PostgreSQL databases are intentionally not imported.
 8. Recreate the media bind mounts and remote-path mappings appropriate to the new host before scanning. Medialogue will not relocate media automatically.
 
-For a Docker volume restore, use a temporary container or other controlled administrative method to populate the empty PostgreSQL volume while the database service is stopped. Exact commands depend on the deployment host and volume driver.
+Never replace the SQLite file while Medialogue is running, and do not copy only its `-wal` or `-shm` sidecar files.
 
 ## Prowlarr-backed indexers and Interactive Search
 
@@ -248,7 +248,7 @@ Media folders can be described as **Read-only** or **Read/write** in the UI, but
 
 ## Tags and bulk Movie administration
 
-Movie tags are lightweight application metadata stored in PostgreSQL. They are **Movies-only in v1** and never create sidecars or alter media paths. Tags can be created once, assigned to any number of Movies, removed independently, and clicked in the Movie UI to filter the library.
+Movie tags are lightweight application metadata stored in SQLite. They are **Movies-only in v1** and never create sidecars or alter media paths. Tags can be created once, assigned to any number of Movies, removed independently, and clicked in the Movie UI to filter the library.
 
 The Movies page supports selection without adding a row of permanent action buttons. Right-clicking a Movie opens its context actions; Ctrl/Cmd-click (or Shift-click) can build a multi-Movie selection before right-clicking. Safe bulk operations include:
 
@@ -301,7 +301,7 @@ High-frequency progress is intentionally **transient**. For example, every qBitt
 
 A global **Event History** page provides filtering by severity, entity type, event type, and date. Movie and Show detail APIs also build a title-level timeline from related releases, media directories/files, torrents, seasons, and episodes rather than showing only events directly attached to the top-level title record.
 
-SSE is an update/invalidation channel, not the sole source of truth. If the browser disconnects or refreshes, current Jobs, Problems, health, and durable Events are reloaded from PostgreSQL through the REST API.
+SSE is an update/invalidation channel, not the sole source of truth. If the browser disconnects or refreshes, current Jobs, Problems, health, and durable Events are reloaded from SQLite through the REST API.
 
 ## Hardening and automated regression coverage
 
@@ -330,10 +330,9 @@ The repository includes `.github/workflows/ci.yml`. CI performs both fast applic
 ```text
 Backend
   Python compile check
-  SQLite-backed fast regression suite
-  PostgreSQL 16 service
-  real postgresql+asyncpg Alembic upgrade to head
-  PostgreSQL transaction / uniqueness / JSONB integration test
+  SQLite-backed regression suite
+  real SQLite Alembic upgrade to head
+  SQLite transaction / uniqueness / backup integration tests
 
 Frontend
   npm ci
@@ -341,6 +340,6 @@ Frontend
   production Vite build
 ```
 
-PostgreSQL-specific CI is important because production uses PostgreSQL rather than SQLite. The Alembic environment now uses SQLAlchemy's asynchronous migration path when the configured URL uses `asyncpg`, so the supplied production dependency set does not require an undeclared synchronous PostgreSQL driver merely to run migrations. Plain SQLite migration URLs remain supported for the migration regression tests.
+Production and tests both use SQLite through `aiosqlite`. Alembic exercises both the asynchronous production URL and synchronous SQLite URLs used for migration regression checks.
 
 The critical state-engine regression matrix continues to cover Missing detection, root outage/recovery, qBittorrent disappearance, incoming/cancelled torrents, replacements (including edition changes and different-path reappearance), physical duplicates, Plex unavailable/presence and Show episode-number conflict behavior, torrent-archive retention, destructive confirmation safety, season packs, and multi-episode mappings.

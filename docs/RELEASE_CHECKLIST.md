@@ -6,7 +6,7 @@ This checklist is for validating a Medialogue source release before deploying it
 
 - Extract the complete release tree; do not copy only `docker-compose.yml`.
 - Copy `.env.example` to `.env`.
-- Replace the example PostgreSQL password and Medialogue secret key.
+- Replace the example Medialogue secret key.
 - Review `PUID`, `PGID`, timezone, persistent paths, and media bind mounts.
 - Keep media mounts read-only; duplicate cleanup is performed outside Medialogue.
 
@@ -18,7 +18,7 @@ When development dependencies are installed, run:
 ./scripts/release-check.sh
 ```
 
-The repository CI additionally validates PostgreSQL 16 migrations, the frontend production build, and a clean Docker Compose boot.
+The repository CI additionally validates SQLite migrations and backups, the frontend production build, and a clean Docker Compose boot.
 
 ## First boot
 

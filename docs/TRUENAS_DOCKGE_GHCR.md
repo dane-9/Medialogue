@@ -127,7 +127,6 @@ PUID=568
 PGID=568
 TZ=Europe/Stockholm
 
-POSTGRES_PASSWORD=your-real-random-password
 MEDIALOGUE_SECRET_KEY=your-real-random-secret
 
 CONFIG_HOST_PATH=/mnt/tank/appdata/medialogue/config
@@ -138,18 +137,17 @@ SHOWS_HOST_PATH=/mnt/tank/media/shows
 
 The values in Dockge stay on your TrueNAS stack. They are not committed to GitHub.
 
-Medialogue writes integration configuration to `CONFIG_HOST_PATH`: `medialogue.json` contains non-secret Plex/TMDB/qBittorrent/indexer settings and `secrets.enc` contains the corresponding encrypted credentials. PostgreSQL stores library/runtime state rather than those connection settings. Keep the same `MEDIALOGUE_SECRET_KEY` whenever you retain `secrets.enc`.
+Medialogue writes its SQLite database and integration configuration to `CONFIG_HOST_PATH`: `medialogue.json` contains non-secret Plex/TMDB/qBittorrent/indexer settings and `secrets.enc` contains the corresponding encrypted credentials. Keep the same `MEDIALOGUE_SECRET_KEY` whenever you retain `secrets.enc`. Use a local TrueNAS dataset for this path, not an SMB/NFS share.
 
-This development build does not import integration configuration from an older PostgreSQL database. If you are adopting this build from the older DB-backed configuration layout, start it with a fresh Medialogue PostgreSQL data directory as intended and configure integrations from the UI (or retain file-backed `/config` files from a later build).
+This build intentionally starts with a fresh SQLite database and does not import an older PostgreSQL database. Configure integrations from the UI, or retain file-backed `/config` files from a later compatible build.
 
 Generate safe random values, for example:
 
 ```sh
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Use the first for `POSTGRES_PASSWORD` and the second for `MEDIALOGUE_SECRET_KEY`.
+Use the generated value for `MEDIALOGUE_SECRET_KEY`.
 
 ## 7. Start Medialogue manually
 
@@ -159,7 +157,6 @@ Dockge pulls:
 
 ```text
 ghcr.io/YOUR_GITHUB_USERNAME/medialogue:latest
-postgres:16-alpine
 ```
 
 Open:

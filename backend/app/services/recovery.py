@@ -1,10 +1,8 @@
 """Recovery-bundle export services.
 
 A recovery bundle is intentionally more than a logical application export. It
-contains a PostgreSQL physical base backup, archived torrent evidence, a
+contains a consistent SQLite online backup, archived torrent evidence, a
 human-readable configuration export, and a human-readable library inventory.
-The physical backup is produced with PostgreSQL's own ``pg_basebackup`` tool;
-Medialogue never copies a live PGDATA directory.
 """
 
 from __future__ import annotations
@@ -13,8 +11,8 @@ import asyncio
 import hashlib
 import json
 import os
-import re
 import shutil
+import sqlite3
 import stat
 import tempfile
 import zipfile
@@ -71,13 +69,10 @@ from app.services.jobs import update_job
 from app.services.torrent_archive import MANIFEST_SCHEMA_VERSION
 
 
-RECOVERY_SCHEMA_VERSION = 1
+RECOVERY_SCHEMA_VERSION = 2
 _LIBRARY_INVENTORY_SCHEMA_VERSION = 1
 _CONFIGURATION_EXPORT_SCHEMA_VERSION = 1
-_PROGRESS_RE = re.compile(r"\((\d{1,3})%\)")
-_VERSION_RE = re.compile(r"(?:PostgreSQL\)?\s+)(\d+)(?:\.\d+)*", re.IGNORECASE)
-
-BaseBackupRunner = Callable[[Path, Settings, Callable[[int, str], Awaitable[None]] | None], Awaitable[dict[str, Any]]]
+DatabaseBackupRunner = Callable[[Path, Settings], Awaitable[dict[str, Any]]]
 
 
 def utcnow() -> datetime:
@@ -156,92 +151,46 @@ def cleanup_expired_recovery_exports(settings: Settings | None = None) -> None:
             continue
 
 
-def _pg_connection_args(settings: Settings) -> tuple[list[str], dict[str, str]]:
+def sqlite_database_path(settings: Settings | None = None) -> Path:
+    settings = settings or get_settings()
     url = make_url(settings.database_url)
-    if not url.drivername.startswith("postgresql"):
-        raise RuntimeError("Recovery physical backups require PostgreSQL.")
-    args: list[str] = []
-    if url.host:
-        args.extend(["--host", url.host])
-    if url.port:
-        args.extend(["--port", str(url.port)])
-    if url.username:
-        args.extend(["--username", url.username])
-    if url.database:
-        args.extend(["--dbname", url.database])
-    env = os.environ.copy()
-    if url.password:
-        env["PGPASSWORD"] = url.password
-    # Allow common libpq connection controls from SQLAlchemy query arguments
-    # without placing credentials in the process list.
-    for key, env_name in {
-        "sslmode": "PGSSLMODE",
-        "sslrootcert": "PGSSLROOTCERT",
-        "sslcert": "PGSSLCERT",
-        "sslkey": "PGSSLKEY",
-    }.items():
-        value = url.query.get(key)
-        if value:
-            env[env_name] = str(value)
-    return args, env
-
-
-async def _tool_version(binary: str) -> tuple[str | None, int | None]:
-    try:
-        process = await asyncio.create_subprocess_exec(
-            binary,
-            "--version",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        stdout, _ = await process.communicate()
-    except (FileNotFoundError, PermissionError, OSError):
-        return None, None
-    value = stdout.decode(errors="replace").strip()
-    match = _VERSION_RE.search(value)
-    return value or None, int(match.group(1)) if match else None
+    if url.drivername not in {"sqlite", "sqlite+aiosqlite"} or not url.database or url.database == ":memory:":
+        raise RuntimeError("Recovery exports require a file-backed SQLite database.")
+    return Path(url.database)
 
 
 async def database_backup_metadata(db: AsyncSession) -> dict[str, Any]:
     bind = db.get_bind()
     backend = bind.dialect.name if bind is not None else "unknown"
-    if backend != "postgresql":
+    if backend != "sqlite":
         return {
             "backend": backend,
-            "server_version": None,
-            "server_version_num": None,
-            "server_major": None,
+            "sqlite_version": None,
             "migration_revision": None,
-            "custom_tablespaces": [],
         }
-    server_version = str(await db.scalar(text("SHOW server_version")) or "")
-    server_version_num = str(await db.scalar(text("SHOW server_version_num")) or "")
-    server_major = int(server_version_num) // 10000 if server_version_num.isdigit() else None
-    migration_revision = await db.scalar(text("SELECT version_num FROM alembic_version LIMIT 1"))
-    tablespaces = (
-        await db.execute(
-            text(
-                "SELECT spcname, pg_tablespace_location(oid) AS location "
-                "FROM pg_tablespace "
-                "WHERE spcname NOT IN ('pg_default', 'pg_global') "
-                "AND pg_tablespace_location(oid) <> ''"
-            )
-        )
-    ).mappings().all()
+    sqlite_version = str(await db.scalar(text("SELECT sqlite_version()")) or "")
+    has_migration_table = await db.scalar(
+        text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'alembic_version'")
+    )
+    migration_revision = (
+        await db.scalar(text("SELECT version_num FROM alembic_version LIMIT 1")) if has_migration_table else None
+    )
     return {
         "backend": backend,
-        "server_version": server_version,
-        "server_version_num": server_version_num,
-        "server_major": server_major,
+        "sqlite_version": sqlite_version,
         "migration_revision": str(migration_revision) if migration_revision else None,
-        "custom_tablespaces": [dict(row) for row in tablespaces],
     }
 
 
 async def recovery_capabilities(db: AsyncSession, settings: Settings | None = None) -> dict[str, Any]:
     settings = settings or get_settings()
     db_meta = await database_backup_metadata(db)
-    tool_version, tool_major = await _tool_version(settings.pg_basebackup_bin)
+    try:
+        database_path = sqlite_database_path(settings)
+        database_readable = database_path.is_file() and os.access(database_path, os.R_OK)
+    except RuntimeError:
+        database_path = None
+        database_readable = False
     archive = Path(settings.torrent_archive_dir)
     output = recovery_export_root(settings)
     try:
@@ -251,23 +200,15 @@ async def recovery_capabilities(db: AsyncSession, settings: Settings | None = No
         output_writable = False
     archive_readable = archive.is_dir() and os.access(archive, os.R_OK)
     compatible = bool(
-        db_meta["backend"] == "postgresql"
-        and tool_major is not None
-        and db_meta.get("server_major") == tool_major
-        and not db_meta.get("custom_tablespaces")
+        db_meta["backend"] == "sqlite"
+        and database_readable
         and output_writable
     )
     reasons: list[str] = []
-    if db_meta["backend"] != "postgresql":
-        reasons.append("The configured database is not PostgreSQL.")
-    if tool_major is None:
-        reasons.append("pg_basebackup is not installed or executable.")
-    elif db_meta.get("server_major") and db_meta["server_major"] != tool_major:
-        reasons.append(
-            f"pg_basebackup major {tool_major} does not match PostgreSQL server major {db_meta['server_major']}."
-        )
-    if db_meta.get("custom_tablespaces"):
-        reasons.append("Custom PostgreSQL tablespaces are not supported by the bundled exporter yet.")
+    if db_meta["backend"] != "sqlite":
+        reasons.append("The configured database is not SQLite.")
+    if not database_readable:
+        reasons.append("The SQLite database file is unavailable or unreadable.")
     if not output_writable:
         reasons.append("The recovery export directory is not writable.")
     if not archive_readable:
@@ -275,13 +216,10 @@ async def recovery_capabilities(db: AsyncSession, settings: Settings | None = No
     return {
         "supported": compatible and archive_readable,
         "database_backend": db_meta["backend"],
-        "postgres_server_version": db_meta.get("server_version"),
-        "postgres_server_major": db_meta.get("server_major"),
-        "pg_basebackup_available": tool_major is not None,
-        "pg_basebackup_version": tool_version,
-        "pg_basebackup_major": tool_major,
+        "sqlite_version": db_meta.get("sqlite_version"),
+        "database_path": str(database_path) if database_path else None,
+        "database_readable": database_readable,
         "migration_revision": db_meta.get("migration_revision"),
-        "custom_tablespaces": db_meta.get("custom_tablespaces") or [],
         "torrent_archive_readable": archive_readable,
         "export_directory_writable": output_writable,
         "export_directory": str(output),
@@ -290,57 +228,22 @@ async def recovery_capabilities(db: AsyncSession, settings: Settings | None = No
     }
 
 
-async def run_pg_basebackup(
-    destination: Path,
-    settings: Settings,
-    progress: Callable[[int, str], Awaitable[None]] | None = None,
-) -> dict[str, Any]:
-    """Produce a consistent physical PostgreSQL base backup.
+async def run_sqlite_backup(destination: Path, settings: Settings) -> dict[str, Any]:
+    """Produce a transactionally consistent backup through SQLite's online backup API."""
 
-    Passwords are passed through ``PGPASSWORD`` rather than command-line
-    arguments. The official Docker image supplies a pg_basebackup matching the
-    PostgreSQL major version used by the bundled Compose deployment.
-    """
+    source = sqlite_database_path(settings)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.unlink(missing_ok=True)
 
-    args, env = _pg_connection_args(settings)
-    destination.mkdir(parents=True, exist_ok=False)
-    command = [
-        settings.pg_basebackup_bin,
-        *args,
-        "--pgdata",
-        str(destination),
-        "--format=plain",
-        "--wal-method=stream",
-        "--checkpoint=fast",
-        "--progress",
-        "--verbose",
-        "--no-password",
-    ]
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-        env=env,
-    )
-    tail: list[str] = []
-    assert process.stderr is not None
-    while True:
-        raw = await process.stderr.readline()
-        if not raw:
-            break
-        line = raw.decode(errors="replace").strip()
-        if line:
-            tail.append(line)
-            tail = tail[-20:]
-            match = _PROGRESS_RE.search(line)
-            if match and progress:
-                await progress(int(match.group(1)), line)
-    return_code = await process.wait()
-    if return_code != 0:
-        shutil.rmtree(destination, ignore_errors=True)
-        detail = "\n".join(tail[-8:]) or f"pg_basebackup exited with status {return_code}."
-        raise RuntimeError(detail)
-    return {"tool": "pg_basebackup", "format": "plain", "wal_method": "stream"}
+    def backup() -> None:
+        with sqlite3.connect(source) as source_db, sqlite3.connect(destination) as destination_db:
+            source_db.backup(destination_db)
+            result = destination_db.execute("PRAGMA integrity_check").fetchone()
+            if result is None or result[0] != "ok":
+                raise RuntimeError("The SQLite backup failed its integrity check.")
+
+    await asyncio.to_thread(backup)
+    return {"tool": "sqlite3_backup", "format": "sqlite", "sqlite_version": sqlite3.sqlite_version}
 
 
 async def build_configuration_export(db: AsyncSession, settings: Settings | None = None) -> dict[str, Any]:
@@ -510,7 +413,7 @@ async def _job_progress(job_id: UUID, percent: int, stage: str, detail: str | No
 async def run_recovery_export(
     job_id: UUID,
     *,
-    base_backup_runner: BaseBackupRunner = run_pg_basebackup,
+    database_backup_runner: DatabaseBackupRunner = run_sqlite_backup,
     settings: Settings | None = None,
     database_metadata_override: dict[str, Any] | None = None,
 ) -> None:
@@ -533,35 +436,14 @@ async def run_recovery_export(
 
         async with db_session.async_session_factory() as db:
             db_meta = database_metadata_override or await database_backup_metadata(db)
-            if db_meta.get("backend") != "postgresql" and database_metadata_override is None:
-                raise RuntimeError("Recovery physical backups require PostgreSQL.")
-            if db_meta.get("custom_tablespaces"):
-                raise RuntimeError(
-                    "Custom PostgreSQL tablespaces are configured. Medialogue refuses to run a plain physical base backup "
-                    "until explicit tablespace mappings are supported."
-                )
-            tool_version, tool_major = await _tool_version(settings.pg_basebackup_bin)
-            server_major = db_meta.get("server_major")
-            # An injected runner is used by unit tests; production always checks
-            # the bundled pg_basebackup/server-major compatibility.
-            if base_backup_runner is run_pg_basebackup:
-                if tool_major is None:
-                    raise RuntimeError("pg_basebackup is unavailable in the Medialogue container.")
-                if server_major is not None and tool_major != server_major:
-                    raise RuntimeError(
-                        f"pg_basebackup major {tool_major} does not match PostgreSQL server major {server_major}."
-                    )
+            if db_meta.get("backend") != "sqlite" and database_metadata_override is None:
+                raise RuntimeError("Recovery backups require SQLite.")
             configuration = await build_configuration_export(db, settings)
             inventory = await build_library_inventory(db)
 
-        await _job_progress(job_id, 8, "database_backup", "Starting PostgreSQL physical base backup")
-
-        async def base_progress(value: int, detail: str) -> None:
-            mapped = 8 + round(max(0, min(100, value)) * 0.47)
-            await _job_progress(job_id, mapped, "database_backup", detail)
-
-        physical_dir = temp_root / "database" / "physical-base-backup"
-        base_backup_result = await base_backup_runner(physical_dir, settings, base_progress)
+        await _job_progress(job_id, 8, "database_backup", "Creating consistent SQLite online backup")
+        database_file = temp_root / "database" / "medialogue.db"
+        database_backup_result = await database_backup_runner(database_file, settings)
         await _job_progress(job_id, 58, "inventory", "Writing configuration and library inventory")
 
         _write_json(temp_root / "config" / "application-config-export.json", configuration)
@@ -590,12 +472,10 @@ async def run_recovery_export(
             "backup_timestamp": backup_timestamp.isoformat(),
             "application_version": application_version(),
             "application_package": "medialogue-backend",
-            "postgresql": {
-                "server_version": db_meta.get("server_version"),
-                "server_version_num": db_meta.get("server_version_num"),
-                "major_version": db_meta.get("server_major"),
-                "base_backup": _json_value(base_backup_result),
-                "pg_basebackup_version": tool_version,
+            "sqlite": {
+                "version": db_meta.get("sqlite_version"),
+                "database_file": "database/medialogue.db",
+                "backup": _json_value(database_backup_result),
             },
             "schema_migration_revision": db_meta.get("migration_revision"),
             "torrent_manifest_schema_version": MANIFEST_SCHEMA_VERSION,
@@ -603,7 +483,7 @@ async def run_recovery_export(
             "library_inventory_schema_version": _LIBRARY_INVENTORY_SCHEMA_VERSION,
             "sensitive": True,
             "sensitive_note": (
-                "This bundle contains a physical database backup and integration credentials. "
+                "This bundle contains a complete database backup and integration credentials. "
                 "Treat it like a password/database backup."
             ),
             "download_expires_at": expires_at.isoformat(),
@@ -637,7 +517,7 @@ async def run_recovery_export(
                     "bundle_size": bundle_size,
                     "bundle_sha256": bundle_sha256,
                     "expires_at": expires_at.isoformat(),
-                    "postgres_major_version": db_meta.get("server_major"),
+                    "sqlite_version": db_meta.get("sqlite_version"),
                     "migration_revision": db_meta.get("migration_revision"),
                     "torrent_archive_files": len(archive_files),
                 }

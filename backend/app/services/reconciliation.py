@@ -8,7 +8,6 @@ release state.  It never creates, moves, renames, copies, or deletes media.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -150,15 +149,6 @@ async def open_problem(
     nested transaction lets two workers race safely: the loser rolls back only
     its attempted insert, then updates the row committed by the winner.
     """
-
-    # Existing v9 databases may predate the partial unique indexes. PostgreSQL
-    # transaction advisory locking still serializes the same logical Problem
-    # identity across workers/processes, while the indexes remain a final
-    # schema-level guard for fresh installs.
-    if db.get_bind().dialect.name == "postgresql":
-        identity = f"{reason}\0{entity_type}\0{entity_id or 'global'}".encode()
-        advisory_key = int.from_bytes(hashlib.blake2b(identity, digest_size=8).digest(), "big", signed=True)
-        await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": advisory_key})
 
     identity_query = select(Problem).where(
         Problem.reason == reason,

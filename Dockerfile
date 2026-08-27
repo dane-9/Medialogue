@@ -6,9 +6,6 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Keep pg_basebackup on the same PostgreSQL major as the supplied Compose DB.
-FROM postgres:16-bookworm AS postgres-tools
-
 FROM python:3.12-slim-bookworm AS runtime
 ARG VERSION=0.1.0
 LABEL org.opencontainers.image.title="Medialogue" \
@@ -20,11 +17,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MEDIALOGUE_CONFIG_DIR=/config \
     MEDIALOGUE_TORRENT_ARCHIVE_DIR=/torrent-archive \
     MEDIALOGUE_RECOVERY_EXPORT_DIR=/config/recovery-exports \
-    MEDIALOGUE_PG_BASEBACKUP_BIN=/usr/lib/postgresql/16/bin/pg_basebackup
+    MEDIALOGUE_DATABASE_URL=sqlite+aiosqlite:////config/medialogue.db
 WORKDIR /app
-COPY --from=postgres-tools /usr/lib/postgresql/16/ /usr/lib/postgresql/16/
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl gosu libpq5 liblz4-1 libzstd1 passwd \
+    && apt-get install -y --no-install-recommends curl gosu passwd \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 appuser \
     && useradd --create-home --uid 10001 --gid 10001 appuser
@@ -38,9 +34,8 @@ WORKDIR /app/backend
 RUN pip install --no-cache-dir . \
     && python -c "import alembic; from alembic.config import main; assert getattr(alembic, '__version__', None); print('Alembic', alembic.__version__)" \
     && alembic --version \
-    && test "$(find /app/backend/alembic/versions -maxdepth 1 -type f -name '*.py' ! -name '__init__.py' | wc -l)" -eq 2 \
     && test "$(alembic heads | grep -c '(head)')" -eq 1 \
-    && alembic heads | grep -q '^0002 (head)$' \
+    && alembic heads | grep -q '^0006 (head)$' \
     && test -x /usr/local/bin/medialogue-entrypoint \
     && mkdir -p /config/recovery-exports /torrent-archive \
     && chown -R appuser:appuser /app /config /torrent-archive

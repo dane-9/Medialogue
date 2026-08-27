@@ -1,6 +1,6 @@
 # Installation
 
-Medialogue is designed to run as a Docker Compose stack with one application container and PostgreSQL 16.
+Medialogue is designed to run as one Docker Compose application container with an embedded SQLite database.
 
 ## Requirements
 
@@ -17,10 +17,9 @@ Medialogue is designed to run as a Docker Compose stack with one application con
    cp .env.example .env
    ```
 
-3. Set at least these two values to unique secrets:
+3. Set this value to a unique secret:
 
    ```text
-   POSTGRES_PASSWORD
    SECRET_KEY
    ```
 
@@ -44,7 +43,7 @@ Medialogue is designed to run as a Docker Compose stack with one application con
    docker compose up -d --build
    ```
 
-6. Wait for both containers to become healthy:
+6. Wait for the application container to become healthy:
 
    ```sh
    docker compose ps
@@ -62,10 +61,10 @@ Medialogue is designed to run as a Docker Compose stack with one application con
 
 ## Persistent data
 
-- PostgreSQL volume: authoritative library/application state plus integration runtime health. Plex/TMDB/qBittorrent/indexer connection settings and credentials are not stored there.
+- `/config/medialogue.db`: authoritative SQLite library/application state plus integration runtime health.
 - `/config/medialogue.json`: file-backed Plex, TMDB, qBittorrent-client, and indexer settings without secrets.
 - `/config/secrets.enc`: AES-GCM encrypted integration credentials. It can only be decrypted with the same `MEDIALOGUE_SECRET_KEY`.
-- `/config`: also contains the setup marker and temporary Recovery Bundle exports.
+- `/config`: durable application storage containing the SQLite database, setup marker, configuration, secrets, and temporary Recovery Bundle exports. Mount it from local storage, not SMB/NFS.
 - `/torrent-archive`: permanent archived `.torrent` files and versioned recovery manifests.
 - Media mounts: user-owned data. Medialogue does not reorganize them.
 
@@ -84,4 +83,4 @@ Read-only scanning works as long as that identity can read the media paths. Dupl
 
 ## Dockge
 
-Dockge can deploy the supplied Compose project from the extracted Medialogue source directory. Keep the build context pointed at that directory so Dockge can see `Dockerfile`, `backend/`, `frontend/`, and `docker/`. Add your media bind mounts in the Compose editor before deployment. Keep PostgreSQL unexposed unless you specifically need host-level database access.
+Dockge can deploy the supplied Compose project from the extracted Medialogue source directory. Keep the build context pointed at that directory so Dockge can see `Dockerfile`, `backend/`, `frontend/`, and `docker/`. Add your media bind mounts in the Compose editor before deployment. Run only one Medialogue container against a given `/config/medialogue.db`.

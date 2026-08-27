@@ -28,7 +28,6 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON, Uuid
 
@@ -39,7 +38,7 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-JSONType = JSON().with_variant(JSONB(), "postgresql")
+JSONType = JSON()
 
 
 class StrEnum(str, enum.Enum):
@@ -792,15 +791,14 @@ class Problem(Base):
         Index("ix_problems_status_workflow_created", "status", "workflow", "created_at"),
         Index("ix_problems_reason", "reason"),
         # Exactly one durable OPEN problem may represent a given condition.
-        # Separate partial indexes are required because PostgreSQL/SQLite both
-        # treat NULL values as distinct in ordinary UNIQUE indexes.
+        # Separate partial indexes are required because SQLite treats NULL
+        # values as distinct in ordinary UNIQUE indexes.
         Index(
             "uq_problems_open_entity",
             "reason",
             "entity_type",
             "entity_id",
             unique=True,
-            postgresql_where=text("status = 'OPEN' AND entity_id IS NOT NULL"),
             sqlite_where=text("status = 'OPEN' AND entity_id IS NOT NULL"),
         ),
         Index(
@@ -808,7 +806,6 @@ class Problem(Base):
             "reason",
             "entity_type",
             unique=True,
-            postgresql_where=text("status = 'OPEN' AND entity_id IS NULL"),
             sqlite_where=text("status = 'OPEN' AND entity_id IS NULL"),
         ),
     )

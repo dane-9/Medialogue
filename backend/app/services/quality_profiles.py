@@ -370,7 +370,7 @@ async def evaluate_current_release_score(
 
     effective = await load_effective_profile(db, media_type=media_type, entity_id=entity_id)
     # Compare enum values in Python-friendly form so this remains portable in
-    # both PostgreSQL and SQLite test databases.
+    # SQLite and the Python-side scoring model.
     from app.models.domain import MediaScope
 
     eligible = (MediaScope.MOVIES, MediaScope.BOTH) if media_type == MediaType.MOVIES else (MediaScope.SHOWS, MediaScope.BOTH)
