@@ -10,13 +10,37 @@ from app.schemas.duplicates import (
     DuplicateResolveCommitRequest,
     DuplicateResolvePreviewRequest,
     DuplicateResolvePreviewResponse,
+    MovieEditionOptionsResponse,
+    MovieEditionOverrideRequest,
+    MovieEditionOverrideResponse,
 )
 from app.schemas.jobs import JobAcceptedResponse
 from app.services.jobs import create_job, publish_job_status
-from app.services.problem_resolution import duplicate_preview, run_duplicate_resolution
+from app.parser import EDITION_OPTIONS
+from app.services.problem_resolution import duplicate_preview, run_duplicate_resolution, update_movie_release_editions
 from app.services.runtime_jobs import launch_runtime_job
 
 router = APIRouter(tags=["duplicates"])
+
+
+@router.get("/movies/edition-options", response_model=MovieEditionOptionsResponse)
+async def movie_edition_options() -> MovieEditionOptionsResponse:
+    return MovieEditionOptionsResponse(editions=list(EDITION_OPTIONS))
+
+
+@router.patch(
+    "/movies/{resource_id}/releases/editions",
+    response_model=MovieEditionOverrideResponse,
+)
+async def set_movie_release_editions(
+    resource_id: str,
+    payload: MovieEditionOverrideRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> MovieEditionOverrideResponse:
+    result = await update_movie_release_editions(db, resource_id, payload.updates)
+    await db.commit()
+    return MovieEditionOverrideResponse.model_validate(result)
 
 
 @router.post(

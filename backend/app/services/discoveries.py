@@ -9,7 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.domain import DiscoveryReviewState, MediaDirectory, MediaDiscovery, MediaType
 from app.parser import PARSER_VERSION, ReleaseParseResult, parse_release
-from app.services.tmdb import TMDBUnavailable, resolve_movie_identity_detailed, resolve_show_identity_detailed
+from app.services.tmdb import (
+    TMDBMovieIdentityResolution,
+    TMDBShowIdentityResolution,
+    TMDBUnavailable,
+    resolve_movie_identity_detailed,
+    resolve_show_identity_detailed,
+)
 
 
 #: How many alternatives are kept for one folder. Enough that a common title
@@ -104,6 +110,7 @@ async def stage_media_discovery(
     title: str | None,
     year: int | None,
     confidence: float | None = None,
+    identity_resolution: TMDBMovieIdentityResolution | TMDBShowIdentityResolution | None = None,
 ) -> MediaDiscovery:
     """Persist an observed title without admitting it to the logical library."""
 
@@ -111,7 +118,7 @@ async def stage_media_discovery(
     suggested_tmdb_id: int | None = None
     if title:
         resolver = resolve_movie_identity_detailed if media_type == MediaType.MOVIES else resolve_show_identity_detailed
-        resolution = await resolver(db, title, year)
+        resolution = identity_resolution or await resolver(db, title, year)
         if resolution.reason in {"not_configured", "unavailable"}:
             label = "movie" if media_type == MediaType.MOVIES else "show"
             raise TMDBUnavailable(

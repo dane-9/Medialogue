@@ -652,10 +652,7 @@ async def run_show_metadata_refresh(
         )
 
         try:
-            from app.services.reconciliation import resolve_problem
-
             counts = await sync_show_metadata(db, show, client_factory=client_factory)
-            await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
             show.revision += 1
             await create_event(
                 db,

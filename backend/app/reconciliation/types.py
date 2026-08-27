@@ -30,6 +30,7 @@ class DecisionKind(StrEnum):
     REPLACEMENT = "replacement"
     DUPLICATE = "duplicate"
     CONFLICT = "conflict"
+    REVIEW = "review"
     IGNORED = "ignored"
     PROBLEM = "problem"
 

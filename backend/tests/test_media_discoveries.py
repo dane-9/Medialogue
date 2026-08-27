@@ -154,6 +154,35 @@ def scan(client: TestClient, headers: dict[str, str], root_id: str) -> dict:
     raise AssertionError("scan did not complete")
 
 
+def test_low_confidence_movie_in_automatic_folder_goes_to_review_without_problem(
+    client: TestClient, tmp_path: Path
+) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    root = tmp_path / "movies"
+    folder = root / "Odd Folder"
+    folder.mkdir(parents=True)
+    (folder / "video.mkv").write_bytes(b"movie")
+    created = client.post(
+        "/api/v1/storage-roots",
+        headers=headers,
+        json={
+            "name": "Automatic movies",
+            "path": str(root),
+            "media_type": "movies",
+            "discovery_mode": "automatic",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    scan(client, headers, created.json()["id"])
+
+    review = client.get("/api/v1/discoveries?page_size=250").json()
+    assert review["total"] == 1
+    assert Path(review["items"][0]["path"]).name == "Odd Folder"
+    assert client.get("/api/v1/problems?status=open").json()["total"] == 0
+
+
 def test_review_stages_and_approves_movies_and_shows(client: TestClient, tmp_path: Path) -> None:
     headers = login(client)
     configure_tmdb(client, headers)
@@ -250,6 +279,42 @@ def test_scan_caches_full_tmdb_result_lists_for_review(
     assert all(len(item["candidates"]) == 2 for item in cached.json()["items"])
 
 
+def test_ambiguous_movie_in_automatic_folder_falls_back_to_review(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    searches = 0
+
+    async def ambiguous_movies(self, title: str, year: int | None = None):
+        nonlocal searches
+        searches += 1
+        return [
+            TMDBMovieMatch(438631, "Dune", "Dune", 2021, "First candidate.", "/dune.jpg"),
+            TMDBMovieMatch(938631, "Dune", "Dune", 2021, "Second candidate.", "/other-dune.jpg"),
+        ]
+
+    monkeypatch.setattr(FakeTMDBClient, "search_movie", ambiguous_movies)
+    movie_root = tmp_path / "automatic-movies"
+    movie_folder = movie_root / "Dune.2021.2160p.UHD.BluRay"
+    movie_folder.mkdir(parents=True)
+    (movie_folder / "Dune.2021.2160p.mkv").write_bytes(b"movie")
+    created = client.post(
+        "/api/v1/storage-roots",
+        headers=headers,
+        json={"name": "Automatic movies", "path": str(movie_root), "media_type": "movies"},
+    )
+    assert created.status_code == 201, created.text
+
+    scan(client, headers, created.json()["id"])
+
+    assert client.get("/api/v1/problems?status=open").json()["total"] == 0
+    review = client.get("/api/v1/discoveries?page_size=250").json()
+    assert review["total"] == 1
+    assert [item["tmdb_id"] for item in review["items"][0]["candidates"]] == [438631, 938631]
+    assert searches == 1, "The TMDB result used for automatic matching should be cached for Review"
+
+
 @pytest.mark.parametrize(
     ("media_type", "old_name", "new_name", "file_name"),
     [
@@ -279,16 +344,12 @@ def test_confirmed_missing_folder_is_retired_from_review_after_rename(
     new_folder = media_root / new_name
     old_folder.rename(new_folder)
 
-    # The first miss is still protected by the configured grace window while
-    # the renamed path is discovered immediately.
+    # One scan is enough: the old path leaves Review as soon as it is gone,
+    # rather than sitting beside its own renamed copy for a grace window that
+    # only protects library media.
     scan(client, headers, storage["id"])
-    during_grace = client.get("/api/v1/discoveries?page_size=250").json()["items"]
-    assert {item["path"] for item in during_grace} == {str(old_folder), str(new_folder)}
-
-    # Once absence is confirmed, only the actionable new path remains.
-    scan(client, headers, storage["id"])
-    after_grace = client.get("/api/v1/discoveries?page_size=250").json()["items"]
-    assert [item["path"] for item in after_grace] == [str(new_folder)]
+    after_rename = client.get("/api/v1/discoveries?page_size=250").json()["items"]
+    assert [item["path"] for item in after_rename] == [str(new_folder)]
     assert client.get("/api/v1/discoveries/count").json()["count"] == 1
 
 
@@ -364,6 +425,66 @@ def test_bulk_approve_adds_every_selected_item(client: TestClient, tmp_path: Pat
     assert body["failed"] == []
     assert client.get("/api/v1/movies").json()["total"] == 2
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0
+
+
+def test_review_blocks_same_movie_edition_until_one_is_changed(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+
+    movie_root = tmp_path / "movies"
+    for group in ("GROUPA", "GROUPB"):
+        folder = movie_root / f"Dune.2021.1080p.BluRay-{group}"
+        folder.mkdir(parents=True)
+        (folder / f"Dune.2021.1080p-{group}.mkv").write_bytes(b"movie")
+
+    storage = create_root(client, headers, movie_root, "movies")
+    scan(client, headers, storage["id"])
+    items = client.get("/api/v1/discoveries?page_size=250").json()["items"]
+    assert len(items) == 2
+    assert {item["selected"]["tmdb_id"] for item in items} == {438631}
+
+    blocked = client.post(
+        "/api/v1/discoveries/bulk",
+        headers=headers,
+        json={"ids": [item["id"] for item in items], "action": "approve"},
+    )
+    assert blocked.status_code == 200, blocked.text
+    assert blocked.json()["succeeded"] == []
+    assert {failure["code"] for failure in blocked.json()["failed"]} == {"DISCOVERY_BATCH_EDITION_CONFLICT"}
+
+    first, second = items
+    imported = client.post(
+        "/api/v1/discoveries/bulk",
+        headers=headers,
+        json={"ids": [first["id"]], "action": "approve"},
+    )
+    assert imported.json()["succeeded"] == [first["id"]]
+
+    remaining = client.get("/api/v1/discoveries?page_size=250").json()["items"]
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == second["id"]
+    assert remaining[0]["library_edition_conflict"] is True
+
+    changed = client.patch(
+        f"/api/v1/discoveries/{second['id']}/edition",
+        headers=headers,
+        json={"mode": "named", "edition": "director's cut"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["edition"] == "Director's Cut"
+    assert changed.json()["parsed_edition"] is None
+    assert changed.json()["edition_override_active"] is True
+    assert changed.json()["library_edition_conflict"] is False
+
+    imported_second = client.post(
+        "/api/v1/discoveries/bulk",
+        headers=headers,
+        json={"ids": [second["id"]], "action": "approve"},
+    )
+    assert imported_second.json()["succeeded"] == [second["id"]]
+    movie = client.get("/api/v1/movies").json()["items"][0]
+    assert movie["release_count"] == 2
+    assert client.get("/api/v1/problems?status=open&category=duplicates").json()["total"] == 0
 
 
 def test_one_failure_does_not_discard_the_rest_of_a_batch(client: TestClient, tmp_path: Path) -> None:
@@ -700,3 +821,24 @@ def test_choosing_a_candidate_leaves_the_list_in_place(client: TestClient, tmp_p
     assert response.status_code == 200, response.text
     assert [candidate["tmdb_id"] for candidate in response.json()["candidates"]] == before
     assert response.json()["selected"]["tmdb_id"] == before[1]
+
+
+def test_a_folder_that_disappears_leaves_review_immediately(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+
+    movie_root = tmp_path / "movies"
+    folder = movie_root / "Dune.2021.2160p.UHD.BluRay"
+    folder.mkdir(parents=True)
+    (folder / "Dune.2021.2160p.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, movie_root, "movies")
+    scan(client, headers, storage["id"])
+    assert client.get("/api/v1/discoveries/count").json()["count"] == 1
+
+    (folder / "Dune.2021.2160p.mkv").unlink()
+    folder.rmdir()
+    # One scan, not the two the missing-media grace window takes: an import that
+    # cannot succeed should not sit in the queue waiting for a second opinion.
+    scan(client, headers, storage["id"])
+
+    assert client.get("/api/v1/discoveries/count").json()["count"] == 0

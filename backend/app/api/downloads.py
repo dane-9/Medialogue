@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
+from app.core.problem_types import problem_description
 from app.core.integration_config import DownloadClientConfig, get_integration_config_store
 from app.db.session import get_db
 from app.integrations.qbittorrent import QBittorrentClient
@@ -127,7 +128,7 @@ async def _download_response(
         )
         if problem is not None:
             reconciliation_state = "conflict"
-            reconciliation_detail = problem.message
+            reconciliation_detail = problem_description(problem.reason, problem.message)
     return DownloadResponse(
         id=observation.id,
         torrent_id=torrent.id,

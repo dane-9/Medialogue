@@ -31,6 +31,8 @@ class IndexerCreate(BaseModel):
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     #: Languages a MULTI-tagged release from this indexer contains.
     multi_languages: list[str] = Field(default_factory=list, max_length=20)
+    #: Download clients this indexer may grab to. Empty means any eligible one.
+    download_client_ids: list[UUID] = Field(default_factory=list, max_length=50)
 
 
 class IndexerUpdate(BaseModel):
@@ -49,6 +51,8 @@ class IndexerUpdate(BaseModel):
     # An empty string clears the colour; omitting the field leaves it alone.
     color: str | None = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
     multi_languages: list[str] | None = Field(default=None, max_length=20)
+    # An empty list clears the restriction; omitting the field leaves it alone.
+    download_client_ids: list[UUID] | None = Field(default=None, max_length=50)
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -67,6 +71,7 @@ class IndexerResponse(ORMModel):
     priority: int
     color: str | None
     multi_languages: list[str]
+    download_client_ids: list[UUID]
     health: str
     last_checked_at: datetime | None
     last_success_at: datetime | None

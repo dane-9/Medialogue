@@ -58,6 +58,7 @@ def _response(indexer: ConfiguredIndexer) -> IndexerResponse:
         priority=indexer.priority,
         color=indexer.color,
         multi_languages=list(indexer.multi_languages),
+        download_client_ids=list(indexer.download_client_ids),
         health=indexer.health,
         last_checked_at=indexer.last_checked_at,
         last_success_at=indexer.last_success_at,
@@ -114,6 +115,7 @@ async def create_indexer(
             priority=payload.priority,
             color=payload.color,
             multi_languages=_clean_languages(payload.multi_languages),
+            download_client_ids=list(payload.download_client_ids),
         )
     )
     state = Indexer(id=config.id)
@@ -163,6 +165,7 @@ async def update_indexer(
         priority=(payload.priority if payload.priority is not None else current.priority),
         color=((payload.color or None) if payload.color is not None else current.color),
         multi_languages=(_clean_languages(payload.multi_languages) if payload.multi_languages is not None else list(current.multi_languages)),
+        download_client_ids=(list(payload.download_client_ids) if payload.download_client_ids is not None else list(current.download_client_ids)),
         revision=current.revision,
     )
     try:

@@ -1,4 +1,4 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MediaDiscovery, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, StorageRootScan, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MediaDiscovery, MovieEditionUpdate, MovieEditionUpdateResult, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, StorageRootScan, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
 
 export class ApiError extends Error {
   status: number
@@ -124,6 +124,11 @@ function normalizeRelease(value: unknown): MovieRelease {
     id: textValue(item.id || item.resource_id || item.release_id),
     name: textValue(item.name || item.raw_release_name || item.release_name, 'Unnamed release'),
     edition: textValue(item.edition || item.effective_edition) || undefined,
+    parsedEdition: textValue(item.parsed_edition ?? item.parsedEdition) || undefined,
+    editionOverrideActive: Boolean(item.edition_override_active ?? item.editionOverrideActive),
+    manualEditionOverride: item.manual_edition_override === null || item.manualEditionOverride === null
+      ? null
+      : textValue(item.manual_edition_override ?? item.manualEditionOverride) || undefined,
     quality: textValue(item.quality || item.quality_name) || undefined,
     releaseGroup: textValue(item.release_group || item.releaseGroup) || undefined,
     state: textValue(item.state || item.release_state, 'unknown'),
@@ -159,13 +164,13 @@ function normalizeIncoming(value: unknown): IncomingDownload | undefined {
 
 function normalizeEvidence(value: unknown): ReconciliationEvidence {
   const item = record(value)
-  const code = textValue(item.code || item.reason || item.reason_code, 'RECONCILIATION_REVIEW')
+  const code = textValue(item.code || item.reason || item.reason_code, 'MEDIA_REVIEW')
   const rawSeverity = textValue(item.severity, 'medium').toLowerCase()
   return {
     id: textValue(item.id || item.problem_id) || undefined,
     code,
     title: textValue(item.title || item.reason_title || item.message, code.replaceAll('_', ' ')),
-    detail: textValue(item.detail || item.message || item.explanation, 'Evidence needs review.'),
+    detail: textValue(item.description || item.detail || item.message || item.explanation, 'Evidence needs review.'),
     severity: rawSeverity === 'error' || rawSeverity === 'high' ? 'high' : rawSeverity === 'info' || rawSeverity === 'low' ? 'low' : 'medium',
     subject: textValue(item.subject || item.entity_name || item.entity_title) || undefined,
     source: textValue(item.source || item.evidence_source) || undefined,
@@ -371,7 +376,7 @@ function normalizeMovie(value: unknown): Movie {
     poster: textValue(item.poster || item.poster_ref) || undefined,
     releases: numberValue(item.release_count ?? item.releases_count, releaseValues.length),
     quality: textValue(item.current_quality || item.quality, 'Unknown quality'),
-    edition: textValue(item.edition || item.current_edition) || undefined,
+    edition: (() => { const edition = textValue(item.edition || item.current_edition); return edition.toLowerCase() === 'theatrical cut' ? undefined : edition || undefined })(),
     status: state,
     plex: plexState,
     confidence: percentValue(item.confidence) ?? 0,
@@ -589,7 +594,7 @@ function normalizeStorageRoot(value: unknown): StorageRoot {
 
 function normalizeProblem(value: unknown): Problem {
   const item = record(value)
-  const code = textValue(item.code || item.reason || item.reason_code, 'RECONCILIATION_REVIEW')
+  const code = textValue(item.code || item.reason || item.reason_code, 'MEDIA_REVIEW')
   const rawSeverity = textValue(item.severity, 'medium').toLowerCase()
   const createdAt = dateValue(item.created_at || item.createdAt)
   const details = record(item.details)
@@ -600,12 +605,13 @@ function normalizeProblem(value: unknown): Problem {
     code,
     title: textValue(item.title || item.reason_title || item.message, code.replaceAll('_', ' ')),
     subject,
-    detail: textValue(item.detail || item.message || item.explanation, 'Evidence needs review.'),
+    detail: textValue(item.description || item.detail || item.message || item.explanation, 'Evidence needs review.'),
     severity: rawSeverity === 'error' || rawSeverity === 'high' ? 'high' : rawSeverity === 'info' || rawSeverity === 'low' ? 'low' : 'medium',
     created: createdAt ? new Date(createdAt).toLocaleString() : textValue(item.created, 'Unknown time'),
     reason: textValue(item.reason) || undefined,
     status: textValue(item.status) || undefined,
     workflow: (['manual', 'choice', 'config', 'waiting'].includes(textValue(item.workflow)) ? textValue(item.workflow) : 'waiting') as Problem['workflow'],
+    label: textValue(item.label) || undefined,
     entityType: textValue(item.entity_type || item.entityType) || undefined,
     entityId: textValue(item.entity_id || item.entityId) || undefined,
     details: Object.keys(details).length ? details : undefined,
@@ -653,6 +659,10 @@ function normalizeMediaDiscovery(value: unknown): MediaDiscovery {
     confidence: optionalNumber(item.confidence),
     quality: textValue(item.quality) || undefined,
     edition: textValue(item.edition) || undefined,
+    parsedEdition: textValue(item.parsed_edition ?? item.parsedEdition) || undefined,
+    editionOverrideActive: Boolean(item.edition_override_active ?? item.editionOverrideActive),
+    manualEditionOverride: item.manual_edition_override === null || item.manualEditionOverride === null ? null : textValue(item.manual_edition_override ?? item.manualEditionOverride) || undefined,
+    libraryEditionConflict: Boolean(item.library_edition_conflict ?? item.libraryEditionConflict),
     hdr: Array.isArray(item.hdr) ? item.hdr.map((entry) => textValue(entry)).filter(Boolean) : [],
     suggested: item.suggested ? normalizeCandidate(item.suggested) : undefined,
     selected: item.selected ? normalizeCandidate(item.selected) : undefined,
@@ -805,6 +815,7 @@ function normalizeIndexer(value: unknown): Indexer {
     minimumSeeders: numberValue(item.minimum_seeders ?? item.minimumSeeders, 1),
     color: textValue(item.color) || undefined,
     multiLanguages: ((value) => Array.isArray(value) ? value.map(String).filter(Boolean) : [])(item.multi_languages ?? item.multiLanguages),
+    downloadClientIds: ((value) => Array.isArray(value) ? value.map(String).filter(Boolean) : [])(item.download_client_ids ?? item.downloadClientIds),
     priority: numberValue(item.priority, 25),
     health: textValue(item.health, 'unknown'),
     lastCheckedAt: dateValue(item.last_checked_at || item.lastCheckedAt),
@@ -931,6 +942,8 @@ function normalizeJobPayload(item: JobPayload): Job {
       duplicate_resolution: 'Duplicate resolution',
       torrent_archive_retry: 'Torrent archive retry',
       torrent_restore: 'Torrent restore',
+      reconciliation: 'Library file check',
+      confirmed_show_reconciliation: 'Show file matching',
   }
   return {
     id: item.id,
@@ -988,11 +1001,12 @@ export const api = {
   startRecoveryExport: () => request<{ job_id: string; status: string; warning: string }>('/api/v1/recovery/export', { method: 'POST' }),
   recoveryDownloadUrl: (jobId: string) => `/api/v1/recovery/exports/${encodeURIComponent(jobId)}/download`,
   cancelJob: (jobId: string) => request<JobPayload>(`/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }).then(normalizeJobPayload),
-  events: async (filters: { eventType?: string; severity?: string; entityType?: string; page?: number; pageSize?: number } = {}) => {
+  events: async (filters: { eventType?: string; severity?: string; entityType?: string; sort?: string; page?: number; pageSize?: number } = {}) => {
     const params = new URLSearchParams()
     if (filters.eventType) params.set('event_type', filters.eventType)
     if (filters.severity) params.set('severity', filters.severity)
     if (filters.entityType) params.set('entity_type', filters.entityType)
+    if (filters.sort) params.set('sort', filters.sort)
     if (filters.page) params.set('page', String(filters.page))
     params.set('page_size', String(filters.pageSize ?? 100))
     const payload = await request<{ items: Array<{ id: string; event_type: string; severity: string; entity_type: string; entity_id?: string | null; message: string; details?: Record<string, unknown>; created_at: string }>; total: number; pages: number; page: number }>(`/api/v1/events?${params.toString()}`)
@@ -1032,6 +1046,25 @@ export const api = {
   bulkMovies: (payload: { movie_ids: string[]; action: 'change_profile' | 'add_tags' | 'remove_tags' | 'monitor' | 'unmonitor' | 'recheck_plex' | 'reevaluate_parser' | 'reevaluate_custom_formats'; quality_profile_id?: string | null; tag_ids?: string[] }) => request<{ action: string; requested: number; updated: number; movie_ids: string[]; details: Record<string, unknown> } | { job_id: string }>('/api/v1/movies/bulk', { method: 'POST', body: JSON.stringify(payload) }),
   addMovie: (tmdbId: number) => request<unknown>('/api/v1/movies', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, monitored: true }) }).then(normalizeMovie),
   lookupMovies: async (query: string, year?: number) => (await request<unknown[]>(`/api/v1/movies/lookup?query=${encodeURIComponent(query)}${year ? `&year=${year}` : ''}`)).map(normalizeTMDBMovieLookup),
+  movieEditionOptions: async () => (await request<{ editions: string[] }>('/api/v1/movies/edition-options')).editions,
+  updateMovieReleaseEditions: (movieId: string, updates: MovieEditionUpdate[]) => request<Record<string, unknown>>(`/api/v1/movies/${encodeURIComponent(movieId)}/releases/editions`, {
+    method: 'PATCH',
+    body: JSON.stringify({ updates: updates.map((update) => ({ release_id: update.releaseId, mode: update.mode, edition: update.edition })) }),
+  }).then((payload): MovieEditionUpdateResult => ({
+    movieId: textValue(payload.movie_id ?? payload.movieId),
+    duplicateResolved: Boolean(payload.duplicate_resolved ?? payload.duplicateResolved),
+    releases: (Array.isArray(payload.releases) ? payload.releases : []).map((value) => {
+      const release = record(value)
+      return {
+        releaseId: textValue(release.release_id ?? release.releaseId),
+        parsedEdition: textValue(release.parsed_edition ?? release.parsedEdition) || undefined,
+        editionOverrideActive: Boolean(release.edition_override_active ?? release.editionOverrideActive),
+        manualEditionOverride: release.manual_edition_override === null || release.manualEditionOverride === null ? null : textValue(release.manual_edition_override ?? release.manualEditionOverride) || undefined,
+        effectiveEdition: textValue(release.effective_edition ?? release.effectiveEdition) || undefined,
+        state: textValue(release.state),
+      }
+    }),
+  })),
   previewMovieDuplicate: (movieId: string, payload: { winner_release_id: string; losing_release_ids: string[]; delete_media: boolean; remove_torrents: boolean }) => request<unknown>(`/api/v1/movies/${encodeURIComponent(movieId)}/duplicates/resolve-preview`, { method: 'POST', body: JSON.stringify(payload) }).then(normalizeDuplicatePreview),
   resolveMovieDuplicate: (movieId: string, confirmationToken: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(movieId)}/duplicates/resolve`, { method: 'POST', body: JSON.stringify({ confirmation_token: confirmationToken }) }),
   shows: async (query = '', sort = 'title') => {
@@ -1185,8 +1218,8 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeIndexer)
   },
-  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; timeout_seconds?: number; enable_rss: boolean; enable_interactive_search: boolean; categories: number[]; minimum_seeders: number; priority: number; color?: string; multi_languages?: string[] }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
-  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; timeout_seconds?: number; enable_rss?: boolean; enable_interactive_search?: boolean; categories?: number[]; minimum_seeders?: number; priority?: number; color?: string; multi_languages?: string[]; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  createIndexer: (configuration: { name: string; torznab_url: string; api_key: string; scope: IndexerScope; enabled: boolean; download_client_ids?: string[]; timeout_seconds?: number; enable_rss: boolean; enable_interactive_search: boolean; categories: number[]; minimum_seeders: number; priority: number; color?: string; multi_languages?: string[] }) => request<unknown>('/api/v1/indexers', { method: 'POST', body: JSON.stringify(configuration) }).then(normalizeIndexer),
+  updateIndexer: (id: string, configuration: { name?: string; torznab_url?: string; api_key?: string; scope?: IndexerScope; enabled?: boolean; download_client_ids?: string[]; timeout_seconds?: number; enable_rss?: boolean; enable_interactive_search?: boolean; categories?: number[]; minimum_seeders?: number; priority?: number; color?: string; multi_languages?: string[]; expected_revision?: number }) => request<unknown>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(configuration) }).then(normalizeIndexer),
   deleteIndexer: (id: string) => request<void>(`/api/v1/indexers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   testIndexer: async (id?: string, configuration?: { torznab_url: string; api_key: string; timeout_seconds?: number }): Promise<IndexerTestResult> => {
     const payload = await request<{ status: string; latency_ms?: number; title?: string; message?: string }>(id ? `/api/v1/indexers/${encodeURIComponent(id)}/test` : '/api/v1/indexers/test', { method: 'POST', ...(configuration ? { body: JSON.stringify(configuration) } : {}) })
@@ -1298,6 +1331,10 @@ export const api = {
       year: candidate.year ?? null,
       poster_ref: candidate.posterRef ?? null,
     }),
+  }).then(normalizeMediaDiscovery),
+  updateDiscoveryEdition: (id: string, update: { mode: 'automatic' | 'standard' | 'named'; edition?: string }) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/edition`, {
+    method: 'PATCH',
+    body: JSON.stringify(update),
   }).then(normalizeMediaDiscovery),
   approveDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/approve`, { method: 'POST' }).then(normalizeMediaDiscovery),
   ignoreDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/ignore`, { method: 'POST' }).then(normalizeMediaDiscovery),

@@ -520,7 +520,6 @@ async def reconcile_show_directory(
             year=year,
         )
         # A review item is expected work. Do not duplicate it in Problems.
-        await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         return "review" if discovery.review_state == DiscoveryReviewState.PENDING else "matched"
 
@@ -536,38 +535,17 @@ async def reconcile_show_directory(
                     f"TMDB is {reason.replace('_', ' ')}; Show identity cannot be established. "
                     "Check Settings -> TMDB, then run the scan again."
                 )
-            await open_problem(
+            _sync_discovery_files(directory, observation)
+            await stage_media_discovery(
                 db,
-                reason="TMDB_SHOW_IDENTITY_UNRESOLVED",
-                entity_type="media_directory",
-                entity_id=directory.id,
-                message=f"TMDB could not uniquely identify {title or 'this Show candidate'}.",
-                details={
-                    "path": observation.path,
-                    "title": title,
-                    "year": year,
-                    "parsed_title": title,
-                    "parsed_year": year,
-                    "parsed_identity": f"{title} ({year})" if year is not None else title,
-                    "tmdb_reason": reason,
-                    "tmdb_queries": list(tmdb_resolution.queries),
-                    "tmdb_candidates": [
-                        {
-                            "tmdb_id": item.tmdb_id,
-                            "title": item.title,
-                            "original_title": item.original_title,
-                            "year": item.year,
-                            "overview": item.overview,
-                            "poster_path": item.poster_path,
-                        }
-                        for item in tmdb_resolution.candidates[:10]
-                    ],
-                    "parse": folder_parse.to_dict(),
-                },
-                severity=Severity.WARNING,
+                directory,
+                folder_parse,
+                media_type=MediaType.SHOWS,
+                title=title,
+                year=year,
+                identity_resolution=tmdb_resolution,
             )
             return "review"
-        await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         show = await db.scalar(select(Show).where(Show.tmdb_id == match.tmdb_id))
         if show is None:
             show = Show(
@@ -583,18 +561,9 @@ async def reconcile_show_directory(
             )
             db.add(show)
             await db.flush()
-            try:
-                await sync_show_metadata(db, show)
-                await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
-            except Exception:
-                await open_problem(
-                    db,
-                    reason="TMDB_SHOW_METADATA_UNAVAILABLE",
-                    entity_type="show",
-                    entity_id=show.id,
-                    message="Show identity is confirmed, but TMDB episode metadata could not be refreshed.",
-                    details={"tmdb_id": show.tmdb_id},
-                )
+            # Metadata failure belongs to the scan Job. A later scan retries it;
+            # do not manufacture a second persistent media Problem.
+            await sync_show_metadata(db, show)
             await create_event(
                 db,
                 "show.discovered",
@@ -603,9 +572,6 @@ async def reconcile_show_directory(
                 message=f"Discovered {show.title} from the configured Show root.",
                 details={"tmdb_id": show.tmdb_id, "path": observation.path},
             )
-    else:
-        await resolve_problem(db, "TMDB_SHOW_IDENTITY_UNRESOLVED", "media_directory", directory.id)
-
     parsed_by_path: dict[str, Any] = {
         relative_path: parse_release_name(Path(relative_path).stem)
         for relative_path in observation.media_files
@@ -717,7 +683,6 @@ async def reconcile_show_directory(
             media_file.missing_since = None
             media_file.missing_check_count = 0
             continue
-        await resolve_problem(db, "EPISODE_CONTAINER_MISMATCH", "media_file", media_file.id)
         if not media_file.exists:
             continue
         if media_file.missing_since is None:
@@ -794,43 +759,6 @@ async def reconcile_show_directory(
             and belongs_to_pack
             and (season_disagrees or episodes_disagree)
         )
-        if container_mismatch:
-            container_name = torrent.name if torrent is not None else observation.name
-            container_identity = (
-                f"S{container_seasons[0]:02d}-S{container_seasons[-1]:02d}"
-                if len(container_seasons) > 1
-                else f"S{container_seasons[0]:02d}"
-            )
-            await open_problem(
-                db,
-                reason="EPISODE_CONTAINER_MISMATCH",
-                entity_type="media_file",
-                entity_id=media_file.id,
-                message=(
-                    f"{Path(relative_path).name} identifies "
-                    f"S{explicit_member_season:02d}"
-                    f"{''.join(f'E{number:02d}' for number in explicit_member_episodes)}, "
-                    f"but its containing release identifies "
-                    f"{container_identity}"
-                    f"{''.join(f'E{number:02d}' for number in container_episodes)}."
-                ),
-                details={
-                    "path": str(Path(observation.path) / relative_path),
-                    "filename": Path(relative_path).name,
-                    "member_season": explicit_member_season,
-                    "member_episode_numbers": list(parsed.identity.episodes),
-                    "container_season": container_parse.identity.season,
-                    "container_seasons": list(container_seasons),
-                    "container_episode_numbers": list(container_episodes),
-                    "container_name": container_name,
-                    "container_source": "torrent" if torrent is not None and container_parse is torrent_parse else "folder",
-                    "show_release_id": str(pack_release.id) if pack_release is not None else None,
-                },
-                severity=Severity.WARNING,
-            )
-        else:
-            await resolve_problem(db, "EPISODE_CONTAINER_MISMATCH", "media_file", media_file.id)
-
         # A manual mapping is authoritative for the entire file, including
         # episode numbers intentionally removed from the parser-derived set.
         # If any current mapping is manual, a later scan may restore physical
@@ -1055,10 +983,6 @@ async def reconcile_show_directory(
             },
         )
 
-    # A previous post-confirmation worker may have failed before reaching this
-    # point. Any later successful directory pass clears that umbrella failure;
-    # file-specific mapping Problems remain independently truthful.
-    await resolve_problem(db, "SHOW_DIRECTORY_RECONCILIATION_FAILED", "media_directory", directory.id)
     discovery = await db.scalar(
         select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
     )
@@ -1213,11 +1137,13 @@ async def mark_absent_show_directories(
             directory.missing_since = None
             directory.missing_check_count = 0
             continue
-        for media_file in directory.files:
-            await resolve_problem(db, "EPISODE_CONTAINER_MISMATCH", "media_file", media_file.id)
         if not directory.exists:
             await retire_missing_review_discovery(db, directory.id)
             continue
+        # Same rule as the movie sweep: pending Review work goes as soon as its
+        # folder does. The grace window protects library media from a brief
+        # outage; a discovery has nothing in the library to protect.
+        await retire_missing_review_discovery(db, directory.id)
         if directory.missing_since is None:
             directory.missing_since = now
             directory.missing_check_count = 1

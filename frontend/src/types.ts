@@ -98,6 +98,9 @@ export interface MovieRelease {
   id: string
   name: string
   edition?: string
+  parsedEdition?: string
+  editionOverrideActive: boolean
+  manualEditionOverride?: string | null
   quality?: string
   releaseGroup?: string
   state: string
@@ -109,6 +112,27 @@ export interface MovieRelease {
   originalCustomFormatScore?: number
   currentCustomFormatScore?: number
   selectionSnapshot?: Record<string, unknown>
+}
+
+export type MovieEditionMode = 'automatic' | 'standard' | 'named'
+
+export interface MovieEditionUpdate {
+  releaseId: string
+  mode: MovieEditionMode
+  edition?: string
+}
+
+export interface MovieEditionUpdateResult {
+  movieId: string
+  duplicateResolved: boolean
+  releases: Array<{
+    releaseId: string
+    parsedEdition?: string
+    editionOverrideActive: boolean
+    manualEditionOverride?: string | null
+    effectiveEdition?: string
+    state: string
+  }>
 }
 
 export interface IncomingDownload {
@@ -463,6 +487,8 @@ export interface Problem {
   reason?: string
   status?: string
   workflow: 'manual' | 'choice' | 'config' | 'waiting'
+  /** Short description of the condition, named by the server. */
+  label?: string
   entityType?: string
   entityId?: string
   details?: Record<string, unknown>
@@ -712,6 +738,8 @@ export interface Indexer {
   minimumSeeders: number
   color?: string
   multiLanguages: string[]
+  /** Download clients this indexer may grab to. Empty means any eligible one. */
+  downloadClientIds: string[]
   priority: number
   health: string
   lastCheckedAt?: string
@@ -759,6 +787,10 @@ export interface MediaDiscovery {
   confidence?: number
   quality?: string
   edition?: string
+  parsedEdition?: string
+  editionOverrideActive: boolean
+  manualEditionOverride?: string | null
+  libraryEditionConflict: boolean
   hdr: string[]
   suggested?: TMDBMovieLookup | TMDBShowLookup
   selected?: TMDBMovieLookup | TMDBShowLookup

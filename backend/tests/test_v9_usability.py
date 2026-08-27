@@ -172,7 +172,7 @@ def test_problem_queue_paginates_and_supports_suppression_restore_and_single_del
     assert restored.json()["workflow"] == "manual"
 
 
-def test_media_file_problem_subject_is_human_readable(client: TestClient) -> None:
+def test_retired_container_mismatch_problem_is_hidden_from_problem_apis(client: TestClient) -> None:
     _headers(client)
 
     async def seed():
@@ -201,7 +201,9 @@ def test_media_file_problem_subject_is_human_readable(client: TestClient) -> Non
     asyncio.run(seed())
     response = client.get("/api/v1/problems?status=open&reason=EPISODE_CONTAINER_MISMATCH")
     assert response.status_code == 200, response.text
-    assert response.json()["items"][0]["subject"] == "Example.Show.S01E01.mkv · /shows/Example Show/Season 01"
+    assert response.json()["total"] == 0
+    assert client.get("/api/v1/problems/count?status=open").json()["count"] == 0
+    assert client.get("/api/v1/problems/summary").json()["open"] == 0
 
 
 def test_retired_episode_mapping_problem_is_hidden_from_problem_apis(client: TestClient) -> None:
@@ -231,7 +233,7 @@ def test_recheck_all_targets_only_existing_open_problems(client: TestClient, mon
     async def seed():
         async with db_session.async_session_factory() as db:
             db.add_all([
-                Problem(reason="PATH_MAPPING_FAILED", entity_type="torrent", entity_id=uuid.uuid4(), message="open"),
+                Problem(reason="TORRENT_PATH_NOT_FOUND", entity_type="torrent", entity_id=uuid.uuid4(), message="open"),
                 Problem(reason="DUPLICATE_PHYSICAL_RELEASE", entity_type="movie", entity_id=uuid.uuid4(), message="open"),
                 Problem(reason="ROOT_UNREACHABLE", entity_type="storage_root", entity_id=uuid.uuid4(), message="suppressed", status=ProblemStatus.DISMISSED),
             ])

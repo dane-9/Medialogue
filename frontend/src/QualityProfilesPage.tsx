@@ -27,6 +27,7 @@ const QUALITY_GROUP_ORDER = ['Blu-ray', 'Web', 'Broadcast', 'DVD', 'Other']
 export default function QualityProfilesPage() {
   const confirm = useConfirm()
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
+  const [loading, setLoading] = useState(true)
   const [qualities, setQualities] = useState<QualityDefinition[]>([])
   const [formats, setFormats] = useState<CustomFormat[]>([])
   const [sections, setSections] = useState<CustomFormatSection[]>([])
@@ -59,6 +60,7 @@ export default function QualityProfilesPage() {
       // the landing view and nothing is selected.
       if (selectedId && profileRows.some((item) => item.id === selectedId)) setEditorOpen(true)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Quality Profiles.') }
+    finally { setLoading(false) }
   }
   useEffect(() => { void load() }, [])
 
@@ -287,15 +289,12 @@ export default function QualityProfilesPage() {
 
     {message && <div className="settings-note"><Icon name="activity" size={15} /><span>{message}</span></div>}
 
-    {!profiles.length
-      ? <EmptyState icon="spark" title="No Quality Profiles yet" detail="Create one when you want minimum-quality warnings or Custom Format scoring on your searches." action={<Button variant="primary" icon="plus" onClick={beginNew}>Create the first one</Button>} />
+    {loading
+      ? null
+      : !profiles.length
+      ? <EmptyState icon="quality-profile" title="No Quality Profiles yet" detail="Create one when you want minimum-quality warnings or Custom Format scoring on your searches." action={<Button variant="primary" icon="plus" onClick={beginNew}>Create the first one</Button>} />
       : <div className="cf-card-grid">
           {profiles.map((profile) => <ProfileCard key={profile.id} profile={profile} formatById={formatById} onOpen={() => openProfile(profile)} onDuplicate={() => void duplicateProfileNow(profile)} />)}
-          <button className="cf-card cf-card-add" onClick={beginNew}>
-            <Icon name="plus" size={22} />
-            <strong>New profile</strong>
-            <span>Score formats for a library</span>
-          </button>
         </div>}
 
     {editorOpen && <Modal
@@ -305,7 +304,7 @@ export default function QualityProfilesPage() {
       onClose={closeEditor}
       footer={<>
         {!creating && selected && <Button variant="danger" onClick={() => void remove()} disabled={busy}>Delete</Button>}
-        <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+        {dirty && <span className="footer-state">Unsaved changes</span>}
         <Button variant="secondary" onClick={closeEditor} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || !name.trim() || !qualityIds.length}>{busy ? 'Saving…' : 'Save profile'}</Button>
       </>}

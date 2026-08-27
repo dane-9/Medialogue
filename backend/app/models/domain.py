@@ -178,19 +178,19 @@ class ProblemWorkflow(StrEnum):
 
 
 def classify_problem_workflow(reason: str) -> ProblemWorkflow:
-    """Classify a Problem by the next user-visible step, not its source."""
+    """Classify a Problem by the next user-visible step, not its source.
 
-    if "DUPLICATE" in reason:
+    Only reasons Medialogue actually raises are listed. Branches for reasons
+    nothing emits made the taxonomy look richer than it is, and nothing ever
+    reached them.
+    """
+    from app.core.problem_types import CONFIG_REASONS, DUPLICATE_REASONS, MOVIE_MATCH_REASONS, SHOW_MATCH_REASONS
+
+    if reason in DUPLICATE_REASONS:
         return ProblemWorkflow.MANUAL
-    if reason in {
-        "LOW_CONFIDENCE_MATCH",
-        "TMDB_MATCH_REQUIRED",
-        "TMDB_IDENTITY_UNRESOLVED",
-        "TMDB_SHOW_MATCH_REQUIRED",
-        "TMDB_SHOW_IDENTITY_UNRESOLVED",
-    }:
+    if reason in MOVIE_MATCH_REASONS | SHOW_MATCH_REASONS:
         return ProblemWorkflow.CHOICE
-    if reason == "PATH_MAPPING_FAILED" or "ROOT" in reason or reason.endswith("_NOT_CONFIGURED"):
+    if reason in CONFIG_REASONS:
         return ProblemWorkflow.CONFIG
     return ProblemWorkflow.WAITING
 
@@ -255,6 +255,9 @@ class MovieRelease(TimestampMixin, Base):
     parsed_year: Mapped[int | None] = mapped_column(Integer)
     parsed_edition: Mapped[str | None] = mapped_column(String(128))
     manual_edition_override: Mapped[str | None] = mapped_column(String(128))
+    # Separates "follow the parser" from an explicit Standard/unspecified
+    # choice, for which the manual value is intentionally null.
+    edition_override_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     effective_edition: Mapped[str | None] = mapped_column(String(128))
     quality_definition_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("quality_definitions.id", ondelete="SET NULL"))
     release_group: Mapped[str | None] = mapped_column(String(256))
@@ -427,6 +430,8 @@ class MediaDiscovery(TimestampMixin, Base):
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
     suggested_tmdb_id: Mapped[int | None] = mapped_column(Integer)
     selected_tmdb_id: Mapped[int | None] = mapped_column(Integer)
+    manual_edition_override: Mapped[str | None] = mapped_column(String(128))
+    edition_override_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     approved_media_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))

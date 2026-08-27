@@ -18,6 +18,6 @@ Local prefix:  /media/movies
 
 Mappings can be scoped to a particular qBittorrent client and storage root.
 
-Medialogue never guesses a path translation. A failed translation becomes `PATH_MAPPING_FAILED` and remains a visible Problem until corrected.
+Medialogue never guesses a path translation. A failed translation uses the consolidated `TORRENT_PATH_NOT_FOUND` Problem, with `path_mapping_failed` retained as its diagnostic cause, until the mapping is corrected.
 
 A mapping is translation only. It never moves, copies, renames, imports, or hardlinks media.

@@ -360,7 +360,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
 
       {step === 'setup' ? <div className="wizard-setup">
         <aside className="wizard-movie-card">
-          <div className="wizard-poster">{posterUrl(preview?.posterRef || show.poster) ? <img src={posterUrl(preview?.posterRef || show.poster)} alt="" /> : <Icon name="tv" size={28} />}</div>
+          <div className="wizard-poster">{posterUrl(preview?.posterRef || show.poster) ? <img src={posterUrl(preview?.posterRef || show.poster)} alt="" /> : <Icon name="tv-screen" size={28} />}</div>
           <div><strong className="wizard-title-line">{preview?.title || show.title}{show.imdbRating != null && <span className="wizard-imdb-rating"><img src={imdbLogo} alt="IMDb" /> {show.imdbRating.toFixed(1)}{show.imdbVotes != null ? ` · ${show.imdbVotes.toLocaleString()} Ratings` : ''}</span>}</strong><span>{preview?.year || show.year || 'Year unknown'} · TMDB {show.tmdbId}</span>{(preview?.overview || show.overview) && <p>{preview?.overview || show.overview}</p>}</div>
         </aside>
         <section className="wizard-form">

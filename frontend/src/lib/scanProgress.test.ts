@@ -3,7 +3,7 @@ import { describeScan } from './scanProgress'
 import type { StorageRootScan } from '../types'
 
 const scan = (over: Partial<StorageRootScan> = {}): StorageRootScan => ({
-  job_id: 'job-1', status: 'running', stage: 'reconciling', current: 12, total: 48, percent: 25, ...over,
+  job_id: 'job-1', status: 'running', stage: 'checking_folders', current: 12, total: 48, percent: 25, ...over,
 })
 
 describe('describeScan', () => {

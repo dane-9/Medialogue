@@ -9,15 +9,19 @@ import { Icon } from './Icon'
  * page behind it can stay a simple overview: you see everything at once, then
  * open exactly the one thing you are changing.
  */
-export function Modal({ title, eyebrow, icon, onClose, footer, headerAction, wide, className, children }: PropsWithChildren<{
+export function Modal({ title, eyebrow, icon, onClose, footer, titleAction, headerAction, headerCenter, wide, className, children }: PropsWithChildren<{
   title: string
   eyebrow?: string
   /** Shown before the title, matching the icon of the section it belongs to. */
   icon?: Parameters<typeof Icon>[0]['name']
   onClose: () => void
   footer?: ReactNode
-  /** Shown beside the title, for state that belongs to the whole dialog. */
+  /** Sits immediately after the title, for state you set. */
+  titleAction?: ReactNode
+  /** Pinned to the far end of the header, for state the dialog reports. */
   headerAction?: ReactNode
+  /** Anchored in the visual center of the header for compact dialog status. */
+  headerCenter?: ReactNode
   wide?: boolean
   className?: string
 }>) {
@@ -41,6 +45,9 @@ export function Modal({ title, eyebrow, icon, onClose, footer, headerAction, wid
           {eyebrow && <div className="eyebrow">{eyebrow}</div>}
           <h2>{title}</h2>
         </div>
+        {titleAction && <div className="modal-head-title-action">{titleAction}</div>}
+        <span className="modal-head-spacer" />
+        {headerCenter && <div className="modal-head-center">{headerCenter}</div>}
         {headerAction && <div className="modal-head-action">{headerAction}</div>}
         <button className="icon-button" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       </div>

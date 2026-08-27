@@ -25,7 +25,7 @@ from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.qbittorrent import TorrentObservation
 from app.main import create_app
-from app.models.domain import DownloadClient, Torrent
+from app.models.domain import DownloadClient, Problem, Torrent
 
 
 class _NoMatchTMDBClient:
@@ -598,6 +598,56 @@ def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resol
         finally:
             client.app.dependency_overrides.clear()
     finally:
+        if root.exists():
+            root.rmdir()
+
+
+def test_completed_show_torrent_as_loose_root_file_is_ignored_without_problem(client: TestClient) -> None:
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    root = Path.cwd() / f"qbit-loose-show-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    loose_file = root / "Example.Show.S01E01.1080p.WEB-DL.mkv"
+    loose_file.write_bytes(b"video")
+    try:
+        configured_root = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": "qbit loose shows", "path": str(root), "media_type": "shows"},
+        )
+        assert configured_root.status_code == 201, configured_root.text
+        _initialize_root(client, headers, configured_root.json()["id"])
+        configured = _create_client(client, headers, scope="shows", category="shows", tags=[])
+        behavior = FakeQBitBehavior(
+            torrents=[
+                _torrent(
+                    "looseshowhash",
+                    loose_file.stem,
+                    progress=1,
+                    state="uploading",
+                    save_path=str(root),
+                    content_path=str(loose_file),
+                    category="shows",
+                    tags=(),
+                )
+            ]
+        )
+        _install_fake(client, behavior)
+        try:
+            summary = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert summary["processing_errors"] == 0
+
+            async def stored_problem() -> Problem | None:
+                async with db_session.async_session_factory() as db:
+                    return await db.scalar(
+                        select(Problem).where(Problem.reason == "TORRENT_SHOW_CONTAINER_REQUIRED")
+                    )
+
+            assert asyncio.run(stored_problem()) is None
+        finally:
+            client.app.dependency_overrides.clear()
+    finally:
+        loose_file.unlink(missing_ok=True)
         if root.exists():
             root.rmdir()
 

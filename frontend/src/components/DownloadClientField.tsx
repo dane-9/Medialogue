@@ -58,7 +58,7 @@ export function DownloadClientField({ clients, clientId, scope, disabled, onChan
         onClick={() => void recheck()}
         disabled={checking || !clientId}
         aria-label="Check this client again"
-      ><Icon name="reload" size={15} /></button>
+      ><Icon name="refresh" size={15} /></button>
     </div>
     <small>
       {selected

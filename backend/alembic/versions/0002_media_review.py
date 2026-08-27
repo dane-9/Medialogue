@@ -8,7 +8,7 @@ this revision safe both for databases created by an older 0001 and for fresh
 databases whose baseline already contains these objects.
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -19,6 +19,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # The baseline is generated from current metadata and already emits these
+    # objects. An offline MockConnection cannot be inspected, and has nothing
+    # additional to emit for this compatibility revision.
+    if context.is_offline_mode():
+        return
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     storage_columns = {column["name"] for column in inspector.get_columns("storage_roots")}

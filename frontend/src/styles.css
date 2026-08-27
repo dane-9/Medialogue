@@ -110,6 +110,29 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1080px; background: var(--bg); color: var(--text); }
+
+/* Scrollbars — slimmer than the platform's, and in the app's own palette.
+   Two syntaxes, deliberately: `scrollbar-width`/`scrollbar-color` is the
+   standard one Firefox honours, and the ::-webkit-scrollbar pseudo-elements are
+   what Chrome and Edge read. Neither covers both, so both are declared. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--r-full);
+  background: var(--line-strong);
+  /* Padding-box keeps the transparent border as breathing room around the
+     thumb rather than letting the background bleed under it. */
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #4a4a55; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:active { background: var(--muted); background-clip: padding-box; }
+/* Where both bars meet. Left unstyled it renders as a pale platform square. */
+::-webkit-scrollbar-corner { background: transparent; }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -420,31 +443,8 @@ h1, h2, h3, p { margin: 0; }
 .input::placeholder { color: var(--faint); }
 .input:focus { border-color: var(--accent); }
 .input[readonly] { color: var(--muted); }
-/* The platform's own chevron differs per OS and ignores the palette, so the
-   control is drawn with the app's own glyph instead. currentColor is not
-   available inside a data URI, hence the literal --muted value. */
-.select {
-  width: auto;
-  min-width: 130px;
-  padding-right: calc(var(--s3) + 18px);
-  color: var(--text);
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%238a8a90' fill-rule='evenodd' d='M7 9a1 1 0 0 0-.707 1.707l5 5a1 1 0 0 0 1.414 0l5-5A1 1 0 0 0 17 9z' clip-rule='evenodd'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right var(--s2) center;
-  background-size: 16px 16px;
-}
-/* Native option lists paint the current value with the system accent, which
-   reads as a stray blue bar against the dark palette. Chrome ignores
-   background-color on a checked option but honours a large inset shadow, so
-   both are set. Firefox and Safari keep their own highlight regardless. */
-.select option { color: var(--text); background: var(--raised); }
-.select option:checked,
-.select option[selected] {
-  color: var(--text);
-  background: var(--raised);
-  box-shadow: 0 0 0 100px var(--raised) inset;
-}
+/* Every dropdown is a Dropdown now, so nothing renders a native select and the
+   rules that fought its operating-system menu are gone with it. */
 textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); line-height: 1.5; }
 
 .search-field {
@@ -530,8 +530,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .toggle[aria-pressed=true] { border-color: var(--ok); background: var(--ok-soft); }
 .toggle[aria-pressed=true] span { transform: translateX(12px); background: var(--ok); }
-.discovery-mode-toggle[aria-pressed=false] { border-color: var(--accent); background: var(--accent-soft); }
-.discovery-mode-toggle[aria-pressed=false] span { background: var(--accent); }
 .toggle.disabled { display: inline-block; opacity: .5; }
 .toggle.disabled span { display: block; }
 .toggle-label { color: var(--muted); font-size: var(--t-sm); }
@@ -791,6 +789,150 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--muted);
   font-size: var(--t-sm);
 }
+
+/* Dropdown — a listbox the app can style, unlike a native select whose menu is
+   drawn by the operating system. Dense rows in the Streamline manner: quiet
+   text that brightens on the row under the cursor, rather than a card per
+   option. */
+.dropdown-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 130px;
+  height: var(--control);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 0 var(--s2) 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--text);
+  background: var(--raised);
+  font-size: var(--t-sm);
+  text-align: left;
+}
+/* Sized to content by default, as a select is. Call sites that want a full
+   width control give it flex or a width of their own. */
+.select { width: auto; min-width: 130px; max-width: 200px; }
+/* The cap above keeps toolbar dropdowns tight against their label. Inside a
+   form field the dropdown is a field control like any other, so it fills its
+   column rather than stopping short of the input beside it. */
+.field > .select { width: 100%; max-width: none; }
+
+.segmented { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--raised); }
+.segmented-option { height: calc(var(--control) - 6px); padding: 0 var(--s3); border: 1px solid transparent; border-radius: calc(var(--r-md) - 2px); color: var(--muted); background: none; font-size: var(--t-sm); cursor: pointer; transition: color .12s, background .12s, border-color .12s; }
+.segmented-option:hover:not(.selected):not(:disabled) { color: var(--text); background: var(--raised-2); }
+.segmented-option:disabled { cursor: not-allowed; opacity: .6; }
+.segmented-option.selected { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+/* The selected side carries the colour of what it means, matching the Movies
+   and Shows badges the rest of the app already uses. */
+.segmented-option.selected[data-tone="movie"] { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
+.segmented-option.selected[data-tone="show"] { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
+.scope-movies .segmented-option.selected:not([data-tone]) { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
+.scope-shows .segmented-option.selected:not([data-tone]) { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
+
+.slider { display: flex; height: var(--control); align-items: center; gap: var(--s3); }
+.slider-input { flex: 1; min-width: 0; height: 4px; padding: 0; border-radius: var(--r-full); background: linear-gradient(to right, var(--accent) var(--slider-progress), var(--line-strong) var(--slider-progress)); appearance: none; cursor: pointer; }
+.slider-input::-webkit-slider-thumb { width: 14px; height: 14px; border: 2px solid var(--bg); border-radius: var(--r-full); background: var(--accent); appearance: none; cursor: pointer; }
+.slider-input::-moz-range-thumb { width: 14px; height: 14px; border: 2px solid var(--bg); border-radius: var(--r-full); background: var(--accent); cursor: pointer; }
+.slider-input:disabled { cursor: not-allowed; opacity: .6; }
+.slider-value { min-width: 56px; color: var(--muted); font: var(--t-xs) var(--mono); }
+
+.enabled-button { display: inline-flex; flex: none; align-items: center; gap: var(--s1); height: 26px; padding: 0 var(--s2); border: 1px solid transparent; border-radius: var(--r-sm); font: 500 var(--t-micro) var(--mono); white-space: nowrap; cursor: pointer; transition: color .12s, background .12s, border-color .12s; }
+.enabled-button.on { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
+.enabled-button:hover { border-color: currentColor; }
+.enabled-button.off { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+.enabled-button:disabled { cursor: not-allowed; opacity: .6; }
+
+/* Event History reads as a list rather than a table: the durable columns were a
+   timestamp, a routing key and a truncated id, none of which is what you are
+   scanning for. The message carries the meaning, so it gets the width, and the
+   severity is a rule down the left edge instead of a repeated badge. */
+.event-history-panel { padding: 0; }
+/* Column labels share the row grid so they stay over the right columns. */
+.event-columns { position: sticky; z-index: 2; top: 0; display: grid; align-items: center; grid-template-columns: 18px 116px 148px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s2) var(--s4); border-bottom: 1px solid var(--line-strong); color: var(--faint); background: var(--surface); font: 600 var(--t-micro) var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+.event-row + .event-row { border-top: 1px solid var(--line); }
+.event-row { border-left: 2px solid transparent; }
+.event-row:hover { background: var(--raised); }
+.event-row-warning { border-left-color: var(--warn); }
+.event-row-error { border-left-color: var(--err); }
+.event-row-main { display: grid; grid-template-columns: 18px 116px 148px minmax(0, 1fr) auto; align-items: baseline; gap: var(--s3); padding: var(--s2) var(--s4); cursor: pointer; list-style: none; }
+.event-row-main::-webkit-details-marker { display: none; }
+.event-sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; color: inherit; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.event-sort:hover { color: var(--muted); }
+.event-sort.active { color: var(--text); }
+/* The caret points the way the column is ordered, and only shows on the column
+   actually doing the ordering. */
+.event-sort > svg { opacity: 0; transition: opacity .12s, transform .12s; }
+.event-sort:hover > svg, .event-sort.active > svg { opacity: 1; }
+.event-sort > svg.flipped { transform: rotate(180deg); }
+.event-severity { display: flex; align-items: center; justify-content: center; align-self: center; color: var(--faint); }
+.event-row-warning .event-severity { color: var(--warn); }
+.event-row-error .event-severity { color: var(--err); }
+.event-time { color: var(--faint); font: var(--t-micro) var(--mono); font-variant-numeric: tabular-nums; }
+.event-kind { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.event-body { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.event-message { min-width: 0; margin: 0; color: var(--text); font-size: var(--t-sm); }
+/* The delete control is for the row you are on, so it stays out of the way of
+   scanning until you land on it. Focus reveals it too, for the keyboard. */
+.event-row-actions { display: flex; align-items: center; gap: var(--s1); opacity: 0; transition: opacity .12s; }
+.event-row:hover .event-row-actions, .event-row:focus-within .event-row-actions { opacity: 1; }
+.event-delete { display: grid; width: 24px; height: 24px; place-items: center; border-radius: var(--r-sm); color: var(--faint); cursor: pointer; }
+.event-delete:hover { color: var(--err); background: var(--raised-2); }
+.event-details[open] .event-row-main { color: var(--text); }
+.event-details > pre { max-height: 260px; margin: 0; overflow: auto; padding: var(--s3) var(--s4) var(--s4) calc(var(--s4) + 134px); color: var(--muted); background: var(--bg); font: var(--t-micro) var(--mono); }
+.dropdown-trigger:hover:not(:disabled) { border-color: var(--muted); }
+.dropdown-trigger.open { border-color: var(--accent); }
+.dropdown-trigger:disabled { color: var(--muted); cursor: not-allowed; opacity: .6; }
+.dropdown-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The caret already points down, so it flips rather than rotating a quarter
+   turn from a right-facing chevron. */
+.dropdown-trigger > svg { flex: none; color: var(--faint); transition: transform .12s; }
+.dropdown-trigger.open > svg { transform: rotate(180deg); }
+
+.dropdown-menu {
+  position: fixed;
+  z-index: 60;
+  /* Clips the scrolling child, including its scrollbar, to the radius. */
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised-2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .5);
+  animation: dropdown-in .1s ease;
+}
+.dropdown-list { max-height: 292px; overflow-y: auto; }
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.dropdown-group {
+  padding: 6px 7px 3px;
+  color: var(--faint);
+  font: 600 var(--t-micro) var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.dropdown-option {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 3px;
+  color: var(--muted);
+  background: transparent;
+  font-size: var(--t-sm);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* One highlight, driven by the keyboard cursor. Hover sets the same index, so
+   the mouse and the arrow keys can never disagree about which row is next. */
+.dropdown-option.active { color: var(--text); background: var(--raised); }
+.dropdown-option.selected { color: var(--text); font-weight: 600; }
+.dropdown-option.selected.active { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.dropdown-option[aria-disabled="true"] { color: var(--faint); cursor: not-allowed; }
 
 /* Callouts — one shape, four tones. Replaces settings-note,
    cf-banner, problem-summary, archive-callout, setup-return and friends. */
@@ -1563,6 +1705,89 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .settings-section h3 { margin-bottom: var(--s1); font: 600 var(--t-lg) var(--sans); }
 .settings-section p { max-width: 480px; color: var(--muted); font-size: var(--t-sm); line-height: 1.6; }
 .settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 1.3; gap: var(--s3); }
+
+/* One field per row, label beside the control and the help under it.
+   A long editor reads better as a single column: the eye tracks one list of
+   labels down the left instead of hopping between two columns of unequal
+   height, and each help line sits directly under the thing it explains.
+
+   Placement is explicit rather than by source order, because Field emits the
+   help before the control it describes. */
+.form-rows {
+  --card-pad-x: var(--s3);
+  --card-pad-y: var(--s3);
+  --card-width: 480px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--card-pad-y) * 2 + var(--s4));
+}
+.form-rows .field { display: grid; grid-template-columns: minmax(0, 1fr) var(--card-width) minmax(0, 1fr); grid-template-rows: auto auto auto; row-gap: var(--s2); }
+/* The box holds the control and the sentence explaining it; the label sits
+   outside it, in the gutter. There is no element wrapping just those two, so
+   the card is drawn by a pseudo-element occupying the whole second column and
+   bleeding outwards to make its own padding. */
+.form-rows .field::before {
+  content: '';
+  z-index: 0;
+  grid-row: 1 / -1;
+  grid-column: 2;
+  margin: calc(var(--card-pad-y) * -1) calc(var(--card-pad-x) * -1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.form-rows .field:focus-within::before { border-color: var(--line-strong); }
+.form-rows .field > * { position: relative; z-index: 1; }
+.form-rows .field-head { grid-row: 1; grid-column: 1; width: max-content; max-width: var(--label-width); align-self: center; justify-self: end; padding-right: calc(var(--card-pad-x) + var(--s4)); justify-content: flex-end; text-align: left; }
+.form-rows .field > :not(.field-head):not(.field-help):not(.field-error) { grid-row: 1; grid-column: 2; }
+.form-rows .field-help { grid-row: 2; grid-column: 2; margin: 0; }
+.form-rows .field-error { grid-row: 3; grid-column: 2; }
+.form-rows .field-wide { grid-column: 2; }
+/* Same card, label on top instead of in a gutter, laid out in columns.
+   Suits a short form where two fields fit side by side; form-rows suits a long
+   one where a single column reads better. */
+.form-cards {
+  --card-pad-x: var(--s4);
+  --card-pad-y: var(--s3);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: calc(var(--card-pad-x) * 2 + var(--s4));
+  row-gap: calc(var(--card-pad-y) * 2);
+}
+.form-cards .field { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; row-gap: var(--s2); }
+/* The label is outside the card, so it clears the bleed with its own margin
+   rather than a row gap that would also loosen the card's insides. */
+.form-cards .field-head { grid-row: 1; grid-column: 1; margin-bottom: calc(var(--card-pad-y) + var(--s1)); }
+.form-cards .field::before {
+  content: '';
+  z-index: 0;
+  grid-row: 2 / -1;
+  grid-column: 1;
+  margin: calc(var(--card-pad-y) * -1) calc(var(--card-pad-x) * -1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.form-cards .field:focus-within::before { border-color: var(--line-strong); }
+.form-cards .field > * { position: relative; z-index: 1; }
+.form-cards .field > :not(.field-head):not(.field-help):not(.field-error) { grid-row: 2; grid-column: 1; }
+.form-cards .field-help { grid-row: 3; grid-column: 1; margin: 0; }
+.form-cards .field-error { grid-row: 4; grid-column: 1; }
+.form-cards .field-wide { grid-column: 1 / -1; }
+@media (max-width: 860px) {
+  .form-cards { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The label column would swallow most of a narrow screen, so it stacks there. */
+/* No room for a gutter on a narrow screen, so the label stacks above its box. */
+@media (max-width: 860px) {
+  .form-rows .field { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; }
+  .form-rows .field-head { grid-row: 1; grid-column: 1; justify-self: start; padding-right: 0; justify-content: flex-start; text-align: left; }
+  .form-rows .field::before { grid-row: 2 / -1; grid-column: 1; }
+  .form-rows .field > :not(.field-head):not(.field-help):not(.field-error) { grid-row: 2; grid-column: 1; }
+  .form-rows .field-help { grid-row: 3; grid-column: 1; }
+  .form-rows .field-error { grid-row: 4; grid-column: 1; }
+}
 .settings-form label { display: block; min-width: 0; }
 .settings-form label:last-child { grid-column: span 2; }
 .settings-footer {
@@ -1583,9 +1808,11 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .recovery-settings > .settings-form { padding: var(--s4); }
 .panel > .settings-note,
 .qbit-editor > .settings-note,
+.provider-settings > .settings-note,
 .recovery-settings > .settings-note { margin: 0 var(--s4) var(--s4); }
 .panel > .settings-form + .settings-note,
 .qbit-editor > .settings-form + .settings-note,
+.provider-settings > .settings-form + .settings-note,
 .recovery-settings > .settings-form + .settings-note { margin-top: 0; }
 
 /* A toolbar or an empty state dropped straight into a panel needs the gutter
@@ -1629,6 +1856,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--muted);
   background: var(--raised);
   text-align: left;
+  font: inherit;
+  cursor: pointer;
   transition: border-color .12s, background .12s, transform .12s;
 }
 .provider-card:hover { border-color: var(--accent-line); background: var(--raised-2); transform: translateY(-1px); }
@@ -1639,10 +1868,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .remote-mapping-route svg { flex: none; color: var(--accent-text); }
 .provider-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .provider-card-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: var(--r-md); color: var(--accent-text); background: var(--accent-soft); }
+/* A download client belongs to one library, so it carries that library's colour
+   rather than the generic accent: the grid is readable without reading a word. */
+.provider-card-icon.kind-movie { color: var(--kind-movie); border: 1px solid var(--kind-movie-line); background: var(--kind-movie-soft); }
+.provider-card-icon.kind-show { color: var(--kind-show); border: 1px solid var(--kind-show-line); background: var(--kind-show-soft); }
 .provider-card > strong { overflow: hidden; color: var(--text); font-size: var(--t-lg); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .provider-card > span { overflow: hidden; color: var(--faint); font: var(--t-micro) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+/* Connection health sits in the centered portion of the client editor header. */
+.provider-header-status { display: flex; align-items: center; gap: var(--s3); white-space: nowrap; }
 .provider-card-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-top: auto; }
-.provider-health { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font: var(--t-micro) var(--mono); text-transform: capitalize; }
+.provider-health { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font: var(--t-micro) var(--mono); text-transform: capitalize; }
 .provider-health i { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .provider-health.healthy i { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
 .provider-health.error i { background: var(--err); box-shadow: 0 0 0 3px var(--err-soft); }
@@ -1779,6 +2014,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .provider-empty-copy { padding: 0 var(--s4) var(--s4); color: var(--muted); font-size: var(--t-xs); }
 .provider-modal-editor { padding: 0; }
 .provider-modal-editor > .settings-form { padding: var(--s4); }
+.settings-form.form-cards { padding: calc(var(--card-pad-y) + var(--s4)) calc(var(--card-pad-x) + var(--s4)); }
+.settings-form.form-rows { padding: calc(var(--card-pad-y) + var(--s4)) var(--s4); }
 .provider-modal-editor > .root-browser,
 .provider-modal-editor > .settings-note { margin-inline: var(--s4); }
 .provider-modal-editor > .root-browser { margin-top: var(--s4); }
@@ -1810,22 +2047,11 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    Event history
    -------------------------------------------------------------------------- */
 
-.event-toolbar .input { min-width: 310px; }
-.event-history-table { min-width: 1180px; }
-.event-history-table td { vertical-align: top; }
-.event-history-table code { color: var(--accent-text); font: var(--t-micro) var(--mono); }
-.event-time, .event-entity { color: var(--faint); font: var(--t-micro) var(--mono); white-space: nowrap; }
-.event-details { position: relative; }
-.event-details summary { cursor: pointer; color: var(--muted); font: var(--t-micro) var(--mono); white-space: nowrap; }
-.event-details pre {
-  position: absolute;
-  z-index: 20;
-  right: 0;
-  width: min(560px, 55vw);
-  max-height: 360px;
-  margin-top: var(--s2);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
-}
+/* A bare .input is width:100%, which as a flex child claims the whole toolbar
+   row and wraps everything after it onto a line of its own. Here it takes the
+   space left over instead. */
+.event-toolbar .input { width: auto; flex: 1; min-width: 310px; }
+.event-count { margin-left: auto; white-space: nowrap; }
 
 /* --------------------------------------------------------------------------
    Torrent archive
@@ -2314,6 +2540,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 /* A modal built around a file browser, which needs the height to be usable. */
 .modal-tall { max-height: 92vh; }
 .modal-head {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2334,7 +2561,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--muted);
   background: var(--raised);
 }
-.modal-head-copy { min-width: 0; flex: 1; }
+.modal-head-copy { min-width: 0; flex: 0 1 auto; }
+.modal-head-title-action { display: flex; flex: none; align-items: center; gap: var(--s2); }
+.modal-head-spacer { flex: 1; }
 .modal-head h2 { margin-top: 0; font: 600 var(--t-xl)/1.25 var(--sans); overflow-wrap: anywhere; }
 .modal-head:has(.eyebrow) h2 { margin-top: 2px; }
 .modal-body { flex: 1; overflow: auto; }
@@ -2352,7 +2581,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 /* Pushes the confirming actions to the right now that no status text sits
    between them and the destructive action on the left. */
 .modal-foot-spacer { flex: 1; }
-.modal-head-action { display: flex; flex: none; align-items: center; }
+.modal-head-action { display: flex; flex: none; align-items: center; gap: var(--s3); }
+.modal-head-center { position: absolute; left: 50%; display: flex; transform: translateX(-50%); }
 
 /* --------------------------------------------------------------------------
    Custom Formats — a grid of what each format matches, edited in a dialog.
@@ -2490,8 +2720,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-editor-fields { display: grid; grid-template-columns: minmax(240px, 1.25fr) minmax(170px, .8fr); gap: var(--s4); max-width: 760px; }
 .cf-editor-fields .field-wide { grid-column: 1 / -1; }
 .cf-description-input { min-height: 96px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
-.cf-editor-footer-toggle { display: flex; flex: none; align-items: center; gap: var(--s2); padding-right: var(--s2); cursor: pointer; }
-.cf-editor-footer-toggle strong { width: 54px; color: var(--text); font-size: var(--t-xs); font-weight: 600; }
 .cf-editor-next { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); max-width: 760px; padding-top: var(--s2); }
 .cf-logic-summary { display: flex; align-items: center; gap: var(--s2); max-width: 760px; padding: var(--s3); border: 1px solid var(--accent-line); border-radius: var(--r-lg); color: var(--accent-text); background: var(--accent-soft); }
 .cf-logic-summary > div { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 4px; }
@@ -2552,7 +2780,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .cf-add-rule { grid-template-columns: 1fr; }
   .cf-rule-header-actions { width: 100%; padding-left: 33px; justify-content: space-between; }
   .cf-rule-header-options { justify-content: flex-start; }
-  .cf-editor-footer-toggle { flex-basis: 100%; padding: 0 0 var(--s1); }
 }
 
 /* Quality Profile scoring — a format, its score, and the sign made obvious. */
@@ -2703,31 +2930,14 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .ordering-option .badge { flex: none; }
 
 /* Problems workflow queue — remediation first, diagnostics on demand. */
-.problems-summary {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  min-height: 68px;
-  padding: var(--s3) var(--s4);
-  margin-bottom: var(--s3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-}
-.problems-summary-icon { display: grid; width: 36px; height: 36px; flex: none; place-items: center; border: 1px solid var(--warn-line); border-radius: var(--r-lg); color: #d9ad67; background: var(--warn-soft); }
-.problems-summary.suppressed .problems-summary-icon { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
-.problems-summary > div:last-child { display: flex; min-width: 0; flex-direction: column; }
-.problems-summary strong { font-size: var(--t-lg); font-weight: 600; }
-.problems-summary span { color: var(--muted); font-size: var(--t-sm); }
-.problems-workflow-tabs { display: flex; gap: var(--s1); padding: var(--s1); margin-bottom: var(--s3); overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
-.problems-workflow-tabs button { display: flex; align-items: center; gap: 7px; height: var(--control); padding: 0 10px; border: 0; border-radius: var(--r-md); color: var(--muted); background: transparent; white-space: nowrap; }
-.problems-workflow-tabs button:hover { color: var(--text); background: var(--raised); }
-.problems-workflow-tabs button.active { color: var(--text); background: var(--raised-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
-.problems-workflow-tabs button span { color: var(--faint); font: 500 var(--t-micro)/1 var(--mono); }
-.problems-workflow-tabs button.active span { color: var(--accent-text); }
-.problems-toolbar { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); }
-.problems-toolbar > span { margin-left: auto; color: var(--faint); font-size: var(--t-xs); white-space: nowrap; }
-.problems-search { display: flex; flex: 1; min-width: 180px; align-items: center; gap: var(--s2); height: var(--control); padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); color: var(--faint); background: var(--surface); }
+/* Same first column as .problems-layout below it, so the search field is
+   exactly as wide as the Problems list it searches. */
+.problems-toolbar { display: grid; grid-template-columns: minmax(330px, 420px) minmax(0, 1fr); align-items: center; gap: var(--s2); margin-bottom: var(--s3); }
+.problems-toolbar-rest { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+/* Queue-wide actions sit with the filters that scope the queue, pushed right so
+   the search field keeps the space it needs. */
+.problems-toolbar-actions { display: flex; flex: none; align-items: center; gap: var(--s2); margin-left: auto; }
+.problems-search { display: flex; min-width: 0; align-items: center; gap: var(--s2); height: var(--control); padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); color: var(--faint); background: var(--surface); }
 .problems-search input { width: 100%; border: 0; outline: 0; color: var(--text); background: transparent; }
 .problems-layout { display: grid; grid-template-columns: minmax(330px, 420px) minmax(0, 1fr); min-height: 650px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .problems-list { min-width: 0; border-right: 1px solid var(--line); background: #101012; }
@@ -2757,23 +2967,22 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .problems-detail-head > div:first-child { flex: 1; min-width: 0; }
 .problems-detail-head h2 { margin: var(--s1) 0 0; font-size: 17px; line-height: 1.25; }
 .problems-back-button { display: none; }
-.problems-admin-menu { position: relative; }
-.problems-admin-menu summary { list-style: none; }
-.problems-admin-menu summary::-webkit-details-marker { display: none; }
-.problems-admin-menu > div { position: absolute; z-index: 5; top: 38px; right: 0; width: 260px; padding: 6px; border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--raised-2); box-shadow: 0 18px 40px rgba(0,0,0,.35); }
-.problems-admin-menu button { width: 100%; padding: var(--s2) 9px; border: 0; border-radius: var(--r-md); color: var(--muted); background: transparent; text-align: left; }
-.problems-admin-menu button:hover { color: var(--text); background: var(--raised); }
-.problems-admin-menu button.danger { color: #e39aa0; }
-.problems-admin-menu button.danger:hover { background: var(--err-soft); }
-.problems-admin-menu p { margin: var(--s1) 9px 7px; color: var(--faint); font-size: var(--t-micro); }
+/* Both actions on the row, so neither is behind a click and a glyph. */
+.problems-detail-actions { display: flex; flex: none; align-items: center; gap: var(--s2); }
 .problems-detail-body { padding: 18px; }
 .problems-lead { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 18px; }
 .problems-lead > p { max-width: 820px; margin: 0; color: #c6c6ca; line-height: 1.6; }
 .problems-lead > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .problems-key-details, .problems-identity-resolver { padding: 14px; margin-top: var(--s4); border: 1px solid var(--line); border-radius: var(--r-lg); background: #101012; }
-.problems-detail-row { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 14px; padding: 10px 0; border-top: 1px solid var(--line); }
-.problems-detail-row:first-child { padding-top: 0; border-top: 0; }
-.problems-detail-row:last-child { padding-bottom: 0; }
+/* One grid for the whole block rather than one per row, so the label column is
+   as wide as the longest label actually present. A fixed width had to fit
+   "QBITTORRENT PATH", which left a short label like "PATH" stranded a hundred
+   pixels from its value. */
+.problems-key-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--s4); }
+.problems-detail-row { display: contents; }
+.problems-detail-row > span, .problems-detail-row > div { padding: 10px 0; border-top: 1px solid var(--line); }
+.problems-detail-row:first-child > span, .problems-detail-row:first-child > div { padding-top: 0; border-top: 0; }
+.problems-detail-row:last-child > span, .problems-detail-row:last-child > div { padding-bottom: 0; }
 .problems-detail-row > span { color: var(--faint); font: 500 var(--t-micro)/1.45 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .problems-detail-row > div { min-width: 0; }
 .problems-detail-row strong, .problems-detail-row small { display: block; overflow-wrap: anywhere; }
@@ -2781,6 +2990,20 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .problems-detail-row small { margin-top: 3px; color: var(--muted); font-size: var(--t-xs); }
 .problems-resolution { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: 14px; }
 .problems-resolution p { flex-basis: 100%; margin: 0 0 2px; color: #bfc0c8; font-size: var(--t-sm); line-height: 1.55; }
+.movie-edition-resolver { padding: 16px; margin-top: var(--s4); border: 1px solid var(--line); border-radius: var(--r-lg); background: #101012; }
+.movie-edition-resolver .problems-resolver-head p { margin: 5px 0 0; color: var(--muted); font-size: var(--t-sm); line-height: 1.5; }
+.movie-edition-list { display: grid; gap: 10px; margin-top: 14px; }
+.movie-edition-copy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 240px); gap: 12px 16px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
+.movie-edition-copy-head { display: flex; min-width: 0; justify-content: space-between; gap: 16px; grid-column: 1 / -1; }
+.movie-edition-copy-head > div:first-child { min-width: 0; }
+.movie-edition-copy-head span { display: block; color: var(--faint); font: 500 var(--t-micro)/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.movie-edition-copy-head strong, .movie-edition-copy-head small { display: block; overflow-wrap: anywhere; }
+.movie-edition-copy-head strong { margin-top: 3px; font-size: var(--t-sm); }
+.movie-edition-copy-head small { margin-top: 3px; color: var(--muted); }
+.movie-edition-technical { flex: 0 0 auto; color: var(--muted); font-size: var(--t-xs); text-align: right; }
+.movie-edition-copy label { display: grid; gap: 5px; align-content: start; }
+.movie-edition-copy label > span { color: var(--faint); font: 500 var(--t-micro)/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.movie-edition-detected { align-self: end; color: var(--muted); font-size: var(--t-xs); }
 .problems-resolver-head { display: flex; align-items: end; justify-content: space-between; gap: var(--s4); margin-bottom: 10px; }
 .problems-resolver-head p { margin: var(--s1) 0 0; color: var(--muted); font-size: var(--t-xs); }
 .problems-identity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -2816,7 +3039,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 @media (max-width: 1120px) {
   .problems-layout { grid-template-columns: 350px minmax(0, 1fr); }
-  .problems-toolbar > span { display: none; }
+  .problems-toolbar { grid-template-columns: 350px minmax(0, 1fr); }
+  .problems-toolbar-actions { margin-left: 0; }
   .problems-identity-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
@@ -2831,10 +3055,15 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .problems-back-button { display: inline-grid; flex: none; }
   .problems-lead { grid-template-columns: 1fr; }
   .problems-lead > div { justify-content: flex-start; }
-  .problems-detail-row { grid-template-columns: 1fr; gap: var(--s1); }
+  /* Stacked: the label sits above its value, so the row spans one column. */
+  .problems-key-details { grid-template-columns: minmax(0, 1fr); }
+  .problems-detail-row > span { padding-bottom: 0; }
+  .problems-detail-row > div { padding-top: var(--s1); border-top: 0; }
+  .movie-edition-copy { grid-template-columns: minmax(0, 1fr); }
+  .movie-edition-copy-head { display: grid; gap: 6px; }
+  .movie-edition-technical { text-align: left; }
 }
 @media (max-width: 560px) {
-  .problems-workflow-tabs { margin-right: calc(var(--s4) * -1); margin-left: calc(var(--s4) * -1); border-right: 0; border-left: 0; border-radius: 0; }
   .problems-detail-body { padding: 14px; }
   .problems-identity-card { grid-template-columns: 74px minmax(0, 1fr) 20px; }
   .problems-identity-poster { width: 74px; }
@@ -3174,6 +3403,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .event-indexer { margin-left: var(--s2); vertical-align: middle; }
 
 /* Indexer badge colour picker: swatch, hex field, live badge, reset. */
+/* Multi-select as toggleable chips: the set is small and every option should
+   be visible, since "none selected" and "all selected" mean the same thing and
+   a closed menu would hide which it is. */
+.client-choice { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.client-choice-option { cursor: pointer; }
+.client-choice-option:hover { filter: brightness(1.18); }
 .color-field { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .color-field input[type=color] {
   width: 38px;
@@ -3188,7 +3423,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .color-field input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
 .color-field input[type=color]::-webkit-color-swatch { border: 0; border-radius: 3px; }
 .color-field > .input { width: 110px; flex: none; font-family: var(--mono); }
-.color-field .button { flex: none; }
+.color-field .button { flex: none; margin-left: auto; }
 
 /* The client picker keeps its recheck button beside the select. */
 .client-field { display: flex; align-items: center; gap: var(--s2); }
@@ -3430,6 +3665,64 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-top: 0;
   background: var(--surface);
 }
+/* The cell holds two things now: the part that selects the row, and the
+   edition control. A dropdown cannot live inside a button, so the button is
+   inside the cell rather than being it. */
+/* Fills the cell so the pointer never lands between the two. */
+.review-match-main { display: flex; flex: 1; align-items: center; gap: var(--s2); min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.review-match-cell { cursor: pointer; }
+/* On the year line, so it is sized to sit beside a four digit year rather than
+   beside a title. */
+.review-match-sub { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.review-edition-cell { flex: none; min-width: 0; }
+/* A floor as well as a ceiling: a short value like Recut should not shrink
+   to a stub the cursor has to hunt for. */
+.review-edition-cell .dropdown-trigger { min-width: 175px; width: auto; max-width: 190px; height: 20px; padding: 0 4px 0 var(--s2); border-radius: 3px; font: var(--t-micro) var(--mono); }
+.review-edition-cell .dropdown-trigger > svg { width: 11px; height: 11px; }
+/* Nothing was detected, so the control waits until the cursor is on the row.
+   It keeps its space, so revealing it cannot shift the row underneath, and it
+   stays while its own menu is open.
+
+   Fades rather than appears: opacity carries the transition, and visibility is
+   delayed on the way out so the fade finishes before the element stops being
+   hittable. Transitioning visibility alone would be a hard cut, since it has no
+   in-between states. */
+.review-edition-cell.optional {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity .16s ease, visibility 0s linear .16s;
+}
+.review-match-cell:hover .review-edition-cell.optional,
+.review-match-cell:focus-within .review-edition-cell.optional,
+.review-match-cell:has(.dropdown-trigger.open) .review-edition-cell.optional {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity .16s ease, visibility 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-edition-cell.optional { transition: none; }
+}
+/* A clash is an edition problem, so the edition control carries it rather than
+   a pill restating it in words. Amber, not red: both copies are importable and
+   nothing is broken, you just have to say which is which.
+
+   The tint is on the trigger itself so it can transition. Fixing a clash by
+   choosing a different edition should look like the warning receding, not like
+   it was never there. */
+.review-edition-cell .dropdown-trigger,
+.review-edition-cell .dropdown-trigger > svg {
+  transition: color .18s ease, border-color .18s ease, background-color .18s ease;
+}
+.review-edition-cell.clash .dropdown-trigger {
+  color: var(--warn);
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+}
+.review-edition-cell.clash .dropdown-trigger > svg { color: var(--warn); }
+@media (prefers-reduced-motion: reduce) {
+  .review-edition-cell .dropdown-trigger,
+  .review-edition-cell .dropdown-trigger > svg { transition: none; }
+}
 .review-scroll > :nth-last-child(2), .review-scroll > :last-child { border-radius: 0 0 var(--r-md) var(--r-md); }
 /* The tooltip wraps the name in a span of its own, which needs to be a flex
    item that can shrink, or the folder name stops truncating and stops centring
@@ -3439,6 +3732,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    character by character, and the monospace made them the loudest thing in a
    pane that is mostly reading. */
 .review-folder-cell code { display: block; overflow: hidden; color: var(--text); font: var(--t-sm)/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+/* Pushed to the end of the folder row: it is a fact about this folder, and the
+   tooltip-wrapped name beside it takes the remaining space. */
+.review-folder-cell > .review-state { margin-left: auto; }
 .review-match-cell { text-align: left; }
 .review-folder-cell.active, .review-match-cell.active { border-color: var(--accent-line); background: var(--accent-soft); }
 .review-match-cell:hover:not(.active) { background: var(--raised); }
@@ -3455,12 +3751,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 .review-state { display: inline-flex; flex: none; min-height: 18px; align-items: center; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r-full); font-size: var(--t-micro); font-weight: 600; }
 .review-state.unsure, .review-state.needs-match { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
-.review-state.missing { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
 
 .review-poster { display: grid; width: 28px; aspect-ratio: 2/3; flex: none; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--faint); background: linear-gradient(155deg, #263743, #10171c 50%, #080a0b); }
 .review-poster img { width: 100%; height: 100%; object-fit: cover; }
 
 .review-import { display: flex; grid-column: 1 / 3; grid-row: 2; align-items: center; justify-content: flex-end; gap: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); font-size: var(--t-xs); }
+.review-import-warning { flex: none; color: var(--warn); font-size: var(--t-xs); text-align: right; }
+/* In a row now, so it is the control alone: no label, no panel. The custom
+   name field drops under the dropdown when Other is chosen. */
+.review-edition-picker { display: grid; gap: var(--s1); min-width: 0; }
+.review-edition-picker > .input { height: 22px; font-size: var(--t-micro); }
 
 /* The full height of this pane is the point: a common title has many results
    and they should all be reachable by scrolling one list. */

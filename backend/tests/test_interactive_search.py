@@ -1,5 +1,6 @@
 import asyncio
 import os
+import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -784,3 +785,27 @@ def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(clien
         assert {season.season_number for season in seasons} == {0, 1, 2}
     finally:
         client.app.dependency_overrides.clear()
+
+
+def test_indexer_download_client_restriction_round_trips_and_defaults_open(client: TestClient) -> None:
+    """No restriction means any eligible client, so the default is an empty list
+    rather than a list that would exclude everything."""
+    headers = _login(client)
+    indexer = _create_indexer(client, headers, name="Unrestricted", url="https://indexer.test/api")
+    assert indexer["download_client_ids"] == []
+
+    first = uuid.uuid4()
+    second = uuid.uuid4()
+    updated = client.put(
+        f"/api/v1/indexers/{indexer['id']}",
+        headers=headers,
+        json={"download_client_ids": [str(first), str(second)]},
+    )
+    assert updated.status_code == 200, updated.text
+    assert set(updated.json()["download_client_ids"]) == {str(first), str(second)}
+
+    # Omitting the field leaves the restriction alone; sending [] clears it.
+    untouched = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"priority": 30})
+    assert set(untouched.json()["download_client_ids"]) == {str(first), str(second)}
+    cleared = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"download_client_ids": []})
+    assert cleared.json()["download_client_ids"] == []

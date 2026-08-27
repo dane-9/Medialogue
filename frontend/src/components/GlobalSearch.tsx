@@ -6,9 +6,9 @@ import { evaluateShiftTap } from '../lib/doubleTap'
 import { rankResults } from '../lib/searchRank'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
-import { Badge, Button } from './ui'
 import { MovieDownloadWizard } from './MovieDownloadWizard'
 import { ShowDownloadWizard } from './ShowDownloadWizard'
+import { Badge, Button } from './ui'
 import imdbLogo from '../assets/imdb.svg'
 
 type Kind = 'movie' | 'show'
@@ -128,14 +128,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   }, [loading, query, results.length])
 
   if (downloadTarget?.tmdbId && downloadTarget.kind === 'movie') return <MovieDownloadWizard
-    movie={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId, imdbRating: downloadTarget.imdbRating, imdbVotes: downloadTarget.imdbVotes }}
+    movie={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId }}
     onBack={() => setDownloadTarget(null)}
     onClose={onClose}
     onComplete={(movieId) => { navigate(`/movies/${movieId}`); onClose() }}
   />
 
   if (downloadTarget?.tmdbId && downloadTarget.kind === 'show') return <ShowDownloadWizard
-    show={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId, imdbRating: downloadTarget.imdbRating, imdbVotes: downloadTarget.imdbVotes }}
+    show={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId }}
     onBack={() => setDownloadTarget(null)}
     onClose={onClose}
     onComplete={(showId) => { navigate(`/shows/${showId}`); onClose() }}
@@ -177,7 +177,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           <span className="global-search-poster">
             {posterUrl(result.poster)
               ? <img src={posterUrl(result.poster)} alt="" loading="lazy" />
-              : <Icon name={result.kind === 'movie' ? 'film' : 'tv'} size={18} />}
+              : <Icon name={result.kind === 'movie' ? 'clapper' : 'tv-screen'} size={18} />}
           </span>
           <span className="global-search-copy">
             <strong>

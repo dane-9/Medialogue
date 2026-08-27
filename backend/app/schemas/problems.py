@@ -10,6 +10,13 @@ from .common import ORMModel
 class ProblemResponse(ORMModel):
     id: UUID
     reason: str
+    #: Short description of the condition, named once on the server so every
+    #: client says the same thing about the same reason.
+    label: str = ""
+    #: Plain-language presentation is derived from the reason at response time,
+    #: so old stored Problems receive improved wording too.
+    title: str = ""
+    description: str = ""
     status: str
     workflow: str
     severity: str

@@ -4,7 +4,7 @@ import { api } from './api/client'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
 import { useConfirm } from './components/Confirm'
-import { Badge, Button, EmptyState, Input, Select } from './components/ui'
+import { Badge, Button, EmptyState, EnabledButton, Input, Select } from './components/ui'
 import { Field } from './components/settings'
 import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
@@ -415,11 +415,7 @@ export default function CustomFormatsPageView() {
   }
 
   return <div className="page">
-    <PageTopbar title="Custom Formats" subtitle="Explainable release matching rules with profile scores and optional per-match offsets." action={<>
-        <Button variant="ghost" icon="archive" onClick={() => importInput.current?.click()}>Import</Button>
-        <Button variant="ghost" icon="download" onClick={() => void exportAll()} disabled={!formats.length}>Export all</Button>
-        <Button variant="primary" icon="plus" onClick={newFormat}>New custom format</Button>
-      </>} />
+    <PageTopbar title="Custom Formats" subtitle="Explainable release matching rules with profile scores and optional per-match offsets." />
     <input ref={importInput} className="cf-file-input" type="file" accept="application/json,.json" onChange={(event) => void importBundle(event)} />
 
     {error && <div className="cf-banner cf-banner-error"><Icon name="alert" size={15} /><span>{error}</span></div>}
@@ -427,13 +423,16 @@ export default function CustomFormatsPageView() {
 
     <div className="toolbar">
       <div className="search-field"><Icon name="search" size={16} /><Input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter formats and conditions…" /></div>
+      <Button variant="primary" icon="plus" onClick={newFormat}>New custom format</Button>
       <div className="toolbar-spacer" />
       <Button variant="ghost" icon="sliders" onClick={openOrganizer}>Organize sections</Button>
+      <Button variant="ghost" icon="archive" onClick={() => importInput.current?.click()}>Import</Button>
+      <Button variant="ghost" icon="download" onClick={() => void exportAll()} disabled={!formats.length}>Export all</Button>
       <span className="selection-count">{formats.length} format{formats.length === 1 ? '' : 's'}</span>
     </div>
 
     {loading ? <div className="cf-list-state">Loading Custom Formats…</div>
-      : !formats.length ? <EmptyState icon="sliders" title="No Custom Formats yet" detail="A Custom Format is a named set of conditions that a release either matches or does not. Scores live on Quality Profiles." action={<Button variant="primary" icon="plus" onClick={newFormat}>Create the first one</Button>} />
+      : !formats.length ? <EmptyState icon="custom-format" title="No Custom Formats yet" detail="A Custom Format is a named set of conditions that a release either matches or does not. Scores live on Quality Profiles." action={<Button variant="primary" icon="plus" onClick={newFormat}>Create the first one</Button>} />
       : !visible.length ? <EmptyState icon="search" title="No formats match that filter" detail="Nothing here matches the text you typed. Clear the filter to see every format." />
       : <div className="cf-sections">{sections.map((section) => {
           const sectionFormats = section.formatIds.map((id) => visible.find((format) => format.id === id)).filter((format): format is CustomFormat => Boolean(format))
@@ -474,14 +473,11 @@ export default function CustomFormatsPageView() {
       className="cf-editor-modal"
       title={draft.name || 'Untitled Custom Format'}
       onClose={closeEditor}
-      headerAction={<div className="cf-editor-footer-toggle">
-        <button type="button" aria-pressed={draft.enabled} className="toggle" onClick={() => setDraft((current) => ({ ...current, enabled: !current.enabled }))}><span /></button>
-        <strong>{draft.enabled ? 'Enabled' : 'Disabled'}</strong>
-      </div>}
+      titleAction={<EnabledButton enabled={draft.enabled} onChange={(next) => setDraft((current) => ({ ...current, enabled: next }))} />}
       footer={<>
         {draft.id && !draft.builtin ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
         {draft.id ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
-        <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+        {dirty && <span className="footer-state">Unsaved changes</span>}
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty || !draft.name.trim() || !draft.conditions.length}>{saving ? 'Saving…' : draft.builtin ? 'Save enabled state' : 'Save format'}</Button>
       </>}
@@ -493,7 +489,7 @@ export default function CustomFormatsPageView() {
             <button className={editorView === 'conditions' ? 'active' : ''} onClick={() => setEditorView('conditions')}><span>2</span><div><strong>Match rules</strong><small>{draft.conditions.length} configured</small></div><Icon name="chevron" size={14} /></button>
             <button className={editorView === 'test' ? 'active' : ''} onClick={() => setEditorView('test')}><span>3</span><div><strong>Test</strong><small>Try a real release title</small></div><Icon name="chevron" size={14} /></button>
           </nav>
-          {draft.builtin && <div className="cf-editor-owned"><Icon name="shield" size={15} /><span>Maintained by Medialogue</span></div>}
+          {draft.builtin && <div className="cf-editor-owned"><Icon name="lock" size={15} /><span>Maintained by Medialogue</span></div>}
         </aside>
 
         <div className="cf-editor-content">
@@ -517,7 +513,7 @@ export default function CustomFormatsPageView() {
 
           {editorView === 'conditions' && <section className="cf-editor-panel cf-editor-rules-panel">
             <div className="cf-editor-panel-head cf-editor-panel-head-compact"><h3>Match rules</h3><p>Regular expressions run against the full release title.</p></div>
-            {draft.builtin && <div className="settings-note"><Icon name="shield" size={15} /><span>Built-in rules are read-only so matching improvements can arrive automatically. Duplicate this format if you need your own variation.</span></div>}
+            {draft.builtin && <div className="settings-note"><Icon name="lock" size={15} /><span>Built-in rules are read-only so matching improvements can arrive automatically. Duplicate this format if you need your own variation.</span></div>}
             <div className="cf-logic-summary"><Icon name="activity" size={16} /><div><strong>How these rules combine:</strong><span>{draft.conditions.length ? ruleLogic : 'Add at least one rule. A format with no rules never matches.'}</span></div></div>
             {!draft.builtin && <div className="cf-add-rule"><div><strong>Add a regex rule</strong><span>Match text anywhere in the full release title.</span></div><Button variant="secondary" icon="plus" onClick={() => setDraft((current) => ({ ...current, conditions: [...current.conditions, { ...freshCondition(), name: `Rule ${current.conditions.length + 1}` }] }))}>Add rule</Button></div>}
             {draft.conditions.length ? <div className="cf-condition-list">
@@ -538,7 +534,7 @@ export default function CustomFormatsPageView() {
                   <label className="cf-rule-offset"><span>Score offset</span><Input type="number" value={condition.scoreOffset} min={-100000} max={100000} onChange={(event) => updateCondition(condition.id, { scoreOffset: Number(event.target.value) || 0 })} readOnly={draft.builtin} /></label>
                 </div>
               </div>)}
-            </div> : <div className="cf-test-placeholder"><Icon name="sliders" size={18} /><strong>No match rules yet</strong><span>Choose an evidence type above and add the first rule.</span></div>}
+            </div> : <div className="cf-test-placeholder"><Icon name="custom-format" size={18} /><strong>No match rules yet</strong><span>Choose an evidence type above and add the first rule.</span></div>}
             <div className="cf-editor-next"><Button variant="secondary" onClick={() => setEditorView('details')}>Back</Button><Button variant="primary" onClick={() => setEditorView('test')} disabled={!draft.conditions.length}>Continue to test</Button></div>
           </section>}
 

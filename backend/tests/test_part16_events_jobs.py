@@ -26,6 +26,7 @@ from app.models.domain import (
     MovieRelease,
     MovieReleaseTorrent,
     Problem,
+    Severity,
     ReleaseState,
     StorageRoot,
     Torrent,
@@ -457,3 +458,34 @@ def test_problem_count_endpoint_returns_only_a_count(client: TestClient) -> None
     response = client.get("/api/v1/problems/count?status=open", headers=headers)
     assert response.status_code == 200, response.text
     assert response.json() == {"count": 1}
+
+
+def test_events_sort_by_severity_ranks_worst_first(client: TestClient) -> None:
+    """Severity is an enum column, so the ranking has to be explicit: sorting on
+    the stored value would order it alphabetically instead."""
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            for severity in (Severity.INFO, Severity.ERROR, Severity.WARNING):
+                await create_event(db, "scan.completed", entity_type="movie", message=f"Sort probe {severity.value}.", severity=severity)
+            await db.commit()
+
+    login_headers(client)
+    asyncio.run(seed())
+
+    worst_first = client.get("/api/v1/events?sort=severity")
+    assert worst_first.status_code == 200, worst_first.text
+    assert [item["severity"] for item in worst_first.json()["items"]][:3] == ["error", "warning", "info"]
+
+    best_first = client.get("/api/v1/events?sort=-severity")
+    assert [item["severity"] for item in best_first.json()["items"]][:3] == ["info", "warning", "error"]
+
+
+def test_events_reject_a_sort_field_the_list_does_not_show(client: TestClient) -> None:
+    login_headers(client)
+    assert client.get("/api/v1/events?sort=message").status_code == 422
+
+
+def test_events_accept_the_largest_page_size_the_list_offers(client: TestClient) -> None:
+    login_headers(client)
+    assert client.get("/api/v1/events?page_size=1000").status_code == 200

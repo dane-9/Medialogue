@@ -44,8 +44,10 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
             media_directory_columns = {column["name"]: column for column in inspector.get_columns("media_directories")}
             torrent_columns = {column["name"]: column for column in inspector.get_columns("torrents")}
             movie_columns = {column["name"] for column in inspector.get_columns("movies")}
+            movie_release_columns = {column["name"] for column in inspector.get_columns("movie_releases")}
             show_columns = {column["name"] for column in inspector.get_columns("shows")}
             storage_root_columns = {column["name"] for column in inspector.get_columns("storage_roots")}
+            discovery_columns = {column["name"] for column in inspector.get_columns("media_discoveries")}
         finally:
             engine.dispose()
     finally:
@@ -70,12 +72,13 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
         "last_success_at",
         "latency_ms",
         "last_error",
-        "poll_interval_seconds",
     } <= download_client_columns
     assert media_directory_columns["storage_root_id"]["nullable"] is True
     assert "BIGINT" in str(torrent_columns["total_size"]["type"]).upper()
     assert "poster_ref" in movie_columns
     assert "poster_ref" in show_columns
+    assert "edition_override_active" in movie_release_columns
+    assert {"edition_override_active", "manual_edition_override"} <= discovery_columns
 
 
 def test_upgrade_head_offline_sql_generation_succeeds() -> None:
@@ -97,28 +100,37 @@ def test_upgrade_head_offline_sql_generation_succeeds() -> None:
     assert "'0001'" in completed.stdout
 
 
-def test_migration_history_is_intentionally_squashed_to_one_short_baseline() -> None:
+def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> None:
     backend_dir = _backend_dir()
     versions_dir = backend_dir / "alembic" / "versions"
     migrations = sorted(path for path in versions_dir.glob("*.py") if path.name != "__init__.py")
-    assert [path.name for path in migrations] == ["0001_fresh_baseline.py"]
+    assert [path.name for path in migrations] == [
+        "0001_fresh_baseline.py",
+        "0002_media_review.py",
+        "0003_removed_show_metadata_provider.py",
+        "0004_remove_metadata_provider_columns.py",
+        "0005_movie_edition_overrides.py",
+        "0006_review_movie_editions.py",
+    ]
 
-    source = migrations[0].read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(migrations[0]))
-    revision = down_revision = object()
-    for node in tree.body:
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
-            continue
-        names = {target.id for target in node.targets if isinstance(target, ast.Name)}
-        if "revision" in names:
-            revision = node.value.value
-        if "down_revision" in names:
-            down_revision = node.value.value
-    assert revision == "0001"
-    assert down_revision is None
-    # Keep revision identifiers well below Alembic's default VARCHAR(32).
-    assert len(str(revision)) <= 32
-    assert "Base.metadata.create_all" in source
+    previous = None
+    for index, migration in enumerate(migrations, start=1):
+        source = migration.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(migration))
+        revision = down_revision = object()
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
+                continue
+            names = {target.id for target in node.targets if isinstance(target, ast.Name)}
+            if "revision" in names:
+                revision = node.value.value
+            if "down_revision" in names:
+                down_revision = node.value.value
+        assert revision == f"{index:04d}"
+        assert down_revision == previous
+        assert len(str(revision)) <= 32
+        previous = revision
+    assert "Base.metadata.create_all" in migrations[0].read_text(encoding="utf-8")
 
 
 def test_online_postgres_migrations_use_installed_asyncpg_driver() -> None:

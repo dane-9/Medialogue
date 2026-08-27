@@ -18,23 +18,16 @@ describe('badgeColor', () => {
     expect(badge.background).toBe('rgba(124, 140, 248, 0.12)')
   })
 
-  it('lightens a colour too dark to read on the dark theme', () => {
-    const badge = badgeColor('#000000')!
-    expect(luminance(rgbOf(badge.text))).toBeGreaterThanOrEqual(0.28)
+  it('uses a dark colour exactly as chosen', () => {
+    expect(badgeColor('#000000')!.text).toBe('rgb(0, 0, 0)')
+    expect(badgeColor('#330000')!.text).toBe('rgb(51, 0, 0)')
   })
 
-  it('lightens every dark hue it is given, keeping none unreadable', () => {
+  it('never substitutes a different colour, however dark', () => {
     for (const dark of ['#000000', '#101010', '#0a1f0a', '#1a0033', '#003366', '#220000']) {
       const badge = badgeColor(dark)!
-      expect(luminance(rgbOf(badge.text)), dark).toBeGreaterThanOrEqual(0.28)
+      expect(rgbOf(badge.text), dark).toEqual(rgbOf(`rgb(${parseInt(dark.slice(1, 3), 16)}, ${parseInt(dark.slice(3, 5), 16)}, ${parseInt(dark.slice(5, 7), 16)})`))
     }
-  })
-
-  it('preserves the chosen hue while lightening it', () => {
-    // A dark red must brighten into a light red, not wash out to grey.
-    const [r, g, b] = rgbOf(badgeColor('#330000')!.text)
-    expect(r).toBeGreaterThan(g)
-    expect(r).toBeGreaterThan(b)
   })
 
   it('accepts a hex with or without the leading hash, in any case', () => {

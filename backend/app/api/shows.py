@@ -13,6 +13,7 @@ from app.api.dependencies import require_admin, require_csrf
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
+from app.core.problem_types import problem_description, problem_title
 from app.services.events import create_event
 from app.db.session import get_db
 from app.models.auth import AdminUser
@@ -573,7 +574,18 @@ async def _detail(db: AsyncSession, resource_id: str) -> ShowDetailResponse:
         overview=show.overview,
         seasons=seasons,
         recent_events=[{"id": str(event.id), "type": event.event_type, "message": event.message, "details": event.details, "created_at": event.created_at.isoformat()} for event in events],
-        problems=[{"id": str(problem.id), "reason": problem.reason, "message": problem.message, "severity": problem.severity.value, "details": problem.details} for problem in problems],
+        problems=[
+            {
+                "id": str(problem.id),
+                "reason": problem.reason,
+                "message": problem.message,
+                "title": problem_title(problem.reason),
+                "description": problem_description(problem.reason, problem.message),
+                "severity": problem.severity.value,
+                "details": problem.details,
+            }
+            for problem in problems
+        ],
         storage_roots=[{"id": str(root.id), "name": root.name, "path": root.resolved_root_path, "health": root.last_health} for root in roots],
         last_observed_at=last_seen,
     )

@@ -444,6 +444,14 @@ async def download_search_result(
     client = await get_configured_download_client(db, payload.download_client_id)
     if client is None or not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", "Download client is not available.", status_code=404)
+    # A restriction of none means any eligible client, so an empty list is not a
+    # list that excludes everything.
+    if indexer.download_client_ids and client.id not in indexer.download_client_ids:
+        raise AppError(
+            "DOWNLOAD_CLIENT_NOT_ALLOWED_BY_INDEXER",
+            f"{indexer.name} is not configured to grab through {client.name}.",
+            status_code=409,
+        )
     if client.scope != result.media_type:
         raise AppError(
             "DOWNLOAD_CLIENT_SCOPE_MISMATCH",

@@ -384,8 +384,6 @@ async def _poll_download_client(
                         prior.last_seen_at = utcnow()
                         prior.removed_at = None
                         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-                        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
-                        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
                         await cancel_incoming_torrent(db, torrent, emit_event=False)
                         # None means qBit still has the torrent, but its path is
                         # outside Medialogue's configured storage scope.  That
@@ -612,11 +610,6 @@ async def _poll_download_client(
                 )
                 torrent = await db.get(Torrent, row.torrent_id)
                 if torrent is not None:
-                    # A prior duplicate-resolution removal may have failed,
-                    # but the torrent can later disappear through a retry or
-                    # manual qBittorrent action. Fresh qBit evidence then
-                    # proves that failure Problem is no longer current.
-                    await resolve_problem(db, "QBIT_REMOVE_FAILED", "torrent", torrent.id)
                     await cancel_incoming_torrent(db, torrent)
                     await reconcile_torrent_disagreements(db, torrent, qbit_present=False)
 

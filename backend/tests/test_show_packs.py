@@ -20,7 +20,6 @@ from app.integrations.filesystem import DirectoryObservation
 from app.integrations.qbittorrent import TorrentObservation
 from app.integrations.tmdb import TMDBEpisodeMetadata, TMDBSeasonMetadata, TMDBShowDetails, TMDBShowMatch
 from app.main import create_app
-from app.api import problems as problems_api
 from app.models.domain import EpisodeMediaMap, MatchMethod, Problem, Show, StorageRoot, Torrent
 from app.services.shows import reconcile_show_directory
 
@@ -176,7 +175,7 @@ def test_show_metadata_refresh_is_a_job(client: TestClient) -> None:
     assert refreshed.json()["seasons"][0]["episodes"][0]["title"] == "Episode One"
 
 
-def test_ambiguous_show_problem_retains_selectable_tmdb_candidates(
+def test_ambiguous_show_is_sent_to_review_with_cached_tmdb_candidates(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -197,92 +196,28 @@ def test_ambiguous_show_problem_retains_selectable_tmdb_candidates(
         configured = create_show_root(client, headers, root)
         scan(client, headers, configured["id"])
 
-        response = client.get(
-            "/api/v1/problems?reason=TMDB_SHOW_IDENTITY_UNRESOLVED&status=open"
-        )
+        problems = client.get("/api/v1/problems?status=open")
+        assert problems.status_code == 200, problems.text
+        assert problems.json()["total"] == 0
+
+        response = client.get("/api/v1/discoveries?page_size=250")
         assert response.status_code == 200, response.text
         assert response.json()["total"] == 1
-        problem = response.json()["items"][0]
-        assert problem["details"]["tmdb_reason"] == "ambiguous"
-        assert problem["details"]["tmdb_queries"] == ["Dollface (2019)"]
-        assert [item["tmdb_id"] for item in problem["details"]["tmdb_candidates"]] == [194764, 294764]
-        assert [item["poster_path"] for item in problem["details"]["tmdb_candidates"]] == [
+        discovery = response.json()["items"][0]
+        assert discovery["parsed_title"] == "Dollface"
+        assert [item["tmdb_id"] for item in discovery["candidates"]] == [194764, 294764]
+        assert [item["poster_ref"] for item in discovery["candidates"]] == [
             "/first.jpg",
             "/second.jpg",
         ]
-        assert "confirm_show_match" in problem["available_actions"]
+        assert discovery["selected"]["tmdb_id"] == 194764
 
         confirmed = client.post(
-            f"/api/v1/problems/{problem['id']}/resolve",
+            f"/api/v1/discoveries/{discovery['id']}/approve",
             headers=headers,
-            json={"action": "confirm_show_match", "payload": {"tmdb_id": 194764}},
         )
         assert confirmed.status_code == 200, confirmed.text
-        job = wait_job(client, confirmed.json()["resolution"]["followup_job_id"])
-        assert job["status"] == "completed", job
-        assert job["summary"]["result"] in {"matched", "partial", "duplicates"}
         assert detail(client)["seasons"][0]["episodes"][0]["presence_state"] == "present"
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
-def test_confirmed_show_resolves_before_season_import_and_directory_reconciliation(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def ambiguous_search(_self, title: str, year: int | None = None):
-        return [
-            TMDBShowMatch(194764, "Dollface", "Dollface", 2019, "First candidate.", "/first.jpg"),
-            TMDBShowMatch(294764, "Dollface", "Dollface", 2019, "Second candidate.", "/second.jpg"),
-        ]
-
-    season_calls = 0
-    original_get_season = FakeTMDBClient.get_season
-
-    async def counted_get_season(self, tmdb_id: int, season_number: int):
-        nonlocal season_calls
-        season_calls += 1
-        return await original_get_season(self, tmdb_id, season_number)
-
-    monkeypatch.setattr(FakeTMDBClient, "search_show", ambiguous_search)
-    monkeypatch.setattr(FakeTMDBClient, "get_season", counted_get_season)
-    root = Path.cwd() / f"deferred-show-confirm-{uuid.uuid4().hex}"
-    show_dir = root / "Dollface 2019"
-    show_dir.mkdir(parents=True)
-    (show_dir / "Dollface S01E01 1080p WEB-DL H.264-HONE.mkv").write_bytes(b"episode")
-    try:
-        headers = login(client)
-        configure(client, headers)
-        configured = create_show_root(client, headers, root)
-        scan(client, headers, configured["id"])
-        problem = client.get(
-            "/api/v1/problems?reason=TMDB_SHOW_IDENTITY_UNRESOLVED&status=open"
-        ).json()["items"][0]
-
-        launched: dict[str, object] = {}
-
-        def defer_runtime_job(job_id, factory):
-            launched["job_id"] = str(job_id)
-            launched["factory"] = factory
-            return True
-
-        monkeypatch.setattr(problems_api, "launch_runtime_job", defer_runtime_job)
-        response = client.post(
-            f"/api/v1/problems/{problem['id']}/resolve",
-            headers=headers,
-            json={"action": "confirm_show_match", "payload": {"tmdb_id": 194764}},
-        )
-
-        assert response.status_code == 200, response.text
-        resolved = response.json()
-        assert resolved["status"] == "resolved"
-        followup_job_id = resolved["resolution"]["followup_job_id"]
-        assert launched["job_id"] == followup_job_id
-        assert season_calls == 0
-        assert client.get("/api/v1/problems?status=open").json()["total"] == 0
-        queued = client.get(f"/api/v1/jobs/{followup_job_id}").json()
-        assert queued["status"] == "queued"
-        assert queued["job_type"] == "confirmed_show_reconciliation"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -344,9 +279,7 @@ def test_multi_season_container_accepts_member_from_nested_season_folder(client:
             for item in season_one_detail["episodes"][:2]
             for media in item["media"]
         } == {"episode"}
-        assert client.get(
-            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
-        ).json()["total"] == 0
+        assert client.get("/api/v1/problems?status=open").json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -375,34 +308,11 @@ def test_explicit_member_episodes_win_over_a_conflicting_season_container(client
             assert Path(episode["media"][0]["path"]).resolve() == path.resolve()
             assert episode["media"][0]["release_name"] == path.stem
 
-        mismatches = client.get(
-            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
-        ).json()
-        assert mismatches["total"] == 2
-        assert {item["details"]["member_season"] for item in mismatches["items"]} == {1}
-        assert {item["details"]["container_season"] for item in mismatches["items"]} == {2}
-        assert {item["details"]["container_source"] for item in mismatches["items"]} == {"folder"}
+        # The explicit member filename wins quietly. A contradictory container
+        # is useful parsing context, but is not actionable Problems work.
+        assert client.get("/api/v1/problems?status=open").json()["total"] == 0
         assert client.get(
             "/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE&status=open"
-        ).json()["total"] == 0
-
-        wrong_episode_container = root / "Dollface S01E03 1080p DSNP WEB-DL H.264-WRONG"
-        wrong_pack.rename(wrong_episode_container)
-        scan(client, headers, configured["id"])
-        episode_mismatches = client.get(
-            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
-        ).json()
-        assert episode_mismatches["total"] == 2
-        assert {
-            tuple(item["details"]["container_episode_numbers"])
-            for item in episode_mismatches["items"]
-        } == {(3,)}
-
-        correct_pack = root / "Dollface S01 1080p DSNP WEB-DL H.264-HONE"
-        wrong_episode_container.rename(correct_pack)
-        scan(client, headers, configured["id"])
-        assert client.get(
-            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
         ).json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -465,12 +375,7 @@ def test_conflicting_torrent_season_does_not_relabel_pack_members(client: TestCl
             assert media["show_release_id"] in original_release_ids
             assert media["release_scope"] == "season_pack"
             assert "S01" in media["release_name"]
-        mismatches = client.get(
-            "/api/v1/problems?reason=EPISODE_CONTAINER_MISMATCH&status=open"
-        ).json()
-        assert mismatches["total"] == 2
-        assert {item["details"]["container_source"] for item in mismatches["items"]} == {"torrent"}
-        assert {item["details"]["container_season"] for item in mismatches["items"]} == {2}
+        assert client.get("/api/v1/problems?status=open").json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

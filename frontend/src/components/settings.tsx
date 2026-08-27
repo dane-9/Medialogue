@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { InputHTMLAttributes, PropsWithChildren, ReactNode } from 'react'
 import { Icon } from './Icon'
 import { Badge, Button } from './ui'
@@ -44,8 +44,7 @@ export type StatusTone = 'green' | 'amber' | 'red' | 'neutral'
  * this job differently. A connection test writes its result into `detail`,
  * beside the thing that was tested, rather than into a shared message line.
  */
-export function SectionHead({ icon, title, description, status, statusTone = 'neutral', detail, detailTone, action, autosave, divided }: {
-  icon: Parameters<typeof Icon>[0]['name']
+export function SectionHead({ title, description, status, statusTone = 'neutral', detail, detailTone, action, autosave, divided }: {
   title: string
   description: ReactNode
   status?: string
@@ -57,7 +56,6 @@ export function SectionHead({ icon, title, description, status, statusTone = 'ne
   divided?: boolean
 }) {
   return <div className={`section-head ${divided ? 'section-head-split' : ''}`}>
-    <div className="rail-glyph"><Icon name={icon} size={17} /></div>
     <div className="section-head-copy"><h3>{title}</h3><p>{description}</p></div>
     {(status || detail) && <div className="section-head-status">
       {status && <Badge tone={statusTone}>{status}</Badge>}
@@ -75,8 +73,31 @@ export function SectionHead({ icon, title, description, status, statusTone = 'ne
  */
 export type Message = { tone: 'ok' | 'error' | 'busy'; text: string } | null
 
-export function Note({ message }: { message: Message }) {
-  if (!message) return null
+/**
+ * A one-line result of something you just did.
+ *
+ * It clears itself: a confirmation that outlives the moment it confirms turns
+ * into furniture, and the next action pushes a new one anyway. A pending
+ * message never expires, because the work it describes is what ends it, and an
+ * error is given longer than a success since it is the one you may need to read
+ * twice or copy out.
+ */
+const DISMISS_AFTER: Record<string, number> = { ok: 4000, error: 12000 }
+
+export function Note({ message, dismissAfter }: { message: Message; dismissAfter?: number }) {
+  const [expired, setExpired] = useState(false)
+  const tone = message?.tone
+  const text = message?.text
+
+  useEffect(() => {
+    setExpired(false)
+    if (!tone || tone === 'busy') return
+    const after = dismissAfter ?? DISMISS_AFTER[tone] ?? 4000
+    const timer = window.setTimeout(() => setExpired(true), after)
+    return () => window.clearTimeout(timer)
+  }, [tone, text, dismissAfter])
+
+  if (!message || expired) return null
   const icon = message.tone === 'error' ? 'alert' : message.tone === 'ok' ? 'check' : 'clock'
   const cls = message.tone === 'error' ? 'error-note' : message.tone === 'ok' ? 'note-ok' : ''
   return <div className={`settings-note ${cls}`}><Icon name={icon} size={15} /><span>{message.text}</span></div>
@@ -86,10 +107,7 @@ export const ok = (text: string): Message => ({ tone: 'ok', text })
 export const failed = (reason: unknown, fallback: string): Message => ({ tone: 'error', text: reason instanceof Error ? reason.message : fallback })
 export const pending = (text: string): Message => ({ tone: 'busy', text })
 
-/**
- * A footer that always states whether what you are looking at is what is
- * stored, so a half-edited panel can never be mistaken for a saved one.
- */
+/** A footer that calls out edits that still need saving. */
 export function SaveFooter({ dirty, saving, onSave, onRevert, children }: PropsWithChildren<{
   dirty: boolean
   saving?: boolean
@@ -97,7 +115,7 @@ export function SaveFooter({ dirty, saving, onSave, onRevert, children }: PropsW
   onRevert?: () => void
 }>) {
   return <div className="settings-footer">
-    <span className={`footer-state ${dirty ? '' : 'clean'}`}>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+    {dirty && <span className="footer-state">Unsaved changes</span>}
     {children}
     {onRevert && <Button variant="ghost" onClick={onRevert} disabled={!dirty || saving}>Revert</Button>}
     <Button variant="primary" onClick={onSave} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save changes'}</Button>

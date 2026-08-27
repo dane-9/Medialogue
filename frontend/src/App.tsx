@@ -7,7 +7,6 @@ import { AppShell } from './components/Shell'
 import { Button, Input } from './components/ui'
 import { CustomFormatsPage, DownloadsPage, EventHistoryPage, MovieDetailPage, MoviesPage, ProblemsPage, ReviewPage, SettingsPage, ShowDetailPage, ShowsPage, TorrentArchivePage } from './pages'
 import QualityProfilesPage from './QualityProfilesPage'
-import { SetupPage } from './SetupPage'
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false)
@@ -30,20 +29,8 @@ function App() {
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const location = useLocation()
-  const [setupRequired, setSetupRequired] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    api.setupStatus().then((status) => { if (alive) setSetupRequired(status.wizard_required) }).catch(() => { if (alive) setSetupRequired(false) })
-    return () => { alive = false }
-  }, [])
-
-  if (setupRequired === null) return <BootScreen />
-  const setupSettings = location.pathname === '/settings' && new URLSearchParams(location.search).get('setup') === '1'
-  if (setupRequired && location.pathname !== '/setup' && !setupSettings) return <Navigate to="/setup" replace />
 
   return <AppShell onLogout={onLogout}><PageErrorBoundary key={location.pathname}><Routes>
-    <Route path="/setup" element={<SetupPage onComplete={() => setSetupRequired(false)} />} />
     <Route path="/movies" element={<MoviesPage />} />
     <Route path="/movies/:id" element={<MovieDetailRoute />} />
     <Route path="/shows" element={<ShowsPage />} />
@@ -56,7 +43,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/quality-profiles" element={<QualityProfilesPage />} />
     <Route path="/events" element={<EventHistoryPage />} />
     <Route path="/settings" element={<SettingsPage />} />
-    <Route path="*" element={<Navigate to={setupRequired ? '/setup' : '/movies'} replace />} />
+    <Route path="*" element={<Navigate to="/movies" replace />} />
   </Routes></PageErrorBoundary></AppShell>
 }
 

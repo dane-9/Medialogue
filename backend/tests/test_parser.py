@@ -431,3 +431,25 @@ def test_short_provider_tags_are_bounded_by_the_web_dl_marker() -> None:
     assert parse_release_name("Show S01E01 1080p iP WEB-DL AAC2.0-NTb").provider == "iP"
     # MA here is DTS-HD Master Audio, not the Movies Anywhere provider.
     assert parse_release_name("Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP").provider is None
+
+
+def test_uncut_and_super_sized_are_editions_in_their_own_right():
+    # The combined "Super-Sized and Uncut" is a real release name, but a film
+    # labelled only one of them must not be filed under the pair.
+    assert parse_release("Movie 2010 Uncut 1080p BluRay x264-GROUP").edition == "Uncut"
+    assert parse_release("Movie 2007 Super-Sized 1080p BluRay x264-GROUP").edition == "Super-Sized"
+
+
+def test_a_release_naming_both_takes_the_longer_edition():
+    # There is no combined edition. Aliases match longest-first, so this lands
+    # on Super-Sized rather than inventing a pair.
+    parsed = parse_release("Superbad 2007 Super-Sized and Uncut 1080p BluRay x264-GROUP")
+    assert parsed.edition == "Super-Sized"
+
+
+def test_the_combined_edition_is_not_offered_as_a_choice():
+    from app.parser.release_parser import EDITION_OPTIONS
+
+    assert "Uncut" in EDITION_OPTIONS
+    assert "Super-Sized" in EDITION_OPTIONS
+    assert "Super-Sized and Uncut" not in EDITION_OPTIONS

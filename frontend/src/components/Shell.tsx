@@ -11,17 +11,17 @@ import { Button, Progress } from './ui'
 const primary = [
   { to: '/movies', label: 'Movies', icon: 'clapper' as const },
   { to: '/shows', label: 'Shows', icon: 'tv-screen' as const },
-  { to: '/review', label: 'Review', icon: 'check' as const },
+  { to: '/review', label: 'Review', icon: 'review' as const },
   { to: '/downloads', label: 'Downloads', icon: 'download' as const },
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
 ]
 const tools = [
   { to: '/torrent-archive', label: 'Torrent Archive', icon: 'archive' as const },
-  { to: '/custom-formats', label: 'Custom Formats', icon: 'sliders' as const },
-  { to: '/quality-profiles', label: 'Quality Profiles', icon: 'spark' as const },
+  { to: '/custom-formats', label: 'Custom Formats', icon: 'custom-format' as const },
+  { to: '/quality-profiles', label: 'Quality Profiles', icon: 'quality-profile' as const },
 ]
 const system = [
-  { to: '/events', label: 'Event History', icon: 'clock' as const },
+  { to: '/events', label: 'Events', icon: 'clock' as const },
   { to: '/settings', label: 'Settings', icon: 'settings' as const },
 ]
 
@@ -118,7 +118,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   }, [refreshReviewCount])
 
   const activeJobs = jobs.filter((job) => job.state === 'running' || job.state === 'queued').length
-  const currentTitle = location.pathname.startsWith('/setup') ? 'Setup' : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/review') ? 'Review' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/events') ? 'Event History' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
+  const currentTitle = location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/review') ? 'Review' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
 
   return <PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
     <aside className="sidebar">
@@ -178,9 +178,9 @@ function JobsDrawer({ jobs, onClose, onChanged, onOpenEvents }: { jobs: Job[]; o
   }
   return <div className="drawer-backdrop" onClick={onClose}><aside className="jobs-drawer" onClick={(event) => event.stopPropagation()}>
     <div className="drawer-header"><div><div className="eyebrow">BACKGROUND ACTIVITY</div><h2>Jobs</h2></div><button className="icon-button" onClick={onClose}><Icon name="close" size={18} /></button></div>
-    <div className="drawer-note"><Icon name="shield" size={16} /><span>Jobs persist across navigation and browser refresh. Interrupted work is preserved after an application restart instead of silently resuming.</span></div>
+    <div className="drawer-note"><Icon name="info" size={16} /><span>Jobs persist across navigation and browser refresh. Interrupted work is preserved after an application restart instead of silently resuming.</span></div>
     {cancelError && <div className="drawer-note error-note"><Icon name="alert" size={16} /><span>{cancelError}</span></div>}
     <div className="job-list">{jobs.length ? jobs.map((job) => <div className="job-item" key={job.id}><div className="job-item-top"><span className={`job-state job-${job.state}`}><span />{job.state}</span><span className="muted">{job.updated}</span></div><strong>{job.title}</strong><span className="job-detail">{job.error || job.detail || 'Background job'}</span>{job.progress !== undefined && <div className="job-progress-line"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div>}{job.cancellable && (job.state === 'running' || job.state === 'queued') && <div className="job-actions"><Button variant="ghost" onClick={() => void cancel(job)}>Cancel</Button></div>}</div>) : <div className="drawer-note"><Icon name="check" size={16} /><span>No background jobs have been recorded yet.</span></div>}</div>
-    <div className="drawer-footer"><Button variant="ghost" icon="external" onClick={onOpenEvents}>Open event history</Button></div>
+    <div className="drawer-footer"><Button variant="ghost" icon="external" onClick={onOpenEvents}>Open events</Button></div>
   </aside></div>
 }

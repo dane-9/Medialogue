@@ -1,6 +1,7 @@
 """Shared release parser public API."""
 
 from .release_parser import (
+    EDITION_OPTIONS,
     QUALITY_PRECEDENCE,
     normalize_release_name,
     parse_release_name,
@@ -34,6 +35,7 @@ __all__ = [
     "ReleaseParseResult",
     "VideoInfo",
     "QUALITY_BY_NAME",
+    "EDITION_OPTIONS",
     "QUALITY_DEFINITIONS",
     "QualityDefinition",
     "list_quality_definitions",

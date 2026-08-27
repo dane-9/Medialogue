@@ -80,6 +80,10 @@ class IndexerConfig:
     #: Languages a MULTI-tagged release from this indexer contains. Trackers
     #: differ on what MULTI means, so it is configured per indexer.
     multi_languages: list[str] = field(default_factory=list)
+    #: Download clients this indexer's grabs may be sent to. Empty means any
+    #: eligible client, which is the behaviour every indexer had before this
+    #: existed and stays the default for a new one.
+    download_client_ids: list[UUID] = field(default_factory=list)
 
 
 class IntegrationConfigStore:
@@ -470,6 +474,7 @@ class IntegrationConfigStore:
                 minimum_seeders=int(row.get("minimum_seeders", 1)), priority=int(row.get("priority", 25)),
                 color=(str(row["color"]) or None) if row.get("color") else None,
                 multi_languages=[str(value) for value in (row.get("multi_languages") or [])],
+                download_client_ids=[self._uuid(value) for value in (row.get("download_client_ids") or [])],
                 api_key=keys.get(str(item_id)) or None,
             ))
         return items
@@ -490,7 +495,8 @@ class IntegrationConfigStore:
                "enabled": bool(item.enabled), "timeout_seconds": int(item.timeout_seconds), "revision": revision,
                "enable_rss": bool(item.enable_rss), "enable_interactive_search": bool(item.enable_interactive_search),
                "categories": list(item.categories), "minimum_seeders": int(item.minimum_seeders), "priority": int(item.priority),
-               "color": item.color or None, "multi_languages": list(item.multi_languages)}
+               "color": item.color or None, "multi_languages": list(item.multi_languages),
+               "download_client_ids": [str(value) for value in item.download_client_ids]}
         if index is None:
             rows.append(row)
         else:

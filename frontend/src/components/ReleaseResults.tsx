@@ -84,7 +84,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
           onClick={onRefresh}
           disabled={refreshing}
           aria-label="Search the indexers again"
-        ><Icon name="reload" size={15} /></button>
+        ><Icon name="refresh" size={15} /></button>
       </Tooltip>
     : null
 

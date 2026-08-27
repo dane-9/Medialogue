@@ -231,7 +231,7 @@ async def reparse_movie_releases(db: AsyncSession, movie: Movie) -> int:
         release.parsed_title = parsed.identity.title_candidate
         release.parsed_year = parsed.identity.year
         release.parsed_edition = parsed.edition
-        if release.manual_edition_override is None:
+        if not release.edition_override_active and release.manual_edition_override is None:
             release.effective_edition = parsed.edition
         release.quality_definition_id = quality.id if quality else None
         release.release_group = parsed.release_group

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -74,6 +74,35 @@ class DuplicateResolveCommitResponse(BaseModel):
     removed_torrents: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     problem_status: str
+
+
+class MovieEditionOverrideUpdate(BaseModel):
+    release_id: UUID
+    mode: Literal["automatic", "standard", "named"]
+    edition: str | None = Field(default=None, max_length=128)
+
+
+class MovieEditionOverrideRequest(BaseModel):
+    updates: list[MovieEditionOverrideUpdate] = Field(min_length=1)
+
+
+class MovieEditionState(BaseModel):
+    release_id: UUID
+    parsed_edition: str | None = None
+    edition_override_active: bool
+    manual_edition_override: str | None = None
+    effective_edition: str | None = None
+    state: str
+
+
+class MovieEditionOverrideResponse(BaseModel):
+    movie_id: UUID
+    duplicate_resolved: bool
+    releases: list[MovieEditionState]
+
+
+class MovieEditionOptionsResponse(BaseModel):
+    editions: list[str]
 
 
 class EpisodeDuplicateResolveRequest(BaseModel):

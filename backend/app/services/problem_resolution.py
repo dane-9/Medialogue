@@ -43,9 +43,16 @@ from app.models.domain import (
     TorrentClientObservation,
     utcnow,
 )
+from app.core.problem_types import MOVIE_MATCH_REASONS, SHOW_MATCH_REASONS
 from app.services.events import create_event, queue_live_event
 from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job
-from app.services.reconciliation import open_problem, reconcile_movie_directory, resolve_problem
+from app.parser import EDITION_OPTIONS
+from app.services.reconciliation import (
+    open_problem,
+    reconcile_movie_directory,
+    refresh_movie_duplicate_problem,
+    resolve_problem,
+)
 from app.services.shows import reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
@@ -53,29 +60,24 @@ CONFIRMATION_TTL_SECONDS = 10 * 60
 
 
 def available_actions(problem: Problem) -> list[str]:
+    """What can be done about this Problem, most useful first.
+
+    Dismiss and recheck end every list, so the only question worth asking is
+    whether this particular condition has a step in front of them. Reasons that
+    do not are not enumerated: they take the same ending as everything else.
+    """
     if problem.status == ProblemStatus.DISMISSED:
         return ["restore"]
     if problem.status != ProblemStatus.OPEN:
         return []
+
+    closing = ["dismiss", "recheck"]
     reason = problem.reason
-    if "DUPLICATE" in reason:
-        return ["dismiss", "recheck"]
-    if problem.entity_type in {"media_directory", "movie"} and reason in {
-        "LOW_CONFIDENCE_MATCH",
-        "TMDB_MATCH_REQUIRED",
-        "TMDB_IDENTITY_UNRESOLVED",
-        "PLEX_IDENTITY_MISMATCH",
-    }:
-        return ["confirm_movie_match", "dismiss", "recheck"]
-    if problem.entity_type in {"media_directory", "show"} and reason in {
-        "TMDB_SHOW_MATCH_REQUIRED",
-        "TMDB_SHOW_IDENTITY_UNRESOLVED",
-        "PLEX_IDENTITY_MISMATCH",
-    }:
-        return ["confirm_show_match", "dismiss", "recheck"]
-    if reason in {"PATH_MAPPING_FAILED", "TORRENT_PATH_NOT_FOUND", "ROOT_UNREACHABLE"}:
-        return ["dismiss", "recheck"]
-    return ["dismiss", "recheck"]
+    if problem.entity_type in {"media_directory", "movie"} and reason in MOVIE_MATCH_REASONS:
+        return ["confirm_movie_match", *closing]
+    if problem.entity_type in {"media_directory", "show"} and reason in SHOW_MATCH_REASONS:
+        return ["confirm_show_match", *closing]
+    return closing
 
 
 async def resolve_explicit_problem_action(
@@ -327,7 +329,7 @@ async def _confirm_show_match(
             "show_title": show.title,
             "directory_id": str(directory_id) if directory_id else None,
             "source_problem_id": str(problem.id),
-            "message": f"Importing metadata and reconciling files for {show.title}…",
+            "message": f"Importing metadata and matching files for {show.title}…",
         },
     )
     return job.id
@@ -375,24 +377,12 @@ async def run_confirmed_show_reconciliation(
             counts = await sync_show_metadata(db, show, client_factory=tmdb_client_factory)
         except Exception as exc:
             await db.rollback()
-            show = await db.get(Show, show_id)
-            if show is not None:
-                await open_problem(
-                    db,
-                    reason="TMDB_SHOW_METADATA_UNAVAILABLE",
-                    entity_type="show",
-                    entity_id=show.id,
-                    message="Show identity is confirmed, but TMDB episode metadata could not be refreshed.",
-                    details={"tmdb_id": show.tmdb_id, "error": str(exc)},
-                )
-                await db.commit()
             raise JobFailure("TMDB_SHOW_METADATA_FAILED", str(exc)) from exc
 
-        await resolve_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
         await checkpoint_job(
             db,
             job,
-            progress={"current": 1, "total": 2, "percent": 50, "stage": "reconciling_directory", "detail": f"Reconciling files for {show.title}…"},
+            progress={"current": 1, "total": 2, "percent": 50, "stage": "matching_files", "detail": f"Matching files for {show.title}…"},
         )
 
         result = "metadata_only"
@@ -415,36 +405,24 @@ async def run_confirmed_show_reconciliation(
                 )
                 result = await reconcile_show_directory(db, root, observation, show_hint=show)
                 if result not in {"matched", "review", "partial", "duplicates"}:
-                    raise RuntimeError(f"Show directory reconciliation returned {result}.")
-                await resolve_problem(db, "SHOW_DIRECTORY_RECONCILIATION_FAILED", "media_directory", directory.id)
+                    raise RuntimeError(f"Show file matching returned {result}.")
             except Exception as exc:
                 await db.rollback()
-                directory = await db.get(MediaDirectory, directory_id)
-                if directory is not None:
-                    await open_problem(
-                        db,
-                        reason="SHOW_DIRECTORY_RECONCILIATION_FAILED",
-                        entity_type="media_directory",
-                        entity_id=directory.id,
-                        message="Show identity is confirmed, but its files could not be reconciled.",
-                        details={"show_id": str(show_id), "path": directory.resolved_path, "error": str(exc)},
-                    )
-                    await db.commit()
-                raise JobFailure("SHOW_DIRECTORY_RECONCILIATION_FAILED", str(exc)) from exc
+                raise JobFailure("SHOW_FILE_MATCHING_FAILED", str(exc)) from exc
 
         await create_event(
             db,
             "show.confirmed_reconciliation_completed",
             entity_type="show",
             entity_id=show.id,
-            message=f"Imported metadata and reconciled files for {show.title}.",
+            message=f"Imported metadata and matched files for {show.title}.",
             details={**counts, "result": result},
         )
         completed = {
             **summary,
             **counts,
             "result": result,
-            "message": f"Metadata and file reconciliation completed for {show.title}.",
+            "message": f"Metadata import and file matching completed for {show.title}.",
         }
         await checkpoint_job(
             db,
@@ -722,6 +700,110 @@ async def duplicate_preview(
     }
 
 
+def _canonical_manual_edition(value: str | None) -> str:
+    edition = (value or "").strip()
+    if not edition:
+        raise AppError("EDITION_REQUIRED", "Choose an edition or enter a custom edition name.", status_code=422)
+    canonical = next((item for item in EDITION_OPTIONS if item.casefold() == edition.casefold()), None)
+    return canonical or edition
+
+
+async def update_movie_release_editions(
+    db: AsyncSession,
+    resource_id: str,
+    updates: list[Any],
+) -> dict[str, Any]:
+    """Apply edition choices together, then recompute duplicate evidence once."""
+
+    movie = await _load_movie_for_duplicate(db, resource_id)
+    update_ids = [item.release_id for item in updates]
+    if len(set(update_ids)) != len(update_ids):
+        raise AppError("DUPLICATE_EDITION_UPDATE", "Each movie copy can only be updated once.", status_code=422)
+
+    releases = (
+        await db.scalars(
+            select(MovieRelease)
+            .options(selectinload(MovieRelease.directories))
+            .where(MovieRelease.movie_id == movie.id, MovieRelease.id.in_(update_ids))
+            .with_for_update()
+        )
+    ).unique().all()
+    by_id = {release.id: release for release in releases}
+    if len(by_id) != len(update_ids):
+        raise AppError("INVALID_EDITION_RELEASE", "Every selected copy must belong to this movie.", status_code=409)
+
+    changed: list[dict[str, Any]] = []
+    for update in updates:
+        release = by_id[update.release_id]
+        if release.release_state not in {ReleaseState.CURRENT, ReleaseState.DUPLICATE} or not any(
+            directory.exists for directory in release.directories
+        ):
+            raise AppError("EDITION_RELEASE_NOT_PRESENT", "A selected movie copy is no longer present.", status_code=409)
+
+        previous = release.effective_edition
+        if update.mode == "automatic":
+            release.edition_override_active = False
+            release.manual_edition_override = None
+            release.effective_edition = release.parsed_edition
+        elif update.mode == "standard":
+            release.edition_override_active = True
+            release.manual_edition_override = None
+            release.effective_edition = None
+        else:
+            edition = _canonical_manual_edition(update.edition)
+            release.edition_override_active = True
+            release.manual_edition_override = edition
+            release.effective_edition = edition
+        changed.append(
+            {
+                "release_id": str(release.id),
+                "previous_edition": previous,
+                "effective_edition": release.effective_edition,
+                "mode": update.mode,
+            }
+        )
+
+    await db.flush()
+    await refresh_movie_duplicate_problem(db, movie.id)
+    movie.revision += 1
+    await create_event(
+        db,
+        "movie.editions_changed",
+        entity_type="movie",
+        entity_id=movie.id,
+        message=f"Updated movie edition assignments for {movie.title}.",
+        details={"updates": changed},
+    )
+    await db.flush()
+
+    duplicate_open = await db.scalar(
+        select(Problem.id).where(
+            Problem.reason == "DUPLICATE_PHYSICAL_RELEASE",
+            Problem.entity_type == "movie",
+            Problem.entity_id == movie.id,
+            Problem.status == ProblemStatus.OPEN,
+        )
+    )
+    ordered = sorted(releases, key=lambda item: item.raw_release_name.casefold())
+    return {
+        "movie_id": movie.id,
+        "duplicate_resolved": duplicate_open is None,
+        "releases": [
+            {
+                "release_id": release.id,
+                "parsed_edition": release.parsed_edition,
+                "edition_override_active": bool(
+                    release.edition_override_active or release.manual_edition_override is not None
+                ),
+                "manual_edition_override": release.manual_edition_override,
+                "effective_edition": release.effective_edition,
+                "state": release.release_state.value,
+            }
+            for release in ordered
+        ],
+    }
+
+
 def _is_uuid(value: object) -> bool:
     try:
         UUID(str(value))
@@ -834,7 +916,6 @@ async def commit_duplicate_resolution(
                 observation.is_present = False
                 observation.removed_at = utcnow()
                 removed_torrents.append(torrent.info_hash)
-                await resolve_problem(db, "QBIT_REMOVE_FAILED", "torrent", torrent.id)
                 await create_event(
                     db,
                     "torrent.removed_by_user",
@@ -846,15 +927,6 @@ async def commit_duplicate_resolution(
             except Exception as exc:
                 qbit_removal_failed = True
                 warnings.append(f"Could not remove {torrent.info_hash} from {client.name}: {exc}")
-                await open_problem(
-                    db,
-                    reason="QBIT_REMOVE_FAILED",
-                    entity_type="torrent",
-                    entity_id=torrent.id,
-                    severity=Severity.WARNING,
-                    message="qBittorrent removal failed during duplicate resolution.",
-                    details={"client": client.name, "error": str(exc), "archive_retained": True},
-                )
             finally:
                 if adapter is not None:
                     await adapter.close()

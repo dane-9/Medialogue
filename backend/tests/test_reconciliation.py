@@ -178,6 +178,14 @@ def test_present_same_edition_is_duplicate_and_never_auto_deleted():
     assert result.events == ("release.duplicate",)
 
 
+def test_explicit_theatrical_cut_uses_the_unnamed_default_slot():
+    old = ExistingRelease("old", "/media/movies/Inception-old", ReleaseState.CURRENT, True, None)
+    result = ReconciliationEngine().reconcile_candidate(candidate(edition="Theatrical Cut"), [old])
+
+    assert result.kind is DecisionKind.DUPLICATE
+    assert result.reason_code == "DUPLICATE_PHYSICAL_RELEASE"
+
+
 def test_duplicate_requires_both_physical_paths_to_exist():
     old = ExistingRelease("old", "/media/movies/Inception-old", ReleaseState.CURRENT, True, None)
     duplicate = ReconciliationEngine().reconcile_candidate(candidate(), [old])
@@ -203,6 +211,21 @@ def test_different_present_edition_attaches_as_valid_slot():
 def test_download_must_complete_before_attachment():
     result = ReconciliationEngine().reconcile_candidate(candidate(download_complete=False), [])
     assert result.kind is DecisionKind.INCOMING
+
+
+def test_low_confidence_requires_review_instead_of_creating_a_problem():
+    result = ReconciliationEngine().reconcile_candidate(candidate(confidence=0.50), [])
+
+    assert result.kind is DecisionKind.REVIEW
+    assert result.reason_code == "IDENTITY_REVIEW_REQUIRED"
+
+
+def test_path_mapping_failure_uses_the_download_path_problem():
+    result = ReconciliationEngine().reconcile_candidate(candidate(mapping_failed=True), [])
+
+    assert result.kind is DecisionKind.PROBLEM
+    assert result.reason_code == "TORRENT_PATH_NOT_FOUND"
+    assert result.details == {"cause": "path_mapping_failed"}
 
 
 def test_plex_metadata_conflict_does_not_block_tmdb_backed_attachment():
@@ -332,6 +355,18 @@ def test_multiple_missing_releases_require_explicit_replacement_target_when_ambi
     assert result.kind is DecisionKind.PROBLEM
     assert result.reason_code == "AMBIGUOUS_REPLACEMENT_TARGET"
     assert result.details["candidate_release_ids"] == ["one", "two"]
+
+
+def test_more_than_three_distinct_editions_are_allowed():
+    existing = [
+        ExistingRelease(str(index), f"/media/movies/Inception-{index}", ReleaseState.CURRENT, True, edition)
+        for index, edition in enumerate(("Extended Cut", "Director's Cut", "IMAX"), start=1)
+    ]
+
+    result = ReconciliationEngine().reconcile_candidate(candidate(edition="Open Matte"), existing)
+
+    assert result.kind is DecisionKind.ATTACH_NEW
+    assert result.reason_code == "NEW_EDITION"
 
 
 def test_preferred_incoming_replacement_target_resolves_multiple_missing_releases():

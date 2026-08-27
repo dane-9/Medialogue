@@ -26,9 +26,9 @@ Extract this source release (or clone the repository) into one directory; the su
 
 5. Open `http://localhost:8000` and sign in with `admin` / `adminadmin`. The first-run checklist appears automatically.
 6. Configure only the integrations you use. TMDB is recommended before the first scan because it establishes external identity for newly discovered titles.
-7. Finish or skip optional setup items, then explicitly start the first storage-root scan. A newly added root remains uninitialized and is ignored by automatic reconciliation until that first scan succeeds.
+7. Finish or skip optional setup items, then explicitly start the first media-folder scan. A newly added folder remains uninitialized and is ignored by automatic file checks until that first scan succeeds.
 
-There is no global Active Operations switch. Integration observations can run automatically, while folder discovery remains opt-in: every newly added media folder requires one explicit successful scan before automatic reconciliation can use it.
+There is no global Active Operations switch. Integration observations can run automatically, while folder discovery remains opt-in: every newly added media folder requires one explicit successful scan before automatic file checks can use it.
 
 ## Local frontend development
 
@@ -128,12 +128,12 @@ Interactive Search is deliberately manual:
 1. Open **Interactive Search** and select a Movie from the Medialogue library.
 2. Medialogue creates a persistent search Job and fans the query out concurrently to every enabled `Movies`/`Both` indexer.
 3. Results appear progressively as indexers respond. A failed or timed-out indexer is shown explicitly and does not cancel successful results from the others.
-4. Release names are run through the same shared parser used by scanning and qBittorrent reconciliation. Every enabled, scope-eligible Custom Format is evaluated immediately. The target title's effective Quality Profile, per-title overrides, signed score contributions, and minimum-quality warning state are frozen with the result as immutable search-time evidence.
+4. Release names are run through the same shared parser used by scanning and qBittorrent file matching. Every enabled, scope-eligible Custom Format is evaluated immediately. The target title's effective Quality Profile, per-title overrides, signed score contributions, and minimum-quality warning state are frozen with the result as immutable search-time evidence.
 5. Choosing **Download** submits only that result. If exactly one eligible Movie qBittorrent client exists it is used immediately; with multiple eligible clients the UI asks which one to use.
 
 Searching is read-only. Actual qBittorrent submission remains an explicit user action.
 
-Medialogue does **not** pass a save path when a normal Interactive Search result is submitted. The selected qBittorrent instance, its category/tags, and qBittorrent's own configuration decide where the torrent downloads. Medialogue later observes and reconciles the completed data in place; it never imports or relocates it.
+Medialogue does **not** pass a save path when a normal Interactive Search result is submitted. The selected qBittorrent instance, its category/tags, and qBittorrent's own configuration decide where the torrent downloads. Medialogue later observes and matches the completed data in place; it never imports or relocates it.
 
 Unselected search results expire after 24 hours. Once a result is submitted, its parser/search/indexer/client evidence is retained as an immutable selection snapshot so later release history can preserve what was chosen at download time. Raw Torznab download URLs/API credentials are never returned to the browser.
 
@@ -211,27 +211,26 @@ The Shows UI provides poster cards by default, an optional dense table, expandab
 
 Season packs and multi-episode files are supported without changing the media on disk. A season pack is represented by one shared `ShowRelease` that can satisfy many Episode records while every member file remains in its original qBittorrent/download directory. Files such as `S01E01E02` and `S01E01-E03` map one physical `MediaFile` to multiple logical Episodes.
 
-Mapping is deliberately partial-safe: if a pack or multi-episode filename contains episode numbers that cannot be verified against known season metadata, Medialogue maps the episodes it can prove and raises an `EPISODE_MAPPING_UNRESOLVED` Problem for only the unresolved portion. It does not reject or relocate the rest of the pack. Multiple physical files mapped to the same Episode produce a `DUPLICATE_EPISODE_RELEASE` Problem and are left untouched.
+Mapping is deliberately partial-safe: if a pack or multi-episode filename contains episode numbers that cannot be verified against known season metadata, Medialogue maps the episodes it can prove and leaves the unresolved portion unattached. It does not reject or relocate the rest of the pack. Multiple physical files mapped to the same Episode produce a `DUPLICATE_EPISODE_RELEASE` Problem and are left untouched.
 
 Episode mappings can also be corrected manually from the Show page. This is a database-only logical correction: the media file is not renamed, moved, copied, hardlinked, or modified. A manual mapping is authoritative on future scans, including episode numbers deliberately removed from the parser-derived mapping.
 
 ## Problems and duplicate resolution
 
-Medialogue has one persistent **Problems** queue for reconciliation evidence that needs a human decision. Problems are not generic notifications: each reason exposes only the actions that are valid for that evidence. Rechecking a Problem does not fake a resolution; it remains open until a later observation proves the underlying condition changed.
+Medialogue has one persistent **Problems** queue for media evidence that needs attention. Problems are not generic notifications: each reason exposes only the actions that are valid for that evidence. Rechecking a Problem does not fake a resolution; it remains open until a later observation proves the underlying condition changed.
 
 Common reasons include:
 
 ```text
 PLEX_IDENTITY_MISMATCH
-LOW_CONFIDENCE_MATCH
-PATH_MAPPING_FAILED
 TORRENT_PATH_NOT_FOUND
 ROOT_UNREACHABLE
 DUPLICATE_PHYSICAL_RELEASE
 DUPLICATE_EPISODE_RELEASE
+AMBIGUOUS_REPLACEMENT_TARGET
 ```
 
-The Problems page is organized by the next required action: manual fixes, identity confirmation, configuration, or recheck. It supports explicit TMDB Movie/Show matching, path-mapping guidance, direct Plex-item links, per-Problem rechecks, and rechecking the current active queue. TMDB/manual matching is authoritative for Movie identity. Plex movie titles and years are advisory metadata and never create or block a Problem; Plex only verifies physical presence/path. For Shows, an exact-file season/episode-number disagreement can still surface because it indicates a real episode-mapping issue. Identity correction changes database metadata only; it never renames or relocates media.
+The Problems page is organized by the next required action: manual fixes, identity confirmation, configuration, or recheck. It supports explicit TMDB Movie/Show matching, download-path diagnostics, direct Plex-item links, per-Problem rechecks, and rechecking the current active queue. TMDB/manual matching is authoritative for Movie identity. Plex movie titles and years are advisory metadata and never create or block a Problem; Plex only verifies physical presence/path. For Shows, an exact-file season/episode-number disagreement can still surface because it indicates a real episode-mapping issue. Identity correction changes database metadata only; it never renames or relocates media.
 
 ### Movie physical duplicates
 
@@ -243,9 +242,9 @@ A `DUPLICATE_PHYSICAL_RELEASE` is deliberately left untouched. Review the paths 
 
 ### Path mapping problems
 
-Remote qBittorrent path mappings can be configured under **Settings → Media Folders**. The UI stores the reported remote prefix and its container-visible local prefix, optionally scoped to one qBittorrent client and one media folder. Medialogue never guesses a path translation. After adding or correcting a mapping, recheck the affected Problem/reconciliation evidence.
+Remote qBittorrent path mappings can be configured under **Settings → Media Folders**. The UI stores the reported remote prefix and its container-visible local prefix, optionally scoped to one qBittorrent client and one media folder. Medialogue never guesses a path translation. After adding or correcting a mapping, recheck the affected Problem.
 
-Media folders can be described as **Read-only** or **Read/write** in the UI, but reconciliation and Problem handling require only read access. Medialogue does not use Problems to delete media.
+Media folders can be described as **Read-only** or **Read/write** in the UI, but file checks and Problem handling require only read access. Medialogue does not use Problems to delete media.
 
 ## Tags and bulk Movie administration
 

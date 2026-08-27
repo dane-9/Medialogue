@@ -50,7 +50,11 @@ class ReconciliationEngine:
         if not candidate.root_available:
             return Decision(DecisionKind.PROBLEM, "ROOT_UNREACHABLE")
         if candidate.mapping_failed:
-            return Decision(DecisionKind.PROBLEM, "PATH_MAPPING_FAILED")
+            return Decision(
+                DecisionKind.PROBLEM,
+                "TORRENT_PATH_NOT_FOUND",
+                details={"cause": "path_mapping_failed"},
+            )
         if not candidate.inside_allowed_root:
             return Decision(DecisionKind.IGNORED, "OUTSIDE_MANAGED_ROOT")
         if not candidate.resolved_path:
@@ -59,13 +63,9 @@ class ReconciliationEngine:
             if candidate.directory_exists is False:
                 return Decision(DecisionKind.PROBLEM, "TORRENT_PATH_NOT_FOUND")
             if not candidate.filename_identity_matches:
-                return Decision(DecisionKind.PROBLEM, "LOW_CONFIDENCE_MATCH")
+                return Decision(DecisionKind.REVIEW, "IDENTITY_REVIEW_REQUIRED")
         if not candidate.identity_matches or candidate.confidence < self.minimum_auto_match_confidence:
-            return Decision(
-                DecisionKind.PROBLEM,
-                "LOW_CONFIDENCE_MATCH",
-                details={"confidence": candidate.confidence},
-            )
+            return Decision(DecisionKind.REVIEW, "IDENTITY_REVIEW_REQUIRED", details={"confidence": candidate.confidence})
         # Plex is a presence/path observer, not an identity authority. Movie
         # identity is established by TMDB/manual matching, so Plex metadata
         # differences must never block attachment or replacement.
@@ -139,15 +139,15 @@ class ReconciliationEngine:
             )
 
         if physical_active:
-            if len(physical_active) >= 3:
-                return Decision(DecisionKind.PROBLEM, "ACTIVE_RELEASE_LIMIT_REACHED")
             return Decision(DecisionKind.ATTACH_NEW, "NEW_EDITION", events=("media.attached",))
 
         return Decision(DecisionKind.ATTACH_NEW, "NEW_LIBRARY_ITEM", events=("media.attached",))
 
     @staticmethod
     def _same_edition_slot(left: str | None, right: str | None) -> bool:
-        normalize = lambda value: (value or "").strip().casefold()
+        # An unnamed movie is its normal theatrical version. Explicitly naming
+        # that cut must not create a second slot beside the default.
+        normalize = lambda value: "" if (value or "").strip().casefold() in {"", "theatrical cut"} else (value or "").strip().casefold()
         return normalize(left) == normalize(right)
 
     @staticmethod

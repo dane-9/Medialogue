@@ -10,7 +10,12 @@ from app.api.downloads import get_qbittorrent_client_factory
 from app.api.plex import get_plex_client_factory
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
-from app.core.problem_types import RETIRED_PROBLEM_REASONS
+from app.core.problem_types import (
+    RETIRED_PROBLEM_REASONS,
+    problem_description,
+    problem_label,
+    problem_title,
+)
 from app.db import session as db_session
 from app.db.session import get_db
 from app.models.auth import AdminUser
@@ -49,10 +54,8 @@ from app.services.library_scan import active_storage_root_scan_job, run_storage_
 from app.services.plex import get_plex_configuration, recheck_movie_plex, recheck_show_plex
 from app.services.problem_resolution import available_actions, resolve_explicit_problem_action, run_confirmed_show_reconciliation
 from app.services.qbittorrent import poll_download_client
-from app.services.reconciliation import resolve_problem as resolve_observed_problem
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.shows import recheck_episode_duplicate_problem
-from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
 router = APIRouter(prefix="/problems", tags=["problems"])
 
@@ -158,33 +161,6 @@ async def _problem_download_client_ids(db: AsyncSession, problem: Problem) -> se
     )
 
 
-async def _recheck_show_metadata_problem(
-    db: AsyncSession,
-    problem: Problem,
-    *,
-    tmdb_client_factory,
-) -> str | None:
-    """Retry the evidence source for TMDB Show metadata Problems in-place."""
-
-    if problem.reason != "TMDB_SHOW_METADATA_UNAVAILABLE" or problem.entity_type != "show" or problem.entity_id is None:
-        return None
-    show = await db.get(Show, problem.entity_id)
-    if show is None:
-        return "The affected Show no longer exists."
-    configuration = await get_tmdb_configuration(db)
-    if configuration is None or not configuration.enabled or not configuration.api_key or show.tmdb_id is None:
-        return "TMDB is not configured for this Show."
-    try:
-        async with db.begin_nested():
-            await sync_show_metadata(db, show, client_factory=tmdb_client_factory)
-            await resolve_observed_problem(db, "TMDB_SHOW_METADATA_UNAVAILABLE", "show", show.id)
-    except Exception as exc:
-        return str(exc)
-    return None
-
-
-
-
 async def _recheck_plex_problem(
     db: AsyncSession,
     problem: Problem,
@@ -279,11 +255,6 @@ async def run_problem_recheck(
             await db.commit()
             publish_job_status(job)
 
-            metadata_error = await _recheck_show_metadata_problem(
-                db,
-                problem,
-                tmdb_client_factory=tmdb_client_factory,
-            )
             plex_handled, plex_error = await _recheck_plex_problem(
                 db,
                 problem,
@@ -297,16 +268,12 @@ async def run_problem_recheck(
             duplicate_cleared = False
             if duplicate_handled:
                 duplicate_cleared = await recheck_episode_duplicate_problem(db, problem.entity_id)
-            direct_recheck = (
-                problem.reason == "TMDB_SHOW_METADATA_UNAVAILABLE"
-                or plex_handled
-                or (duplicate_handled and duplicate_cleared)
-            )
+            direct_recheck = plex_handled or (duplicate_handled and duplicate_cleared)
             root_ids = set() if direct_recheck else await _problem_root_ids(db, problem)
             download_client_ids = await _problem_download_client_ids(db, problem)
             new_job_ids, active_job_ids = await _queue_root_rechecks(db, root_ids)
             child_job_ids = [*new_job_ids, *active_job_ids]
-            direct_errors = [item for item in (metadata_error, plex_error) if item]
+            direct_errors = [item for item in (plex_error,) if item]
             problem.resolution = {
                 **dict(problem.resolution or {}),
                 "recheck_job_ids": [str(item) for item in child_job_ids],
@@ -519,7 +486,13 @@ async def _problem_subjects(db: AsyncSession, problems: list[Problem]) -> dict[t
 def _response(problem: Problem, subjects: dict[tuple[str, UUID], str]) -> ProblemResponse:
     subject = subjects.get((problem.entity_type, problem.entity_id)) if problem.entity_id else None
     return ProblemResponse.model_validate(problem).model_copy(
-        update={"available_actions": available_actions(problem), "subject": subject}
+        update={
+            "available_actions": available_actions(problem),
+            "subject": subject,
+            "label": problem_label(problem.reason),
+            "title": problem_title(problem.reason),
+            "description": problem_description(problem.reason, problem.message),
+        }
     )
 
 

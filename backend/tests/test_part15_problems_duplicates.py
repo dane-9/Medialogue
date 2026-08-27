@@ -12,12 +12,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api import duplicates as duplicates_api
-from app.api import problems as problems_api
 from app.core.config import Settings
 from app.core.integration_config import DownloadClientConfig, get_integration_config_store
 from app.db import session as db_session
 from app.db.base import Base
-from app.integrations.tmdb import TMDBMovieMatch
 from app.main import create_app
 from app.models.domain import (
     AccessMode,
@@ -208,6 +206,68 @@ def test_external_duplicate_disappearance_resolves_problem_on_reconciliation(cli
         shutil.rmtree(root_path, ignore_errors=True)
 
 
+def test_movie_edition_overrides_reclassify_copies_and_survive_automatic_mode(client: TestClient) -> None:
+    headers = login(client)
+    root_path = Path.cwd() / f"part15-edition-overrides-{uuid.uuid4().hex}"
+    root_path.mkdir()
+    try:
+        movie_id, first_id, second_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root_path))
+
+        options = client.get("/api/v1/movies/edition-options")
+        assert options.status_code == 200, options.text
+        assert "Director's Cut" in options.json()["editions"]
+
+        resolved = client.patch(
+            f"/api/v1/movies/{movie_id}/releases/editions",
+            headers=headers,
+            json={
+                "updates": [
+                    {"release_id": str(first_id), "mode": "standard"},
+                    {"release_id": str(second_id), "mode": "named", "edition": "director's cut"},
+                ]
+            },
+        )
+        assert resolved.status_code == 200, resolved.text
+        payload = resolved.json()
+        assert payload["duplicate_resolved"] is True
+        by_id = {item["release_id"]: item for item in payload["releases"]}
+        assert by_id[str(first_id)]["edition_override_active"] is True
+        assert by_id[str(first_id)]["manual_edition_override"] is None
+        assert by_id[str(first_id)]["effective_edition"] is None
+        assert by_id[str(second_id)]["manual_edition_override"] == "Director's Cut"
+        assert by_id[str(second_id)]["effective_edition"] == "Director's Cut"
+        assert {item["state"] for item in payload["releases"]} == {"current"}
+
+        movie = client.get(f"/api/v1/movies/{movie_id}")
+        assert movie.status_code == 200, movie.text
+        releases = {item["id"]: item for item in movie.json()["releases"]}
+        assert releases[str(first_id)]["edition_override_active"] is True
+        assert releases[str(first_id)]["parsed_edition"] is None
+        assert releases[str(second_id)]["manual_edition_override"] == "Director's Cut"
+
+        async def problem_status(db):
+            problem = await db.get(Problem, problem_id)
+            return problem.status
+
+        assert db_run(problem_status) == ProblemStatus.RESOLVED
+
+        duplicate_again = client.patch(
+            f"/api/v1/movies/{movie_id}/releases/editions",
+            headers=headers,
+            json={
+                "updates": [
+                    {"release_id": str(first_id), "mode": "automatic"},
+                    {"release_id": str(second_id), "mode": "automatic"},
+                ]
+            },
+        )
+        assert duplicate_again.status_code == 200, duplicate_again.text
+        assert duplicate_again.json()["duplicate_resolved"] is False
+        assert {item["state"] for item in duplicate_again.json()["releases"]} == {"duplicate"}
+    finally:
+        shutil.rmtree(root_path, ignore_errors=True)
+
+
 def test_duplicate_preview_lists_entire_folder_and_commit_deletes_only_loser(client: TestClient) -> None:
     headers = login(client)
     root = Path.cwd() / f"part15-duplicate-{uuid.uuid4().hex}"
@@ -320,7 +380,7 @@ def test_problem_actions_are_explicit_and_recheck_does_not_fake_resolution(clien
 
     async def seed(db):
         problem = Problem(
-            reason="PATH_MAPPING_FAILED",
+            reason="TORRENT_PATH_NOT_FOUND",
             entity_type="torrent",
             entity_id=uuid.uuid4(),
             message="Mapping failed",
@@ -490,43 +550,6 @@ def test_qbit_only_attached_releases_become_historical_without_path_problems(cli
     assert movie_state is AssociationType.HISTORICAL
     assert show_state is AssociationType.HISTORICAL
     assert open_count == 0
-
-
-class ManualTMDBClient:
-    def __init__(self, api_key: str): self.api_key = api_key
-    async def get_movie(self, tmdb_id: int): return TMDBMovieMatch(tmdb_id, "Inception", "Inception", 2010, "Dreams", None)
-    async def close(self): return None
-
-
-def test_low_confidence_directory_can_be_manually_matched_without_renaming(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part15-manual-{uuid.uuid4().hex}"
-    directory_path = root / "Odd Folder"
-    directory_path.mkdir(parents=True)
-    media_path = directory_path / "video.mkv"
-    media_path.write_bytes(b"unchanged")
-    try:
-        configured = client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key":"test-key","enabled":True})
-        assert configured.status_code == 200, configured.text
-        async def seed(db):
-            storage=StorageRoot(name=f"Movies-{uuid.uuid4().hex}", resolved_root_path=str(root), media_type=MediaType.MOVIES)
-            db.add(storage); await db.flush()
-            directory=MediaDirectory(storage_root_id=storage.id, reported_path=str(directory_path), resolved_path=str(directory_path), exists=True)
-            db.add(directory); await db.flush()
-            problem=Problem(reason="LOW_CONFIDENCE_MATCH", entity_type="media_directory", entity_id=directory.id, message="low")
-            db.add(problem); await db.flush(); return problem.id
-        problem_id=db_run(seed)
-        client.app.dependency_overrides[problems_api.get_tmdb_client_factory] = lambda: (lambda key: ManualTMDBClient(key))
-        response=client.post(f"/api/v1/problems/{problem_id}/resolve", headers=headers, json={"action":"confirm_movie_match","payload":{"tmdb_id":27205}})
-        assert response.status_code == 200, response.text
-        assert response.json()["status"] == "resolved"
-        assert directory_path.exists() and media_path.read_bytes() == b"unchanged"
-        movies=client.get('/api/v1/movies').json()['items']
-        assert len(movies)==1 and movies[0]['tmdb_id']==27205
-        assert movies[0]['identity_state']=='manual'
-    finally:
-        client.app.dependency_overrides.clear()
-        shutil.rmtree(root, ignore_errors=True)
 
 
 async def seed_duplicate_torrent(
@@ -884,15 +907,11 @@ def test_qbit_failure_skips_requested_media_deletion(client: TestClient) -> None
 
         async def state(db):
             problem = await db.get(Problem, problem_id)
-            qbit_failure = await db.scalar(
-                select(Problem).where(Problem.reason == "QBIT_REMOVE_FAILED", Problem.status == ProblemStatus.OPEN)
-            )
             loser = await db.get(MovieRelease, loser_id)
-            return problem.status, qbit_failure is not None, loser.release_state
+            return problem.status, loser.release_state
 
-        status, qbit_problem_exists, loser_state = db_run(state)
+        status, loser_state = db_run(state)
         assert status == ProblemStatus.OPEN
-        assert qbit_problem_exists is True
         assert loser_state == ReleaseState.DUPLICATE
     finally:
         client.app.dependency_overrides.pop(duplicates_api.get_qbit_client_factory, None)

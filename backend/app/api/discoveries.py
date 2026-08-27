@@ -22,8 +22,11 @@ from app.models.domain import (
     MediaRole,
     MediaType,
     Movie,
+    MovieRelease,
+    ReleaseState,
     Show,
 )
+from app.parser import EDITION_OPTIONS
 from app.schemas.common import Collection
 from app.schemas.discoveries import (
     MediaDiscoveryBulk,
@@ -32,6 +35,7 @@ from app.schemas.discoveries import (
     MediaDiscoveryCandidate,
     MediaDiscoveryCount,
     MediaDiscoveryFile,
+    MediaDiscoveryEditionUpdate,
     MediaDiscoveryResponse,
     MediaDiscoverySearch,
     MediaDiscoverySelection,
@@ -81,7 +85,22 @@ def _candidate_payload(item: object) -> dict[str, object]:
     }
 
 
-def _response(discovery: MediaDiscovery) -> MediaDiscoveryResponse:
+def _parsed_edition(discovery: MediaDiscovery) -> str | None:
+    parse = discovery.parse_snapshot if isinstance(discovery.parse_snapshot, dict) else {}
+    value = parse.get("edition")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _effective_edition(discovery: MediaDiscovery) -> str | None:
+    return discovery.manual_edition_override if discovery.edition_override_active else _parsed_edition(discovery)
+
+
+def _edition_slot(value: str | None) -> str:
+    normalized = (value or "").strip().casefold()
+    return "" if normalized in {"", "theatrical cut"} else normalized
+
+
+def _response(discovery: MediaDiscovery, *, library_edition_conflict: bool = False) -> MediaDiscoveryResponse:
     directory = discovery.media_directory
     root = directory.storage_root
     raw_candidates = [value for value in discovery.candidates if isinstance(value, dict)]
@@ -108,7 +127,11 @@ def _response(discovery: MediaDiscovery) -> MediaDiscoveryResponse:
         parsed_year=discovery.parsed_year,
         confidence=float(discovery.confidence) if discovery.confidence is not None else None,
         quality=quality.get("canonical") if isinstance(quality.get("canonical"), str) else None,
-        edition=parse.get("edition") if isinstance(parse.get("edition"), str) else None,
+        edition=_effective_edition(discovery),
+        parsed_edition=_parsed_edition(discovery),
+        edition_override_active=discovery.edition_override_active,
+        manual_edition_override=discovery.manual_edition_override,
+        library_edition_conflict=library_edition_conflict,
         hdr=[str(value) for value in hdr_values if value],
         suggested=by_id.get(discovery.suggested_tmdb_id),
         selected=by_id.get(discovery.selected_tmdb_id),
@@ -134,6 +157,38 @@ async def _get_discovery(db: AsyncSession, discovery_id: UUID) -> MediaDiscovery
         raise AppError("DISCOVERY_NOT_FOUND", "That review item no longer exists.", status_code=404)
     refresh_discovery_parse(discovery)
     return discovery
+
+
+async def _library_conflict_ids(db: AsyncSession, discoveries: list[MediaDiscovery]) -> set[UUID]:
+    movie_rows = [item for item in discoveries if item.media_type == MediaType.MOVIES and item.selected_tmdb_id]
+    tmdb_ids = {int(item.selected_tmdb_id) for item in movie_rows if item.selected_tmdb_id is not None}
+    if not tmdb_ids:
+        return set()
+    movies = (
+        await db.scalars(
+            select(Movie)
+            .options(selectinload(Movie.releases).selectinload(MovieRelease.directories))
+            .where(Movie.tmdb_id.in_(tmdb_ids))
+        )
+    ).unique().all()
+    occupied = {
+        (int(movie.tmdb_id), _edition_slot(release.effective_edition))
+        for movie in movies
+        if movie.tmdb_id is not None
+        for release in movie.releases
+        if release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}
+        and any(directory.exists for directory in release.directories)
+    }
+    return {
+        item.id
+        for item in movie_rows
+        if (int(item.selected_tmdb_id), _edition_slot(_effective_edition(item))) in occupied
+    }
+
+
+async def _current_response(db: AsyncSession, discovery: MediaDiscovery) -> MediaDiscoveryResponse:
+    conflicts = await _library_conflict_ids(db, [discovery])
+    return _response(discovery, library_edition_conflict=discovery.id in conflicts)
 
 
 @router.get("/count", response_model=MediaDiscoveryCount)
@@ -191,7 +246,9 @@ async def list_discoveries(
         await db.commit()
     total = len(rows)
     start = (page - 1) * page_size
-    items = [_response(item) for item in rows[start : start + page_size]]
+    page_rows = rows[start : start + page_size]
+    library_conflicts = await _library_conflict_ids(db, page_rows)
+    items = [_response(item, library_edition_conflict=item.id in library_conflicts) for item in page_rows]
     return Collection(items=items, page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size)
 
 
@@ -256,7 +313,38 @@ async def select_discovery(
     discovery.selected_tmdb_id = payload.tmdb_id
     await db.commit()
     await db.refresh(discovery)
-    return _response(discovery)
+    return await _current_response(db, discovery)
+
+
+@router.patch("/{discovery_id}/edition", response_model=MediaDiscoveryResponse)
+async def set_discovery_edition(
+    discovery_id: UUID,
+    payload: MediaDiscoveryEditionUpdate,
+    _: object = Depends(require_csrf),
+    __: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MediaDiscoveryResponse:
+    discovery = await _get_discovery(db, discovery_id)
+    if discovery.review_state != DiscoveryReviewState.PENDING or discovery.media_type != MediaType.MOVIES:
+        raise AppError("DISCOVERY_EDITION_NOT_ALLOWED", "Only pending movie review items have editions.", status_code=409)
+    if payload.mode == "automatic":
+        discovery.edition_override_active = False
+        discovery.manual_edition_override = None
+    elif payload.mode == "standard":
+        discovery.edition_override_active = True
+        discovery.manual_edition_override = None
+    else:
+        edition = (payload.edition or "").strip()
+        if not edition:
+            raise AppError("EDITION_REQUIRED", "Choose an edition or enter a custom edition name.", status_code=422)
+        discovery.edition_override_active = True
+        discovery.manual_edition_override = next(
+            (item for item in EDITION_OPTIONS if item.casefold() == edition.casefold()),
+            edition,
+        )
+    await db.commit()
+    await db.refresh(discovery)
+    return await _current_response(db, discovery)
 
 
 def _directory_observation(directory: MediaDirectory) -> DirectoryObservation:
@@ -288,6 +376,12 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
         raise AppError("DISCOVERY_MISSING", "This directory is no longer present on disk.", status_code=409)
     if discovery.selected_tmdb_id is None:
         raise AppError("DISCOVERY_MATCH_REQUIRED", "Choose the identity before adding it.", status_code=409)
+    if discovery.media_type == MediaType.MOVIES and discovery.id in await _library_conflict_ids(db, [discovery]):
+        raise AppError(
+            "DISCOVERY_MOVIE_EDITION_CONFLICT",
+            "This movie edition is already in the library. Choose a different edition or leave this folder out.",
+            status_code=409,
+        )
 
     observation = _directory_observation(directory)
     if discovery.media_type == MediaType.MOVIES:
@@ -307,7 +401,15 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
             except Exception as exc:
                 await db.rollback()
                 raise AppError("TMDB_MOVIE_METADATA_FAILED", f"Could not add the selected movie: {exc}", status_code=503) from exc
-        await reconcile_movie_directory(db, root, observation, movie_hint=media, manual_identity=True)
+        await reconcile_movie_directory(
+            db,
+            root,
+            observation,
+            movie_hint=media,
+            manual_identity=True,
+            edition_override_active=discovery.edition_override_active,
+            manual_edition_override=discovery.manual_edition_override,
+        )
     else:
         media = await db.scalar(select(Show).where(Show.tmdb_id == discovery.selected_tmdb_id))
         if media is None:
@@ -399,7 +501,7 @@ async def search_discovery_candidates(
         discovery.selected_tmdb_id = int(discovery.candidates[0]["tmdb_id"])
     await db.commit()
     await db.refresh(discovery)
-    return _response(discovery)
+    return await _current_response(db, discovery)
 
 
 @router.post("/{discovery_id}/approve", response_model=MediaDiscoveryResponse)
@@ -430,7 +532,37 @@ async def bulk_review(
     """
     approved: list[UUID] = []
     failures: list[MediaDiscoveryBulkFailure] = []
+    unavailable: set[UUID] = set()
+    batch_collision_ids: set[UUID] = set()
+    if payload.action == "approve":
+        loaded: list[MediaDiscovery] = []
+        for discovery_id in payload.ids:
+            try:
+                loaded.append(await _get_discovery(db, discovery_id))
+            except AppError as exc:
+                unavailable.add(discovery_id)
+                failures.append(MediaDiscoveryBulkFailure(id=discovery_id, code=exc.code, message=exc.message))
+        groups: dict[tuple[int, str], list[UUID]] = {}
+        for discovery in loaded:
+            if discovery.media_type != MediaType.MOVIES or discovery.selected_tmdb_id is None:
+                continue
+            key = (int(discovery.selected_tmdb_id), _edition_slot(_effective_edition(discovery)))
+            groups.setdefault(key, []).append(discovery.id)
+        batch_collision_ids = {
+            discovery_id for ids in groups.values() if len(ids) > 1 for discovery_id in ids
+        }
+        failures.extend(
+            MediaDiscoveryBulkFailure(
+                id=discovery_id,
+                code="DISCOVERY_BATCH_EDITION_CONFLICT",
+                message="Another selected folder is the same movie edition. Leave one out or correct its edition.",
+            )
+            for discovery_id in payload.ids
+            if discovery_id in batch_collision_ids
+        )
     for discovery_id in payload.ids:
+        if discovery_id in unavailable or discovery_id in batch_collision_ids:
+            continue
         try:
             discovery = await _get_discovery(db, discovery_id)
             if payload.action == "approve":
@@ -459,7 +591,7 @@ async def restore_discovery(
     discovery.reviewed_at = None
     await db.commit()
     await db.refresh(discovery)
-    return _response(discovery)
+    return await _current_response(db, discovery)
 
 
 @router.post("/{discovery_id}/ignore", response_model=MediaDiscoveryResponse)

@@ -31,8 +31,8 @@ describe('movie selection and context-menu state', () => {
 
 describe('Problems and duplicate-resolution UI state', () => {
   const duplicate = { code: 'DUPLICATE_PHYSICAL_RELEASE', severity: 'high' } as const
-  const pathProblem = { code: 'PATH_MAPPING_FAILED', severity: 'medium' } as const
-  const identity = { code: 'TMDB_IDENTITY_UNRESOLVED', severity: 'low' } as const
+  const pathProblem = { code: 'TORRENT_PATH_NOT_FOUND', severity: 'medium' } as const
+  const identity = { code: 'PLEX_IDENTITY_MISMATCH', severity: 'low' } as const
 
   it('applies reason and severity filters consistently', () => {
     expect(problemMatchesFilter(duplicate, 'duplicates', 'all')).toBe(true)

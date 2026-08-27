@@ -35,6 +35,10 @@ class MediaDiscoveryResponse(BaseModel):
     confidence: float | None = None
     quality: str | None = None
     edition: str | None = None
+    parsed_edition: str | None = None
+    edition_override_active: bool = False
+    manual_edition_override: str | None = None
+    library_edition_conflict: bool = False
     hdr: list[str] = Field(default_factory=list)
     suggested: MediaDiscoveryCandidate | None = None
     selected: MediaDiscoveryCandidate | None = None
@@ -70,6 +74,11 @@ class MediaDiscoverySearch(BaseModel):
     """A manual re-search for one folder. Omitting the query reuses the parsed title."""
 
     query: str | None = Field(default=None, max_length=512)
+
+
+class MediaDiscoveryEditionUpdate(BaseModel):
+    mode: Literal["automatic", "standard", "named"]
+    edition: str | None = Field(default=None, max_length=128)
 
 
 class MediaDiscoveryCount(BaseModel):

@@ -35,7 +35,7 @@ def resolve_reported_path(reported_path: str, mappings: list[RemotePathMapping])
         candidates.append((len(remote.parts), mapping, relative))
 
     if not candidates:
-        return ResolvedPath(reported_path, None, None, "PATH_MAPPING_FAILED")
+        return ResolvedPath(reported_path, None, None, "TORRENT_PATH_NOT_FOUND")
 
     _, mapping, relative = max(candidates, key=lambda item: item[0])
     resolved = PurePosixPath(mapping.local_prefix).joinpath(relative)

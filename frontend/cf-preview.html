@@ -159,7 +159,7 @@ function open(f, isNew) {
     + '</div></div>'
     + '<div class="modal-foot">'
     + (isNew ? '' : '<button class="button button-danger">Delete</button><button class="button button-ghost">Duplicate</button><button class="button button-ghost">' + ic('download', 16) + 'Export</button>')
-    + '<span class="footer-state clean" id="state">All changes saved</span>'
+    + '<span class="footer-state clean" id="state"></span>'
     + '<button class="button button-secondary" id="cancel">Cancel</button>'
     + '<button class="button button-primary">Save format</button>'
     + '</div></div></div>';
@@ -251,7 +251,7 @@ function openProfile(p, isNew) {
     + '<p class="cf-modal-note">A release scores the sum of every format it matches. Positive scores prefer a release and negative ones push it down the list — <strong>nothing is ever hidden or blocked</strong>. A matching format with no score here contributes 0 and still appears in search evidence.</p>'
     + rows + '</div></div>'
     + '<div class="modal-foot">' + (isNew ? '' : '<button class="button button-danger">Delete</button>')
-    + '<span class="footer-state clean" id="state">All changes saved</span>'
+    + '<span class="footer-state clean" id="state"></span>'
     + '<button class="button button-secondary" id="cancel">Cancel</button>'
     + '<button class="button button-primary">Save profile</button></div></div></div>';
 

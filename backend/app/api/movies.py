@@ -11,6 +11,7 @@ from app.api.dependencies import require_admin, require_csrf
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
+from app.core.problem_types import problem_description, problem_title
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
@@ -390,7 +391,7 @@ async def get_movie(
         "replaced_count": sum(item.release_state == ReleaseState.REPLACED for item in movie.releases),
         "duplicate_count": sum(item.release_state == ReleaseState.DUPLICATE for item in movie.releases),
         "qbit_media_disagreement": any(
-            item.reason in {"TORRENT_REMOVED_EXTERNALLY", "TORRENT_PATH_NOT_FOUND"}
+            item.reason == "TORRENT_PATH_NOT_FOUND"
             for item in open_problems
         ),
         # Plex movie metadata is advisory and never blocks TMDB-backed identity.
@@ -419,6 +420,8 @@ async def get_movie(
                 "id": str(problem.id),
                 "reason": problem.reason,
                 "message": problem.message,
+                "title": problem_title(problem.reason),
+                "description": problem_description(problem.reason, problem.message),
                 "severity": problem.severity.value,
                 "details": problem.details,
             }
@@ -577,6 +580,9 @@ def _release(release: MovieRelease) -> MovieReleaseResponse:
         id=release.id,
         raw_release_name=release.raw_release_name,
         edition=release.effective_edition,
+        parsed_edition=release.parsed_edition,
+        edition_override_active=bool(release.edition_override_active or release.manual_edition_override is not None),
+        manual_edition_override=release.manual_edition_override,
         quality=release.quality_definition.name if release.quality_definition else None,
         release_group=release.release_group,
         state=release.release_state.value,

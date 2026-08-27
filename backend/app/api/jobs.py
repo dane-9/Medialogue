@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
@@ -30,6 +30,33 @@ def _event_severity(value: str) -> Severity:
         raise AppError("INVALID_EVENT_SEVERITY", "Unknown event severity.", status_code=422) from exc
 
 
+
+#: Severity is stored as an enum, so ordering by the column would sort it
+#: alphabetically. Events are read worst-first, which is the order below.
+_SEVERITY_RANK = case(
+    (Event.severity == Severity.ERROR, 0),
+    (Event.severity == Severity.WARNING, 1),
+    else_=2,
+)
+
+#: Only columns a reader can see are sortable: sorting by something the list
+#: does not show produces an order nobody can account for.
+_EVENT_SORTS = {
+    "created_at": Event.created_at,
+    "event_type": Event.event_type,
+    "severity": _SEVERITY_RANK,
+}
+
+
+def _event_order(sort: str):
+    """Read a `field` / `-field` sort key, newest first by default."""
+    descending = sort.startswith("-")
+    column = _EVENT_SORTS.get(sort.lstrip("-"))
+    if column is None:
+        raise AppError("INVALID_EVENT_SORT", "Unknown event sort field.", status_code=422)
+    primary = column.desc() if descending else column.asc()
+    # A stable tiebreak, so paging through equal values cannot repeat or skip.
+    return (primary, Event.created_at.desc()) if column is not Event.created_at else (primary,)
 
 @router.get("/jobs", response_model=Collection[JobResponse])
 async def list_jobs(
@@ -92,11 +119,12 @@ async def cancel(job_id: UUID, _: object = Depends(require_csrf), db: AsyncSessi
 @router.get("/events", response_model=Collection[EventResponse])
 async def list_events(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=250),
+    page_size: int = Query(50, ge=1, le=1000),
     entity_type: str | None = None,
     entity_id: UUID | None = None,
     event_type: str | None = None,
     severity: str | None = None,
+    sort: str = Query("-created_at"),
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     _: AdminUser = Depends(require_admin),
@@ -123,7 +151,7 @@ async def list_events(
     total = await db.scalar(count_query) or 0
     rows = (
         await db.scalars(
-            query.order_by(Event.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+            query.order_by(*_event_order(sort)).offset((page - 1) * page_size).limit(page_size)
         )
     ).all()
     return Collection(

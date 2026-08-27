@@ -19,6 +19,9 @@ class MovieReleaseResponse(BaseModel):
     id: UUID
     raw_release_name: str
     edition: str | None
+    parsed_edition: str | None = None
+    edition_override_active: bool = False
+    manual_edition_override: str | None = None
     quality: str | None
     release_group: str | None
     state: str

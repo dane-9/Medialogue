@@ -40,9 +40,13 @@ QUALITY_PRECEDENCE: tuple[str, ...] = (
     if not definition.name.startswith("Full Disc")
 )
 
+# Matched longest alias first (see _edition below). "Super-Sized and Uncut" is
+# deliberately absent: those are two separate editions, and a release naming
+# both is filed under the longer of the two rather than a combined edition.
 _EDITION_ALIASES: tuple[tuple[str, str], ...] = (
-    ("super sized and uncut", "Super-Sized and Uncut"),
-    ("super-sized and uncut", "Super-Sized and Uncut"),
+    ("super sized", "Super-Sized"),
+    ("super-sized", "Super-Sized"),
+    ("uncut", "Uncut"),
     ("special assembly cut", "Special Assembly Cut"),
     ("super duper cut", "Super Duper Cut"),
     ("ultimate edition", "Ultimate Edition"),
@@ -63,6 +67,12 @@ _EDITION_ALIASES: tuple[tuple[str, str], ...] = (
     ("imax", "IMAX"),
     ("recut", "Recut"),
     ("rogue cut", "Rogue Cut"),
+)
+
+# Canonical choices exposed to edition pickers. Keep this derived from the
+# parser grammar so the UI cannot drift from what automatic detection emits.
+EDITION_OPTIONS: tuple[str, ...] = tuple(
+    sorted(dict.fromkeys(canonical for _, canonical in _EDITION_ALIASES), key=str.casefold)
 )
 
 _PROVIDERS: dict[str, str] = {

@@ -186,7 +186,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
 
       {step === 'setup' ? <div className="wizard-setup">
         <aside className="wizard-movie-card">
-          <div className="wizard-poster">{posterUrl(movie.poster) ? <img src={posterUrl(movie.poster)} alt="" /> : <Icon name="film" size={28} />}</div>
+          <div className="wizard-poster">{posterUrl(movie.poster) ? <img src={posterUrl(movie.poster)} alt="" /> : <Icon name="clapper" size={28} />}</div>
           <div><strong className="wizard-title-line">{movie.title}{movie.imdbRating != null && <span className="wizard-imdb-rating"><img src={imdbLogo} alt="IMDb" /> {movie.imdbRating.toFixed(1)}{movie.imdbVotes != null ? ` · ${movie.imdbVotes.toLocaleString()} Ratings` : ''}</span>}</strong><span>{movie.year || 'Year unknown'} · TMDB {movie.tmdbId}</span>{movie.overview && <p>{movie.overview}</p>}</div>
         </aside>
         <section className="wizard-form">

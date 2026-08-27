@@ -1,33 +1,127 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'film' | 'tv' | 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'shield' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'reload' | 'clapper' | 'tv-screen'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'review' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers'
 
 const paths: Record<IconName, JSX.Element> = {
-  film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4" /></>,
-  tv: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m8 2 4 3 4-3M8 12h.01M12 12h.01M16 12h.01M8 16h8" /></>,
-  download: <><path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M5 20h14" /></>,
-  alert: <><path d="m12 3 9 17H3L12 3Z" /><path d="M12 9v4m0 3h.01" /></>,
+  download: <path
+    fill="currentColor"
+    stroke="none"
+    d="M3.5 13h9a.75.75 0 0 1 .102 1.493l-.102.007h-9a.75.75 0 0 1-.102-1.493zh9zM7.898 1.007L8 1a.75.75 0 0 1 .743.648l.007.102v7.688l2.255-2.254a.75.75 0 0 1 .977-.072l.084.072a.75.75 0 0 1 .072.977l-.072.084L8.53 11.78a.75.75 0 0 1-.976.073l-.084-.073l-3.536-3.535a.75.75 0 0 1 .977-1.133l.084.072L7.25 9.44V1.75a.75.75 0 0 1 .648-.743L8 1z"
+  />,
+  alert: <path
+    fill="currentColor"
+    stroke="none"
+    fillRule="evenodd"
+    d="m21.268 21.053l-18.536.001a1 1 0 0 1-.866-1.5L11.132 3.5a1 1 0 0 1 1.732 0l9.27 16.053a1 1 0 0 1-.866 1.5M11.248 9.545l.116 5.666h1.272l.117-5.666zm.75 8.572c.48 0 .855-.369.855-.832s-.375-.826-.856-.826a.83.83 0 0 0-.85.826c0 .463.375.832.85.832z"
+  />,
+  lock: <path
+    fill="currentColor"
+    stroke="none"
+    d="M12 2C9.243 2 7 4.243 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7c0-2.757-2.243-5-5-5M9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9zm4 10.723V20h-2v-2.277a1.993 1.993 0 0 1 .567-3.677A2 2 0 0 1 14 16a1.99 1.99 0 0 1-1 1.723"
+  />,
+  // The open padlock is not a decorative variant: it marks the one access mode
+  // where Medialogue is allowed to delete inside a folder.
+  unlock: <path
+    fill="currentColor"
+    stroke="none"
+    d="M18 10H9V7c0-1.654 1.346-3 3-3s3 1.346 3 3h2c0-2.757-2.243-5-5-5S7 4.243 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2m-7.939 5.499A2.002 2.002 0 0 1 14 16a1.99 1.99 0 0 1-1 1.723V20h-2v-2.277a1.99 1.99 0 0 1-.939-2.224"
+  />,
+  backup: <path
+    fill="currentColor"
+    stroke="none"
+    d="M7.44 4a2.25 2.25 0 0 0-2.025 1.27L2.73 10.821c.465-.206.98-.321 1.521-.321h15.5a3.7 3.7 0 0 1 1.52.321L18.586 5.27A2.25 2.25 0 0 0 16.559 4zm12.31 8A2.25 2.25 0 0 1 22 14.25v2.5A2.25 2.25 0 0 1 19.75 19H4.25A2.25 2.25 0 0 1 2 16.75v-2.5A2.25 2.25 0 0 1 4.25 12zm-1.25 4.5a1 1 0 1 0 0-2a1 1 0 0 0 0 2"
+  />,
+  security: <path
+    fill="currentColor"
+    stroke="none"
+    d="M27.988 51.297c.375 0 .961-.14 1.57-.445C42.66 43.469 47.185 40.375 47.185 31.96V14.289c0-2.414-1.055-3.187-3-4.008c-2.743-1.125-11.532-4.289-14.25-5.25c-.633-.187-1.266-.328-1.946-.328c-.656 0-1.289.14-1.922.328c-2.718.985-11.507 4.149-14.25 5.25c-1.945.797-3 1.594-3 4.008v17.672c0 8.414 4.547 11.484 17.625 18.89c.61.305 1.172.446 1.547.446"
+  />,
+  indexers: <path
+    fill="currentColor"
+    stroke="none"
+    d="M3 19q-.425 0-.712-.288T2 18t.288-.712T3 17h8q.425 0 .713.288T12 18t-.288.713T11 19zm0-5q-.425 0-.712-.288T2 13t.288-.712T3 12h3q.425 0 .713.288T7 13t-.288.713T6 14zm0-5q-.425 0-.712-.288T2 8t.288-.712T3 7h3q.425 0 .713.288T7 8t-.288.713T6 9zm11 7q-2.075 0-3.537-1.463T9 11t1.463-3.537T14 6t3.538 1.463T19 11q0 .725-.213 1.438t-.637 1.312l3.15 3.15q.275.275.275.7t-.275.7t-.7.275t-.7-.275l-3.15-3.15q-.6.425-1.312.638T14 16m0-2q1.25 0 2.125-.875T17 11t-.875-2.125T14 8t-2.125.875T11 11t.875 2.125T14 14"
+  />,
+  plex: <path
+    fill="currentColor"
+    stroke="none"
+    d="M4 2c-1.11 0-2 .89-2 2v16c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V4c0-1.11-.89-2-2-2zm4.56 4h3.5l3.44 6l-3.44 6h-3.5L12 12z"
+  />,
+  // Wordmark cutouts, same technique as quality-profile: the letters are a hole
+  // in a filled card, so they stay editable text rather than glyph outlines.
+  tmdb: <>
+    <defs>
+      <mask id="medialogue-tmdb-cutout" maskUnits="userSpaceOnUse" x="0" y="0" width="400" height="220">
+        <rect x="0" y="0" width="400" height="220" rx="24" ry="24" fill="#fff" />
+        <text
+          x="200"
+          y="146"
+          fill="#000"
+          stroke="none"
+          fontSize="105"
+          fontWeight="700"
+          letterSpacing="2"
+          textAnchor="middle"
+          fontFamily="'Helvetica Neue', Arial, sans-serif"
+        >TMDB</text>
+      </mask>
+    </defs>
+    <rect x="0" y="0" width="400" height="220" rx="24" ry="24" fill="currentColor" stroke="none" mask="url(#medialogue-tmdb-cutout)" />
+  </>,
+  qbittorrent: <path
+    fill="currentColor"
+    stroke="none"
+    d="M352.8 187.6c-17.5 0-30.1 5.1-37.8 15.1s-11.5 26.8-11.5 50.6 4 40.8 11.9 51 20.6 15.2 38.1 15.2c15.8 0 27.5-5.7 35.2-17.1 7.7-11.5 11.5-28 11.5-49.5 0-22-3.8-38.4-11.5-49.2-7.8-10.7-19.8-16.1-35.9-16.1m-194.4-.3c-15 0-26.6 5.9-34.6 17.6-7.9 11.6-11.9 28.1-11.9 49.4s3.9 37.5 11.8 48.8c7.9 11 19.5 16.6 35 16.7 17.1 0 29.5-4.6 37.3-13.8s12-24.6 12.5-46.3V254q0-35.55-12-51c-8-10.5-20.8-15.7-38.1-15.7m333.5-30.9C479 125.9 460.5 98.5 437 75s-50.9-42-81.4-54.9C324.1 6.8 290.6 0 256 0s-68.1 6.8-99.6 20.1C125.9 33 98.5 51.5 75 75s-42 50.9-54.9 81.4C6.8 187.9 0 221.4 0 256s6.8 68.1 20.1 99.6C33 386.1 51.5 413.5 75 437s50.9 42 81.4 54.9C188 505.3 221.5 512 256 512s68.1-6.8 99.6-20.1c30.5-12.9 57.9-31.4 81.4-54.9s42-50.9 54.9-81.4C505.3 324 512 290.5 512 256s-6.8-68.1-20.1-99.6M234.2 414h-25.6v-72.3c0-10.3.5-19 1.7-26.2h-2c-11.9 17.2-29.7 25.8-53.5 25.8-21.8 0-38.8-7.6-51-23q-18.3-22.95-18.3-64.2c0-27.7 6.1-49.2 18.5-64.8 12.3-15.5 29.5-23.3 51.5-23.3 23.1 0 41 8.8 53.4 26.2h1.4L214 169h20.2zM408 318.2c-12.4 15.3-29.5 23-51.5 23-11 0-21.1-2-30.2-6-9-4.1-16.7-10.4-22.9-18.8h-1.9l-5.4 21.8h-18.4V98h25.6v58.3c0 13-.4 24.8-1.2 35.2h1.2c11.9-16.9 29.6-25.3 53.1-25.3 22.2 0 39.5 7.6 51.7 22.8 12.4 15.1 18.5 36.5 18.5 64.3.1 27.8-6.1 49.5-18.6 64.9"
+  />,
+  info: <path
+    fill="currentColor"
+    stroke="none"
+    d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448s448-200.6 448-448S759.4 64 512 64m32 664c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V456c0-4.4 3.6-8 8-8h48c4.4 0 8 3.6 8 8zm-32-344a48.01 48.01 0 0 1 0-96a48.01 48.01 0 0 1 0 96"
+  />,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
-  archive: <><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4" /></>,
+  archive: <path
+    fill="currentColor"
+    stroke="none"
+    d="M7.22 19.385q-.585 0-1.037-.383q-.454-.382-.554-.965l-1.287-7.702q-.063-.38.172-.665t.622-.286h13.728q.388 0 .622.286q.235.286.172.664l-1.287 7.702q-.1.584-.553.966q-.454.383-1.037.383zm2.78-5.5h4q.213 0 .356-.144q.144-.144.144-.357t-.144-.356t-.356-.144h-4q-.213 0-.356.145t-.144.356t.144.356t.356.143M6 8q-.213 0-.356-.144T5.5 7.499t.144-.356T6 7h12q.213 0 .356.144t.144.357t-.144.356T18 8zm2-2.384q-.213 0-.356-.144T7.5 5.115t.144-.356q.143-.144.356-.144h8q.213 0 .356.144t.144.357t-.144.356t-.356.144z"
+  />,
   sliders: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="8" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="11" cy="18" r="2" /></>,
-  settings: <><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" /><path d="m4.9 4.9 1.4 1.4m11.4-1.4-1.4 1.4M12 2v2m0 16v2M2 12h2m16 0h2m-4.3 7.1-1.4-1.4M6.3 17.7l-1.4 1.4" /></>,
+  settings: <path
+    fill="currentColor"
+    stroke="none"
+    d="M256 176a80 80 0 1 0 80 80a80.24 80.24 0 0 0-80-80m172.72 80a165.5 165.5 0 0 1-1.64 22.34l48.69 38.12a11.59 11.59 0 0 1 2.63 14.78l-46.06 79.52a11.64 11.64 0 0 1-14.14 4.93l-57.25-23a176.6 176.6 0 0 1-38.82 22.67l-8.56 60.78a11.93 11.93 0 0 1-11.51 9.86h-92.12a12 12 0 0 1-11.51-9.53l-8.56-60.78A169.3 169.3 0 0 1 151.05 393L93.8 416a11.64 11.64 0 0 1-14.14-4.92L33.6 331.57a11.59 11.59 0 0 1 2.63-14.78l48.69-38.12A175 175 0 0 1 83.28 256a165.5 165.5 0 0 1 1.64-22.34l-48.69-38.12a11.59 11.59 0 0 1-2.63-14.78l46.06-79.52a11.64 11.64 0 0 1 14.14-4.93l57.25 23a176.6 176.6 0 0 1 38.82-22.67l8.56-60.78A11.93 11.93 0 0 1 209.94 26h92.12a12 12 0 0 1 11.51 9.53l8.56 60.78A169.3 169.3 0 0 1 361 119l57.2-23a11.64 11.64 0 0 1 14.14 4.92l46.06 79.52a11.59 11.59 0 0 1-2.63 14.78l-48.69 38.12a175 175 0 0 1 1.64 22.66"
+  />,
   menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
   activity: <><path d="M3 12h4l2-7 4 14 2-7h6" /></>,
   play: <path d="m8 5 11 7-11 7V5Z" />,
   pause: <><path d="M8 5v14M16 5v14" /></>,
   check: <path d="m5 12 4 4L19 6" />,
+  review: <path
+    fill="currentColor"
+    stroke="none"
+    fillRule="evenodd"
+    d="M5 11.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5M3.854 2.146a.5.5 0 0 1 0 .708l-1.5 1.5a.5.5 0 0 1-.708 0l-.5-.5a.5.5 0 1 1 .708-.708L2 3.293l1.146-1.147a.5.5 0 0 1 .708 0m0 4a.5.5 0 0 1 0 .708l-1.5 1.5a.5.5 0 0 1-.708 0l-.5-.5a.5.5 0 1 1 .708-.708L2 7.293l1.146-1.147a.5.5 0 0 1 .708 0m0 4a.5.5 0 0 1 0 .708l-1.5 1.5a.5.5 0 0 1-.708 0l-.5-.5a.5.5 0 0 1 .708-.708l.146.147l1.146-1.147a.5.5 0 0 1 .708 0"
+  />,
   chevron: <path d="m9 18 6-6-6-6" />,
-  plus: <><path d="M12 5v14M5 12h14" /></>,
-  refresh: <><path d="M20 11a8 8 0 1 0 1 4" /><path d="M20 5v6h-6" /></>,
+  plus: <path d="M12 17V7m-5 5h10" />,
+  refresh: <>
+    <path fill="none" stroke="currentColor" strokeLinecap="round" strokeMiterlimit={10} strokeWidth={32} d="m400 148l-21.12-24.57A191.43 191.43 0 0 0 240 64C134 64 48 150 48 256s86 192 192 192a192.09 192.09 0 0 0 181.07-128" />
+    <path fill="currentColor" stroke="none" d="M464 97.42V208a16 16 0 0 1-16 16H337.42c-14.26 0-21.4-17.23-11.32-27.31L436.69 86.1C446.77 76 464 83.16 464 97.42" />
+  </>,
   logout: <><path d="M10 17l5-5-5-5M15 12H3M21 3v18" /></>,
   external: <><path d="M14 3h7v7M21 3l-9 9" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></>,
   grid: <><rect x="4" y="4" width="6" height="6" /><rect x="14" y="4" width="6" height="6" /><rect x="4" y="14" width="6" height="6" /><rect x="14" y="14" width="6" height="6" /></>,
   list: <><path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" /></>,
-  folder: <><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" /></>,
+  folder: <path
+    fill="currentColor"
+    stroke="none"
+    d="M880 298.4H521L403.7 186.2a8.15 8.15 0 0 0-5.5-2.2H144c-17.7 0-32 14.3-32 32v592c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V330.4c0-17.7-14.3-32-32-32"
+  />,
   database: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></>,
   server: <><rect x="4" y="3" width="16" height="7" rx="1" /><rect x="4" y="14" width="16" height="7" rx="1" /><path d="M8 7h.01M8 18h.01" /></>,
-  shield: <><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Z" /><path d="m9 12 2 2 4-4" /></>,
-  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  clock: <path
+    fill="currentColor"
+    stroke="none"
+    d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71z"
+  />,
   arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   close: <><path d="m6 6 12 12M18 6 6 18" /></>,
   eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
@@ -39,33 +133,136 @@ const paths: Record<IconName, JSX.Element> = {
   // Stroked clapperboard, with its own weight: the supplied artwork is drawn
   // at 1.5 and thickens badly at the set default.
   clapper: <path
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.5}
-    strokeMiterlimit={10}
-    d="m15 9l2-6M7 9l2-6M1 9h22M3.4 3h17.2A2.4 2.4 0 0 1 23 5.4v13.2a2.4 2.4 0 0 1-2.4 2.4H3.4A2.4 2.4 0 0 1 1 18.6V5.4A2.4 2.4 0 0 1 3.4 3"
+    fill="currentColor"
+    stroke="none"
+    d="M216 104H102.09L210 75.51a8 8 0 0 0 5.68-9.84l-8.16-30a15.93 15.93 0 0 0-19.42-11.13L35.81 64.74a15.75 15.75 0 0 0-9.7 7.4a15.5 15.5 0 0 0-1.55 12L32 111.56V200a16 16 0 0 0 16 16h160a16 16 0 0 0 16-16v-88a8 8 0 0 0-8-8m-23.84-64l6 22.07L164.57 71l-28.13-16.28ZM77.55 70.27l28.12 16.24l-59.6 15.73l-6-22.08Z"
   />,
   // Outlined, and drawn on a 512 grid rather than 24.
   'tv-screen': <>
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={32}
-      d="M488 384H24a8 8 0 0 1-8-8V88a8 8 0 0 1 8-8h464a8 8 0 0 1 8 8v288a8 8 0 0 1-8 8"
-    />
-    <path fill="none" stroke="currentColor" strokeWidth={32} d="M128 416h256" />
+    <path fill="currentColor" stroke="none" d="M488 384H24a8 8 0 0 1-8-8V88a8 8 0 0 1 8-8h464a8 8 0 0 1 8 8v288a8 8 0 0 1-8 8" />
+    <rect width="288" height="32" x="112" y="400" rx="4" ry="4" fill="currentColor" stroke="none" />
   </>,
-  reload: <path
+  // Solid caret, for controls that open downwards. Filled rather than stroked,
+  // so it keeps its weight at the small sizes a dropdown trigger uses.
+  caret: <path
     fill="currentColor"
     stroke="none"
-    d="M12 20q-3.35 0-5.675-2.325T4 12t2.325-5.675T12 4q1.725 0 3.3.712T18 6.75V5q0-.425.288-.712T19 4t.713.288T20 5v5q0 .425-.288.713T19 11h-5q-.425 0-.712-.288T13 10t.288-.712T14 9h3.2q-.8-1.4-2.187-2.2T12 6Q9.5 6 7.75 7.75T6 12t1.75 4.25T12 18q1.7 0 3.113-.862t2.187-2.313q.2-.35.563-.487t.737-.013q.4.125.575.525t-.025.75q-1.025 2-2.925 3.2T12 20"
+    fillRule="evenodd"
+    clipRule="evenodd"
+    d="M7 9a1 1 0 0 0-.707 1.707l5 5a1 1 0 0 0 1.414 0l5-5A1 1 0 0 0 17 9z"
+  />,
+  // The same wordmark card as tmdb, so the two read as a set.
+  'quality-profile': <>
+    <defs>
+      <mask id="medialogue-qp-cutout">
+        <rect x="0" y="0" width="400" height="300" rx="24" ry="24" fill="#fff" />
+        <text
+          x="200"
+          y="216"
+          fill="#000"
+          stroke="none"
+          fontSize="190"
+          fontWeight="700"
+          letterSpacing="6"
+          textAnchor="middle"
+          fontFamily="'Segoe UI Variable Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        >QP</text>
+      </mask>
+    </defs>
+    <rect x="0" y="0" width="400" height="300" rx="24" ry="24" fill="currentColor" stroke="none" mask="url(#medialogue-qp-cutout)" />
+  </>,
+  'custom-format': <path
+    fill="currentColor"
+    stroke="none"
+    d="M5.835 19.956q-.652.086-1.162-.317q-.51-.404-.615-1.056L2.87 10.177q-.067-.416.205-.758t.688-.41h.448v5.318q0 1.342.944 2.286t2.286.945H18.98q-.085.332-.344.56t-.608.284zm2.396-4.76q-.69 0-1.153-.462t-.462-1.153V5.616q0-.691.462-1.153T8.231 4h11.154q.69 0 1.153.463T21 5.616v7.965q0 .69-.462 1.153t-1.153.462zM10.308 8.5h7v-1h-7zm0 3.154h4v-1h-4z"
   />,
   spark: <><path d="m12 3-1.5 5.5L5 10l5.5 1.5L12 17l1.5-5.5L19 10l-5.5-1.5L12 3Z" /><path d="m19 16-.6 2.4L16 19l2.4.6L19 22l.6-2.4L22 19l-2.4-.6L19 16Z" /></>,
 }
 
 /** Icons drawn on a grid other than 24x24. */
-const VIEW_BOXES: Partial<Record<IconName, string>> = { 'tv-screen': '0 0 512 512' }
+/** Icons drawn on a grid other than 24x24, kept with the artwork they came from. */
+/**
+ * Per-icon viewBox and stroke weight, generated by cropping each drawing to its
+ * own geometry.
+ *
+ * The artwork arrives on whatever grid its author used (16, 24, 400x300, 512,
+ * 1024) with whatever margin they left, so at one `size` a glyph drawn edge to
+ * edge reads far larger than one drawn with an inset. Each box below is the
+ * icon's bounding box re-centred and padded so every glyph covers the same share
+ * of it; solid glyphs get a slightly smaller share because filled mass reads
+ * heavier than an outline of the same size.
+ *
+ * Cropping changes the user-unit scale, which would change stroke weight too, so
+ * STROKE_SCALE puts the rendered line back where it was. Carets are deliberately
+ * absent: they are sized against the text beside them, not against this set.
+ */
+const VIEW_BOXES: Partial<Record<IconName, string>> = {
+  security: '-3.48 -3.48 62.96 62.96',
+  indexers: '-1.44 -0.73 26.45 26.45',
+  download: '-1.12 -1.37 18.24 18.24',
+  alert: '-1.88 -1.85 27.75 27.75',
+  lock: '-1.51 -1.51 27.03 27.03',
+  unlock: '-1.51 -1.51 27.03 27.03',
+  backup: '-1.51 -2.01 27.03 27.03',
+  plex: '-1.51 -1.51 27.03 27.03',
+  tmdb: '-70.27 -160.27 540.54 540.54',
+  qbittorrent: '-89.95 -89.95 691.89 691.89',
+  info: '-93.41 -93.41 1210.81 1210.81',
+  search: '0.97 0.97 22.07 22.07',
+  archive: '1.63 1.63 20.73 20.73',
+  sliders: '0.97 0.97 22.07 22.07',
+  settings: '-54.81 -54.81 621.62 621.62',
+  menu: '0.97 0.97 22.07 22.07',
+  activity: '-0.41 -0.41 24.83 24.83',
+  play: '3.84 2.34 19.31 19.31',
+  pause: '2.34 2.34 19.31 19.31',
+  check: '2.34 1.34 19.31 19.31',
+  review: '-1.46 -2.21 18.92 18.92',
+  plus: '5.1 5.1 13.79 13.79',
+  refresh: '-25.08 -25.08 562.16 562.16',
+  logout: '-0.41 -0.41 24.83 24.83',
+  external: '-0.41 -0.41 24.83 24.83',
+  grid: '0.97 0.97 22.07 22.07',
+  list: '0.78 0.28 23.45 23.45',
+  folder: '-28.54 -28.54 1081.08 1081.08',
+  database: '-1.79 -1.79 27.59 27.59',
+  server: '-0.41 -0.41 24.83 24.83',
+  clock: '-2.81 -2.81 21.62 21.62',
+  arrow: '2.34 2.34 19.31 19.31',
+  close: '3.72 3.72 16.55 16.55',
+  eye: '-1.79 -1.79 27.59 27.59',
+  'eye-off': '-1.79 -1.79 27.59 27.59',
+  copy: '-0.76 -0.76 25.52 25.52',
+  clapper: '-11.15 -15.14 270.29 270.29',
+  'tv-screen': '-68.32 -68.32 648.65 648.65',
+  'quality-profile': '-70.27 -120.27 540.54 540.54',
+  'custom-format': '-0.33 -0.27 24.52 24.52',
+  spark: '0.4 -0.6 26.21 26.21',
+}
+
+const STROKE_SCALE: Partial<Record<IconName, number>> = {
+  plus: 0.575,
+  search: 0.92,
+  sliders: 0.92,
+  menu: 0.92,
+  activity: 1.034,
+  play: 0.805,
+  pause: 0.805,
+  check: 0.805,
+  logout: 1.034,
+  external: 1.034,
+  grid: 0.92,
+  list: 0.977,
+  database: 1.149,
+  server: 1.034,
+  arrow: 0.805,
+  close: 0.69,
+  eye: 1.149,
+  'eye-off': 1.149,
+  copy: 1.063,
+  spark: 1.092,
+}
 
 export function Icon({ name, size = 18, strokeWidth = 1.8, ...props }: { name: IconName; size?: number; strokeWidth?: number } & SVGProps<SVGSVGElement>) {
-  return <svg aria-hidden="true" width={size} height={size} viewBox={VIEW_BOXES[name] ?? '0 0 24 24'} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" {...props}>{paths[name]}</svg>
+  return <svg aria-hidden="true" width={size} height={size} viewBox={VIEW_BOXES[name] ?? '0 0 24 24'} fill="none" stroke="currentColor" strokeWidth={strokeWidth * (STROKE_SCALE[name] ?? 1)} strokeLinecap="round" strokeLinejoin="round" {...props}>{paths[name]}</svg>
 }

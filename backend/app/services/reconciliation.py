@@ -90,7 +90,8 @@ def _sort_title(title: str) -> str:
 
 
 def _same_edition(left: str | None, right: str | None) -> bool:
-    return (left or "").strip().casefold() == (right or "").strip().casefold()
+    normalize = lambda value: "" if (value or "").strip().casefold() in {"", "theatrical cut"} else (value or "").strip().casefold()
+    return normalize(left) == normalize(right)
 
 
 def _identity_label(title: str | None, year: int | None) -> str | None:
@@ -404,6 +405,12 @@ async def mark_absent_known_directories(
         if not directory.exists:
             await retire_missing_review_discovery(db, directory.id)
             continue
+        # Review work goes as soon as the folder does, without waiting out the
+        # grace window. The window exists so a briefly unreachable share does
+        # not mark real library media missing; a pending discovery has never
+        # entered the library, so all the delay achieves is a queue row offering
+        # an import that cannot succeed.
+        await retire_missing_review_discovery(db, directory.id)
         if directory.missing_since is None:
             directory.missing_since = now
             directory.missing_check_count = 1
@@ -471,7 +478,8 @@ async def _refresh_movie_duplicate_problem(db: AsyncSession, movie_id: UUID) -> 
     ]
     by_edition: defaultdict[str, list[MovieRelease]] = defaultdict(list)
     for release in physically_present:
-        by_edition[(release.effective_edition or "").strip().casefold()].append(release)
+        edition_slot = (release.effective_edition or "").strip().casefold()
+        by_edition["" if edition_slot in {"", "theatrical cut"} else edition_slot].append(release)
 
     duplicate_groups = [group for group in by_edition.values() if len(group) > 1]
     duplicate_ids = {release.id for group in duplicate_groups for release in group}
@@ -503,6 +511,12 @@ async def _refresh_movie_duplicate_problem(db: AsyncSession, movie_id: UUID) -> 
         )
     else:
         await resolve_problem(db, "DUPLICATE_PHYSICAL_RELEASE", "movie", movie_id)
+
+
+async def refresh_movie_duplicate_problem(db: AsyncSession, movie_id: UUID) -> None:
+    """Public entry point for workflows that change a release's edition slot."""
+
+    await _refresh_movie_duplicate_problem(db, movie_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -644,6 +658,9 @@ async def reconcile_movie_directory(
     movie_hint: Movie | None = None,
     incoming_release: MovieRelease | None = None,
     manual_identity: bool = False,
+    edition_override_active: bool = False,
+    manual_edition_override: str | None = None,
+    force_review: bool = False,
 ) -> str:
     """Reconcile one filesystem directory; used by scans and qBit completion."""
 
@@ -730,6 +747,7 @@ async def reconcile_movie_directory(
                 return "matched"
 
     folder_parse = parse_release_name(observation.name)
+    effective_candidate_edition = manual_edition_override if edition_override_active else folder_parse.edition
     file_parses = [parse_release_name(Path(name).stem) for name in observation.media_files]
     confidence = _confidence(
         folder_parse,
@@ -774,17 +792,14 @@ async def reconcile_movie_directory(
 
     if (
         root.media_type == MediaType.MOVIES
-        and root.discovery_mode == DiscoveryMode.REVIEW
-        and movie is None
         and not manual_identity
+        and (force_review or (root.discovery_mode == DiscoveryMode.REVIEW and movie is None))
     ):
         discovery = await stage_media_discovery(
             db, directory, folder_parse, media_type=MediaType.MOVIES, title=title, year=year, confidence=confidence
         )
-        # Review is expected work, not a Problem. Clear stale identity rows if this
-        # directory was previously scanned while automatic admission was enabled.
-        for reason in ("LOW_CONFIDENCE_MATCH", "TMDB_IDENTITY_UNRESOLVED", "PLEX_IDENTITY_MISMATCH"):
-            await resolve_problem(db, reason, "media_directory", directory.id)
+        # Review is expected work, not a Problem.
+        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         return "review" if discovery.review_state.value == "pending" else "matched"
 
     # Title + year is enough evidence to ask an authoritative identity source.
@@ -794,36 +809,19 @@ async def reconcile_movie_directory(
         confidence = max(confidence, 0.95)
 
     if root.media_type != MediaType.MOVIES or not title or year is None or (confidence < 0.80 and not manual_identity):
-        # Parser uncertainty supersedes downstream identity/integration
-        # conclusions for this same directory. Do not leave older TMDB/Plex
-        # Problems open when their prerequisite identity is no longer valid.
-        await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
+        # Parser uncertainty belongs in Review. It is expected identification
+        # work, not a separate Problem condition.
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
-        await open_problem(
+        discovery = await stage_media_discovery(
             db,
-            reason="LOW_CONFIDENCE_MATCH",
-            entity_type="media_directory",
-            entity_id=directory.id,
-            message=(
-                f"Could not confidently identify {observation.name}. "
-                f"Parser candidate: {_identity_label(title, year) or 'no usable title/year'}."
-            ),
-            details={
-                "path": observation.path,
-                "parsed_title": title,
-                "parsed_year": year,
-                "parsed_identity": _identity_label(title, year),
-                "confidence": confidence,
-                "parser_warnings": list(folder_parse.warnings),
-                "unknown_tokens": list(folder_parse.unknown_tokens),
-                "parse": folder_parse.to_dict(),
-            },
+            directory,
+            folder_parse,
+            media_type=MediaType.MOVIES,
+            title=title,
+            year=year,
+            confidence=confidence,
         )
-        return "review"
-
-    # The same directory may have been uncertain on an earlier pass. Healthy
-    # parser evidence must close that stale row before later checks continue.
-    await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "media_directory", directory.id)
+        return "review" if discovery.review_state.value == "pending" else "matched"
 
     plex_evidence = await _plex_evidence_for_candidate(db, movie.title if movie else title, movie.year if movie else year, observation)
 
@@ -844,38 +842,18 @@ async def reconcile_movie_directory(
                     f"TMDB is {tmdb_reason.replace('_', ' ')}; identity cannot be established. "
                     "Check Settings -> TMDB, then run the scan again."
                 )
-            reason = "TMDB_IDENTITY_UNRESOLVED"
             await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
-            await open_problem(
+            await stage_media_discovery(
                 db,
-                reason=reason,
-                entity_type="media_directory",
-                entity_id=directory.id,
-                message=f"TMDB could not uniquely identify {_identity_label(title, year) or 'this movie candidate'}.",
-                details={
-                    "path": observation.path,
-                    "parsed_title": title,
-                    "parsed_year": year,
-                    "parsed_identity": _identity_label(title, year),
-                    "tmdb_reason": tmdb_reason,
-                    "tmdb_queries": list(tmdb_resolution.queries),
-                    "tmdb_candidates": [
-                        {
-                            "tmdb_id": item.tmdb_id,
-                            "title": item.title,
-                            "original_title": item.original_title,
-                            "year": item.year,
-                            "overview": item.overview,
-                            "poster_path": item.poster_path,
-                        }
-                        for item in tmdb_resolution.candidates[:10]
-                    ],
-                    "parse": folder_parse.to_dict(),
-                },
-                severity=Severity.ERROR if tmdb_reason == "unavailable" else Severity.WARNING,
+                directory,
+                folder_parse,
+                media_type=MediaType.MOVIES,
+                title=title,
+                year=year,
+                confidence=confidence,
+                identity_resolution=tmdb_resolution,
             )
             return "review"
-        await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         # Exact TMDB identity evidence upgrades a folder-only 0.80 parse to the
         # automatic-attachment threshold without weakening the no-guess rule.
         confidence = max(confidence, 0.95)
@@ -894,9 +872,6 @@ async def reconcile_movie_directory(
         db.add(movie)
         await db.flush()
     else:
-        # A previously identified movie also proves any directory-level TMDB
-        # identity Problems from an older pass are no longer applicable.
-        await resolve_problem(db, "TMDB_IDENTITY_UNRESOLVED", "media_directory", directory.id)
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
 
     # Keep all releases loaded before evaluating active slots. The in-process
@@ -921,7 +896,7 @@ async def reconcile_movie_directory(
             download_complete=True,
             plex_state=PlexState.MATCHED if plex_evidence.state is PlexState.CONFLICT else plex_evidence.state,
             confidence=confidence,
-            edition=folder_parse.edition,
+            edition=effective_candidate_edition,
             directory_exists=True,
             filename_identity_matches=confidence >= 0.90,
             preferred_replacement_release_id=str(preferred_replacement_id) if preferred_replacement_id else None,
@@ -931,10 +906,18 @@ async def reconcile_movie_directory(
             if incoming_release is None or item.release_id != str(incoming_release.id)
         ]
         decision = ReconciliationEngine().reconcile_candidate(candidate, existing_for_decision)
+        if decision.kind is DecisionKind.REVIEW:
+            await stage_media_discovery(
+                db,
+                directory,
+                folder_parse,
+                media_type=MediaType.MOVIES,
+                title=title,
+                year=year,
+                confidence=confidence,
+            )
+            return "review"
         if decision.kind is DecisionKind.PROBLEM:
-            for stale_reason in ("AMBIGUOUS_REPLACEMENT_TARGET", "ACTIVE_RELEASE_LIMIT_REACHED", "LOW_CONFIDENCE_MATCH"):
-                if stale_reason != decision.reason_code:
-                    await resolve_problem(db, stale_reason, "movie", movie.id)
             await open_problem(
                 db,
                 reason=decision.reason_code,
@@ -944,8 +927,7 @@ async def reconcile_movie_directory(
                 details={**decision.details, "path": observation.path},
             )
             return "review"
-        for stale_reason in ("AMBIGUOUS_REPLACEMENT_TARGET", "ACTIVE_RELEASE_LIMIT_REACHED", "LOW_CONFIDENCE_MATCH"):
-            await resolve_problem(db, stale_reason, "movie", movie.id)
+        await resolve_problem(db, "AMBIGUOUS_REPLACEMENT_TARGET", "movie", movie.id)
         if decision.kind is DecisionKind.CONFLICT:
             state = ReleaseState.CONFLICT
             result = "conflicts"
@@ -978,7 +960,9 @@ async def reconcile_movie_directory(
                 parsed_title=title,
                 parsed_year=year,
                 parsed_edition=folder_parse.edition,
-                effective_edition=folder_parse.edition,
+                manual_edition_override=manual_edition_override if edition_override_active else None,
+                edition_override_active=edition_override_active,
+                effective_edition=effective_candidate_edition,
                 quality_definition_id=quality.id if quality else None,
                 release_group=folder_parse.release_group,
                 release_state=state,
@@ -993,7 +977,11 @@ async def reconcile_movie_directory(
             release.parsed_title = title
             release.parsed_year = year
             release.parsed_edition = folder_parse.edition
-            if release.manual_edition_override is None:
+            if edition_override_active:
+                release.edition_override_active = True
+                release.manual_edition_override = manual_edition_override
+                release.effective_edition = manual_edition_override
+            elif not release.edition_override_active and release.manual_edition_override is None:
                 release.effective_edition = folder_parse.edition
             release.quality_definition_id = quality.id if quality else None
             release.release_group = folder_parse.release_group
@@ -1302,7 +1290,6 @@ async def finalize_completed_torrent(
         return await _finalize_completed_show_torrent(db, torrent, resolved_path=resolved_path)
 
     if scope != MediaType.MOVIES or not resolved_path:
-        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1326,14 +1313,12 @@ async def finalize_completed_torrent(
         # Medialogue's configured media folders. Such a path is out of scope,
         # not missing.  Never manufacture a filesystem-access Problem for it.
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         return "ignored"
     if not Path(root.resolved_root_path).is_dir():
         # Root health is represented once by ROOT_UNREACHABLE.  Avoid a
         # torrent-per-file Problem storm while the mount itself is offline.
         return "deferred"
     if not path.exists():
-        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1348,7 +1333,6 @@ async def finalize_completed_torrent(
     try:
         observation = FilesystemObserver().inspect_directory(path, Path(root.resolved_root_path))
     except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-        await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1359,8 +1343,7 @@ async def finalize_completed_torrent(
         )
         return "problem"
     # A successful directory inspection proves any previous path-not-found
-    # condition is over, even if later identity checks expose a different
-    # Problem such as LOW_CONFIDENCE_MATCH.
+    # condition is over before identity review begins.
     await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
     parsed = parse_release_name(observation.name)
     files = [parse_release_name(Path(name).stem) for name in observation.media_files]
@@ -1380,17 +1363,6 @@ async def finalize_completed_torrent(
             incoming_release = linked_release
     if movie is None and parsed.identity.title_candidate and parsed.identity.year is not None:
         movie = await _find_movie_by_identity(db, parsed.identity.title_candidate, parsed.identity.year)
-    if confidence < 0.90:
-        await open_problem(
-            db,
-            reason="LOW_CONFIDENCE_MATCH",
-            entity_type="torrent",
-            entity_id=torrent.id,
-            message="Completed torrent directory and filenames could not be confidently matched.",
-            details={"path": str(path), "confidence": confidence, "parse": parsed.to_dict()},
-        )
-        return "problem"
-    await resolve_problem(db, "LOW_CONFIDENCE_MATCH", "torrent", torrent.id)
     # Plex metadata never blocks a TMDB-backed movie attachment. Presence/path
     # evidence is retained, while pending/unavailable remain non-authoritative.
     result = await reconcile_movie_directory(
@@ -1400,6 +1372,7 @@ async def finalize_completed_torrent(
         torrent=torrent,
         movie_hint=movie,
         incoming_release=incoming_release,
+        force_review=confidence < 0.90,
     )
     if result in {"matched", "duplicates", "conflicts"}:
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
@@ -1413,7 +1386,6 @@ async def _finalize_completed_show_torrent(
     resolved_path: str | None,
 ) -> str:
     if not resolved_path:
-        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1437,12 +1409,10 @@ async def _finalize_completed_show_torrent(
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
     if root is None:
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         return "ignored"
     if not Path(root.resolved_root_path).is_dir():
         return "deferred"
     if not path.exists():
-        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1460,7 +1430,6 @@ async def _finalize_completed_show_torrent(
     except ValueError:
         relative = None
     if relative is None or not relative.parts:
-        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1476,19 +1445,12 @@ async def _finalize_completed_show_torrent(
     container = root_path / relative.parts[0]
     if not container.is_dir():
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-        await open_problem(
-            db,
-            reason="TORRENT_SHOW_CONTAINER_REQUIRED",
-            entity_type="torrent",
-            entity_id=torrent.id,
-            message="A completed Show torrent is directly in the storage-root directory; a containing Show/release directory is required for safe identity reconciliation.",
-            details={"resolved_path": str(path), "root": str(root_path)},
-        )
-        return "problem"
+        # Show libraries are container-based. Loose video files directly under
+        # the media-folder root are outside that model and are simply ignored.
+        return "ignored"
     try:
         observation = FilesystemObserver().inspect_directory(container, root_path)
     except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
         await open_problem(
             db,
             reason="TORRENT_PATH_NOT_FOUND",
@@ -1558,7 +1520,6 @@ async def _finalize_completed_show_torrent(
     )
     if result in {"matched", "review"}:
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-        await resolve_problem(db, "TORRENT_SHOW_CONTAINER_REQUIRED", "torrent", torrent.id)
     return result
 
 
@@ -1568,31 +1529,12 @@ async def reconcile_torrent_disagreements(
     *,
     qbit_present: bool | None,
 ) -> None:
-    """Surface qBit/media disagreement without changing logical media state.
+    """Retire torrent links whose mapped media no longer exists.
 
-    ``qbit_present=None`` means qBittorrent still reports the torrent but its
-    resolved path is outside every enabled Medialogue media folder. In that
-    state qBittorrent is deliberately out of scope, so stale disagreement
-    Problems are cleared rather than reclassified as a removal/missing-path
-    fault.
+    Removing a torrent while retaining its media is normal and does not create
+    a Problem. ``qbit_present`` remains part of the observer contract but is no
+    longer treated as library disagreement.
     """
-
-    observations = (
-        await db.scalars(
-            select(TorrentClientObservation).where(TorrentClientObservation.torrent_id == torrent.id)
-        )
-    ).all()
-    qbit_evidence = [
-        {
-            "reported_path": item.reported_save_path,
-            "resolved_path": item.resolved_save_path,
-            "state": item.state,
-            "progress": float(item.progress) if item.progress is not None else None,
-            "is_present": bool(item.is_present),
-            "last_seen_at": item.last_seen_at.isoformat() if item.last_seen_at else None,
-        }
-        for item in observations
-    ]
 
     movie_links = (await db.scalars(select(MovieReleaseTorrent).where(MovieReleaseTorrent.torrent_id == torrent.id))).all()
     for link in movie_links:
@@ -1601,9 +1543,8 @@ async def reconcile_torrent_disagreements(
         release = await db.get(MovieRelease, link.movie_release_id)
         if release is None:
             continue
+        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "movie_release", release.id)
         if link.association_type == AssociationType.HISTORICAL:
-            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "movie_release", release.id)
-            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "movie_release", release.id)
             continue
         directories = (await db.scalars(select(MediaDirectory).where(MediaDirectory.movie_release_id == release.id))).all()
         media_present = any(directory.exists for directory in directories)
@@ -1613,42 +1554,7 @@ async def reconcile_torrent_disagreements(
             # actionable library fault. Active/incoming completion failures are
             # handled earlier by finalize_completed_torrent on the Torrent.
             link.association_type = AssociationType.HISTORICAL
-            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "movie_release", release.id)
-            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "movie_release", release.id)
-            continue
-        reason = None
-        message = ""
-        if qbit_present is False and media_present:
-            reason = "TORRENT_REMOVED_EXTERNALLY"
-            message = "The attached media is present but its qBittorrent torrent was removed externally."
-        if reason is not None:
-            alternate = "TORRENT_PATH_NOT_FOUND" if reason == "TORRENT_REMOVED_EXTERNALLY" else "TORRENT_REMOVED_EXTERNALLY"
-            await resolve_problem(db, alternate, "movie_release", release.id)
-            await open_problem(
-                db,
-                reason=reason,
-                entity_type="movie_release",
-                entity_id=release.id,
-                message=message,
-                details={
-                    "torrent_id": str(torrent.id),
-                    "torrent_name": torrent.name,
-                    "info_hash": torrent.info_hash,
-                    "qbit_observations": qbit_evidence,
-                    "mapped_directories": [
-                        {
-                            "path": directory.resolved_path,
-                            "catalogue_exists": bool(directory.exists),
-                            "physical_exists": Path(directory.resolved_path).is_dir(),
-                            "missing_since": directory.missing_since.isoformat() if directory.missing_since else None,
-                        }
-                        for directory in directories
-                    ],
-                },
-            )
-        else:
-            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "movie_release", release.id)
-            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "movie_release", release.id)
+        continue
 
     show_links = (await db.scalars(select(ShowReleaseTorrent).where(ShowReleaseTorrent.torrent_id == torrent.id))).all()
     for link in show_links:
@@ -1657,9 +1563,8 @@ async def reconcile_torrent_disagreements(
         release = await db.get(ShowRelease, link.show_release_id)
         if release is None:
             continue
+        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "show_release", release.id)
         if link.association_type == AssociationType.HISTORICAL:
-            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "show_release", release.id)
-            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "show_release", release.id)
             continue
         media_present = bool(
             await db.scalar(
@@ -1669,55 +1574,8 @@ async def reconcile_torrent_disagreements(
                 .where(EpisodeMediaMap.show_release_id == release.id, MediaFile.exists.is_(True))
             )
         )
-        mapped_rows = (
-            await db.execute(
-                select(MediaFile, MediaDirectory)
-                .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
-                .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
-                .where(EpisodeMediaMap.show_release_id == release.id)
-            )
-        ).all()
         if not media_present:
             link.association_type = AssociationType.HISTORICAL
-            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "show_release", release.id)
-            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "show_release", release.id)
-            continue
-        reason = None
-        message = ""
-        if qbit_present is False and media_present:
-            reason = "TORRENT_REMOVED_EXTERNALLY"
-            message = "The Show media is present but its qBittorrent torrent was removed externally."
-        if reason is not None:
-            alternate = "TORRENT_PATH_NOT_FOUND" if reason == "TORRENT_REMOVED_EXTERNALLY" else "TORRENT_REMOVED_EXTERNALLY"
-            await resolve_problem(db, alternate, "show_release", release.id)
-            await open_problem(
-                db,
-                reason=reason,
-                entity_type="show_release",
-                entity_id=release.id,
-                message=message,
-                details={
-                    "torrent_id": str(torrent.id),
-                    "torrent_name": torrent.name,
-                    "info_hash": torrent.info_hash,
-                    "qbit_observations": qbit_evidence,
-                    "mapped_files": [
-                        {
-                            "media_file_id": str(media_file.id),
-                            "filename": media_file.filename,
-                            "path": str(Path(directory.resolved_path) / media_file.relative_path),
-                            "catalogue_exists": bool(media_file.exists),
-                            "directory_catalogue_exists": bool(directory.exists),
-                            "physical_exists": (Path(directory.resolved_path) / media_file.relative_path).is_file(),
-                            "missing_since": media_file.missing_since.isoformat() if media_file.missing_since else None,
-                        }
-                        for media_file, directory in mapped_rows
-                    ],
-                },
-            )
-        else:
-            await resolve_problem(db, "TORRENT_REMOVED_EXTERNALLY", "show_release", release.id)
-            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "show_release", release.id)
 
 
 async def cancel_incoming_torrent(
