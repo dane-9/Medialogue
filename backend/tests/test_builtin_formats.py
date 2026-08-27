@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.parser import parse_release_name
+from app.parser import parse_release
 from app.services.builtin_formats import BUILTIN_FORMATS, condition_definition
 from app.services.custom_formats import CustomFormat as EvaluationFormat
 from app.services.custom_formats import evaluate_custom_format
@@ -30,7 +30,7 @@ def _evaluation(key: str, release: str, *, score: int = 0):
             "condition_definition": condition_definition(builtin),
         }
     )
-    return evaluate_custom_format(fmt, parse_release_name(release), score=score)
+    return evaluate_custom_format(fmt, parse_release(release), score=score)
 
 
 def _matches(key: str, release: str) -> bool:
@@ -52,24 +52,20 @@ def test_every_builtin_has_a_unique_key_and_at_least_one_condition() -> None:
 @pytest.mark.parametrize(
     ("key", "release"),
     [
-        # Video codecs, across the spellings release groups actually use.
         ("video-hevc", "Movie 2024 2160p BluRay REMUX HEVC-GRP"),
         ("video-hevc", "Movie 2024 1080p WEB-DL x265-GRP"),
         ("video-avc", "Movie 2024 1080p BluRay REMUX AVC-GRP"),
         ("video-avc", "Movie 2024 1080p WEB-DL H.264-GRP"),
         ("video-av1", "Movie 2024 2160p WEB-DL AV1-GRP"),
-        # Dolby Digital Plus under all four spellings.
         ("audio-ddplus", "Movie 2024 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("audio-ddplus", "Movie 2024 1080p WEB-DL DD+5.1 x265-GRP"),
         ("audio-ddplus", "Movie 2024 1080p WEB-DL EAC3 5.1-GRP"),
         ("audio-ddplus", "Movie 2024 1080p WEB-DL E-AC-3 5.1-GRP"),
         ("audio-dtsx", "Movie 2024 2160p BluRay REMUX DTS-X 7.1-GRP"),
-        # Lossless and object audio.
         ("audio-truehd", "Movie 2024 2160p BluRay REMUX TrueHD 7.1 Atmos-GRP"),
         ("audio-dtshd-ma", "Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP"),
         ("audio-dts", "Movie 2024 1080p BluRay DTS 5.1 x264-GRP"),
         ("audio-dd", "Movie 2024 1080p BluRay AC3 2.0 x264-GRP"),
-        # HDR flavours are distinct values, so they score independently.
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL DV HDR10+ x265-FLUX"),
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL DOVI x265-FLUX"),
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL Dolby.Vision x265-FLUX"),
@@ -79,7 +75,6 @@ def test_every_builtin_has_a_unique_key_and_at_least_one_condition() -> None:
         ("hdr-hdr10", "Movie 2024 2160p WEB-DL HDR10 x265-FLUX"),
         ("hdr-sdr", "Movie 2024 2160p BluRay SDR x265-GRP"),
         ("hdr-sdr", "Movie 2024 2160p BluRay x265-GRP"),
-        # Release traits.
         ("attr-repack-proper", "Movie 2024 1080p WEB-DL REPACK DDP5.1 x264-GRP"),
         ("attr-repack-proper", "Movie 2024 1080p WEB-DL REPACK2 DDP5.1 x264-GRP"),
         ("attr-repack-proper", "Movie 2024 1080p WEB-DL REPACK3 DDP5.1 x264-GRP"),
@@ -90,7 +85,6 @@ def test_every_builtin_has_a_unique_key_and_at_least_one_condition() -> None:
         ("attr-rerip", "Movie 2024 1080p WEB-DL RERIP2 DDP5.1 x264-GRP"),
         ("attr-rerip", "Movie 2024 1080p WEB-DL RERIP3 DDP5.1 x264-GRP"),
         ("attr-hybrid", "Movie 2024 2160p Hybrid BluRay REMUX HEVC-GRP"),
-        # Streaming providers.
         ("web-amzn", "Show S01E01 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("web-atvp", "Show S01E01 2160p ATVP WEB-DL DDP5.1 H.265-NTb"),
         ("web-bcore", "Movie 2024 2160p BCORE WEB-DL DDP5.1 H.265-GRP"),
@@ -128,16 +122,12 @@ def test_revision_formats_apply_the_number_as_the_score_offset(key: str, tag: st
 @pytest.mark.parametrize(
     ("key", "release"),
     [
-        # A codec format must not match a different codec.
         ("video-hevc", "Movie 2024 1080p BluRay REMUX AVC-GRP"),
         ("video-av1", "Movie 2024 1080p WEB-DL x265-GRP"),
-        # Plain DD+ is not lossless TrueHD, and plain DTS is not DTS-HD MA.
         ("audio-truehd", "Movie 2024 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("audio-dtshd-ma", "Movie 2024 1080p BluRay DTS 5.1 x264-GRP"),
-        # Dolby Digital must not be confused with Dolby Digital Plus.
         ("audio-dd", "Movie 2024 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("audio-ddplus", "Movie 2024 1080p BluRay AC3 2.0 x264-GRP"),
-        # HDR10+ is not Dolby Vision.
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL HDR10+ x265-GRP"),
         ("hdr-dv-hdr10", "Movie 2024 2160p WEB-DL DV HDR10+ x265-GRP"),
         ("hdr-hdr10", "Movie 2024 2160p WEB-DL HDR10+ x265-GRP"),
@@ -145,7 +135,6 @@ def test_revision_formats_apply_the_number_as_the_score_offset(key: str, tag: st
         ("hdr-sdr", "Movie 2024 2160p WEB-DL HDR10 x265-GRP"),
         ("hdr-sdr", "Movie 2024 2160p WEB-DL DOVI x265-GRP"),
         ("hdr-sdr", "Movie 2024 2160p HDTV HLG x265-GRP"),
-        # A provider format must not match another provider.
         ("web-amzn", "Show S01E01 1080p DSNP WEB-DL DDP5.1 H.264-NTb"),
         ("web-paramount", "Show S01E01 1080p AMZN WEB-DL DDP5.1 H.264-NTb"),
         ("web-sho", "Show S01E01 1080p PMTP WEB-DL DDP5.1 H.264-NTb"),
@@ -185,7 +174,6 @@ def test_atmos_matches_only_its_specific_carrier_format() -> None:
     truehd_atmos = "Movie 2024 2160p BluRay REMUX TrueHD 7.1 Atmos-GRP"
     assert _matches("audio-truehd", truehd_atmos)
     assert _matches("audio-truehd-atmos", truehd_atmos)
-    # ...but it is not DD+ Atmos.
     assert not _matches("audio-ddplus-atmos", truehd_atmos)
 
     ddp_atmos = "Movie 2024 2160p AMZN WEB-DL DDP5.1 Atmos H.265-NTb"
@@ -233,10 +221,8 @@ def test_default_profile_scores_reflect_the_intended_ranking() -> None:
     assert scores["hdr-dolby-vision"] > scores["hdr-hdr10-plus"]
     assert scores["hdr-sdr"] == 10
     assert scores["hdr-hlg"] == 0
-    # DV HDR10+ tops the dynamic range group outright.
     dynamic = {key: value for key, value in scores.items() if key.startswith("hdr-")}
     assert max(dynamic, key=lambda key: dynamic[key]) == "hdr-dv-hdr10-plus"
-    # Bravia Core is the only streaming source scored above neutral.
     streaming = {key: value for key, value in scores.items() if key.startswith("web-")}
     assert streaming["web-bcore"] > 0
     assert all(value == 0 for key, value in streaming.items() if key != "web-bcore")
@@ -247,7 +233,6 @@ def test_full_disc_dvd_is_left_out_of_the_default_profile() -> None:
     from app.parser import list_quality_definitions
 
     known = {item.name for item in list_quality_definitions()}
-    # Every excluded name must actually exist, or the filter silently does nothing.
     assert DEFAULT_EXCLUDED_QUALITY_DEFINITIONS <= known
     assert all(name.startswith("Full Disc") for name in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS)
     assert {name for name in known if name.startswith("Full Disc")} == DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
@@ -267,9 +252,7 @@ def test_new_builtins_match_their_releases(key: str, release: str) -> None:
 @pytest.mark.parametrize(
     ("key", "release"),
     [
-        # HRA is no longer swept up by the plain DTS format.
         ("audio-dts", "Movie 2024 1080p BluRay DTS-HD HRA 5.1 x264-GRP"),
-        # The two DV formats are mutually exclusive on the base layer.
         ("hdr-dv-hdr10-plus", "Movie 2024 2160p WEB-DL DV HDR10 x265-FLUX"),
         ("hdr-dv-hdr10", "Movie 2024 2160p WEB-DL DV HDR10+ x265-FLUX"),
         ("hdr-dv-hdr10-plus", "Movie 2024 2160p WEB-DL HDR10+ x265-FLUX"),

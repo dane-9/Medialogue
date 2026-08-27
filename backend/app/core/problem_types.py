@@ -56,23 +56,15 @@ PROBLEM_PRESENTATIONS: dict[str, tuple[str, str, str]] = {
     ),
 }
 
-#: Short condition labels used on badges and for workflow classification tests.
 PROBLEM_LABELS: dict[str, str] = {
     reason: presentation[0] for reason, presentation in PROBLEM_PRESENTATIONS.items()
 }
 
-#: Reasons whose fix is choosing the right title, by the entity that owns it.
-#: The action must be one resolve_explicit_problem_action can actually run:
-#: offering a button the server rejects is worse than offering none.
 MOVIE_MATCH_REASONS = frozenset({"PLEX_IDENTITY_MISMATCH"})
 SHOW_MATCH_REASONS = frozenset({"PLEX_IDENTITY_MISMATCH"})
 
-#: Reasons resolved by picking which copy to keep, in the duplicate workspace
-#: rather than through a resolution action.
 DUPLICATE_REASONS = frozenset({"DUPLICATE_PHYSICAL_RELEASE", "DUPLICATE_EPISODE_RELEASE"})
 
-#: Reasons that are settings problems: nothing about the media is wrong, and
-#: rechecking will keep failing until something outside Medialogue changes.
 CONFIG_REASONS = frozenset({"ROOT_UNREACHABLE", "TORRENT_PATH_NOT_FOUND"})
 
 

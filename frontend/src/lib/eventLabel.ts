@@ -1,15 +1,4 @@
-/**
- * Turn a durable event's dotted type into something readable.
- *
- * The raw type is a routing key: `storage_root.unavailable` is precise, and it
- * is also the wrong thing to put in front of someone scanning a history for
- * what happened. Every event already carries a written message, so the type's
- * only job in the list is to say which kind of thing this row is, briefly
- * enough to skim a column of them.
- *
- * Unknown types fall back to a readable rendering of the same string rather
- * than being hidden: a new event type should look unfamiliar, not invisible.
- */
+
 
 const LABELS: Record<string, string> = {
   'download.completed': 'Download finished',
@@ -44,7 +33,6 @@ const LABELS: Record<string, string> = {
   'bulk.operation_completed': 'Bulk operation',
 }
 
-/** A short, human name for an event type. */
 export function eventLabel(eventType: string): string {
   const known = LABELS[eventType]
   if (known) return known
@@ -53,13 +41,6 @@ export function eventLabel(eventType: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-/**
- * The full moment an event happened, in one cell.
- *
- * The list is sortable, so rows next to each other are no longer guaranteed to
- * share a day and a bare clock time would be ambiguous. Ordering is
- * day-month-time so the varying part reads last and the column stays scannable.
- */
 export function eventStamp(createdAt: string): string {
   const at = new Date(createdAt)
   if (Number.isNaN(at.getTime())) return '—'

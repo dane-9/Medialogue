@@ -31,9 +31,6 @@ class FakeTMDBClient:
     async def health(self):
         return {"status": "healthy"}
 
-    #: A tiny catalogue, so two different folders can match two different films.
-    #: Returning one fixed title for every query made any multi-item test look
-    #: like a matching failure.
     MOVIES = {
         438631: ("Dune", 2021, "/dune.jpg"),
         329865: ("Arrival", 2016, "/arrival.jpg"),
@@ -268,7 +265,6 @@ def test_scan_caches_full_tmdb_result_lists_for_review(
     assert [item["title"] for item in movie["candidates"]] == ["Dune", "Arrival"]
     assert [item["title"] for item in show["candidates"]] == ["Dollface", "Dollface Stories"]
 
-    # A fresh queue read uses the stored candidates; it does not search TMDB.
     async def unexpected_search(self, title: str, year: int | None = None):
         raise AssertionError("reading cached Review candidates must not search TMDB")
 
@@ -344,9 +340,6 @@ def test_confirmed_missing_folder_is_retired_from_review_after_rename(
     new_folder = media_root / new_name
     old_folder.rename(new_folder)
 
-    # One scan is enough: the old path leaves Review as soon as it is gone,
-    # rather than sitting beside its own renamed copy for a grace window that
-    # only protects library media.
     scan(client, headers, storage["id"])
     after_rename = client.get("/api/v1/discoveries?page_size=250").json()["items"]
     assert [item["path"] for item in after_rename] == [str(new_folder)]
@@ -378,12 +371,9 @@ def test_legacy_missing_discovery_is_hidden_and_retired(
 
     asyncio.run(mark_legacy_row_missing())
 
-    # It is hidden immediately, without waiting for another filesystem scan.
     assert client.get("/api/v1/discoveries?page_size=250").json()["items"] == []
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0
 
-    # The next scan also removes the obsolete database row rather than hitting
-    # the old already-missing early return forever.
     (folder / "Dune.2021.mkv").unlink()
     folder.rmdir()
     scan(client, headers, storage["id"])
@@ -503,9 +493,6 @@ def test_one_failure_does_not_discard_the_rest_of_a_batch(client: TestClient, tm
     scan(client, headers, storage["id"])
     items = client.get("/api/v1/discoveries?page_size=250").json()["items"]
 
-    # One directory disappears between the scan and the approval, which is the
-    # ordinary way a batch goes partly wrong. A root tolerates two consecutive
-    # misses before calling a directory gone, so this takes two scans.
     (gone / "Arrival.2016.1080p.mkv").unlink()
     gone.rmdir()
     scan(client, headers, storage["id"])
@@ -520,10 +507,7 @@ def test_one_failure_does_not_discard_the_rest_of_a_batch(client: TestClient, tm
     body = response.json()
     assert len(body["succeeded"]) == 1
     assert len(body["failed"]) == 1
-    # Confirmed-missing pending work is retired from Review. A stale batch
-    # assembled before that scan therefore reports that row as gone.
     assert body["failed"][0]["code"] == "DISCOVERY_NOT_FOUND"
-    # The healthy item still went in rather than being rolled back with it.
     assert client.get("/api/v1/movies").json()["total"] == 1
 
 
@@ -564,13 +548,11 @@ def test_an_ignored_item_can_be_restored_to_the_queue(client: TestClient, tmp_pa
     client.post(f"/api/v1/discoveries/{item['id']}/ignore", headers=headers)
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0
 
-    # Ignoring is a mis-clickable action, so it has to be reversible.
     restored = client.post(f"/api/v1/discoveries/{item['id']}/restore", headers=headers)
     assert restored.status_code == 200, restored.text
     assert restored.json()["review_state"] == "pending"
     assert client.get("/api/v1/discoveries/count").json()["count"] == 1
 
-    # Restoring something already pending is a conflict, not a silent no-op.
     assert client.post(f"/api/v1/discoveries/{item['id']}/restore", headers=headers).status_code == 409
 
 
@@ -583,8 +565,6 @@ def test_a_discovery_reports_what_is_inside_the_folder(client: TestClient, tmp_p
     (folder / "extras").mkdir(parents=True)
     (folder / "Dune.2021.2160p.mkv").write_bytes(b"movie")
     (folder / "extras" / "Behind.The.Scenes.mkv").write_bytes(b"extra")
-    # Not a video suffix, so the scanner never records it. Asserting on it would
-    # be asserting on a file that does not exist as far as the database knows.
     (folder / "eng.srt").write_bytes(b"subtitle")
 
     storage = create_root(client, headers, movie_root, "movies")
@@ -593,8 +573,6 @@ def test_a_discovery_reports_what_is_inside_the_folder(client: TestClient, tmp_p
     item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
     paths = [file["relative_path"] for file in item["files"]]
 
-    # The folder name is the thing that might be wrong, so the files that settle
-    # it have to reach the reviewer.
     assert "Dune.2021.2160p.mkv" in paths
     assert any(path.endswith("Behind.The.Scenes.mkv") for path in paths)
     assert not any(path.endswith(".srt") for path in paths)
@@ -614,8 +592,6 @@ def test_choosing_a_known_candidate_does_not_call_tmdb(client: TestClient, tmp_p
     scan(client, headers, storage["id"])
     item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
 
-    # Recording a choice the reviewer was already looking at must not reach the
-    # network: it was a round trip per click, which is what made selecting slow.
     def explode(self, tmdb_id: int):
         raise AssertionError("select must not fetch metadata it already has")
 
@@ -643,8 +619,6 @@ def test_choosing_a_bare_id_still_fetches_the_metadata(client: TestClient, tmp_p
     scan(client, headers, storage["id"])
     item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
 
-    # No display values and not a stored candidate, so the server has to look it
-    # up rather than record an id with no title attached.
     response = client.post(
         f"/api/v1/discoveries/{item['id']}/select",
         headers=headers,
@@ -671,8 +645,6 @@ def test_search_stores_candidates_on_the_item(client: TestClient, tmp_path: Path
     titles = [candidate["title"] for candidate in response.json()["candidates"]]
     assert "Dune" in titles
 
-    # Stored on the item, not in a browser: a fresh read sees the same list, so
-    # reopening the folder never repeats the search.
     reloaded = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
     assert [candidate["title"] for candidate in reloaded["candidates"]] == titles
 
@@ -748,8 +720,6 @@ def test_searching_again_keeps_the_current_selection(client: TestClient, tmp_pat
         headers=headers,
         json={"tmdb_id": 329865, "title": "Arrival", "year": 2016},
     )
-    # A search for something else must not erase the choice from the list it is
-    # selected in.
     response = client.post(f"/api/v1/discoveries/{item['id']}/search", headers=headers, json={"query": "Dune"})
     assert response.status_code == 200, response.text
     assert response.json()["selected"]["title"] == "Arrival"
@@ -776,8 +746,6 @@ def test_a_search_result_becomes_the_starting_match(client: TestClient, tmp_path
     configure_tmdb(client, headers)
 
     movie_root = tmp_path / "movies"
-    # A folder whose title matches nothing confidently, so the scan leaves it
-    # unselected and the search is what supplies a first guess.
     folder = movie_root / "Some.Unrecognisable.Thing.1999.1080p.BluRay"
     folder.mkdir(parents=True)
     (folder / "thing.mkv").write_bytes(b"movie")
@@ -788,7 +756,6 @@ def test_a_search_result_becomes_the_starting_match(client: TestClient, tmp_path
     response = client.post(f"/api/v1/discoveries/{item['id']}/search", headers=headers, json={"query": "Dune"})
     assert response.status_code == 200, response.text
     body = response.json()
-    # Confirming or correcting one guess is faster than filling in a blank row.
     assert body["selected"] is not None
     assert body["selected"]["tmdb_id"] == body["candidates"][0]["tmdb_id"]
 
@@ -805,14 +772,10 @@ def test_choosing_a_candidate_leaves_the_list_in_place(client: TestClient, tmp_p
     scan(client, headers, storage["id"])
     item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
 
-    # The fake catalogue matches on the title appearing in the query, so naming
-    # both films is how this test gets a list worth reordering.
     listed = client.post(f"/api/v1/discoveries/{item['id']}/search", headers=headers, json={"query": "Dune Arrival"}).json()
     before = [candidate["tmdb_id"] for candidate in listed["candidates"]]
     assert len(before) > 1
 
-    # Picking the second row must not slide it to the top: everything the
-    # reviewer was about to compare would move under their cursor.
     response = client.post(
         f"/api/v1/discoveries/{item['id']}/select",
         headers=headers,
@@ -837,8 +800,6 @@ def test_a_folder_that_disappears_leaves_review_immediately(client: TestClient, 
 
     (folder / "Dune.2021.2160p.mkv").unlink()
     folder.rmdir()
-    # One scan, not the two the missing-media grace window takes: an import that
-    # cannot succeed should not sit in the queue waiting for a second opinion.
     scan(client, headers, storage["id"])
 
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0

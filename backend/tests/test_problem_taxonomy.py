@@ -15,8 +15,6 @@ from app.models.domain import ProblemWorkflow, classify_problem_workflow
 
 
 def test_every_reason_the_taxonomy_routes_is_a_reason_it_names():
-    # A reason that can be classified but not labelled would reach the UI as a
-    # raw enum string, which is the failure this registry exists to prevent.
     routed = DUPLICATE_REASONS | MOVIE_MATCH_REASONS | SHOW_MATCH_REASONS | CONFIG_REASONS
     assert routed <= set(PROBLEM_LABELS)
 
@@ -43,8 +41,6 @@ def test_every_problem_has_distinct_plain_language_presentation():
 
 
 def test_an_unknown_reason_is_still_readable():
-    # Better a humanised enum than a blank badge if a new condition ships
-    # before it is named here.
     assert problem_label("SOMETHING_NEW_ENTIRELY") == "Something new entirely"
 
 

@@ -525,8 +525,6 @@ async def update_custom_format(
     values = payload.model_dump(exclude_unset=True)
     values.pop("expected_revision", None)
     if row.builtin:
-        # Medialogue owns the definition of a built-in so pattern fixes can ship
-        # to existing installs. Enabling and disabling stays with the operator.
         disallowed = sorted(key for key in values if key != "enabled")
         if disallowed:
             raise AppError(
@@ -591,9 +589,6 @@ async def delete_custom_format(
         details={"name": name},
     )
 
-    # Profile rows are explicit application state, so do not rely solely on
-    # database ON DELETE behavior. Remove profile scores and stale per-title
-    # override keys while preserving every historical search/download snapshot.
     await db.execute(delete(ProfileCustomFormatScore).where(ProfileCustomFormatScore.custom_format_id == row.id))
     assignments = (await db.scalars(select(MediaProfileOverride))).all()
     key = str(row.id)

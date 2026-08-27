@@ -56,8 +56,6 @@ export default function QualityProfilesPage() {
       const [profileRows, qualityRows, formatRows, layout] = await Promise.all([api.qualityProfiles(), api.qualityDefinitions(), api.customFormats(), api.customFormatLayout()])
       setProfiles(profileRows); setQualities(qualityRows); setFormats(formatRows); setSections(layout)
       setMessage('')
-      // A link naming a profile opens straight onto it; otherwise the grid is
-      // the landing view and nothing is selected.
       if (selectedId && profileRows.some((item) => item.id === selectedId)) setEditorOpen(true)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Quality Profiles.') }
     finally { setLoading(false) }
@@ -107,12 +105,7 @@ export default function QualityProfilesPage() {
     setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setQualityIds(allQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
     setEditorView('details'); setFormatFilter(''); setQualityFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
   }
-  /**
-   * Duplicate a profile outright, without opening the editor.
-   *
-   * Duplicating is a one-click action from a card, so it saves outright rather
-   * than opening an unsaved copy the operator then has to remember to commit.
-   */
+
   const duplicateProfileNow = async (source: QualityProfile) => {
     setBusy(true); setMessage('')
     try {
@@ -405,10 +398,7 @@ export default function QualityProfilesPage() {
   </main>
 }
 
-/** One profile at a glance: its floor, and what it actually rewards or avoids. */
 function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: QualityProfile; formatById: Map<string, CustomFormat>; onOpen: () => void; onDuplicate: () => void }) {
-  // Strongest opinions first, the scores that most change a release's ranking
-  // say more about a profile than an alphabetical list would.
   const ranked = [...profile.customFormatScores].sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
   const shown = fitChips(ranked.map((entry) => formatById.get(entry.customFormatId)?.name ?? 'Deleted format'))
   return <article

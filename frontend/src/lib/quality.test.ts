@@ -23,8 +23,6 @@ describe('splitQuality', () => {
   })
 
   it('shows the resolution a Full Disc release stated', () => {
-    // The Full Disc quality definition carries no resolution of its own, so
-    // without the parsed value the badge would show none at all.
     expect(splitQuality('Full Disc DVD9', '1080p')).toEqual({ resolution: '1080p', type: 'Full Disc' })
   })
 

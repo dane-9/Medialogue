@@ -12,26 +12,9 @@ from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import (
-    AccessMode,
-    DiscoveryMode,
-    Episode,
-    EpisodeMediaMap,
-    Job,
-    MediaDirectory,
-    MediaFile,
-    MediaType,
-    Movie,
-    MovieRelease,
-    Problem,
-    Season,
-    RemotePathMapping,
-    Show,
-    ShowRelease,
-    StorageRoot,
-)
+from app.models.domain import AccessMode, DiscoveryMode, Episode, EpisodeMediaMap, MediaDirectory, MediaFile, MediaType, Movie, MovieRelease, Problem, Season, RemotePathMapping, Show, ShowRelease, StorageRoot
 from app.schemas.common import Collection, DeleteResponse
-from app.schemas.jobs import JobAcceptedResponse, JobResponse
+from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.storage import (
     FilesystemEntry,
     FilesystemListing,
@@ -55,8 +38,6 @@ router = APIRouter(tags=["storage"])
 
 
 def _resolved_path(path: str) -> str:
-    # resolve(strict=False) canonicalizes `..` but does not create a directory
-    # or require a currently mounted NAS path.
     return str(Path(path).expanduser().resolve(strict=False))
 
 
@@ -356,9 +337,6 @@ async def update_storage_root(
     for key, value in values.items():
         setattr(root, key, value)
     if scan_identity_changed:
-        # The timestamp describes the path/type that was actually scanned. A
-        # new scan identity must initialize independently rather than inherit
-        # a successful scan from the previous folder.
         root.last_scan_at = None
     try:
         await db.commit()
@@ -534,10 +512,6 @@ async def scan_storage_root(
         raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
     if not root.enabled:
         raise AppError("STORAGE_ROOT_DISABLED", "Media folder is disabled.", status_code=409)
-    # TMDB establishes the identity of everything a scan discovers. Without it,
-    # every directory would be recorded as an unidentified Problem, one global
-    # misconfiguration turning into thousands of individually actionable rows.
-    # Refusing to start is the honest answer: fix the one setting, then scan.
     configuration = await get_tmdb_configuration(db)
     if configuration is None or not configuration.enabled or not configuration.api_key:
         raise AppError(

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -114,7 +114,6 @@ async def load_effective_profile(
     raw_overrides = override_definition.get("custom_format_scores") or {}
     overrides = {str(key): int(value) for key, value in raw_overrides.items()}
 
-    # Resolve names/enabled state for override-only formats too.
     missing_format_ids = []
     for key in overrides:
         if key not in score_names:
@@ -148,8 +147,6 @@ async def load_effective_profile(
             if str(quality_id) in quality_by_id
         )
     else:
-        # Profiles created before ordered qualities existed retain the former
-        # behavior: every enabled quality in the application-owned order.
         quality_order = tuple(item.name for item in quality_rows)
 
     profile_minimum_id = profile.minimum_quality_definition_id if profile else None
@@ -366,7 +363,7 @@ async def evaluate_current_release_score(
     """
 
     from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
     effective = await load_effective_profile(db, media_type=media_type, entity_id=entity_id)
     # Compare enum values in Python-friendly form so this remains portable in
@@ -394,7 +391,7 @@ async def evaluate_current_release_score(
         )
         for row in rows
     ]
-    parsed = parse_release_name(release_name)
+    parsed = parse_release(release_name)
     evaluation = evaluate_custom_formats(
         formats,
         parsed,

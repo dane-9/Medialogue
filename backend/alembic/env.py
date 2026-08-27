@@ -60,7 +60,6 @@ def run_migrations_online() -> None:
         asyncio.run(_run_async_migrations())
         return
 
-    # Keep synchronous SQLite URLs usable for migration regression tests.
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = url
     connectable = engine_from_config(configuration, prefix="sqlalchemy.", poolclass=pool.NullPool)

@@ -14,7 +14,6 @@ describe('rootDraftChanged', () => {
   })
 
   it('is unchanged when the browser writes back the same path it opened at', () => {
-    // The exact case that made every close ask to discard changes.
     expect(rootDraftChanged(draft({ path: '\\TRUENAS\Movies' }), base)).toBe(false)
   })
 

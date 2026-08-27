@@ -56,7 +56,6 @@ def _codec(key: str, name: str, description: str, values: list[str], group: str)
 
 
 BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
-    # ---------------------------------------------------------------- video --
     _codec("video-hevc", "HEVC / x265",
            "H.265 in any of its spellings. Smaller files at equal quality, but some players and older TVs cannot decode it.",
            ["HEVC", "x265", "H.265"], "Video"),
@@ -73,10 +72,6 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
            "DVD-era codec. Very large files for the quality delivered.",
            ["MPEG-2"], "Video"),
 
-    # ---------------------------------------------------------------- audio --
-    # Ordered loosely best to worst. Atmos variants are separate from their
-    # carrier codec because both match: a TrueHD Atmos release matches "Dolby
-    # TrueHD" and "TrueHD Atmos", and a profile can score the pair higher.
     BuiltinFormat(
         key="audio-truehd-atmos", name="TrueHD Atmos", group="Audio",
         description="Lossless, object-based Dolby Atmos carried by TrueHD. It is primarily found on Blu-ray and UHD discs and remains compatible with TrueHD playback.",
@@ -133,7 +128,6 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
         key="audio-opus", name="Opus", group="Audio",
         description="Free, open lossy audio optimized for high quality at low bitrates and low latency. It is common in internet applications but has limited support on older playback hardware.",
         conditions=(BuiltinCondition(type="audio_codec", value=["Opus"]),)),
-    # ------------------------------------------------------------------ HDR --
     BuiltinFormat(
         key="hdr-dolby-vision", name="Dolby Vision", group="Dynamic Range",
         description="Dynamic HDR that can adjust color and brightness scene by scene. It requires compatible equipment; a Dolby Vision-only release may not display correctly without an HDR fallback.",
@@ -167,10 +161,7 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
             BuiltinCondition(type="release_title", name="SDR", pattern=r"\bSDR\b"),
         )),
 
-    # ------------------------------------------------------- release traits --
     BuiltinFormat(
-        # Keep the original key so existing Quality Profile scores continue to
-        # apply to Repack after Proper and Rerip become independent formats.
         key="attr-repack-proper", name="Repack", group="Release",
         description="A release group's corrected replacement for its own flawed release, such as one with corrupt data, audio-sync issues, or missing content. Later REPACK revisions receive higher offsets.",
         conditions=(
@@ -209,7 +200,6 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
         default_enabled=False,
         conditions=(BuiltinCondition(type="release_attribute", value=["INTERNAL", "LIMITED"]),)),
 
-    # ------------------------------------------------------------ providers --
     BuiltinFormat(
         key="web-amzn", name="Amazon (AMZN)", group="Streaming",
         description="A WEB release sourced from Amazon Prime Video. Provider formats identify the storefront or service; your Quality Profile decides whether to prefer it.",
@@ -268,9 +258,6 @@ BUILTIN_KEYS = frozenset(item.key for item in BUILTIN_FORMATS)
 # Custom Format evaluation and are never re-applied to an existing profile.
 DEFAULT_QUALITY_PROFILE_NAME = "Default"
 DEFAULT_QUALITY_PROFILE_MARKER = "medialogue-default-quality-profile-v1"
-# Full-disc DVD rips are whole ISO/VIDEO_TS structures rather than a playable
-# file, so the shipped profile leaves them off. The definitions still exist and
-# can be re-enabled on any profile; they are simply not part of the default.
 DEFAULT_EXCLUDED_QUALITY_DEFINITIONS: frozenset[str] = frozenset({
     "Full Disc DVD5",
     "Full Disc DVD9",
@@ -301,9 +288,6 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "audio-dd": 0,
     "audio-aac": -5,
     "audio-opus": -10,
-    # Dynamic range: Dolby Vision with a dynamic base layer is the ceiling,
-    # then Dolby Vision, then the static formats. SDR is preferred over HLG,
-    # which can look washed out on displays that do not handle it.
     "hdr-dv-hdr10-plus": 60,
     "hdr-dv-hdr10": 50,
     "hdr-hdr10-plus": 40,
@@ -311,16 +295,12 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "hdr-hdr10": 20,
     "hdr-hlg": 0,
     "hdr-sdr": 10,
-    # Release traits: corrected releases are preferred; re-encodes are
-    # strongly discouraged. Internal/provider-neutral traits stay neutral.
     "attr-repack-proper": 20,
     "attr-proper": 18,
     "attr-rerip": 16,
     "attr-hybrid": 10,
     "attr-internal-limited": 0,
     "attr-re-encode": -40,
-    # Provider labels are evidence, not quality, so they stay neutral, with
-    # one exception: Bravia Core ships at bitrates no other service matches.
     "web-amzn": 0,
     "web-dsnp": 0,
     "web-nf": 0,

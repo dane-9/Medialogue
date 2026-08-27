@@ -22,10 +22,6 @@ class QualityDefinition:
         return asdict(self)
 
 
-# Ordered best-to-worst within each source family. This is broader than the old
-# 2160/1080/720-only vocabulary and includes common intermediate and SD sizes.
-# Families are intentionally curated rather than cross-products. A resolution
-# being technically possible does not make it a useful release quality.
 WEB_DL_RESOLUTIONS = ("2160p", "1440p", "1080p", "720p", "576p", "540p", "480p", "360p")
 WEBRIP_RESOLUTIONS = ("2160p", "1440p", "1080p", "720p", "576p", "540p", "480p", "360p")
 HDTV_RESOLUTIONS = ("2160p", "1080p", "1080i", "720p", "576p", "576i", "480p", "480i", "360p")
@@ -60,8 +56,6 @@ def _dvd_family(modifier: str, rank_base: int) -> tuple[QualityDefinition, ...]:
     produced pairs nobody could meaningfully score differently. The standard is
     still parsed out of a release name and kept as evidence.
     """
-    # Progressive above interlaced: a deinterlaced 480p is a better watch than
-    # 576i, so resolution alone is the wrong ordering for standard definition.
     variants = (
         ("576p", "progressive"),
         ("480p", "progressive"),

@@ -23,42 +23,8 @@ from sqlalchemy.orm import selectinload
 from app.core.identity import identity_titles_equivalent
 from app.integrations.filesystem import DirectoryObservation, FilesystemObserver
 from app.integrations.plex import PlexClient, PlexMediaMatch
-from app.models.domain import (
-    AssociationType,
-    DiscoveryMode,
-    DiscoveryReviewState,
-    Event,
-    IdentityState,
-    InteractiveSearchResult,
-    MediaDirectory,
-    MediaDiscovery,
-    MediaFile,
-    EpisodeMediaMap,
-    MediaType,
-    Movie,
-    MovieRelease,
-    MovieReleaseTorrent,
-    Show,
-    Season,
-    ShowRelease,
-    ShowReleaseTorrent,
-    ParseEvidence,
-    PlexMatchMethod,
-    PlexMatchState,
-    PlexObservation,
-    Problem,
-    ProblemStatus,
-    QualityDefinition,
-    ReleaseScope,
-    ReleaseState,
-    Severity,
-    SourceType,
-    StorageRoot,
-    Torrent,
-    TorrentClientObservation,
-    classify_problem_workflow,
-)
-from app.parser import ReleaseParseResult, parse_release_name
+from app.models.domain import AssociationType, DiscoveryMode, DiscoveryReviewState, IdentityState, InteractiveSearchResult, MediaDirectory, MediaDiscovery, MediaFile, EpisodeMediaMap, MediaType, Movie, MovieRelease, MovieReleaseTorrent, Show, Season, ShowRelease, ShowReleaseTorrent, ParseEvidence, PlexMatchMethod, PlexMatchState, PlexObservation, Problem, ProblemStatus, QualityDefinition, ReleaseScope, ReleaseState, Severity, SourceType, StorageRoot, Torrent, classify_problem_workflow
+from app.parser import ReleaseParseResult, parse_release
 from app.reconciliation.engine import ReconciliationEngine
 from app.reconciliation.types import (
     CandidateObservation,
@@ -68,7 +34,7 @@ from app.reconciliation.types import (
 )
 from app.services.events import create_event, publish_live_event, queue_live_event
 from app.services.integration_state import get_configured_plex
-from app.services.tmdb import TMDBUnavailable, resolve_movie_identity, resolve_movie_identity_detailed
+from app.services.tmdb import TMDBUnavailable, resolve_movie_identity_detailed
 from app.services.discoveries import retire_missing_review_discovery, stage_media_discovery
 from app.services.quality_profiles import evaluate_current_release_score
 
@@ -93,12 +59,6 @@ def _same_edition(left: str | None, right: str | None) -> bool:
     return normalize(left) == normalize(right)
 
 
-def _identity_label(title: str | None, year: int | None) -> str | None:
-    if not title:
-        return None
-    return f"{title} ({year})" if year is not None else title
-
-
 async def _find_movie_by_identity(db: AsyncSession, title: str, year: int) -> Movie | None:
     """Find an existing Movie using the same punctuation-insensitive identity rules as TMDB/Plex."""
 
@@ -115,9 +75,6 @@ def _confidence(
 ) -> float:
     if not folder.identity.title_candidate:
         return 0.0
-    # Identity confidence intentionally excludes technical quality. A parsed
-    # REMUX/WEB-DL token does not make the title itself more likely to be
-    # correct. Technical parsing is tracked separately in the parse snapshot.
     score = 0.60
     if folder.identity.year is not None:
         score += 0.20
@@ -211,8 +168,6 @@ async def open_problem(
                 raise
 
     if not created:
-        # Preserve creation/history, but keep affected counts and current
-        # evidence fresh when a root or torrent remains unhealthy.
         changed = (
             problem.message != message
             or dict(problem.details or {}) != (details or {})
@@ -474,10 +429,6 @@ async def _refresh_movie_duplicate_problem(db: AsyncSession, movie_id: UUID) -> 
     duplicate_groups = [group for group in by_edition.values() if len(group) > 1]
     duplicate_ids = {release.id for group in duplicate_groups for release in group}
 
-    # Keep release state consistent with the evidence used to drive Problems.
-    # A formerly duplicated release becomes current once it is the sole
-    # physical release in its edition slot; an absent duplicate becomes
-    # missing rather than remaining permanently tagged as DUPLICATE.
     for release in releases:
         present = release in physically_present
         if release.id in duplicate_ids:
@@ -566,9 +517,6 @@ async def _plex_evidence_for_candidate(
             match = await client.find_exact_path(checked_path)
             if match is None:
                 continue
-            # Exact physical path is sufficient Plex evidence. Plex's own
-            # title/year metadata is intentionally not compared with the TMDB
-            # identity owned by Medialogue.
             return PlexCandidateEvidence(
                 PlexState.MATCHED,
                 match=match,
@@ -637,8 +585,6 @@ async def _persist_plex_candidate_evidence(
         )
 
 
-
-
 async def reconcile_movie_directory(
     db: AsyncSession,
     root: StorageRoot,
@@ -660,10 +606,6 @@ async def reconcile_movie_directory(
         .where(MediaDirectory.resolved_path == observation.path)
     )
     if existing_directory is not None:
-        # A media folder can be removed from configuration while its durable
-        # path inventory is intentionally retained. Re-adding/scanning the
-        # same container path should reattach that evidence instead of
-        # creating a second logical directory.
         if existing_directory.storage_root_id is None:
             existing_directory.storage_root_id = root.id
         was_missing = not existing_directory.exists
@@ -736,9 +678,9 @@ async def reconcile_movie_directory(
                         current_link.association_type = AssociationType.ATTACHED
                 return "matched"
 
-    folder_parse = parse_release_name(observation.name)
+    folder_parse = parse_release(observation.name)
     effective_candidate_edition = manual_edition_override if edition_override_active else folder_parse.edition
-    file_parses = [parse_release_name(Path(name).stem) for name in observation.media_files]
+    file_parses = [parse_release(Path(name).stem) for name in observation.media_files]
     confidence = _confidence(
         folder_parse,
         file_parses,
@@ -788,7 +730,6 @@ async def reconcile_movie_directory(
         discovery = await stage_media_discovery(
             db, directory, folder_parse, media_type=MediaType.MOVIES, title=title, year=year, confidence=confidence
         )
-        # Review is expected work, not a Problem.
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         return "review" if discovery.review_state.value == "pending" else "matched"
 
@@ -799,8 +740,6 @@ async def reconcile_movie_directory(
         confidence = max(confidence, 0.95)
 
     if root.media_type != MediaType.MOVIES or not title or year is None or (confidence < 0.80 and not manual_identity):
-        # Parser uncertainty belongs in Review. It is expected identification
-        # work, not a separate Problem condition.
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         discovery = await stage_media_discovery(
             db,
@@ -823,10 +762,6 @@ async def reconcile_movie_directory(
         tmdb_resolution = await resolve_movie_identity_detailed(db, title, year)
         tmdb_match, tmdb_reason = tmdb_resolution.match, tmdb_resolution.reason
         if tmdb_match is None:
-            # A missing or unreachable TMDB is a global state, not a fact about
-            # this directory. Scans are gated on TMDB being configured, so this
-            # only fires on an outage mid-run: fail the job once rather than
-            # opening an identical Problem for every directory discovered.
             if tmdb_reason in {"not_configured", "unavailable"}:
                 raise TMDBUnavailable(
                     f"TMDB is {tmdb_reason.replace('_', ' ')}; identity cannot be established. "
@@ -1007,12 +942,6 @@ async def reconcile_movie_directory(
             else:
                 assoc.association_type = AssociationType.ATTACHED
 
-            # If this torrent originated from Interactive Search, preserve the
-            # immutable search-time profile/CF score on the durable Release.
-            # qBittorrent names normally preserve the release title, which is
-            # the safest available link before tracker-specific hashes are
-            # known at search time. Manual qBit additions simply have no
-            # original score snapshot.
             selected = await db.scalar(
                 select(InteractiveSearchResult)
                 .where(
@@ -1073,7 +1002,7 @@ async def associate_incoming_torrent(
 ) -> dict[str, Any] | None:
     """Associate a confidently parsed in-scope torrent before completion."""
 
-    parsed = parse_release_name(torrent.name)
+    parsed = parse_release(torrent.name)
 
     if scope == MediaType.SHOWS:
         title = parsed.identity.title_candidate
@@ -1305,8 +1234,6 @@ async def finalize_completed_torrent(
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
         return "ignored"
     if not Path(root.resolved_root_path).is_dir():
-        # Root health is represented once by ROOT_UNREACHABLE.  Avoid a
-        # torrent-per-file Problem storm while the mount itself is offline.
         return "deferred"
     if not path.exists():
         await open_problem(
@@ -1332,11 +1259,9 @@ async def finalize_completed_torrent(
             details={"resolved_path": str(path), "error": str(exc)},
         )
         return "problem"
-    # A successful directory inspection proves any previous path-not-found
-    # condition is over before identity review begins.
     await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-    parsed = parse_release_name(observation.name)
-    files = [parse_release_name(Path(name).stem) for name in observation.media_files]
+    parsed = parse_release(observation.name)
+    files = [parse_release(Path(name).stem) for name in observation.media_files]
     confidence = _confidence(parsed, files, has_disc_structure=observation.has_dvd_structure or observation.has_bluray_structure)
     assoc = await db.scalar(
         select(MovieReleaseTorrent)
@@ -1430,13 +1355,9 @@ async def _finalize_completed_show_torrent(
         )
         return "problem"
 
-    # Reconcile the top-level Show/release container so nested Season folders
-    # remain part of one canonical leave-in-place directory attachment.
     container = root_path / relative.parts[0]
     if not container.is_dir():
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-        # Show libraries are container-based. Loose video files directly under
-        # the media-folder root are outside that model and are simply ignored.
         return "ignored"
     try:
         observation = FilesystemObserver().inspect_directory(container, root_path)
@@ -1468,7 +1389,7 @@ async def _finalize_completed_show_torrent(
             show = await db.get(Show, incoming_release.show_id)
 
     if show is None:
-        parsed = parse_release_name(torrent.name)
+        parsed = parse_release(torrent.name)
         if parsed.identity.title_candidate:
             statement = select(Show).where(func.lower(Show.title) == parsed.identity.title_candidate.casefold())
             candidates = (await db.scalars(statement)).all()

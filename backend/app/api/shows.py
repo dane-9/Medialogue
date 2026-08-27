@@ -17,21 +17,7 @@ from app.core.problem_types import problem_description, problem_title
 from app.services.events import create_event
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import (
-    Episode,
-    EpisodeMediaMap,
-    Event,
-    MediaDirectory,
-    MediaFile,
-    PlexObservation,
-    PresenceState,
-    Problem,
-    ProblemStatus,
-    Season,
-    Show,
-    ShowRelease,
-    StorageRoot,
-)
+from app.models.domain import Episode, EpisodeMediaMap, Event, MediaDirectory, MediaFile, PresenceState, Problem, ProblemStatus, Season, Show, ShowRelease, StorageRoot
 from app.schemas.common import Collection
 from app.schemas.jobs import EventResponse, JobAcceptedResponse
 from app.schemas.shows import (
@@ -397,15 +383,11 @@ async def update_show(
         show.monitored = payload.monitored
     reorder = False
     if payload.tmdb_episode_group_id is not None:
-        # An empty string means "back to the TMDB default".
         selection = payload.tmdb_episode_group_id.strip() or None
         reorder = selection != show.tmdb_episode_group_id
         show.tmdb_episode_group_id = selection
     show.revision += 1
     if reorder:
-        # Renumbering is not a metadata detail, so it happens here and now
-        # rather than waiting for some later refresh to quietly rearrange the
-        # library. Episodes keep their identity; only their numbers move.
         try:
             await sync_show_metadata(db, show, client_factory=client_factory)
         except Exception as exc:
@@ -454,7 +436,6 @@ async def update_season(
     if payload.expected_revision is not None and payload.expected_revision != season.revision:
         raise AppError("REVISION_CONFLICT", "Season changed; refresh and try again.", status_code=409)
     if payload.counted is not None:
-        # Counting is independent of monitoring, so this does not touch episodes.
         season.counted = payload.counted
     if payload.monitored is not None:
         season.monitored = payload.monitored

@@ -71,19 +71,7 @@ class LibrarySummary(BaseModel):
 
     movies: int = 0
     shows: int = 0
-    #: Directories recorded under no root, usually because a root was removed.
     unlinked_directories: int = 0
-
-
-class ClearLibraryRequest(BaseModel):
-    """Typed confirmation, so this cannot be reached by a stray click."""
-
-    confirm: str = Field(min_length=1, max_length=64)
-
-
-class ClearLibraryResponse(BaseModel):
-    movies_removed: int = 0
-    shows_removed: int = 0
 
 
 class FilesystemEntry(BaseModel):
@@ -94,9 +82,7 @@ class FilesystemEntry(BaseModel):
 class FilesystemListing(BaseModel):
     """One directory's subfolders, for picking a root by browsing."""
 
-    #: Empty when listing the mount points themselves.
     current_path: str
-    #: None at the top of the tree, so the caller knows not to offer "up".
     parent: str | None = None
     directories: list[FilesystemEntry] = Field(default_factory=list)
     problem: str | None = None
@@ -134,10 +120,7 @@ class StorageRootResponse(ORMModel):
     #: progress is indistinguishable from one that never happened, because
     #: last_scan_at is only written when a scan succeeds.
     scanning: bool = False
-    #: The job behind `scanning`, so a row can report its progress.
     scan: StorageRootScan | None = None
-    #: Total media directories recorded under this root, so a row can say what
-    #: is actually in it rather than only when it was last read.
     media_count: int = 0
     created_at: datetime
     updated_at: datetime

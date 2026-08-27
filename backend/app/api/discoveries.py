@@ -264,10 +264,6 @@ async def select_discovery(
     discovery = await _get_discovery(db, discovery_id)
     if discovery.review_state != DiscoveryReviewState.PENDING:
         raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
-    # Recording a choice should cost nothing. The reviewer picked a row that was
-    # already on their screen, so its display values either sit in the stored
-    # candidates or arrive with the request. Only a bare id for a title nobody
-    # has seen needs TMDB, and approving re-fetches real metadata regardless.
     known = next(
         (item for item in discovery.candidates if isinstance(item, dict) and item.get("tmdb_id") == payload.tmdb_id),
         None,
@@ -301,9 +297,6 @@ async def select_discovery(
             await client.close()
         chosen = _candidate_payload(metadata)
 
-    # Choosing does not reorder the list. Promoting the pick to the top moves
-    # every other row under the cursor at the moment of clicking, so the next
-    # candidate you wanted to compare is somewhere else than where you saw it.
     values = [item for item in discovery.candidates if isinstance(item, dict)]
     if any(item.get("tmdb_id") == payload.tmdb_id for item in values):
         values = [chosen if item.get("tmdb_id") == payload.tmdb_id else item for item in values]
@@ -485,8 +478,6 @@ async def search_discovery_candidates(
         await client.close()
 
     candidates = [_candidate_payload(item) for item in matches[:DISCOVERY_CANDIDATE_LIMIT]]
-    # A selection the search did not return must survive, or choosing something
-    # then searching again would erase the choice from the list it is in.
     if discovery.selected_tmdb_id is not None and not any(item["tmdb_id"] == discovery.selected_tmdb_id for item in candidates):
         kept = next(
             (item for item in discovery.candidates if isinstance(item, dict) and item.get("tmdb_id") == discovery.selected_tmdb_id),

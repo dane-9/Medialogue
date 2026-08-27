@@ -54,8 +54,6 @@ describe('triage', () => {
 })
 
 describe('filterDiscoveries', () => {
-  // Each item carries its own selected title: sharing one made every search
-  // match every row, which is a test artefact rather than real behaviour.
   const items = [
     item({ id: '1', mediaType: 'movies', rootName: 'Movies', parsedTitle: 'Dune', path: '/movies/Dune 2021' }),
     item({ id: '2', mediaType: 'shows', rootName: 'Shows', parsedTitle: 'Arcane', path: '/shows/Arcane', selected: undefined }),

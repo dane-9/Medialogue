@@ -24,8 +24,6 @@ describe('copyName', () => {
   })
 
   it('copies a copy without stacking the word twice', () => {
-    // Duplicating "X Copy" gives "X Copy Copy", which is ugly but honest: it is
-    // a copy of that format, not another copy of the original.
     expect(copyName('HDR Copy', ['HDR', 'HDR Copy'])).toBe('HDR Copy Copy')
   })
 

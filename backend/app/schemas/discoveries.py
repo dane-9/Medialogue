@@ -43,9 +43,6 @@ class MediaDiscoveryResponse(BaseModel):
     suggested: MediaDiscoveryCandidate | None = None
     selected: MediaDiscoveryCandidate | None = None
     candidates: list[MediaDiscoveryCandidate] = Field(default_factory=list)
-    #: What is actually inside the folder. Reviewing a match without seeing the
-    #: files is guesswork: the folder name is exactly the thing that might be
-    #: wrong, and the files are the evidence that settles it.
     files: list[MediaDiscoveryFile] = Field(default_factory=list)
     file_count: int = 0
     video_count: int = 0

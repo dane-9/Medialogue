@@ -4,21 +4,13 @@ import type { DownloadClient, DownloadClientScope } from '../types'
 import { Icon } from './Icon'
 import { Select } from './ui'
 
-/**
- * The qBittorrent picker for the download wizards, with a health recheck.
- *
- * A client that was healthy when the wizard opened can drop out before you
- * commit, the health shown here is whatever the last check recorded, which may
- * be minutes old. Rechecking here avoids having to leave a half-filled wizard
- * for the settings page and start over.
- */
 export function DownloadClientField({ clients, clientId, scope, disabled, onChange, onRefreshed }: {
   clients: DownloadClient[]
   clientId: string
   scope: DownloadClientScope
   disabled?: boolean
   onChange: (id: string) => void
-  /** Receives the freshly loaded, scope-filtered clients after a recheck. */
+
   onRefreshed: (clients: DownloadClient[]) => void
 }) {
   const [checking, setChecking] = useState(false)
@@ -31,8 +23,6 @@ export function DownloadClientField({ clients, clientId, scope, disabled, onChan
     setResult('')
     try {
       const test = await api.testDownloadClient(clientId)
-      // The test records health server-side, so reload to pick up the new
-      // state rather than trusting the response alone.
       const rows = await api.downloadClients()
       onRefreshed(rows.filter((client) => client.enabled && client.scope === scope))
       setResult(test.status === 'ok'

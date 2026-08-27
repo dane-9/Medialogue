@@ -64,7 +64,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     try {
       const count = await api.discoveryCount()
       if (generation === reviewCountGeneration.current) setReviewCount(count)
-    } catch { /* The next invalidation or fallback poll retries. */ }
+    } catch {}
   }, [])
 
   useEffect(() => {
@@ -97,8 +97,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     stream.addEventListener('storage_root.health', healthListener)
     stream.addEventListener('qbittorrent.health', healthListener)
 
-    // REST remains the recovery source when SSE reconnects or a browser was
-    // asleep. These slow polls are a fallback, not the primary update path.
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
     const reviewChangedListener = () => void refreshReviewCount()
     window.addEventListener('medialogue-review-changed', reviewChangedListener)
@@ -153,8 +151,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   </div></PageTopbarHostContext.Provider>
 }
 
-// Groups are separated by space alone. With ten destinations the headings were
-// labelling what the icons and the gap already make obvious.
 function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number }> }) {
   return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count && <span className="nav-count">{item.count}</span>}</NavLink>)}</div>
 }

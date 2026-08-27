@@ -4,7 +4,6 @@ import type { ReactElement, ReactNode, Ref } from 'react'
 
 type Position = { left: number; top: number; below: boolean }
 
-/** Attach our ref without discarding one the child already had. */
 function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   return (node: T) => {
     for (const ref of refs) {
@@ -14,41 +13,17 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   }
 }
 
-/**
- * A hover tooltip rendered into document.body.
- *
- * It has to be a portal: lists and panels are `overflow: auto` scroll
- * containers, and an absolutely-positioned tooltip inside one gets clipped at
- * the container edge. Fixed positioning against the trigger's viewport rect
- * avoids that entirely.
- *
- * With `asChild` the tooltip attaches to the element you pass rather than
- * wrapping it. That matters wherever a wrapper would change layout or produce
- * invalid markup, a grid cell, a table cell, a flex item, so it is the right
- * default for anything but a plain inline trigger.
- */
-/**
- * How long a cursor must rest before any tooltip opens.
- *
- * One value for the whole app: tooltips that appear while the cursor is merely
- * passing over a control are noise, and a delay that varies per trigger reads
- * as the interface being inconsistent rather than considerate.
- */
 export const TOOLTIP_DELAY = 1000
 
 export function Tooltip({ content, children, className, focusable = false, asChild = false, delay = TOOLTIP_DELAY }: {
   content: ReactNode
   children: ReactNode
   className?: string
-  /** Milliseconds to hover before the tooltip opens. Defaults to
-   *  TOOLTIP_DELAY; pass a different value only when a trigger genuinely needs
-   *  one. Keyboard focus ignores the delay, that is a deliberate request to
-   *  read it. */
+
   delay?: number
-  /** Only when the trigger is not already inside something focusable, a nested
-   *  tab stop inside a button is worse than losing the keyboard hint. */
+
   focusable?: boolean
-  /** Attach to the single child element instead of wrapping it in a span. */
+
   asChild?: boolean
 }) {
   const triggerRef = useRef<HTMLElement>(null)
@@ -65,11 +40,9 @@ export function Tooltip({ content, children, className, focusable = false, asChi
     const bubbleRect = bubble.getBoundingClientRect()
     const gap = 8
 
-    // Prefer above; flip below only when there is not room for the real height.
     const below = rect.top < bubbleRect.height + gap
     const top = below ? rect.bottom + gap : rect.top - gap - bubbleRect.height
 
-    // Centre on the trigger, then keep the whole bubble on screen.
     const half = bubbleRect.width / 2
     const centre = rect.left + rect.width / 2
     const left = Math.min(Math.max(centre, half + gap), window.innerWidth - half - gap)
@@ -80,8 +53,6 @@ export function Tooltip({ content, children, className, focusable = false, asChi
 
   useEffect(() => {
     if (!open) return
-    // Any scroll moves the trigger out from under the bubble, so close rather
-    // than chase it. Capture phase catches a list's own scrolling too.
     const close = () => setOpen(false)
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
@@ -102,7 +73,7 @@ export function Tooltip({ content, children, className, focusable = false, asChi
     timer.current = window.setTimeout(() => setOpen(true), delay)
   }
   const hide = () => { cancel(); setOpen(false) }
-  /** Focus is a deliberate request to read the tooltip, so it skips the delay. */
+
   const showNow = () => { cancel(); setOpen(true) }
 
   useEffect(() => cancel, [])

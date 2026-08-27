@@ -23,7 +23,6 @@ describe('fitChips', () => {
   })
 
   it('shows one and defers the rest when the first name is enormous', () => {
-    // Over the 96 character budget on its own, so nothing else can join it.
     const labels = ['A name quite deliberately longer than the whole character budget allows for a single chip on one card', 'HDR', 'DV']
     expect(fitChips(labels)).toBe(1)
   })
@@ -37,8 +36,6 @@ describe('fitChips', () => {
   })
 
   it('respects an explicit character budget', () => {
-    // Each "DV" chip costs 2 + 5 = 7, so the third takes the total to 21 and
-    // is the one that gets deferred.
     expect(fitChips(repeat(20, 'DV'), 9, 20)).toBe(2)
   })
 })

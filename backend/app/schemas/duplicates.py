@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -65,17 +65,6 @@ class DuplicateResolveCommitRequest(BaseModel):
     confirmation_token: str = Field(min_length=16)
 
 
-class DuplicateResolveCommitResponse(BaseModel):
-    movie_id: UUID
-    winner_release_id: UUID
-    losing_release_ids: list[UUID]
-    duplicate_resolved: bool
-    deleted_directories: list[str] = Field(default_factory=list)
-    removed_torrents: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    problem_status: str
-
-
 class MovieEditionOverrideUpdate(BaseModel):
     release_id: UUID
     mode: Literal["automatic", "standard", "named"]
@@ -103,20 +92,3 @@ class MovieEditionOverrideResponse(BaseModel):
 
 class MovieEditionOptionsResponse(BaseModel):
     editions: list[str]
-
-
-class EpisodeDuplicateResolveRequest(BaseModel):
-    winner_media_file_id: UUID
-    # Part 15 deliberately does not delete individual Show files. This action
-    # records a manual logical winner; physical duplicate evidence remains open
-    # until the losing file is removed outside Medialogue or a later safe folder
-    # deletion workflow is used.
-
-
-class EpisodeDuplicateResolveResponse(BaseModel):
-    episode_id: UUID
-    winner_media_file_id: UUID
-    losing_media_file_ids: list[UUID]
-    problem_status: str
-    message: str
-    details: dict[str, Any] = Field(default_factory=dict)

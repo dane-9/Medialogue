@@ -22,7 +22,7 @@ from app.models.domain import (
     MediaScope,
     MediaType,
 )
-from app.parser import parse_release_name
+from app.parser import parse_release
 from app.parser.language_aggregation import aggregate_languages
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
 from app.services.events import publish_live_event
@@ -40,9 +40,6 @@ class SearchTarget:
     entity_type: str
     entity_id: UUID | None
     title: str
-    # Quality Profile assignments live on the logical Movie/Show. For Movie
-    # searches this equals entity_id; episode/season searches point here to
-    # their parent Show while retaining the episode/season target separately.
     profile_entity_id: UUID | None = None
     quality_profile_id: UUID | None = None
     year: int | None = None
@@ -51,7 +48,6 @@ class SearchTarget:
     poster_ref: str | None = None
     season: int | None = None
     episode: int | None = None
-    #: TMDB ISO 639-1 code, the fallback for releases whose names name no language.
     original_language: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -125,10 +121,6 @@ async def run_search_job(
             ],
             key=lambda item: (item.priority, item.name.casefold()),
         )
-        # Freeze both the profile scores/overrides and Custom Format
-        # definitions at search start. Every indexer result in this job is
-        # therefore evaluated under the same rules even if settings are edited
-        # while a slow indexer is still responding.
         if target.quality_profile_id is not None:
             effective_profile = await load_quality_profile_for_search(
                 db, media_type=target.media_type, profile_id=target.quality_profile_id
@@ -225,8 +217,6 @@ async def run_search_job(
     completed_count = 0
     try:
         for future in asyncio.as_completed(tasks):
-            # as_completed yields wrapper futures, so the indexer comes back in
-            # the function result rather than by indexing the task dictionary.
             indexer_id, outcome = await future
             completed_count += 1
             async with db_session.async_session_factory() as db:
@@ -417,9 +407,6 @@ async def _query_indexer(
             result for result in results
             if result.seeders is None or result.seeders >= indexer.minimum_seeders
         ]
-        # Season interactive search is deliberately season-pack-only. Single
-        # episodes, multi-episode releases, and multi-season/complete-series
-        # torrents are not valid candidates for this workflow.
         if target.media_type == MediaType.SHOWS and target.season is not None and target.episode is None:
             eligible = [
                 result
@@ -440,7 +427,7 @@ async def _query_indexer(
 
 
 def _matches_single_season_pack(release_name: str, season_number: int) -> bool:
-    parsed = parse_release_name(release_name)
+    parsed = parse_release(release_name)
     return (
         parsed.identity.season_numbers == (season_number,)
         and not parsed.identity.episode_numbers
@@ -475,10 +462,8 @@ async def _store_results(
         if not guid or guid in seen or not result.title.strip():
             continue
         seen.add(guid)
-        parsed = parse_release_name(result.title)
+        parsed = parse_release(result.title)
         warnings = list(parsed.warnings)
-        # The parsed title is only the weakest signal; the indexer, the media
-        # title and TMDB's original language all outrank or refine it.
         languages = aggregate_languages(
             release_title=result.title,
             parsed_languages=parsed.languages,
@@ -530,8 +515,6 @@ async def _store_results(
             evidence["effective_score"] = effective
             evidence["score_offset"] = int(item.score_offset)
             evidence["contribution"] = int(item.score_contribution)
-            # Keep the base score explicitly tied to its profile/override; the
-            # Custom Format contributes only its matched rule offset.
             evidence.pop("score", None)
             evidence.pop("configured_score", None)
             format_snapshots.append(evidence)

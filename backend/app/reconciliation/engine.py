@@ -129,7 +129,6 @@ class ReconciliationEngine:
                     "AMBIGUOUS_REPLACEMENT_TARGET",
                     details={"candidate_release_ids": [item.release_id for item in missing_candidates]},
                 )
-            # Replacement identity is title-based; an edition change is explicitly valid.
             return Decision(
                 DecisionKind.REPLACEMENT,
                 "REPLACEMENT_COMMITTED",

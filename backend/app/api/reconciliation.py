@@ -7,27 +7,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.integrations.filesystem import FilesystemObserver
 from app.models.auth import AdminUser
-from app.models.domain import (
-    AssociationType,
-    IdentityState,
-    Job,
-    MediaDirectory,
-    Movie,
-    MovieRelease,
-    MovieReleaseTorrent,
-    Problem,
-    ProblemStatus,
-    ReleaseState,
-    StorageRoot,
-    Torrent,
-)
+from app.models.domain import AssociationType, IdentityState, Job, MediaDirectory, Movie, MovieRelease, MovieReleaseTorrent, Problem, ProblemStatus, ReleaseState, StorageRoot
 from app.schemas.reconciliation import (
     ManualAttachRequest,
     ReconciliationActionResponse,
@@ -110,10 +96,6 @@ async def run_reconciliation(
     if payload.root_id is not None and not candidate_roots:
         raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
 
-    # A newly configured root is inert until its first explicit Scan action
-    # succeeds.  last_scan_at is durable and only set at the end of a
-    # successful manual/root scan, so a failed initialization attempt leaves
-    # the root safely excluded from automatic/global reconciliation.
     uninitialized_root_ids = [root.id for root in candidate_roots if root.last_scan_at is None]
     roots = [root for root in candidate_roots if root.last_scan_at is not None]
     job_ids: list[UUID] = []

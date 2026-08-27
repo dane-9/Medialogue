@@ -35,9 +35,6 @@ async def mark_running_jobs_interrupted(session: AsyncSession) -> None:
     from app.models.domain import Job, JobStatus
 
     now = datetime.now(timezone.utc)
-    # Queued work is also interrupted after a process restart because the
-    # in-memory task that would have started it no longer exists. Preserve the
-    # record and make the reason explicit rather than pretending it can resume.
     await session.execute(
         Job.__table__.update()
         .where(Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
@@ -51,7 +48,6 @@ async def mark_running_jobs_interrupted(session: AsyncSession) -> None:
     )
 
 
-#: Old DVD quality names, mapped to the resolution-only names that replaced them.
 _DVD_STANDARD_RENAMES: dict[str, str] = {
     f"{resolution} {standard} DVD {modifier}": f"{resolution} DVD {modifier}"
     for resolution, standard in (("576i", "PAL"), ("576p", "PAL"), ("480i", "NTSC"), ("480p", "NTSC"))
@@ -64,10 +60,6 @@ async def ensure_quality_definitions(session: AsyncSession) -> None:
     from app.parser import list_quality_definitions
 
     rows = (await session.scalars(select(QualityDefinition))).all()
-    # PAL and NTSC stopped being part of a DVD quality's identity. Renaming in
-    # place keeps every profile score and release reference attached, where
-    # letting the old names fall out of the catalog would disable eight rows and
-    # silently drop whatever they were scored at.
     for row in rows:
         renamed = _DVD_STANDARD_RENAMES.get(row.name)
         if renamed and not any(item.name == renamed for item in rows):
@@ -80,8 +72,6 @@ async def ensure_quality_definitions(session: AsyncSession) -> None:
         if item is None:
             item = QualityDefinition(name=definition.name)
             session.add(item)
-        # Quality definitions are application-owned/hardcoded. Keep existing
-        # installations synchronized with the canonical catalog on upgrade.
         item.resolution = definition.resolution
         item.source = definition.source
         item.modifier = definition.modifier
@@ -89,8 +79,6 @@ async def ensure_quality_definitions(session: AsyncSession) -> None:
         item.rank = definition.rank
         item.enabled = True
         item.parser_definition = {}
-    # Do not delete old rows because historical releases may reference them.
-    # Mark definitions removed from the catalog disabled instead.
     for name, item in existing.items():
         if name not in canonical_names:
             item.enabled = False
@@ -156,7 +144,6 @@ async def ensure_default_quality_profile(session: AsyncSession) -> None:
                 )
             )
     await session.flush()
-
 
 
 async def ensure_builtin_custom_formats(session: AsyncSession) -> None:

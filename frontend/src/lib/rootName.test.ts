@@ -17,7 +17,6 @@ describe('nextRootName', () => {
   })
 
   it('treats existing names case-insensitively', () => {
-    // Root names are unique, and a clash would surface as a save error.
     expect(nextRootName('Movies', ['movies'])).toBe('Movies 2')
     expect(nextRootName('Movies', ['MOVIES', 'Movies 2'])).toBe('Movies 3')
   })

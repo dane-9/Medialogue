@@ -4,17 +4,16 @@ import type {
   DownloadClient,
   DownloadClientCategory,
   InteractiveSearchJob,
-  InteractiveSearchResult,
   QualityProfile,
   ShowDownloadPreview,
   ShowDownloadSeasonPreview,
 } from '../types'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
-import { ReleaseResults, formatBytes } from './ReleaseResults'
+import { ReleaseResults } from './ReleaseResults'
 import { DownloadClientField } from './DownloadClientField'
 import { useHorizontalWheelScroll } from '../lib/useHorizontalWheelScroll'
-import { Badge, Button, Input, Select } from './ui'
+import { Button, Input, Select } from './ui'
 import imdbLogo from '../assets/imdb.svg'
 
 type ShowChoice = {
@@ -42,8 +41,6 @@ function posterUrl(reference?: string) {
   if (reference.startsWith('http')) return reference
   return `https://image.tmdb.org/t/p/w185${reference.startsWith('/') ? reference : `/${reference}`}`
 }
-
-
 
 function seasonLabel(season: ShowDownloadSeasonPreview) {
   return season.seasonNumber === 0 ? 'Specials' : `Season ${season.seasonNumber}`
@@ -93,9 +90,6 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
   const [includeYearInFolder, setIncludeYearInFolder] = useState(false)
   const [setupLoading, setSetupLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
-  // Bumped by a client health recheck, so categories are fetched again after a
-  // client that was down comes back. The client id does not change, so nothing
-  // else would retry the load that failed while it was unreachable.
   const [clientReload, setClientReload] = useState(0)
   const [step, setStep] = useState<'setup' | 'search'>('setup')
   const [searchProfileId, setSearchProfileId] = useState('')
@@ -196,8 +190,6 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
     setStep('search')
   }
 
-  // Every season's results were ranked against the old profile, so they are
-  // discarded and the season you are looking at is searched again.
   useEffect(() => {
     if (step !== 'search' || !profileId || searchProfileId === profileId) return
     setSearchProfileId(profileId)
@@ -261,7 +253,6 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
 
   const selectedSeasons = visibleSeasons.filter((season) => Boolean(seasonStates[season.seasonNumber]?.selectedResultId))
   const pendingSeasons = selectedSeasons.filter((season) => !seasonStates[season.seasonNumber]?.submitted)
-  const selectedResult = activeState?.job?.results.find((result) => result.id === activeState.selectedResultId)
   const canContinue = Boolean(preview && profileId && clientId && category && finalShowFolderName && finalDestination && visibleSeasons.length && !setupLoading && !categoryLoading)
 
   const changeIncludeYear = (checked: boolean) => {
@@ -320,7 +311,6 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
     if (failed > 0) setError(`${succeeded} season pack${succeeded === 1 ? '' : 's'} started; ${failed} failed. Successful downloads are already running. Review the marked season tab${failed === 1 ? '' : 's'} and retry.`)
   }
 
-  // A show with many seasons overflows the tab strip, so the wheel scrolls it.
   const seasonTabsRef = useHorizontalWheelScroll<HTMLDivElement>()
 
   return <div className="modal-backdrop" onClick={onClose}>
@@ -334,8 +324,6 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
           <Select
             value={profileId}
             aria-label="Quality Profile"
-            // Seasons already downloading were ranked and grabbed under the
-            // profile in force at the time; changing it now would misrepresent them.
             disabled={Boolean(committedShowId)}
             onChange={(event) => setProfileId(event.target.value)}
           >{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select>
@@ -377,7 +365,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
           <label className="wizard-specials-toggle"><span><strong>Include year in folder name</strong></span><input type="checkbox" checked={includeYearInFolder} disabled={Boolean(committedShowId) || !(preview?.year || show.year)} onChange={(event) => changeIncludeYear(event.target.checked)} /></label>
           <Tooltip
             asChild
-           
+
             content={<>
               <p>Off by default. When enabled, Specials (season 0) appears as its own season-pack search tab, and is searched and downloaded like any other season.</p>
               <p>This applies to this download only. Whether Specials count toward episode totals is a separate, library-wide setting.</p>
@@ -387,7 +375,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
           </Tooltip>
           <Tooltip
             asChild
-           
+
             content={<>
               <p>Every season you download goes into this folder, with a subfolder per season.</p>
             </>}

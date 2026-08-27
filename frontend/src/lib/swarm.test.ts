@@ -17,7 +17,6 @@ describe('swarmHealth', () => {
   })
 
   it('does not confuse a missing count with zero seeders', () => {
-    // The difference is real: unknown might download fine, dead cannot.
     expect(swarmHealth(undefined)).toBe('unknown')
     expect(swarmHealth(null)).toBe('unknown')
     expect(swarmHealth(0)).toBe('dead')

@@ -110,7 +110,6 @@ def test_problem_queue_paginates_and_supports_suppression_restore_and_single_del
     assert first.json()["pages"] == 3
     assert len(first.json()["items"]) == 100
 
-    # Friendly UI priority aliases must map to the stored severity enum.
     medium = client.get("/api/v1/problems?status=open&severity=medium&page_size=250")
     assert medium.status_code == 200, medium.text
     assert medium.json()["total"] == 275
@@ -298,6 +297,4 @@ def test_event_history_supports_single_and_filtered_bulk_deletion(client: TestCl
         async with db_session.async_session_factory() as db:
             return int(await db.scalar(select(func.count()).select_from(Event)) or 0)
 
-    # Depending on which newest row was individually removed, only the
-    # non-scan event can remain after the filtered clear.
     assert asyncio.run(count_events()) <= 1

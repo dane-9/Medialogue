@@ -32,8 +32,6 @@ def test_a_declared_language_is_detected(title: str, expected: str) -> None:
 
 
 def test_a_release_that_declares_nothing_is_unknown_rather_than_english() -> None:
-    # Assuming English would put a claim on the majority of releases that their
-    # names never made.
     assert languages("Inception 2010 1080p BluRay REMUX AVC DTS-HD MA 5.1-GROUP") == ("Unknown",)
 
 
@@ -51,8 +49,6 @@ def test_upper_case_codes_are_detected(title: str, code: str) -> None:
 
 
 def test_an_audio_format_is_not_mistaken_for_a_language() -> None:
-    # DTS-ES is a channel layout; reading its ES as Spanish would mislabel a
-    # large share of remuxes.
     assert languages("Show.S01E01.DTS-ES.1080p-Y") == ("Unknown",)
 
 
@@ -65,7 +61,6 @@ def test_german_ml_adds_english_as_well() -> None:
 
 
 def test_web_dl_alone_does_not_imply_a_dual_language_german_release() -> None:
-    # The DL in WEB-DL is not the German dual-language tag.
     assert languages("Movie.2020.GERMAN.1080p.WEB-DL.x264-GRP") == ("German",)
 
 

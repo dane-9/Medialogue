@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,41 +18,12 @@ from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
 from app.core.security import sign_confirmation_payload, verify_confirmation_payload
 from app.integrations.filesystem import FilesystemObserver
-from app.models.domain import (
-    AccessMode,
-    AssociationType,
-    Episode,
-    EpisodeMediaMap,
-    IdentityState,
-    JobStatus,
-    MediaDirectory,
-    MediaFile,
-    MatchMethod,
-    MediaType,
-    Movie,
-    MovieRelease,
-    MovieReleaseTorrent,
-    Problem,
-    ProblemStatus,
-    ReleaseState,
-    Severity,
-    Show,
-    StorageRoot,
-    Torrent,
-    TorrentArchiveState,
-    TorrentClientObservation,
-    utcnow,
-)
+from app.models.domain import AccessMode, IdentityState, JobStatus, MediaDirectory, Movie, MovieRelease, MovieReleaseTorrent, Problem, ProblemStatus, ReleaseState, Show, StorageRoot, Torrent, TorrentArchiveState, TorrentClientObservation, utcnow
 from app.core.problem_types import MOVIE_MATCH_REASONS, SHOW_MATCH_REASONS
 from app.services.events import create_event, queue_live_event
 from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job
 from app.parser import EDITION_OPTIONS
-from app.services.reconciliation import (
-    open_problem,
-    reconcile_movie_directory,
-    refresh_movie_duplicate_problem,
-    resolve_problem,
-)
+from app.services.reconciliation import reconcile_movie_directory, refresh_movie_duplicate_problem
 from app.services.shows import reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
@@ -138,9 +109,6 @@ async def resolve_explicit_problem_action(
             message="A manual evidence recheck was requested.",
             details={"problem_id": str(problem.id), "reason": problem.reason},
         )
-        # Recheck is intentionally not equivalent to resolution. The normal
-        # observer/reconciliation pass closes the Problem only when evidence
-        # actually changes.
         return problem
 
     if action == "confirm_movie_match":
@@ -439,54 +407,6 @@ async def run_confirmed_show_reconciliation(
         failure_message="Could not finish the confirmed Show import.",
         failure_progress={"current": 0, "total": 2, "percent": 0, "stage": "failed", "detail": "Confirmed Show follow-up failed."},
     )
-
-
-async def _choose_episode_winner(db: AsyncSession, problem: Problem, payload: dict[str, Any]) -> bool:
-    if problem.reason != "DUPLICATE_EPISODE_RELEASE" or problem.entity_type != "episode" or problem.entity_id is None:
-        raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "This action only applies to episode duplicates.", status_code=409)
-    try:
-        winner_id = UUID(str(payload["winner_media_file_id"]))
-    except (KeyError, TypeError, ValueError) as exc:
-        raise AppError("WINNER_REQUIRED", "winner_media_file_id is required.", status_code=422) from exc
-    mapped = (
-        await db.scalars(
-            select(EpisodeMediaMap)
-            .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
-            .where(EpisodeMediaMap.episode_id == problem.entity_id, MediaFile.exists.is_(True))
-        )
-    ).all()
-    ids = {item.media_file_id for item in mapped}
-    verified_ids: set[UUID] = set()
-    for value in (problem.details or {}).get("media_file_ids", []):
-        try:
-            verified_ids.add(UUID(str(value)))
-        except (TypeError, ValueError):
-            continue
-    if winner_id not in ids or (verified_ids and winner_id not in verified_ids):
-        raise AppError("INVALID_DUPLICATE_WINNER", "The selected file is not one of the current physical duplicates.", status_code=409)
-    previous_id: UUID | None = None
-    try:
-        previous_id = UUID(str((problem.resolution or {}).get("winner_media_file_id")))
-    except (TypeError, ValueError):
-        pass
-    if (
-        previous_id is not None
-        and previous_id != winner_id
-        and bool((problem.resolution or {}).get("winner_manual_override_applied"))
-    ):
-        previous = next((item for item in mapped if item.media_file_id == previous_id), None)
-        if previous is not None:
-            previous.manual_override = False
-            previous.match_method = MatchMethod.PARSER
-    # Mark the chosen mapping as manual authority but leave all physical maps
-    # intact. This is intentionally not a fake resolution: the Problem stays
-    # open until the losing file really disappears.
-    winner = next(item for item in mapped if item.media_file_id == winner_id)
-    override_applied = not winner.manual_override
-    winner.manual_override = True
-    winner.match_method = MatchMethod.MANUAL
-    problem.details = {**dict(problem.details or {}), "preferred_media_file_id": str(winner_id)}
-    return override_applied
 
 
 async def _load_movie_for_duplicate(db: AsyncSession, resource_id: str) -> Movie:
@@ -823,7 +743,7 @@ async def commit_duplicate_resolution(
     resource_id: str,
     confirmation_token: str,
     *,
-    qbit_client_factory: Callable[..., Any],
+    qbittorrent_client_factory: Callable[..., Any],
 ) -> dict[str, Any]:
     payload = verify_confirmation_payload(confirmation_token, get_settings().secret_key)
     if payload is None or payload.get("purpose") != "resolve_movie_duplicate":
@@ -881,7 +801,7 @@ async def commit_duplicate_resolution(
     deleted_directories: list[str] = []
     removed_torrents: list[str] = []
     warnings: list[str] = []
-    qbit_removal_failed = False
+    qbittorrent_removal_failed = False
 
     # qBittorrent removal is deliberately attempted before filesystem
     # deletion when the user selected both. qBittorrent is told never to
@@ -899,7 +819,6 @@ async def commit_duplicate_resolution(
                 )
             )
         ).all()
-        # Validate every archive before producing any external side effect.
         for torrent, _observation in torrent_rows:
             if torrent.archive_state != TorrentArchiveState.ARCHIVED:
                 raise AppError("TORRENT_ARCHIVE_REQUIRED", "A selected torrent is no longer safely archived.", status_code=409)
@@ -907,11 +826,11 @@ async def commit_duplicate_resolution(
             client = get_integration_config_store().get_download_client(observation.download_client_id)
             if client is None or not client.enabled:
                 warnings.append(f"qBittorrent client {observation.download_client_id} is no longer configured; torrent was not removed.")
-                qbit_removal_failed = True
+                qbittorrent_removal_failed = True
                 continue
             adapter = None
             try:
-                adapter = qbit_client_factory(client.url, client.username or "", client.password or "")
+                adapter = qbittorrent_client_factory(client.url, client.username or "", client.password or "")
                 await adapter.remove_torrent(torrent.info_hash, delete_files=False)
                 observation.is_present = False
                 observation.removed_at = utcnow()
@@ -925,14 +844,14 @@ async def commit_duplicate_resolution(
                     details={"client_id": str(client.id), "info_hash": torrent.info_hash, "archive_retained": True},
                 )
             except Exception as exc:
-                qbit_removal_failed = True
+                qbittorrent_removal_failed = True
                 warnings.append(f"Could not remove {torrent.info_hash} from {client.name}: {exc}")
             finally:
                 if adapter is not None:
                     await adapter.close()
 
-    perform_media_delete = delete_media and not qbit_removal_failed
-    if delete_media and qbit_removal_failed:
+    perform_media_delete = delete_media and not qbittorrent_removal_failed
+    if delete_media and qbittorrent_removal_failed:
         warnings.append("Media deletion was skipped because at least one requested qBittorrent removal failed. Review the remaining duplicate and retry when qBittorrent is reachable.")
 
     if perform_media_delete:
@@ -1035,7 +954,7 @@ async def run_duplicate_resolution(
     resource_id: str,
     confirmation_token: str,
     *,
-    qbit_client_factory: Callable[..., Any],
+    qbittorrent_client_factory: Callable[..., Any],
 ) -> None:
     """Run the explicitly confirmed duplicate decision as a durable Job."""
 
@@ -1058,7 +977,7 @@ async def run_duplicate_resolution(
                 db,
                 resource_id,
                 confirmation_token,
-                qbit_client_factory=qbit_client_factory,
+                qbittorrent_client_factory=qbittorrent_client_factory,
             )
             summary = {
                 "movie_id": str(result["movie_id"]),

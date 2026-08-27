@@ -1,8 +1,8 @@
-import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MediaDiscovery, MovieEditionUpdate, MovieEditionUpdateResult, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, LibrarySummary, StorageRoot, StorageRootScan, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag, SetupStatus } from '../types'
+import type { ApiErrorShape, CustomFormat, CustomFormatCondition, CustomFormatConditionEvaluation, CustomFormatConditionType, CustomFormatEvaluation, CustomFormatScope, CustomFormatSection, CustomFormatTestAllResult, CustomFormatTestResult, Download, DownloadClient, DownloadClientCategory, DownloadClientScope, DownloadClientTestResult, InteractiveSearchJob, InteractiveSearchResult, HealthIndicator, EventHistoryItem, IncomingDownload, Indexer, IndexerScope, IndexerTestResult, Job, MediaProfileSettings, Movie, MovieDirectory, MediaDiscovery, MovieEditionUpdate, MovieEditionUpdateResult, MovieEvent, MovieRelease, PlexConfiguration, PlexTestResult, Problem, QualityDefinition, QualityProfile, ReconciliationAggregate, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, LibrarySummary, StorageRoot, StorageRootScan, RemotePathMapping, TorrentArchiveItem, RecoveryCapabilities, Tag } from '../types'
 
 export class ApiError extends Error {
   status: number
-  /** Machine-readable code from the API error envelope, when present. */
+
   code?: string
   constructor(message: string, status: number, code?: string) {
     super(message)
@@ -23,7 +23,6 @@ async function ensureCsrf(): Promise<string | undefined> {
   try {
     await fetch('/api/v1/auth/csrf', { credentials: 'include' })
   } catch {
-    // The caller will receive the original API error; CSRF is optional for read-only/demo APIs.
   }
   const refreshed = readCookie('csrf_token') ?? readCookie('csrf') ?? readCookie('medialogue_csrf')
   return refreshed ? decodeURIComponent(refreshed) : undefined
@@ -41,7 +40,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, { ...init, headers, credentials: 'include' })
   if (!response.ok) {
     let payload: ApiErrorShape = {}
-    try { payload = await response.json() as ApiErrorShape } catch { /* non-json response */ }
+    try { payload = await response.json() as ApiErrorShape } catch {}
     throw new ApiError((payload.error?.message ?? payload.detail ?? payload.message ?? response.statusText) || 'Request failed', response.status, payload.error?.code)
   }
   if (response.status === 204) return undefined as T
@@ -207,8 +206,6 @@ function normalizeReconciliation(value: unknown): ReconciliationAggregate | unde
     rootAffectedCount: optionalNumber(item.root_affected_count ?? item.rootAffectedCount ?? item.affected_media_count),
   }
 }
-
-
 
 function normalizeEpisodeMedia(value: unknown): EpisodeMedia {
   const item = record(value)
@@ -680,38 +677,6 @@ function normalizeMediaDiscovery(value: unknown): MediaDiscovery {
   }
 }
 
-function normalizeDuplicateRelease(value: unknown) {
-  const item = record(value)
-  const directories = Array.isArray(item.directories) ? item.directories : []
-  const torrents = Array.isArray(item.torrents) ? item.torrents : []
-  return {
-    releaseId: textValue(item.release_id ?? item.releaseId),
-    releaseName: textValue(item.release_name ?? item.releaseName),
-    edition: textValue(item.edition) || undefined,
-    quality: textValue(item.quality) || undefined,
-    releaseGroup: textValue(item.release_group ?? item.releaseGroup) || undefined,
-    state: textValue(item.state),
-    directories: directories.map((entry) => { const row = record(entry); return { directoryId: textValue(row.directory_id ?? row.directoryId), path: textValue(row.path), storageRoot: textValue(row.storage_root ?? row.storageRoot), accessMode: textValue(row.access_mode ?? row.accessMode), exists: Boolean(row.exists), files: (Array.isArray(row.files) ? row.files : []).map((file) => { const f = record(file); return { relativePath: textValue(f.relative_path ?? f.relativePath), size: optionalNumber(f.size), isSymlink: Boolean(f.is_symlink ?? f.isSymlink) } }) } }),
-    torrents: torrents.map((entry) => { const row = record(entry); return { torrentId: textValue(row.torrent_id ?? row.torrentId), infoHash: textValue(row.info_hash ?? row.infoHash), name: textValue(row.name), archived: Boolean(row.archived), qbitPresent: Boolean(row.qbit_present ?? row.qbitPresent), clients: Array.isArray(row.clients) ? row.clients.map((client) => textValue(client)).filter(Boolean) : [] } }),
-  }
-}
-
-function normalizeDuplicatePreview(value: unknown): DuplicateResolvePreview {
-  const item = record(value)
-  return {
-    movieId: textValue(item.movie_id ?? item.movieId),
-    movieTitle: textValue(item.movie_title ?? item.movieTitle),
-    winner: normalizeDuplicateRelease(item.winner),
-    losers: (Array.isArray(item.losers) ? item.losers : []).map(normalizeDuplicateRelease),
-    deleteMedia: Boolean(item.delete_media ?? item.deleteMedia),
-    removeTorrents: Boolean(item.remove_torrents ?? item.removeTorrents),
-    torrentBackupsWillBeKept: Boolean(item.torrent_backups_will_be_kept ?? item.torrentBackupsWillBeKept),
-    confirmationToken: textValue(item.confirmation_token ?? item.confirmationToken),
-    expiresAt: textValue(item.expires_at ?? item.expiresAt),
-    warnings: Array.isArray(item.warnings) ? item.warnings.map((entry) => textValue(entry)).filter(Boolean) : [],
-  }
-}
-
 function normalizeCustomFormatCondition(value: unknown): CustomFormatCondition {
   const item = record(value)
   const rawType = textValue(item.type || item.condition_type, 'release_title') as CustomFormatConditionType
@@ -966,24 +931,22 @@ export const api = {
   session: () => request<{ username: string; is_default_password?: boolean }>('/api/v1/auth/me'),
   security: () => request<{ default_password_warning: boolean; session_expires_at?: string }>('/api/v1/auth/security'),
   changePassword: (currentPassword: string, newPassword: string) => request<{ username: string; is_default_password: boolean }>('/api/v1/auth/password', { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }),
-  setupStatus: () => request<SetupStatus>('/api/v1/setup/status'),
-  completeSetup: (complete = true) => request<SetupStatus>('/api/v1/setup/complete', { method: 'PUT', body: JSON.stringify({ complete }) }),
   health: async () => {
     const payload = await request<{ database?: { status?: string }; plex?: { configured?: boolean; status?: string; latency_ms?: number; last_success?: string }; qbittorrent?: JsonRecord; download_clients?: JsonRecord | Array<{ health?: string; enabled?: boolean }>; indexers?: { configured?: boolean; enabled?: number; healthy?: number; total?: number; status?: string }; storage_roots?: Array<{ status?: string }> }>('/integrations/health')
     const storageHealthy = (payload.storage_roots ?? []).every((root) => root.status === 'healthy' || root.status === 'available')
     const plexState = payload.plex?.configured ? payload.plex.status ?? 'unknown' : 'unknown'
     const plexDetail = !payload.plex?.configured ? 'Not configured' : plexState === 'healthy' ? `Connected${payload.plex.latency_ms ? ` · ${payload.plex.latency_ms} ms` : ''}` : plexState
-    const qb = payload.qbittorrent ?? (Array.isArray(payload.download_clients) ? undefined : payload.download_clients)
-    const qbClients = Array.isArray(payload.download_clients) ? payload.download_clients : undefined
-    const qbConfigured = typeof qb?.configured === 'boolean' ? qb.configured : Boolean(qbClients?.length)
-    const qbHealthy = numberValue(qb?.healthy_clients ?? qb?.healthy, qbClients?.filter((client) => client.enabled !== false && client.health === 'healthy').length ?? 0)
-    const qbTotal = numberValue(qb?.total_clients ?? qb?.total, qbClients?.length ?? 0)
-    const qbState = qbConfigured ? textValue(qb?.status, qbTotal && qbHealthy === qbTotal ? 'healthy' : qbHealthy ? 'degraded' : 'unknown') : 'unknown'
-    const qbDetail = !qbConfigured ? 'Not configured' : qbTotal ? `${qbHealthy ?? 0}/${qbTotal} clients healthy` : qbState
+    const qbittorrent = payload.qbittorrent ?? (Array.isArray(payload.download_clients) ? undefined : payload.download_clients)
+    const qbittorrentClients = Array.isArray(payload.download_clients) ? payload.download_clients : undefined
+    const qbittorrentConfigured = typeof qbittorrent?.configured === 'boolean' ? qbittorrent.configured : Boolean(qbittorrentClients?.length)
+    const qbittorrentHealthy = numberValue(qbittorrent?.healthy_clients ?? qbittorrent?.healthy, qbittorrentClients?.filter((client) => client.enabled !== false && client.health === 'healthy').length ?? 0)
+    const qbittorrentTotal = numberValue(qbittorrent?.total_clients ?? qbittorrent?.total, qbittorrentClients?.length ?? 0)
+    const qbittorrentState = qbittorrentConfigured ? textValue(qbittorrent?.status, qbittorrentTotal && qbittorrentHealthy === qbittorrentTotal ? 'healthy' : qbittorrentHealthy ? 'degraded' : 'unknown') : 'unknown'
+    const qbittorrentDetail = !qbittorrentConfigured ? 'Not configured' : qbittorrentTotal ? `${qbittorrentHealthy ?? 0}/${qbittorrentTotal} clients healthy` : qbittorrentState
     return {
       indicators: [
         { name: 'Plex', state: plexState === 'healthy' ? 'healthy' as const : plexState === 'unavailable' ? 'offline' as const : plexState === 'degraded' ? 'degraded' as const : 'unknown' as const, detail: plexDetail },
-        { name: 'qBittorrent', state: qbState === 'healthy' ? 'healthy' as const : qbState === 'unavailable' || qbState === 'offline' ? 'offline' as const : qbState === 'degraded' ? 'degraded' as const : 'unknown' as const, detail: qbDetail },
+        { name: 'qBittorrent', state: qbittorrentState === 'healthy' ? 'healthy' as const : qbittorrentState === 'unavailable' || qbittorrentState === 'offline' ? 'offline' as const : qbittorrentState === 'degraded' ? 'degraded' as const : 'unknown' as const, detail: qbittorrentDetail },
         { name: 'Storage', state: (payload.storage_roots?.length && storageHealthy ? 'healthy' : 'unknown') as HealthIndicator['state'], detail: payload.storage_roots?.length ? `${payload.storage_roots.length} roots configured` : 'No roots configured' },
         { name: 'Indexers', state: payload.indexers?.status === 'healthy' ? 'healthy' as const : payload.indexers?.status === 'unavailable' ? 'offline' as const : payload.indexers?.status === 'degraded' ? 'degraded' as const : 'unknown' as const, detail: payload.indexers?.configured ? `${payload.indexers.healthy ?? 0}/${payload.indexers.enabled ?? 0} enabled healthy` : 'Not configured' },
       ] satisfies HealthIndicator[],
@@ -1039,12 +1002,7 @@ export const api = {
   },
   tags: async () => (await request<unknown[]>('/api/v1/tags')).map(normalizeTag),
   createTag: (name: string) => request<unknown>('/api/v1/tags', { method: 'POST', body: JSON.stringify({ name }) }).then(normalizeTag),
-  renameTag: (id: string, name: string) => request<unknown>(`/api/v1/tags/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }).then(normalizeTag),
-  deleteTag: (id: string) => request<void>(`/api/v1/tags/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  addMovieTag: async (movieId: string, tagId: string) => (await request<unknown[]>(`/api/v1/movies/${encodeURIComponent(movieId)}/tags/${encodeURIComponent(tagId)}`, { method: 'POST' })).map(normalizeTag),
-  removeMovieTag: async (movieId: string, tagId: string) => (await request<unknown[]>(`/api/v1/movies/${encodeURIComponent(movieId)}/tags/${encodeURIComponent(tagId)}`, { method: 'DELETE' })).map(normalizeTag),
   bulkMovies: (payload: { movie_ids: string[]; action: 'change_profile' | 'add_tags' | 'remove_tags' | 'monitor' | 'unmonitor' | 'recheck_plex' | 'reevaluate_parser' | 'reevaluate_custom_formats'; quality_profile_id?: string | null; tag_ids?: string[] }) => request<{ action: string; requested: number; updated: number; movie_ids: string[]; details: Record<string, unknown> } | { job_id: string }>('/api/v1/movies/bulk', { method: 'POST', body: JSON.stringify(payload) }),
-  addMovie: (tmdbId: number) => request<unknown>('/api/v1/movies', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, monitored: true }) }).then(normalizeMovie),
   lookupMovies: async (query: string, year?: number) => (await request<unknown[]>(`/api/v1/movies/lookup?query=${encodeURIComponent(query)}${year ? `&year=${year}` : ''}`)).map(normalizeTMDBMovieLookup),
   movieEditionOptions: async () => (await request<{ editions: string[] }>('/api/v1/movies/edition-options')).editions,
   updateMovieReleaseEditions: (movieId: string, updates: MovieEditionUpdate[]) => request<Record<string, unknown>>(`/api/v1/movies/${encodeURIComponent(movieId)}/releases/editions`, {
@@ -1065,8 +1023,6 @@ export const api = {
       }
     }),
   })),
-  previewMovieDuplicate: (movieId: string, payload: { winner_release_id: string; losing_release_ids: string[]; delete_media: boolean; remove_torrents: boolean }) => request<unknown>(`/api/v1/movies/${encodeURIComponent(movieId)}/duplicates/resolve-preview`, { method: 'POST', body: JSON.stringify(payload) }).then(normalizeDuplicatePreview),
-  resolveMovieDuplicate: (movieId: string, confirmationToken: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(movieId)}/duplicates/resolve`, { method: 'POST', body: JSON.stringify({ confirmation_token: confirmationToken }) }),
   shows: async (query = '', sort = 'title') => {
     const params = new URLSearchParams()
     if (query) params.set('query', query)
@@ -1079,7 +1035,6 @@ export const api = {
   specialsCounting: () => request<{ count_specials: boolean }>('/api/v1/shows/specials-counting'),
   setSpecialsCounting: (countSpecials: boolean) => request<{ count_specials: boolean; seasons_changed: number; shows_affected: number }>('/api/v1/shows/specials-counting', { method: 'PUT', body: JSON.stringify({ count_specials: countSpecials }) }),
   lookupShows: async (query: string, year?: number) => (await request<unknown[]>(`/api/v1/shows/lookup?query=${encodeURIComponent(query)}${year ? `&year=${year}` : ''}`)).map(normalizeTMDBShowLookup),
-  addShow: (tmdbId: number) => request<unknown>('/api/v1/shows', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, monitored: true }) }).then(normalizeShow),
   episodeOrderings: (resourceId: string) => request<Array<{ id: string | null; name: string; type_label: string; season_count: number; episode_count: number; description?: string; network?: string; selected: boolean }>>(`/api/v1/shows/${encodeURIComponent(resourceId)}/episode-orderings`),
   updateShow: (resourceId: string, payload: { monitored?: boolean; tmdb_episode_group_id?: string; expected_revision?: number }) => request<unknown>(`/api/v1/shows/${encodeURIComponent(resourceId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeShow),
   updateSeason: (seasonId: string, payload: { monitored?: boolean; counted?: boolean; expected_revision?: number }) => request<unknown>(`/api/v1/seasons/${encodeURIComponent(seasonId)}`, { method: 'PATCH', body: JSON.stringify(payload) }).then(normalizeSeason),
@@ -1087,7 +1042,6 @@ export const api = {
   correctEpisodeMapping: (mediaFileId: string, episodeIds: string[]) => request<{ media_file_id: string; show_release_id: string; episode_ids: string[]; episode_numbers: number[]; manual_override: boolean }>(`/api/v1/media-files/${encodeURIComponent(mediaFileId)}/episode-mappings`, { method: 'PUT', body: JSON.stringify({ episode_ids: episodeIds }) }),
   refreshShowMetadata: (resourceId: string) => request<{ job_id: string }>(`/api/v1/shows/${encodeURIComponent(resourceId)}/metadata/refresh`, { method: 'POST' }),
   recheckShowPlex: (resourceId: string) => request<{ job_id: string }>(`/api/v1/shows/${encodeURIComponent(resourceId)}/actions/recheck-plex`, { method: 'POST' }),
-  startEpisodeSearch: (episodeId: string) => request<{ job_id: string }>(`/api/v1/episodes/${encodeURIComponent(episodeId)}/interactive-search`, { method: 'POST' }),
   startSeasonSearch: (seasonId: string) => request<{ job_id: string }>(`/api/v1/seasons/${encodeURIComponent(seasonId)}/interactive-search`, { method: 'POST' }),
   remotePathMappings: async () => {
     const payload = await request<{ items?: RemotePathMapping[] } | RemotePathMapping[]>('/api/v1/remote-path-mappings')
@@ -1119,13 +1073,10 @@ export const api = {
   startScan: (rootId: string) => request<{ job_id: string }>(`/api/v1/storage-roots/${rootId}/scan`, { method: 'POST' }),
   plexConfiguration: () => request<PlexConfiguration>('/api/v1/integrations/plex'),
   savePlex: (configuration: { url: string; token?: string; enabled: boolean; expected_revision?: number }) => request<PlexConfiguration>('/api/v1/integrations/plex', { method: 'PUT', body: JSON.stringify(configuration) }),
-  testPlex: (configuration: { url?: string; token?: string }) => request<PlexTestResult>('/api/v1/integrations/plex/test', { method: 'POST', body: JSON.stringify(configuration) }),
   refreshPlexHealth: () => request<PlexTestResult>('/api/v1/integrations/plex/health/refresh', { method: 'POST' }),
   syncPlexLibrary: () => request<{ job_id: string }>('/api/v1/integrations/plex/sync', { method: 'POST' }),
   tmdbConfiguration: () => request<{ configured: boolean; api_key_configured: boolean; enabled: boolean; health: string; latency_ms?: number; last_error?: string; revision?: number }>('/api/v1/integrations/tmdb'),
   saveTmdb: (configuration: { api_key?: string; enabled: boolean; expected_revision?: number }) => request<{ configured: boolean; api_key_configured: boolean; enabled: boolean; health: string; latency_ms?: number; last_error?: string; revision?: number }>('/api/v1/integrations/tmdb', { method: 'PUT', body: JSON.stringify(configuration) }),
-  testTmdb: (configuration: { api_key?: string }) => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/test', { method: 'POST', body: JSON.stringify(configuration) }),
-  refreshTmdbHealth: () => request<{ status: string; latency_ms?: number; message?: string }>('/api/v1/integrations/tmdb/health/refresh', { method: 'POST' }),
   recheckMoviePlex: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/actions/recheck-plex`, { method: 'POST' }),
   startMovieSearch: (id: string) => request<{ job_id: string }>(`/api/v1/movies/${encodeURIComponent(id)}/interactive-search`, { method: 'POST' }),
   startUnattachedMovieSearch: (tmdbId: number, qualityProfileId: string) => request<{ job_id: string }>('/api/v1/interactive-search/movies', { method: 'POST', body: JSON.stringify({ tmdb_id: tmdbId, quality_profile_id: qualityProfileId }) }),
@@ -1156,15 +1107,6 @@ export const api = {
   searchJob: (jobId: string) => request<unknown>(`/api/v1/search-jobs/${encodeURIComponent(jobId)}`).then(normalizeInteractiveSearchJob),
   downloadSearchResult: (resultId: string, payload: { download_client_id: string; category?: string | null; show_folder_name?: string; include_year_in_show_folder?: boolean }) => request<{ search_result_id: string; download_client_id: string; client_name: string; status: string; selected_at: string; movie_id?: string; show_id?: string; season_id?: string; category?: string | null; save_path?: string | null }>(`/api/v1/search-results/${encodeURIComponent(resultId)}/download`, { method: 'POST', body: JSON.stringify(payload) }),
   reconcileMovie: (_id: string) => request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' }),
-  reconcileAll: async () => {
-    const payload = await request<{ job_ids?: string[]; skipped_root_ids?: string[]; active_job_ids?: string[]; uninitialized_root_ids?: string[] }>('/api/v1/reconciliation/refresh', { method: 'POST' })
-    return {
-      jobIds: (payload.job_ids ?? []).map(String),
-      activeJobIds: (payload.active_job_ids ?? []).map(String),
-      skippedRootIds: (payload.skipped_root_ids ?? []).map(String),
-      uninitializedRootIds: (payload.uninitialized_root_ids ?? []).map(String),
-    }
-  },
   waitForJobs: async (jobIds: string[]) => {
     const pending = new Set(jobIds.filter(Boolean))
     const seen = new Set(pending)
@@ -1175,9 +1117,6 @@ export const api = {
         if (!['completed', 'failed', 'cancelled', 'interrupted'].includes(job.state)) continue
         pending.delete(job.id)
         finished.push(job)
-        // Reconciliation scans can schedule read-only Plex verification after
-        // filesystem work completes. Follow those jobs as part of the same
-        // evidence refresh instead of reporting completion prematurely.
         const followups = Array.isArray(job.summary?.followup_job_ids) ? job.summary.followup_job_ids : []
         for (const value of followups) {
           const followupId = String(value || '')
@@ -1241,7 +1180,6 @@ export const api = {
     })
     return (payload.sections ?? []).map(normalizeCustomFormatSection)
   },
-  customFormat: (id: string) => request<unknown>(`/api/v1/custom-formats/${encodeURIComponent(id)}`).then(normalizeCustomFormat),
   createCustomFormat: (format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'>) => request<unknown>('/api/v1/custom-formats', { method: 'POST', body: JSON.stringify(customFormatPayload(format)) }).then(normalizeCustomFormat),
   updateCustomFormat: (id: string, format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'> & { expectedRevision?: number }) => request<unknown>(`/api/v1/custom-formats/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ ...customFormatPayload(format), expected_revision: format.expectedRevision }) }).then(normalizeCustomFormat),
   setCustomFormatEnabled: (id: string, enabled: boolean, expectedRevision?: number) => request<unknown>(`/api/v1/custom-formats/${encodeURIComponent(id)}`, {
@@ -1293,7 +1231,6 @@ export const api = {
     const items = Array.isArray(payload) ? payload : payload.items ?? []
     return items.map(normalizeTorrentArchiveItem)
   },
-  torrentArchiveItem: async (id: string) => normalizeTorrentArchiveItem(await request<unknown>(`/api/v1/torrent-archive/${encodeURIComponent(id)}`)),
   retryTorrentArchive: (id: string) => request<{ job_id: string }>(`/api/v1/torrent-archive/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   restoreTorrentArchive: (id: string, payload: { download_client_id: string; save_path: string; category?: string; tags?: string[] }) => request<{ job_id: string }>(`/api/v1/torrent-archive/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify(payload) }),
   discoveries: async (state: 'pending' | 'approved' | 'ignored' = 'pending') => {
@@ -1314,14 +1251,13 @@ export const api = {
     )
     return { succeeded: payload.succeeded ?? [], failed: payload.failed ?? [] }
   },
-  /** Search TMDB for one folder and keep the results on the item, server-side. */
+
   searchDiscoveryCandidates: (id: string, query?: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/search`, {
     method: 'POST',
     body: JSON.stringify({ query: query ?? null }),
   }).then(normalizeMediaDiscovery),
-  restoreDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/restore`, { method: 'POST' }).then(normalizeMediaDiscovery),
   discoveryCount: async () => numberValue((await request<{ count: number }>('/api/v1/discoveries/count')).count),
-  /** Display values ride along so the server need not re-fetch what the reviewer just clicked. */
+
   selectDiscovery: (id: string, candidate: { tmdbId: number; title?: string; originalTitle?: string; year?: number; posterRef?: string }) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/select`, {
     method: 'POST',
     body: JSON.stringify({
@@ -1336,8 +1272,6 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify(update),
   }).then(normalizeMediaDiscovery),
-  approveDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/approve`, { method: 'POST' }).then(normalizeMediaDiscovery),
-  ignoreDiscovery: (id: string) => request<unknown>(`/api/v1/discoveries/${encodeURIComponent(id)}/ignore`, { method: 'POST' }).then(normalizeMediaDiscovery),
   problemCount: async (status = 'open') => {
     const payload = await request<{ count: number }>(`/api/v1/problems/count?status=${encodeURIComponent(status)}`)
     return numberValue(payload.count)
@@ -1355,13 +1289,6 @@ export const api = {
     return { items: payload.items.map(normalizeProblem), total: payload.total, pages: payload.pages, page: payload.page, pageSize: payload.page_size }
   },
   deleteProblem: (id: string) => request<{ id: string }>(`/api/v1/problems/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  clearProblems: (filters: { status?: string; category?: string; severity?: string } = {}) => {
-    const params = new URLSearchParams()
-    if (filters.status) params.set('status', filters.status)
-    if (filters.category && filters.category !== 'all') params.set('category', filters.category)
-    if (filters.severity && filters.severity !== 'all') params.set('severity', filters.severity)
-    return request<{ deleted: number }>(`/api/v1/problems${params.size ? `?${params.toString()}` : ''}`, { method: 'DELETE' })
-  },
   recheckProblems: () => request<{ requested: number; job_ids: string[] }>('/api/v1/problems/recheck', { method: 'POST' }),
   resolveProblem: (id: string, action: string, payload: Record<string, unknown> = {}) => request<unknown>(`/api/v1/problems/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify({ action, payload }) }).then(normalizeProblem),
 }

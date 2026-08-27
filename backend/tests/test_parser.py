@@ -220,13 +220,11 @@ def test_progressive_dvd_remux_qualities_are_canonical_supported_values():
     ntsc = parse_release("Movie 2000 480p NTSC DVD REMUX MPEG-2 DD 2.0-GROUP")
     pal = parse_release("Movie 2000 576p PAL DVD REMUX MPEG-2 DD 2.0-GROUP")
 
-    # The broadcast standard is evidence, not part of the quality.
     assert ntsc.quality.canonical == "480p DVD REMUX"
     assert pal.quality.canonical == "576p DVD REMUX"
     assert ntsc.quality.tv_standard == "NTSC"
     assert pal.quality.tv_standard == "PAL"
 
-    # The parser must not emit a canonical value absent from the hardcoded catalog.
     from app.parser.quality import QUALITY_BY_NAME
 
     assert ntsc.quality.canonical in QUALITY_BY_NAME
@@ -238,13 +236,10 @@ def test_the_same_resolution_is_one_quality_whatever_the_broadcast_standard():
     ntsc = parse_release("Movie 2000 576p NTSC DVD MPEG-2 DD 2.0-GROUP")
 
     assert pal.quality.canonical == ntsc.quality.canonical == "576p DVD Encode"
-    # Still recorded, so a release name that states the standard is not lost.
     assert (pal.quality.tv_standard, ntsc.quality.tv_standard) == ("PAL", "NTSC")
 
 
 def test_a_dvd_release_without_a_standard_token_is_still_classified():
-    # The old parser inferred PAL/NTSC from the resolution purely to build the
-    # quality name. Nothing infers it now, and the quality is unaffected.
     parsed = parse_release("Movie 2000 480p DVD MPEG-2 DD 2.0-GROUP")
 
     assert parsed.quality.canonical == "480p DVD Encode"
@@ -324,19 +319,17 @@ def test_season_folder_names_cover_the_common_layouts() -> None:
     assert parse_season_folder("Series 2") == 2
     assert parse_season_folder("Specials") == 0
     assert parse_season_folder("Season 0") == 0
-    # Shows organised by production year, e.g. Tom and Jerry.
     assert parse_season_folder("S1940") == 1940
     assert parse_season_folder("Season 1960") == 1960
-    # Anything that is not a season folder must stay unrecognised.
     assert parse_season_folder("Extras") is None
     assert parse_season_folder("Season") is None
     assert parse_season_folder("Dollface 2019") is None
 
 
 def test_year_seasons_parse_as_season_and_episode() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
-    identity = parse_release_name(
+    identity = parse_release(
         "Tom and Jerry (1940) - S1960E01 - Switchin' Kitten (1080p AMZN WEB-DL x265 Ghost)"
     ).identity
     assert identity.season == 1960
@@ -354,14 +347,13 @@ def test_episode_only_filenames_yield_episode_numbers() -> None:
     assert extract_episode_numbers("E01 - Pilot") == (1,)
     assert extract_episode_numbers("Episode 4") == (4,)
     assert extract_episode_numbers("01-03 - Triple") == (1, 2, 3)
-    # A bare number with no separator is a title, not an episode index.
     assert extract_episode_numbers("1917") == ()
     assert extract_episode_numbers("300") == ()
     assert extract_episode_numbers("Some Title") == ()
 
 
 def test_dolby_digital_plus_is_recognised_under_every_spelling() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
     for name in (
         "X 2024 1080p AMZN WEB-DL DDP5.1 H.264-NTb",
@@ -370,79 +362,73 @@ def test_dolby_digital_plus_is_recognised_under_every_spelling() -> None:
         "X 2024 1080p WEB-DL EAC3 5.1",
         "X 2024 1080p WEB-DL E-AC-3 5.1",
     ):
-        audio = parse_release_name(name).audio
+        audio = parse_release(name).audio
         assert audio.codec == "DD+", name
         assert audio.channels == "5.1", name
 
 
 def test_channel_layout_attached_to_the_codec_is_read() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
     for name, codec in (
         ("X 2160p WEB-DL TrueHD7.1", "TrueHD"),
         ("X 1080p BluRay DTS-HD MA5.1", "DTS-HD MA"),
         ("X 1080p WEB AAC2.0", "AAC"),
     ):
-        audio = parse_release_name(name).audio
+        audio = parse_release(name).audio
         assert audio.codec == codec, name
         assert audio.channels is not None, name
 
 
 def test_plain_dts_and_ac3_are_distinguished_from_their_lossless_variants() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
-    assert parse_release_name("X 1080p BluRay DTS 5.1 x264").audio.codec == "DTS"
-    assert parse_release_name("X 1080p BluRay DTS-HD MA 5.1").audio.codec == "DTS-HD MA"
-    # AC3 is Dolby Digital; it must not be mistaken for Dolby Digital Plus.
-    assert parse_release_name("X 1080p BluRay AC3 2.0").audio.codec == "DD"
-    assert parse_release_name("X 1080p WEB-DL DD 5.1").audio.codec == "DD"
+    assert parse_release("X 1080p BluRay DTS 5.1 x264").audio.codec == "DTS"
+    assert parse_release("X 1080p BluRay DTS-HD MA 5.1").audio.codec == "DTS-HD MA"
+    assert parse_release("X 1080p BluRay AC3 2.0").audio.codec == "DD"
+    assert parse_release("X 1080p WEB-DL DD 5.1").audio.codec == "DD"
 
 
 def test_dts_extended_surround_is_distinct_from_core_dts() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
     for name in ("X 1080p BluRay DTS-ES 5.1", "X 1080p BluRay DTS-ES Discrete 6.1", "X 1080p BluRay DTS ES Matrix 6.1"):
-        assert parse_release_name(name).audio.codec == "DTS-ES", name
-    assert parse_release_name("X 1080p BluRay DTS 5.1").audio.codec == "DTS"
-    assert parse_release_name("X 1080p BluRay DTS-HD MA 5.1").audio.codec == "DTS-HD MA"
-    assert parse_release_name("X 2160p BluRay DTS-X 7.1").audio.codec == "DTS:X"
+        assert parse_release(name).audio.codec == "DTS-ES", name
+    assert parse_release("X 1080p BluRay DTS 5.1").audio.codec == "DTS"
+    assert parse_release("X 1080p BluRay DTS-HD MA 5.1").audio.codec == "DTS-HD MA"
+    assert parse_release("X 2160p BluRay DTS-X 7.1").audio.codec == "DTS:X"
 
 
 def test_paramount_plus_is_recognised_under_its_scene_tag() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
     for name in (
         "Show S01E01 1080p PMTP WEB-DL DDP5.1 H.264-NTb",
         "Show S01E01 1080p Paramount+ WEB-DL DDP5.1-NTb",
     ):
-        assert parse_release_name(name).provider == "PMTP", name
+        assert parse_release(name).provider == "PMTP", name
 
 
 def test_bravia_core_is_recognised_under_its_scene_tag() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
-    assert parse_release_name("Movie 2024 2160p BCORE WEB-DL DDP5.1 H.265-GRP").provider == "BCORE"
+    assert parse_release("Movie 2024 2160p BCORE WEB-DL DDP5.1 H.265-GRP").provider == "BCORE"
 
 
 def test_short_provider_tags_are_bounded_by_the_web_dl_marker() -> None:
-    from app.parser import parse_release_name
+    from app.parser import parse_release
 
-    assert parse_release_name("Show S01E01 1080p CR WEB-DL AAC2.0-NTb").provider == "CR"
-    assert parse_release_name("Show S01E01 1080p iP WEB-DL AAC2.0-NTb").provider == "iP"
-    # MA here is DTS-HD Master Audio, not the Movies Anywhere provider.
-    assert parse_release_name("Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP").provider is None
+    assert parse_release("Show S01E01 1080p CR WEB-DL AAC2.0-NTb").provider == "CR"
+    assert parse_release("Show S01E01 1080p iP WEB-DL AAC2.0-NTb").provider == "iP"
+    assert parse_release("Movie 2024 1080p BluRay DTS-HD MA 5.1 x264-GRP").provider is None
 
 
 def test_uncut_and_super_sized_are_editions_in_their_own_right():
-    # The combined "Super-Sized and Uncut" is a real release name, but a film
-    # labelled only one of them must not be filed under the pair.
     assert parse_release("Movie 2010 Uncut 1080p BluRay x264-GROUP").edition == "Uncut"
     assert parse_release("Movie 2007 Super-Sized 1080p BluRay x264-GROUP").edition == "Super-Sized"
 
 
 def test_a_release_naming_both_takes_the_longer_edition():
-    # There is no combined edition. Aliases match longest-first, so this lands
-    # on Super-Sized rather than inventing a pair.
     parsed = parse_release("Superbad 2007 Super-Sized and Uncut 1080p BluRay x264-GROUP")
     assert parsed.edition == "Super-Sized"
 

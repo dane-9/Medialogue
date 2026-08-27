@@ -149,8 +149,6 @@ class QBittorrentClient:
     ) -> None:
         self.username = username
         self.password = password
-        # Keep a trailing slash and use relative API paths so a configured
-        # reverse-proxy prefix (for example https://host/qbit/) is preserved.
         self._client = httpx.AsyncClient(
             base_url=f"{base_url.rstrip('/')}/", timeout=timeout, transport=transport
         )
@@ -376,10 +374,6 @@ class QBittorrentClient:
                 raise QBittorrentError(
                     f"qBittorrent connection failed during {method_upper}: {exc}"
                 ) from exc
-            # Read-only WebAPI calls are safe to repeat. HTTPX evicts a broken
-            # connection after these transport errors, so this second attempt
-            # naturally uses another socket. One retry is enough to absorb a
-            # stale keep-alive connection without masking an actual outage.
             try:
                 return await self._client.request(method_upper, request_path, **kwargs)
             except self._TRANSIENT_READ_ERRORS as retry_exc:

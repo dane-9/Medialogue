@@ -75,14 +75,8 @@ class IndexerConfig:
     priority: int = 25
     revision: int = 1
     api_key: str | None = None
-    #: Optional "#rrggbb" badge colour, shown against this indexer's results.
     color: str | None = None
-    #: Languages a MULTI-tagged release from this indexer contains. Trackers
-    #: differ on what MULTI means, so it is configured per indexer.
     multi_languages: list[str] = field(default_factory=list)
-    #: Download clients this indexer's grabs may be sent to. Empty means any
-    #: eligible client, which is the behaviour every indexer had before this
-    #: existed and stays the default for a new one.
     download_client_ids: list[UUID] = field(default_factory=list)
 
 
@@ -184,10 +178,6 @@ class IntegrationConfigStore:
             config_exists = self.config_path.exists()
             secrets_exist = self.secrets_path.exists()
             if config_exists and secrets_exist:
-                # Force a read/decrypt so startup fails clearly if the secret
-                # key changed or either file is corrupt. Also discard the old
-                # indexer -> download-client coupling: download destination is
-                # now chosen explicitly by the download workflow.
                 config, secrets = self._load()
                 changed = False
                 for row in config.get("indexers") or []:
@@ -532,10 +522,3 @@ def get_integration_config_store() -> IntegrationConfigStore:
             _store = IntegrationConfigStore(settings.config_dir, settings.secret_key)
             _store_key = key
         return _store
-
-
-def reset_integration_config_store() -> None:
-    global _store_key, _store
-    with _store_lock:
-        _store_key = None
-        _store = None

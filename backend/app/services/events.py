@@ -146,8 +146,6 @@ def _publish_payload(payload: dict[str, Any]) -> None:
         try:
             queue.put_nowait(payload)
         except asyncio.QueueFull:
-            # A stale browser should not be allowed to grow memory without
-            # bound. It can reconnect and recover all durable state via REST.
             unsubscribe(queue)
 
 

@@ -43,7 +43,7 @@ from app.models.domain import (
     SourceType,
     StorageRoot,
 )
-from app.parser import extract_episode_numbers, parse_release_name, parse_season_folder
+from app.parser import extract_episode_numbers, parse_release, parse_season_folder
 from app.services.discoveries import retire_missing_review_discovery, stage_media_discovery
 from app.services.events import create_event
 from app.services.quality_profiles import evaluate_current_release_score
@@ -93,7 +93,6 @@ def _sync_discovery_files(directory: MediaDirectory, observation: DirectoryObser
     for relative_path, item in existing.items():
         if relative_path not in seen:
             item.last_exists_check_at = now
-
 
 
 async def resolve_show_resource(db: AsyncSession, resource_id: str) -> Show | None:
@@ -184,9 +183,6 @@ async def _ensure_episode_for_mapping(
     if episode is not None:
         return episode
 
-    # Once TMDB has fully populated a season, a number outside that inventory
-    # is not safe to invent. If metadata is incomplete/unavailable, retain the
-    # leave-in-place inventory behavior and create a local placeholder instead.
     expected = int((season.metadata_json or {}).get("episode_count") or 0)
     known = int(
         await db.scalar(select(func.count()).select_from(Episode).where(Episode.season_id == season.id)) or 0
@@ -227,11 +223,9 @@ def _release_matches_member_identity(
 
     if release.show_id != show_id or release.season_id != season_id:
         return False
-    release_identity = parse_release_name(release.raw_release_name).identity
+    release_identity = parse_release(release.raw_release_name).identity
     release_seasons = release_identity.season_numbers
     if len(release_seasons) > 1:
-        # The schema deliberately binds a ShowRelease to one Season. A
-        # multi-season container must be represented by its member releases.
         return False
     if release_seasons and season_number not in release_seasons:
         return False
@@ -301,11 +295,6 @@ async def _refresh_episode_duplicate_problem(db: AsyncSession, episode: Episode)
         )
     ).all()
 
-    # Catalogue presence intentionally survives the missing grace window. It is
-    # therefore not, by itself, proof that two files are on disk: after a rename
-    # the stale row and the newly observed row would otherwise manufacture a
-    # duplicate. Canonical paths also collapse duplicate directory records that
-    # happen to describe the same physical file.
     evidence: list[dict[str, Any]] = []
     verified_by_path: dict[str, dict[str, Any]] = {}
     for mapping, media_file, directory, release in rows:
@@ -424,7 +413,6 @@ async def _refresh_episode_presence(db: AsyncSession, episode: Episode, *, emit_
     await _refresh_episode_duplicate_problem(db, episode)
 
 
-
 def _season_from_relative_path(relative_path: str) -> int | None:
     """Season number implied by the folders a file sits in, nearest first.
 
@@ -458,8 +446,8 @@ async def reconcile_show_directory(
     Problems while the rest of the pack remains usable.
     """
 
-    folder_parse = parse_release_name(observation.name)
-    torrent_parse = parse_release_name(torrent.name) if torrent is not None else None
+    folder_parse = parse_release(observation.name)
+    torrent_parse = parse_release(torrent.name) if torrent is not None else None
     identity_parse = torrent_parse or folder_parse
     title = identity_parse.identity.title_candidate or folder_parse.identity.title_candidate or observation.name
     year = identity_parse.identity.year or folder_parse.identity.year
@@ -473,8 +461,6 @@ async def reconcile_show_directory(
         )
     )
     if directory is not None and directory.storage_root_id is None:
-        # Reattach durable inventory retained after a configured root was
-        # removed, rather than duplicating the same physical path.
         directory.storage_root_id = root.id
     if directory is None:
         directory = MediaDirectory(
@@ -495,8 +481,6 @@ async def reconcile_show_directory(
 
     show: Show | None = show_hint
     if show is None:
-        # A previously mapped directory carries its Show identity through its
-        # MediaFile -> Episode maps even when it contains several releases.
         for media_file in directory.files:
             for mapping in media_file.episode_maps:
                 episode = await db.get(Episode, mapping.episode_id)
@@ -519,7 +503,6 @@ async def reconcile_show_directory(
             title=title,
             year=year,
         )
-        # A review item is expected work. Do not duplicate it in Problems.
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         return "review" if discovery.review_state == DiscoveryReviewState.PENDING else "matched"
 
@@ -527,9 +510,6 @@ async def reconcile_show_directory(
         tmdb_resolution = await resolve_show_identity_detailed(db, title, year)
         match, reason = tmdb_resolution.match, tmdb_resolution.reason
         if match is None:
-            # See reconcile_movie_directory: an absent or unreachable TMDB is a
-            # global state. Scans are gated on it being configured, so this only
-            # fires on a mid-run outage and fails the job once.
             if reason in {"not_configured", "unavailable"}:
                 raise TMDBUnavailable(
                     f"TMDB is {reason.replace('_', ' ')}; Show identity cannot be established. "
@@ -561,8 +541,6 @@ async def reconcile_show_directory(
             )
             db.add(show)
             await db.flush()
-            # Metadata failure belongs to the scan Job. A later scan retries it;
-            # do not manufacture a second persistent media Problem.
             await sync_show_metadata(db, show)
             await create_event(
                 db,
@@ -573,13 +551,10 @@ async def reconcile_show_directory(
                 details={"tmdb_id": show.tmdb_id, "path": observation.path},
             )
     parsed_by_path: dict[str, Any] = {
-        relative_path: parse_release_name(Path(relative_path).stem)
+        relative_path: parse_release(Path(relative_path).stem)
         for relative_path in observation.media_files
     }
 
-    # Strong season-pack evidence comes from the torrent/folder release name.
-    # For a filesystem-only discovery, require at least two episode files in
-    # that same season so a generic Show folder is not collapsed into one pack.
     container_parse = next(
         (
             candidate
@@ -644,8 +619,6 @@ async def reconcile_show_directory(
             parsed=pack_parse,
             existing=existing_pack,
         )
-        # Only bind the directory itself when it is actually the season-pack
-        # container. Generic Show folders can contain several independent packs.
         if folder_parse.identity.season == pack_season.season_number and not folder_parse.identity.episodes:
             directory.show_release_id = pack_release.id
         if torrent is not None:
@@ -666,8 +639,6 @@ async def reconcile_show_directory(
 
     seen_paths = set(observation.media_files)
     mapped = unresolved = 0
-    # Season number -> the episode numbers the files claim, kept so an ordering
-    # mismatch can be recognised from the whole folder rather than file by file.
     observed_numbers: dict[int, set[int]] = {}
     touched_episode_ids: set[UUID] = set()
     touched_release_ids: set[UUID] = set()
@@ -781,8 +752,6 @@ async def reconcile_show_directory(
 
         season_number = parsed.identity.season
         episode_numbers = tuple(dict.fromkeys(parsed.identity.episodes))
-        # An explicit S01E01 in the filename always wins. The season folder only
-        # fills in what the filename left out.
         folder_season = _season_from_relative_path(relative_path)
         if season_number is None and folder_season is not None:
             season_number = folder_season
@@ -941,7 +910,6 @@ async def reconcile_show_directory(
         if newly_mapped or not unresolved_numbers:
             mapped += 1
 
-    # Shared releases remain Current while any mapped member still exists.
     for release_id in touched_release_ids:
         release = await db.get(ShowRelease, release_id)
         if release is None:
@@ -992,10 +960,6 @@ async def reconcile_show_directory(
         discovery.approved_media_id = show.id
         discovery.reviewed_at = utcnow()
 
-    # Files numbering episodes the season does not contain usually means the
-    # release group used a different TMDB ordering, not that the files are
-    # wrong. Recognise that once for the folder rather than filing a problem per
-    # file, and map again against the ordering that actually fits.
     if unresolved:
         adopted = await auto_select_episode_ordering(db, show, observed_numbers)
         if adopted is not None:
@@ -1052,7 +1016,7 @@ async def set_media_file_episode_mappings(
     if show is None or season is None:
         raise ValueError("mapped Show/Season no longer exists")
 
-    parsed = parse_release_name(Path(media_file.relative_path).stem)
+    parsed = parse_release(Path(media_file.relative_path).stem)
     if release is None:
         release = await _prepare_show_release(
             db,
@@ -1140,9 +1104,6 @@ async def mark_absent_show_directories(
         if not directory.exists:
             await retire_missing_review_discovery(db, directory.id)
             continue
-        # Same rule as the movie sweep: pending Review work goes as soon as its
-        # folder does. The grace window protects library media from a brief
-        # outage; a discovery has nothing in the library to protect.
         await retire_missing_review_discovery(db, directory.id)
         if directory.missing_since is None:
             directory.missing_since = now

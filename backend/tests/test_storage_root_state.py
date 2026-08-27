@@ -170,7 +170,6 @@ def test_health_check_marks_a_missing_path_unavailable(client: TestClient, tmp_p
     create_root(client, headers, str(root))
     root.rmdir()
 
-    # Nothing has scanned since, so only an explicit check can notice.
     items = client.post("/api/v1/storage-roots/health", headers=headers).json()["items"]
     assert items[0]["last_health"] == "unavailable"
     assert items[0]["last_health_checked_at"] is not None
@@ -194,13 +193,11 @@ def test_health_check_leaves_a_disabled_root_alone(client: TestClient, tmp_path)
     root = tmp_path / "movies"
     root.mkdir()
     created = create_root(client, headers, str(root))
-    # Creating a root already records whether its path was there.
     assert created["last_health"] == "available"
     client.patch(f"/api/v1/storage-roots/{created['id']}", headers=headers, json={"enabled": False})
     root.rmdir()
 
     items = client.post("/api/v1/storage-roots/health", headers=headers).json()["items"]
-    # A disabled root is not in use, so its path is not a problem to report.
     assert items[0]["last_health"] == "available"
 
 
@@ -219,7 +216,6 @@ def test_a_root_reports_how_much_is_recorded_under_it(client: TestClient, tmp_pa
     root = tmp_path / "movies"
     root.mkdir()
     body = create_root(client, headers, str(root))
-    # Nothing scanned yet, so nothing is recorded.
     assert body["media_count"] == 0
 
 
@@ -232,7 +228,6 @@ def test_library_summary_counts_unlinked_directories(client: TestClient, tmp_pat
     before = client.get("/api/v1/library/summary").json()
     assert before["unlinked_directories"] == 0
 
-    # Removing a root detaches its directories rather than deleting them.
     assert client.delete(f"/api/v1/storage-roots/{created['id']}", headers=headers).status_code == 200
 
 
@@ -262,7 +257,6 @@ def test_adding_a_root_back_reconnects_its_directories(client: TestClient, tmp_p
     client.delete(f"/api/v1/storage-roots/{first['id']}", headers=headers)
     assert client.get("/api/v1/library/summary").json()["unlinked_directories"] == 1
 
-    # Adding the same folder back must reconnect it, or removal is one-way.
     create_root(client, headers, str(root), name="Shows again")
     assert client.get("/api/v1/library/summary").json()["unlinked_directories"] == 0
 
@@ -274,7 +268,6 @@ def test_a_new_root_does_not_take_directories_from_another_root(client: TestClie
     owner = create_root(client, headers, str(movies), name="Movies")
     record_directory(owner["id"], str(movies / "Inception"))
 
-    # A second root over the same tree must not steal what the first owns.
     create_root(client, headers, str(tmp_path), name="Everything")
     assert client.get("/api/v1/library/summary").json()["unlinked_directories"] == 0
     roots = {item["name"]: item for item in client.get("/api/v1/storage-roots").json()["items"]}
@@ -290,7 +283,6 @@ def test_removing_a_root_keeps_entries_by_default(client: TestClient, tmp_path):
     record_directory(created["id"], str(root / "Inception"))
 
     assert client.delete(f"/api/v1/storage-roots/{created['id']}", headers=headers).status_code == 200
-    # The directory is detached, not deleted.
     assert client.get("/api/v1/library/summary").json()["unlinked_directories"] == 1
 
 
@@ -305,7 +297,6 @@ def test_removing_a_root_with_entries_deletes_its_directories(client: TestClient
         f"/api/v1/storage-roots/{created['id']}?remove_entries=true", headers=headers
     )
     assert response.status_code == 200, response.text
-    # Nothing is left dangling: the directories go with the entries.
     assert client.get("/api/v1/library/summary").json()["unlinked_directories"] == 0
 
 
@@ -324,8 +315,6 @@ def listed_names(client: TestClient) -> list[str]:
 
 def test_new_roots_are_listed_in_the_order_they_were_added(client: TestClient, tmp_path):
     headers = login(client)
-    # Alphabetical ordering would put these back-to-front, so this pins that a
-    # created root lands at the bottom rather than sorting itself into place.
     make_roots(client, headers, tmp_path, ["Zulu", "Alpha", "Mike"])
     assert listed_names(client) == ["Zulu", "Alpha", "Mike"]
 
@@ -346,8 +335,6 @@ def test_reorder_keeps_a_root_missing_from_the_payload(client: TestClient, tmp_p
     created = make_roots(client, headers, tmp_path, ["First", "Second", "Third"])
     ids = [root["id"] for root in created]
 
-    # Simulates another admin adding a root after this list was rendered: it is
-    # absent from the payload, and must survive rather than be dropped.
     client.post("/api/v1/storage-roots/reorder", headers=headers, json={"ids": [ids[1], ids[0]]})
     assert listed_names(client) == ["Second", "First", "Third"]
 
@@ -359,7 +346,6 @@ def test_reorder_rejects_an_unknown_root(client: TestClient, tmp_path):
 
     response = client.post("/api/v1/storage-roots/reorder", headers=headers, json={"ids": [created[0]["id"], unknown]})
     assert response.status_code == 404, response.text
-    # A rejected reorder must change nothing at all.
     assert listed_names(client) == ["First", "Second"]
 
 
@@ -507,8 +493,6 @@ def test_removing_a_root_without_the_option_keeps_its_shows(client: TestClient, 
     seed_scanned_show(root["id"], str(folder / "Arcane"), "Arcane")
 
     client.delete(f"/api/v1/storage-roots/{root['id']}", headers=headers)
-    # The entry survives, unlinked from any folder. That is the whole difference
-    # between removing a root and removing a root plus its entries.
     assert show_titles(client) == ["Arcane"]
 
 
@@ -521,8 +505,6 @@ def test_a_show_also_stored_under_another_root_survives(client: TestClient, tmp_
     root_a = create_root(client, headers, str(first), name="Shows A")
     root_b = create_root(client, headers, str(second), name="Shows B")
     seed_scanned_show(root_a["id"], str(first / "Arcane"), "Arcane")
-    # Same title recorded under a second root, so removing the first must not
-    # take an entry that is still reachable elsewhere.
     seed_scanned_show(root_b["id"], str(second / "Futurama"), "Futurama")
 
     client.delete(f"/api/v1/storage-roots/{root_a['id']}?remove_entries=true", headers=headers)

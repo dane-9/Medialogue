@@ -233,7 +233,7 @@ async def run_problem_recheck(
     problem_id: UUID,
     *,
     tmdb_client_factory,
-    qbit_client_factory,
+    qbittorrent_client_factory,
     plex_client_factory,
 ) -> None:
     """Run all evidence checks belonging to one Problem as a parent Job."""
@@ -288,7 +288,7 @@ async def run_problem_recheck(
                     root_id = UUID(str(child.summary["storage_root_id"]))
                     launch_runtime_job(child.id, lambda child_id=child.id, root_id=root_id: run_storage_root_scan(child_id, root_id))
 
-            qbit_errors: list[str] = []
+            qbittorrent_errors: list[str] = []
             if download_client_ids:
                 await update_job(
                     db,
@@ -302,11 +302,11 @@ async def run_problem_recheck(
                 if client is None or not client.enabled:
                     continue
                 try:
-                    await poll_download_client(db, client, client_factory=qbit_client_factory)
+                    await poll_download_client(db, client, client_factory=qbittorrent_client_factory)
                     await db.commit()
                 except Exception as exc:
                     await db.rollback()
-                    qbit_errors.append(f"{client.name}: {exc}")
+                    qbittorrent_errors.append(f"{client.name}: {exc}")
 
             failed_child_ids: list[str] = []
             pending = set(child_job_ids)
@@ -321,10 +321,6 @@ async def run_problem_recheck(
                     child = await db.get(Job, child_id)
                     if child is None:
                         continue
-                    # Child scans write through independent sessions and this
-                    # app deliberately uses expire_on_commit=False. Without an
-                    # explicit refresh the identity map can retain RUNNING
-                    # forever even though the durable Job already completed.
                     await db.refresh(child)
                     if child.status not in terminal_states:
                         continue
@@ -354,7 +350,7 @@ async def run_problem_recheck(
             if refreshed is not None:
                 problem = refreshed
                 await db.refresh(problem)
-                all_errors = [*direct_errors, *qbit_errors]
+                all_errors = [*direct_errors, *qbittorrent_errors]
                 problem.resolution = {
                     **dict(problem.resolution or {}),
                     "recheck_job_ids": [str(item) for item in sorted(seen, key=str)],
@@ -365,7 +361,7 @@ async def run_problem_recheck(
             condition_cleared = problem.status != ProblemStatus.OPEN
             if condition_cleared:
                 message = "Problem condition cleared."
-            elif failed_child_ids or direct_errors or qbit_errors:
+            elif failed_child_ids or direct_errors or qbittorrent_errors:
                 message = "Problem evidence recheck completed with errors; the condition is still present."
             else:
                 message = "Problem evidence recheck completed; the condition is still present."
@@ -376,12 +372,12 @@ async def run_problem_recheck(
                 "child_job_ids": [str(item) for item in sorted(seen, key=str)],
                 "failed_child_job_ids": failed_child_ids,
                 "direct_errors": direct_errors,
-                "qbit_errors": qbit_errors,
+                "qbittorrent_errors": qbittorrent_errors,
                 "condition_cleared": condition_cleared,
                 "problem_status": problem.status.value,
                 "message": message,
             }
-            if failed_child_ids or direct_errors or qbit_errors:
+            if failed_child_ids or direct_errors or qbittorrent_errors:
                 await update_job(
                     db,
                     job,
@@ -611,7 +607,7 @@ async def recheck_open_problems(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     tmdb_client_factory=Depends(get_tmdb_client_factory),
-    qbit_client_factory=Depends(get_qbittorrent_client_factory),
+    qbittorrent_client_factory=Depends(get_qbittorrent_client_factory),
     plex_client_factory=Depends(get_plex_client_factory),
 ) -> ProblemRecheckAllResponse:
     problems = (await db.scalars(select(Problem).where(Problem.status == ProblemStatus.OPEN, Problem.reason.notin_(RETIRED_PROBLEM_REASONS)))).all()
@@ -646,7 +642,7 @@ async def recheck_open_problems(
                 parent_job.id,
                 problem.id,
                 tmdb_client_factory=tmdb_client_factory,
-                qbit_client_factory=qbit_client_factory,
+                qbittorrent_client_factory=qbittorrent_client_factory,
                 plex_client_factory=plex_client_factory,
             ),
         )
@@ -684,7 +680,7 @@ async def resolve_problem(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     tmdb_client_factory=Depends(get_tmdb_client_factory),
-    qbit_client_factory=Depends(get_qbittorrent_client_factory),
+    qbittorrent_client_factory=Depends(get_qbittorrent_client_factory),
     plex_client_factory=Depends(get_plex_client_factory),
 ) -> ProblemResponse:
     problem = await db.get(Problem, problem_id)
@@ -720,7 +716,7 @@ async def resolve_problem(
                 parent_job.id,
                 problem.id,
                 tmdb_client_factory=tmdb_client_factory,
-                qbit_client_factory=qbit_client_factory,
+                qbittorrent_client_factory=qbittorrent_client_factory,
                 plex_client_factory=plex_client_factory,
             ),
         )

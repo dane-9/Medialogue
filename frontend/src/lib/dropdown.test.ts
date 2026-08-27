@@ -34,7 +34,6 @@ describe('typeAheadIndex', () => {
   })
 
   it('cycles through options sharing a first letter when it is repeated', () => {
-    // "d" twice moves past Director's Cut to Despecialized, as a native select does.
     expect(typeAheadIndex(labels, 'd', -1)).toBe(1)
     expect(typeAheadIndex(labels, 'dd', 1)).toBe(3)
     expect(typeAheadIndex(labels, 'ddd', 3)).toBe(1)

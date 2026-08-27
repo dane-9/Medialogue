@@ -18,10 +18,6 @@ def normalize_identity_title(value: str | None) -> str:
     normalized = unicodedata.normalize("NFKD", value).casefold()
     normalized = "".join(char for char in normalized if not unicodedata.combining(char))
     normalized = normalized.replace("&", " and ")
-    # Apostrophes are normally possessive/contraction punctuation. Removing
-    # them rather than replacing them with a space makes ``Emperor's`` and
-    # ``Emperors`` comparable while the later punctuation pass handles the
-    # surrounding title safely.
     normalized = normalized.replace("’", "").replace("'", "").replace("`", "")
     normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
     return re.sub(r"\s+", " ", normalized).strip()

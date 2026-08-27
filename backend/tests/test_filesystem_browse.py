@@ -58,7 +58,6 @@ def test_browsing_lists_only_folders(client: TestClient, tmp_path):
     (root / "readme.txt").write_text("x", encoding="utf-8")
 
     body = browse(client, str(root)).json()
-    # Files are never offered: a root is always a folder.
     assert [entry["name"] for entry in body["directories"]] == ["movies", "shows"]
     assert body["parent"] == str(tmp_path)
 
@@ -92,14 +91,12 @@ def test_browsing_rejects_a_relative_path(client: TestClient):
 
 
 def test_browsing_requires_an_admin(client: TestClient):
-    # Listing the filesystem is not something an anonymous caller may do.
     assert browse(client).status_code in (401, 403)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="drive letters only exist on Windows")
 def test_a_windows_drive_root_goes_back_to_the_drive_list(client: TestClient):
     login(client)
-    # "" is the drive list, and is distinct from None, which means "nowhere".
     assert browse(client, "C:" + os.sep).json()["parent"] == ""
 
 

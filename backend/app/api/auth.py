@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,8 +50,6 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     db.add(auth_session)
     await db.commit()
     response.set_cookie(settings.session_cookie_name, raw_session, **_cookie_kwargs())
-    # CSRF token is intentionally readable by the frontend and is echoed in the
-    # response to support clients which do not expose cookie values.
     response.set_cookie(settings.csrf_cookie_name, raw_csrf, httponly=False, **{k: v for k, v in _cookie_kwargs().items() if k != "httponly"})
     return LoginResponse(
         csrf_token=raw_csrf,
@@ -91,9 +89,6 @@ async def change_password(
         raise AppError("INVALID_PASSWORD", "Current password is incorrect.", status_code=400)
     admin.password_hash = hash_password(payload.new_password)
     admin.is_default_password = False
-    # A password change invalidates every other browser/session for the single
-    # administrator account. Keep the session that performed the change so the
-    # current UI does not unexpectedly log itself out.
     await db.execute(
         delete(AuthSession).where(
             AuthSession.admin_id == admin.id,

@@ -97,8 +97,6 @@ async def list_movies(
     for movie_id, parse_snapshot in incoming_rows:
         raw_kind = (parse_snapshot or {}).get("incoming_kind")
         kind = "replacement" if str(raw_kind).casefold() == "replacement" else "release"
-        # A replacement is the more useful card-level signal when a title has
-        # more than one incoming association.
         if movie_id not in incoming_kinds or kind == "replacement":
             incoming_kinds[movie_id] = kind
     items = [_summary(movie, problems.get(movie.id, 0), incoming_kinds.get(movie.id)) for movie in movies]
@@ -125,8 +123,6 @@ async def list_movies(
         total=total,
         pages=(total + page_size - 1) // page_size,
     )
-
-
 
 
 @router.post("", response_model=MovieDetailResponse, status_code=status.HTTP_201_CREATED)
@@ -187,8 +183,6 @@ async def lookup_movies(
                 try:
                     credits[item.tmdb_id] = await credit_loader(item.tmdb_id)
                 except Exception:
-                    # Identity search remains useful even when an individual
-                    # credits request is unavailable.
                     credits[item.tmdb_id] = (None, ())
     except Exception as exc:
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Movie lookup failed: {exc}", status_code=503) from exc

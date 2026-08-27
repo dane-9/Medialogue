@@ -167,9 +167,6 @@ class PlexClient:
             return await self._get(f"/library/sections/{key}/all", params={"type": 4})
         if normalized == "movie":
             return await self._get(f"/library/sections/{key}/all", params={"type": 1})
-        # Some test/minimal Plex responses omit section type. Keeping the
-        # default request makes those servers usable while real Plex responses
-        # use the explicit Movie/Episode filters above.
         if not normalized:
             return await self._get(f"/library/sections/{key}/all")
         return None

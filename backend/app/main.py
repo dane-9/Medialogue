@@ -7,7 +7,6 @@ from fastapi import Depends, FastAPI
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
 
 from app.api import auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tmdb, torrent_archive
 from app.core.config import Settings, get_settings, set_settings
@@ -32,7 +31,7 @@ from app.services.recovery import cleanup_expired_recovery_exports
 from app.services.runtime_jobs import cancel_all_runtime_jobs
 
 
-async def _qbit_poll_loop(stop_event: asyncio.Event) -> None:
+async def _qbittorrent_poll_loop(stop_event: asyncio.Event) -> None:
     """Cancellable, non-overlapping qBit observer loop.
 
     qBittorrent observations run whenever configured.  Destructive filesystem
@@ -67,8 +66,6 @@ async def lifespan(_: FastAPI):
     get_integration_config_store().ensure_initialized()
     try:
         async with db_session.async_session_factory() as db:
-            # Retired Problems must disappear even if a later, unrelated
-            # bootstrap synchronizer fails on an in-progress local schema.
             await remove_retired_problem_types(db)
             await db.commit()
             if settings.bootstrap_admin:
@@ -80,13 +77,10 @@ async def lifespan(_: FastAPI):
             await ensure_configured_integration_states(db)
             await db.commit()
     except Exception:
-        # Migrations may be run after the process is started in local
-        # development. Liveness remains useful while the DB is offline;
-        # readiness reports the actual database state.
         logger.warning("database bootstrap skipped", exc_info=True)
     cleanup_expired_recovery_exports(settings)
     stop_event = asyncio.Event()
-    poll_task = asyncio.create_task(_qbit_poll_loop(stop_event))
+    poll_task = asyncio.create_task(_qbittorrent_poll_loop(stop_event))
     try:
         yield
     finally:
@@ -110,9 +104,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Medialogue API",
         version="0.1.0",
-        # API documentation is useful for the administrator, but it should not
-        # disclose the complete internal API surface to unauthenticated LAN
-        # clients. Protected routes are registered below.
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -178,8 +169,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         @app.get("/{path:path}", include_in_schema=False)
         async def frontend_fallback(path: str) -> FileResponse:
-            # API and health paths are matched by the explicit routes above.
-            # Unknown browser routes receive index.html for React Router.
             requested = (frontend_dist / path).resolve()
             if path and requested.is_file() and frontend_dist.resolve() in requested.parents:
                 return FileResponse(requested)

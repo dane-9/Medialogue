@@ -51,7 +51,7 @@ from app.services.jobs import JobFailure, checkpoint_job, run_job
 
 MANIFEST_SCHEMA_VERSION = 1
 _HASH_RE = re.compile(r"^[0-9A-Za-z_-]{1,128}$")
-QBitClientFactory = Callable[[str, str, str], QBittorrentClient]
+QBittorrentClientFactory = Callable[[str, str, str], QBittorrentClient]
 
 
 def utcnow() -> datetime:
@@ -295,8 +295,6 @@ async def build_recovery_manifest(
     associations.extend(await _show_associations(db, torrent))
     observations = await _client_observations(db, torrent)
 
-    # If application records were intentionally removed, retain the last
-    # complete association evidence from the existing manifest.
     if not associations:
         prior_associations = existing.get("media_associations")
         if isinstance(prior_associations, list):
@@ -396,7 +394,7 @@ async def ensure_torrent_archived(
     torrent: Torrent,
     download_client: ConfiguredDownloadClient,
     *,
-    client_factory: QBitClientFactory = QBittorrentClient,
+    client_factory: QBittorrentClientFactory = QBittorrentClient,
 ) -> bool:
     """Archive .torrent bytes and refresh its recovery manifest.
 
@@ -432,7 +430,7 @@ async def ensure_torrent_archived(
             _atomic_write(archive_path, torrent_bytes)
         torrent_sha256 = hashlib.sha256(torrent_bytes).hexdigest()
         torrent.archive_path = str(archive_path)
-    except Exception as exc:  # archive failure must never interrupt reconciliation
+    except Exception as exc:
         error = str(exc)
 
     try:
@@ -592,8 +590,6 @@ async def prepare_torrent_restore(
             )
         )
     ).all()
-    # Imported lazily because the polling service imports this module for
-    # automatic archiving; keeping this dependency local avoids an import cycle.
     from app.services.qbittorrent import resolve_remote_path
 
     resolved_save_path, _ = resolve_remote_path(save_path, mappings)
@@ -625,7 +621,7 @@ async def restore_torrent_archive(
     *,
     category: str | None,
     tags: list[str] | None,
-    client_factory: QBitClientFactory,
+    client_factory: QBittorrentClientFactory,
 ) -> dict[str, Any]:
     prepared = await prepare_torrent_restore(db, torrent_id, download_client_id, save_path)
     torrent = prepared["torrent"]
@@ -675,7 +671,7 @@ async def run_torrent_archive_retry(
     job_id: UUID,
     torrent_id: UUID,
     *,
-    client_factory: QBitClientFactory,
+    client_factory: QBittorrentClientFactory,
 ) -> None:
     """Retry a torrent archive export as a durable Job."""
 
@@ -745,7 +741,7 @@ async def run_torrent_archive_restore(
     *,
     category: str | None,
     tags: list[str] | None,
-    client_factory: QBitClientFactory,
+    client_factory: QBittorrentClientFactory,
 ) -> None:
     """Submit an archived torrent to qBittorrent as a durable Job."""
 

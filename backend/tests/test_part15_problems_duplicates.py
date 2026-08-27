@@ -188,9 +188,6 @@ def test_external_duplicate_disappearance_resolves_problem_on_reconciliation(cli
                 select(MediaDirectory.resolved_path).where(MediaDirectory.movie_release_id == first_id)
             )
             assert root is not None and first_path is not None
-            # Missing grace records the first miss, then commits it on the
-            # second successful root scan. The duplicate Problem should then
-            # be recomputed from current physical evidence and close itself.
             await mark_absent_known_directories(db, root, {first_path}, grace_checks=1)
             await mark_absent_known_directories(db, root, {first_path}, grace_checks=1)
             problem = await db.get(Problem, problem_id)
@@ -637,7 +634,7 @@ def test_duplicate_torrent_removal_requires_archive_and_never_deletes_qbit_data(
             torrent.manifest_schema_version = 1
 
         db_run(mark_archived)
-        client.app.dependency_overrides[duplicates_api.get_qbit_client_factory] = lambda: (
+        client.app.dependency_overrides[duplicates_api.get_qbittorrent_client_factory] = lambda: (
             lambda *_args, **_kwargs: DuplicateQbitAdapter(calls)
         )
 
@@ -656,8 +653,6 @@ def test_duplicate_torrent_removal_requires_archive_and_never_deletes_qbit_data(
         committed = commit_duplicate(client, movie_id, headers, preview.json()["confirmation_token"])
         assert committed["status"] == "completed", committed
         assert calls == [(info_hash, False)]
-        # The media still exists, so selecting a winner does not pretend that
-        # the physical duplicate is gone merely because qBittorrent was cleaned up.
         assert committed["summary"]["duplicate_resolved"] is False
         assert committed["summary"]["problem_status"] == "open"
 
@@ -674,7 +669,7 @@ def test_duplicate_torrent_removal_requires_archive_and_never_deletes_qbit_data(
         assert is_present is False
         assert problem_status == ProblemStatus.OPEN
     finally:
-        client.app.dependency_overrides.pop(duplicates_api.get_qbit_client_factory, None)
+        client.app.dependency_overrides.pop(duplicates_api.get_qbittorrent_client_factory, None)
         shutil.rmtree(root, ignore_errors=True)
 
 
@@ -881,7 +876,7 @@ def test_qbit_failure_skips_requested_media_deletion(client: TestClient) -> None
     try:
         movie_id, winner_id, loser_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root))
         db_run(lambda db: seed_duplicate_torrent(db, loser_id, archived=True))
-        client.app.dependency_overrides[duplicates_api.get_qbit_client_factory] = lambda: (
+        client.app.dependency_overrides[duplicates_api.get_qbittorrent_client_factory] = lambda: (
             lambda *_args, **_kwargs: FailingDuplicateQbitAdapter()
         )
 
@@ -914,7 +909,7 @@ def test_qbit_failure_skips_requested_media_deletion(client: TestClient) -> None
         assert status == ProblemStatus.OPEN
         assert loser_state == ReleaseState.DUPLICATE
     finally:
-        client.app.dependency_overrides.pop(duplicates_api.get_qbit_client_factory, None)
+        client.app.dependency_overrides.pop(duplicates_api.get_qbittorrent_client_factory, None)
         shutil.rmtree(root, ignore_errors=True)
 
 

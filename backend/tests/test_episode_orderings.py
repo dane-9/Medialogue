@@ -31,8 +31,6 @@ from app.integrations.tmdb import (
 from app.main import create_app
 
 SHOW_ID = 1958
-# Eight episodes, identified by TMDB id. The default structure calls them one
-# season of eight; the group calls them two seasons of four.
 EPISODE_IDS = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008]
 
 
@@ -86,9 +84,6 @@ class FakeTMDB:
                 description="Production order.",
                 network=None,
             ),
-            # A longer single season, which is the shape that matters for
-            # detection: release groups often number every segment of an
-            # episode, so their files run past the end of the broadcast season.
             TMDBEpisodeGroupSummary(
                 id="group-segments",
                 name="Segments",
@@ -211,7 +206,6 @@ def test_switching_ordering_renumbers_the_same_episodes(client: TestClient) -> N
     after = client.get(f"/api/v1/shows/{SHOW_ID}").json()
     assert len(after["seasons"]) == 2, after["seasons"]
     assert [season["episode_count"] for season in after["seasons"]] == [4, 4]
-    # The same eight episodes, renumbered, not sixteen.
     total = sum(season["episode_count"] for season in after["seasons"])
     assert total == len(EPISODE_IDS)
 
@@ -248,8 +242,6 @@ def test_switching_back_restores_the_default_structure(client: TestClient) -> No
 def test_a_scan_adopts_the_ordering_the_files_are_numbered_by(client: TestClient, tmp_path) -> None:
     headers = _login(client)
 
-    # The TMDB record says season one holds eight episodes. These files number
-    # segments and run to twelve, which only the Segments ordering can hold.
     root = tmp_path / "shows"
     folder = root / "Dexters Laboratory"
     folder.mkdir(parents=True)
@@ -277,14 +269,10 @@ def test_a_scan_adopts_the_ordering_the_files_are_numbered_by(client: TestClient
     assert job["status"] == "completed", job
 
     detail = client.get(f"/api/v1/shows/{SHOW_ID}").json()
-    # Adopted without anybody being asked: the files say which ordering they
-    # were numbered by, and the default cannot hold them.
     assert detail["tmdb_episode_group_id"] == "group-segments"
     season_one = next(season for season in detail["seasons"] if season["season_number"] == 1)
     assert season_one["episode_count"] == 16
 
-    # Nothing left open for numbers that turned out to be perfectly valid. The
-    # listing returns resolved rows too, so the status filter is the point.
     problems = client.get("/api/v1/problems?status=open&page_size=250").json()["items"]
     assert [item for item in problems if item["reason"] == "EPISODE_MAPPING_UNRESOLVED"] == []
 
@@ -295,7 +283,6 @@ def test_a_hand_picked_ordering_is_not_overruled_by_a_scan(client: TestClient, t
     assert created.status_code == 201, created.text
     detail = client.get(f"/api/v1/shows/{SHOW_ID}").json()
 
-    # Someone chose the production ordering deliberately.
     switched = client.patch(
         f"/api/v1/shows/{SHOW_ID}",
         headers=headers,
@@ -306,8 +293,6 @@ def test_a_hand_picked_ordering_is_not_overruled_by_a_scan(client: TestClient, t
     root = tmp_path / "shows"
     folder = root / "Dexters Laboratory"
     folder.mkdir(parents=True)
-    # Numbers that fit neither ordering, so the scan finds a mismatch and still
-    # must not overrule the choice that was made.
     (folder / "Dexters.Laboratory.S01E99.1080p.WEB-DL.mkv").write_bytes(b"episode")
 
     storage = client.post(

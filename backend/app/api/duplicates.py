@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_csrf
-from app.api.downloads import get_qbit_client_factory
+from app.api.downloads import get_qbittorrent_client_factory
 from app.db.session import get_db
 from app.schemas.duplicates import (
     DuplicateResolveCommitRequest,
@@ -74,7 +74,7 @@ async def resolve_movie_duplicate(
     payload: DuplicateResolveCommitRequest,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
-    qbit_client_factory=Depends(get_qbit_client_factory),
+    qbittorrent_client_factory=Depends(get_qbittorrent_client_factory),
 ) -> JobAcceptedResponse:
     job = await create_job(
         db,
@@ -93,7 +93,7 @@ async def resolve_movie_duplicate(
             job.id,
             resource_id,
             payload.confirmation_token,
-            qbit_client_factory=qbit_client_factory,
+            qbittorrent_client_factory=qbittorrent_client_factory,
         ),
     )
     return JobAcceptedResponse(job_id=job.id)

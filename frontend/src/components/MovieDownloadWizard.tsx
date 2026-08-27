@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { DownloadClient, DownloadClientCategory, InteractiveSearchJob, InteractiveSearchResult, QualityProfile } from '../types'
+import type { DownloadClient, DownloadClientCategory, InteractiveSearchJob, QualityProfile } from '../types'
 import { Icon } from './Icon'
 import { Button, Select } from './ui'
 import { ReleaseResults, formatBytes } from './ReleaseResults'
@@ -38,9 +38,6 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
   const [category, setCategory] = useState('')
   const [setupLoading, setSetupLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
-  // Bumped by a client health recheck, so categories are fetched again after a
-  // client that was down comes back. The client id does not change, so nothing
-  // else would retry the load that failed while it was unreachable.
   const [clientReload, setClientReload] = useState(0)
   const [step, setStep] = useState<'setup' | 'search'>('setup')
   const [jobId, setJobId] = useState('')

@@ -49,9 +49,6 @@ class ExistingRelease:
     state: ReleaseState
     path_exists: bool
     edition: str | None = None
-    # A release can retain more than one historical directory.  Callers may
-    # provide the path that was most recently observed; the engine only ever
-    # treats a physically existing path as a duplicate candidate.
     root_available: bool = True
 
 

@@ -17,11 +17,9 @@ const release = (over: Partial<InteractiveSearchResult> & { id: string }): Inter
 
 const ids = (list: InteractiveSearchResult[]) => list.map((item) => item.id)
 
-/** Sorting as the list does on open. */
 const asOpened = (list: InteractiveSearchResult[]) =>
   sortReleases(list, DEFAULT_SORT, DEFAULT_DESC[DEFAULT_SORT])
 
-// A profile ranking 2160p Remux above 1080p WEB-DL.
 const REMUX = 10
 const WEBDL = 4
 
@@ -94,7 +92,6 @@ describe('blocked releases', () => {
 
 describe('explicit column sorts', () => {
   it('sorts by score alone when the score column is chosen', () => {
-    // An explicit column choice is the user overriding the ranking.
     const list = [
       release({ id: 'remux', qualityPreference: REMUX, customFormatScore: 10 }),
       release({ id: 'webdl', qualityPreference: WEBDL, customFormatScore: 900 }),

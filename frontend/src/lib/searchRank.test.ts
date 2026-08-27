@@ -58,7 +58,6 @@ describe('reachScore', () => {
 
 describe('rankResults', () => {
   it('puts a strong show match above a weak movie match', () => {
-    // The failure of the old alternating merge: type decided the order.
     const list = [
       item({ title: 'The Thing About Pam', index: 0 }),
       item({ title: 'The Thing', index: 4 }),
@@ -136,8 +135,6 @@ describe('the TMDB fallback', () => {
   })
 
   it('puts the two scales on comparable footing', () => {
-    // A title with 20k TMDB votes is well known; it should not be buried under
-    // one with 20k IMDb votes just because the source differs.
     const tmdbKnown = reachScore(undefined, 20_000)
     const imdbKnown = reachScore(20_000)
     expect(Math.abs(tmdbKnown - imdbKnown)).toBeLessThan(0.35)

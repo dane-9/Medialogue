@@ -10,9 +10,8 @@ from __future__ import annotations
 import re
 
 from app.parser.iso_languages import resolve_language
-from app.parser.release_parser import UNKNOWN_LANGUAGE, parse_release_name
+from app.parser.release_parser import UNKNOWN_LANGUAGE, parse_release
 
-#: Parsed from German "DL"/"ML" tags; resolved to the work's original language.
 ORIGINAL_LANGUAGE = "Original"
 
 _MULTI = re.compile(r"(?<![a-z0-9])(multi|multilang|multisub|dual[\W_]?audio)(?![a-z0-9])", re.IGNORECASE)
@@ -58,14 +57,12 @@ def aggregate_languages(
     else:
         languages = list(parsed_languages)
 
-        # A language word inside the media's own title is part of the name, not
-        # a statement about this release's audio.
         if media_title:
-            from_title = parse_release_name(media_title).languages
+            from_title = parse_release(media_title).languages
             contributed = [name for name in from_title if name != UNKNOWN_LANGUAGE]
             if contributed:
                 stripped = _remove_media_title(release_title, media_title)
-                still_present = parse_release_name(stripped).languages if stripped else ()
+                still_present = parse_release(stripped).languages if stripped else ()
                 for name in contributed:
                     if name in languages and name not in still_present:
                         languages.remove(name)

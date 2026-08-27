@@ -24,12 +24,12 @@ def _new_id() -> str:
     return str(uuid.uuid4())
 
 
-def _fold(value: Any) -> str:
+def _normalize_text(value: Any) -> str:
     return str(value).strip().casefold()
 
 
-def _type_name(value: Any) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", _fold(value)).strip("_")
+def _normalize_condition_type(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", _normalize_text(value)).strip("_")
 
 
 _TYPE_ALIASES = {
@@ -76,7 +76,7 @@ class FormatCondition:
 
     @property
     def condition_type(self) -> str:
-        return _TYPE_ALIASES.get(_type_name(self.type), _type_name(self.type))
+        return _TYPE_ALIASES.get(_normalize_condition_type(self.type), _normalize_condition_type(self.type))
 
     @property
     def expected(self) -> Any:
@@ -88,8 +88,6 @@ class FormatCondition:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "FormatCondition":
-        # Definitions imported from the app/API commonly wrap conditions in
-        # `definition`; accepting both shapes makes round trips painless.
         return cls(
             type=str(value.get("type", value.get("condition_type", ""))),
             value=value.get("value"),
@@ -119,10 +117,6 @@ class FormatCondition:
         if self.group is not None:
             value["group"] = self.group
         return value
-
-
-# Short alias used by clients that call these simply Condition.
-Condition = FormatCondition
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,9 +169,6 @@ class CustomFormat:
             "enabled": self.enabled,
             "conditions": [condition.to_dict() for condition in self.conditions],
         }
-
-    # Application-owned import/export aliases.
-    export = to_dict
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,26 +290,11 @@ class CustomFormatSetEvaluation:
         return self.to_dict()
 
 
-def _get(obj: Any, *path: str, default: Any = None) -> Any:
-    current = obj
-    for key in path:
-        if current is None:
-            return default
-        if isinstance(current, Mapping):
-            current = current.get(key, default)
-        else:
-            current = getattr(current, key, default)
-    return current
-
-
-def _parse_input(value: Any) -> ReleaseParseResult:
+def _coerce_release_parse(value: Any) -> ReleaseParseResult:
     if isinstance(value, ReleaseParseResult):
         return value
     if isinstance(value, str):
         return parse_release(value)
-    # A parser snapshot is accepted for API/persistence callers.  Re-parsing
-    # its raw name preserves all parser behavior and avoids partial snapshots
-    # silently changing matching semantics.
     if isinstance(value, Mapping):
         raw = value.get("raw_name", value.get("raw", value.get("name", "")))
         if raw:
@@ -326,7 +302,7 @@ def _parse_input(value: Any) -> ReleaseParseResult:
     raise TypeError("release must be a release name, ReleaseParseResult, or parser snapshot")
 
 
-def _as_values(value: Any) -> tuple[Any, ...]:
+def _as_tuple(value: Any) -> tuple[Any, ...]:
     if value is None:
         return ()
     if isinstance(value, (list, tuple, set, frozenset)):
@@ -370,10 +346,6 @@ def _structured_evidence(
             values.append(parsed.audio.codec)
         if parsed.audio.atmos:
             values.append("Atmos")
-            # Atmos rides on a carrier codec, and the pair is what people
-            # actually rank: TrueHD Atmos is worth more than bare TrueHD. Emit
-            # the combination so a format can match it exactly, while the plain
-            # carrier value still matches its own format.
             if parsed.audio.codec:
                 values.append(f"{parsed.audio.codec} Atmos")
         if parsed.audio.dts_x:
@@ -383,19 +355,14 @@ def _structured_evidence(
         return ((parsed.audio.channels,) if parsed.audio.channels else ()), "audio channels"
     if ctype == "hdr_type":
         values = list(parsed.hdr.values)
-        # Regexes run against parser evidence, but familiar release tags remain
-        # useful inputs even when the parser stores a descriptive canonical
-        # value.
         for value in tuple(values):
-            if _fold(value) == "dolby vision":
+            if _normalize_text(value) == "dolby vision":
                 values.extend(("DV", "DoVi"))
         return tuple(dict.fromkeys(values)), "HDR type"
     if ctype == "release_attribute":
         return parsed.attributes.values, "release attribute"
-    # Unknown condition types can still be used against explicit context
-    # fields, making extension conditions safe and deterministic.
     value = context.get(ctype)
-    return _as_values(value), ctype
+    return _as_tuple(value), ctype
 
 
 def _matches_expected(
@@ -406,11 +373,8 @@ def _matches_expected(
     if expected is None or expected == "":
         return False, None, "condition has no value/pattern", None
     flags = 0 if condition.case_sensitive else re.IGNORECASE
-    patterns = _as_values(expected)
+    patterns = _as_tuple(expected)
     for wanted in patterns:
-        # Definitions saved before all condition types became regex-based used
-        # structured values. Preserve their exact semantics while allowing new
-        # definitions to provide an explicit pattern.
         expression = str(wanted) if condition.pattern is not None else rf"^(?:{re.escape(str(wanted))})$"
         try:
             regex = re.compile(expression, flags)
@@ -469,8 +433,6 @@ def _evaluate_condition(
 
 
 def _group_key(condition: FormatCondition) -> str:
-    # Explicit groups are useful when an editor wants two independent cards of
-    # the same type; otherwise all same-type cards form one OR/required group.
     return condition.group or condition.condition_type
 
 
@@ -493,7 +455,7 @@ def evaluate_custom_format(
     fmt = custom_format if isinstance(custom_format, CustomFormat) else CustomFormat.from_dict(custom_format)
     if profile_score is not None:
         score = int(profile_score)
-    parsed = _parse_input(release)
+    parsed = _coerce_release_parse(release)
     context = context or {}
     condition_results = tuple(_evaluate_condition(item, parsed, context) for item in fmt.conditions)
     groups: dict[str, list[ConditionResult]] = defaultdict(list)
@@ -534,7 +496,7 @@ def evaluate_condition(
     """Evaluate one condition card for parser/test tooling."""
 
     item = condition if isinstance(condition, FormatCondition) else FormatCondition.from_dict(condition)
-    return _evaluate_condition(item, _parse_input(release), context or {})
+    return _evaluate_condition(item, _coerce_release_parse(release), context or {})
 
 
 def _score_for(
@@ -544,8 +506,6 @@ def _score_for(
 ) -> int:
     profile_scores = profile_scores or {}
     overrides = overrides or {}
-    # Per-title overrides intentionally replace, rather than add to, a profile
-    # score for a specific format as specified by the architecture.
     if fmt.id in overrides:
         return int(overrides[fmt.id])
     if fmt.name in overrides:
@@ -569,7 +529,7 @@ def evaluate_custom_formats(
 ) -> CustomFormatSetEvaluation:
     """Evaluate all enabled formats and sum only matched contributions."""
 
-    parsed = _parse_input(release)
+    parsed = _coerce_release_parse(release)
     profile_scores = profile_scores if profile_scores is not None else scores
     evaluations: list[CustomFormatEvaluation] = []
     for item in custom_formats:
@@ -598,7 +558,7 @@ def validate_condition(condition: FormatCondition | Mapping[str, Any]) -> tuple[
     if item.expected is None or item.expected == "":
         errors.append("condition value/pattern is required")
     if item.expected:
-        for pattern in _as_values(item.expected):
+        for pattern in _as_tuple(item.expected):
             try:
                 re.compile(str(pattern), 0 if item.case_sensitive else re.IGNORECASE)
             except re.error as exc:
@@ -645,22 +605,14 @@ class CustomFormatEngine:
         return evaluate_custom_formats(custom_formats, release, **kwargs)
 
 
-# Concise aliases for service/API callers.
-evaluate = evaluate_custom_format
-evaluate_all = evaluate_custom_formats
-
-
 __all__ = [
     "SCHEMA_VERSION",
-    "Condition",
     "ConditionResult",
     "CustomFormat",
     "CustomFormatEvaluation",
     "CustomFormatEngine",
     "CustomFormatSetEvaluation",
     "FormatCondition",
-    "evaluate",
-    "evaluate_all",
     "evaluate_condition",
     "evaluate_custom_format",
     "evaluate_custom_formats",

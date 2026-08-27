@@ -155,7 +155,7 @@ def _torrent(
 def _install_qbit_fake(client: TestClient, behavior: FakeQBitBehavior) -> None:
     from app.api import downloads as downloads_api
 
-    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
 
 
 def _create_qbit(client: TestClient, headers: dict[str, str]) -> dict:
@@ -338,8 +338,6 @@ def test_completed_inception_replacement_promotes_same_release_and_is_idempotent
             assert current["edition"] == "Director's Cut"
             assert current["directories"][0]["resolved_path"] == str(new_dir.resolve())
 
-            # Look up by the unique info hash to verify the provisional row was
-            # promoted in place rather than replaced by a second association.
             association = _db_read(lambda db: _attached_for_hash(db, "replacement-hash"))
             assert association.association_type is AssociationType.ATTACHED
             assert str(association.movie_release_id) == str(UUID(current["id"]))
@@ -525,8 +523,6 @@ def test_reconciliation_refresh_status_and_root_overlap_lock(client: TestClient)
         assert not storage_root_scan_running(root_id)
         asyncio.run(lock.acquire())
         assert storage_root_scan_running(root_id)
-        # The refresh/status route remains responsive while another run owns
-        # the per-root lock; it reports the last committed observation.
         refreshed = client.get("/api/v1/reconciliation/status")
         assert refreshed.status_code == 200, refreshed.text
         assert refreshed.json()["roots"][0]["affected_count"] == 1

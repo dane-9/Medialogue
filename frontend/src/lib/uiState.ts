@@ -47,7 +47,6 @@ export function isRegexConditionType(_type: CustomFormatConditionType): boolean 
   return true
 }
 
-
 let fallbackIdCounter = 0
 
 export function browserSafeId(randomUuid: (() => string) | null | undefined = undefined): string {
@@ -57,7 +56,7 @@ export function browserSafeId(randomUuid: (() => string) | null | undefined = un
       : null)
     : randomUuid
   if (generator) {
-    try { return generator() } catch { /* insecure/unsupported context: fall back below */ }
+    try { return generator() } catch {}
   }
   fallbackIdCounter += 1
   return `local-${Date.now().toString(36)}-${fallbackIdCounter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`

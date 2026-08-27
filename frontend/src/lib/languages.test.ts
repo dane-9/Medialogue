@@ -7,7 +7,6 @@ describe('releaseLanguages', () => {
   })
 
   it('keeps the parser\'s Unknown rather than hiding it', () => {
-    // Radarr shows Unknown too; it is a real statement about the release name.
     expect(releaseLanguages({ languages: ['Unknown'] })).toEqual(['Unknown'])
   })
 

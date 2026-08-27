@@ -285,8 +285,6 @@ def test_test_all_respects_media_scope_and_enabled_state(client: TestClient) -> 
     assert movie["id"] in ids
     assert show["id"] not in ids
     assert disabled["id"] not in ids
-    # Built-in formats share the evaluation, so the total is not this test's
-    # to assert. What matters is that the movie-scoped format matched.
     assert _format_named(tested.json(), "Movie Hybrid")["matched"] is True
 
 
@@ -300,8 +298,6 @@ def test_application_owned_export_import_round_trip(client: TestClient) -> None:
     assert bundle["schema_version"] == 1
     assert len(bundle["custom_formats"]) == 1
     assert "id" not in bundle["custom_formats"][0]
-    # Formats still do not own a fixed profile score; rules may carry the
-    # relative score offset introduced for variants such as REPACK2.
     assert "score" not in bundle["custom_formats"][0]
     assert all("score" not in condition for condition in bundle["custom_formats"][0]["conditions"])
     assert all("score_offset" in condition for condition in bundle["custom_formats"][0]["conditions"])

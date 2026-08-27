@@ -135,8 +135,6 @@ def test_qbit_removed_but_media_present_remains_a_local_no_change():
         True,
         None,
     )
-    # There is deliberately no qBit observation in CandidateObservation. A
-    # local re-observation of the exact path therefore remains attached.
     result = ReconciliationEngine().reconcile_candidate(
         candidate(resolved_path=existing.resolved_path), [existing]
     )
@@ -266,8 +264,6 @@ def test_different_allowed_path_reappearance_preserves_old_release_identity():
         candidate(resolved_path="/media/movies/new/Inception"), [old]
     )
 
-    # The pure engine records this as a replacement decision; persistence can
-    # retain old.resolved_path as history while attaching the new path.
     assert result.kind is DecisionKind.REPLACEMENT
     assert result.old_release_id == old.release_id
     assert result.events == ("release.replaced", "media.present")

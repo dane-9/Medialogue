@@ -6,14 +6,14 @@ import type { Icon } from './Icon'
 
 export interface ConfirmOptions {
   title: string
-  /** The consequence, in a sentence or two. Optional for the obvious cases. */
+
   body?: ReactNode
   confirmLabel?: string
   cancelLabel?: string
-  /** danger is the default: nearly everything asking for confirmation destroys something. */
+
   tone?: 'danger' | 'primary'
   icon?: Parameters<typeof Icon>[0]['name']
-  /** Shown quietly in the footer, for a reassurance that is not the question. */
+
   note?: string
 }
 
@@ -21,24 +21,11 @@ type Ask = (options: ConfirmOptions) => Promise<boolean>
 
 const ConfirmContext = createContext<Ask | null>(null)
 
-/**
- * Application-wide confirmation dialogs.
- *
- * A promise-returning `confirm` keeps call sites as short as the browser's own
- * `window.confirm`, so asking properly costs no more than asking badly:
- *
- *     if (!await confirm({ title: 'Delete this?' })) return
- *
- * The native dialog cannot be styled, cannot show markup, blocks the whole
- * page, and looks like the browser rather than the app.
- */
 export function ConfirmProvider({ children }: PropsWithChildren) {
   const [options, setOptions] = useState<ConfirmOptions | null>(null)
   const resolver = useRef<((value: boolean) => void) | null>(null)
 
   const ask = useCallback<Ask>((next) => {
-    // A second request while one is open answers the first as cancelled,
-    // rather than leaving its caller waiting forever.
     resolver.current?.(false)
     setOptions(next)
     return new Promise<boolean>((resolve) => { resolver.current = resolve })
@@ -68,7 +55,6 @@ export function ConfirmProvider({ children }: PropsWithChildren) {
   </ConfirmContext.Provider>
 }
 
-/** Ask the user to confirm. Resolves false if they cancel or dismiss. */
 export function useConfirm(): Ask {
   const ask = useContext(ConfirmContext)
   if (!ask) throw new Error('useConfirm must be used inside ConfirmProvider')

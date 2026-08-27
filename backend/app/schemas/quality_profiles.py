@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -101,28 +100,3 @@ class MediaProfileSettingsResponse(BaseModel):
     minimum_quality_overridden: bool
     custom_format_scores: list[EffectiveCustomFormatScore]
     revision: int
-
-
-class ScoreBreakdownItem(BaseModel):
-    custom_format_id: str
-    custom_format_name: str
-    matched: bool
-    profile_score: int
-    override_score: int | None
-    effective_score: int
-    contribution: int
-    conditions: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class SearchScoreSnapshot(BaseModel):
-    schema_version: int = 1
-    profile_id: UUID | None
-    profile_name: str | None
-    profile_revision: int | None
-    assignment_revision: int | None
-    minimum_quality: str | None
-    minimum_quality_definition_id: UUID | None
-    candidate_quality: str | None
-    minimum_quality_met: bool | None
-    total_score: int
-    breakdown: list[ScoreBreakdownItem]

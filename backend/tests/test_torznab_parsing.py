@@ -24,7 +24,6 @@ def test_leechers_are_taken_directly_when_reported() -> None:
 
 
 def test_leechers_are_derived_from_the_peer_total() -> None:
-    # peers is the whole swarm, so the leechers are whatever is not seeding.
     result = TorznabClient._parse_item(_item(seeders="20", peers="21"))
     assert (result.seeders, result.leechers) == (20, 1)
 
@@ -35,8 +34,6 @@ def test_an_explicit_leecher_count_wins_over_peers() -> None:
 
 
 def test_a_peer_total_below_the_seeder_count_clamps_to_zero() -> None:
-    # The two attributes are sampled independently and can disagree; a negative
-    # leecher count would be nonsense to render.
     result = TorznabClient._parse_item(_item(seeders="20", peers="4"))
     assert result.leechers == 0
 
@@ -78,5 +75,4 @@ def test_a_plain_language_element_is_read_for_indexers_that_ignore_the_spec() ->
 
 
 def test_no_language_information_yields_no_languages() -> None:
-    # The empty tuple lets the aggregation fall through to the title parse.
     assert TorznabClient._parse_item(_item(seeders="5")).languages == ()

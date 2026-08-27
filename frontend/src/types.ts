@@ -1,21 +1,5 @@
 export type HealthState = 'healthy' | 'degraded' | 'offline' | 'unknown'
 
-
-export interface SetupStep {
-  key: string
-  title: string
-  complete: boolean
-  optional: boolean
-  detail: string
-  settings_tab?: string
-}
-
-export interface SetupStatus {
-  wizard_complete: boolean
-  wizard_required: boolean
-  steps: SetupStep[]
-}
-
 export interface Tag {
   id: string
   name: string
@@ -183,7 +167,6 @@ export interface ReconciliationAggregate {
   rootAffectedCount?: number
 }
 
-
 export interface RemotePathMapping {
   id: string
   name: string
@@ -195,7 +178,6 @@ export interface RemotePathMapping {
   enabled: boolean
 }
 
-/** One directory listing, for picking a root by browsing. */
 export interface FilesystemListing {
   current_path: string
   parent?: string | null
@@ -203,7 +185,6 @@ export interface FilesystemListing {
   problem?: string | null
 }
 
-/** Library counts, including what is no longer linked to any root. */
 export interface LibrarySummary {
   movies: number
   shows: number
@@ -235,11 +216,11 @@ export interface StorageRoot {
   media_affected?: number
   missing_media_count?: number
   degraded_media_count?: number
-  /** A scan is queued or running for this root right now. */
+
   scanning: boolean
-  /** The job behind `scanning`, when there is one. */
+
   scan?: StorageRootScan
-  /** Media directories recorded under this root. */
+
   media_count: number
 }
 
@@ -277,7 +258,7 @@ export interface Season {
   seasonNumber: number
   title?: string
   monitored: boolean
-  /** Whether this season contributes to the show's episode totals. */
+
   counted: boolean
   revision: number
   episodeCount: number
@@ -487,7 +468,7 @@ export interface Problem {
   reason?: string
   status?: string
   workflow: 'manual' | 'choice' | 'config' | 'waiting'
-  /** Short description of the condition, named by the server. */
+
   label?: string
   entityType?: string
   entityId?: string
@@ -610,7 +591,7 @@ export interface CustomFormat {
   revision: number
   createdAt?: string
   updatedAt?: string
-  /** Shipped and maintained by Medialogue: definition is read-only. */
+
   builtin?: boolean
 }
 
@@ -735,7 +716,7 @@ export interface Indexer {
   minimumSeeders: number
   color?: string
   multiLanguages: string[]
-  /** Download clients this indexer may grab to. Empty means any eligible one. */
+
   downloadClientIds: string[]
   priority: number
   health: string
@@ -770,7 +751,6 @@ export interface TMDBMovieLookup {
   voteAverage?: number
 }
 
-
 export interface MediaDiscovery {
   id: string
   directoryId: string
@@ -792,69 +772,10 @@ export interface MediaDiscovery {
   suggested?: TMDBMovieLookup | TMDBShowLookup
   selected?: TMDBMovieLookup | TMDBShowLookup
   candidates: Array<TMDBMovieLookup | TMDBShowLookup>
-  /** What is inside the folder, which is the evidence a match is judged against. */
+
   files: Array<{ relativePath: string; role: string }>
   fileCount: number
   videoCount: number
   createdAt?: string
   updatedAt?: string
-}
-
-export interface DuplicateFilePreview {
-  relativePath: string
-  size?: number
-  isSymlink: boolean
-}
-
-export interface DuplicateDirectoryPreview {
-  directoryId: string
-  path: string
-  storageRoot: string
-  accessMode: string
-  exists: boolean
-  files: DuplicateFilePreview[]
-}
-
-export interface DuplicateTorrentPreview {
-  torrentId: string
-  infoHash: string
-  name: string
-  archived: boolean
-  qbitPresent: boolean
-  clients: string[]
-}
-
-export interface DuplicateReleasePreview {
-  releaseId: string
-  releaseName: string
-  edition?: string
-  quality?: string
-  releaseGroup?: string
-  state: string
-  directories: DuplicateDirectoryPreview[]
-  torrents: DuplicateTorrentPreview[]
-}
-
-export interface DuplicateResolvePreview {
-  movieId: string
-  movieTitle: string
-  winner: DuplicateReleasePreview
-  losers: DuplicateReleasePreview[]
-  deleteMedia: boolean
-  removeTorrents: boolean
-  torrentBackupsWillBeKept: boolean
-  confirmationToken: string
-  expiresAt: string
-  warnings: string[]
-}
-
-export interface DuplicateResolveResult {
-  movieId: string
-  winnerReleaseId: string
-  losingReleaseIds: string[]
-  duplicateResolved: boolean
-  deletedDirectories: string[]
-  removedTorrents: string[]
-  warnings: string[]
-  problemStatus: string
 }

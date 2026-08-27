@@ -218,7 +218,6 @@ def test_completed_recovery_bundle_download_is_authenticated_and_no_store(recove
     assert response.headers["cache-control"] == "no-store"
     assert "recovery-test.zip" in response.headers["content-disposition"]
 
-    # The endpoint requires an authenticated admin session.
     client.cookies.clear()
     blocked = client.get(f"/api/v1/recovery/exports/{job_id}/download")
     assert blocked.status_code == 401
@@ -277,7 +276,6 @@ def test_recovery_export_api_creates_persistent_job_and_prevents_overlap(recover
     monkeypatch.setattr(recovery_api, "recovery_capabilities", supported_capabilities)
 
     async def no_op_runner(_job_id):
-        # Deliberately leave the job queued so a second request sees it as active.
         return None
 
     client.app.dependency_overrides[recovery_api.get_recovery_export_runner] = lambda: no_op_runner

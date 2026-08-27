@@ -96,9 +96,6 @@ def test_csrf_token_is_bound_to_the_session_that_created_it(client: TestClient) 
     _session_one, csrf_cookie_one, csrf_one = login(client)
     session_two, csrf_cookie_two, csrf_two = login(client)
 
-    # Keep session two but present session one's matching header+cookie pair.
-    # The double-submit values match each other, but not the server-side CSRF
-    # digest belonging to session two, so the write must still be rejected.
     client.cookies.set("medialogue_session", session_two)
     client.cookies.set("medialogue_csrf", csrf_cookie_one)
     blocked = client.put(
@@ -138,7 +135,6 @@ def test_password_change_revokes_other_sessions_but_keeps_current_session(client
     current = client.get("/api/v1/auth/me")
     assert current.status_code == 200
 
-    # Old credentials are no longer accepted; the changed password is.
     old_login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
     assert old_login.status_code == 401
     new_login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "part19-new-password"})

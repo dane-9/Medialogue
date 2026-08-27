@@ -193,9 +193,6 @@ class CustomFormatExportBundle(BaseModel):
 
 
 class CustomFormatImportBundle(BaseModel):
-    # Import intentionally requires the Medialogue marker/version instead of
-    # defaulting them. This prevents unrelated/Radarr JSON from being
-    # accidentally interpreted as our application-owned schema.
     application: str
     schema_version: int
     custom_formats: list[CustomFormatExportItem] = Field(min_length=1, max_length=500)

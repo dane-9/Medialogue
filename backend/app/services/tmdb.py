@@ -55,7 +55,6 @@ def _title_query_variants(title: str) -> tuple[str, ...]:
         variants.append(title.replace(" & ", " and "))
     if " and " in title.casefold():
         variants.append(title.replace(" and ", " & ").replace(" And ", " & "))
-    # Preserve order while avoiding duplicate API calls.
     return tuple(dict.fromkeys(value.strip() for value in variants if value.strip()))
 
 
@@ -183,30 +182,6 @@ async def refresh_tmdb_health(
     return result
 
 
-async def resolve_movie_identity(
-    db: AsyncSession,
-    title: str,
-    year: int | None,
-    *,
-    client_factory: TMDBClientFactory | None = None,
-) -> tuple[TMDBMovieMatch | None, str]:
-    """Resolve a parser candidate against TMDB without silently guessing.
-
-    Returns `(match, reason)` where reason is one of matched/not_configured/
-    unavailable/not_found/ambiguous. Exact normalized title + year candidates
-    are preferred. A missing TMDB configuration never becomes implicit local
-    authority for a newly discovered title.
-    """
-
-    resolution = await resolve_movie_identity_detailed(
-        db,
-        title,
-        year,
-        client_factory=client_factory,
-    )
-    return resolution.match, resolution.reason
-
-
 async def resolve_movie_identity_detailed(
     db: AsyncSession,
     title: str,
@@ -245,10 +220,6 @@ async def resolve_movie_identity_detailed(
                 configuration.last_error = None
                 return TMDBMovieIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
-        # A TMDB year filter can occasionally exclude a valid result when its
-        # release-date metadata differs from the filename convention. Retry
-        # without the filter, but still require the returned candidate's year
-        # to agree before it can be selected automatically.
         if year is not None:
             for query_title in _title_query_variants(title):
                 queries.append(query_title)
@@ -291,24 +262,6 @@ async def resolve_movie_identity_detailed(
     return TMDBMovieIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
 
-async def resolve_show_identity(
-    db: AsyncSession,
-    title: str,
-    year: int | None,
-    *,
-    client_factory: TMDBClientFactory | None = None,
-) -> tuple[TMDBShowMatch | None, str]:
-    """Resolve a show candidate against TMDB with the same no-guess policy as Movies."""
-
-    resolution = await resolve_show_identity_detailed(
-        db,
-        title,
-        year,
-        client_factory=client_factory,
-    )
-    return resolution.match, resolution.reason
-
-
 def _select_show_identity(
     title: str,
     year: int | None,
@@ -339,11 +292,6 @@ def _select_show_identity(
         if len(with_year) == 1:
             return with_year[0], "matched", exact
 
-        # Occasionally TMDB returns a second, effectively empty catalogue row
-        # with the same display title. Accept the first ranked exact result only
-        # when it is fully identified and every competing exact row has no date,
-        # poster, or overview. Two real dated editions (The Office, MacGyver,
-        # etc.) deliberately remain ambiguous without a year or stronger source.
         ranked = exact[0]
         if (
             primary
@@ -390,9 +338,6 @@ async def resolve_show_identity_detailed(
                 configuration.last_error = None
                 return TMDBShowIdentityResolution(match, reason, tuple(collected.values()), tuple(queries))
 
-        # TMDB's first-air-year filter can omit the intended series. Retry the
-        # title without that filter, while retaining the same strict year check
-        # before an automatic match is accepted.
         if year is not None:
             for query_title in _title_query_variants(title):
                 queries.append(query_title)
@@ -480,9 +425,6 @@ async def sync_show_metadata(
         show.tvdb_id = details.tvdb_id
         show.metadata_refreshed_at = utcnow()
 
-        # A show can follow one of TMDB's episode groups instead of the default
-        # season structure. The group holds the same episodes, rearranged, so
-        # this changes how they are numbered rather than which ones exist.
         grouped: dict[int, tuple[str | None, tuple[TMDBEpisodeMetadata, ...]]] | None = None
         season_plan = list(details.seasons)
         if show.tmdb_episode_group_id:
@@ -520,14 +462,10 @@ async def sync_show_metadata(
 
         season_count = episode_count = 0
         for season_meta in season_plan:
-            # Specials (season 0) are valid metadata. They remain independently
-            # monitorable just like numbered seasons.
             season = await db.scalar(
                 select(Season).where(Season.show_id == show.id, Season.season_number == season_meta.season_number)
             )
             if season is None:
-                # Season 0 follows the library-wide Specials preference, so a
-                # newly added show matches how the rest of the library counts.
                 counted = season_meta.season_number != 0 or get_integration_config_store().get_count_specials()
                 season = Season(
                     show_id=show.id,
@@ -558,9 +496,6 @@ async def sync_show_metadata(
                     # refreshed for the rest of the show.
                     continue
             for item in episode_metadata:
-                # TMDB's episode id is the stable identity. Matching on it first
-                # means switching ordering renumbers the existing rows instead of
-                # creating duplicates and stranding their file mappings.
                 episode = None
                 if item.tmdb_id is not None:
                     episode = await db.scalar(

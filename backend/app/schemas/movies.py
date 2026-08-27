@@ -89,7 +89,6 @@ class TMDBMovieLookupResponse(BaseModel):
     imdb_id: str | None = None
     imdb_rating: float | None = None
     imdb_votes: int | None = None
-    #: TMDB's own figures, shown only where IMDb has nothing.
     popularity: float | None = None
     vote_count: int | None = None
     vote_average: float | None = None

@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -76,7 +76,6 @@ async def _profile_qualities(db: AsyncSession, profile: QualityProfile) -> list[
 
 
 async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityProfileResponse:
-    # Ensure relationships are available for API calls that loaded a row via get().
     loaded = await db.scalar(
         select(QualityProfile)
         .options(
@@ -97,8 +96,6 @@ async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityPro
             )
             for item in loaded.custom_format_scores
         ),
-        # A profile is a ranking policy. Return its strongest preference first
-        # and its strongest penalty last so every client sees the saved order.
         key=lambda item: (-item.score, item.custom_format_name.casefold()),
     )
     return QualityProfileResponse(
@@ -309,8 +306,6 @@ async def delete_quality_profile(
     assignments = (
         await db.scalars(select(MediaProfileOverride).where(MediaProfileOverride.quality_profile_id == row.id))
     ).all()
-    # Keep title-level overrides when their base profile is deleted. They are
-    # intentional title rules and should immediately become override-only.
     for assignment in assignments:
         assignment.quality_profile_id = None
         assignment.revision += 1

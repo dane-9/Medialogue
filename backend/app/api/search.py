@@ -14,19 +14,8 @@ from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import (
-    Episode,
-    InteractiveSearchResult,
-    Job,
-    JobStatus,
-    MediaProfileOverride,
-    MediaType,
-    Movie,
-    QualityProfile,
-    Season,
-    Show,
-)
-from app.parser import parse_release_name
+from app.models.domain import Episode, InteractiveSearchResult, Job, MediaProfileOverride, MediaType, Movie, QualityProfile, Season, Show
+from app.parser import parse_release
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.search import (
     MovieDownloadSearchRequest,
@@ -192,9 +181,6 @@ async def search_unattached_show_season(
     client_factory=Depends(indexers_api.get_torznab_client_factory),
     tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
 ) -> JobAcceptedResponse:
-    # This endpoint also remains usable after the first season pack has been
-    # committed. That lets a multi-season download retry/re-search a later
-    # season while reusing the Show created by an earlier successful season.
     if await db.get(QualityProfile, payload.quality_profile_id) is None:
         raise AppError("INVALID_QUALITY_PROFILE", "Quality Profile does not exist.", status_code=422)
     details = await get_show_details(db, payload.tmdb_id, client_factory=tmdb_factory)
@@ -363,9 +349,6 @@ async def get_search_job(
             .where(InteractiveSearchResult.job_id == job.id, active_clause)
         )
     ).all()
-    # Quality order is profile-specific and lives in the immutable search
-    # snapshot. Rank eligible qualities first, then Custom Format score and
-    # seeders. Apply pagination only after that complete ordering.
     ordered_rows = sorted(
         all_rows,
         key=lambda item: (
@@ -401,7 +384,6 @@ async def get_search_job(
         target=dict(summary.get("target") or {}),
         progress=dict(job.progress or {}),
         indexers=statuses,
-        # Built once for the whole response rather than looked up per row.
         results=[_search_result_response(row, indexer_colors) for row in rows],
         result_total=total,
         error=dict(job.error) if job.error else None,
@@ -418,7 +400,7 @@ async def download_search_result(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     torznab_factory=Depends(indexers_api.get_torznab_client_factory),
-    qbit_factory=Depends(downloads_api.get_qbit_client_factory),
+    qbittorrent_client_factory=Depends(downloads_api.get_qbittorrent_client_factory),
     tmdb_factory=Depends(tmdb_api.get_tmdb_client_factory),
 ) -> SearchResultDownloadResponse:
     result = await db.scalar(
@@ -444,8 +426,6 @@ async def download_search_result(
     client = await get_configured_download_client(db, payload.download_client_id)
     if client is None or not client.enabled:
         raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", "Download client is not available.", status_code=404)
-    # A restriction of none means any eligible client, so an empty list is not a
-    # list that excludes everything.
     if indexer.download_client_ids and client.id not in indexer.download_client_ids:
         raise AppError(
             "DOWNLOAD_CLIENT_NOT_ALLOWED_BY_INDEXER",
@@ -477,7 +457,7 @@ async def download_search_result(
         target_season_number = int(target["season"]) if target.get("season") is not None else None
         if not tmdb_id or not target.get("title") or target_season_number is None:
             raise AppError("SEARCH_TARGET_INVALID", "The TMDB Show season search target is incomplete.", status_code=409)
-        parsed = parse_release_name(result.title)
+        parsed = parse_release(result.title)
         if parsed.identity.season_numbers != (target_season_number,) or parsed.identity.episode_numbers:
             raise AppError(
                 "NOT_A_SEASON_PACK",
@@ -514,7 +494,7 @@ async def download_search_result(
         )
     if not result.download_url:
         raise AppError("SEARCH_RESULT_NOT_DOWNLOADABLE", "Indexer did not provide a download URL.", status_code=409)
-    qbit = qbit_factory(client.url, client.username or "", client.password or "")
+    qbittorrent_client = qbittorrent_client_factory(client.url, client.username or "", client.password or "")
     torznab = None
     published_at = result.published_at
     if published_at is not None and published_at.tzinfo is None:
@@ -529,13 +509,13 @@ async def download_search_result(
     )
     if payload.category is not None or needs_show_destination:
         try:
-            categories = await qbit.list_categories()
+            categories = await qbittorrent_client.list_categories()
         except Exception as exc:
-            await qbit.close()
+            await qbittorrent_client.close()
             raise AppError("DOWNLOAD_CLIENT_UNAVAILABLE", f"Could not validate qBittorrent category: {exc}", status_code=503) from exc
         selected = next((item for item in categories if item.name == selected_category), None)
         if selected is None:
-            await qbit.close()
+            await qbittorrent_client.close()
             raise AppError("QBITTORRENT_CATEGORY_NOT_FOUND", "The selected qBittorrent category no longer exists.", status_code=409)
         category_destination = selected.resolved_save_path or None
 
@@ -563,7 +543,7 @@ async def download_search_result(
                     client_factory=tmdb_factory,
                 )
             except Exception as exc:
-                await qbit.close()
+                await qbittorrent_client.close()
                 await db.rollback()
                 raise AppError("TMDB_UNAVAILABLE", f"Could not prepare Show metadata: {exc}", status_code=503) from exc
             staged_new_show = True
@@ -575,7 +555,7 @@ async def download_search_result(
             )
         )
         if target_season is None:
-            await qbit.close()
+            await qbittorrent_client.close()
             if staged_new_show:
                 await db.rollback()
             raise AppError("SEASON_NOT_FOUND", "The selected season is not present in Show metadata.", status_code=409)
@@ -594,10 +574,7 @@ async def download_search_result(
                     revision=1,
                 )
             )
-    qbit_options = {
-        # Movies deliberately keep their existing qBittorrent/category save
-        # behavior. Only Show season-pack download derives a per-Show
-        # subdirectory beneath the selected category root.
+    qbittorrent_options = {
         "save_path": show_save_path,
         "category": selected_category,
         "auto_tmm": False if show_save_path else None,
@@ -609,9 +586,9 @@ async def download_search_result(
     }
     try:
         if result.download_url.casefold().startswith("magnet:"):
-            await qbit.add_url(
+            await qbittorrent_client.add_url(
                 result.download_url,
-                **qbit_options,
+                **qbittorrent_options,
             )
         else:
             torznab = torznab_factory(
@@ -621,10 +598,10 @@ async def download_search_result(
             )
             torrent_bytes = await torznab.fetch_torrent(result.download_url)
             safe_filename = "".join(character if character.isalnum() or character in " ._-" else "_" for character in result.title).strip()
-            await qbit.add_torrent(
+            await qbittorrent_client.add_torrent(
                 torrent_bytes,
                 filename=f"{safe_filename[:180] or 'download'}.torrent",
-                **qbit_options,
+                **qbittorrent_options,
             )
     except Exception as exc:
         if unattached_show_season:
@@ -633,7 +610,7 @@ async def download_search_result(
     finally:
         if torznab is not None:
             await torznab.close()
-        await qbit.close()
+        await qbittorrent_client.close()
 
     committed_movie: Movie | None = None
     if unattached_movie:
@@ -702,8 +679,6 @@ async def download_search_result(
         },
         "selected_at": now.isoformat(),
     }
-    # Selected results are immutable search-time evidence and therefore no
-    # longer participate in the 24-hour cleanup of unselected results.
     await create_event(
         db,
         "search.download_submitted",

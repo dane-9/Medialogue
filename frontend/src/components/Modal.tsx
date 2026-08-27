@@ -2,25 +2,18 @@ import { useEffect } from 'react'
 import type { PropsWithChildren, ReactNode } from 'react'
 import { Icon } from './Icon'
 
-/**
- * A centred dialog with a fixed header and footer and a scrolling body.
- *
- * Editing happens here rather than in a permanently-mounted side pane so the
- * page behind it can stay a simple overview: you see everything at once, then
- * open exactly the one thing you are changing.
- */
 export function Modal({ title, eyebrow, icon, onClose, footer, titleAction, headerAction, headerCenter, wide, className, children }: PropsWithChildren<{
   title: string
   eyebrow?: string
-  /** Shown before the title, matching the icon of the section it belongs to. */
+
   icon?: Parameters<typeof Icon>[0]['name']
   onClose: () => void
   footer?: ReactNode
-  /** Sits immediately after the title, for state you set. */
+
   titleAction?: ReactNode
-  /** Pinned to the far end of the header, for state the dialog reports. */
+
   headerAction?: ReactNode
-  /** Anchored in the visual center of the header for compact dialog status. */
+
   headerCenter?: ReactNode
   wide?: boolean
   className?: string

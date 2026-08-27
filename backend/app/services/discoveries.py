@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,8 +17,6 @@ from app.services.tmdb import (
 )
 
 
-#: How many alternatives are kept for one folder. Enough that a common title
-#: like "Friends" shows its whole result list without a second request.
 DISCOVERY_CANDIDATE_LIMIT = 20
 
 
@@ -174,11 +171,6 @@ async def stage_media_discovery(
     discovery.suggested_tmdb_id = suggested_tmdb_id
     if discovery.selected_tmdb_id is None or discovery.selected_tmdb_id == old_suggestion:
         discovery.selected_tmdb_id = suggested_tmdb_id
-    # With no confident match, the best candidate is still a better starting
-    # point than nothing: a reviewer confirms or corrects one guess faster than
-    # they research a blank row, and the confidence shown next to it says how
-    # much to trust it. "No match" then means what it says, that TMDB returned
-    # nothing at all.
     if discovery.selected_tmdb_id is None and candidates:
         discovery.selected_tmdb_id = int(candidates[0]["tmdb_id"])
     return discovery

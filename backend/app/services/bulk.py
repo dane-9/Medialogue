@@ -20,7 +20,7 @@ from app.models.domain import (
     SourceType,
     Tag,
 )
-from app.parser import parse_release_name
+from app.parser import parse_release
 from app.services.events import create_event
 from app.services.jobs import checkpoint_job, run_job
 from app.services.plex import get_plex_configuration, recheck_movie_plex
@@ -189,8 +189,6 @@ async def change_movie_profile(
         else:
             continue
 
-        # Per-title minimum/CF overrides are deliberately preserved. A bulk
-        # profile change changes only the inherited base profile.
         await refresh_movie_release_scores(db, movie.id)
         await create_event(
             db,
@@ -219,7 +217,7 @@ _OPERATIONAL_PARSE_KEYS = {
 async def reparse_movie_releases(db: AsyncSession, movie: Movie) -> int:
     releases = list((await db.scalars(select(MovieRelease).where(MovieRelease.movie_id == movie.id))).all())
     for release in releases:
-        parsed = parse_release_name(release.raw_release_name)
+        parsed = parse_release(release.raw_release_name)
         quality = None
         if parsed.quality.canonical:
             quality = await db.scalar(

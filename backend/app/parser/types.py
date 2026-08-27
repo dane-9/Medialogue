@@ -31,7 +31,6 @@ class IdentityInfo:
     # callers making containment decisions must use this complete set.
     seasons: tuple[int, ...] = ()
 
-    # Friendly aliases used by callers that do not need the word candidate.
     @property
     def title(self) -> str | None:
         return self.title_candidate
@@ -227,8 +226,6 @@ class ReleaseParseResult:
     parser_version: str = PARSER_VERSION
     warnings: tuple[str, ...] = ()
 
-    # Flat convenience properties are useful in small integrations and make
-    # the result pleasant to inspect in a debugger.
     @property
     def title(self) -> str | None:
         return self.identity.title_candidate
@@ -285,8 +282,6 @@ class ReleaseParseResult:
             "unknown_tokens": list(self.unknown_tokens),
             "parser_version": self.parser_version,
             "warnings": list(self.warnings),
-            # These aliases keep API consumers from needing to know the
-            # internal nesting while preserving the canonical nested model.
             "title": self.title,
             "year": self.year,
             "season": self.season,

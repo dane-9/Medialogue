@@ -12,7 +12,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from time import perf_counter
 from typing import Callable
 from uuid import UUID
@@ -20,7 +20,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.qbittorrent import QBittorrentClient, QBittorrentError, TorrentObservation
+from app.integrations.qbittorrent import QBittorrentClient
 from app.models.domain import (
     IntegrationType,
     JobStatus,
@@ -44,7 +44,7 @@ from app.services.reconciliation import (
 )
 
 
-QBitClientFactory = Callable[[str, str, str], QBittorrentClient]
+QBittorrentClientFactory = Callable[[str, str, str], QBittorrentClient]
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +55,13 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _normal_path(value: str | None) -> str:
+def _comparison_path(value: str | None) -> str:
     """Normalize path separators for prefix comparisons without touching FS."""
 
-    return _clean_path(value).casefold()
+    return _normalized_path(value).casefold()
 
 
-def _clean_path(value: str | None) -> str:
+def _normalized_path(value: str | None) -> str:
     """Normalize separators while preserving the path's original casing.
 
     qBittorrent paths are compared case-insensitively because the remote
@@ -72,9 +72,6 @@ def _clean_path(value: str | None) -> str:
     if not value:
         return ""
     normalized = value.replace("\\", "/")
-    # Preserve a POSIX root and a Windows drive while removing duplicate
-    # separators and trailing slashes.  Comparisons are case-insensitive so a
-    # remote Windows client can be used by a Linux container safely.
     while "//" in normalized:
         normalized = normalized.replace("//", "/")
     if len(normalized) > 1:
@@ -95,8 +92,8 @@ def _inside_local_root(path: str | None, root: str) -> bool:
     if not path or not root:
         return False
     try:
-        Path(_clean_path(path)).resolve(strict=False).relative_to(
-            Path(_clean_path(root)).resolve(strict=False)
+        Path(_normalized_path(path)).resolve(strict=False).relative_to(
+            Path(_normalized_path(root)).resolve(strict=False)
         )
         return True
     except ValueError:
@@ -118,25 +115,19 @@ def resolve_remote_path(
 
     if not reported_path:
         return None, None
-    reported_clean = _clean_path(reported_path)
+    reported_clean = _normalized_path(reported_path)
     reported_normalized = reported_clean.casefold()
     candidates = sorted(
         mappings,
-        key=lambda mapping: len(_normal_path(mapping.remote_prefix)),
+        key=lambda mapping: len(_comparison_path(mapping.remote_prefix)),
         reverse=True,
     )
     for mapping in candidates:
-        remote_clean = _clean_path(mapping.remote_prefix)
+        remote_clean = _normalized_path(mapping.remote_prefix)
         remote_prefix = remote_clean.casefold()
         if reported_normalized == remote_prefix or reported_normalized.startswith(remote_prefix + "/"):
-            # Comparison is case-insensitive, but preserve the remote path's
-            # original suffix casing when constructing the Linux-local path.
-            # Lower-casing this suffix makes valid mapped paths fail exists()
-            # checks on case-sensitive filesystems.
             suffix = reported_clean[len(remote_clean) :].lstrip("/")
             return _join_prefix(mapping.local_prefix, suffix), mapping.id
-    # No mapping is needed when qBit and the app share a mount path.  It is
-    # still checked against configured roots before being persisted.
     return reported_path, None
 
 
@@ -156,7 +147,7 @@ async def get_download_client(db: AsyncSession, client_id: UUID) -> ConfiguredDo
 async def test_download_client_connection(
     client: ConfiguredDownloadClient,
     *,
-    client_factory: QBitClientFactory = QBittorrentClient,
+    client_factory: QBittorrentClientFactory = QBittorrentClient,
 ) -> dict[str, object]:
     started = perf_counter()
     adapter = client_factory(client.url, client.username or "", client.password or "")
@@ -175,7 +166,7 @@ async def _poll_download_client(
     db: AsyncSession,
     client: ConfiguredDownloadClient,
     *,
-    client_factory: QBitClientFactory = QBittorrentClient,
+    client_factory: QBittorrentClientFactory = QBittorrentClient,
 ) -> dict[str, object]:
     """Poll one qBit client and persist relevant observations only."""
 
@@ -231,9 +222,6 @@ async def _poll_download_client(
             message=f"qBittorrent client {client.name} is healthy.",
             details={"status": "healthy"},
         )
-    # Persist the connectivity result before heavier reconciliation begins.
-    # This prevents a later application-side processing failure from rolling
-    # the qBittorrent health state back to an old/unavailable value.
     await db.commit()
     roots = (
         await db.scalars(
@@ -281,8 +269,6 @@ async def _poll_download_client(
     prior_by_hash: dict[str, TorrentClientObservation] = {}
     for row in prior_rows:
         prior_by_hash.setdefault(row.torrent_id.hex, row)
-    # Hashes are used below after loading the related Torrent rows.  Keeping a
-    # dedicated query avoids relying on lazy loading in async request paths.
     prior_torrents = (
         await db.scalars(select(Torrent).where(Torrent.id.in_({row.torrent_id for row in prior_rows})))
     ).all() if prior_rows else []
@@ -385,9 +371,6 @@ async def _poll_download_client(
                         prior.removed_at = None
                         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
                         await cancel_incoming_torrent(db, torrent, emit_event=False)
-                        # None means qBit still has the torrent, but its path is
-                        # outside Medialogue's configured storage scope.  That
-                        # is neither "removed externally" nor "path missing".
                         await reconcile_torrent_disagreements(db, torrent, qbit_present=None)
             continue
 
@@ -536,11 +519,6 @@ async def _poll_download_client(
                         details={"client_id": str(client.id), "info_hash": info_hash},
                     )
 
-                # qBittorrent's checkingUP/checkingDL/checkingResumeData states
-                # are verification telemetry, not lifecycle transitions. Keep
-                # the observation fresh but preserve every existing association
-                # and wait for the next normal state before attaching,
-                # finalizing, archiving, or reconciling disagreements.
                 if observed.checking:
                     continue
 
@@ -563,11 +541,6 @@ async def _poll_download_client(
                         scope=MediaType(client.scope.value),
                     )
 
-                # Archive tracked torrents as soon as qBittorrent exposes their
-                # metadata. The archive is independent of live qBit state and is
-                # refreshed after reconciliation so identity/release/path evidence is
-                # captured in the manifest. Failed exports are non-fatal and retry on
-                # later polls (common while magnet metadata is still resolving).
                 if not torrent_archive_complete(torrent):
                     await ensure_torrent_archived(db, torrent, client, client_factory=client_factory)
                 else:
@@ -591,7 +564,6 @@ async def _poll_download_client(
             )
             continue
 
-    # A missing qBit row is historical evidence, not a delete operation.
     for row in prior_rows:
         info_hash = prior_hash_by_torrent.get(row.torrent_id)
         if info_hash not in current_hashes:
@@ -634,7 +606,7 @@ async def poll_download_client(
     db: AsyncSession,
     client: ConfiguredDownloadClient,
     *,
-    client_factory: QBitClientFactory = QBittorrentClient,
+    client_factory: QBittorrentClientFactory = QBittorrentClient,
 ) -> dict[str, object]:
     """Poll one qBit instance with a per-client non-overlap lock."""
 
@@ -645,7 +617,7 @@ async def poll_download_client(
 async def poll_due_download_clients(
     db: AsyncSession,
     *,
-    client_factory: QBitClientFactory = QBittorrentClient,
+    client_factory: QBittorrentClientFactory = QBittorrentClient,
 ) -> list[dict[str, object]]:
     """Poll enabled clients whose configured interval has elapsed."""
 
@@ -656,10 +628,6 @@ async def poll_due_download_clients(
         client_id = client.id
         last = client.last_polled_at
         interval = max(5, client.poll_interval_seconds or 30)
-        # Repeated credential retries are actively harmful: qBittorrent can
-        # ban the caller IP after only a few failed logins. Once an auth error
-        # is confirmed, leave recovery to an explicit Test/Refresh or config
-        # update instead of retrying every poll interval.
         if client.health == "unavailable" and client.last_error and (
             "rejected the configured username/password" in client.last_error
             or "temporarily banned Medialogue's IP" in client.last_error
@@ -677,9 +645,6 @@ async def poll_due_download_clients(
             result = await poll_download_client(db, client, client_factory=client_factory)
             await db.commit()
         except Exception as exc:
-            # Connectivity is committed immediately after list_torrents() succeeds.
-            # A parser/reconciliation/archive bug for one client must neither mark
-            # qBittorrent offline nor prevent the remaining clients from polling.
             await db.rollback()
             fresh = await get_configured_download_client(db, client_id)
             logger.exception(

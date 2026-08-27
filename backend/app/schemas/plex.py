@@ -44,14 +44,3 @@ class PlexTestResponse(BaseModel):
     machine_identifier: str | None = None
     latency_ms: int | None = None
     message: str | None = None
-
-
-class PlexRecheckResponse(BaseModel):
-    movie_id: str | None = None
-    show_id: str | None = None
-    state: str
-    checked_releases: int
-    matched_releases: int
-    not_found_releases: int
-    multiple_version_releases: int
-    conflict_releases: int

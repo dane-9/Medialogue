@@ -18,12 +18,9 @@ class TMDBMovieMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
-    #: TMDB's own figures, used only where IMDb has nothing to say.
     popularity: float | None = None
     vote_count: int | None = None
     vote_average: float | None = None
-    #: TMDB's ISO 639-1 original language, the fallback when a release
-    #: name declares none.
     original_language: str | None = None
 
 
@@ -35,12 +32,9 @@ class TMDBShowMatch:
     year: int | None
     overview: str | None
     poster_path: str | None
-    #: TMDB's own figures, used only where IMDb has nothing to say.
     popularity: float | None = None
     vote_count: int | None = None
     vote_average: float | None = None
-    #: TMDB's ISO 639-1 original language, the fallback when a release
-    #: name declares none.
     original_language: str | None = None
 
 
@@ -63,8 +57,6 @@ class TMDBEpisodeMetadata:
     overview: str | None = None
 
 
-# TMDB documents these seven groupings. The label is what an operator picks
-# from, so it is resolved here rather than left as a bare integer in the UI.
 EPISODE_GROUP_TYPES: dict[int, str] = {
     1: "Original air date",
     2: "Absolute",
@@ -118,8 +110,6 @@ class TMDBShowDetails:
     poster_path: str | None
     tvdb_id: int | None
     seasons: tuple[TMDBSeasonMetadata, ...]
-    #: TMDB's ISO 639-1 original language, the fallback when a release
-    #: name declares none.
     original_language: str | None = None
 
 
@@ -344,8 +334,6 @@ class TMDBClient:
         payload = (await self._get(f"/tv/episode_group/{group_id}")).json()
         seasons: list[tuple[int, str | None, tuple[TMDBEpisodeMetadata, ...]]] = []
         raw_groups = [item for item in payload.get("groups", []) if isinstance(item, dict)]
-        # `order` is TMDB's own index for the group; fall back to position so a
-        # group missing the field still produces a stable, contiguous structure.
         raw_groups.sort(key=lambda item: item.get("order") if isinstance(item.get("order"), int) else 0)
         for index, group in enumerate(raw_groups):
             episodes: list[TMDBEpisodeMetadata] = []

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { InteractiveSearchResult } from '../types'
 import { Icon } from './Icon'
-import { Badge } from './ui'
 import { Tooltip } from './Tooltip'
 import { formatPeers, swarmHealth } from '../lib/swarm'
 import { formatAge } from '../lib/age'
@@ -27,16 +26,6 @@ export function matchedFormatNames(result: InteractiveSearchResult): string[] {
 
 const signed = (score?: number) => `${(score ?? 0) > 0 ? '+' : ''}${score ?? 0}`
 
-/**
- * The release list for both download wizards.
- *
- * Rows are a fixed height and never expand, and nothing unfolds below them:
- * clicking a row must never move the row under the cursor, or the next row you
- * meant to compare. Everything a release has to say is on its own row,
- * matched Custom Formats hang off the score, warnings off the alert pill.
- *
- * Captions live once in the header rather than being repeated on every row.
- */
 export function ReleaseResults({ results, selectedId, onSelect, disabled, empty, label, tag, onRefresh, refreshing }: {
   results: InteractiveSearchResult[]
   selectedId: string
@@ -44,9 +33,9 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
   disabled?: boolean
   empty: ReactNode
   label: string
-  /** Short kind label shown on every row, e.g. "Season pack". */
+
   tag?: string
-  /** Run the indexer search again. Omitted when re-searching is not available. */
+
   onRefresh?: () => void
   refreshing?: boolean
 }) {
@@ -55,9 +44,6 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
 
   const sorted = useMemo(() => sortReleases(results, sort, desc), [results, sort, desc])
 
-  // A new column opens at its useful direction, the active one flips, and a
-  // third click returns to the ranked order, which needs no column of its own
-  // in a grid whose column count has to stay fixed.
   const choose = (key: SortKey) => {
     if (key !== sort) { setSort(key); setDesc(DEFAULT_DESC[key]); return }
     if (desc === DEFAULT_DESC[key]) { setDesc(!DEFAULT_DESC[key]); return }

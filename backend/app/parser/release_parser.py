@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import replace
 from pathlib import PurePath
 from typing import Iterable
 
@@ -292,7 +291,7 @@ def _casefold_token(value: str) -> str:
     return value.casefold().strip()
 
 
-def _normalise_punctuation_phrase(value: str) -> str:
+def _normalize_punctuation_phrase(value: str) -> str:
     value = value.replace("’", "'").replace("`", "'")
     value = re.sub(r"[._-]+", " ", value)
     value = re.sub(r"\s+", " ", value)
@@ -300,11 +299,11 @@ def _normalise_punctuation_phrase(value: str) -> str:
 
 
 def _edition_from_name(normalized: str) -> tuple[str | None, str | None]:
-    folded = _normalise_punctuation_phrase(normalized)
+    folded = _normalize_punctuation_phrase(normalized)
     # Longest/specific phrase wins.  Word boundaries stop e.g. "unrated" from
     # being matched inside a future token.
     for alias, canonical in sorted(_EDITION_ALIASES, key=lambda item: len(item[0]), reverse=True):
-        phrase = _normalise_punctuation_phrase(alias)
+        phrase = _normalize_punctuation_phrase(alias)
         if re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", folded):
             return canonical, alias
     return None, None
@@ -402,7 +401,6 @@ def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], 
     if season_only:
         return int(season_only.group("s")), (), season_only.start(), season_only.end()
     return None, (), None, None
-
 
 
 def parse_season_folder(name: str) -> int | None:
@@ -647,7 +645,7 @@ def _provider(normalized: str, quality: QualityInfo) -> str | None:
 
 def _attributes(normalized: str) -> ReleaseAttributes:
     found: list[str] = []
-    folded = _normalise_punctuation_phrase(normalized)
+    folded = _normalize_punctuation_phrase(normalized)
     for key, canonical in _ATTRIBUTE_CANONICAL.items():
         if re.search(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])", folded):
             found.append(canonical)
@@ -665,7 +663,7 @@ def _attributes(normalized: str) -> ReleaseAttributes:
 
 
 def _hdr(normalized: str) -> HDRInfo:
-    folded = _normalise_punctuation_phrase(normalized)
+    folded = _normalize_punctuation_phrase(normalized)
     return HDRInfo(
         dolby_vision=bool(re.search(r"(?<![a-z0-9])(?:dv|dolby vision)(?![a-z0-9])", folded)),
         hdr=bool(re.search(r"(?<![a-z0-9])hdr(?![0-9a-z])", folded)),
@@ -737,7 +735,7 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
     channels = channels_match.group(1) if channels_match else None
     if channels and " " in channels:
         channels = channels.replace(" ", ".")
-    folded = _normalise_punctuation_phrase(raw)
+    folded = _normalize_punctuation_phrase(raw)
     return AudioInfo(
         codec=codec,
         channels=channels,
@@ -864,13 +862,13 @@ def _unknown_tokens(
     known.update(item.casefold() for item in attributes.values)
     known.update({item.casefold() for item in hdr.values})
     if edition:
-        known.update(_normalise_punctuation_phrase(edition).split())
+        known.update(_normalize_punctuation_phrase(edition).split())
     if provider:
         known.add(provider.casefold())
     if quality.canonical:
-        known.update(_normalise_punctuation_phrase(quality.canonical).split())
+        known.update(_normalize_punctuation_phrase(quality.canonical).split())
     if quality.source:
-        known.update(_normalise_punctuation_phrase(quality.source).split())
+        known.update(_normalize_punctuation_phrase(quality.source).split())
     if quality.modifier:
         known.add(quality.modifier.casefold())
     if quality.disc_type:
@@ -879,11 +877,11 @@ def _unknown_tokens(
     if quality.tv_standard:
         known.add(quality.tv_standard.casefold())
     if video.codec:
-        known.update(_normalise_punctuation_phrase(video.codec).split())
+        known.update(_normalize_punctuation_phrase(video.codec).split())
         if video.raw_codec_token:
-            known.update(_normalise_punctuation_phrase(video.raw_codec_token).split())
+            known.update(_normalize_punctuation_phrase(video.raw_codec_token).split())
     if audio.codec:
-        known.update(_normalise_punctuation_phrase(audio.codec).split())
+        known.update(_normalize_punctuation_phrase(audio.codec).split())
     if audio.channels:
         known.add(audio.channels.casefold())
     if audio.atmos:
@@ -1072,17 +1070,10 @@ def detect_release_group(name: str) -> str:
     return _release_group(_clean_raw_name(name), normalized)[0]
 
 
-# Public aliases used by adapters and older experiments.
-parse_release_name = parse_release
-
-
 __all__ = [
     "QUALITY_PRECEDENCE",
     "normalize_release_name",
     "parse_release",
-    "parse",
-    "parse_name",
-    "parse_release_name",
     "parse_quality",
     "detect_edition",
     "detect_release_group",

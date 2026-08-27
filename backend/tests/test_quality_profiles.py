@@ -177,7 +177,6 @@ def test_quality_profile_crud_assignment_and_override_replaces_score(client: Tes
     assert score["override_score"] == -25
     assert score["effective_score"] == -25
 
-    # Assignment changes immediately re-evaluate stored releases under current rules.
     async def current_score():
         async with db_session.async_session_factory() as db:
             release = await db.scalar(select(MovieRelease))
@@ -232,7 +231,6 @@ def test_interactive_search_scores_warns_below_minimum_and_preserves_snapshot(cl
         assert breakdown["effective_score"] == 750
         assert breakdown["contribution"] == 750
 
-        # Editing the profile later cannot rewrite immutable search-time evidence.
         changed = client.patch(f"/api/v1/quality-profiles/{profile['id']}", headers=headers, json={
             "custom_format_scores": [{"custom_format_id": cf["id"], "score": -1000}],
             "expected_revision": profile["revision"],
@@ -274,8 +272,6 @@ def test_default_quality_profile_is_seeded_once_and_remains_editable(client: Tes
     expected_scores = {builtin.name: DEFAULT_FORMAT_SCORES[builtin.key] for builtin in BUILTIN_FORMATS}
     actual_scores = {item["custom_format_name"]: item["score"] for item in default["custom_format_scores"]}
     assert actual_scores == expected_scores
-    # Every quality definition except the full-disc DVD rips, which the shipped
-    # profile deliberately leaves off.
     from app.parser import list_quality_definitions
     from app.services.builtin_formats import DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
 
@@ -411,8 +407,6 @@ def test_custom_format_edit_recomputes_current_score_without_rewriting_history(c
     assert before == 333
     assert before_snapshot["current_score_snapshot"]["total_score"] == 333
 
-    # Change the matching rule so the already-present Hybrid release no longer
-    # matches. Current score must follow current rules immediately.
     changed = client.patch(f"/api/v1/custom-formats/{cf['id']}", headers=headers, json={
         "conditions": [{"type": "release_attribute", "value": "REPACK", "required": True}],
         "expected_revision": cf["revision"],
@@ -625,9 +619,6 @@ def test_completed_selected_search_release_preserves_download_score_and_tracks_c
 
     movie_id, root_id, torrent_id = asyncio.run(seed_selected_result())
 
-    # Current rules change after the user selected the result but before qBit
-    # completes. The completed release must preserve 500 as historical evidence
-    # while independently evaluating to 900 under the new current profile.
     updated_profile = client.patch(
         f"/api/v1/quality-profiles/{profile['id']}",
         headers=headers,
@@ -742,10 +733,8 @@ def test_indexer_colour_round_trips_and_distinguishes_clearing_from_omitting(cli
     indexer_id = created.json()["id"]
     assert created.json()["color"] == "#7C8CF8"
 
-    # Survives a round trip through the config file.
     assert client.get(f"/api/v1/indexers/{indexer_id}").json()["color"] == "#7C8CF8"
 
-    # An unrelated edit must not disturb it.
     kept = client.patch(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"priority": 30})
     assert kept.status_code == 200, kept.text
     assert kept.json()["color"] == "#7C8CF8"

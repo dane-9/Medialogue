@@ -35,13 +35,11 @@ class ShowDownloadPreviewResponse(BaseModel):
     seasons: list[ShowDownloadSeasonPreview]
 
 
-
 class SearchResultResponse(BaseModel):
     id: UUID
     job_id: UUID
     indexer_id: UUID | None
     indexer_name: str
-    #: The indexer's configured badge colour, if it has one.
     indexer_color: str | None = None
     media_type: str
     target_entity_type: str

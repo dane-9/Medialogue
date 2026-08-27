@@ -145,7 +145,7 @@ export default function CustomFormatsPageView() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [releaseName, setReleaseName] = useState('Inception 2010 Hybrid 2160p UHD BluRay REMUX DV HDR HEVC DTS-HD MA 5.1-LM')
-  const [testIndexer, setTestIndexer] = useState('')
+  const testIndexer = ''
   const [testProfileId, setTestProfileId] = useState('')
   const [testResult, setTestResult] = useState<CustomFormatTestResult | null>(null)
   const [testAllResult, setTestAllResult] = useState<CustomFormatTestAllResult | null>(null)
@@ -161,9 +161,6 @@ export default function CustomFormatsPageView() {
       setProfiles(profileRows)
       setSections(layout)
       if (testProfileId && !profileRows.some((profile) => profile.id === testProfileId)) setTestProfileId('')
-      // The grid is the landing view, so nothing is selected by default. A
-      // format is only adopted when it was just saved, or when a link named it,
-      // in which case the editor opens straight onto it.
       const nextId = preferredId && items.some((item) => item.id === preferredId)
         ? preferredId
         : selectedId && items.some((item) => item.id === selectedId)
@@ -218,19 +215,11 @@ export default function CustomFormatsPageView() {
     setEditorOpen(true)
   }
 
-  /**
-   * Duplicate a format outright, without opening the editor.
-   *
-   * Duplicating is a one-click action from a card, so it saves outright rather
-   * than opening an unsaved clone the operator then has to remember to commit.
-   */
   const duplicateFormatNow = async (source: CustomFormat) => {
     setError(''); setMessage('')
     try {
       const clone = { ...cloneFormat(source), name: copyName(source.name, formats.map((item) => item.name)) }
       const saved = await api.createCustomFormat(clone)
-      // Land beside the format it was copied from rather than at the end of an
-      // unrelated section.
       const section = sections.find((item) => item.formatIds.includes(source.id))
       if (section) {
         await api.saveCustomFormatLayout(sections.map((item) => item.id === section.id
@@ -554,7 +543,6 @@ export default function CustomFormatsPageView() {
   </div>
 }
 
-/** One format at a glance: what it is, what it matches, and where it is used. */
 function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { format: CustomFormat; toggling: boolean; onToggle: () => void; onOpen: () => void; onDuplicate: () => void }) {
   return <article className={`cf-card ${format.enabled ? '' : 'cf-card-off'}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen() } }}>
     <div className="cf-card-head">

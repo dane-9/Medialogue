@@ -130,7 +130,7 @@ def _install_fake(client: TestClient, behavior: ArchiveQBitBehavior) -> None:
     from app.api import downloads as downloads_api
     from app.api import torrent_archive as archive_api
 
-    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
     client.app.dependency_overrides[archive_api.get_torrent_archive_qbit_factory] = lambda: behavior.factory
 
 
@@ -233,7 +233,6 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         assert manifest["previous_resolved_path"].startswith(str(media_root))
         assert manifest["archive"]["torrent_sha256"]
 
-        # Logical application removal must not erase the recovery identity.
         async def remove_movie_record():
             async with db_session.async_session_factory() as db:
                 movie = await db.scalar(select(Movie).where(Movie.tmdb_id == 27205))
@@ -242,8 +241,6 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
                 await db.commit()
 
         asyncio.run(remove_movie_record())
-        # If the physical archive is accidentally lost while qBittorrent still
-        # has the torrent, polling repairs it rather than trusting stale DB state.
         torrent_path.unlink()
         assert not torrent_path.exists()
         refreshed = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
@@ -256,7 +253,6 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         assert preserved_manifest["tmdb_id"] == 27205
         assert preserved_manifest["release_name"] == release_name
 
-        # Removing the live qBit row does not touch recovery evidence.
         behavior.torrents = []
         removed = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
         assert removed.status_code == 202, removed.text

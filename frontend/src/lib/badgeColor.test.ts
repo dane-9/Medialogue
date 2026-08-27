@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { badgeColor, luminance } from './badgeColor'
+import { badgeColor } from './badgeColor'
 
 const rgbOf = (value: string): [number, number, number] => {
   const [r, g, b] = value.match(/\d+/g)!.slice(0, 3).map(Number)

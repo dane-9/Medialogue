@@ -7,22 +7,10 @@ export interface DropdownOption {
   value: string
   label: string
   disabled?: boolean
-  /** Heading above the option, from an <optgroup>. Not selectable itself. */
+
   group?: string
 }
 
-/**
- * A listbox that looks like the rest of the app.
- *
- * A native select renders its menu with the operating system's own widget: on
- * Windows that is a white list in the system font, which is the one part of a
- * dark interface nobody can style. This keeps the menu inside the page.
- *
- * The menu is portalled to the body rather than nested in the trigger, so a
- * dropdown near the bottom of a scrolling panel is not clipped by it. Keyboard
- * behaviour matches the native control it replaces: arrows move, Home and End
- * jump, typing jumps to a label, Enter commits, Escape cancels.
- */
 export function Dropdown({ value, options, onChange, disabled, ariaLabel, className = '' }: {
   value: string
   options: DropdownOption[]
@@ -48,7 +36,6 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
     const rect = trigger.getBoundingClientRect()
     const height = menu.getBoundingClientRect().height
     const gap = 4
-    // Below by default, flipping up only when the menu would run off screen.
     const room = window.innerHeight - rect.bottom - gap
     const top = height > room && rect.top > height + gap ? rect.top - height - gap : rect.bottom + gap
     setPosition({ left: rect.left, top, width: rect.width })
@@ -60,7 +47,6 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
     if (!open) return
     const reposition = () => place()
     window.addEventListener('resize', reposition)
-    // Capture: a scroll inside any ancestor moves the trigger too.
     window.addEventListener('scroll', reposition, true)
     return () => {
       window.removeEventListener('resize', reposition)
@@ -79,7 +65,6 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
     return () => document.removeEventListener('mousedown', onPointerDown)
   }, [open])
 
-  // Opening lands on the current value, not the top of the list.
   const openMenu = () => {
     if (disabled) return
     setActive(selected >= 0 ? selected : 0)
@@ -94,7 +79,6 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
     triggerRef.current?.focus()
   }
 
-  /** Skip past disabled options rather than parking the cursor on one. */
   const step = (from: number, delta: number) => {
     let index = from
     for (let attempt = 0; attempt < options.length; attempt += 1) {
@@ -123,7 +107,6 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
 
     if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
       const now = Date.now()
-      // A pause starts a new search rather than extending the last one.
       typed.current.query = now - typed.current.at > 800 ? event.key : typed.current.query + event.key
       typed.current.at = now
       const found = typeAheadIndex(options.map((option) => option.label), typed.current.query, active)
@@ -159,9 +142,7 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
         aria-label={ariaLabel}
         style={{ left: position.left, top: position.top, minWidth: position.width }}
       >
-        {/* The scrolling lives one level in: a scrollbar is painted outside its
-            own element's rounded clip, so it squares off the corner it sits in.
-            Scrolling a child instead lets the menu's radius clip it. */}
+
         <div className="dropdown-list">
         {options.map((option, index) => <div key={`${option.value}-${index}`}>
           {option.group && (index === 0 || options[index - 1].group !== option.group) && (

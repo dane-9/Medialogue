@@ -215,12 +215,9 @@ def _create_client(client: TestClient, headers: dict[str, str], **overrides) -> 
 
 
 def _install_fake(client: TestClient, behavior: FakeQBitBehavior) -> None:
-    # The dependency mirrors the Plex adapter seam and accepts URL, username,
-    # and password.  Keep this override local to each test to avoid leaking a
-    # fake into another isolated TestClient.
     from app.api import downloads as downloads_api
 
-    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
 
 
 def test_qbit_remote_mapping_preserves_local_path_case() -> None:
@@ -242,8 +239,6 @@ def test_qbit_remote_mapping_preserves_local_path_case() -> None:
     assert resolved == "/movies/Cartoons/The.Movie.2026/The.Movie.2026.mkv"
     assert used_mapping == mapping_id
 
-    # An unmatched remote qBit path must not be mistaken for the Linux-local
-    # /movies mount merely because the comparison used to case-fold both.
     assert _inside_local_root("/Movies/Movies/Unmanaged.Movie.2026", "/movies") is False
 
 
@@ -321,8 +316,6 @@ def test_download_client_test_and_health_refresh_use_read_only_fake(client: Test
         assert tested.json()["latency_ms"] is not None
         assert behavior.instances[-1].password == "super-secret-qbit-password"
 
-        # Existing-client tests can exercise unsaved form edits while keeping
-        # the write-only stored password when the password field is blank.
         edited = client.post(
             f"/api/v1/download-clients/{configured['id']}/test",
             headers=headers,
@@ -760,8 +753,8 @@ def test_qbit_connectivity_health_survives_internal_processing_failure(client: T
         assert results[0]["status"] == "healthy"
         assert results[0]["processing_errors"] == 1
         assert "could not be processed" in str(results[0].get("message"))
-        assert second is not None  # later torrents still process after one bad row
-        assert broken is None  # the failed torrent SAVEPOINT is rolled back cleanly
+        assert second is not None
+        assert broken is None
     finally:
         if root.exists():
             root.rmdir()

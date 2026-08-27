@@ -16,17 +16,7 @@ from app.core.integration_config import DownloadClientConfig, get_integration_co
 from app.db.session import get_db
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.auth import AdminUser
-from app.models.domain import (
-    AssociationType,
-    DownloadClient,
-    MediaType,
-    MovieRelease,
-    MovieReleaseTorrent,
-    Problem,
-    ProblemStatus,
-    Torrent,
-    TorrentClientObservation,
-)
+from app.models.domain import AssociationType, DownloadClient, MovieRelease, MovieReleaseTorrent, Problem, ProblemStatus, Torrent, TorrentClientObservation
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.downloads import (
@@ -59,9 +49,6 @@ def utcnow() -> datetime:
 
 def get_qbittorrent_client_factory():
     return QBittorrentClient
-
-
-get_qbit_client_factory = get_qbittorrent_client_factory
 
 
 def _client_response(client: ConfiguredDownloadClient) -> DownloadClientResponse:

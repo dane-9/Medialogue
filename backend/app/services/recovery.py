@@ -275,9 +275,6 @@ async def build_configuration_export(db: AsyncSession, settings: Settings | None
         },
         "storage_roots": await _model_rows(db, StorageRoot),
         "remote_path_mappings": await _model_rows(db, RemotePathMapping),
-        # Integration settings and credentials are file-backed. This recovery
-        # export is already explicitly sensitive, so include a decrypted
-        # logical snapshot in addition to copying the original /config files.
         "integration_configuration": get_integration_config_store().export_for_recovery(),
         "integration_runtime_state": {
             "download_clients": await _model_rows(db, DownloadClient),

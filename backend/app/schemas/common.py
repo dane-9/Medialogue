@@ -1,21 +1,11 @@
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
-
-class ErrorDetails(BaseModel):
-    code: str
-    message: str
-    details: Any = Field(default_factory=dict)
-
-
-class ErrorEnvelope(BaseModel):
-    error: ErrorDetails
 
 
 T = TypeVar("T")

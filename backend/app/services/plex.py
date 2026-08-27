@@ -103,8 +103,6 @@ async def _record_health_change(
     )
 
 
-
-
 async def _client_library_snapshot(client: object) -> PlexLibrarySnapshot | None:
     """Use the optimized snapshot API when the concrete Plex adapter supports it.
 
@@ -201,8 +199,6 @@ async def recheck_movie_plex(
                     db, movie, release, state, PlexMatchMethod.TITLE_YEAR, resolved_path=checked_path
                 )
             else:
-                # Plex answered successfully and this media was absent. This is
-                # a completed observation, not a job that is still pending.
                 state = PlexMatchState.NOT_FOUND
                 not_found += 1
                 await _upsert_observation(db, movie, release, state, None, resolved_path=checked_path)
@@ -212,8 +208,6 @@ async def recheck_movie_plex(
         elif multiple_versions:
             overall = PlexMatchState.MULTIPLE_VERSIONS
         elif not_found:
-            # A movie is only fully verified when every eligible active release
-            # is accounted for in Plex. Keep a missing release visible.
             overall = PlexMatchState.NOT_FOUND
         elif matched:
             overall = PlexMatchState.MATCHED
@@ -313,8 +307,6 @@ async def _upsert_observation(
     observation.plex_year = exact.year if exact else year
     observation.plex_edition = exact.edition if exact else edition
     observation.plex_reported_path = exact.file_path if exact else None
-    # Keep the path in Medialogue's namespace here. The Plex-side path is
-    # already preserved separately in plex_reported_path.
     observation.resolved_path = resolved_path
     observation.last_seen_at = utcnow()
     await db.flush()
@@ -390,10 +382,6 @@ async def recheck_show_plex(
                 state = PlexMatchState.NOT_FOUND
                 not_found += 1
             else:
-                # Plex show naming is also advisory. For TV the only identity
-                # disagreement worth surfacing on an exact physical file is
-                # episode numbering, because that can indicate a real mapping
-                # error (for example S01E02 vs S01E03).
                 season_agrees = exact.season_number is None or exact.season_number == episode.season_number
                 episode_agrees = exact.episode_number is None or exact.episode_number == episode.episode_number
                 state = PlexMatchState.MATCHED if season_agrees and episode_agrees else PlexMatchState.CONFLICT
@@ -508,4 +496,3 @@ async def recheck_show_plex(
         "multiple_version_releases": 0,
         "conflict_releases": conflicts,
     }
-

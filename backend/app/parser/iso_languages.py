@@ -34,7 +34,6 @@ _LANGUAGES: tuple[tuple[str | None, str | None, str], ...] = (
     ("ga", "gle", "Irish"), ("gl", "glg", "Galician"), ("eu", "eus", "Basque"),
 )
 
-#: Regional variants indexers name explicitly; they are languages of their own here.
 _VARIANTS: tuple[tuple[str, str], ...] = (
     ("pt-br", "Portuguese (BR)"), ("pt_br", "Portuguese (BR)"),
     ("brazilian", "Portuguese (BR)"), ("brazilian portuguese", "Portuguese (BR)"),
@@ -53,7 +52,6 @@ def _index() -> dict[str, str]:
             lookup[alpha2] = name
         if alpha3:
             lookup[alpha3] = name
-    # Variants are registered after the base languages so they win their key.
     for key, name in _VARIANTS:
         lookup[key] = name
     return lookup
@@ -77,7 +75,6 @@ def resolve_language(value: str | None) -> str | None:
         return None
     if key in _LOOKUP:
         return _LOOKUP[key]
-    # "English (US)" and similar qualifiers.
     base = key.split("(")[0].strip()
     return _LOOKUP.get(base)
 

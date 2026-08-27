@@ -44,21 +44,3 @@ class TorrentRestoreRequest(BaseModel):
     save_path: str = Field(min_length=1)
     category: str | None = None
     tags: list[str] | None = None
-
-
-class TorrentRestoreResponse(BaseModel):
-    torrent_id: UUID
-    download_client_id: UUID
-    client_name: str
-    info_hash: str
-    save_path: str
-    resolved_save_path: str
-    status: str = "submitted"
-
-
-class TorrentArchiveRetryResponse(BaseModel):
-    torrent_id: UUID
-    archive_state: str
-    archive_path: str | None = None
-    manifest_path: str | None = None
-    message: str | None = None

@@ -11,8 +11,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Some development databases ran the original 0003 before the feature was
-    # retired. 0004 removes its columns; fresh databases have nothing to add.
     pass
 
 

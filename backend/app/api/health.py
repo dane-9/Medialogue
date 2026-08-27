@@ -1,11 +1,9 @@
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin
-from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import StorageRoot, Torrent, TorrentArchiveState
@@ -54,15 +52,15 @@ async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSes
     enabled_clients = [client for client in clients if client.enabled]
     healthy_clients = [client for client in enabled_clients if client.health == "healthy"]
     if not enabled_clients:
-        qbit_status = "unknown"
+        qbittorrent_status = "unknown"
     elif len(healthy_clients) == len(enabled_clients):
-        qbit_status = "healthy"
+        qbittorrent_status = "healthy"
     elif healthy_clients:
-        qbit_status = "degraded"
+        qbittorrent_status = "degraded"
     elif any(client.health == "unavailable" for client in enabled_clients):
-        qbit_status = "unavailable"
+        qbittorrent_status = "unavailable"
     else:
-        qbit_status = "unknown"
+        qbittorrent_status = "unknown"
     enabled_indexers = [indexer for indexer in indexers if indexer.enabled]
     healthy_indexers = [indexer for indexer in enabled_indexers if indexer.health == "healthy"]
     if not enabled_indexers:
@@ -91,7 +89,7 @@ async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSes
         },
         "qbittorrent": {
             "configured": bool(clients),
-            "status": qbit_status,
+            "status": qbittorrent_status,
             "healthy_clients": len(healthy_clients),
             "total_clients": len(enabled_clients),
             "clients": [

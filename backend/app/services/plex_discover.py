@@ -46,8 +46,6 @@ async def lookup_tmdb_ratings(
                 if rating is not None:
                     ratings[tmdb_id] = rating
         except TimeoutError:
-            # Search should remain responsive if Discover is slow or
-            # unreachable. Any completed lookups are still retained.
             pass
         finally:
             for task in tasks:

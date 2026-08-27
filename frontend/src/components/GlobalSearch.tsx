@@ -8,22 +8,16 @@ import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
 import { MovieDownloadWizard } from './MovieDownloadWizard'
 import { ShowDownloadWizard } from './ShowDownloadWizard'
-import { Badge, Button } from './ui'
+import { Badge } from './ui'
 import imdbLogo from '../assets/imdb.svg'
 
 type Kind = 'movie' | 'show'
-/** What the search covers. 'all' is the default: you rarely know or care
- *  which library a title belongs to before you have found it. */
+
 type Scope = Kind | 'all'
 
-/**
- * One row in the result list. A title already in the library carries its
- * internal id; a TMDB-only movie carries just the tmdbId and can enter the
- * manual download flow without creating a library Movie first.
- */
 type Result = {
   key: string
-  /** Position in the list its own type came back in, for tie-breaking. */
+
   index: number
   imdbId?: string
   imdbRating?: number
@@ -47,19 +41,10 @@ const posterUrl = (reference?: string) => {
   return `https://image.tmdb.org/t/p/w185${reference.startsWith('/') ? reference : `/${reference}`}`
 }
 
-/**
- * Global search: TMDB first, library merged on top.
- *
- * The library is not the search index, it is an annotation on the results. You
- * search everything TMDB knows about, and anything you already have is marked
- * Present so you can tell at a glance without it limiting what you can find.
- */
 export function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<Scope>('all')
   const [results, setResults] = useState<Result[]>([])
-  // Off by default: the type reads at a glance when it is spelled out, and
-  // collapsing is a preference for people who want the extra width.
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [active, setActive] = useState(0)
@@ -112,14 +97,12 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     if (event.key === 'Enter' && results[active]) { event.preventDefault(); void open(results[active]) }
   }
 
-  /** Fills the empty panel, where there is room to explain what this searches. */
   const hint = useMemo(() => {
     if (loading) return 'Searching TMDB…'
     if (!query.trim()) return 'Search every title on TMDB. Anything already in your library is marked Present.'
     return 'No matches.'
   }, [loading, query])
 
-  /** The footer states the count and nothing else. */
   const count = useMemo(() => {
     if (!query.trim()) return ''
     if (loading) return 'Searching…'
@@ -212,21 +195,10 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   </div>
 }
 
-/**
- * Both libraries at once, as one ranked list.
- *
- * Titles you already have come first regardless of kind. The rest are scored
- * on how well the title answers the query, which is the one measure comparable
- * between a movie and a show, TMDB's own result position ranks within a type
- * and means nothing across types.
- */
 async function searchEverything(term: string): Promise<Result[]> {
   const [movies, shows] = await Promise.all([searchMovies(term), searchShows(term)])
-  // One ranked list rather than an alternating merge: how well a title answers
-  // the query is comparable between types, its position in TMDB's own list is not.
   return rankResults([...movies, ...shows], term)
 }
-
 
 async function searchMovies(term: string): Promise<Result[]> {
   const [library, tmdb] = await Promise.all([
@@ -258,8 +230,6 @@ async function searchMovies(term: string): Promise<Result[]> {
     }
   })
 
-  // A library title TMDB did not return, an unmatched local discovery, say,
-  // still belongs in the results rather than disappearing.
   library.forEach((movie) => {
     if (movie.tmdbId && rows.some((row) => row.tmdbId === movie.tmdbId)) return
     rows.unshift({ key: `library-${movie.id}`, index: 0, kind: 'movie', libraryId: movie.id, tmdbId: movie.tmdbId, title: movie.title, year: movie.year, poster: movie.poster, present: true, state: movie.status })
@@ -303,7 +273,6 @@ async function searchShows(term: string): Promise<Result[]> {
   return rows
 }
 
-/** Trigger that lives beside the brand mark and opens the modal. */
 export function GlobalSearchButton({ onOpen }: { onOpen: () => void }) {
   useEffect(() => {
     // Held in a closure rather than state: this fires on every keystroke and

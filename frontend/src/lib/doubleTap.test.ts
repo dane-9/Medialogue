@@ -4,7 +4,6 @@ import { DOUBLE_TAP_MS, evaluateShiftTap, type TapEvent } from './doubleTap'
 const shift = (timeStamp: number, extra: Partial<TapEvent> = {}): TapEvent => ({ key: 'Shift', timeStamp, ...extra })
 const other = (key: string, timeStamp: number): TapEvent => ({ key, timeStamp })
 
-/** Feed a sequence through and report whether it ever triggered. */
 function run(events: TapEvent[]): boolean {
   let last: number | null = null
   let triggered = false
@@ -31,7 +30,6 @@ describe('evaluateShiftTap', () => {
   })
 
   it('starts a fresh sequence after a slow second press', () => {
-    // The late press becomes the new first tap, so a quick third one triggers.
     expect(run([shift(0), shift(5000), shift(5100)])).toBe(true)
   })
 
@@ -40,7 +38,6 @@ describe('evaluateShiftTap', () => {
   })
 
   it('does not trigger while typing capitals', () => {
-    // "AB" is Shift, A, Shift, B, the letters break the sequence.
     expect(run([shift(0), other('A', 20), shift(120), other('B', 140)])).toBe(false)
   })
 

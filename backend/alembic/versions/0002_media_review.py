@@ -19,9 +19,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # The baseline is generated from current metadata and already emits these
-    # objects. An offline MockConnection cannot be inspected, and has nothing
-    # additional to emit for this compatibility revision.
     if context.is_offline_mode():
         return
     bind = op.get_bind()
@@ -39,8 +36,6 @@ def upgrade() -> None:
         )
 
     if "media_discoveries" not in set(sa.inspect(bind).get_table_names()):
-        # Reuse the application-owned table definition so UUID/JSON types stay
-        # aligned with the application-owned SQLite schema.
         from app.models.domain import MediaDiscovery
 
         MediaDiscovery.__table__.create(bind=bind, checkfirst=True)

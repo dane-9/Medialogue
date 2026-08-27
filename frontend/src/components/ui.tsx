@@ -13,25 +13,7 @@ export function Badge({ children, tone = 'neutral', className = '' }: PropsWithC
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) { return <input className="input" {...props} /> }
-/**
- * A select that keeps its markup and loses its operating-system menu.
- *
- * Every call site still writes <option> children and reads event.target.value,
- * so nothing had to change to get a themed listbox: this reads those children
- * and hands them to Dropdown. Converting thirty-five call sites by hand would
- * have been thirty-five chances to change behaviour by accident.
- */
-/**
- * A two-or-three way choice laid out as adjacent buttons.
- *
- * A dropdown hides every option but one behind a click, which is the wrong
- * trade when there are only two: the choice and its alternative both fit on
- * screen, so showing them costs nothing and reading them costs one glance.
- *
- * `tone` lets the selected button carry the meaning of what was picked rather
- * than a uniform accent, so a Movies root and a Shows root are distinguishable
- * at the same distance as their badges elsewhere.
- */
+
 export function Segmented<T extends string>({ value, options, onChange, ariaLabel, disabled }: {
   value: T
   options: { value: T; label: string; tone?: 'movie' | 'show' }[]
@@ -52,13 +34,6 @@ export function Segmented<T extends string>({ value, options, onChange, ariaLabe
   </div>
 }
 
-/**
- * A range slider for a small bounded integer.
- *
- * The filled part of the track is painted with a gradient rather than a second
- * element, because a range input has no child of its own to size: everything
- * left of the thumb has to come from the background.
- */
 export function Slider({ value, min, max, step = 1, onChange, ariaLabel, format, disabled }: {
   value: number
   min: number
@@ -87,15 +62,6 @@ export function Slider({ value, min, max, step = 1, onChange, ariaLabel, format,
   </div>
 }
 
-/**
- * The enabled state of a thing, as a button that says which state it is in.
- *
- * A switch shows its position and leaves you to infer the meaning from a label
- * beside it; this says the word and colours it, so the state survives a glance
- * with no second element to read. Red is used deliberately: a disabled client,
- * indexer or media folder is inert, and that should look like a stopped thing
- * rather than a neutral preference.
- */
 export function EnabledButton({ enabled, onChange, disabled, labels }: {
   enabled: boolean
   onChange: (enabled: boolean) => void
@@ -134,16 +100,12 @@ export function Select({ children, value, onChange, disabled, className = '', ..
   }
   collect(children)
 
-  // Keeps the `select` class on the trigger: layout rules across the app size
-  // these by that selector, and losing it would silently collapse them.
   return <Dropdown
     className={`select ${className}`}
     value={String(value ?? '')}
     options={options}
     disabled={disabled}
     ariaLabel={rest['aria-label']}
-    // Call sites read event.target.value, so hand them exactly that rather than
-    // rewriting every handler.
     onChange={(next) => onChange?.({ target: { value: next } } as ChangeEvent<HTMLSelectElement>)}
   />
 }

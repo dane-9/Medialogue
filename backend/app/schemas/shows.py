@@ -12,7 +12,6 @@ class ShowCreate(BaseModel):
 
 class ShowUpdate(BaseModel):
     monitored: bool | None = None
-    # "" clears the selection and returns the show to TMDB's default structure.
     tmdb_episode_group_id: str | None = None
     expected_revision: int | None = None
 
@@ -40,7 +39,6 @@ class TMDBShowLookupResponse(BaseModel):
     imdb_id: str | None = None
     imdb_rating: float | None = None
     imdb_votes: int | None = None
-    #: TMDB's own figures, shown only where IMDb has nothing.
     popularity: float | None = None
     vote_count: int | None = None
     vote_average: float | None = None

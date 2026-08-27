@@ -43,4 +43,3 @@ class ReconciliationActionResponse(BaseModel):
     movie_id: UUID
     status: str
     details: dict[str, Any] = Field(default_factory=dict)
-

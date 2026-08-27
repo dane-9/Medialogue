@@ -42,7 +42,3 @@ def configure_database(database_url: str) -> None:
 async def get_db() -> AsyncIterator[AsyncSession]:
     async with async_session_factory() as session:
         yield session
-
-
-async def dispose_engine() -> None:
-    await engine.dispose()

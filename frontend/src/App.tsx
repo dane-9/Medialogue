@@ -1,6 +1,6 @@
 import { Component, FormEvent, useEffect, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { ConfirmProvider } from './components/Confirm'
 import { ApiError, api } from './api/client'
 import { AppShell } from './components/Shell'
@@ -22,7 +22,7 @@ function App() {
   }, [])
 
   const login = () => { setAuthenticated(true); setChecking(false) }
-  const logout = async () => { try { await api.logout() } catch { /* session may already be expired */ } setAuthenticated(false) }
+  const logout = async () => { try { await api.logout() } catch {} setAuthenticated(false) }
   if (checking) return <BootScreen />
   return authenticated ? <ConfirmProvider><BrowserRouter><AuthenticatedApp onLogout={logout} /></BrowserRouter></ConfirmProvider> : <LoginPage onLogin={login} />
 }

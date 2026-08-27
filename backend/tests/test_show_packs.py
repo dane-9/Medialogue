@@ -242,7 +242,6 @@ def test_filesystem_season_pack_uses_one_release_for_many_episode_files(client: 
         media = [item["media"][0] for item in episodes]
         assert {item["release_scope"] for item in media} == {"season_pack"}
         assert len({item["show_release_id"] for item in media}) == 1
-        # The pack mapped cleanly: no member was left unresolved.
         assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -271,7 +270,6 @@ def test_multi_season_container_accepts_member_from_nested_season_folder(client:
         assert episode["presence_state"] == "present"
         assert len(episode["media"]) == 1
         assert Path(episode["media"][0]["path"]).resolve() == episode_path.resolve()
-        # A cross-season collection is not silently collapsed into an S01 pack.
         assert episode["media"][0]["release_scope"] == "episode"
         season_one_detail = next(item for item in show["seasons"] if item["season_number"] == 1)
         assert {
@@ -308,8 +306,6 @@ def test_explicit_member_episodes_win_over_a_conflicting_season_container(client
             assert Path(episode["media"][0]["path"]).resolve() == path.resolve()
             assert episode["media"][0]["release_name"] == path.stem
 
-        # The explicit member filename wins quietly. A contradictory container
-        # is useful parsing context, but is not actionable Problems work.
         assert client.get("/api/v1/problems?status=open").json()["total"] == 0
         assert client.get(
             "/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE&status=open"
@@ -401,7 +397,6 @@ def test_multi_episode_file_maps_one_media_file_to_every_episode(client: TestCli
         assert e1["media"][0]["release_scope"] == "multi_episode"
         assert e1["media"][0]["mapped_episode_numbers"] == [1, 2]
         assert e2["media"][0]["mapped_episode_numbers"] == [1, 2]
-        # Both episodes resolved from the one file; nothing left pending.
         assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -456,9 +451,6 @@ def test_manual_mapping_correction_changes_database_only(client: TestClient) -> 
         assert mapped["mapped_episode_numbers"] == [2]
         assert mapped["manual_mapping"] is True
 
-        # Automatic reconciliation must not re-add E01 merely because the
-        # filename still says E01E02. The manual logical mapping has higher
-        # authority and the physical file remains untouched.
         scan(client, headers, configured["id"])
         rescanned = detail(client)
         assert episode_by_number(rescanned, 1)["presence_state"] == "missing"
@@ -542,7 +534,7 @@ def test_completed_qbittorrent_season_pack_attaches_one_release_without_moving_f
         )])
         from app.api import downloads as downloads_api
 
-        client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
+        client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
         try:
             polled = client.post(f"/api/v1/download-clients/{qbit.json()['id']}/poll", headers=headers)
             assert polled.status_code == 202, polled.text
@@ -728,8 +720,6 @@ def test_renamed_episode_does_not_create_false_physical_duplicate_during_grace(c
         scan(client, headers, configured["id"])
 
         original.rename(renamed)
-        # The original catalogue row remains exists=True for the configured
-        # missing grace period, but it is no longer physical evidence.
         scan(client, headers, configured["id"])
 
         problems = client.get("/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE")
@@ -791,7 +781,7 @@ def test_nested_qbittorrent_season_pack_only_claims_its_own_members(client: Test
         )])
         from app.api import downloads as downloads_api
 
-        client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: behavior.factory
+        client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
         try:
             polled = client.post(f"/api/v1/download-clients/{qbit.json()['id']}/poll", headers=headers)
             assert polled.status_code == 202, polled.text
@@ -926,7 +916,6 @@ def test_uncounting_a_season_removes_its_episodes_from_the_show_total(client: Te
         season = next(item for item in show["seasons"] if item["season_number"] == 1)
         assert season["counted"] is True
 
-        # Unmonitoring alone must not move the totals.
         unmonitored = client.patch(
             f"/api/v1/seasons/{season['id']}",
             headers=headers,
@@ -935,7 +924,6 @@ def test_uncounting_a_season_removes_its_episodes_from_the_show_total(client: Te
         assert unmonitored.status_code == 200, unmonitored.text
         assert client.get("/api/v1/shows").json()["items"][0]["episode_count"] == before_total
 
-        # Uncounting is what removes it.
         refreshed = detail(client)
         season = next(item for item in refreshed["seasons"] if item["season_number"] == 1)
         uncounted = client.patch(
@@ -947,7 +935,6 @@ def test_uncounting_a_season_removes_its_episodes_from_the_show_total(client: Te
         after = client.get("/api/v1/shows").json()["items"][0]
         assert after["episode_count"] == before_total - season["episode_count"]
 
-        # The season still reports its own contents, and monitoring is untouched.
         final = detail(client)
         still = next(item for item in final["seasons"] if item["season_number"] == 1)
         assert still["episode_count"] == season["episode_count"]
@@ -980,7 +967,6 @@ def test_specials_toggle_applies_across_every_show_and_is_remembered(client: Tes
         assert off.json()["count_specials"] is False
         assert off.json()["seasons_changed"] >= 1
 
-        # The preference is stored, and the totals moved.
         assert client.get("/api/v1/shows/specials-counting").json()["count_specials"] is False
         after = client.get("/api/v1/shows").json()["items"][0]["episode_count"]
         assert after < before
@@ -988,10 +974,8 @@ def test_specials_toggle_applies_across_every_show_and_is_remembered(client: Tes
         show = detail(client)
         specials = next(item for item in show["seasons"] if item["season_number"] == 0)
         assert specials["counted"] is False
-        # Counting is not monitoring: nothing stopped being searched for.
         assert specials["monitored"] is True
 
-        # Turning it back on restores both the season and the total.
         on = client.put("/api/v1/shows/specials-counting", headers=headers, json={"count_specials": True})
         assert on.status_code == 200, on.text
         assert client.get("/api/v1/shows").json()["items"][0]["episode_count"] == before

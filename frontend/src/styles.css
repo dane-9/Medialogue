@@ -1,21 +1,6 @@
-/* ==========================================================================
-   Medialogue — design tokens
-   --------------------------------------------------------------------------
-   Every value in this stylesheet comes from the scales below. If a rule needs
-   a number that is not on a scale, the rule is wrong, not the scale.
-
-   Spacing   4 · 8 · 12 · 16 · 24 · 32 · 48
-   Type      10 · 11 · 12 · 13 · 15 · 20 · 26   (13 is base)
-   Radius    4 · 6 · 8 · full
-   Surfaces  bg < surface < raised < raised-2, separated by exactly one line
-             colour. Chrome is neutral; colour only ever means status or
-             "this is on".
-   ========================================================================== */
-
 :root {
   color-scheme: dark;
 
-  /* Surfaces */
   --bg: #0b0b0c;
   --surface: #131315;
   --raised: #1a1a1d;
@@ -23,19 +8,17 @@
   --line: #242428;
   --line-strong: #32323a;
 
-  /* Text */
   --text: #ededee;
   --muted: #8a8a90;
   --faint: #5c5c63;
 
-  /* Accent — active nav, primary action, focus, selection */
   --accent: #7c8cf8;
   --accent-text: #a8b3fb;
   --accent-soft: rgba(124, 140, 248, .12);
   --accent-line: rgba(124, 140, 248, .38);
-  /* Hovering an already-selected row: still clearly blue, just lifted. */
+
   --accent-soft-hover: rgba(124, 140, 248, .24);
-  /* Movies and Shows are told apart by hue in mixed result lists. */
+
   --kind-movie: #7c8cf8;
   --kind-movie-soft: rgba(124, 140, 248, .14);
   --kind-movie-line: rgba(124, 140, 248, .45);
@@ -43,7 +26,6 @@
   --kind-show-soft: rgba(79, 179, 165, .14);
   --kind-show-line: rgba(79, 179, 165, .45);
 
-  /* Status */
   --ok: #5aa87f;
   --ok-soft: rgba(90, 168, 127, .12);
   --ok-line: rgba(90, 168, 127, .3);
@@ -54,7 +36,6 @@
   --err-soft: rgba(196, 106, 114, .12);
   --err-line: rgba(196, 106, 114, .32);
 
-  /* Spacing */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -63,7 +44,6 @@
   --s6: 32px;
   --s7: 48px;
 
-  /* Type */
   --t-micro: 10px;
   --t-xs: 11px;
   --t-sm: 12px;
@@ -72,13 +52,11 @@
   --t-xl: 20px;
   --t-2xl: 26px;
 
-  /* Radius */
   --r-sm: 4px;
   --r-md: 6px;
   --r-lg: 8px;
   --r-full: 999px;
 
-  /* Fixed chrome metrics */
   --control: 32px;
   --control-sm: 26px;
   --row: 48px;
@@ -86,9 +64,6 @@
   --topbar: 52px;
   --rail: 260px;
 
-  /* Library card metrics. Width, poster height and body height are deliberately
-     independent: the poster used to derive its height from the card width via
-     aspect-ratio, so neither could be adjusted without moving the other. */
   --card-w: 180px;
   --card-poster-h: 200px;
   --card-body-h: auto;
@@ -104,17 +79,9 @@
   background: var(--bg);
 }
 
-/* --------------------------------------------------------------------------
-   Reset
-   -------------------------------------------------------------------------- */
-
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1080px; background: var(--bg); color: var(--text); }
 
-/* Scrollbars — slimmer than the platform's, and in the app's own palette.
-   Two syntaxes, deliberately: `scrollbar-width`/`scrollbar-color` is the
-   standard one Firefox honours, and the ::-webkit-scrollbar pseudo-elements are
-   what Chrome and Edge read. Neither covers both, so both are declared. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
@@ -125,23 +92,18 @@ body { margin: 0; min-width: 1080px; background: var(--bg); color: var(--text); 
   border: 2px solid transparent;
   border-radius: var(--r-full);
   background: var(--line-strong);
-  /* Padding-box keeps the transparent border as breathing room around the
-     thumb rather than letting the background bleed under it. */
+
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: #4a4a55; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:active { background: var(--muted); background-clip: padding-box; }
-/* Where both bars meet. Left unstyled it renders as a pale platform square. */
+
 ::-webkit-scrollbar-corner { background: transparent; }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 h1, h2, h3, p { margin: 0; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* --------------------------------------------------------------------------
-   Typography primitives
-   -------------------------------------------------------------------------- */
 
 .eyebrow, .field-label {
   font: 500 var(--t-micro)/1.4 var(--mono);
@@ -152,12 +114,6 @@ h1, h2, h3, p { margin: 0; }
 .mono { font-family: var(--mono); font-size: var(--t-xs); }
 .muted { color: var(--muted); }
 .error-note { color: var(--err); }
-
-/* --------------------------------------------------------------------------
-   Shell — sidebar, topbar, page
-   The brand block and the topbar are both exactly --topbar tall so their
-   bottom borders form one continuous horizontal line across the app.
-   -------------------------------------------------------------------------- */
 
 .app-shell { display: flex; min-height: 100vh; }
 
@@ -346,8 +302,6 @@ h1, h2, h3, p { margin: 0; }
 .page-content { max-width: 1600px; padding: var(--s5); margin: 0 auto; }
 .page { display: block; }
 
-/* Page heading — the back link stacks ABOVE the title instead of sitting
-   beside it, which is what the old flex row accidentally did. */
 .page-heading, .page-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -384,11 +338,6 @@ h1, h2, h3, p { margin: 0; }
   gap: var(--s2);
 }
 .row-actions { justify-content: flex-end; }
-
-/* --------------------------------------------------------------------------
-   Controls — buttons, inputs, toggles
-   Every interactive control is --control tall. No exceptions.
-   -------------------------------------------------------------------------- */
 
 .button {
   display: inline-flex;
@@ -443,8 +392,7 @@ h1, h2, h3, p { margin: 0; }
 .input::placeholder { color: var(--faint); }
 .input:focus { border-color: var(--accent); }
 .input[readonly] { color: var(--muted); }
-/* Every dropdown is a Dropdown now, so nothing renders a native select and the
-   rules that fought its operating-system menu are gone with it. */
+
 textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); line-height: 1.5; }
 
 .search-field {
@@ -550,9 +498,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .field-label { display: flex; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
 .field-label span { color: var(--faint); font-family: var(--mono); letter-spacing: 0; text-transform: none; }
 
-/* Field — a labelled control with a line of help explaining what it does.
-   Every settings input uses this; a bare label is not enough for options
-   whose behaviour is not guessable from their name. */
 .field { display: grid; gap: var(--s1); min-width: 0; }
 .field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .field-head > span:first-child {
@@ -570,7 +515,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .field .input[aria-invalid="true"] { border-color: var(--err); }
 .settings-form .field-wide { grid-column: 1 / -1; }
 
-/* Secret — a password field you can reveal, so a mistyped key is catchable. */
 .secret { position: relative; display: flex; min-width: 0; }
 .secret .input { padding-right: var(--s6); }
 .secret button {
@@ -589,8 +533,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .secret button:hover { color: var(--text); background: var(--raised-2); }
 
-/* Section header — one shape for every panel heading, replacing the separate
-   integration-hero / qbit-editor-head / storage-head variants. */
 .section-head { display: flex; align-items: center; gap: var(--s3); padding: var(--s4); border-bottom: 1px solid var(--line); }
 .section-head + .section-head, .section-head.section-head-split { border-top: 1px solid var(--line); }
 .section-head-copy { flex: 1; min-width: 0; }
@@ -601,7 +543,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .status-detail.ok { color: var(--ok); }
 .status-detail.err { color: var(--err); }
 
-/* Save state — the panel always says whether what you see is what is stored. */
 .footer-state {
   flex: 1;
   color: var(--warn);
@@ -620,13 +561,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-transform: uppercase;
 }
 .autosave-tag svg { flex: none; }
-
-/* Grouped settings rail. The destination remains stable while each page owns
-   its integration-specific selectors and actions. */
-
-/* --------------------------------------------------------------------------
-   Panels, tables, badges, stats — the shared surface vocabulary
-   -------------------------------------------------------------------------- */
 
 .panel {
   border: 1px solid var(--line);
@@ -747,7 +681,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   padding: var(--s2) var(--s3);
 }
 .media-stats-row .stat-value { margin: 0 0 0 auto; }
-/* Stat tone is carried by the value, not a coloured rule on the card edge. */
+
 .stat-blue .stat-value { color: var(--accent-text); }
 .stat-green .stat-value { color: var(--ok); }
 .stat-amber .stat-value { color: var(--warn); }
@@ -790,10 +724,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font-size: var(--t-sm);
 }
 
-/* Dropdown — a listbox the app can style, unlike a native select whose menu is
-   drawn by the operating system. Dense rows in the Streamline manner: quiet
-   text that brightens on the row under the cursor, rather than a card per
-   option. */
 .dropdown-trigger {
   display: flex;
   width: 100%;
@@ -810,12 +740,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font-size: var(--t-sm);
   text-align: left;
 }
-/* Sized to content by default, as a select is. Call sites that want a full
-   width control give it flex or a width of their own. */
+
 .select { width: auto; min-width: 130px; max-width: 200px; }
-/* The cap above keeps toolbar dropdowns tight against their label. Inside a
-   form field the dropdown is a field control like any other, so it fills its
-   column rather than stopping short of the input beside it. */
+
 .field > .select { width: 100%; max-width: none; }
 
 .segmented { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--raised); }
@@ -823,8 +750,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .segmented-option:hover:not(.selected):not(:disabled) { color: var(--text); background: var(--raised-2); }
 .segmented-option:disabled { cursor: not-allowed; opacity: .6; }
 .segmented-option.selected { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
-/* The selected side carries the colour of what it means, matching the Movies
-   and Shows badges the rest of the app already uses. */
+
 .segmented-option.selected[data-tone="movie"] { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
 .segmented-option.selected[data-tone="show"] { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
 .scope-movies .segmented-option.selected:not([data-tone]) { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
@@ -843,12 +769,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .enabled-button.off { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
 .enabled-button:disabled { cursor: not-allowed; opacity: .6; }
 
-/* Event History reads as a list rather than a table: the durable columns were a
-   timestamp, a routing key and a truncated id, none of which is what you are
-   scanning for. The message carries the meaning, so it gets the width, and the
-   severity is a rule down the left edge instead of a repeated badge. */
 .event-history-panel { padding: 0; }
-/* Column labels share the row grid so they stay over the right columns. */
+
 .event-columns { position: sticky; z-index: 2; top: 0; display: grid; align-items: center; grid-template-columns: 18px 116px 148px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s2) var(--s4); border-bottom: 1px solid var(--line-strong); color: var(--faint); background: var(--surface); font: 600 var(--t-micro) var(--mono); letter-spacing: .04em; text-transform: uppercase; }
 .event-row + .event-row { border-top: 1px solid var(--line); }
 .event-row { border-left: 2px solid transparent; }
@@ -860,8 +782,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .event-sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; color: inherit; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
 .event-sort:hover { color: var(--muted); }
 .event-sort.active { color: var(--text); }
-/* The caret points the way the column is ordered, and only shows on the column
-   actually doing the ordering. */
+
 .event-sort > svg { opacity: 0; transition: opacity .12s, transform .12s; }
 .event-sort:hover > svg, .event-sort.active > svg { opacity: 1; }
 .event-sort > svg.flipped { transform: rotate(180deg); }
@@ -872,8 +793,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .event-kind { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .event-body { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--s2); }
 .event-message { min-width: 0; margin: 0; color: var(--text); font-size: var(--t-sm); }
-/* The delete control is for the row you are on, so it stays out of the way of
-   scanning until you land on it. Focus reveals it too, for the keyboard. */
+
 .event-row-actions { display: flex; align-items: center; gap: var(--s1); opacity: 0; transition: opacity .12s; }
 .event-row:hover .event-row-actions, .event-row:focus-within .event-row-actions { opacity: 1; }
 .event-delete { display: grid; width: 24px; height: 24px; place-items: center; border-radius: var(--r-sm); color: var(--faint); cursor: pointer; }
@@ -884,15 +804,14 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .dropdown-trigger.open { border-color: var(--accent); }
 .dropdown-trigger:disabled { color: var(--muted); cursor: not-allowed; opacity: .6; }
 .dropdown-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The caret already points down, so it flips rather than rotating a quarter
-   turn from a right-facing chevron. */
+
 .dropdown-trigger > svg { flex: none; color: var(--faint); transition: transform .12s; }
 .dropdown-trigger.open > svg { transform: rotate(180deg); }
 
 .dropdown-menu {
   position: fixed;
   z-index: 60;
-  /* Clips the scrolling child, including its scrollbar, to the radius. */
+
   overflow: hidden;
   padding: 4px;
   border: 1px solid var(--line-strong);
@@ -927,15 +846,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* One highlight, driven by the keyboard cursor. Hover sets the same index, so
-   the mouse and the arrow keys can never disagree about which row is next. */
+
 .dropdown-option.active { color: var(--text); background: var(--raised); }
 .dropdown-option.selected { color: var(--text); font-weight: 600; }
 .dropdown-option.selected.active { box-shadow: inset 0 0 0 1px var(--line-strong); }
 .dropdown-option[aria-disabled="true"] { color: var(--faint); cursor: not-allowed; }
 
-/* Callouts — one shape, four tones. Replaces settings-note,
-   cf-banner, problem-summary, archive-callout, setup-return and friends. */
 .settings-note, .drawer-note, .cf-banner, .problem-summary, .archive-callout,
 .reconciliation-banner, .setup-return, .problem-evidence-note, .cf-definition-note {
   display: flex;
@@ -951,9 +867,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .settings-note svg, .drawer-note svg, .cf-banner svg, .problem-summary svg,
 .archive-callout svg, .reconciliation-banner svg { flex: none; color: var(--faint); }
-/* A callout dropped straight into a page has no parent gap to space it, since
-   .page is block flow, so it carries its own. Nested uses sit inside flex or
-   grid containers that already space their children and are left alone. */
+
 .page > .settings-note, .page > .drawer-note, .page > .cf-banner,
 .page > .problem-summary, .page > .archive-callout,
 .page > .reconciliation-banner, .page > .setup-return { margin-bottom: var(--s4); }
@@ -984,98 +898,22 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: rgba(0, 0, 0, .2);
 }
 
-/* --------------------------------------------------------------------------
-   Split layouts
-   One primitive. `.split` is a fixed-width rail beside a fluid pane; the rail
-   width is overridable per page but defaults to --rail. This replaces the four
-   near-identical grids (settings-layout, split-editor, profile-layout,
-   qbit-layout) that previously used 200 / 310 / 285 / 260px.
-   -------------------------------------------------------------------------- */
-
 .split {
   display: grid;
   grid-template-columns: var(--rail) minmax(0, 1fr);
   gap: var(--s4);
   align-items: start;
 }
-/* Settings needs only room for destination labels, not descriptions. */
+
 .split.split-narrow {
   --rail: 196px;
   grid-template-columns: var(--rail) minmax(0, 1fr) var(--rail);
 }
-/* An empty third column, so the panel is centred rather than pushed right. */
+
 .split.split-narrow::after { content: ''; }
-/* Collection selectors can still collapse the shared split gap when needed. */
-.split-flush { gap: 0; }
+.qbit-editor, .settings-panel { min-width: 0; }
 
-.split-rail, .qbit-client-list, .problem-list-panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.split-pane, .qbit-editor, .settings-panel,
-.problem-detail-panel { min-width: 0; }
-
-/* Rail item — the single selectable row used by every rail in the app. */
-.rail-item, .qbit-client-item, .problem-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  width: 100%;
-  padding: var(--s3) var(--s4);
-  border: 0;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  background: transparent;
-  text-align: left;
-}
-.rail-item:hover:hover,
-.qbit-client-item:hover, .problem-row:hover { color: var(--text); background: var(--raised); }
-.rail-item.selected,
-.qbit-client-item.selected, .problem-row.selected {
-  color: var(--text);
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 var(--accent);
-}
-.rail-item > span:nth-child(2), > span:nth-child(2) > span:nth-child(2), .qbit-client-item > span:nth-child(2),
-.problem-row-copy {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.rail-item strong strong,
-.qbit-client-item strong, .problem-row-copy strong {
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--t-sm);
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rail-item small small,
-.qbit-client-item small, .problem-row-copy small {
-  overflow: hidden;
-  color: var(--faint);
-  font: var(--t-micro) var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.problem-row-copy span {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: var(--t-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rail-item > svg > svg { flex: none; color: var(--faint); }
-.qbit-client-item .badge { flex: none; }
-
-/* Rail glyph — the small square icon that leads a rail item. */
-.rail-glyph, .root-icon, .release-icon,
-.incoming-icon,
-.state-icon, .problem-severity {
+.release-icon, .incoming-icon, .state-icon {
   display: grid;
   place-items: center;
   width: var(--control);
@@ -1084,22 +922,11 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-radius: var(--r-md);
   color: var(--accent-text);
   background: var(--accent-soft);
-}.state-icon, .problem-severity { width: var(--control-sm); height: var(--control-sm); }
-.state-downloading { color: var(--accent-text); background: var(--accent-soft); }
-.state-checking { color: var(--warn); background: var(--warn-soft); }
-.state-seeding { color: var(--ok); background: var(--ok-soft); }
-.state-completed { color: var(--muted); background: var(--raised-2); }
-.state-error { color: var(--err); background: var(--err-soft); }
-.severity-high { color: var(--err); background: var(--err-soft); }
-.severity-medium { color: var(--warn); background: var(--warn-soft); }
-.severity-low { color: var(--muted); background: var(--raised-2); }
+}
+.state-icon { width: var(--control-sm); height: var(--control-sm); }
 
 .cf-list-state { padding: var(--s4); color: var(--muted); font-size: var(--t-sm); }
 .cf-file-input { display: none; }
-
-/* --------------------------------------------------------------------------
-   Media grid and cards
-   -------------------------------------------------------------------------- */
 
 .media-grid, .show-grid {
   display: grid;
@@ -1115,10 +942,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   transition: border-color .12s;
 }
 .media-card:hover { border-color: var(--line-strong); }
-/* Only items that are not settled are marked. An overlay rather than a border
-   colour, so it does not fight .media-selected for the same property, and
-   rather than an inset shadow, which paints under the poster and so only ever
-   showed along the body of the card. */
+
 .media-attention::after {
   content: "";
   position: absolute;
@@ -1168,8 +992,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .poster-title { max-width: 100%; font: 600 var(--t-md)/1.3 var(--sans); }
 .poster-year { margin-top: var(--s1); color: var(--muted); font: var(--t-xs) var(--mono); }
 .poster-fallback-title { position: relative; z-index: 1; max-width: 100%; color: var(--muted); font: 600 var(--t-md)/1.3 var(--sans); }
-/* Quality mark — the only place a card states its resolution and source.
-   Sits over the artwork, so it carries its own scrim. */
+
 .poster-mark {
   position: absolute;
   z-index: 1;
@@ -1196,20 +1019,15 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   object-fit: cover;
 }
 
-/* The card body carries state and location only. Title, year and quality all
-   live on the artwork, so nothing is stated twice. */
 .media-card-body { display: grid; gap: var(--s2); min-height: var(--card-body-h); padding: var(--s3); }
-/* Year on its own line: a long title now truncates against the card width
-   rather than against whatever the year leaves behind. */
+
 .media-card-title { display: grid; gap: 2px; min-width: 0; }
 .media-card-title strong { overflow: hidden; color: var(--text); font-size: var(--t-md); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .media-card-title span { color: var(--faint); font: var(--t-micro) var(--mono); }
 .media-card-sub { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
-/* Quality reads as a fact about the file, not a state, so it stays quiet type
-   rather than becoming another badge competing with the meta row below. */
+
 .media-card-quality { overflow: hidden; color: var(--muted); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-/* Separator lives in CSS rather than the markup, so a movie with no quality
-   does not render a dot with nothing after it. */
+
 .media-card-quality::before { color: var(--faint); margin-right: var(--s1); font-family: var(--sans); content: "·"; }
 .media-card-meta { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
 .media-card-primary-badge { min-height: 22px; padding-inline: var(--s2); font-weight: 600; }
@@ -1277,10 +1095,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .tag-chip:hover { border-color: var(--accent-line); color: var(--accent-text); background: var(--accent-soft); }
 .detail-tag-row { margin-top: var(--s3); }
-
-/* --------------------------------------------------------------------------
-   Detail pages
-   -------------------------------------------------------------------------- */
 
 .detail-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .7fr); gap: var(--s4); }
 .detail-layout > div, .detail-layout > aside { display: grid; align-content: start; gap: var(--s4); }
@@ -1432,10 +1246,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   margin: var(--s3) 0;
 }
 
-/* --------------------------------------------------------------------------
-   Downloads
-   -------------------------------------------------------------------------- */
-
 .download-progress { display: flex; align-items: center; gap: var(--s2); min-width: 120px; }
 .download-progress .progress { width: 72px; }
 .download-progress span { color: var(--muted); font: var(--t-micro) var(--mono); }
@@ -1467,64 +1277,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .incoming-copy .progress { width: 100%; }
 .incoming-percent { min-width: 40px; color: var(--accent-text); font: var(--t-lg) var(--mono); text-align: right; }
 
-/* --------------------------------------------------------------------------
-   Problems
-   -------------------------------------------------------------------------- */
-
-.problem-layout { display: grid; grid-template-columns: minmax(300px, .75fr) minmax(0, 1.65fr); gap: var(--s4); align-items: start; }
-.problem-list-panel, .problem-detail-panel { min-height: 480px; }
-.problem-filter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s3);
-  padding: var(--s3) var(--s4);
-}
-.issue-banner { display: flex; align-items: center; gap: var(--s2); padding: var(--s4) var(--s4) 0; }
-.issue-banner > span { color: var(--faint); font: var(--t-micro) var(--mono); }
-.issue-detail { margin: var(--s3) var(--s4); color: var(--muted); font-size: var(--t-md); line-height: 1.6; }
-.problem-detail-panel .detail-actions { padding: var(--s4); }
-
-.compare-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--s4);
-  padding: var(--s4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--raised);
-}
-.compare-card > div { display: flex; min-width: 0; flex-direction: column; gap: var(--s1); }
-.compare-card strong { font-size: var(--t-sm); font-weight: 500; overflow-wrap: anywhere; }
-.compare-card span:not(.eyebrow) { color: var(--muted); font-size: var(--t-xs); }
-.compare-card > svg { color: var(--faint); }
-
-/* Resolution block — the interactive remediation form inside a Problem. */
-.resolution-block {
-  display: grid;
-  gap: var(--s3);
-  padding: var(--s4);
-  margin: var(--s4) 0 0;
-  border-top: 1px solid var(--line);
-}
-.resolution-block > p { color: var(--muted); font-size: var(--t-sm); line-height: 1.6; }
-.resolution-block .toolbar { margin-bottom: 0; }
-.resolution-block .history-list { display: grid; gap: var(--s2); }
-.resolution-block .detail-actions { justify-content: flex-end; }
-.destructive-preview { border: 1px solid var(--err-line); border-radius: var(--r-lg); background: var(--err-soft); }
-.destructive-preview > strong { font-size: var(--t-md); }
-.duplicate-directory-preview {
-  display: grid;
-  gap: var(--s1);
-  padding: var(--s3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
-}
-.duplicate-directory-preview strong { font-size: var(--t-sm); font-weight: 500; overflow-wrap: anywhere; }
-.duplicate-directory-preview span { color: var(--muted); font: var(--t-micro) var(--mono); }
-.expert-code, .cf-parser-block pre, .event-details pre {
+.event-details pre {
   max-height: 320px;
   padding: var(--s3);
   margin: 0;
@@ -1573,11 +1326,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .search-client-chooser .select { min-width: 130px; }
 .score-positive { color: var(--ok); }
 .score-negative { color: var(--err); }
-.format-test { min-width: 0; }
-.format-test > .input { width: 100%; margin-bottom: var(--s2); }
-.cf-conditions-column { display: grid; align-content: start; gap: var(--s2); min-width: 0; }
 
-.condition-card, .cf-condition-card {
+.cf-condition-card {
   display: grid;
   gap: var(--s2);
   padding: var(--s3);
@@ -1586,32 +1336,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--raised);
 }
 .condition-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
-.condition-card strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
-.condition-card > span { color: var(--muted); font: var(--t-xs) var(--mono); }
-.cf-condition-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
-.cf-condition-grid label { display: flex; min-width: 0; flex-direction: column; gap: var(--s1); }
-.cf-condition-grid label > span { color: var(--faint); font: var(--t-micro) var(--mono); text-transform: uppercase; }
-.cf-condition-grid .cf-value-field { grid-column: 1 / -1; }
-.cf-condition-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s3);
-  padding-top: var(--s2);
-  border-top: 1px solid var(--line);
-}
-.cf-condition-toggles label { display: inline-flex; align-items: center; gap: var(--s1); color: var(--muted); font-size: var(--t-xs); }
-.cf-condition-toggles input { accent-color: var(--accent); }.cf-search-match { color: var(--accent-text); font: var(--t-xs) var(--mono); white-space: nowrap; }
-.cf-search-match strong { color: var(--accent-text); font-size: var(--t-sm); }
-.cf-test-actions { margin-bottom: var(--s3); }
+.condition-card > span { color: var(--muted); font: var(--t-xs) var(--mono); }.cf-test-actions { margin-bottom: var(--s3); }
 
-.test-output, .cf-evaluation { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); }
+.cf-evaluation { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); }
 .cf-evaluation { margin-top: var(--s3); }
-.test-pass, .cf-evaluation-summary { display: flex; align-items: center; gap: var(--s2); padding: var(--s3); }
-.test-pass, .cf-evaluation-summary.matched { color: var(--ok); background: var(--ok-soft); }
+.cf-evaluation-summary { display: flex; align-items: center; gap: var(--s2); padding: var(--s3); }
+.cf-evaluation-summary.matched { color: var(--ok); background: var(--ok-soft); }
 .cf-evaluation-summary.not-matched { color: var(--err); background: var(--err-soft); }
-.test-pass strong, .cf-evaluation-summary strong { flex: 1; font-size: var(--t-sm); font-weight: 500; }
-.test-pass span, .cf-evaluation-summary span { color: var(--muted); font: var(--t-micro) var(--mono); }
-.test-line, .cf-condition-result {
+.cf-evaluation-summary strong { flex: 1; font-size: var(--t-sm); font-weight: 500; }
+.cf-evaluation-summary span { color: var(--muted); font: var(--t-micro) var(--mono); }
+.cf-condition-result {
   display: flex;
   align-items: flex-start;
   gap: var(--s2);
@@ -1620,8 +1354,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--muted);
   font-size: var(--t-xs);
 }
-.test-line span:nth-child(2) { flex: 1; color: var(--text); }
-.test-line svg { color: var(--ok); }
 .cf-result-icon {
   display: grid;
   place-items: center;
@@ -1637,7 +1369,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-result-copy span { color: var(--muted); font-size: var(--t-xs); line-height: 1.5; }
 .cf-result-copy small { color: var(--faint); font: var(--t-micro)/1.5 var(--mono); overflow-wrap: anywhere; }
 .cf-inline-error { padding: var(--s2) var(--s3); border-top: 1px solid var(--line); color: var(--err); font-size: var(--t-xs); }
-.cf-parser-block { margin-top: var(--s3); }
 .cf-test-placeholder {
   display: flex;
   flex-direction: column;
@@ -1665,9 +1396,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .cf-test-all-row > span { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .cf-test-all-row small { color: var(--faint); font: var(--t-micro) var(--mono); }
-/* --------------------------------------------------------------------------
-   Settings
-   -------------------------------------------------------------------------- */
 
 .settings-nav {
   display: flex;
@@ -1706,13 +1434,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .settings-section p { max-width: 480px; color: var(--muted); font-size: var(--t-sm); line-height: 1.6; }
 .settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 1.3; gap: var(--s3); }
 
-/* One field per row, label beside the control and the help under it.
-   A long editor reads better as a single column: the eye tracks one list of
-   labels down the left instead of hopping between two columns of unequal
-   height, and each help line sits directly under the thing it explains.
-
-   Placement is explicit rather than by source order, because Field emits the
-   help before the control it describes. */
 .form-rows {
   --card-pad-x: var(--s3);
   --card-pad-y: var(--s3);
@@ -1722,10 +1443,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   gap: calc(var(--card-pad-y) * 2 + var(--s4));
 }
 .form-rows .field { display: grid; grid-template-columns: minmax(0, 1fr) var(--card-width) minmax(0, 1fr); grid-template-rows: auto auto auto; row-gap: var(--s2); }
-/* The box holds the control and the sentence explaining it; the label sits
-   outside it, in the gutter. There is no element wrapping just those two, so
-   the card is drawn by a pseudo-element occupying the whole second column and
-   bleeding outwards to make its own padding. */
+
 .form-rows .field::before {
   content: '';
   z-index: 0;
@@ -1743,9 +1461,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .form-rows .field-help { grid-row: 2; grid-column: 2; margin: 0; }
 .form-rows .field-error { grid-row: 3; grid-column: 2; }
 .form-rows .field-wide { grid-column: 2; }
-/* Same card, label on top instead of in a gutter, laid out in columns.
-   Suits a short form where two fields fit side by side; form-rows suits a long
-   one where a single column reads better. */
+
 .form-cards {
   --card-pad-x: var(--s4);
   --card-pad-y: var(--s3);
@@ -1755,8 +1471,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   row-gap: calc(var(--card-pad-y) * 2);
 }
 .form-cards .field { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; row-gap: var(--s2); }
-/* The label is outside the card, so it clears the bleed with its own margin
-   rather than a row gap that would also loosen the card's insides. */
+
 .form-cards .field-head { grid-row: 1; grid-column: 1; margin-bottom: calc(var(--card-pad-y) + var(--s1)); }
 .form-cards .field::before {
   content: '';
@@ -1778,8 +1493,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .form-cards { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* The label column would swallow most of a narrow screen, so it stacks there. */
-/* No room for a gutter on a narrow screen, so the label stacks above its box. */
 @media (max-width: 860px) {
   .form-rows .field { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; }
   .form-rows .field-head { grid-row: 1; grid-column: 1; justify-self: start; padding-right: 0; justify-content: flex-start; text-align: left; }
@@ -1799,10 +1512,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-top: 1px solid var(--line);
 }
 
-/* Panel body rhythm — anything dropped straight into a settings panel gets the
-   same gutter as the headers and footers around it. Blocks that carry their own
-   padding (sections, headers, footers) are untouched, and forms nested inside a
-   settings-section keep using that section's padding instead. */
 .panel > .settings-form,
 .qbit-editor > .settings-form,
 .recovery-settings > .settings-form { padding: var(--s4); }
@@ -1815,9 +1524,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .provider-settings > .settings-form + .settings-note,
 .recovery-settings > .settings-form + .settings-note { margin-top: 0; }
 
-/* A toolbar or an empty state dropped straight into a panel needs the gutter
-   too — on a page they sit against the page padding, inside a panel they had
-   nothing between them and the border. */
 .panel > .toolbar { padding: var(--s4); margin-bottom: 0; }
 .panel > .empty-state,
 .split-rail > .empty-state > .empty-state,
@@ -1832,7 +1538,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .root-items { color: var(--muted); font: var(--t-micro) var(--mono); }
 .root-row-offline { background: var(--err-soft); }
 .root-outage-copy { color: var(--err) !important; font: var(--t-micro) var(--mono) !important; }
-
 
 .provider-settings { min-height: 480px; }
 .provider-card-grid {
@@ -1868,13 +1573,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .remote-mapping-route svg { flex: none; color: var(--accent-text); }
 .provider-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .provider-card-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: var(--r-md); color: var(--accent-text); background: var(--accent-soft); }
-/* A download client belongs to one library, so it carries that library's colour
-   rather than the generic accent: the grid is readable without reading a word. */
+
 .provider-card-icon.kind-movie { color: var(--kind-movie); border: 1px solid var(--kind-movie-line); background: var(--kind-movie-soft); }
 .provider-card-icon.kind-show { color: var(--kind-show); border: 1px solid var(--kind-show-line); background: var(--kind-show-soft); }
 .provider-card > strong { overflow: hidden; color: var(--text); font-size: var(--t-lg); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .provider-card > span { overflow: hidden; color: var(--faint); font: var(--t-micro) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-/* Connection health sits in the centered portion of the client editor header. */
+
 .provider-header-status { display: flex; align-items: center; gap: var(--s3); white-space: nowrap; }
 .provider-card-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-top: auto; }
 .provider-health { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font: var(--t-micro) var(--mono); text-transform: capitalize; }
@@ -1884,11 +1588,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .provider-add-card { align-items: center; justify-content: center; color: var(--faint); border-style: dashed; background: transparent; text-align: center; }
 .provider-add-card > strong { font-size: var(--t-sm); }
 .provider-add-card svg { color: var(--accent-text); }
-/* Media Folders is a list, not a card grid: these items have no visual
-   identity, and the one field that matters — the path — needs full width. */
+
 .root-list { display: grid; gap: var(--s2); }
-/* Removal dialog: the path, what happens, and the one choice worth offering. */
-/* Confirmation body: one short statement of the consequence. */
+
 .confirm-body { padding: var(--s4); color: var(--muted); font-size: var(--t-sm); line-height: 1.55; overflow-wrap: anywhere; }
 .root-remove { display: grid; gap: var(--s3); padding: var(--s4); }
 .root-remove > code { overflow-wrap: anywhere; color: var(--text); font: 600 var(--t-sm)/1.45 var(--mono); }
@@ -1923,15 +1625,13 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   transition: border-color .12s, background .12s;
 }
 .root-row:hover { border-color: var(--line-strong); background: var(--raised-2); }
-/* Always present, so a single-root list still says it is draggable, but dim
-   until hover so it does not compete with the name beside it. */
+
 .root-row-grip { display: grid; place-items: center; width: 14px; color: var(--line-strong); cursor: grab; transition: color .12s; }
 .root-row:hover .root-row-grip { color: var(--faint); }
 .root-row-dragging { opacity: .5; border-color: var(--accent); cursor: grabbing; }
 .root-row-dragging .root-row-grip { color: var(--accent); cursor: grabbing; }
 .root-row-disabled { opacity: .55; }
-/* Tinted by media type, using the same tokens as the pill it replaces, so the
-   colour still means what it means everywhere else in the app. */
+
 .root-row-icon {
   display: grid;
   width: 36px;
@@ -1942,8 +1642,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--muted);
   background: var(--surface);
 }
-/* An unreachable folder outranks its media type: the colour is a warning
-   before it is a category. */
+
 .root-row-icon.bad { color: var(--err) !important; border-color: var(--err-line) !important; background: var(--err-soft) !important; }
 .root-row-copy { display: grid; gap: var(--s2); min-width: 0; }
 .root-row-title { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
@@ -1951,7 +1650,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .root-row-copy code { overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .root-row-end { display: flex; align-items: center; gap: var(--s3); flex: none; color: var(--faint); font-size: var(--t-xs); }
 .root-row-write { display: grid; place-items: center; color: var(--warn); }
-/* Bare dot plus text: the dot carries the state, so the badge chrome is dead weight. */
+
 .root-row-state { display: flex; align-items: center; gap: var(--s2); flex: none; color: var(--muted); font-size: var(--t-xs); }
 .root-row-state i { width: 6px; height: 6px; flex: none; border-radius: var(--r-full); background: currentcolor; }
 .root-row-state.tone-green { color: var(--ok); }
@@ -1961,8 +1660,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .root-row-go { display: grid; place-items: center; color: var(--faint); transition: color .12s, transform .12s; }
 .root-row:hover .root-row-go { color: var(--muted); transform: translateX(2px); }
 
-
-/* Folder picker: a bar saying where you are, and the folders inside it. */
 .root-browser { margin-top: var(--s2); border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
 .root-browser-bar {
   display: flex;
@@ -1972,7 +1669,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-bottom: 1px solid var(--line);
   background: var(--raised);
 }
-/* The commit action keeps its primary colour, so it reads as the thing to press. */
+
 .root-browser-bar > .button-primary { flex: none; height: 28px; padding: 0 var(--s3); font-size: var(--t-xs); }
 .root-browser-bar > code { flex: 1; overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .root-browser-bar > button:not(.button) {
@@ -2010,7 +1707,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .root-browser-list > button svg { flex: none; color: var(--faint); }
 .root-browser-note { margin: 0; padding: var(--s4); color: var(--faint); font-size: var(--t-xs); text-align: center; }
 
-
 .provider-empty-copy { padding: 0 var(--s4) var(--s4); color: var(--muted); font-size: var(--t-xs); }
 .provider-modal-editor { padding: 0; }
 .provider-modal-editor > .settings-form { padding: var(--s4); }
@@ -2043,19 +1739,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .provider-card-grid { grid-template-columns: 1fr; grid-auto-rows: 154px; padding: var(--s3); }
 }
 
-/* --------------------------------------------------------------------------
-   Event history
-   -------------------------------------------------------------------------- */
-
-/* A bare .input is width:100%, which as a flex child claims the whole toolbar
-   row and wraps everything after it onto a line of its own. Here it takes the
-   space left over instead. */
 .event-toolbar .input { width: auto; flex: 1; min-width: 310px; }
 .event-count { margin-left: auto; white-space: nowrap; }
-
-/* --------------------------------------------------------------------------
-   Torrent archive
-   -------------------------------------------------------------------------- */
 
 .torrent-history-group { border-bottom: 1px solid var(--line); }
 .torrent-history-group:last-child { border-bottom: 0; }
@@ -2077,64 +1762,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .torrent-history-members { background: var(--bg); }
 .torrent-history-member { padding-left: var(--s7); }
 .torrent-history-member:last-child { border-bottom: 0; }
-
-/* --------------------------------------------------------------------------
-   TMDB candidate picker
-   -------------------------------------------------------------------------- */
-
-.tmdb-candidate-grid { display: grid; gap: var(--s2); }
-.tmdb-candidate-card, .tmdb-problem-candidate {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: stretch;
-  gap: var(--s3);
-  width: 100%;
-  padding: var(--s2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  color: inherit;
-  background: var(--raised);
-  text-align: left;
-}
-.tmdb-problem-candidate { grid-template-columns: 44px minmax(0, 1fr); }
-.tmdb-candidate-card:hover, .tmdb-candidate-card.selected,
-.tmdb-problem-candidate:where(button):hover, .tmdb-problem-candidate.selected {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-.tmdb-problem-candidate:where(button) { width: 100%; color: inherit; cursor: pointer; text-align: left; }
-.tmdb-candidate-poster {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 62px;
-  flex-shrink: 0;
-  overflow: hidden;
-  border-radius: var(--r-sm);
-  color: var(--faint);
-  background: var(--raised-2);
-}
-.tmdb-problem-candidate .tmdb-candidate-poster { min-height: 62px; }
-.tmdb-candidate-copy { display: flex; min-width: 0; flex-direction: column; gap: var(--s1); }
-.tmdb-candidate-copy strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
-.tmdb-candidate-copy span { color: var(--faint); font: var(--t-micro) var(--mono); }
-.tmdb-candidate-copy small {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: var(--t-xs);
-  line-height: 1.5;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-.tmdb-candidate-state { align-self: center; color: var(--accent-text); font: var(--t-micro) var(--mono); }
-.tmdb-selection-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
-.tmdb-selection-bar > span { color: var(--muted); font-size: var(--t-sm); }
-
-/* --------------------------------------------------------------------------
-   Jobs drawer — background work, reachable from anywhere via the topbar.
-   -------------------------------------------------------------------------- */
 
 .drawer-backdrop { position: fixed; z-index: 40; inset: 0; background: rgba(3, 3, 4, .6); }
 .jobs-drawer {
@@ -2165,7 +1792,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .drawer-footer .button { width: 100%; justify-content: flex-start; }
 .job-item { padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
 .job-item:last-child { border-bottom: 0; }
-.job-item:last-child { border-bottom: 0; }
 .job-item-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
 .job-state { display: inline-flex; align-items: center; gap: var(--s1); color: var(--muted); font: 500 var(--t-micro) var(--mono); text-transform: uppercase; }
 .job-state > span { width: 6px; height: 6px; border-radius: var(--r-full); background: var(--faint); }
@@ -2179,10 +1805,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .job-progress-line .progress { flex: 1; }
 .job-progress-line > span { color: var(--muted); font: var(--t-micro) var(--mono); }
 .job-actions { display: flex; justify-content: flex-end; margin-top: var(--s2); }
-
-/* --------------------------------------------------------------------------
-   Bulk context menu
-   -------------------------------------------------------------------------- */
 
 .context-dismiss-layer { position: fixed; z-index: 89; inset: 0; background: transparent; }
 .bulk-context-menu {
@@ -2228,59 +1850,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .context-inline .select, .context-inline .input { min-width: 0; flex: 1; }
 .context-message { display: block; padding: var(--s2) 0; color: var(--muted); }
 .context-foot { padding-top: var(--s2); border-top: 1px solid var(--line); color: var(--faint); font-size: var(--t-micro); line-height: 1.5; }
-
-/* --------------------------------------------------------------------------
-   First-run setup
-   -------------------------------------------------------------------------- */
-
-.setup-page { max-width: 980px; margin: 0 auto; }
-.setup-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s5); margin-bottom: var(--s5); }
-.setup-heading h1 { margin: var(--s1) 0; font: 600 var(--t-2xl)/1.15 var(--sans); letter-spacing: -.02em; }
-.setup-heading p { max-width: 720px; color: var(--muted); font-size: var(--t-md); line-height: 1.6; }
-.setup-loading { padding: var(--s6); color: var(--muted); text-align: center; }
-.setup-steps { display: grid; }
-.setup-step {
-  display: grid;
-  grid-template-columns: var(--control) minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3) var(--s4);
-  border-bottom: 1px solid var(--line);
-}
-.setup-step:last-child { border-bottom: 0; }
-.setup-step-number {
-  display: grid;
-  place-items: center;
-  width: var(--control);
-  height: var(--control);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-full);
-  color: var(--muted);
-  font: 500 var(--t-micro) var(--mono);
-}
-.setup-step-number.complete { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
-.setup-step-copy { min-width: 0; }
-.setup-step-copy > div { display: flex; align-items: center; gap: var(--s2); }
-.setup-step-copy strong { font-size: var(--t-sm); font-weight: 500; }
-.setup-step-copy > div > span { color: var(--faint); font: 500 var(--t-micro) var(--mono); text-transform: uppercase; }
-.setup-step-copy p { margin-top: 2px; color: var(--muted); font-size: var(--t-xs); line-height: 1.5; }
-.setup-finish {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s4);
-  margin-top: var(--s4);
-  padding: var(--s4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-}
-.setup-finish strong { font-size: var(--t-sm); font-weight: 500; }
-.setup-finish p { margin-top: 2px; color: var(--muted); font-size: var(--t-xs); }
-
-/* --------------------------------------------------------------------------
-   Login and boot — kept intentionally distinct from the app chrome.
-   -------------------------------------------------------------------------- */
 
 .login-screen {
   position: relative;
@@ -2349,18 +1918,13 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .boot-screen .brand-mark { margin: auto; }
 
-/* --------------------------------------------------------------------------
-   Responsive
-   -------------------------------------------------------------------------- */
-
 @media (max-width: 1400px) {
   .split { --rail: 240px; }}
 @media (max-width: 1220px) {
   .health-strip { display: none; }
   .page-content { padding: var(--s4); }
   .topbar { padding: 0 var(--s4); }
-  /* Narrower cards on small viewports. Overriding the token rather than the
-     template keeps --card-w the single place the width is set. */
+
   .media-grid, .show-grid { --card-w: 150px; }
 }
 @media (max-width: 1120px) { .selection-count { display: none; } }
@@ -2388,10 +1952,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .season-control-actions { align-items: flex-start; flex-direction: column; }
 }
 
-/* --------------------------------------------------------------------------
-   Global search — TMDB first, library merged on top.
-   -------------------------------------------------------------------------- */
-
 .modal-backdrop {
   position: fixed;
   z-index: 40;
@@ -2403,8 +1963,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: rgba(3, 3, 4, .65);
   backdrop-filter: blur(2px);
 }
-/* The command palette is not a dialog: it belongs near the top, under the
-   caret, rather than centred on the screen. Everything else centres. */
+
 .modal-backdrop:has(.global-search) { align-content: start; padding-top: 10vh; }
 .global-search {
   width: min(720px, 100%);
@@ -2466,10 +2025,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--raised-2);
   color: var(--faint);
 }
-/* Type sits on the title line, at the same weight as the year, because it is
-   the first thing you check in a mixed list. */
-/* The boxed glyph, used wherever a media type needs stating without the word.
-   Same tokens as the pill, so the colour keeps its meaning. */
+
 .kind-box { display: grid; width: 20px; height: 20px; flex: none; place-items: center; border: 1px solid; border-radius: var(--r-sm); }
 
 .kind-movie { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
@@ -2511,7 +2067,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--faint);
   font-size: var(--t-xs);
 }
-/* Bare toggle: the footer is plain text, so a bordered control would shout. */
+
 .global-search-keys { display: flex; align-items: center; gap: var(--s1); }
 .global-search-keys kbd {
   padding: 1px 5px;
@@ -2520,10 +2076,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--raised);
   font: var(--t-micro) var(--mono);
 }
-
-/* --------------------------------------------------------------------------
-   Modal — a centred dialog with fixed header/footer and a scrolling body.
-   -------------------------------------------------------------------------- */
 
 .modal {
   display: flex;
@@ -2537,7 +2089,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
 }
 .modal-wide { width: min(880px, 100%); }
-/* A modal built around a file browser, which needs the height to be usable. */
+
 .modal-tall { max-height: 92vh; }
 .modal-head {
   position: relative;
@@ -2548,7 +2100,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
 }
-/* A head that still carries an eyebrow is two lines, and aligns to the top. */
+
 .modal-head:has(.eyebrow) { align-items: flex-start; padding-block: var(--s4); }
 .modal-head-icon {
   display: grid;
@@ -2567,8 +2119,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .modal-head h2 { margin-top: 0; font: 600 var(--t-xl)/1.25 var(--sans); overflow-wrap: anywhere; }
 .modal-head:has(.eyebrow) h2 { margin-top: 2px; }
 .modal-body { flex: 1; overflow: auto; }
-/* The selected path in the footer: it may be long, so it truncates from the
-   left — the end of a path is the part that identifies it. */
 
 .modal-foot {
   display: flex;
@@ -2578,15 +2128,10 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-top: 1px solid var(--line);
 }
 .modal-foot .footer-state { text-align: right; }
-/* Pushes the confirming actions to the right now that no status text sits
-   between them and the destructive action on the left. */
+
 .modal-foot-spacer { flex: 1; }
 .modal-head-action { display: flex; flex: none; align-items: center; gap: var(--s3); }
 .modal-head-center { position: absolute; left: 50%; display: flex; transform: translateX(-50%); }
-
-/* --------------------------------------------------------------------------
-   Custom Formats — a grid of what each format matches, edited in a dialog.
-   -------------------------------------------------------------------------- */
 
 .cf-card-grid {
   display: grid;
@@ -2692,7 +2237,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-condition-list { display: grid; gap: var(--s2); }
 .cf-condition-card .condition-top strong { color: var(--faint); font: 500 var(--t-micro) var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 
-/* Custom Format editor — one decision at a time, with context kept visible. */
 .cf-editor-modal { width: min(1120px, calc(100% - 32px)); max-height: 88vh; }
 .cf-editor-modal .modal-body { min-height: 0; overflow: hidden; }
 .cf-editor-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); height: min(680px, calc(88vh - 154px)); min-height: 480px; }
@@ -2782,7 +2326,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .cf-rule-header-options { justify-content: flex-start; }
 }
 
-/* Quality Profile scoring — a format, its score, and the sign made obvious. */
 .score-section { padding: var(--s4); border-top: 1px solid var(--line); }
 .score-row {
   display: flex;
@@ -2889,7 +2432,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-card-badges { display: flex; flex: none; gap: var(--s1); }
 .input[readonly], .input:disabled, .cf-condition-toggles input:disabled { opacity: .7; cursor: default; }
 
-/* Specials switch — a library-wide monitoring change, not a view filter. */
 .specials-toggle {
   display: flex;
   align-items: center;
@@ -2904,7 +2446,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .specials-toggle .toggle-label { min-width: 54px; font: var(--t-micro) var(--mono); text-transform: uppercase; letter-spacing: .06em; }
 .specials-toggle button:disabled { opacity: .5; cursor: wait; }
 
-/* Episode ordering — alternate TMDB structures for a show. */
 .ordering-summary { display: grid; gap: var(--s1); padding: var(--s4); }
 .ordering-summary small { color: var(--faint); font-size: var(--t-xs); line-height: 1.55; }
 .ordering-list { display: grid; gap: var(--s2); padding: var(--s4); }
@@ -2929,13 +2470,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .ordering-copy small { color: var(--muted); font-size: var(--t-xs); line-height: 1.5; }
 .ordering-option .badge { flex: none; }
 
-/* Problems workflow queue — remediation first, diagnostics on demand. */
-/* Same first column as .problems-layout below it, so the search field is
-   exactly as wide as the Problems list it searches. */
 .problems-toolbar { display: grid; grid-template-columns: minmax(330px, 420px) minmax(0, 1fr); align-items: center; gap: var(--s2); margin-bottom: var(--s3); }
 .problems-toolbar-rest { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
-/* Queue-wide actions sit with the filters that scope the queue, pushed right so
-   the search field keeps the space it needs. */
+
 .problems-toolbar-actions { display: flex; flex: none; align-items: center; gap: var(--s2); margin-left: auto; }
 .problems-search { display: flex; min-width: 0; align-items: center; gap: var(--s2); height: var(--control); padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); color: var(--faint); background: var(--surface); }
 .problems-search input { width: 100%; border: 0; outline: 0; color: var(--text); background: transparent; }
@@ -2946,9 +2483,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .problems-row:hover { background: rgba(255,255,255,.018); }
 .problems-row.selected { background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); }
 .problems-severity { display: grid; width: 28px; height: 28px; place-items: center; border-radius: var(--r-md); }
-.problems-severity.severity-high { color: #dd8991; border: 1px solid var(--err-line); background: var(--err-soft); }
-.problems-severity.severity-medium { color: #d1a45e; border: 1px solid var(--warn-line); background: var(--warn-soft); }
-.problems-severity.severity-low { color: var(--muted); border: 1px solid var(--line-strong); background: rgba(138,138,144,.08); }
+.problems-severity
+.problems-severity
+.problems-severity
 .problems-row-copy { display: flex; min-width: 0; flex-direction: column; }
 .problems-row-copy > strong, .problems-row-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .problems-row-copy > strong { font-size: var(--t-sm); font-weight: 600; }
@@ -2967,17 +2504,14 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .problems-detail-head > div:first-child { flex: 1; min-width: 0; }
 .problems-detail-head h2 { margin: var(--s1) 0 0; font-size: 17px; line-height: 1.25; }
 .problems-back-button { display: none; }
-/* Both actions on the row, so neither is behind a click and a glyph. */
+
 .problems-detail-actions { display: flex; flex: none; align-items: center; gap: var(--s2); }
 .problems-detail-body { padding: 18px; }
 .problems-lead { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 18px; }
 .problems-lead > p { max-width: 820px; margin: 0; color: #c6c6ca; line-height: 1.6; }
 .problems-lead > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .problems-key-details, .problems-identity-resolver { padding: 14px; margin-top: var(--s4); border: 1px solid var(--line); border-radius: var(--r-lg); background: #101012; }
-/* One grid for the whole block rather than one per row, so the label column is
-   as wide as the longest label actually present. A fixed width had to fit
-   "QBITTORRENT PATH", which left a short label like "PATH" stranded a hundred
-   pixels from its value. */
+
 .problems-key-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--s4); }
 .problems-detail-row { display: contents; }
 .problems-detail-row > span, .problems-detail-row > div { padding: 10px 0; border-top: 1px solid var(--line); }
@@ -3055,7 +2589,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .problems-back-button { display: inline-grid; flex: none; }
   .problems-lead { grid-template-columns: 1fr; }
   .problems-lead > div { justify-content: flex-start; }
-  /* Stacked: the label sits above its value, so the row spans one column. */
+
   .problems-key-details { grid-template-columns: minmax(0, 1fr); }
   .problems-detail-row > span { padding-bottom: 0; }
   .problems-detail-row > div { padding-top: var(--s1); border-top: 0; }
@@ -3070,17 +2604,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .problems-tmdb-search { grid-template-columns: 1fr; }
 }
 
-/* Copy action on a format card — sits with the badges, above the card's own
-   click target so it never opens the editor by accident. */
-/* Still used by the Quality Profile cards, which keep the icon-only control. */
 .cf-card-copy { width: 22px; height: 22px; color: var(--faint); }
 .cf-card-copy:hover { color: var(--accent-text); background: var(--accent-soft); }
-/* Reads as a sibling of the On/Off badge beside it, rather than as a second,
-   differently shaped control. */
+
 .cf-card-duplicate { display: inline-flex; align-items: center; justify-content: center; width: 20px; padding: 0; color: var(--faint); cursor: pointer; }
 .cf-card-duplicate:hover { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
 
-/* Manual movie download */
 .wizard-modal {
   display: flex;
   width: min(1103px, calc(100vw - 32px));
@@ -3102,15 +2631,13 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--raised);
 }
 .wizard-title-block { min-width: 0; flex: 1; }
-/* Reranking control: changing it re-runs the search behind the list. */
+
 .wizard-profile { display: flex; align-items: center; gap: var(--s2); flex: none; min-width: 0; }
 .wizard-profile > span { color: var(--faint); font: 600 var(--t-micro)/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; }
 .wizard-profile .select { width: auto; max-width: 200px; height: 32px; padding-block: 0; font-size: var(--t-xs); }
 .wizard-title-block h2 { margin: 0; overflow: hidden; font-size: 17px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .wizard-title-block h2 span { color: var(--muted); font-weight: 500; }
-/* The step rail is both a position indicator and the way between steps, so each
-   step is a real button. A step you cannot reach yet is disabled rather than
-   hidden, so the shape of the flow stays visible from the start. */
+
 .wizard-steps { display: flex; align-items: center; gap: var(--s2); }
 .wizard-steps button {
   display: flex;
@@ -3163,9 +2690,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .wizard-form > label { display: grid; gap: 7px; }
 .wizard-form > label > small { color: var(--faint); font-size: var(--t-xs); line-height: 1.45; }
 .wizard-box { display: grid; gap: var(--s3); padding: 13px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: #101012; }
-/* Caption beside its control rather than above it: the setup step is a short
-   list of single decisions, and a shared caption column lets the controls line
-   up so the values can be read down the box. */
+
 .wizard-box > label,
 .wizard-destination > label {
   display: grid;
@@ -3176,7 +2701,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .wizard-box > label > .field-label,
 .wizard-destination > label > .field-label { grid-column: 1; margin-bottom: 0; }
-/* Helper text belongs under the control, not under the caption. */
+
 .wizard-box > label > small,
 .wizard-destination > label > small { grid-column: 2; color: var(--faint); font-size: var(--t-xs); line-height: 1.45; }
 .wizard-destination { display: grid; gap: var(--s3); padding: 13px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: #101012; }
@@ -3209,11 +2734,10 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font: 600 var(--t-xs)/1.3 var(--mono);
   white-space: nowrap;
 }
-/* The explanatory text yields space; the count and buttons keep theirs. */
+
 .wizard-foot > span:not(.wizard-foot-count) { flex: 1; }
 .wizard-foot > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s2); }
 
-/* Manual show download — one lazy season-pack search per tab. */
 .show-wizard-modal { width: min(1163px, calc(100vw - 32px)); }
 .wizard-specials-toggle {
   display: flex !important;
@@ -3276,7 +2800,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 @media (max-width: 820px) {
   .wizard-modal { width: min(100% - 16px, 720px); height: calc(100vh - 16px); }
   .wizard-profile > span { display: none; }
-  /* No room for the rail beside the title; the footer buttons still navigate. */
+
   .wizard-steps { display: none; }
   .wizard-steps { display: none; }
   .wizard-setup { grid-template-columns: 1fr; padding: 16px; }
@@ -3287,7 +2811,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .wizard-destination > label > .field-label { grid-column: 1; }
   .wizard-box > label > small,
   .wizard-destination > label > small,
-
 
   .wizard-movie-card { grid-template-columns: 96px minmax(0, 1fr); }
   .wizard-poster { width: 96px; }
@@ -3304,14 +2827,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .wizard-setup { padding: 12px; }
   .wizard-movie-card { grid-template-columns: 72px minmax(0, 1fr); }
   .wizard-poster { width: 72px; }}
-
-/* --------------------------------------------------------------------------
-   Release list.
-
-   Rows are a fixed height and never expand, and the detail strip below always
-   reserves its space. Selecting a release must not move the row under the
-   cursor or shift the rows you are comparing it against.
-   -------------------------------------------------------------------------- */
 
 .release-list { flex: 1; min-height: 0; overflow: auto; background: var(--surface); }
 
@@ -3337,7 +2852,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 
 .release-row {
-  /* Fixed height keeps the list scannable and stops any row resizing. */
+
   height: 52px;
   width: 100%;
   border: 0;
@@ -3370,8 +2885,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font: var(--t-micro) var(--mono);
   white-space: nowrap;
 }
-/* Labelled pill in front of each value, so "indexer" and "group" never have to
-   be guessed from position. */
+
 .release-pill {
   display: inline-flex;
   align-items: center;
@@ -3386,7 +2900,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   letter-spacing: .08em;
   text-transform: uppercase;
 }
-/* The caption sits inside the pill, dimmed, with the value beside it. */
+
 .release-pill i {
   flex: none;
   opacity: .62;
@@ -3395,17 +2909,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .release-pill { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .release-pill-indexer { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
-/* Languages the release name declared, shown as words rather than a caption
-   pill — the value is self-describing. */
+
 .release-pill-language { color: var(--muted); border-color: var(--line-strong); background: var(--raised-2); text-transform: none; letter-spacing: 0; }
 .release-pill-unknown { color: var(--faint); border-style: dashed; background: transparent; }
-/* The indexer badge as it appears beside an event message. */
+
 .event-indexer { margin-left: var(--s2); vertical-align: middle; }
 
-/* Indexer badge colour picker: swatch, hex field, live badge, reset. */
-/* Multi-select as toggleable chips: the set is small and every option should
-   be visible, since "none selected" and "all selected" mean the same thing and
-   a closed menu would hide which it is. */
 .client-choice { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .client-choice-option { cursor: pointer; }
 .client-choice-option:hover { filter: brightness(1.18); }
@@ -3425,17 +2934,13 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .color-field > .input { width: 110px; flex: none; font-family: var(--mono); }
 .color-field .button { flex: none; margin-left: auto; }
 
-/* The client picker keeps its recheck button beside the select. */
 .client-field { display: flex; align-items: center; gap: var(--s2); }
 .client-field > .select { flex: 1; min-width: 0; }
 .client-field > .release-refresh { height: 34px; width: 34px; }
 .client-health { font-weight: 600; text-transform: capitalize; }
 .client-health.ok { color: var(--ok); }
 .client-health.bad { color: var(--warn); }
-/* The swarm reads as seeders/leechers, graded by whether the release can
-   actually finish: dead cannot, weak will crawl, healthy is fine. Digits stay
-   case-neutral and a touch larger than a caption pill, since the number itself
-   is the content here rather than a label. */
+
 .release-pill-swarm {
   gap: 0;
   padding: 2px 6px;
@@ -3457,18 +2962,11 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   letter-spacing: .04em;
   text-transform: uppercase;
 }
-/* A release carries its warnings as a pill on its own row. Blocked is red and
-   spelled out because it rules the release out entirely; anything else is an
-   amber count, since the detail belongs in the tooltip rather than the row. */
+
 .release-blocked { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
 .release-warned { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
 .release-blocked svg, .release-warned svg { flex: none; }
 
-/* Resolution over type, the way a tracker listing reads: the number is what
-   you scan for, the source qualifies it. */
-/* Near-square tile. The resolution is not bold — the border and fill already
-   separate it, so weight on top made it shout. A long type wraps inside the box
-   rather than widening it. */
 .release-quality {
   display: flex;
   width: 52px;
@@ -3497,18 +2995,14 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .release-numeric { font: var(--t-xs) var(--mono); color: var(--muted); text-align: center; }
 .release-head .release-numeric { font: inherit; color: inherit; }
 .release-age { white-space: nowrap; font-family: inherit; }
-/* Every column except the name is centred on its header. Shrinking these cells
-   to their content also fixes tooltip placement: a stretched grid item would
-   centre the tooltip on the cell rather than on the value you hovered. */
+
 .release-row > .release-numeric,
 .release-row > .release-quality { justify-self: center; }
 .release-score.positive { color: var(--ok); }
 .release-score.negative { color: var(--err); }
 
-/* Carries the refresh control alone when there are no results to head. */
 .release-head-bare { display: flex; justify-content: flex-end; }
-/* Bordered rather than a bare glyph, so it reads as the one action in a row of
-   sort captions instead of decoration. */
+
 .release-refresh {
   display: grid;
   width: 26px;
@@ -3534,8 +3028,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .release-row > *:nth-child(n+5):not(.release-refresh) { display: none; }
 }
 
-/* Sortable headers. Buttons rather than labels, but visually identical to the
-   caption row so the header does not read as a toolbar. */
 .release-sort {
   display: flex;
   align-items: center;
@@ -3554,8 +3046,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .release-sort.active { color: var(--accent-text); }
 .release-sort i { font-style: normal; font-size: 9px; line-height: 1; }
 
-/* Hover tooltip. Portalled to <body> and fixed-positioned, so a scrolling
-   container cannot clip it. */
 .tooltip {
   position: fixed;
   z-index: 200;
@@ -3582,11 +3072,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .tooltip ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .tooltip li { color: var(--accent-text); font: var(--t-xs) var(--mono); overflow-wrap: anywhere; }
 
-/* Movie review queue: one decision per card; identity alternatives reuse the Problems picker. */
 .review-loading { padding: var(--s8) 0; color: var(--muted); }
 
-/* Root tabs: one root at a time, so the import button always means one
-   unambiguous batch. */
 .review-roots-label { margin-bottom: var(--s2); color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .review-roots { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s3); }
 .review-root { display: grid; gap: 3px; min-width: 118px; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); text-align: left; }
@@ -3597,14 +3084,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .review-root small { color: var(--faint); font: var(--t-micro) var(--mono); }
 .review-root.active small { color: var(--accent-text); }
 
-/* Three tall panes, side by side, with a real gap between them. Panes one and
-   two share a single scroll container so a row means the same title on both,
-   which two independently scrolling lists could not guarantee. Each column
-   still draws its own borders, so what you see is three panes. */
 .review-workspace {
   display: grid;
-  /* The middle column is a token because two grids need it: the workspace sizes
-     the track, and the scrolling surface inside it draws the pane. */
+
   --review-detected: 260px;
   grid-template-columns: 820px var(--review-detected) 340px;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -3616,10 +3098,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   display: grid;
   grid-column: 1 / 3;
   grid-row: 1;
-  /* The folder column takes whatever is left rather than a fixed width, so a
-     scrollbar appearing shrinks it instead of overflowing the container. That
-     is what lets the reserved scrollbar gutter go: the gutter was real space
-     inside this pane, which read as a wider gap before the pane beside it. */
+
   grid-template-columns: minmax(0, 1fr) var(--review-detected);
   gap: 0 var(--s3);
   align-content: start;
@@ -3638,8 +3117,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--surface);
 }
 
-/* Column headers ride along inside the same grid, so they cannot drift out of
-   alignment with the rows the way a separate header row would. */
 .review-col-head {
   position: sticky;
   top: 0;
@@ -3665,28 +3142,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   border-top: 0;
   background: var(--surface);
 }
-/* The cell holds two things now: the part that selects the row, and the
-   edition control. A dropdown cannot live inside a button, so the button is
-   inside the cell rather than being it. */
-/* Fills the cell so the pointer never lands between the two. */
+
 .review-match-main { display: flex; flex: 1; align-items: center; gap: var(--s2); min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .review-match-cell { cursor: pointer; }
-/* On the year line, so it is sized to sit beside a four digit year rather than
-   beside a title. */
+
 .review-match-sub { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .review-edition-cell { flex: none; min-width: 0; }
-/* A floor as well as a ceiling: a short value like Recut should not shrink
-   to a stub the cursor has to hunt for. */
+
 .review-edition-cell .dropdown-trigger { min-width: 175px; width: auto; max-width: 190px; height: 20px; padding: 0 4px 0 var(--s2); border-radius: 3px; font: var(--t-micro) var(--mono); }
 .review-edition-cell .dropdown-trigger > svg { width: 11px; height: 11px; }
-/* Nothing was detected, so the control waits until the cursor is on the row.
-   It keeps its space, so revealing it cannot shift the row underneath, and it
-   stays while its own menu is open.
 
-   Fades rather than appears: opacity carries the transition, and visibility is
-   delayed on the way out so the fade finishes before the element stops being
-   hittable. Transitioning visibility alone would be a hard cut, since it has no
-   in-between states. */
 .review-edition-cell.optional {
   visibility: hidden;
   opacity: 0;
@@ -3702,13 +3167,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 @media (prefers-reduced-motion: reduce) {
   .review-edition-cell.optional { transition: none; }
 }
-/* A clash is an edition problem, so the edition control carries it rather than
-   a pill restating it in words. Amber, not red: both copies are importable and
-   nothing is broken, you just have to say which is which.
 
-   The tint is on the trigger itself so it can transition. Fixing a clash by
-   choosing a different edition should look like the warning receding, not like
-   it was never there. */
 .review-edition-cell .dropdown-trigger,
 .review-edition-cell .dropdown-trigger > svg {
   transition: color .18s ease, border-color .18s ease, background-color .18s ease;
@@ -3724,16 +3183,11 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .review-edition-cell .dropdown-trigger > svg { transition: none; }
 }
 .review-scroll > :nth-last-child(2), .review-scroll > :last-child { border-radius: 0 0 var(--r-md) var(--r-md); }
-/* The tooltip wraps the name in a span of its own, which needs to be a flex
-   item that can shrink, or the folder name stops truncating and stops centring
-   with the rest of the row. */
+
 .review-folder-cell > span { display: flex; align-items: center; min-width: 0; }
-/* Sans, not mono: these are folder names people read, not paths they compare
-   character by character, and the monospace made them the loudest thing in a
-   pane that is mostly reading. */
+
 .review-folder-cell code { display: block; overflow: hidden; color: var(--text); font: var(--t-sm)/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
-/* Pushed to the end of the folder row: it is a fact about this folder, and the
-   tooltip-wrapped name beside it takes the remaining space. */
+
 .review-folder-cell > .review-state { margin-left: auto; }
 .review-match-cell { text-align: left; }
 .review-folder-cell.active, .review-match-cell.active { border-color: var(--accent-line); background: var(--accent-soft); }
@@ -3757,20 +3211,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 .review-import { display: flex; grid-column: 1 / 3; grid-row: 2; align-items: center; justify-content: flex-end; gap: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); font-size: var(--t-xs); }
 .review-import-warning { flex: none; color: var(--warn); font-size: var(--t-xs); text-align: right; }
-/* In a row now, so it is the control alone: no label, no panel. The custom
-   name field drops under the dropdown when Other is chosen. */
+
 .review-edition-picker { display: grid; gap: var(--s1); min-width: 0; }
 .review-edition-picker > .input { height: 22px; font-size: var(--t-micro); }
 
-/* The full height of this pane is the point: a common title has many results
-   and they should all be reachable by scrolling one list. */
 .review-alt-title { flex: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
 .review-alt-head { flex: none; display: grid; gap: var(--s2); padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); }
 .review-alt-head .search-field { width: 100%; }
 .review-alt-list { display: grid; flex: 1; align-content: start; gap: var(--s1); min-height: 0; overflow-y: auto; padding: var(--s2); }
 .review-alt-note { padding: var(--s2); margin: 0; color: var(--faint); font-size: var(--t-xs); }
-/* The idle pane is mostly empty, so its prompt sits in the middle of it rather
-   than clinging to the top left corner. */
+
 .review-alt-empty { display: grid; flex: 1; align-content: center; justify-items: center; gap: var(--s3); padding: var(--s5); color: var(--faint); text-align: center; }
 .review-alt-empty p { margin: 0; font-size: var(--t-xs); }
 .review-alt-idle .review-alt-head { gap: 0; }

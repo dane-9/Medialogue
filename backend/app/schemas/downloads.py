@@ -41,7 +41,6 @@ class DownloadClientUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     url: AnyHttpUrl | None = None
     username: str | None = None
-    # Blank passwords mean "keep the configured secret" on update.
     password: str | None = Field(default=None, max_length=4096)
     scope: DownloadScope | None = None
     category: str | None = Field(default=None, max_length=256)
@@ -121,18 +120,6 @@ class DownloadClientSavedTestRequest(BaseModel):
     url: AnyHttpUrl | None = None
     username: str | None = None
     password: str | None = Field(default=None, max_length=4096)
-
-
-class DownloadPollResponse(BaseModel):
-    client_id: UUID
-    status: str
-    observed: int
-    relevant: int
-    added: int
-    completed: int
-    removed: int
-    ignored: int
-    message: str | None = None
 
 
 class DownloadResponse(ORMModel):

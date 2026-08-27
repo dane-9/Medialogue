@@ -47,7 +47,7 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
     store = get_integration_config_store()
     tmdb = store.get_tmdb()
     plex = store.get_plex()
-    qbit_count = len(store.list_download_clients())
+    qbittorrent_count = len(store.list_download_clients())
     root_count = int(await db.scalar(select(func.count()).select_from(StorageRoot)) or 0)
     indexer_count = len(store.list_indexers())
     scanned_count = int(
@@ -86,9 +86,9 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
         SetupStep(
             key="qbittorrent",
             title="Add qBittorrent client(s)",
-            complete=qbit_count > 0,
+            complete=qbittorrent_count > 0,
             optional=True,
-            detail=f"{qbit_count} client(s) configured. Clients are scoped to Movies or Shows.",
+            detail=f"{qbittorrent_count} client(s) configured. Clients are scoped to Movies or Shows.",
             settings_tab="qBittorrent",
         ),
         SetupStep(

@@ -24,10 +24,8 @@ from dataclasses import dataclass
 class OrderingCandidate:
     """One numbering, as episode counts per season number."""
 
-    #: None is TMDB's own season structure rather than a named episode group.
     id: str | None
     name: str
-    #: season number -> how many episodes that season contains
     episode_counts: dict[int, int]
 
 
@@ -74,8 +72,6 @@ def best_ordering(
 
     ranked = sorted(
         (item for item in candidates if item.id != current_id),
-        # Most fitted first; a shorter ordering breaks ties, because inventing
-        # fewer episodes for the same coverage is the more conservative fit.
         key=lambda item: (-score_ordering(observed, item), sum(item.episode_counts.values())),
     )
     if not ranked:
@@ -100,9 +96,6 @@ async def auto_select_episode_ordering(
     Returns the name of the ordering adopted, or None when the current one is
     left alone.
     """
-    # Resolved through the tmdb service module rather than imported directly,
-    # so the client this uses is the same one everything else in the app uses,
-    # including whatever a test has substituted for it.
     from app.services import tmdb as tmdb_service
     from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
@@ -122,7 +115,6 @@ async def auto_select_episode_ordering(
             name="TMDB default",
             episode_counts={season.season_number: season.episode_count for season in details.seasons},
         )
-        # Nothing to gain from listing alternates when the record itself fits.
         if score_ordering(observed, default) == total_observed(observed):
             return None
 

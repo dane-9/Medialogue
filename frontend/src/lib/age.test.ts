@@ -41,7 +41,6 @@ describe('formatAge', () => {
   })
 
   it('clamps a future timestamp instead of reporting a negative age', () => {
-    // Our clock and the tracker's need not agree.
     expect(formatAge(new Date(NOW + 5 * HOUR).toISOString(), NOW)).toBe('just now')
   })
 

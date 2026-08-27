@@ -15,8 +15,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Fresh installs get the current model from 0001. Only an older database
-    # reaching this revision needs the additive compatibility change.
     if context.is_offline_mode():
         return
     inspector = sa.inspect(op.get_bind())

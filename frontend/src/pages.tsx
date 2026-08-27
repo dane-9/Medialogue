@@ -23,12 +23,9 @@ import { PageTopbar } from './components/Shell'
 import { Badge, Button, EmptyState, EnabledButton, Input, Panel, Progress, Segmented, Select, Slider, Stat } from './components/ui'
 import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
-import { contextMenuSelection, duplicateLoserIds, normalizeMediaView, problemMatchesFilter, toggleIdSelection } from './lib/uiState'
+import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, DuplicateResolvePreview, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
-
-
-
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
 
 function tmdbPosterUrl(reference?: string) {
   if (!reference) return undefined
@@ -77,7 +74,7 @@ function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollInterval
       try {
         const payload = JSON.parse(event.data) as { data?: { job_type?: unknown } }
         if (payload.data?.job_type === 'storage_root_scan' || payload.data?.job_type === 'reconciliation') invalidate()
-      } catch { /* The fallback poll repairs malformed or missed live events. */ }
+      } catch {}
     }
     if (watchScanJobs) stream.addEventListener('job.status', scanJobChanged)
     const poll = window.setInterval(run, pollIntervalMs)
@@ -346,7 +343,6 @@ function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
   return evidence
 }
 
-
 function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   const [settings, setSettings] = useState<MediaProfileSettings | null>(null)
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
@@ -524,7 +520,6 @@ export function ShowDetailPage({ id }: { id: string }) {
   const [show, setShow] = useState<Show | null>(null)
   const [selectedSeasonId, setSelectedSeasonId] = useState('')
   const [episodeFilter, setEpisodeFilter] = useState<'all' | 'missing' | 'problems'>('all')
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -672,11 +667,9 @@ export function DownloadsPage() {
   </Page>
 }
 
-
 export function EventHistoryPage() {
   const confirm = useConfirm()
   const [events, setEvents] = useState<EventHistoryItem[]>([])
-  // Events store the indexer by name, so the colour is looked up by name.
   const [indexerColors, setIndexerColors] = useState<Record<string, string>>({})
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(0)
@@ -693,7 +686,6 @@ export function EventHistoryPage() {
         if (!alive) return
         setIndexerColors(Object.fromEntries(items.map((item) => [item.name, item.color ?? ''])))
       })
-      // A missing colour map only costs the tint, so a failure here stays quiet.
       .catch(() => undefined)
     return () => { alive = false }
   }, [])
@@ -773,8 +765,7 @@ export function EventHistoryPage() {
     </div>
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {!loading && <Panel className="event-history-panel">
-      {/* The severity mark and the row controls are unlabelled: one is read by
-          colour and shape, the other only exists on the row you are hovering. */}
+
       {events.length > 0 && <div className="event-columns">
         <span />
         <EventSortHeader label="When" field="created_at" sort={sort} onSort={setSort} />
@@ -783,12 +774,10 @@ export function EventHistoryPage() {
         <span />
       </div>}
       {events.map((item) => <article className={`event-row event-row-${item.severity}`} key={item.id}>
-        {/* The disclosure wraps the whole row so its payload can open across
-            the full width rather than inside the narrow actions column. */}
+
         <details className="event-details">
           <summary className="event-row-main">
-            {/* Colour alone carries severity for anyone who sees it, but not
-                for anyone who does not; the mark and its tooltip say it. */}
+
             <span className="event-severity">
               <Tooltip content={item.severity === 'error' ? 'Error' : item.severity === 'warning' ? 'Warning' : 'Info'}>
                 <span><Icon name={item.severity === 'error' || item.severity === 'warning' ? 'alert' : 'info'} size={14} /></span>
@@ -814,7 +803,6 @@ export function EventHistoryPage() {
   </Page>
 }
 
-/** A column heading that sorts, showing which way it currently points. */
 function EventSortHeader({ label, field, sort, onSort }: { label: string; field: string; sort: string; onSort: (sort: string) => void }) {
   const active = sort === field || sort === `-${field}`
   const descending = sort === `-${field}`
@@ -826,7 +814,6 @@ function EventSortHeader({ label, field, sort, onSort }: { label: string; field:
   >{label}<Icon name="caret" size={12} className={descending ? '' : 'flipped'} /></button>
 }
 
-/** The indexer an event names, when it names one. */
 function eventIndexerName(details: Record<string, unknown>): string | undefined {
   const value = details.indexer_name ?? details.indexerName
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
@@ -942,332 +929,6 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
   return <div className="problem-evidence-block problem-evidence-facts">{entries.map(([key, value]) => <div className="problem-evidence-fact" key={key}><span>{key.replaceAll('_', ' ')}</span><strong>{readableEvidenceValue(value)}</strong></div>)}</div>
 }
 
-function TMDBCandidateCard({ match, selected, onSelect }: { match: TMDBCandidate; selected: boolean; onSelect: () => void }) {
-  return <button type="button" className={`tmdb-candidate-card ${selected ? 'selected' : ''}`} onClick={onSelect}>
-    <div className="tmdb-candidate-poster">{match.posterRef ? <img src={tmdbPosterUrl(match.posterRef)} alt={`${match.title} poster`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : <Icon name="clapper" size={22} />}</div>
-    <div className="tmdb-candidate-copy"><strong>{match.title}{match.year ? ` (${match.year})` : ''}</strong><span>TMDB {match.tmdbId}{match.originalTitle && match.originalTitle !== match.title ? ` · original: ${match.originalTitle}` : ''}</span>{match.overview && <small>{match.overview}</small>}</div>
-    <span className="tmdb-candidate-state">{selected ? 'Selected' : 'Select'}</span>
-  </button>
-}
-
-function TMDBMatchPicker({ kind, query, matches, selected, loading, onQueryChange, onSearch, onSelect, onApply }: { kind: 'Movie' | 'Show'; query: string; matches: TMDBCandidate[]; selected?: TMDBCandidate; loading: boolean; onQueryChange: (value: string) => void; onSearch: () => void; onSelect: (match: TMDBCandidate) => void; onApply: () => void }) {
-  return <div className="resolution-block"><div className="eyebrow">MANUAL {kind.toUpperCase()} MATCH</div><p>Search TMDB, select the exact {kind.toLowerCase()}, then apply the match. The filesystem is not renamed or moved.</p><div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={`Search TMDB ${kind}s…`} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} /></div><Button variant="ghost" onClick={onSearch} disabled={loading || !query.trim()}>Search</Button></div>{matches.length > 0 && <div className="tmdb-candidate-grid">{matches.map((match) => <TMDBCandidateCard key={match.tmdbId} match={match} selected={selected?.tmdbId === match.tmdbId} onSelect={() => onSelect(match)} />)}</div>}{selected && <div className="tmdb-selection-bar"><span>Selected: <strong>{selected.title}{selected.year ? ` (${selected.year})` : ''}</strong> · TMDB {selected.tmdbId}</span><Button variant="primary" onClick={onApply} disabled={loading}>Apply selected {kind}</Button></div>}</div>
-  const confirm = useConfirm()
-}
-
-function LegacyProblemsPage() {
-  const confirm = useConfirm()
-  const [items, setItems] = useState<Problem[]>([])
-  const [selected, setSelected] = useUrlState('problem')
-  const [loaded, setLoaded] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const [duplicatePreview, setDuplicatePreview] = useState<DuplicateResolvePreview | null>(null)
-  const [winnerReleaseId, setWinnerReleaseId] = useState('')
-  const [deleteMedia, setDeleteMedia] = useState(false)
-  const [removeTorrents, setRemoveTorrents] = useState(false)
-  const [tmdbQuery, setTmdbQuery] = useState('')
-  const [tmdbMatches, setTmdbMatches] = useState<TMDBCandidate[]>([])
-  const [tmdbShowMatches, setTmdbShowMatches] = useState<TMDBShowLookup[]>([])
-  const [selectedTmdbMatch, setSelectedTmdbMatch] = useState<TMDBMovieLookup | undefined>()
-  const [selectedTmdbShowMatch, setSelectedTmdbShowMatch] = useState<TMDBShowLookup | undefined>()
-  const [duplicateMovie, setDuplicateMovie] = useState<Movie | null>(null)
-  const [reasonFilter, setReasonFilter] = useUrlState('reason', 'all')
-  const [severityFilter, setSeverityFilter] = useUrlState('severity', 'all')
-  const [page, setPage] = useUrlNumber('page', 1)
-  const [pages, setPages] = useState(0)
-  const [total, setTotal] = useState(0)
-  const [openTotal, setOpenTotal] = useState(0)
-  const loadGeneration = useRef(0)
-  const reloadCurrent = useRef<() => void>(() => undefined)
-  const pageSize = 100
-
-  const load = async (targetPage = page, preserveMessage = false) => {
-    const generation = ++loadGeneration.current
-    setLoading(true)
-    try {
-      const [payload, count] = await Promise.all([
-        api.problemsPage({ status: 'open', page: targetPage, pageSize, category: reasonFilter, severity: severityFilter }),
-        api.problemCount('open'),
-      ])
-      if (generation !== loadGeneration.current) return
-      setItems(payload.items)
-      setPage(payload.page)
-      setPages(payload.pages)
-      setTotal(payload.total)
-      setOpenTotal(count)
-      if (!preserveMessage) setMessage('')
-      setLoaded(true)
-    }
-    catch (reason) {
-      if (generation === loadGeneration.current) {
-        setMessage(reason instanceof Error ? reason.message : 'Could not load live problems.')
-        setLoaded(true)
-      }
-    }
-    finally { if (generation === loadGeneration.current) setLoading(false) }
-  }
-  reloadCurrent.current = () => { void load(page, true) }
-  useEffect(() => { void load() }, [page, reasonFilter, severityFilter])
-  useEffect(() => {
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    let timer: number | undefined
-    const invalidate = () => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = window.setTimeout(() => reloadCurrent.current(), 150)
-    }
-    stream.addEventListener('problem.created', invalidate)
-    stream.addEventListener('problem.updated', invalidate)
-    stream.addEventListener('problem.resolved', invalidate)
-    stream.addEventListener('problem.deleted', invalidate)
-    return () => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      stream.close()
-    }
-  }, [])
-  const sourceProblems = items
-  const visible = sourceProblems
-  const current = visible.find((problem) => problem.id === selected) ?? visible[0]
-  useEffect(() => {
-    setDuplicatePreview(null)
-    setWinnerReleaseId('')
-    setDeleteMedia(false)
-    setRemoveTorrents(false)
-    setTmdbMatches([])
-    setTmdbShowMatches([])
-    setSelectedTmdbMatch(undefined)
-    setSelectedTmdbShowMatch(undefined)
-    setTmdbQuery('')
-    setDuplicateMovie(null)
-  }, [current?.id])
-
-  useEffect(() => {
-    if (current?.code !== 'DUPLICATE_PHYSICAL_RELEASE' || !current.entityId) return
-    let alive = true
-    api.movie(current.entityId).then((movie) => { if (alive) setDuplicateMovie(movie) }).catch(() => { if (alive) setDuplicateMovie(null) })
-    return () => { alive = false }
-  }, [current?.code, current?.entityId])
-
-  const reEvaluate = async () => {
-    setLoading(true); setMessage('Rechecking files…')
-    try {
-      const refresh = await api.reconcileAll()
-      const jobs = await api.waitForJobs([...new Set([...refresh.jobIds, ...refresh.activeJobIds])])
-      await load(page, true)
-      const failures = jobs.filter((job) => job.state !== 'completed')
-      if (failures.length) setMessage(`File check finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`)
-      else if (refresh.uninitializedRootIds.length) setMessage(`File check complete. ${refresh.uninitializedRootIds.length} new media folder${refresh.uninitializedRootIds.length === 1 ? ' was' : 's were'} skipped; scan ${refresh.uninitializedRootIds.length === 1 ? 'it' : 'them'} once first.`)
-      else if (refresh.skippedRootIds.length && !refresh.activeJobIds.length) setMessage('Problems refreshed. A scan was already running, so this one was not started.')
-      else setMessage('Recheck complete. No files were changed.')
-    }
-    catch (reason) {
-      if (reason instanceof ApiError && (reason.status === 404 || reason.status === 405)) { await load(); setMessage('Problems refreshed. This server has no bulk recheck action.') }
-      else setMessage(reason instanceof Error ? reason.message : 'Could not refresh problems.')
-    }
-    finally { setLoading(false) }
-  }
-
-  const releaseIds = current?.code === 'DUPLICATE_PHYSICAL_RELEASE' && Array.isArray(current.details?.release_ids)
-    ? current.details.release_ids.map((value) => String(value))
-    : []
-  const loserIds = duplicateLoserIds(releaseIds, winnerReleaseId)
-
-  const previewDuplicate = async () => {
-    if (!current?.entityId || !winnerReleaseId || !loserIds.length) return
-    setLoading(true); setMessage('')
-    try {
-      setDuplicatePreview(await api.previewMovieDuplicate(current.entityId, {
-        winner_release_id: winnerReleaseId,
-        losing_release_ids: loserIds,
-        delete_media: deleteMedia,
-        remove_torrents: removeTorrents,
-      }))
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not preview duplicate resolution.') }
-    finally { setLoading(false) }
-  }
-
-  const commitDuplicate = async () => {
-    if (!current?.entityId || !duplicatePreview) return
-    setLoading(true); setMessage('')
-    try {
-      const accepted = await api.resolveMovieDuplicate(current.entityId, duplicatePreview.confirmationToken)
-      setDuplicatePreview(null)
-      const [job] = await api.waitForJobs([accepted.job_id])
-      await load()
-      if (!job || job.state !== 'completed') {
-        setMessage(`Duplicate resolution ${job?.state ?? 'failed'}. Review Jobs for details.`)
-      } else {
-        const summary = job.summary ?? {}
-        const deleted = Array.isArray(summary.deleted_directories) ? summary.deleted_directories : []
-        const warnings = Array.isArray(summary.warnings) ? summary.warnings : []
-        setMessage(Boolean(summary.duplicate_resolved)
-          ? `Duplicate resolved. ${deleted.length ? `${deleted.length} losing director${deleted.length === 1 ? 'y' : 'ies'} deleted.` : 'No media was deleted.'}${warnings.length ? ` ${warnings.length} warning${warnings.length === 1 ? '' : 's'} recorded.` : ''}`
-          : `Preferred release recorded. The duplicate remains open until the losing copy is actually gone.${warnings.length ? ` ${warnings.length} warning${warnings.length === 1 ? '' : 's'} recorded.` : ''}`)
-      }
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not commit duplicate resolution.') }
-    finally { setLoading(false) }
-  }
-
-  const searchTmdb = async () => {
-    if (!tmdbQuery.trim()) return
-    setLoading(true); setMessage('')
-    try { setTmdbMatches(await api.lookupMovies(tmdbQuery.trim())); setSelectedTmdbMatch(undefined) }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
-    finally { setLoading(false) }
-  }
-
-  const confirmMovie = async (match: TMDBMovieLookup) => {
-    if (!current) return
-    setLoading(true); setMessage('')
-    try {
-      await api.resolveProblem(current.id, 'confirm_movie_match', { tmdb_id: match.tmdbId })
-      await load()
-      setSelectedTmdbMatch(undefined)
-      setMessage(`Manually matched to ${match.title}${match.year ? ` (${match.year})` : ''}. No media was renamed or moved.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the manual Movie match.') }
-    finally { setLoading(false) }
-  }
-
-  const searchTmdbShows = async () => {
-    if (!tmdbQuery.trim()) return
-    setLoading(true); setMessage('')
-    try { setTmdbShowMatches(await api.lookupShows(tmdbQuery.trim())); setSelectedTmdbShowMatch(undefined) }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB Show lookup failed.') }
-    finally { setLoading(false) }
-  }
-
-  const confirmShow = async (match: TMDBShowLookup) => {
-    if (!current) return
-    setLoading(true); setMessage('')
-    try {
-      await api.resolveProblem(current.id, 'confirm_show_match', { tmdb_id: match.tmdbId })
-      await load()
-      setSelectedTmdbShowMatch(undefined)
-      setMessage(`Manually matched to ${match.title}${match.year ? ` (${match.year})` : ''}. No media was renamed or moved.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the manual Show match.') }
-    finally { setLoading(false) }
-  }
-
-  const chooseEpisodeWinner = async (mediaFileId: string) => {
-    if (!current) return
-    setLoading(true); setMessage('')
-    try {
-      await api.resolveProblem(current.id, 'choose_episode_winner', { winner_media_file_id: mediaFileId })
-      await load()
-      setMessage('Preferred episode file recorded. The physical duplicate remains flagged until the losing file is actually gone.')
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not select the preferred episode file.') }
-    finally { setLoading(false) }
-  }
-
-  const recheckProblem = async () => {
-    if (!current) return
-    setLoading(true); setMessage('')
-    try {
-      const result = await api.resolveProblem(current.id, 'recheck')
-      const parentJobId = typeof result.resolution?.recheck_parent_job_id === 'string' ? result.resolution.recheck_parent_job_id : ''
-      const [job] = parentJobId ? await api.waitForJobs([parentJobId]) : []
-      await load(page, true)
-      const summary = job?.summary ?? {}
-      const directErrors = Array.isArray(summary.direct_errors) ? summary.direct_errors.map(String) : []
-      const qbitErrors = Array.isArray(summary.qbit_errors) ? summary.qbit_errors.map(String) : []
-      const errors = [...directErrors, ...qbitErrors]
-      setMessage(job?.state === 'completed'
-        ? errors.length ? `Evidence recheck completed with warnings: ${errors.join('; ')}`
-        : summary.condition_cleared === true ? 'Problem cleared: the condition is no longer present.'
-        : 'Rechecked, the problem is still there.'
-        : job?.state === 'cancelled' ? 'Recheck cancelled.'
-        : `Evidence recheck failed${job?.error ? `: ${job.error}` : '.'} Review Jobs for details.`)
-    }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not request a recheck.') }
-    finally { setLoading(false) }
-  }
-
-  const dismissProblem = async () => {
-    if (!current) return
-    setLoading(true); setMessage('')
-    try {
-      await api.resolveProblem(current.id, 'dismiss')
-      setSelected('')
-      await load(page, true)
-      setMessage('Problem dismissed after manual review.')
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not dismiss Problem.') }
-    finally { setLoading(false) }
-  }
-
-  const deleteCurrentProblem = async () => {
-    if (!current) return
-    if (!await confirm({
-      title: 'Delete this problem?',
-      body: current.title,
-      confirmLabel: 'Delete problem',
-      note: 'It may reappear if the condition is still true.',
-    })) return
-    setLoading(true); setMessage('')
-    try {
-      await api.deleteProblem(current.id)
-      setSelected('')
-      const targetPage = visible.length === 1 && page > 1 ? page - 1 : page
-      if (targetPage !== page) setPage(targetPage)
-      else await load(targetPage)
-      setMessage('Problem record deleted. Media and torrent data were untouched.')
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not delete Problem.') }
-    finally { setLoading(false) }
-  }
-
-  const clearOpenProblems = async () => {
-    const filtered = reasonFilter !== 'all' || severityFilter !== 'all'
-    const label = filtered ? `${total} Problems matching the current filters` : `all ${openTotal} open Problems`
-    if (!await confirm({
-      title: `Delete ${label}?`,
-      confirmLabel: 'Delete',
-      note: 'Problems reappear if their conditions are still true.',
-    })) return
-    setLoading(true); setMessage('')
-    try {
-      const result = await api.clearProblems({ status: 'open', category: reasonFilter, severity: severityFilter })
-      setSelected('')
-      setPage(1)
-      await load(1)
-      setMessage(`${result.deleted} Problem record${result.deleted === 1 ? '' : 's'} deleted.`)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not clear Problems.') }
-    finally { setLoading(false) }
-  }
-
-  return <Page title="Problems" subtitle="A single queue for identity conflicts, duplicates, unreachable storage, and uncertain matches.">
-    <div className="problem-summary"><div className="problem-summary-icon"><Icon name="alert" size={22} /></div><div><strong>{!loaded ? 'Loading Problems…' : `${openTotal} open Problem${openTotal === 1 ? '' : 's'}`}</strong><span>Deleting a Problem removes only its record. Media and torrents stay untouched.</span></div><div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void reEvaluate()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="danger" onClick={() => void clearOpenProblems()} disabled={loading || !total}>Clear {reasonFilter !== 'all' || severityFilter !== 'all' ? 'filtered' : 'all open'}</Button></div></div>
-    <div className="toolbar"><Select value={reasonFilter} onChange={(event) => { setReasonFilter(event.target.value); setSelected(''); setPage(1) }}><option value="all">All problem types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value); setSelected(''); setPage(1) }}><option value="all">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></Select><span className="muted">Showing {visible.length} of {total} matching · {openTotal} open total · page {pages ? page : 0} of {pages}</span></div>
-    {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
-    <div className="problem-layout"><Panel className="problem-list-panel"><div className="problem-filter"><span className="eyebrow">OPEN PROBLEMS</span><span className="muted">{total} matching</span></div>{visible.map((problem, index) => <button key={problem.id || `${problem.code}-${index}`} className={`problem-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)}><div className={`problem-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></div><div className="problem-row-copy"><strong>{problem.title}</strong><span>{problem.subject}</span><small>{problem.created}</small></div><Icon name="chevron" size={16} /></button>)}</Panel>
-      <Panel className="problem-detail-panel" title={current?.title ?? 'Select a problem'} eyebrow={current?.code ?? 'REVIEW QUEUE'}>{current ? <>
-        <div className="issue-banner"><Badge tone={current.severity === 'high' ? 'red' : current.severity === 'low' ? 'neutral' : 'amber'}>{current.severity} priority</Badge><span>{current.code}</span></div>
-        <p className="issue-detail">{current.detail}</p>
-        <div className="compare-card"><div><span className="eyebrow">AFFECTED MEDIA</span><strong>{current.subject}</strong><span>{current.entityType ? `${current.entityType} · ` : ''}{current.entityId ?? 'What Medialogue recorded'}</span></div><Icon name="arrow" size={20} /><div><span className="eyebrow">PROBLEM SOURCE</span><strong>{current.code === 'PLEX_IDENTITY_MISMATCH' ? 'Plex compared with Medialogue' : current.code === 'DUPLICATE_EPISODE_RELEASE' ? 'Verified episode paths on disk' : current.code === 'TORRENT_PATH_NOT_FOUND' ? 'qBittorrent compared with the files on disk' : current.code.includes('DUPLICATE') ? 'What is on disk now' : current.code.startsWith('TMDB_') ? 'Parser candidate compared with TMDB' : 'What the scan found'}</strong><span>{current.code === 'DUPLICATE_EPISODE_RELEASE' ? 'A duplicate requires two distinct file paths that are both verified on disk.' : current.code === 'TORRENT_PATH_NOT_FOUND' ? 'The qBittorrent and local paths below show why this warning appeared.' : 'Review the details below before acting.'}</span></div></div>
-        <ProblemEvidenceDetails problem={current} />
-
-        {current.code === 'DUPLICATE_PHYSICAL_RELEASE' && releaseIds.length > 1 && <div className="resolution-block"><div className="eyebrow">DUPLICATE RESOLVER</div><p>Select the copy to keep. Medialogue will not delete the loser unless you explicitly request deletion and review a fresh inventory first.</p><div className="history-list">{releaseIds.map((releaseId) => { const release = duplicateMovie?.releasesDetail?.find((item) => item.id === releaseId); const path = release?.directories?.find((directory) => directory.exists)?.path ?? release?.directories?.[0]?.path; return <label className="inline-check" key={releaseId}><input type="radio" name="duplicate-winner" checked={winnerReleaseId === releaseId} onChange={() => { setWinnerReleaseId(releaseId); setDuplicatePreview(null) }} /><span><strong>{release?.name ?? `Release ${releaseId}`}</strong><small>{[release?.quality, release?.edition, release?.releaseGroup].filter(Boolean).join(' · ') || 'Release details unavailable'}{path ? ` · ${path}` : ''}</small></span></label> })}</div><label className="inline-check"><input type="checkbox" checked={deleteMedia} onChange={(event) => { setDeleteMedia(event.target.checked); setDuplicatePreview(null) }} />Delete the losing media director{loserIds.length === 1 ? 'y' : 'ies'} after preview</label><label className="inline-check"><input type="checkbox" checked={removeTorrents} onChange={(event) => { setRemoveTorrents(event.target.checked); setDuplicatePreview(null) }} />Remove losing torrent(s) from qBittorrent; archived .torrent files remain</label><div className="detail-actions"><Button variant="primary" disabled={!winnerReleaseId || loading} onClick={() => void previewDuplicate()}>Preview resolution</Button></div></div>}
-
-        {duplicatePreview && <div className="resolution-block destructive-preview"><div className="eyebrow">FRESH DESTRUCTIVE PREVIEW</div><strong>{duplicatePreview.movieTitle}</strong><div className="settings-note"><Icon name="info" size={15} /><span>Torrent backups are retained. The confirmation expires at {new Date(duplicatePreview.expiresAt).toLocaleTimeString()}.</span></div><div className="compare-card"><div><span className="eyebrow">KEEP</span><strong>{duplicatePreview.winner.releaseName}</strong><span>{[duplicatePreview.winner.quality, duplicatePreview.winner.edition, duplicatePreview.winner.releaseGroup].filter(Boolean).join(' · ')}</span></div><Icon name="arrow" size={20} /><div><span className="eyebrow">LOSING COPY</span><strong>{duplicatePreview.losers.map((item) => item.releaseName).join(' / ')}</strong><span>{deleteMedia ? 'Entire associated media directory will be deleted.' : 'Media will remain untouched; duplicate stays open.'}</span></div></div>{duplicatePreview.losers.flatMap((release) => release.directories).map((directory) => <div className="duplicate-directory-preview" key={directory.directoryId}><strong>{directory.path}</strong><span>{directory.storageRoot} · {directory.accessMode} · {directory.files.length} files inventoried</span>{deleteMedia && <div className="expert-code">{directory.files.map((file) => file.relativePath).join('\n') || '(directory is already empty)'}</div>}</div>)}{duplicatePreview.warnings.map((warning) => <div className="settings-note" key={warning}><Icon name="alert" size={15} /><span>{warning}</span></div>)}<div className="detail-actions"><Button variant="ghost" onClick={() => setDuplicatePreview(null)}>Cancel</Button><Button variant={deleteMedia || removeTorrents ? 'danger' : 'primary'} disabled={loading} onClick={() => void commitDuplicate()}>{deleteMedia || removeTorrents ? 'Commit destructive resolution' : 'Record preferred copy'}</Button></div></div>}
-
-        {current.availableActions?.includes('confirm_movie_match') && <TMDBMatchPicker kind="Movie" query={tmdbQuery} matches={tmdbMatches} selected={selectedTmdbMatch} loading={loading} onQueryChange={setTmdbQuery} onSearch={() => void searchTmdb()} onSelect={(match) => setSelectedTmdbMatch(match as TMDBMovieLookup)} onApply={() => { if (selectedTmdbMatch) void confirmMovie(selectedTmdbMatch) }} />}
-
-        {current.availableActions?.includes('confirm_show_match') && <TMDBMatchPicker kind="Show" query={tmdbQuery} matches={tmdbShowMatches} selected={selectedTmdbShowMatch} loading={loading} onQueryChange={setTmdbQuery} onSearch={() => void searchTmdbShows()} onSelect={(match) => setSelectedTmdbShowMatch(match as TMDBShowLookup)} onApply={() => { if (selectedTmdbShowMatch) void confirmShow(selectedTmdbShowMatch) }} />}
-
-        {current.availableActions?.includes('choose_episode_winner') && Array.isArray(current.details?.media_file_ids) && <div className="resolution-block"><div className="eyebrow">EPISODE DUPLICATE</div><p>Choose the file Medialogue should protect as the authoritative mapping. No file is deleted; remove the unwanted copy yourself, then recheck.</p><div className="detail-actions">{current.details.media_file_ids.map((id) => { const file = Array.isArray(current.details?.media_files) ? current.details.media_files.map(problemRecord).find((item) => problemText(item.media_file_id) === String(id)) : undefined; const label = problemText(file?.path) ?? problemText(file?.filename); const selectedFile = problemText(current.details?.preferred_media_file_id) === String(id); return <Button variant={selectedFile ? 'primary' : 'ghost'} key={String(id)} onClick={() => void chooseEpisodeWinner(String(id))} disabled={loading || selectedFile || !label}>{selectedFile ? 'Preferred: ' : label ? 'Prefer ' : ''}{label ?? 'Recheck to load file details'}</Button> })}</div></div>}
-
-        <div className="detail-actions">{current.availableActions?.includes('recheck') && <Button variant="ghost" icon="refresh" onClick={() => void recheckProblem()} disabled={loading}>Recheck evidence</Button>}{current.availableActions?.includes('dismiss') && <Button variant="ghost" onClick={() => void dismissProblem()} disabled={loading}>Dismiss</Button>}<Button variant="danger" onClick={() => void deleteCurrentProblem()} disabled={loading}>Delete warning record</Button></div>
-      </> : <EmptyState icon="alert" title="No unresolved problems on this page" detail={total ? 'Use the page controls to continue through the queue.' : 'Nothing is waiting to be matched.'} />}</Panel></div>
-    {pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button><span>Page {page} of {pages} · {total} matching Problems</span><Button variant="ghost" disabled={page >= pages || loading} onClick={() => setPage((value) => Math.min(pages, value + 1))}>Next</Button></div>}
-  </Page>
-}
-
-/**
- * What is wrong with this item.
- *
- * The badge used to name the ritual for fixing it ("Fix manually"), which was
- * both less informative and, for duplicates, untrue: that group offered no fix
- * action at all. The server names the condition now; this is the fallback for
- * a Problem stored before it did.
- */
 function problemLabel(problem: Problem): string {
   const raw = problem.reason ?? ''
   return problem.label || raw.replace(/_/g, ' ').toLowerCase().replace(/^./, (character) => character.toUpperCase()) || 'Problem'
@@ -1466,7 +1127,6 @@ export function ProblemsPage() {
   const [summary, setSummary] = useState<{ open: number; suppressed: number; workflows: Record<string, number> }>({ open: 0, suppressed: 0, workflows: {} })
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
-  const [loaded, setLoaded] = useState(false)
   const [message, setMessage] = useState('')
   const [duplicateMovie, setDuplicateMovie] = useState<Movie | null>(null)
   const [editionOptions, setEditionOptions] = useState<string[]>([])
@@ -1490,7 +1150,7 @@ export function ProblemsPage() {
         api.problemSummary(),
       ])
       if (generation !== loadGeneration.current) return
-      setItems(payload.items); setTotal(payload.total); setPages(payload.pages); setPage(payload.page); setSummary(nextSummary); setLoaded(true)
+      setItems(payload.items); setTotal(payload.total); setPages(payload.pages); setPage(payload.page); setSummary(nextSummary)
       if (selected && !payload.items.some((problem) => problem.id === selected)) setSelected('')
       if (!preserveMessage) setMessage('')
     } catch (reason) { if (generation === loadGeneration.current) setMessage(reason instanceof Error ? reason.message : 'Could not load Problems.') }
@@ -1639,11 +1299,8 @@ export function ProblemsPage() {
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     <section className={`problems-layout ${selected ? 'show-detail' : ''}`}>
       <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong><span>{problem.subject}</span><small><b className={`problems-state state-${problem.workflow}`}>{problemLabel(problem)}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
-      <article className="problems-detail">{current ? <><header className="problems-detail-head"><button className="icon-button problems-back-button" type="button" onClick={() => setSelected('')} aria-label="Back to Problems"><Icon name="chevron" size={16} style={{ transform: 'rotate(180deg)' }} /></button>{/* No condition eyebrow: the title below already says what is wrong, and the
-    badge beside the priority repeats it a third time. Suppressed is different,
-    it describes the queue rather than the problem. */}
-<div>{queueStatus === 'dismissed' && <div className="eyebrow">SUPPRESSED</div>}<h2>{current.title}</h2></div>{/* Two buttons rather than a menu holding two buttons: the menu cost a
-    click and hid both actions behind an unlabelled glyph. */}
+      <article className="problems-detail">{current ? <><header className="problems-detail-head"><button className="icon-button problems-back-button" type="button" onClick={() => setSelected('')} aria-label="Back to Problems"><Icon name="chevron" size={16} style={{ transform: 'rotate(180deg)' }} /></button>
+<div>{queueStatus === 'dismissed' && <div className="eyebrow">SUPPRESSED</div>}<h2>{current.title}</h2></div>
 <div className="problems-detail-actions">
   {queueStatus === 'dismissed'
     ? <Button variant="ghost" onClick={() => void adminAction('restore')}>Restore</Button>
@@ -1664,25 +1321,10 @@ export function ProblemsPage() {
   </Page>
 }
 
-
 function reviewFolderName(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path
 }
 
-/**
- * Review: three tall panes, one row per title.
- *
- * The folder and the identity Medialogue picked for it sit on the same line, in
- * one scrolling surface, because they are two halves of a single question. The
- * third pane is full height and belongs to whichever row is selected, so a
- * search for something ordinary like "Friends" can show all of its results at
- * once rather than three of them in a row-sized box.
- *
- * Nothing is approved one at a time. A scan produces a root's worth of folders
- * and the answer is almost always "yes, all of these", so the unit of work is
- * the import button and the checkbox that leaves one out.
- */
-/** Sentence-cased media noun, for labels that name the thing being added. */
 function capitalise(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
@@ -1697,13 +1339,7 @@ export function ReviewPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [editionOptions, setEditionOptions] = useState<string[]>([])
-  /**
-   * Reload the queue.
-   *
-   * A quiet reload leaves the spinner alone, because a scan finishing while
-   * someone is halfway through reviewing must not blank the panes they are
-   * working in. Selection and exclusions are held by id, so they survive it.
-   */
+
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
     try { setItems(await api.discoveries()); setError('') }
@@ -1711,21 +1347,13 @@ export function ReviewPage() {
     finally { if (!quiet) setLoading(false) }
   }
   useEffect(() => { void load(); void api.movieEditionOptions().then(setEditionOptions).catch(() => undefined) }, [])
-  // A scan running elsewhere adds folders to this queue, and the page you are
-  // looking at should show them without being reopened.
   useLiveLibraryRefresh(() => load(true))
 
   // Confirmed-missing directories are not actionable review work. The API
   // excludes them too; this guard also prevents an already-loaded stale row
   // from lingering until the next refresh.
   const actionableItems = useMemo(() => items.filter((item) => item.exists), [items])
-  /**
-   * Clicking away clears the selection.
-   *
-   * The alternatives pane belongs to the selected row, so clicks inside it are
-   * part of the same task, and so is the dropdown menu, which is portalled to
-   * the body and therefore outside the panes by DOM position.
-   */
+
   useEffect(() => {
     if (!selectedId) return
     const onPointerDown = (event: MouseEvent) => {
@@ -1739,7 +1367,6 @@ export function ReviewPage() {
 
   const roots = useMemo(() => reviewRoots(actionableItems), [actionableItems])
   useEffect(() => {
-    // Keep a valid root selected as the queue empties out from under it.
     if (!roots.length) { setRootName(''); return }
     if (!roots.some((root) => root.name === rootName)) setRootName(roots[0].name)
   }, [roots, rootName])
@@ -1756,14 +1383,7 @@ export function ReviewPage() {
     })
     return new Set([...groups.values()].filter((ids) => ids.length > 1).flat())
   }, [importable])
-  /**
-   * Rows whose movie appears more than once in this queue.
-   *
-   * Two copies of one film are exactly when the edition matters, so both keep
-   * the control on screen even where nothing was detected. Hiding the
-   * Theatrical one would leave a pair you cannot compare without hovering each
-   * in turn.
-   */
+
   const sharedMovieIds = useMemo(() => {
     const groups = new Map<number, string[]>()
     rows.filter((item) => item.mediaType === 'movies' && item.selected).forEach((item) => {
@@ -1794,8 +1414,6 @@ export function ReviewPage() {
       window.dispatchEvent(new Event('medialogue-review-changed'))
       setMessage(`${result.succeeded.length} ${result.succeeded.length === 1 ? noun : `${noun}s`} imported.`)
       if (result.failed.length) {
-        // Named rather than counted: a partial import is only useful if you can
-        // tell which folders still need you.
         setError(`${result.failed.length} could not be imported: ${result.failed.map((failure) => failure.message).join(' ')}`)
         await load()
       }
@@ -1803,13 +1421,6 @@ export function ReviewPage() {
     finally { setImporting(false) }
   }
 
-  /**
-   * Record a chosen identity.
-   *
-   * The row updates before the request, because the candidate that was clicked
-   * already carries everything the row displays. Waiting on a server round trip
-   * to redraw a title you are looking at is a delay with nothing behind it.
-   */
   const choose = async (item: MediaDiscovery, candidate: TMDBCandidate) => {
     setError('')
     const previous = item.selected
@@ -1856,8 +1467,7 @@ export function ReviewPage() {
     </div>
 
     <div className="review-workspace">
-      {/* Panes one and two are one scrolling surface: two lists side by side
-          would drift apart, and a row has to mean the same thing across both. */}
+
       <div className="review-scroll">
         <span className="review-col-head">{noun === 'show' ? 'Show' : 'Movie'} folder</span>
         <span className="review-col-head">Detected {noun}</span>
@@ -1884,10 +1494,7 @@ export function ReviewPage() {
                 <Tooltip content={item.path}><code>{reviewFolderName(item.path)}</code></Tooltip>
                 {state && <span className={`review-state ${state.tone}`}>{state.text}</span>}
               </div>
-              {/* The whole cell selects, not just the button inside it: the
-                  cell's padding and the space beside the edition control were
-                  dead pixels in the middle of a click target. The button stays
-                  for keyboard activation, and its click bubbles up to here. */}
+
               <div
                 className={`review-match-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
                 onClick={() => setSelectedId(active ? '' : item.id)}
@@ -1898,9 +1505,7 @@ export function ReviewPage() {
                     : <Icon name={item.mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
                   <span className="review-match-copy">
                     <strong>{match?.title ?? item.parsedTitle ?? 'Nothing found'}</strong>
-                    {/* The edition sits on the year line rather than the title
-                        line: both are facts about the same copy, and the title
-                        keeps the full width it needs to truncate against. */}
+
                     <span className="review-match-sub">
                       <small>{match?.year ?? item.parsedYear ?? '—'}</small>
                       {item.mediaType === 'movies' && <span
@@ -1925,10 +1530,7 @@ export function ReviewPage() {
       </div>
 
       <div className="review-import">
-        {/* The count is on the button, so restating it beside the button only
-            said the same number twice. */}
-        {/* Before the button, not after it: the bar is right-aligned, so a
-            warning appearing on the right would shove the button sideways. */}
+
         {hasEditionConflicts && <span className="review-import-warning">Resolve same-edition copies or leave one out before importing.</span>}
         <Button variant="primary" icon="check" onClick={() => void runImport()} disabled={importing || !importable.length || hasEditionConflicts}>
           {importing ? 'Adding…' : `Add ${importable.length} ${importable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
@@ -1948,12 +1550,6 @@ export function ReviewPage() {
   </Page>
 }
 
-/**
- * The candidates for the selected row, down the full height of the pane.
- *
- * Poster, title and year only. The decision is made by recognition, and a plot
- * summary would push the next candidate off the screen.
- */
 function ReviewAlternatives({ item, onChoose, onSearched, onError }: {
   item: MediaDiscovery
   onChoose: (candidate: TMDBCandidate) => void
@@ -1964,13 +1560,6 @@ function ReviewAlternatives({ item, onChoose, onSearched, onError }: {
   const [searching, setSearching] = useState(false)
   const matches = item.candidates
 
-  /**
-   * Search TMDB and keep the answer on the item.
-   *
-   * Results are stored server-side, so they are the same for anyone looking at
-   * this queue, they survive a reload, and they last until someone searches
-   * again or the folder leaves review. Nothing here depends on this browser.
-   */
   const search = async (term?: string) => {
     setSearching(true)
     try { onSearched(await api.searchDiscoveryCandidates(item.id, term)) }
@@ -2134,11 +1723,6 @@ export function TorrentArchivePage() {
 
 export function CustomFormatsPage() { return <CustomFormatsPageView /> }
 
-
-// Settings keeps one stable navigation rail. Per-integration collections such
-// as qBittorrent clients and indexers are selectors inside their destination,
-// not another competing navigation sidebar.
-/** Every "you have unsaved changes" guard asks the same thing. */
 const DISCARD_CHANGES = { title: 'Discard unsaved changes?', confirmLabel: 'Discard' } as const
 
 const settingsTabItems: Array<{ name: string; icon: Parameters<typeof Icon>[0]['name'] }> = [
@@ -2162,7 +1746,6 @@ const legacySettingsTabs: Record<string, string> = {
 
 export function SettingsPage() {
   const [tab, setTab] = useUrlState('tab', 'Media')
-  const [searchParams] = useSearchParams()
   const normalizedTab = legacySettingsTabs[tab] ?? tab
   const current = settingsTabs.includes(normalizedTab) ? normalizedTab : 'Media'
   return <Page title="Settings" subtitle="Connections, library paths, and system administration.">
@@ -2184,7 +1767,6 @@ export function SettingsPage() {
     </div>
   </Page>
 }
-
 
 function SecuritySettings() {
   const [security, setSecurity] = useState<{ default_password_warning: boolean; session_expires_at?: string } | null>(null)
@@ -2238,25 +1820,17 @@ function StorageSettings() {
   // Multiple progress events can overlap REST reads. Only the newest root
   // snapshot may win, otherwise a slow stale response can resurrect Scanning.
   const rootsLoadGeneration = useRef(0)
-  // Index currently being dragged. Null means no drag is in flight, which is
-  // also what suppresses the reorder request on a plain click.
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mappings, setMappings] = useState<RemotePathMapping[]>([])
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [message, setMessage] = useState<Message>(null)
   const [selectedRoot, setSelectedRoot] = useState<StorageRoot | null>(null)
   const [rootModalOpen, setRootModalOpen] = useState(false)
-  // What the form held when it was opened. Dirtiness is a comparison against
-  // this rather than a flag, because opening the form triggers a browse that
-  // writes the path back and would trip any flag.
   const [rootBaseline, setRootBaseline] = useState<RootDraft | null>(null)
   const [rootBusy, setRootBusy] = useState(false)
   const [listing, setListing] = useState<FilesystemListing | null>(null)
-  // Scanning is gated on TMDB, so say it here rather than after a failure.
   const [tmdbReady, setTmdbReady] = useState(true)
   const [summary, setSummary] = useState<LibrarySummary | null>(null)
-  // Removal asks a real question, so it gets a real dialog rather than the
-  // browser's confirm box.
   const [removing, setRemoving] = useState<StorageRoot | null>(null)
   const [removeEntries, setRemoveEntries] = useState(false)
   const [browseBusy, setBrowseBusy] = useState(false)
@@ -2297,11 +1871,7 @@ function StorageSettings() {
     } catch (reason) { setMessage(failed(reason, 'Could not load storage configuration.')) }
   }
   useEffect(() => { void load() }, [])
-  // Scans emit progress and completion events; without this the list only ever
-  // showed what was true when the page opened.
   useLiveLibraryRefresh(loadRoots, 15000, true)
-  // Health used to be written only by a scan, so a root that dropped offline
-  // stayed green. This is one directory stat per root, on open.
   useEffect(() => {
     const generation = ++rootsLoadGeneration.current
     api.checkStorageRootHealth().then((nextRoots) => {
@@ -2314,16 +1884,10 @@ function StorageSettings() {
       .then((value) => setTmdbReady(Boolean(value.enabled && value.api_key_configured)))
       .catch(() => undefined)
   }, [])
-  /** Names already in use, ignoring the root being edited. */
+
   const takenNames = (except?: StorageRoot | null) =>
     roots.filter((item) => item.id !== except?.id).map((item) => item.name)
 
-  /**
-   * Switch library, carrying the default name along.
-   *
-   * Only an untouched default moves: once the name says anything else it is the
-   * operator's, and changing the media type is not permission to rewrite it.
-   */
   const changeMediaType = (next: 'movies' | 'shows') => {
     setMediaType(next)
     setName((current) => isGeneratedRootName(current)
@@ -2345,10 +1909,7 @@ function StorageSettings() {
     if (rootDirty && !await confirm(DISCARD_CHANGES)) return
     setRootModalOpen(false); setMessage(null)
   }
-  /**
-   * Walk the filesystem. Where you are is what you are choosing, so there is
-   * no separate confirm step and no way for the two to disagree.
-   */
+
   const browseTo = async (target: string, options: { updateDraftPath?: boolean; preservePathOnProblem?: boolean } = {}) => {
     const updateDraftPath = options.updateDraftPath ?? true
     const preservePathOnProblem = options.preservePathOnProblem ?? Boolean(selectedRoot)
@@ -2362,7 +1923,6 @@ function StorageSettings() {
     } finally { setBrowseBusy(false) }
   }
 
-  /** Open the browser where the root already points, or at the top of the tree. */
   const openBrowser = (from: string, options: { updateDraftPath?: boolean; preservePathOnProblem?: boolean } = {}) => {
     void browseTo(rootBrowseStart(from), options)
   }
@@ -2423,7 +1983,7 @@ function StorageSettings() {
       setMessage(failed(reason, `Could not scan ${root.name}.`))
     } finally { setRootBusy(false) }
   }
-  /** "shows" / "movie", better than calling everything a library entry. */
+
   const mediaNoun = (root: StorageRoot) =>
     root.media_type === 'shows'
       ? (root.media_count === 1 ? 'show' : 'shows')
@@ -2495,8 +2055,6 @@ function StorageSettings() {
   }
 
   function dragOverRoot(index: number) {
-    // Reorder during the drag so the row follows the cursor, rather than
-    // snapping into place only on drop.
     if (dragIndex === null || dragIndex === index) return
     setRoots((items) => moveItem(items, dragIndex, index))
     setDragIndex(index)
@@ -2535,7 +2093,6 @@ function StorageSettings() {
         const scanned = Boolean(root.last_scan_at)
         const health = (root.last_health ?? 'unchecked').toLowerCase()
         const offline = scanned && (health === 'offline' || health === 'unavailable')
-        // One plain sentence rather than a health word the reader has to decode.
         const state = root.scanning ? { tone: 'blue' as const, text: 'Scanning…' }
           : !root.enabled ? { tone: 'neutral' as const, text: 'Disabled' }
           : offline ? { tone: 'red' as const, text: 'Path not reachable' }
@@ -2549,8 +2106,7 @@ function StorageSettings() {
           onDragEnd={() => void commitRootOrder()}
           onDrop={(event) => { event.preventDefault(); void commitRootOrder() }}>
           <span className="root-row-grip" aria-hidden="true"><Icon name="menu" size={14} /></span>
-          {/* The icon carries the media type, so the row does not also spend a
-              pillbox saying the same word beside the name. */}
+
           <Tooltip asChild content={root.media_type === 'movies' ? 'Movies folder' : 'Shows folder'}>
             <span className={`root-row-icon kind-${root.media_type === 'movies' ? 'movie' : 'show'} ${offline ? 'bad' : ''}`}>
               <Icon name={root.media_type === 'movies' ? 'clapper' : 'tv-screen'} size={18} />
@@ -2601,7 +2157,6 @@ function StorageSettings() {
           </div>
         </div>
 
-
         <div className={`settings-form form-cards scope-${mediaType}`}>
           <Field label="Media type" help="Which library the files found here belong to.">
             <Segmented
@@ -2622,10 +2177,7 @@ function StorageSettings() {
               options={[{ value: 'read_only', label: 'Read-only' }, { value: 'read_write', label: 'Read/write' }]}
             />
           </Field>
-          {/* The help describes the setting as it currently stands, not one of
-              its two states: a fixed sentence about Review is wrong half the
-              time, and wrong in the direction that matters, since adding
-              automatically is the option with consequences. */}
+
           <Field label="New media" help={reviewNewMedia
             ? 'Newly detected titles wait in Review until you approve them.'
             : 'Newly detected titles are added to your library as soon as a scan finds them.'}>
@@ -2726,7 +2278,6 @@ function StorageSettings() {
     {!rootModalOpen && !addingMapping && !removing && <Note message={message} />}
     <div className="settings-note"><Icon name="info" size={15} /><span>Scans and path mappings never move or rename media. Removing a media folder never touches its files; only Medialogue's index of that folder is cleared.</span></div>
 
-
   </>
 }
 
@@ -2737,7 +2288,6 @@ function MetadataSettings() {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<Message>(null)
-  const [tested, setTested] = useState<{ text: string; tone: 'ok' | 'err' } | null>(null)
 
   const load = () => api.tmdbConfiguration().then((value) => { setConfiguration(value); setEnabled(value.enabled); setApiKey(''); setDirty(false) })
   useEffect(() => { load().catch((reason) => setMessage(failed(reason, 'Could not load TMDB settings.'))) }, [])
@@ -2755,7 +2305,6 @@ function MetadataSettings() {
     <SectionHead title="TMDB"
       description="Identity source for newly discovered titles. When off, discoveries stay unmatched."
       status={!configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
-      detail={tested?.text} detailTone={tested?.tone}
       action={<EnabledButton enabled={enabled} onChange={(next) => { setEnabled(next); setDirty(true) }} />} />
     <div className="settings-form form-cards">
       <Field label="API key"
@@ -2777,7 +2326,6 @@ function PlexSettings() {
   const [message, setMessage] = useState<Message>(null)
   const [working, setWorking] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [tested, setTested] = useState<{ text: string; tone: 'ok' | 'err' } | null>(null)
 
   const load = () => api.plexConfiguration().then((value) => {
     setConfiguration(value)
@@ -2820,7 +2368,6 @@ function PlexSettings() {
     <SectionHead title="Plex"
       description="Read-only verification. Nothing inside Plex is ever modified."
       status={loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
-      detail={tested?.text} detailTone={tested?.tone}
       action={<EnabledButton enabled={enabled} onChange={(next) => { setEnabled(next); setDirty(true) }} />} />
     <div className="settings-form form-cards">
       <Field label="URL" help={<>Plex Media Server address, including port. Example: <code>http://plex:32400</code></>}>
@@ -2858,9 +2405,6 @@ type DownloadClientDraft = {
   completedDownloadHandling: boolean
 }
 
-/** The wire shape of a client, from a draft. Shared by the editor and the card
- *  toggle, so flipping Enabled from the grid cannot send a different payload
- *  than saving the same client from its editor. */
 function downloadClientPayload(draft: DownloadClientDraft) {
   return {
     name: draft.name.trim(),
@@ -3010,13 +2554,7 @@ function QBittorrentSettings() {
   const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
   const connectionDetail = selected ? [selected.latency_ms !== undefined ? `${selected.latency_ms} ms` : '', selected.last_success_at ? `last success ${formatEvidenceDate(selected.last_success_at)}` : selected.last_checked_at ? `checked ${formatEvidenceDate(selected.last_checked_at)}` : ''].filter(Boolean).join(' · ') : undefined
   const [togglingId, setTogglingId] = useState('')
-  /**
-   * Flip Enabled straight from the grid.
-   *
-   * The card is the only place the whole set is visible, so turning one client
-   * off should not require opening and saving it. The full configuration is
-   * resent because the endpoint takes a complete client, not a patch.
-   */
+
   const toggleClient = async (client: DownloadClient) => {
     setTogglingId(client.id); setError(''); setMessage('')
     try {
@@ -3165,7 +2703,6 @@ const emptyIndexer: IndexerDraft = {
   downloadClientIds: [],
 }
 
-/** Live preview of the badge as it will look in search results. */
 function indexerBadgePreview(color: string): CSSProperties | undefined {
   const badge = badgeColor(color)
   if (!badge) return undefined
@@ -3250,7 +2787,6 @@ function IndexerSettings() {
         categories: draft.categories.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0),
         minimum_seeders: draft.minimumSeeders,
         priority: draft.priority,
-        // An empty string clears any stored colour rather than keeping it.
         color: draft.color,
         multi_languages: draft.multiLanguages.split(',').map((value) => value.trim()).filter(Boolean),
         download_client_ids: draft.downloadClientIds,
@@ -3318,7 +2854,7 @@ function IndexerSettings() {
   const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
   const indexerDetail = selected ? `${selected.health}${selected.latencyMs !== undefined ? ` · ${selected.latencyMs} ms` : ''}` : undefined
   const [togglingId, setTogglingId] = useState('')
-  /** Flip Enabled straight from the grid; the endpoint takes a patch here. */
+
   const toggleIndexer = async (indexer: Indexer) => {
     setTogglingId(indexer.id); setError(''); setMessage('')
     try {
@@ -3462,7 +2998,7 @@ function BackupRecoverySettings() {
     if (!job || !['queued', 'running'].includes(job.state)) return
     let alive = true
     const refresh = async () => {
-      try { const value = await api.job(job.id); if (alive) setJob(value) } catch { /* Jobs remain recoverable from the global drawer. */ }
+      try { const value = await api.job(job.id); if (alive) setJob(value) } catch {}
     }
     const timer = window.setInterval(() => void refresh(), 1500)
     return () => { alive = false; window.clearInterval(timer) }
@@ -3530,7 +3066,6 @@ function BackupRecoverySettings() {
     <div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={() => void loadCapabilities()}>Recheck</Button><Button variant="primary" icon="download" disabled={busy || !capabilities?.supported || job?.state === 'running' || job?.state === 'queued'} onClick={() => void start()}>{busy ? 'Starting…' : 'Export Recovery Bundle'}</Button></div>
   </div>
 }
-
 
 // Back returns to wherever you actually came from, a Problem, a search result,
 // a download row, and only falls back to the hardcoded list route when this

@@ -35,7 +35,6 @@ def storage_root_scan_running(root_id: UUID) -> bool:
     return _root_locks[root_id].locked()
 
 
-
 async def active_storage_root_scan_job(db: AsyncSession, root_id: UUID) -> Job | None:
     """Return the newest queued/running scan for a root, if any.
 
@@ -109,9 +108,6 @@ async def execute_storage_root_scan(
     if job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
         return {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0}
     await update_job(db, job, status=JobStatus.RUNNING, progress={"current": 0, "total": 0, "percent": 0, "stage": "enumerating"})
-    # Commit the RUNNING transition immediately.  Holding this write until the
-    # end of a large scan made other sessions see the job as eternally QUEUED
-    # and also blocked cancellation while database work was in flight.
     await db.commit()
     publish_job_status(job)
     publish_live_event(
@@ -146,8 +142,6 @@ async def execute_storage_root_scan(
         await mark_absent_show_directories(db, root, seen_paths)
     else:
         await mark_absent_known_directories(db, root, seen_paths)
-    # The filesystem enumeration is complete at this point, so commit the
-    # root/absence observations before doing per-directory reconciliation.
     await db.commit()
     await db.refresh(job)
     if job.status == JobStatus.CANCELLED:
@@ -211,10 +205,6 @@ async def execute_storage_root_scan(
             "plex_library_sync",
             summary={"scope": "storage_root", "storage_root_id": str(root.id)},
         )
-        # Expose evidence-producing follow-up work to callers waiting on this
-        # scan. The Problems UI follows these IDs recursively before declaring
-        # a refresh complete, so Plex presence/episode evidence is settled before
-        # the button reports completion.
         await update_job(
             db,
             job,

@@ -341,8 +341,6 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
         assert first["quality"] == "2160p BluRay REMUX"
         assert first["edition"] is None
         assert first["release_group"] == "LM"
-        # Part 12 scores every result under the target's frozen profile
-        # snapshot. Without an assigned profile, matching formats contribute 0.
         assert first["custom_format_score"] == 0
         assert first["custom_format_snapshot"]["score_evaluated"] is True
         assert first["quality_profile_id"] is None
@@ -355,7 +353,6 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
         assert first["size"] == 67_100_000_000
         assert "download_url" not in first
 
-        # Editing a Custom Format later must not rewrite search-time evidence.
         current = client.get(f"/api/v1/custom-formats/{custom_format_id}").json()
         edited = client.patch(
             f"/api/v1/custom-formats/{custom_format_id}",
@@ -398,7 +395,7 @@ def test_selected_search_result_submits_to_eligible_qbit_and_is_idempotent(clien
     )
     qbit = FakeQBitBehavior()
     client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: behavior.factory
-    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: qbit.factory
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: qbit.factory
     try:
         qbit_client = client.post(
             "/api/v1/download-clients",
@@ -514,7 +511,7 @@ def test_unattached_movie_search_commits_only_after_explicit_qbit_download(clien
         ]
     )
     client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: search_behavior.factory
-    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: qbit_behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: qbit_behavior.factory
     client.app.dependency_overrides[tmdb_api.get_tmdb_client_factory] = lambda: _fake_tmdb_factory
     try:
         qbit_client = client.post(
@@ -570,7 +567,6 @@ def test_unattached_movie_search_commits_only_after_explicit_qbit_download(clien
             async with db_session.async_session_factory() as db:
                 return await db.scalar(select(Movie).where(Movie.tmdb_id == 27205))
 
-        # Searching is evidence only; it must not create a library Movie.
         assert asyncio.run(movie_before_download()) is None
 
         result_id = payload["results"][0]["id"]
@@ -682,7 +678,7 @@ def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(clien
         categories=[TorrentCategory(name="tv", save_path="/downloads/tv", resolved_save_path="/downloads/tv")]
     )
     client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: behavior.factory
-    client.app.dependency_overrides[downloads_api.get_qbit_client_factory] = lambda: qbit_behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: qbit_behavior.factory
     client.app.dependency_overrides[tmdb_api.get_tmdb_client_factory] = lambda: _fake_tmdb_factory
     try:
         qbit_client = client.post(
@@ -715,7 +711,6 @@ def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(clien
         assert s1_job.status_code == 200, s1_job.text
         assert s1_job.json()["target"]["entity_type"] == "tmdb_show_season"
         assert s1_job.json()["target"]["season"] == 1
-        # Single episodes and multi-season packs are deliberately filtered out.
         assert [row["title"] for row in s1_job.json()["results"]] == [
             "Severance S01 2160p ATVP WEB-DL DDP5.1 H.265-GROUP"
         ]
@@ -804,7 +799,6 @@ def test_indexer_download_client_restriction_round_trips_and_defaults_open(clien
     assert updated.status_code == 200, updated.text
     assert set(updated.json()["download_client_ids"]) == {str(first), str(second)}
 
-    # Omitting the field leaves the restriction alone; sending [] clears it.
     untouched = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"priority": 30})
     assert set(untouched.json()["download_client_ids"]) == {str(first), str(second)}
     cleared = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"download_client_ids": []})

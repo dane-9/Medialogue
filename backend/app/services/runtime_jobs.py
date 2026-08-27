@@ -18,11 +18,6 @@ logger = logging.getLogger(__name__)
 _runtime_tasks: dict[UUID, asyncio.Task[None]] = {}
 
 
-def runtime_job_running(job_id: UUID) -> bool:
-    task = _runtime_tasks.get(job_id)
-    return bool(task is not None and not task.done())
-
-
 def launch_runtime_job(job_id: UUID, factory: Callable[[], Awaitable[None]]) -> bool:
     """Launch one runtime worker for a persisted Job.
 

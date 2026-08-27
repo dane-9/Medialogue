@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { horizontalWheelDelta } from './wheel'
 
-/** A strip 600px wide holding 1000px of tabs, scrolled to the start. */
 const box = (scrollLeft = 0) => ({ scrollLeft, scrollWidth: 1000, clientWidth: 600 })
 
 describe('horizontalWheelDelta', () => {
@@ -18,7 +17,6 @@ describe('horizontalWheelDelta', () => {
   })
 
   it('leaves an already-horizontal gesture to the browser', () => {
-    // A trackpad swipe scrolls sideways natively; intercepting it would double up.
     expect(horizontalWheelDelta({ deltaX: -80, deltaY: 5 }, box(300))).toBe(0)
   })
 
@@ -28,7 +26,6 @@ describe('horizontalWheelDelta', () => {
   })
 
   it('releases the gesture once the strip is at that end', () => {
-    // Nothing left to give, so the scroll should pass through to the page.
     expect(horizontalWheelDelta({ deltaX: 0, deltaY: 120 }, box(400))).toBe(0)
     expect(horizontalWheelDelta({ deltaX: 0, deltaY: -120 }, box(0))).toBe(0)
   })

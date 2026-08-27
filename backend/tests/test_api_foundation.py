@@ -190,7 +190,7 @@ def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: Tes
         assert movie["tmdb_id"] == 27205
         assert movie["resource_id"] == "27205"
         assert movie["current_quality"] == "2160p BluRay REMUX"
-        assert movie["edition"] is None  # Hybrid is an attribute, never an edition.
+        assert movie["edition"] is None
         assert movie["state"] == "Present"
 
         second_job = _scan(client, headers, root_id)
@@ -281,7 +281,6 @@ def test_scan_is_refused_until_tmdb_is_configured(client: TestClient) -> None:
         assert response.status_code == 409, response.text
         assert response.json()["error"]["code"] == "TMDB_NOT_CONFIGURED"
 
-        # Nothing ran, so nothing was discovered and no Problem was recorded.
         assert client.get("/api/v1/movies").json()["total"] == 0
         assert client.get("/api/v1/problems").json()["total"] == 0
     finally:
@@ -338,7 +337,6 @@ def test_show_root_scan_tracks_episode_presence_independently(client: TestClient
         assert complete["episodes_present"] == 2
         assert complete["episodes_missing"] == 0
 
-        # Individual-file disappearance uses the same configured grace count.
         episode1.unlink()
         _scan(client, headers, root.json()["id"])
         grace = client.get(f"/api/v1/shows/{show['resource_id']}").json()
@@ -350,7 +348,6 @@ def test_show_root_scan_tracks_episode_presence_independently(client: TestClient
         assert missing_e1["presence_state"] == "missing"
         assert missing["state"] == "Missing"
 
-        # Episode monitoring is independently editable and revision protected.
         episode_row = next(item for item in missing["seasons"][0]["episodes"] if item["episode_number"] == 2)
         updated = client.patch(
             f"/api/v1/episodes/{episode_row['id']}",
@@ -388,8 +385,6 @@ def test_show_scan_maps_multi_episode_and_silently_skips_episode_less_video(clie
         ).json()
         job = _scan(client, headers, root["id"])
         assert job["status"] == "completed", job
-        # The valid E01E02 file maps immediately. The episode-less S01 video is
-        # skipped without turning a parser limitation into a user-facing Problem.
         assert job["summary"]["matched"] == 1
         assert client.get("/api/v1/problems?reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
         show = client.get("/api/v1/shows").json()["items"][0]

@@ -30,17 +30,12 @@ def _event_severity(value: str) -> Severity:
         raise AppError("INVALID_EVENT_SEVERITY", "Unknown event severity.", status_code=422) from exc
 
 
-
-#: Severity is stored as an enum, so ordering by the column would sort it
-#: alphabetically. Events are read worst-first, which is the order below.
 _SEVERITY_RANK = case(
     (Event.severity == Severity.ERROR, 0),
     (Event.severity == Severity.WARNING, 1),
     else_=2,
 )
 
-#: Only columns a reader can see are sortable: sorting by something the list
-#: does not show produces an order nobody can account for.
 _EVENT_SORTS = {
     "created_at": Event.created_at,
     "event_type": Event.event_type,
@@ -220,7 +215,6 @@ async def event_stream(request: Request, _: AdminUser = Depends(require_admin)) 
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache, no-store", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
     )
-
 
 
 @router.delete("/events/{event_id}")

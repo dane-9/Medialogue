@@ -12,21 +12,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    Date,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    Numeric,
-    String,
-    Text,
-    UniqueConstraint,
-    func,
-    text,
-)
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON, Uuid
@@ -229,8 +215,6 @@ class Movie(TimestampMixin, Base):
     tvdb_id: Mapped[int | None] = mapped_column()
     overview: Mapped[str | None] = mapped_column(Text)
     poster_ref: Mapped[str | None] = mapped_column(String(1024))
-    #: TMDB ISO 639-1 code, used as the language fallback for releases whose
-    #: names declare none.
     original_language: Mapped[str | None] = mapped_column(String(16))
     monitored: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     identity_state: Mapped[IdentityState] = mapped_column(SAEnum(IdentityState, native_enum=False), default=IdentityState.UNMATCHED, nullable=False)
@@ -254,8 +238,6 @@ class MovieRelease(TimestampMixin, Base):
     parsed_year: Mapped[int | None] = mapped_column(Integer)
     parsed_edition: Mapped[str | None] = mapped_column(String(128))
     manual_edition_override: Mapped[str | None] = mapped_column(String(128))
-    # Separates "follow the parser" from an explicit Standard/unspecified
-    # choice, for which the manual value is intentionally null.
     edition_override_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     effective_edition: Mapped[str | None] = mapped_column(String(128))
     quality_definition_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("quality_definitions.id", ondelete="SET NULL"))
@@ -289,14 +271,9 @@ class Show(TimestampMixin, Base):
     year: Mapped[int | None] = mapped_column(Integer)
     tmdb_id: Mapped[int | None] = mapped_column()
     tvdb_id: Mapped[int | None] = mapped_column()
-    # Which TMDB ordering this show uses. NULL means TMDB's default season
-    # structure; a value selects one of the show's episode groups, which
-    # rearranges the same episodes rather than replacing them.
     tmdb_episode_group_id: Mapped[str | None] = mapped_column(String(64))
     overview: Mapped[str | None] = mapped_column(Text)
     poster_ref: Mapped[str | None] = mapped_column(String(1024))
-    #: TMDB ISO 639-1 code, used as the language fallback for releases whose
-    #: names declare none.
     original_language: Mapped[str | None] = mapped_column(String(16))
     monitored: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     identity_state: Mapped[IdentityState] = mapped_column(SAEnum(IdentityState, native_enum=False), default=IdentityState.UNMATCHED, nullable=False)
@@ -317,10 +294,6 @@ class Season(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     show_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), nullable=False)
     season_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Whether this season contributes to the show's episode totals. Independent
-    # of `monitored`: a completed season stops being searched for but still
-    # counts, and an ignored one keeps its own contents visible while sitting
-    # outside the total.
     counted: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     title: Mapped[str | None] = mapped_column(String(512))
     monitored: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -395,8 +368,6 @@ class StorageRoot(TimestampMixin, Base):
     #: as its default instead, and says so explicitly on every request.
     discovery_mode: Mapped[DiscoveryMode] = mapped_column(SAEnum(DiscoveryMode, native_enum=False), default=DiscoveryMode.AUTOMATIC, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    #: Hand-chosen list position. Roots are a short, stable list a person curates,
-    #: so alphabetical order is the machine's preference rather than theirs.
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Number of consecutive successful root scans on which a known directory
     # may be absent before it is considered Missing.  A root outage never
@@ -662,8 +633,6 @@ class CustomFormat(TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     condition_definition: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    # Built-ins are owned by Medialogue: their definition is re-applied on every
-    # start, keyed by builtin_key. Only `enabled` belongs to the operator.
     builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     builtin_key: Mapped[str | None] = mapped_column(String(64))
 
