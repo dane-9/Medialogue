@@ -35,7 +35,7 @@ async function testDownloadClient(
   }
   const unsavedConfiguration: DownloadClientTestRequestDto = {
     url: configuration.url,
-    username: configuration.username ?? undefined,
+    username: configuration.username ?? '',
     password: configuration.password,
   }
   const payload = await openApiData(openApiClient.POST('/api/v1/download-clients/test', { body: unsavedConfiguration }))

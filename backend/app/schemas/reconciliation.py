@@ -41,5 +41,5 @@ class ManualAttachRequest(BaseModel):
 
 class ReconciliationActionResponse(BaseModel):
     movie_id: UUID
-    status: Literal["attached"]
+    status: Literal["manual_attached", "review"]
     details: dict[str, Any] = Field(default_factory=dict)

@@ -12,7 +12,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import perf_counter
 from typing import Callable
 from uuid import UUID
@@ -92,9 +92,11 @@ def _inside_local_root(path: str | None, root: str) -> bool:
     if not path or not root:
         return False
     try:
-        Path(_normalized_path(path)).resolve(strict=False).relative_to(
-            Path(_normalized_path(root)).resolve(strict=False)
-        )
+        # This is a path in the container's mount namespace, even when the
+        # check happens on a Windows development host.  PurePosixPath keeps
+        # Linux's case-sensitive component comparison without touching the
+        # host filesystem.
+        PurePosixPath(_normalized_path(path)).relative_to(PurePosixPath(_normalized_path(root)))
         return True
     except ValueError:
         return False

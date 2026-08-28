@@ -30,11 +30,11 @@ const conditionSchema = z.object({
   type: conditionTypeSchema,
   value: z.union([z.string(), z.array(z.string()), z.null()]).optional(),
   pattern: z.string().max(4096).nullable().optional(),
-  required: z.boolean().optional(),
-  negate: z.boolean().optional(),
-  case_sensitive: z.boolean().optional(),
+  required: z.boolean().default(false),
+  negate: z.boolean().default(false),
+  case_sensitive: z.boolean().default(false),
   group: z.string().max(128).nullable().optional(),
-  score_offset: z.number().int().min(-100000).max(100000).optional(),
+  score_offset: z.number().int().min(-100000).max(100000).default(0),
 }).superRefine((
   condition: { pattern?: string | null; value?: string | string[] | null; type: string },
   context: RefinementContext,
@@ -54,11 +54,11 @@ const conditionSchema = z.object({
 })
 
 const customFormatSchema = z.object({
-  schema_version: z.number().int().optional(),
+  schema_version: z.number().int().default(1),
   name: z.string().trim().min(1).max(256),
   description: z.string().max(4096).nullable().optional(),
-  media_scope: z.enum(['movies', 'shows', 'both']).optional(),
-  enabled: z.boolean().optional(),
+  media_scope: z.enum(['movies', 'shows', 'both']).default('both'),
+  enabled: z.boolean().default(true),
   conditions: z.array(conditionSchema).min(1).max(100),
 })
 

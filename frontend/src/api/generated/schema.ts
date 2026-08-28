@@ -1,6567 +1,10720 @@
-/** Generated from openapi/openapi.json. Do not edit by hand. */
-
-export interface components {
-  schemas: {
-    "AccessMode": "read_only" | "read_write";
-    "AdminResponse": {
-          "created_at": string;
-          "id": string;
-          "is_default_password": boolean;
-          "username": string;
-        };
-    "AssociationType": "incoming" | "attached" | "historical";
-    "Collection_CustomFormatResponse_": {
-          "items": (components['schemas']["CustomFormatResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_DownloadClientResponse_": {
-          "items": (components['schemas']["DownloadClientResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_DownloadResponse_": {
-          "items": (components['schemas']["DownloadResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_EventResponse_": {
-          "items": (components['schemas']["EventResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_IndexerResponse_": {
-          "items": (components['schemas']["IndexerResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_JobResponse_": {
-          "items": (components['schemas']["JobResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_MediaDiscoveryResponse_": {
-          "items": (components['schemas']["MediaDiscoveryResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_MovieSummaryResponse_": {
-          "items": (components['schemas']["MovieSummaryResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_ProblemResponse_": {
-          "items": (components['schemas']["ProblemResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_RemotePathMappingResponse_": {
-          "items": (components['schemas']["RemotePathMappingResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_ShowSummaryResponse_": {
-          "items": (components['schemas']["ShowSummaryResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_StorageRootResponse_": {
-          "items": (components['schemas']["StorageRootResponse"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "Collection_TorrentArchiveSummary_": {
-          "items": (components['schemas']["TorrentArchiveSummary"])[];
-          "page"?: number;
-          "page_size"?: number;
-          "pages": number;
-          "total": number;
-        };
-    "CustomFormatConditionEvaluationResponse": {
-          "condition_id": string;
-          "condition_type": components['schemas']["CustomFormatConditionType"];
-          "effective_result": boolean;
-          "evidence"?: unknown;
-          "expected"?: unknown;
-          "group"?: (string) | (null);
-          "matched": boolean;
-          "name"?: (string) | (null);
-          "negated": boolean;
-          "reason"?: (string) | (null);
-          "regex_match"?: (string) | (null);
-          "required": boolean;
-          "score_offset"?: number;
-        };
-    "CustomFormatConditionInput": {
-          "case_sensitive"?: boolean;
-          "group"?: (string) | (null);
-          "id"?: (string) | (null);
-          "name"?: (string) | (null);
-          "negate"?: boolean;
-          "pattern"?: (string) | (null);
-          "required"?: boolean;
-          "score_offset"?: number;
-          "type": components['schemas']["CustomFormatConditionType"];
-          "value"?: (string) | ((string)[]) | (null);
-        };
-    "CustomFormatConditionResponse": {
-          "case_sensitive": boolean;
-          "group"?: (string) | (null);
-          "id": string;
-          "name": (string) | (null);
-          "negate": boolean;
-          "pattern"?: (string) | (null);
-          "required": boolean;
-          "score_offset"?: number;
-          "type": components['schemas']["CustomFormatConditionType"];
-          "value"?: unknown;
-        };
-    "CustomFormatConditionType": "release_title" | "release_group" | "quality" | "quality_modifier" | "resolution" | "source" | "edition" | "language" | "indexer" | "web_provider" | "video_codec" | "audio_codec" | "audio_channels" | "hdr_type" | "release_attribute";
-    "CustomFormatCreate": {
-          "conditions": (components['schemas']["CustomFormatConditionInput"])[];
-          "description"?: (string) | (null);
-          "enabled"?: boolean;
-          "media_scope"?: components['schemas']["CustomFormatScope"];
-          "name": string;
-        };
-    "CustomFormatEvaluationResponse": {
-          "conditions": (components['schemas']["CustomFormatConditionEvaluationResponse"])[];
-          "contribution"?: (number) | (null);
-          "custom_format_id": string;
-          "custom_format_name": string;
-          "error"?: (string) | (null);
-          "group_results": { [key: string]: boolean };
-          "matched": boolean;
-          "profile_score"?: (number) | (null);
-          "score_offset"?: number;
-        };
-    "CustomFormatExportBundle": {
-          "application"?: string;
-          "custom_formats": (components['schemas']["CustomFormatExportItem"])[];
-          "schema_version"?: number;
-        };
-    "CustomFormatExportItem": {
-          "conditions": (components['schemas']["CustomFormatConditionInput"])[];
-          "description"?: (string) | (null);
-          "enabled"?: boolean;
-          "media_scope"?: components['schemas']["CustomFormatScope"];
-          "name": string;
-          "schema_version"?: number;
-        };
-    "CustomFormatImportBundle": {
-          "application": string;
-          "custom_formats": (components['schemas']["CustomFormatExportItem"])[];
-          "schema_version": number;
-        };
-    "CustomFormatImportResponse": {
-          "count": number;
-          "imported": (components['schemas']["CustomFormatResponse"])[];
-        };
-    "CustomFormatLayout": {
-          "sections": (components['schemas']["CustomFormatSection"])[];
-        };
-    "CustomFormatResponse": {
-          "builtin"?: boolean;
-          "condition_count": number;
-          "conditions": (components['schemas']["CustomFormatConditionResponse"])[];
-          "created_at": string;
-          "description": (string) | (null);
-          "enabled": boolean;
-          "id": string;
-          "media_scope": components['schemas']["CustomFormatScope"];
-          "name": string;
-          "revision": number;
-          "schema_version": number;
-          "updated_at": string;
-          "used_by_profiles": number;
-        };
-    "CustomFormatScope": "movies" | "shows" | "both";
-    "CustomFormatSection": {
-          "format_ids"?: (string)[];
-          "id": string;
-          "name": string;
-        };
-    "CustomFormatTestAllRequest": {
-          "include_disabled"?: boolean;
-          "indexer"?: (string) | (null);
-          "languages"?: (string)[];
-          "media_scope"?: components['schemas']["CustomFormatScope"];
-          "quality_profile_id"?: (string) | (null);
-          "release_name": string;
-        };
-    "CustomFormatTestAllResponse": {
-          "formats": (components['schemas']["CustomFormatEvaluationResponse"])[];
-          "matched_count": number;
-          "parsed": { [key: string]: unknown };
-          "quality_profile_id"?: (string) | (null);
-          "quality_profile_name"?: (string) | (null);
-          "total_score"?: (number) | (null);
-        };
-    "CustomFormatTestDefinition": {
-          "conditions": (components['schemas']["CustomFormatConditionInput"])[];
-          "description"?: (string) | (null);
-          "enabled"?: boolean;
-          "id"?: (string) | (null);
-          "media_scope"?: components['schemas']["CustomFormatScope"];
-          "name"?: string;
-        };
-    "CustomFormatTestRequest": {
-          "custom_format": components['schemas']["CustomFormatTestDefinition"];
-          "indexer"?: (string) | (null);
-          "languages"?: (string)[];
-          "release_name": string;
-        };
-    "CustomFormatTestResponse": {
-          "evaluation": components['schemas']["CustomFormatEvaluationResponse"];
-          "parsed": { [key: string]: unknown };
-        };
-    "CustomFormatUpdate": {
-          "conditions"?: ((components['schemas']["CustomFormatConditionInput"])[]) | (null);
-          "description"?: (string) | (null);
-          "enabled"?: (boolean) | (null);
-          "expected_revision"?: (number) | (null);
-          "media_scope"?: (components['schemas']["CustomFormatScope"]) | (null);
-          "name"?: (string) | (null);
-        };
-    "DatabaseHealth": {
-          "status": "healthy";
-        };
-    "DeleteResponse": {
-          "deleted"?: boolean;
-          "id": string;
-        };
-    "DiscoveryMode": "automatic" | "review";
-    "DiscoveryReviewState": "pending" | "approved" | "ignored";
-    "DownloadClientCategoryResponse": {
-          "is_default"?: boolean;
-          "name": string;
-          "resolved_save_path": string;
-          "save_path": string;
-        };
-    "DownloadClientCreate": {
-          "category"?: (string) | (null);
-          "completed_download_handling"?: boolean;
-          "content_layout"?: "default" | "original" | "subfolder";
-          "enabled"?: boolean;
-          "first_last_first"?: boolean;
-          "name": string;
-          "older_priority"?: "first" | "last";
-          "password": string;
-          "poll_interval_seconds"?: number;
-          "recent_priority"?: "first" | "last";
-          "scope": components['schemas']["DownloadScope"];
-          "sequential_order"?: boolean;
-          "tags"?: (string)[];
-          "url": string;
-          "username"?: string;
-        };
-    "DownloadClientHealthItem": {
-          "enabled": boolean;
-          "health": "unknown" | "healthy" | "unavailable";
-          "id": string;
-          "last_error"?: (string) | (null);
-          "last_health_checked_at"?: (string) | (null);
-          "last_polled_at"?: (string) | (null);
-          "last_success_at"?: (string) | (null);
-          "latency_ms"?: (number) | (null);
-          "name": string;
-          "scope": components['schemas']["DownloadScope"];
-        };
-    "DownloadClientResponse": {
-          "category": (string) | (null);
-          "completed_download_handling": boolean;
-          "content_layout": "default" | "original" | "subfolder";
-          "created_at": string;
-          "enabled": boolean;
-          "first_last_first": boolean;
-          "health": ("unknown" | "healthy" | "unavailable") | (null);
-          "id": string;
-          "last_error"?: (string) | (null);
-          "last_health_checked_at"?: (string) | (null);
-          "last_success_at"?: (string) | (null);
-          "latency_ms"?: (number) | (null);
-          "name": string;
-          "older_priority": "first" | "last";
-          "password_configured": boolean;
-          "poll_interval_seconds": number;
-          "recent_priority": "first" | "last";
-          "revision": number;
-          "scope": components['schemas']["DownloadScope"];
-          "sequential_order": boolean;
-          "tags": (string)[];
-          "updated_at": string;
-          "url": string;
-          "username": (string) | (null);
-        };
-    "DownloadClientSavedTestRequest": {
-          "password"?: (string) | (null);
-          "url"?: (string) | (null);
-          "username"?: (string) | (null);
-        };
-    "DownloadClientTestRequest": {
-          "password": string;
-          "url": string;
-          "username"?: string;
-        };
-    "DownloadClientTestResponse": {
-          "latency_ms"?: (number) | (null);
-          "message"?: (string) | (null);
-          "status": "unknown" | "healthy" | "unavailable";
-          "version"?: (string) | (null);
-        };
-    "DownloadClientUpdate": {
-          "category"?: (string) | (null);
-          "completed_download_handling"?: (boolean) | (null);
-          "content_layout"?: ("default" | "original" | "subfolder") | (null);
-          "enabled"?: (boolean) | (null);
-          "expected_revision"?: (number) | (null);
-          "first_last_first"?: (boolean) | (null);
-          "name"?: (string) | (null);
-          "older_priority"?: ("first" | "last") | (null);
-          "password"?: (string) | (null);
-          "poll_interval_seconds"?: (number) | (null);
-          "recent_priority"?: ("first" | "last") | (null);
-          "scope"?: (components['schemas']["DownloadScope"]) | (null);
-          "sequential_order"?: (boolean) | (null);
-          "tags"?: ((string)[]) | (null);
-          "url"?: (string) | (null);
-          "username"?: (string) | (null);
-        };
-    "DownloadClientsHealth": {
-          "clients": (components['schemas']["DownloadClientHealthItem"])[];
-          "configured": boolean;
-          "healthy_clients": number;
-          "status": "unknown" | "healthy" | "degraded" | "unavailable";
-          "total_clients": number;
-        };
-    "DownloadResponse": {
-          "category": (string) | (null);
-          "client_id": string;
-          "client_name": string;
-          "completed_at"?: (string) | (null);
-          "edition"?: (string) | (null);
-          "first_seen_at": string;
-          "id": string;
-          "incoming"?: boolean;
-          "incoming_kind"?: ("replacement" | "release") | (null);
-          "info_hash": string;
-          "is_present": boolean;
-          "last_seen_at": string;
-          "media_state"?: ("present" | "missing") | (null);
-          "movie_id"?: (string) | (null);
-          "name": string;
-          "progress": (number) | (null);
-          "quality"?: (string) | (null);
-          "reconciliation_detail"?: (string) | (null);
-          "reconciliation_state"?: ("incoming" | "attached" | "historical" | "conflict") | (null);
-          "removed_at": (string) | (null);
-          "reported_save_path": (string) | (null);
-          "resolved_save_path": (string) | (null);
-          "scope": components['schemas']["DownloadScope"];
-          "state": (string) | (null);
-          "tags": (string)[];
-          "torrent_id": string;
-          "total_size": (number) | (null);
-        };
-    "DownloadScope": "movies" | "shows";
-    "DuplicateDirectoryPreview": {
-          "access_mode": components['schemas']["AccessMode"];
-          "directory_id": string;
-          "exists": boolean;
-          "files"?: (components['schemas']["DuplicateFilePreview"])[];
-          "path": string;
-          "storage_root": string;
-        };
-    "DuplicateFilePreview": {
-          "is_symlink"?: boolean;
-          "relative_path": string;
-          "size"?: (number) | (null);
-        };
-    "DuplicateReleasePreview": {
-          "directories"?: (components['schemas']["DuplicateDirectoryPreview"])[];
-          "edition"?: (string) | (null);
-          "quality"?: (string) | (null);
-          "release_group"?: (string) | (null);
-          "release_id": string;
-          "release_name": string;
-          "state": components['schemas']["ReleaseState"];
-          "torrents"?: (components['schemas']["DuplicateTorrentPreview"])[];
-        };
-    "DuplicateResolveCommitRequest": {
-          "confirmation_token": string;
-        };
-    "DuplicateResolvePreviewRequest": {
-          "delete_media"?: boolean;
-          "losing_release_ids": (string)[];
-          "remove_torrents"?: boolean;
-          "winner_release_id": string;
-        };
-    "DuplicateResolvePreviewResponse": {
-          "confirmation_token": string;
-          "delete_media": boolean;
-          "expires_at": string;
-          "losers": (components['schemas']["DuplicateReleasePreview"])[];
-          "movie_id": string;
-          "movie_title": string;
-          "remove_torrents": boolean;
-          "torrent_backups_will_be_kept"?: boolean;
-          "warnings"?: (string)[];
-          "winner": components['schemas']["DuplicateReleasePreview"];
-        };
-    "DuplicateTorrentPreview": {
-          "archived": boolean;
-          "clients"?: (string)[];
-          "info_hash": string;
-          "name": string;
-          "qbit_present": boolean;
-          "torrent_id": string;
-        };
-    "EffectiveCustomFormatScore": {
-          "custom_format_id": string;
-          "custom_format_name": string;
-          "effective_score": number;
-          "enabled": boolean;
-          "override_score": (number) | (null);
-          "profile_score": number;
-        };
-    "EpisodeMappingResponse": {
-          "episode_ids": (string)[];
-          "episode_numbers": (number)[];
-          "manual_override": boolean;
-          "media_file_id": string;
-          "show_release_id": string;
-        };
-    "EpisodeMappingUpdate": {
-          "episode_ids": (string)[];
-        };
-    "EpisodeMediaResponse": {
-          "exists": boolean;
-          "manual_mapping"?: boolean;
-          "mapped_episode_numbers"?: (number)[];
-          "media_file_id": string;
-          "path": string;
-          "quality"?: (string) | (null);
-          "release_group"?: (string) | (null);
-          "release_name"?: (string) | (null);
-          "release_scope"?: (components['schemas']["ReleaseScope"]) | (null);
-          "show_release_id"?: (string) | (null);
-        };
-    "EpisodeOrderingOption": {
-          "description"?: (string) | (null);
-          "episode_count": number;
-          "id": (string) | (null);
-          "name": string;
-          "network"?: (string) | (null);
-          "season_count": number;
-          "selected": boolean;
-          "type_label": string;
-        };
-    "EpisodeResponse": {
-          "air_date"?: (string) | (null);
-          "episode_number": number;
-          "id": string;
-          "media"?: (components['schemas']["EpisodeMediaResponse"])[];
-          "monitored": boolean;
-          "plex_state"?: "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
-          "presence_state": components['schemas']["PresenceState"];
-          "quality"?: (string) | (null);
-          "revision": number;
-          "season_number": number;
-          "title"?: (string) | (null);
-          "tmdb_id"?: (number) | (null);
-          "tvdb_id"?: (number) | (null);
-        };
-    "EpisodeUpdate": {
-          "expected_revision"?: (number) | (null);
-          "monitored"?: (boolean) | (null);
-        };
-    "EventResponse": {
-          "created_at": string;
-          "details": { [key: string]: unknown };
-          "entity_id": (string) | (null);
-          "entity_type": string;
-          "event_type": string;
-          "id": string;
-          "message": string;
-          "severity": components['schemas']["Severity"];
-        };
-    "FilesystemEntry": {
-          "name": string;
-          "path": string;
-        };
-    "FilesystemListing": {
-          "current_path": string;
-          "directories"?: (components['schemas']["FilesystemEntry"])[];
-          "parent"?: (string) | (null);
-          "problem"?: (string) | (null);
-        };
-    "HTTPValidationError": {
-          "detail"?: (components['schemas']["ValidationError"])[];
-        };
-    "IdentityState": "matched" | "manual" | "uncertain" | "conflict" | "unmatched";
-    "IndexerCreate": {
-          "api_key": string;
-          "categories"?: (number)[];
-          "color"?: (string) | (null);
-          "download_client_ids"?: (string)[];
-          "enable_interactive_search"?: boolean;
-          "enable_rss"?: boolean;
-          "enabled"?: boolean;
-          "minimum_seeders"?: number;
-          "multi_languages"?: (string)[];
-          "name": string;
-          "priority"?: number;
-          "scope"?: components['schemas']["IndexerScope"];
-          "timeout_seconds"?: number;
-          "torznab_url": string;
-        };
-    "IndexerHealthItem": {
-          "enabled": boolean;
-          "health": "unknown" | "healthy" | "unavailable";
-          "id": string;
-          "last_checked_at"?: (string) | (null);
-          "last_error"?: (string) | (null);
-          "last_success_at"?: (string) | (null);
-          "latency_ms"?: (number) | (null);
-          "name": string;
-          "scope": components['schemas']["IndexerScope"];
-        };
-    "IndexerResponse": {
-          "api_key_configured": boolean;
-          "categories": (number)[];
-          "color": (string) | (null);
-          "created_at": string;
-          "download_client_ids": (string)[];
-          "enable_interactive_search": boolean;
-          "enable_rss": boolean;
-          "enabled": boolean;
-          "health": "unknown" | "healthy" | "unavailable";
-          "id": string;
-          "last_checked_at": (string) | (null);
-          "last_error": (string) | (null);
-          "last_success_at": (string) | (null);
-          "latency_ms": (number) | (null);
-          "minimum_seeders": number;
-          "multi_languages": (string)[];
-          "name": string;
-          "priority": number;
-          "revision": number;
-          "scope": components['schemas']["IndexerScope"];
-          "timeout_seconds": number;
-          "torznab_url": string;
-          "updated_at": string;
-        };
-    "IndexerScope": "movies" | "shows" | "both";
-    "IndexerTestRequest": {
-          "api_key": string;
-          "timeout_seconds"?: number;
-          "torznab_url": string;
-        };
-    "IndexerTestResponse": {
-          "latency_ms"?: (number) | (null);
-          "message"?: (string) | (null);
-          "status": "healthy" | "unavailable";
-          "title"?: (string) | (null);
-        };
-    "IndexerUpdate": {
-          "api_key"?: (string) | (null);
-          "categories"?: ((number)[]) | (null);
-          "color"?: (string) | (null);
-          "download_client_ids"?: ((string)[]) | (null);
-          "enable_interactive_search"?: (boolean) | (null);
-          "enable_rss"?: (boolean) | (null);
-          "enabled"?: (boolean) | (null);
-          "expected_revision"?: (number) | (null);
-          "minimum_seeders"?: (number) | (null);
-          "multi_languages"?: ((string)[]) | (null);
-          "name"?: (string) | (null);
-          "priority"?: (number) | (null);
-          "scope"?: (components['schemas']["IndexerScope"]) | (null);
-          "timeout_seconds"?: (number) | (null);
-          "torznab_url"?: (string) | (null);
-        };
-    "IndexersHealth": {
-          "configured": boolean;
-          "enabled": number;
-          "healthy": number;
-          "items": (components['schemas']["IndexerHealthItem"])[];
-          "status": "unknown" | "healthy" | "degraded" | "unavailable";
-          "total": number;
-        };
-    "IntegrationHealthResponse": {
-          "database": components['schemas']["DatabaseHealth"];
-          "indexers": components['schemas']["IndexersHealth"];
-          "plex": components['schemas']["ServiceHealth"];
-          "qbittorrent": components['schemas']["DownloadClientsHealth"];
-          "storage_roots": (components['schemas']["StorageRootHealthItem"])[];
-          "tmdb": components['schemas']["ServiceHealth"];
-          "torrent_archive": components['schemas']["TorrentArchiveHealth"];
-        };
-    "JobAcceptedResponse": {
-          "job_id": string;
-        };
-    "JobResponse": {
-          "cancellable": boolean;
-          "created_at": string;
-          "error": ({ [key: string]: unknown }) | (null);
-          "finished_at": (string) | (null);
-          "id": string;
-          "job_type": string;
-          "progress": { [key: string]: unknown };
-          "revision": number;
-          "started_at": (string) | (null);
-          "status": components['schemas']["JobStatus"];
-          "summary": { [key: string]: unknown };
-          "updated_at": string;
-        };
-    "JobStatus": "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
-    "LibrarySummary": {
-          "movies"?: number;
-          "shows"?: number;
-          "unlinked_directories"?: number;
-        };
-    "LivenessResponse": {
-          "status": "ok";
-        };
-    "LoginRequest": {
-          "password": string;
-          "username": string;
-        };
-    "LoginResponse": {
-          "authenticated"?: boolean;
-          "csrf_token": string;
-          "default_password_warning": boolean;
-          "user": components['schemas']["AdminResponse"];
-        };
-    "ManualAttachRequest": {
-          "expected_revision"?: (number) | (null);
-          "path": string;
-          "release_name"?: (string) | (null);
-          "root_id": string;
-        };
-    "MediaDirectoryResponse": {
-          "exists": boolean;
-          "files": (string)[];
-          "id": string;
-          "missing_since": (string) | (null);
-          "resolved_path": string;
-        };
-    "MediaDiscoveryBulk": {
-          "action": "approve" | "ignore";
-          "ids": (string)[];
-        };
-    "MediaDiscoveryBulkFailure": {
-          "code": string;
-          "id": string;
-          "message": string;
-        };
-    "MediaDiscoveryBulkResult": {
-          "failed"?: (components['schemas']["MediaDiscoveryBulkFailure"])[];
-          "succeeded"?: (string)[];
-        };
-    "MediaDiscoveryCandidate": {
-          "original_title"?: (string) | (null);
-          "overview"?: (string) | (null);
-          "poster_ref"?: (string) | (null);
-          "title": string;
-          "tmdb_id": number;
-          "year"?: (number) | (null);
-        };
-    "MediaDiscoveryCount": {
-          "count": number;
-        };
-    "MediaDiscoveryEditionUpdate": {
-          "edition"?: (string) | (null);
-          "mode": "automatic" | "standard" | "named";
-        };
-    "MediaDiscoveryFile": {
-          "relative_path": string;
-          "role": components['schemas']["MediaRole"];
-        };
-    "MediaDiscoveryResponse": {
-          "candidates"?: (components['schemas']["MediaDiscoveryCandidate"])[];
-          "confidence"?: (number) | (null);
-          "created_at": string;
-          "directory_id": string;
-          "edition"?: (string) | (null);
-          "edition_override_active"?: boolean;
-          "exists": boolean;
-          "file_count"?: number;
-          "files"?: (components['schemas']["MediaDiscoveryFile"])[];
-          "hdr"?: (string)[];
-          "id": string;
-          "library_edition_conflict"?: boolean;
-          "manual_edition_override"?: (string) | (null);
-          "media_type": components['schemas']["MediaType"];
-          "parsed_edition"?: (string) | (null);
-          "parsed_title"?: (string) | (null);
-          "parsed_year"?: (number) | (null);
-          "path": string;
-          "quality"?: (string) | (null);
-          "review_state": components['schemas']["DiscoveryReviewState"];
-          "root_name": string;
-          "selected"?: (components['schemas']["MediaDiscoveryCandidate"]) | (null);
-          "suggested"?: (components['schemas']["MediaDiscoveryCandidate"]) | (null);
-          "updated_at": string;
-          "video_count"?: number;
-        };
-    "MediaDiscoverySearch": {
-          "query"?: (string) | (null);
-        };
-    "MediaDiscoverySelection": {
-          "original_title"?: (string) | (null);
-          "poster_ref"?: (string) | (null);
-          "title"?: (string) | (null);
-          "tmdb_id": number;
-          "year"?: (number) | (null);
-        };
-    "MediaProfileSettingsResponse": {
-          "custom_format_scores": (components['schemas']["EffectiveCustomFormatScore"])[];
-          "entity_id": string;
-          "media_type": components['schemas']["MediaType"];
-          "minimum_quality_definition": (components['schemas']["QualityDefinitionResponse"]) | (null);
-          "minimum_quality_overridden": boolean;
-          "profile_minimum_quality_definition": (components['schemas']["QualityDefinitionResponse"]) | (null);
-          "quality_profile_id": (string) | (null);
-          "quality_profile_name": (string) | (null);
-          "revision": number;
-        };
-    "MediaProfileSettingsUpdate": {
-          "custom_format_score_overrides"?: { [key: string]: number };
-          "expected_revision"?: (number) | (null);
-          "minimum_quality_definition_override_id"?: (string) | (null);
-          "quality_profile_id"?: (string) | (null);
-        };
-    "MediaRole": "movie_video" | "episode_video" | "multi_episode_video" | "dvd_structure" | "bluray_structure" | "other_media";
-    "MediaType": "movies" | "shows";
-    "MovieBulkAction": "change_profile" | "add_tags" | "remove_tags" | "monitor" | "unmonitor" | "recheck_plex" | "reevaluate_parser" | "reevaluate_custom_formats";
-    "MovieBulkRequest": {
-          "action": components['schemas']["MovieBulkAction"];
-          "movie_ids": (string)[];
-          "quality_profile_id"?: (string) | (null);
-          "tag_ids"?: (string)[];
-        };
-    "MovieBulkResponse": {
-          "action": components['schemas']["MovieBulkAction"];
-          "details"?: { [key: string]: unknown };
-          "movie_ids": (string)[];
-          "requested": number;
-          "updated": number;
-        };
-    "MovieCreate": {
-          "monitored"?: boolean;
-          "tmdb_id": number;
-        };
-    "MovieDetailResponse": {
-          "confidence": (number) | (null);
-          "current_quality": (string) | (null);
-          "edition": (string) | (null);
-          "id": string;
-          "identity_state": components['schemas']["IdentityState"];
-          "incoming"?: boolean;
-          "incoming_downloads"?: (components['schemas']["MovieIncomingDownloadResponse"])[];
-          "incoming_kind"?: ("replacement" | "release") | (null);
-          "last_observed_at"?: (string) | (null);
-          "location": (string) | (null);
-          "monitored": boolean;
-          "overview": (string) | (null);
-          "plex_state": "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
-          "poster_ref": (string) | (null);
-          "problem_count"?: number;
-          "problems"?: (components['schemas']["MovieProblemResponse"])[];
-          "recent_events": (components['schemas']["MovieEventResponse"])[];
-          "reconciliation": components['schemas']["MovieReconciliationResponse"];
-          "release_count": number;
-          "releases": (components['schemas']["MovieReleaseResponse"])[];
-          "resource_id": string;
-          "root_affected_count"?: number;
-          "root_health"?: ("available" | "unavailable" | "unknown") | (null);
-          "state": "Present" | "Missing" | "Conflict" | "Duplicate";
-          "storage_root"?: (string) | (null);
-          "tags"?: (components['schemas']["TagResponse"])[];
-          "title": string;
-          "tmdb_id": (number) | (null);
-          "torrent_history"?: (components['schemas']["MovieTorrentHistoryResponse"])[];
-          "year": (number) | (null);
-        };
-    "MovieDownloadSearchRequest": {
-          "quality_profile_id": string;
-          "tmdb_id": number;
-        };
-    "MovieEditionOptionsResponse": {
-          "editions": (string)[];
-        };
-    "MovieEditionOverrideRequest": {
-          "updates": (components['schemas']["MovieEditionOverrideUpdate"])[];
-        };
-    "MovieEditionOverrideResponse": {
-          "duplicate_resolved": boolean;
-          "movie_id": string;
-          "releases": (components['schemas']["MovieEditionState"])[];
-        };
-    "MovieEditionOverrideUpdate": {
-          "edition"?: (string) | (null);
-          "mode": "automatic" | "standard" | "named";
-          "release_id": string;
-        };
-    "MovieEditionState": {
-          "edition_override_active": boolean;
-          "effective_edition"?: (string) | (null);
-          "manual_edition_override"?: (string) | (null);
-          "parsed_edition"?: (string) | (null);
-          "release_id": string;
-          "state": components['schemas']["ReleaseState"];
-        };
-    "MovieEventResponse": {
-          "created_at": string;
-          "details"?: { [key: string]: unknown };
-          "id": string;
-          "message": string;
-          "type": string;
-        };
-    "MovieIncomingDownloadResponse": {
-          "client_name": string;
-          "edition"?: (string) | (null);
-          "id": string;
-          "incoming_kind": "replacement" | "release";
-          "name": string;
-          "progress": number;
-          "quality"?: (string) | (null);
-          "release_id": string;
-          "resolved_save_path"?: (string) | (null);
-          "state": string;
-          "torrent_id": string;
-          "torrent_state": string;
-        };
-    "MovieProblemResponse": {
-          "description": string;
-          "details"?: { [key: string]: unknown };
-          "id": string;
-          "message": string;
-          "reason": string;
-          "severity": components['schemas']["Severity"];
-          "title": string;
-        };
-    "MovieReconciliationResponse": {
-          "degraded_count": number;
-          "duplicate_count": number;
-          "incoming_count": number;
-          "missing_count": number;
-          "plex_blocked": boolean;
-          "qbit_media_disagreement": boolean;
-          "replaced_count": number;
-          "root_affected_count": number;
-          "root_offline": boolean;
-          "state": "Present" | "Missing" | "Conflict" | "Duplicate";
-        };
-    "MovieReleaseResponse": {
-          "confidence": (number) | (null);
-          "current_custom_format_score": (number) | (null);
-          "directories": (components['schemas']["MediaDirectoryResponse"])[];
-          "edition": (string) | (null);
-          "edition_override_active"?: boolean;
-          "first_seen_at": string;
-          "id": string;
-          "manual_edition_override"?: (string) | (null);
-          "original_custom_format_score": (number) | (null);
-          "parse_snapshot": { [key: string]: unknown };
-          "parsed_edition"?: (string) | (null);
-          "quality": (string) | (null);
-          "raw_release_name": string;
-          "release_group": (string) | (null);
-          "selection_snapshot": ({ [key: string]: unknown }) | (null);
-          "state": components['schemas']["ReleaseState"];
-        };
-    "MovieSummaryResponse": {
-          "confidence": (number) | (null);
-          "current_quality": (string) | (null);
-          "edition": (string) | (null);
-          "id": string;
-          "identity_state": components['schemas']["IdentityState"];
-          "incoming"?: boolean;
-          "incoming_kind"?: ("replacement" | "release") | (null);
-          "last_observed_at"?: (string) | (null);
-          "location": (string) | (null);
-          "monitored": boolean;
-          "plex_state": "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
-          "poster_ref"?: (string) | (null);
-          "problem_count"?: number;
-          "release_count": number;
-          "resource_id": string;
-          "state": "Present" | "Missing" | "Conflict" | "Duplicate";
-          "tags"?: (components['schemas']["TagResponse"])[];
-          "title": string;
-          "tmdb_id": (number) | (null);
-          "year": (number) | (null);
-        };
-    "MovieTorrentHistoryResponse": {
-          "archive_path"?: (string) | (null);
-          "archive_state": components['schemas']["TorrentArchiveState"];
-          "association_type": components['schemas']["AssociationType"];
-          "completed_at"?: (string) | (null);
-          "download_client_name"?: (string) | (null);
-          "first_seen_at": string;
-          "id": string;
-          "info_hash": string;
-          "manifest_path"?: (string) | (null);
-          "manifest_schema_version"?: (number) | (null);
-          "qbit_present": boolean;
-          "release_id": string;
-          "release_name": string;
-          "torrent_name": string;
-          "tracker"?: (string) | (null);
-        };
-    "ParserTestRequest": {
-          "name": string;
-        };
-    "PasswordChangeRequest": {
-          "current_password": string;
-          "new_password": string;
-        };
-    "PlexConfigurationResponse": {
-          "configured": boolean;
-          "enabled"?: boolean;
-          "health"?: "unknown" | "healthy" | "unavailable";
-          "last_checked_at"?: (string) | (null);
-          "last_error"?: (string) | (null);
-          "last_success_at"?: (string) | (null);
-          "latency_ms"?: (number) | (null);
-          "machine_identifier"?: (string) | (null);
-          "revision"?: (number) | (null);
-          "token_configured"?: boolean;
-          "url"?: (string) | (null);
-        };
-    "PlexConfigurationUpdate": {
-          "enabled"?: boolean;
-          "expected_revision"?: (number) | (null);
-          "token"?: (string) | (null);
-          "url": string;
-        };
-    "PlexHealthResponse": {
-          "configured"?: boolean;
-          "enabled"?: boolean;
-          "last_error"?: (string) | (null);
-          "last_success"?: (string) | (null);
-          "latency_ms"?: (number) | (null);
-          "machine_identifier"?: (string) | (null);
-          "status"?: "unknown" | "healthy" | "unavailable";
-        };
-    "PlexTestRequest": {
-          "token"?: (string) | (null);
-          "url"?: (string) | (null);
-        };
-    "PlexTestResponse": {
-          "latency_ms"?: (number) | (null);
-          "machine_identifier"?: (string) | (null);
-          "message"?: (string) | (null);
-          "status": "healthy" | "unavailable";
-        };
-    "PresenceState": "present" | "missing" | "unmatched" | "conflict";
-    "ProblemRecheckAllResponse": {
-          "job_ids"?: (string)[];
-          "requested": number;
-        };
-    "ProblemResolveRequest": {
-          "action": "restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match";
-          "payload"?: { [key: string]: unknown };
-        };
-    "ProblemResponse": {
-          "available_actions"?: ("restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match")[];
-          "created_at": string;
-          "description"?: string;
-          "details": { [key: string]: unknown };
-          "entity_id": (string) | (null);
-          "entity_type": string;
-          "id": string;
-          "label"?: string;
-          "message": string;
-          "reason": string;
-          "resolution": ({ [key: string]: unknown }) | (null);
-          "resolved_at": (string) | (null);
-          "severity": components['schemas']["Severity"];
-          "status": components['schemas']["ProblemStatus"];
-          "subject"?: (string) | (null);
-          "title"?: string;
-          "workflow": components['schemas']["ProblemWorkflow"];
-        };
-    "ProblemStatus": "open" | "resolved" | "dismissed";
-    "ProblemSummaryResponse": {
-          "open"?: number;
-          "suppressed"?: number;
-          "workflows"?: { [key: string]: number };
-        };
-    "ProblemWorkflow": "manual" | "choice" | "config" | "waiting";
-    "QualityDefinitionResponse": {
-          "enabled": boolean;
-          "id": string;
-          "modifier": (string) | (null);
-          "name": string;
-          "rank": number;
-          "resolution": (string) | (null);
-          "scan_type": (string) | (null);
-          "source": (string) | (null);
-        };
-    "QualityProfileCreate": {
-          "custom_format_scores"?: (components['schemas']["QualityProfileScoreInput"])[];
-          "minimum_quality_definition_id"?: (string) | (null);
-          "name": string;
-          "quality_definition_ids"?: ((string)[]) | (null);
-        };
-    "QualityProfileResponse": {
-          "assigned_titles": number;
-          "created_at": string;
-          "custom_format_scores": (components['schemas']["QualityProfileScoreResponse"])[];
-          "id": string;
-          "minimum_quality_definition": (components['schemas']["QualityDefinitionResponse"]) | (null);
-          "name": string;
-          "qualities": (components['schemas']["QualityDefinitionResponse"])[];
-          "revision": number;
-          "updated_at": string;
-        };
-    "QualityProfileScoreInput": {
-          "custom_format_id": string;
-          "score": number;
-        };
-    "QualityProfileScoreResponse": {
-          "custom_format_id": string;
-          "custom_format_name": string;
-          "enabled": boolean;
-          "score": number;
-        };
-    "QualityProfileUpdate": {
-          "custom_format_scores"?: ((components['schemas']["QualityProfileScoreInput"])[]) | (null);
-          "expected_revision"?: (number) | (null);
-          "minimum_quality_definition_id"?: (string) | (null);
-          "name"?: (string) | (null);
-          "quality_definition_ids"?: ((string)[]) | (null);
-        };
-    "ReadinessResponse": {
-          "database": "available" | "unavailable";
-          "status": "ok" | "not_ready";
-        };
-    "ReconciliationActionResponse": {
-          "details"?: { [key: string]: unknown };
-          "movie_id": string;
-          "status": "attached";
-        };
-    "ReconciliationRootStatus": {
-          "affected_count": number;
-          "health": ("available" | "unavailable" | "unknown") | (null);
-          "id": string;
-          "name": string;
-          "path": string;
-        };
-    "ReconciliationRunRequest": {
-          "root_id"?: (string) | (null);
-        };
-    "ReconciliationRunResponse": {
-          "active_job_ids"?: (string)[];
-          "job_ids": (string)[];
-          "skipped_root_ids"?: (string)[];
-          "uninitialized_root_ids"?: (string)[];
-        };
-    "ReconciliationStatusResponse": {
-          "generated_at": string;
-          "incoming_count": number;
-          "missing_release_count": number;
-          "open_problem_count": number;
-          "roots": (components['schemas']["ReconciliationRootStatus"])[];
-        };
-    "RecoveryCapabilitiesResponse": {
-          "database_backend": string;
-          "database_path"?: (string) | (null);
-          "database_readable": boolean;
-          "export_directory": string;
-          "export_directory_writable": boolean;
-          "migration_revision"?: (string) | (null);
-          "reasons"?: (string)[];
-          "retention_hours": number;
-          "sqlite_version"?: (string) | (null);
-          "supported": boolean;
-          "torrent_archive_readable": boolean;
-        };
-    "RecoveryExportAcceptedResponse": {
-          "job_id": string;
-          "status"?: "queued";
-          "warning"?: string;
-        };
-    "ReleaseScope": "episode" | "multi_episode" | "season_pack" | "other";
-    "ReleaseState": "current" | "missing" | "replaced" | "removed" | "conflict" | "duplicate";
-    "RemotePathMappingCreate": {
-          "enabled"?: boolean;
-          "integration_id"?: (string) | (null);
-          "integration_type": "qbittorrent" | "plex" | "prowlarr" | "tmdb" | "tvdb";
-          "local_prefix": string;
-          "name": string;
-          "remote_prefix": string;
-          "storage_root_id"?: (string) | (null);
-        };
-    "RemotePathMappingResponse": {
-          "enabled": boolean;
-          "id": string;
-          "integration_id": (string) | (null);
-          "integration_type": "qbittorrent" | "plex" | "prowlarr" | "tmdb" | "tvdb";
-          "local_prefix": string;
-          "name": string;
-          "remote_prefix": string;
-          "storage_root_id": (string) | (null);
-        };
-    "RemotePathMappingUpdate": {
-          "enabled"?: (boolean) | (null);
-          "integration_id"?: (string) | (null);
-          "integration_type"?: ("qbittorrent" | "plex" | "prowlarr" | "tmdb" | "tvdb") | (null);
-          "local_prefix"?: (string) | (null);
-          "name"?: (string) | (null);
-          "remote_prefix"?: (string) | (null);
-          "storage_root_id"?: (string) | (null);
-        };
-    "SearchIndexerStatus": {
-          "elapsed_ms"?: (number) | (null);
-          "error"?: (string) | (null);
-          "id": string;
-          "name": string;
-          "results"?: number;
-          "status": "queued" | "completed" | "failed";
-        };
-    "SearchJobResponse": {
-          "created_at": string;
-          "error": ({ [key: string]: unknown }) | (null);
-          "finished_at": (string) | (null);
-          "id": string;
-          "indexers": (components['schemas']["SearchIndexerStatus"])[];
-          "progress": components['schemas']["SearchProgressResponse"];
-          "result_total": number;
-          "results": (components['schemas']["SearchResultResponse"])[];
-          "started_at": (string) | (null);
-          "status": components['schemas']["JobStatus"];
-          "target": components['schemas']["SearchTargetResponse"];
-        };
-    "SearchProgressResponse": {
-          "completed_indexers"?: number;
-          "percent"?: number;
-          "total_indexers"?: number;
-        };
-    "SearchResultDownloadRequest": {
-          "category"?: (string) | (null);
-          "download_client_id": string;
-          "include_year_in_show_folder"?: boolean;
-          "show_folder_name"?: (string) | (null);
-        };
-    "SearchResultDownloadResponse": {
-          "category"?: (string) | (null);
-          "client_name": string;
-          "download_client_id": string;
-          "movie_id"?: (string) | (null);
-          "save_path"?: (string) | (null);
-          "search_result_id": string;
-          "season_id"?: (string) | (null);
-          "selected_at": string;
-          "show_id"?: (string) | (null);
-          "status": "submitted" | "already_submitted";
-        };
-    "SearchResultResponse": {
-          "created_at": string;
-          "custom_format_score": (number) | (null);
-          "custom_format_snapshot": { [key: string]: unknown };
-          "edition": (string) | (null);
-          "expires_at": string;
-          "id": string;
-          "indexer_color"?: (string) | (null);
-          "indexer_id": (string) | (null);
-          "indexer_name": string;
-          "job_id": string;
-          "leechers": (number) | (null);
-          "media_type": components['schemas']["MediaType"];
-          "minimum_quality": (string) | (null);
-          "minimum_quality_met": (boolean) | (null);
-          "parser": { [key: string]: unknown };
-          "published_at": (string) | (null);
-          "quality": (string) | (null);
-          "quality_allowed": boolean;
-          "quality_preference": number;
-          "quality_profile_id": (string) | (null);
-          "quality_profile_name": (string) | (null);
-          "release_group": (string) | (null);
-          "seeders": (number) | (null);
-          "selected_at": (string) | (null);
-          "selected_download_client_id": (string) | (null);
-          "size": (number) | (null);
-          "target_entity_type": "tmdb_movie" | "tmdb_show_season" | "movie" | "episode" | "season";
-          "title": string;
-          "warnings": (string)[];
-        };
-    "SearchTargetResponse": {
-          "entity_id"?: (string) | (null);
-          "entity_type": "tmdb_movie" | "tmdb_show_season" | "movie" | "episode" | "season";
-          "episode"?: (number) | (null);
-          "media_type": components['schemas']["MediaType"];
-          "overview"?: (string) | (null);
-          "poster_ref"?: (string) | (null);
-          "profile_entity_id"?: (string) | (null);
-          "quality_profile_id"?: (string) | (null);
-          "season"?: (number) | (null);
-          "title": string;
-          "tmdb_id"?: (number) | (null);
-          "year"?: (number) | (null);
-        };
-    "SeasonResponse": {
-          "counted"?: boolean;
-          "episode_count": number;
-          "episodes"?: (components['schemas']["EpisodeResponse"])[];
-          "id": string;
-          "missing_count": number;
-          "monitored": boolean;
-          "present_count": number;
-          "revision": number;
-          "season_number": number;
-          "title"?: (string) | (null);
-        };
-    "SeasonUpdate": {
-          "counted"?: (boolean) | (null);
-          "expected_revision"?: (number) | (null);
-          "monitored"?: (boolean) | (null);
-        };
-    "SecurityResponse": {
-          "default_password_warning": boolean;
-          "session_expires_at"?: (string) | (null);
-        };
-    "ServiceHealth": {
-          "configured": boolean;
-          "last_success"?: (string) | (null);
-          "latency_ms"?: (number) | (null);
-          "status": "unknown" | "healthy" | "unavailable";
-        };
-    "SetupCompleteRequest": {
-          "complete"?: boolean;
-        };
-    "SetupStatusResponse": {
-          "steps": (components['schemas']["SetupStep"])[];
-          "wizard_complete": boolean;
-          "wizard_required": boolean;
-        };
-    "SetupStep": {
-          "complete": boolean;
-          "detail": string;
-          "key": string;
-          "optional"?: boolean;
-          "settings_tab"?: (string) | (null);
-          "title": string;
-        };
-    "Severity": "info" | "warning" | "error";
-    "ShowCreate": {
-          "monitored"?: boolean;
-          "tmdb_id": number;
-        };
-    "ShowDetailResponse": {
-          "episode_count": number;
-          "episodes_missing": number;
-          "episodes_present": number;
-          "id": string;
-          "identity_state": components['schemas']["IdentityState"];
-          "last_observed_at"?: (string) | (null);
-          "monitored": boolean;
-          "overview"?: (string) | (null);
-          "plex_state": "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
-          "poster_ref"?: (string) | (null);
-          "problem_count"?: number;
-          "problems"?: (components['schemas']["ShowProblemResponse"])[];
-          "recent_events"?: (components['schemas']["ShowEventResponse"])[];
-          "resource_id": string;
-          "revision": number;
-          "season_count": number;
-          "seasons"?: (components['schemas']["SeasonResponse"])[];
-          "state": "Present" | "Missing" | "Conflict";
-          "storage_roots"?: (components['schemas']["ShowStorageRootResponse"])[];
-          "title": string;
-          "tmdb_episode_group_id"?: (string) | (null);
-          "tmdb_id": (number) | (null);
-          "tvdb_id"?: (number) | (null);
-          "year": (number) | (null);
-        };
-    "ShowDownloadPreferences": {
-          "include_year_in_folder_name"?: boolean;
-        };
-    "ShowDownloadPreviewResponse": {
-          "overview"?: (string) | (null);
-          "poster_ref"?: (string) | (null);
-          "seasons": (components['schemas']["ShowDownloadSeasonPreview"])[];
-          "title": string;
-          "tmdb_id": number;
-          "year"?: (number) | (null);
-        };
-    "ShowDownloadSeasonPreview": {
-          "air_date"?: (string) | (null);
-          "episode_count"?: number;
-          "poster_ref"?: (string) | (null);
-          "season_number": number;
-          "title"?: (string) | (null);
-        };
-    "ShowEventResponse": {
-          "created_at": string;
-          "details"?: { [key: string]: unknown };
-          "id": string;
-          "message": string;
-          "type": string;
-        };
-    "ShowProblemResponse": {
-          "description": string;
-          "details"?: { [key: string]: unknown };
-          "id": string;
-          "message": string;
-          "reason": string;
-          "severity": components['schemas']["Severity"];
-          "title": string;
-        };
-    "ShowSeasonDownloadSearchRequest": {
-          "quality_profile_id": string;
-          "season_number": number;
-          "tmdb_id": number;
-        };
-    "ShowStorageRootResponse": {
-          "health"?: ("available" | "unavailable" | "unknown") | (null);
-          "id": string;
-          "name": string;
-          "path": string;
-        };
-    "ShowSummaryResponse": {
-          "episode_count": number;
-          "episodes_missing": number;
-          "episodes_present": number;
-          "id": string;
-          "identity_state": components['schemas']["IdentityState"];
-          "last_observed_at"?: (string) | (null);
-          "monitored": boolean;
-          "plex_state": "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
-          "poster_ref"?: (string) | (null);
-          "problem_count"?: number;
-          "resource_id": string;
-          "revision": number;
-          "season_count": number;
-          "state": "Present" | "Missing" | "Conflict";
-          "title": string;
-          "tmdb_episode_group_id"?: (string) | (null);
-          "tmdb_id": (number) | (null);
-          "tvdb_id"?: (number) | (null);
-          "year": (number) | (null);
-        };
-    "ShowUpdate": {
-          "expected_revision"?: (number) | (null);
-          "monitored"?: (boolean) | (null);
-          "tmdb_episode_group_id"?: (string) | (null);
-        };
-    "SpecialsCountingResult": {
-          "count_specials": boolean;
-          "seasons_changed": number;
-          "shows_affected": number;
-        };
-    "SpecialsCountingState": {
-          "count_specials": boolean;
-        };
-    "StorageRootCreate": {
-          "access_mode"?: components['schemas']["AccessMode"];
-          "discovery_mode"?: components['schemas']["DiscoveryMode"];
-          "enabled"?: boolean;
-          "media_type": components['schemas']["MediaType"];
-          "missing_grace_checks"?: number;
-          "name": string;
-          "path": string;
-        };
-    "StorageRootHealthItem": {
-          "checked_at"?: (string) | (null);
-          "id": string;
-          "name": string;
-          "status": "unknown" | "available" | "unavailable";
-        };
-    "StorageRootReorder": {
-          "ids": (string)[];
-        };
-    "StorageRootResponse": {
-          "access_mode": components['schemas']["AccessMode"];
-          "affected_media_count"?: number;
-          "created_at": string;
-          "discovery_mode": components['schemas']["DiscoveryMode"];
-          "enabled": boolean;
-          "id": string;
-          "last_health": ("available" | "unavailable" | "unknown") | (null);
-          "last_health_checked_at": (string) | (null);
-          "last_scan_at": (string) | (null);
-          "media_count"?: number;
-          "media_type": components['schemas']["MediaType"];
-          "missing_grace_checks": number;
-          "name": string;
-          "resolved_root_path": string;
-          "scan"?: (components['schemas']["StorageRootScan"]) | (null);
-          "scanning"?: boolean;
-          "updated_at": string;
-        };
-    "StorageRootScan": {
-          "current"?: number;
-          "job_id": string;
-          "percent"?: number;
-          "stage"?: (string) | (null);
-          "status": "queued" | "running";
-          "total"?: number;
-        };
-    "StorageRootUpdate": {
-          "access_mode"?: (components['schemas']["AccessMode"]) | (null);
-          "discovery_mode"?: (components['schemas']["DiscoveryMode"]) | (null);
-          "enabled"?: (boolean) | (null);
-          "media_type"?: (components['schemas']["MediaType"]) | (null);
-          "missing_grace_checks"?: (number) | (null);
-          "name"?: (string) | (null);
-          "path"?: (string) | (null);
-        };
-    "TMDBConfigurationResponse": {
-          "api_key_configured"?: boolean;
-          "configured": boolean;
-          "enabled"?: boolean;
-          "health"?: "unknown" | "healthy" | "unavailable";
-          "last_checked_at"?: (string) | (null);
-          "last_error"?: (string) | (null);
-          "last_success_at"?: (string) | (null);
-          "latency_ms"?: (number) | (null);
-          "revision"?: (number) | (null);
-        };
-    "TMDBConfigurationUpdate": {
-          "api_key"?: (string) | (null);
-          "enabled"?: boolean;
-          "expected_revision"?: (number) | (null);
-        };
-    "TMDBMovieLookupResponse": {
-          "cast"?: (string)[];
-          "director"?: (string) | (null);
-          "imdb_id"?: (string) | (null);
-          "imdb_rating"?: (number) | (null);
-          "imdb_votes"?: (number) | (null);
-          "original_title"?: (string) | (null);
-          "overview"?: (string) | (null);
-          "popularity"?: (number) | (null);
-          "poster_ref"?: (string) | (null);
-          "title": string;
-          "tmdb_id": number;
-          "vote_average"?: (number) | (null);
-          "vote_count"?: (number) | (null);
-          "year"?: (number) | (null);
-        };
-    "TMDBShowLookupResponse": {
-          "cast"?: (string)[];
-          "director"?: (string) | (null);
-          "imdb_id"?: (string) | (null);
-          "imdb_rating"?: (number) | (null);
-          "imdb_votes"?: (number) | (null);
-          "original_title"?: (string) | (null);
-          "overview"?: (string) | (null);
-          "popularity"?: (number) | (null);
-          "poster_ref"?: (string) | (null);
-          "title": string;
-          "tmdb_id": number;
-          "vote_average"?: (number) | (null);
-          "vote_count"?: (number) | (null);
-          "year"?: (number) | (null);
-        };
-    "TMDBTestRequest": {
-          "api_key"?: (string) | (null);
-        };
-    "TMDBTestResponse": {
-          "latency_ms"?: (number) | (null);
-          "message"?: (string) | (null);
-          "status": "healthy" | "unavailable";
-        };
-    "TagCreate": {
-          "name": string;
-        };
-    "TagResponse": {
-          "created_at": string;
-          "id": string;
-          "name": string;
-        };
-    "TagUpdate": {
-          "name": string;
-        };
-    "TorrentArchiveDetail": {
-          "archive_path"?: (string) | (null);
-          "archive_state": components['schemas']["TorrentArchiveState"];
-          "associations"?: ({ [key: string]: unknown })[];
-          "completed_at"?: (string) | (null);
-          "edition"?: (string) | (null);
-          "first_seen_at": string;
-          "id": string;
-          "info_hash": string;
-          "last_seen_at": string;
-          "manifest"?: { [key: string]: unknown };
-          "manifest_path"?: (string) | (null);
-          "manifest_schema_version"?: (number) | (null);
-          "media_title"?: (string) | (null);
-          "media_type"?: (components['schemas']["MediaType"]) | (null);
-          "observations"?: ({ [key: string]: unknown })[];
-          "original_download_client"?: (string) | (null);
-          "previous_reported_path"?: (string) | (null);
-          "previous_resolved_path"?: (string) | (null);
-          "qbit_present"?: boolean;
-          "quality"?: (string) | (null);
-          "release_group"?: (string) | (null);
-          "release_name"?: (string) | (null);
-          "tmdb_id"?: (number) | (null);
-          "torrent_name": string;
-          "total_size"?: (number) | (null);
-          "tvdb_id"?: (number) | (null);
-        };
-    "TorrentArchiveHealth": {
-          "archived": number;
-          "message"?: (string) | (null);
-          "missing_or_failed": number;
-          "path": string;
-          "status": "healthy" | "unavailable";
-          "tracked": number;
-          "writable": boolean;
-        };
-    "TorrentArchiveState": "not_archived" | "archived" | "failed";
-    "TorrentArchiveSummary": {
-          "archive_path"?: (string) | (null);
-          "archive_state": components['schemas']["TorrentArchiveState"];
-          "completed_at"?: (string) | (null);
-          "edition"?: (string) | (null);
-          "first_seen_at": string;
-          "id": string;
-          "info_hash": string;
-          "last_seen_at": string;
-          "manifest_path"?: (string) | (null);
-          "manifest_schema_version"?: (number) | (null);
-          "media_title"?: (string) | (null);
-          "media_type"?: (components['schemas']["MediaType"]) | (null);
-          "original_download_client"?: (string) | (null);
-          "previous_reported_path"?: (string) | (null);
-          "previous_resolved_path"?: (string) | (null);
-          "qbit_present"?: boolean;
-          "quality"?: (string) | (null);
-          "release_group"?: (string) | (null);
-          "release_name"?: (string) | (null);
-          "tmdb_id"?: (number) | (null);
-          "torrent_name": string;
-          "total_size"?: (number) | (null);
-          "tvdb_id"?: (number) | (null);
-        };
-    "TorrentRestoreRequest": {
-          "category"?: (string) | (null);
-          "download_client_id": string;
-          "save_path": string;
-          "tags"?: ((string)[]) | (null);
-        };
-    "ValidationError": {
-          "ctx"?: {};
-          "input"?: unknown;
-          "loc": ((string) | (number))[];
-          "msg": string;
-          "type": string;
-        };
-  };
-}
+/**
+ * This file was auto-generated by openapi-typescript.
+ * Do not make direct changes to the file.
+ */
 
 export interface paths {
-  "/api/v1/auth/login": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["LoginRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["LoginResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/auth/logout": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            204: {
-              headers: { [name: string]: unknown };
-              content?: never;
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/auth/me": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["AdminResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/auth/password": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["PasswordChangeRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["AdminResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/auth/security": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SecurityResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/custom-formats": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "scope"?: (components['schemas']["CustomFormatScope"]) | (null);
-              "enabled"?: (boolean) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_CustomFormatResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["CustomFormatCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/custom-formats/export": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatExportBundle"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/custom-formats/import": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["CustomFormatImportBundle"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatImportResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/custom-formats/layout": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatLayout"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["CustomFormatLayout"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatLayout"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/custom-formats/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["CustomFormatTestRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/custom-formats/test-all": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["CustomFormatTestAllRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatTestAllResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/custom-formats/{custom_format_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "custom_format_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "custom_format_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DeleteResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "custom_format_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["CustomFormatUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/custom-formats/{custom_format_id}/export": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "custom_format_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["CustomFormatExportBundle"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "state"?: string;
-              "media_type"?: (string) | (null);
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_MediaDiscoveryResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries/bulk": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MediaDiscoveryBulk"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryBulkResult"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries/count": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryCount"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries/{discovery_id}/approve": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "discovery_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries/{discovery_id}/edition": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "discovery_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MediaDiscoveryEditionUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/discoveries/{discovery_id}/ignore": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "discovery_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries/{discovery_id}/restore": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "discovery_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries/{discovery_id}/search": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "discovery_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MediaDiscoverySearch"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/discoveries/{discovery_id}/select": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "discovery_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MediaDiscoverySelection"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaDiscoveryResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_DownloadClientResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["DownloadClientCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DownloadClientResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["DownloadClientTestRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DownloadClientTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients/{client_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DownloadClientResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["DownloadClientUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DownloadClientResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DeleteResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients/{client_id}/categories": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["DownloadClientCategoryResponse"])[];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients/{client_id}/health": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DownloadClientTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients/{client_id}/health/refresh": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DownloadClientTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients/{client_id}/poll": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/download-clients/{client_id}/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "client_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: {
-            content: {
-              "application/json": (components['schemas']["DownloadClientSavedTestRequest"]) | (null);
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DownloadClientTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/downloads": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "client_id"?: (string) | (null);
-              "scope"?: (components['schemas']["DownloadScope"]) | (null);
-              "state"?: (string) | (null);
-              "include_removed"?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_DownloadResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/downloads/poll": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/episodes/{episode_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "episode_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["EpisodeUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["EpisodeResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/episodes/{episode_id}/interactive-search": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "episode_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/events": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "entity_type"?: (string) | (null);
-              "entity_id"?: (string) | (null);
-              "event_type"?: (string) | (null);
-              "severity"?: (string) | (null);
-              "sort"?: string;
-              "date_from"?: (string) | (null);
-              "date_to"?: (string) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_EventResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: {
-              "entity_type"?: (string) | (null);
-              "entity_id"?: (string) | (null);
-              "event_type"?: (string) | (null);
-              "severity"?: (string) | (null);
-              "date_from"?: (string) | (null);
-              "date_to"?: (string) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: number;
-                };
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/events/stream": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": unknown;
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/events/{event_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "event_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: string;
-                };
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/filesystem": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "path"?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["FilesystemListing"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/health": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: string;
-                };
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/indexers": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_IndexerResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["IndexerCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["IndexerResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/indexers/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["IndexerTestRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["IndexerTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/indexers/{indexer_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "indexer_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["IndexerResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "indexer_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["IndexerUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["IndexerResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "indexer_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DeleteResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/indexers/{indexer_id}/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "indexer_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["IndexerTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/health": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["IntegrationHealthResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/plex": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["PlexConfigurationResponse"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["PlexConfigurationUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["PlexConfigurationResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/plex/health": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["PlexHealthResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/plex/health/refresh": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["PlexTestResponse"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/plex/sync": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/plex/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["PlexTestRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["PlexTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/tmdb": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["TMDBConfigurationResponse"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["TMDBConfigurationUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["TMDBConfigurationResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/tmdb/health/refresh": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["TMDBTestResponse"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/integrations/tmdb/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["TMDBTestRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["TMDBTestResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/interactive-search/movies": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MovieDownloadSearchRequest"];
-            };
-          };
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/interactive-search/shows/seasons": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["ShowSeasonDownloadSearchRequest"];
-            };
-          };
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/interactive-search/shows/{tmdb_id}/preview": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "tmdb_id": number;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ShowDownloadPreviewResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/jobs": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "status"?: (string) | (null);
-              "job_type"?: (string) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_JobResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/jobs/{job_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "job_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/jobs/{job_id}/cancel": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "job_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/library/summary": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["LibrarySummary"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/media-files/{media_file_id}/episode-mappings": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "media_file_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["EpisodeMappingUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["EpisodeMappingResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "query"?: (string) | (null);
-              "state"?: (string) | (null);
-              "tag"?: (string) | (null);
-              "sort"?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_MovieSummaryResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MovieCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MovieDetailResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/bulk": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MovieBulkRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["MovieBulkResponse"]) | (components['schemas']["JobAcceptedResponse"]);
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/edition-options": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MovieEditionOptionsResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/lookup": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query: {
-              "query": string;
-              "year"?: (number) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["TMDBMovieLookupResponse"])[];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MovieDetailResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/actions/recheck-plex": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/duplicates/resolve": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["DuplicateResolveCommitRequest"];
-            };
-          };
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/duplicates/resolve-preview": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["DuplicateResolvePreviewRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DuplicateResolvePreviewResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/events": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_EventResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/interactive-search": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/profile-settings": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaProfileSettingsResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MediaProfileSettingsUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaProfileSettingsResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/releases/editions": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MovieEditionOverrideRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MovieEditionOverrideResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/movies/{resource_id}/tags/{tag_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-              "tag_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["TagResponse"])[];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-              "tag_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["TagResponse"])[];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/parser/test": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["ParserTestRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: unknown;
-                };
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/problems": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "reason"?: (string) | (null);
-              "entity_type"?: (string) | (null);
-              "severity"?: (string) | (null);
-              "category"?: (string) | (null);
-              "workflow"?: (string) | (null);
-              "status"?: (string) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_ProblemResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/problems/count": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "status"?: (string) | (null);
-              "workflow"?: (string) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: number;
-                };
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/problems/recheck": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ProblemRecheckAllResponse"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/problems/summary": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ProblemSummaryResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/problems/{problem_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "problem_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ProblemResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "problem_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: string;
-                };
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/problems/{problem_id}/resolve": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "problem_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["ProblemResolveRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ProblemResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/quality-definitions": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["QualityDefinitionResponse"])[];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/quality-definitions/{quality_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "quality_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["QualityDefinitionResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/quality-profiles": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["QualityProfileResponse"])[];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["QualityProfileCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["QualityProfileResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/quality-profiles/{profile_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "profile_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["QualityProfileResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "profile_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            204: {
-              headers: { [name: string]: unknown };
-              content?: never;
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "profile_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["QualityProfileUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["QualityProfileResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/reconciliation/movies/{movie_id}/manual-attach": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "movie_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["ManualAttachRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ReconciliationActionResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/reconciliation/run": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: {
-            content: {
-              "application/json": components['schemas']["ReconciliationRunRequest"];
-            };
-          };
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ReconciliationRunResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/reconciliation/status": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ReconciliationStatusResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/recovery/capabilities": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["RecoveryCapabilitiesResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/recovery/export": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["RecoveryExportAcceptedResponse"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/recovery/exports/{job_id}/download": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "job_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": unknown;
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/remote-path-mappings": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_RemotePathMappingResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["RemotePathMappingCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["RemotePathMappingResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/remote-path-mappings/{mapping_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "mapping_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DeleteResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "mapping_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["RemotePathMappingUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["RemotePathMappingResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/search-jobs/{job_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path: {
-              "job_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SearchJobResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/search-results/{result_id}/download": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "result_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["SearchResultDownloadRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SearchResultDownloadResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/seasons/{season_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "season_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["SeasonUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SeasonResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/seasons/{season_id}/interactive-search": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "season_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/setup/complete": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["SetupCompleteRequest"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SetupStatusResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/setup/status": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SetupStatusResponse"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "query"?: (string) | (null);
-              "state"?: (string) | (null);
-              "sort"?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_ShowSummaryResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["ShowCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ShowDetailResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/download-preferences": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ShowDownloadPreferences"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["ShowDownloadPreferences"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ShowDownloadPreferences"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/lookup": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query: {
-              "query": string;
-              "year"?: (number) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["TMDBShowLookupResponse"])[];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/specials-counting": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SpecialsCountingState"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["SpecialsCountingState"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["SpecialsCountingResult"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/{resource_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ShowDetailResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["ShowUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["ShowSummaryResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/shows/{resource_id}/actions/recheck-plex": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/{resource_id}/episode-orderings": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["EpisodeOrderingOption"])[];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/{resource_id}/events": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_EventResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/{resource_id}/metadata/refresh": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/shows/{resource_id}/profile-settings": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaProfileSettingsResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "resource_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["MediaProfileSettingsUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["MediaProfileSettingsResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/storage-roots": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_StorageRootResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["StorageRootCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["StorageRootResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/storage-roots/health": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_StorageRootResponse_"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/storage-roots/reorder": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["StorageRootReorder"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_StorageRootResponse_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/storage-roots/{root_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "root_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["StorageRootResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: {
-              "remove_entries"?: boolean;
-            };
-            header?: never;
-            path: {
-              "root_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["DeleteResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "root_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["StorageRootUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["StorageRootResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/storage-roots/{root_id}/scan": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "root_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/tags": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": (components['schemas']["TagResponse"])[];
-              };
-            };
-          };
-        };
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["TagCreate"];
-            };
-          };
-          responses: {
-            201: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["TagResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/tags/{tag_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "tag_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            204: {
-              headers: { [name: string]: unknown };
-              content?: never;
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    options?: never;
-    head?: never;
-    patch: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "tag_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["TagUpdate"];
-            };
-          };
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["TagResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    trace?: never;
-  };
-  "/api/v1/torrent-archive": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: {
-              "page"?: number;
-              "page_size"?: number;
-              "query"?: (string) | (null);
-              "archive_state"?: (string) | (null);
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["Collection_TorrentArchiveSummary_"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/torrent-archive/{torrent_id}": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "torrent_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["TorrentArchiveDetail"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/torrent-archive/{torrent_id}/restore": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "torrent_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody: {
-            content: {
-              "application/json": components['schemas']["TorrentRestoreRequest"];
-            };
-          };
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/torrent-archive/{torrent_id}/retry": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get?: never;
-    put?: never;
-    post: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path: {
-              "torrent_id": string;
-            };
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            202: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["JobAcceptedResponse"];
-              };
-            };
-            422: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": components['schemas']["HTTPValidationError"];
-              };
-            };
-          };
-        };
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/healthz": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: string;
-                };
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/readyz": {
-    parameters: { query?: never; header?: never; path?: never; cookie?: never };
-    get: {
-          parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-          };
-          requestBody?: never;
-          responses: {
-            200: {
-              headers: { [name: string]: unknown };
-              content: {
-                "application/json": {
-                  [key: string]: unknown;
-                };
-              };
-            };
-          };
-        };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_api_v1_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Password */
+        post: operations["change_password_api_v1_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/security": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Security */
+        get: operations["security_api_v1_auth_security_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-formats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Custom Formats */
+        get: operations["list_custom_formats_api_v1_custom_formats_get"];
+        put?: never;
+        /** Create Custom Format */
+        post: operations["create_custom_format_api_v1_custom_formats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-formats/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export All Custom Formats */
+        get: operations["export_all_custom_formats_api_v1_custom_formats_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-formats/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Custom Formats */
+        post: operations["import_custom_formats_api_v1_custom_formats_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-formats/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Custom Format Layout */
+        get: operations["get_custom_format_layout_api_v1_custom_formats_layout_get"];
+        /** Update Custom Format Layout */
+        put: operations["update_custom_format_layout_api_v1_custom_formats_layout_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-formats/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Custom Format */
+        post: operations["test_custom_format_api_v1_custom_formats_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-formats/test-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test All Custom Formats */
+        post: operations["test_all_custom_formats_api_v1_custom_formats_test_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-formats/{custom_format_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Custom Format */
+        get: operations["get_custom_format_api_v1_custom_formats__custom_format_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Custom Format */
+        delete: operations["delete_custom_format_api_v1_custom_formats__custom_format_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Custom Format */
+        patch: operations["update_custom_format_api_v1_custom_formats__custom_format_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/custom-formats/{custom_format_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Custom Format */
+        get: operations["export_custom_format_api_v1_custom_formats__custom_format_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Discoveries */
+        get: operations["list_discoveries_api_v1_discoveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Review
+         * @description Approve or ignore many reviewed directories in one request.
+         *
+         *     Each item is committed on its own and a failure does not stop the rest: one
+         *     title whose metadata fetch times out must not discard the twenty-nine that
+         *     already succeeded, and the caller is told exactly which ones failed and why.
+         */
+        post: operations["bulk_review_api_v1_discoveries_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Count Discoveries */
+        get: operations["count_discoveries_api_v1_discoveries_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/{discovery_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Discovery */
+        post: operations["approve_discovery_api_v1_discoveries__discovery_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/{discovery_id}/edition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Discovery Edition */
+        patch: operations["set_discovery_edition_api_v1_discoveries__discovery_id__edition_patch"];
+        trace?: never;
+    };
+    "/api/v1/discoveries/{discovery_id}/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ignore Discovery */
+        post: operations["ignore_discovery_api_v1_discoveries__discovery_id__ignore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/{discovery_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Discovery
+         * @description Put an ignored item back in the queue, so a mis-click is recoverable.
+         */
+        post: operations["restore_discovery_api_v1_discoveries__discovery_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/{discovery_id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Discovery Candidates
+         * @description Search TMDB for a folder and keep the results on the discovery.
+         *
+         *     The results live with the item rather than in whoever's browser happened to
+         *     run the search: they are the same for every viewer, they survive a reload,
+         *     and they stay until someone searches again or the item leaves the queue.
+         *     A scan only records the handful of candidates it considered, which is why
+         *     opening a row otherwise offered the one answer you already had.
+         */
+        post: operations["search_discovery_candidates_api_v1_discoveries__discovery_id__search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/{discovery_id}/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Select Discovery */
+        post: operations["select_discovery_api_v1_discoveries__discovery_id__select_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Download Clients */
+        get: operations["list_download_clients_api_v1_download_clients_get"];
+        put?: never;
+        /** Create Download Client */
+        post: operations["create_download_client_api_v1_download_clients_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Unsaved Download Client */
+        post: operations["test_unsaved_download_client_api_v1_download_clients_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients/{client_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Download Client */
+        get: operations["get_download_client_api_v1_download_clients__client_id__get"];
+        /** Update Download Client */
+        put: operations["update_download_client_api_v1_download_clients__client_id__put"];
+        post?: never;
+        /** Delete Download Client */
+        delete: operations["delete_download_client_api_v1_download_clients__client_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients/{client_id}/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Download Client Categories */
+        get: operations["get_download_client_categories_api_v1_download_clients__client_id__categories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients/{client_id}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Client Health */
+        get: operations["download_client_health_api_v1_download_clients__client_id__health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients/{client_id}/health/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Download Client Health */
+        post: operations["refresh_download_client_health_api_v1_download_clients__client_id__health_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients/{client_id}/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Poll Client */
+        post: operations["poll_client_api_v1_download_clients__client_id__poll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/download-clients/{client_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Download Client */
+        post: operations["test_download_client_api_v1_download_clients__client_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Downloads */
+        get: operations["list_downloads_api_v1_downloads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/downloads/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Poll All Clients */
+        post: operations["poll_all_clients_api_v1_downloads_poll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/episodes/{episode_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Episode */
+        patch: operations["update_episode_api_v1_episodes__episode_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/episodes/{episode_id}/interactive-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Episode */
+        post: operations["search_episode_api_v1_episodes__episode_id__interactive_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Events */
+        get: operations["list_events_api_v1_events_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Events
+         * @description Delete durable application history records only.
+         *
+         *     This does not alter current media, torrents, problems, or integration state.
+         */
+        delete: operations["delete_events_api_v1_events_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Event Stream */
+        get: operations["event_stream_api_v1_events_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Event */
+        delete: operations["delete_event_api_v1_events__event_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/filesystem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse Filesystem
+         * @description List the folders inside a path, so a root can be picked by browsing.
+         *
+         *     Only directories are returned: choosing a root never involves a file, and
+         *     listing them would expose more than the task needs. Nothing is read from
+         *     inside the folders and nothing is written.
+         */
+        get: operations["browse_filesystem_api_v1_filesystem_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Api Health */
+        get: operations["api_health_api_v1_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/indexers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Indexers */
+        get: operations["list_indexers_api_v1_indexers_get"];
+        put?: never;
+        /** Create Indexer */
+        post: operations["create_indexer_api_v1_indexers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/indexers/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Unsaved Indexer */
+        post: operations["test_unsaved_indexer_api_v1_indexers_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/indexers/{indexer_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Indexer */
+        get: operations["get_indexer_api_v1_indexers__indexer_id__get"];
+        /** Update Indexer */
+        put: operations["update_indexer_api_v1_indexers__indexer_id__put"];
+        post?: never;
+        /** Delete Indexer */
+        delete: operations["delete_indexer_api_v1_indexers__indexer_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/indexers/{indexer_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Saved Indexer */
+        post: operations["test_saved_indexer_api_v1_indexers__indexer_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Integration Health */
+        get: operations["integration_health_api_v1_integrations_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/plex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Configuration */
+        get: operations["get_configuration_api_v1_integrations_plex_get"];
+        /** Save Configuration */
+        put: operations["save_configuration_api_v1_integrations_plex_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/plex/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Plex Health */
+        get: operations["plex_health_api_v1_integrations_plex_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/plex/health/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Health */
+        post: operations["refresh_health_api_v1_integrations_plex_health_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/plex/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Library */
+        post: operations["sync_library_api_v1_integrations_plex_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/plex/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Connection */
+        post: operations["test_connection_api_v1_integrations_plex_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/tmdb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Configuration */
+        get: operations["get_configuration_api_v1_integrations_tmdb_get"];
+        /** Save Configuration */
+        put: operations["save_configuration_api_v1_integrations_tmdb_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/tmdb/health/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Health */
+        post: operations["refresh_health_api_v1_integrations_tmdb_health_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/tmdb/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Connection */
+        post: operations["test_connection_api_v1_integrations_tmdb_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactive-search/movies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Unattached Movie */
+        post: operations["search_unattached_movie_api_v1_interactive_search_movies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactive-search/shows/seasons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Unattached Show Season */
+        post: operations["search_unattached_show_season_api_v1_interactive_search_shows_seasons_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactive-search/shows/{tmdb_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Unattached Show */
+        get: operations["preview_unattached_show_api_v1_interactive_search_shows__tmdb_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_v1_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_v1_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_v1_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library Summary
+         * @description What is in the library, and how much of it is no longer linked to a root.
+         *
+         *     Nothing else in the system looks for unlinked directories, so without this
+         *     they are invisible: removing a root leaves entries that are never scanned,
+         *     never checked, and never mentioned anywhere.
+         */
+        get: operations["library_summary_api_v1_library_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media-files/{media_file_id}/episode-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Correct Episode Mapping */
+        put: operations["correct_episode_mapping_api_v1_media_files__media_file_id__episode_mappings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Movies */
+        get: operations["list_movies_api_v1_movies_get"];
+        put?: never;
+        /**
+         * Create Movie
+         * @description Add a Movie to the library from a TMDB id.
+         *
+         *     Mirrors POST /shows. Interactive search resolves its target against the
+         *     movies table, so a title has to exist here before it can be searched for or
+         *     grabbed. The new record has no releases and no directory: it reads as
+         *     Missing until a grabbed release is discovered on disk.
+         */
+        post: operations["create_movie_api_v1_movies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk Movies */
+        post: operations["bulk_movies_api_v1_movies_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/edition-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Movie Edition Options */
+        get: operations["movie_edition_options_api_v1_movies_edition_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lookup Movies */
+        get: operations["lookup_movies_api_v1_movies_lookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Movie */
+        get: operations["get_movie_api_v1_movies__resource_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/actions/recheck-plex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recheck Movie */
+        post: operations["recheck_movie_api_v1_movies__resource_id__actions_recheck_plex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/duplicates/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Movie Duplicate */
+        post: operations["resolve_movie_duplicate_api_v1_movies__resource_id__duplicates_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/duplicates/resolve-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Movie Duplicate Resolution */
+        post: operations["preview_movie_duplicate_resolution_api_v1_movies__resource_id__duplicates_resolve_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Movie Events */
+        get: operations["get_movie_events_api_v1_movies__resource_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/interactive-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Movie */
+        post: operations["search_movie_api_v1_movies__resource_id__interactive_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/profile-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Movie Profile Settings */
+        get: operations["get_movie_profile_settings_api_v1_movies__resource_id__profile_settings_get"];
+        /** Set Movie Profile Settings */
+        put: operations["set_movie_profile_settings_api_v1_movies__resource_id__profile_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/releases/editions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Movie Release Editions */
+        patch: operations["set_movie_release_editions_api_v1_movies__resource_id__releases_editions_patch"];
+        trace?: never;
+    };
+    "/api/v1/movies/{resource_id}/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Movie Tag */
+        post: operations["add_movie_tag_api_v1_movies__resource_id__tags__tag_id__post"];
+        /** Remove Movie Tag */
+        delete: operations["remove_movie_tag_api_v1_movies__resource_id__tags__tag_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/parser/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Parser
+         * @description Return the complete non-mutating, versioned release parse.
+         */
+        post: operations["test_parser_api_v1_parser_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Problems */
+        get: operations["list_problems_api_v1_problems_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Count Problems */
+        get: operations["count_problems_api_v1_problems_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recheck Open Problems */
+        post: operations["recheck_open_problems_api_v1_problems_recheck_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Problem Summary */
+        get: operations["problem_summary_api_v1_problems_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems/{problem_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Problem */
+        get: operations["get_problem_api_v1_problems__problem_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Problem */
+        delete: operations["delete_problem_api_v1_problems__problem_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problems/{problem_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Problem */
+        post: operations["resolve_problem_api_v1_problems__problem_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Quality Definitions */
+        get: operations["list_quality_definitions_api_v1_quality_definitions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality-definitions/{quality_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quality Definition */
+        get: operations["get_quality_definition_api_v1_quality_definitions__quality_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Quality Profiles */
+        get: operations["list_quality_profiles_api_v1_quality_profiles_get"];
+        put?: never;
+        /** Create Quality Profile */
+        post: operations["create_quality_profile_api_v1_quality_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality-profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quality Profile */
+        get: operations["get_quality_profile_api_v1_quality_profiles__profile_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Quality Profile */
+        delete: operations["delete_quality_profile_api_v1_quality_profiles__profile_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Quality Profile */
+        patch: operations["update_quality_profile_api_v1_quality_profiles__profile_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/reconciliation/movies/{movie_id}/manual-attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manual Attach */
+        post: operations["manual_attach_api_v1_reconciliation_movies__movie_id__manual_attach_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reconciliation/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Reconciliation */
+        post: operations["run_reconciliation_api_v1_reconciliation_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reconciliation/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reconciliation Status */
+        get: operations["reconciliation_status_api_v1_reconciliation_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recovery/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities */
+        get: operations["capabilities_api_v1_recovery_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recovery/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Recovery Export */
+        post: operations["start_recovery_export_api_v1_recovery_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recovery/exports/{job_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Recovery Export */
+        get: operations["download_recovery_export_api_v1_recovery_exports__job_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote-path-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mappings */
+        get: operations["list_mappings_api_v1_remote_path_mappings_get"];
+        put?: never;
+        /** Create Mapping */
+        post: operations["create_mapping_api_v1_remote_path_mappings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote-path-mappings/{mapping_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Mapping */
+        delete: operations["delete_mapping_api_v1_remote_path_mappings__mapping_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Mapping */
+        patch: operations["update_mapping_api_v1_remote_path_mappings__mapping_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/search-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Search Job */
+        get: operations["get_search_job_api_v1_search_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search-results/{result_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download Search Result */
+        post: operations["download_search_result_api_v1_search_results__result_id__download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seasons/{season_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Season */
+        patch: operations["update_season_api_v1_seasons__season_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/seasons/{season_id}/interactive-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Season */
+        post: operations["search_season_api_v1_seasons__season_id__interactive_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Complete */
+        put: operations["complete_api_v1_setup_complete_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_setup_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Shows */
+        get: operations["list_shows_api_v1_shows_get"];
+        put?: never;
+        /** Create Show */
+        post: operations["create_show_api_v1_shows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/download-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Show Download Preferences */
+        get: operations["get_show_download_preferences_api_v1_shows_download_preferences_get"];
+        /** Set Show Download Preferences */
+        put: operations["set_show_download_preferences_api_v1_shows_download_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lookup Shows */
+        get: operations["lookup_shows_api_v1_shows_lookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/specials-counting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Specials Counting */
+        get: operations["get_specials_counting_api_v1_shows_specials_counting_get"];
+        /**
+         * Set Specials Counting
+         * @description Store the preference and apply it to Season 0 on every show.
+         *
+         *     Only the counting flag moves. Monitoring is left alone, so turning Specials
+         *     off does not quietly stop Medialogue searching for anything you had asked it
+         *     to look for.
+         */
+        put: operations["set_specials_counting_api_v1_shows_specials_counting_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/{resource_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Show */
+        get: operations["get_show_api_v1_shows__resource_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Show */
+        patch: operations["update_show_api_v1_shows__resource_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/shows/{resource_id}/actions/recheck-plex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recheck Show */
+        post: operations["recheck_show_api_v1_shows__resource_id__actions_recheck_plex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/{resource_id}/episode-orderings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Episode Orderings
+         * @description Every ordering this show can use, default first.
+         *
+         *     TMDB's default season structure is presented as an option in its own right
+         *     so the choice reads as one list rather than "the normal way, plus extras".
+         */
+        get: operations["list_episode_orderings_api_v1_shows__resource_id__episode_orderings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/{resource_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Show Events */
+        get: operations["get_show_events_api_v1_shows__resource_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/{resource_id}/metadata/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Show Metadata */
+        post: operations["refresh_show_metadata_api_v1_shows__resource_id__metadata_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shows/{resource_id}/profile-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Show Profile Settings */
+        get: operations["get_show_profile_settings_api_v1_shows__resource_id__profile_settings_get"];
+        /** Set Show Profile Settings */
+        put: operations["set_show_profile_settings_api_v1_shows__resource_id__profile_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage-roots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Storage Roots */
+        get: operations["list_storage_roots_api_v1_storage_roots_get"];
+        put?: never;
+        /** Create Storage Root */
+        post: operations["create_storage_root_api_v1_storage_roots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage-roots/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Storage Root Health
+         * @description Re-test every root's path and record what was found.
+         *
+         *     Health was previously written only by a scan, so a root that went offline
+         *     stayed green until something scanned it again. This is a directory stat per
+         *     root, cheap enough to run whenever the page is opened.
+         */
+        post: operations["check_storage_root_health_api_v1_storage_roots_health_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage-roots/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Storage Roots
+         * @description Persist a hand-dragged list order.
+         *
+         *     Ids missing from the payload keep a position after the ones given, so a
+         *     reorder raced against another admin's newly added root cannot silently
+         *     drop that root to an arbitrary place.
+         */
+        post: operations["reorder_storage_roots_api_v1_storage_roots_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage-roots/{root_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Storage Root */
+        get: operations["get_storage_root_api_v1_storage_roots__root_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Storage Root */
+        delete: operations["delete_storage_root_api_v1_storage_roots__root_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Storage Root */
+        patch: operations["update_storage_root_api_v1_storage_roots__root_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/storage-roots/{root_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Storage Root */
+        post: operations["scan_storage_root_api_v1_storage_roots__root_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tags */
+        get: operations["list_tags_api_v1_tags_get"];
+        put?: never;
+        /** Create Tag */
+        post: operations["create_tag_api_v1_tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Tag */
+        delete: operations["delete_tag_api_v1_tags__tag_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Tag */
+        patch: operations["update_tag_api_v1_tags__tag_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/torrent-archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Torrent Archive */
+        get: operations["list_torrent_archive_api_v1_torrent_archive_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/torrent-archive/{torrent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Torrent Archive Item */
+        get: operations["get_torrent_archive_item_api_v1_torrent_archive__torrent_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/torrent-archive/{torrent_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Archived Torrent */
+        post: operations["restore_archived_torrent_api_v1_torrent_archive__torrent_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/torrent-archive/{torrent_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Torrent Archive */
+        post: operations["retry_torrent_archive_api_v1_torrent_archive__torrent_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/healthz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Liveness */
+        get: operations["liveness_healthz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readyz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Readiness */
+        get: operations["readiness_readyz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
-
+export type webhooks = Record<string, never>;
+export interface components {
+    schemas: {
+        /**
+         * AccessMode
+         * @enum {string}
+         */
+        AccessMode: "read_only" | "read_write";
+        /** AdminResponse */
+        AdminResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Default Password */
+            is_default_password: boolean;
+            /** Username */
+            username: string;
+        };
+        /**
+         * AssociationType
+         * @enum {string}
+         */
+        AssociationType: "incoming" | "attached" | "historical";
+        /** Collection[CustomFormatResponse] */
+        Collection_CustomFormatResponse_: {
+            /** Items */
+            items: components["schemas"]["CustomFormatResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[DownloadClientResponse] */
+        Collection_DownloadClientResponse_: {
+            /** Items */
+            items: components["schemas"]["DownloadClientResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[DownloadResponse] */
+        Collection_DownloadResponse_: {
+            /** Items */
+            items: components["schemas"]["DownloadResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[EventResponse] */
+        Collection_EventResponse_: {
+            /** Items */
+            items: components["schemas"]["EventResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[IndexerResponse] */
+        Collection_IndexerResponse_: {
+            /** Items */
+            items: components["schemas"]["IndexerResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[JobResponse] */
+        Collection_JobResponse_: {
+            /** Items */
+            items: components["schemas"]["JobResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[MediaDiscoveryResponse] */
+        Collection_MediaDiscoveryResponse_: {
+            /** Items */
+            items: components["schemas"]["MediaDiscoveryResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[MovieSummaryResponse] */
+        Collection_MovieSummaryResponse_: {
+            /** Items */
+            items: components["schemas"]["MovieSummaryResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[ProblemResponse] */
+        Collection_ProblemResponse_: {
+            /** Items */
+            items: components["schemas"]["ProblemResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[RemotePathMappingResponse] */
+        Collection_RemotePathMappingResponse_: {
+            /** Items */
+            items: components["schemas"]["RemotePathMappingResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[ShowSummaryResponse] */
+        Collection_ShowSummaryResponse_: {
+            /** Items */
+            items: components["schemas"]["ShowSummaryResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[StorageRootResponse] */
+        Collection_StorageRootResponse_: {
+            /** Items */
+            items: components["schemas"]["StorageRootResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** Collection[TorrentArchiveSummary] */
+        Collection_TorrentArchiveSummary_: {
+            /** Items */
+            items: components["schemas"]["TorrentArchiveSummary"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** CustomFormatConditionEvaluationResponse */
+        CustomFormatConditionEvaluationResponse: {
+            /** Condition Id */
+            condition_id: string;
+            condition_type: components["schemas"]["CustomFormatConditionType"];
+            /** Effective Result */
+            effective_result: boolean;
+            /** Evidence */
+            evidence?: unknown;
+            /** Expected */
+            expected?: unknown;
+            /** Group */
+            group?: string | null;
+            /** Matched */
+            matched: boolean;
+            /** Name */
+            name?: string | null;
+            /** Negated */
+            negated: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Regex Match */
+            regex_match?: string | null;
+            /** Required */
+            required: boolean;
+            /**
+             * Score Offset
+             * @default 0
+             */
+            score_offset: number;
+        };
+        /** CustomFormatConditionInput */
+        CustomFormatConditionInput: {
+            /**
+             * Case Sensitive
+             * @default false
+             */
+            case_sensitive: boolean;
+            /** Group */
+            group?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Negate
+             * @default false
+             */
+            negate: boolean;
+            /** Pattern */
+            pattern?: string | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Score Offset
+             * @default 0
+             */
+            score_offset: number;
+            type: components["schemas"]["CustomFormatConditionType"];
+            /** Value */
+            value?: string | string[] | null;
+        };
+        /** CustomFormatConditionResponse */
+        CustomFormatConditionResponse: {
+            /** Case Sensitive */
+            case_sensitive: boolean;
+            /** Group */
+            group?: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** Negate */
+            negate: boolean;
+            /** Pattern */
+            pattern?: string | null;
+            /** Required */
+            required: boolean;
+            /**
+             * Score Offset
+             * @default 0
+             */
+            score_offset: number;
+            type: components["schemas"]["CustomFormatConditionType"];
+            /** Value */
+            value?: unknown;
+        };
+        /**
+         * CustomFormatConditionType
+         * @enum {string}
+         */
+        CustomFormatConditionType: "release_title" | "release_group" | "quality" | "quality_modifier" | "resolution" | "source" | "edition" | "language" | "indexer" | "web_provider" | "video_codec" | "audio_codec" | "audio_channels" | "hdr_type" | "release_attribute";
+        /** CustomFormatCreate */
+        CustomFormatCreate: {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionInput"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Name */
+            name: string;
+        };
+        /** CustomFormatEvaluationResponse */
+        CustomFormatEvaluationResponse: {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionEvaluationResponse"][];
+            /** Contribution */
+            contribution?: number | null;
+            /** Custom Format Id */
+            custom_format_id: string;
+            /** Custom Format Name */
+            custom_format_name: string;
+            /** Error */
+            error?: string | null;
+            /** Group Results */
+            group_results: {
+                [key: string]: boolean;
+            };
+            /** Matched */
+            matched: boolean;
+            /** Profile Score */
+            profile_score?: number | null;
+            /**
+             * Score Offset
+             * @default 0
+             */
+            score_offset: number;
+        };
+        /** CustomFormatExportBundle */
+        CustomFormatExportBundle: {
+            /**
+             * Application
+             * @default Medialogue
+             */
+            application: string;
+            /** Custom Formats */
+            custom_formats: components["schemas"]["CustomFormatExportItem-Output"][];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** CustomFormatExportItem */
+        "CustomFormatExportItem-Input": {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionInput"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Name */
+            name: string;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** CustomFormatExportItem */
+        "CustomFormatExportItem-Output": {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionInput"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Name */
+            name: string;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** CustomFormatImportBundle */
+        CustomFormatImportBundle: {
+            /** Application */
+            application: string;
+            /** Custom Formats */
+            custom_formats: components["schemas"]["CustomFormatExportItem-Input"][];
+            /** Schema Version */
+            schema_version: number;
+        };
+        /** CustomFormatImportResponse */
+        CustomFormatImportResponse: {
+            /** Count */
+            count: number;
+            /** Imported */
+            imported: components["schemas"]["CustomFormatResponse"][];
+        };
+        /** CustomFormatLayout */
+        CustomFormatLayout: {
+            /** Sections */
+            sections: components["schemas"]["CustomFormatSection"][];
+        };
+        /** CustomFormatResponse */
+        CustomFormatResponse: {
+            /**
+             * Builtin
+             * @default false
+             */
+            builtin: boolean;
+            /** Condition Count */
+            condition_count: number;
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionResponse"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+            /** Schema Version */
+            schema_version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Used By Profiles */
+            used_by_profiles: number;
+        };
+        /**
+         * CustomFormatScope
+         * @enum {string}
+         */
+        CustomFormatScope: "movies" | "shows" | "both";
+        /** CustomFormatSection */
+        CustomFormatSection: {
+            /** Format Ids */
+            format_ids?: string[];
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** CustomFormatTestAllRequest */
+        CustomFormatTestAllRequest: {
+            /**
+             * Include Disabled
+             * @default false
+             */
+            include_disabled: boolean;
+            /** Indexer */
+            indexer?: string | null;
+            /** Languages */
+            languages?: string[];
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /** Release Name */
+            release_name: string;
+        };
+        /** CustomFormatTestAllResponse */
+        CustomFormatTestAllResponse: {
+            /** Formats */
+            formats: components["schemas"]["CustomFormatEvaluationResponse"][];
+            /** Matched Count */
+            matched_count: number;
+            /** Parsed */
+            parsed: {
+                [key: string]: unknown;
+            };
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /** Quality Profile Name */
+            quality_profile_name?: string | null;
+            /** Total Score */
+            total_score?: number | null;
+        };
+        /** CustomFormatTestDefinition */
+        CustomFormatTestDefinition: {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionInput"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id?: string | null;
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /**
+             * Name
+             * @default Test Format
+             */
+            name: string;
+        };
+        /** CustomFormatTestRequest */
+        CustomFormatTestRequest: {
+            custom_format: components["schemas"]["CustomFormatTestDefinition"];
+            /** Indexer */
+            indexer?: string | null;
+            /** Languages */
+            languages?: string[];
+            /** Release Name */
+            release_name: string;
+        };
+        /** CustomFormatTestResponse */
+        CustomFormatTestResponse: {
+            evaluation: components["schemas"]["CustomFormatEvaluationResponse"];
+            /** Parsed */
+            parsed: {
+                [key: string]: unknown;
+            };
+        };
+        /** CustomFormatUpdate */
+        CustomFormatUpdate: {
+            /** Conditions */
+            conditions?: components["schemas"]["CustomFormatConditionInput"][] | null;
+            /** Description */
+            description?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            media_scope?: components["schemas"]["CustomFormatScope"] | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** DatabaseHealth */
+        DatabaseHealth: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "healthy";
+        };
+        /** DeleteResponse */
+        DeleteResponse: {
+            /**
+             * Deleted
+             * @default true
+             */
+            deleted: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * DiscoveryMode
+         * @enum {string}
+         */
+        DiscoveryMode: "automatic" | "review";
+        /**
+         * DiscoveryReviewState
+         * @enum {string}
+         */
+        DiscoveryReviewState: "pending" | "approved" | "ignored";
+        /** DownloadClientCategoryResponse */
+        DownloadClientCategoryResponse: {
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Resolved Save Path */
+            resolved_save_path: string;
+            /** Save Path */
+            save_path: string;
+        };
+        /** DownloadClientCreate */
+        DownloadClientCreate: {
+            /** Category */
+            category?: string | null;
+            /**
+             * Completed Download Handling
+             * @default true
+             */
+            completed_download_handling: boolean;
+            /**
+             * Content Layout
+             * @default default
+             * @enum {string}
+             */
+            content_layout: "default" | "original" | "subfolder";
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * First Last First
+             * @default false
+             */
+            first_last_first: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Older Priority
+             * @default last
+             * @enum {string}
+             */
+            older_priority: "first" | "last";
+            /** Password */
+            password: string;
+            /**
+             * Poll Interval Seconds
+             * @default 30
+             */
+            poll_interval_seconds: number;
+            /**
+             * Recent Priority
+             * @default last
+             * @enum {string}
+             */
+            recent_priority: "first" | "last";
+            scope: components["schemas"]["DownloadScope"];
+            /**
+             * Sequential Order
+             * @default false
+             */
+            sequential_order: boolean;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /**
+             * Username
+             * @default
+             */
+            username: string;
+        };
+        /** DownloadClientHealthItem */
+        DownloadClientHealthItem: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "unknown" | "healthy" | "unavailable";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Health Checked At */
+            last_health_checked_at?: string | null;
+            /** Last Polled At */
+            last_polled_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Name */
+            name: string;
+            scope: components["schemas"]["DownloadScope"];
+        };
+        /** DownloadClientResponse */
+        DownloadClientResponse: {
+            /** Category */
+            category: string | null;
+            /** Completed Download Handling */
+            completed_download_handling: boolean;
+            /**
+             * Content Layout
+             * @enum {string}
+             */
+            content_layout: "default" | "original" | "subfolder";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /** First Last First */
+            first_last_first: boolean;
+            /** Health */
+            health: ("unknown" | "healthy" | "unavailable") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Health Checked At */
+            last_health_checked_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Older Priority
+             * @enum {string}
+             */
+            older_priority: "first" | "last";
+            /** Password Configured */
+            password_configured: boolean;
+            /** Poll Interval Seconds */
+            poll_interval_seconds: number;
+            /**
+             * Recent Priority
+             * @enum {string}
+             */
+            recent_priority: "first" | "last";
+            /** Revision */
+            revision: number;
+            scope: components["schemas"]["DownloadScope"];
+            /** Sequential Order */
+            sequential_order: boolean;
+            /** Tags */
+            tags: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url: string;
+            /** Username */
+            username: string | null;
+        };
+        /**
+         * DownloadClientSavedTestRequest
+         * @description Optional unsaved edits to test against an existing stored client.
+         *
+         *     Omitting/blanking password intentionally preserves the write-only stored
+         *     secret, so users can test URL/username edits without retyping it.
+         */
+        DownloadClientSavedTestRequest: {
+            /** Password */
+            password?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Username */
+            username?: string | null;
+        };
+        /** DownloadClientTestRequest */
+        DownloadClientTestRequest: {
+            /** Password */
+            password: string;
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /**
+             * Username
+             * @default
+             */
+            username: string;
+        };
+        /** DownloadClientTestResponse */
+        DownloadClientTestResponse: {
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unknown" | "healthy" | "unavailable";
+            /** Version */
+            version?: string | null;
+        };
+        /** DownloadClientUpdate */
+        DownloadClientUpdate: {
+            /** Category */
+            category?: string | null;
+            /** Completed Download Handling */
+            completed_download_handling?: boolean | null;
+            /** Content Layout */
+            content_layout?: ("default" | "original" | "subfolder") | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** First Last First */
+            first_last_first?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Older Priority */
+            older_priority?: ("first" | "last") | null;
+            /** Password */
+            password?: string | null;
+            /** Poll Interval Seconds */
+            poll_interval_seconds?: number | null;
+            /** Recent Priority */
+            recent_priority?: ("first" | "last") | null;
+            scope?: components["schemas"]["DownloadScope"] | null;
+            /** Sequential Order */
+            sequential_order?: boolean | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Url */
+            url?: string | null;
+            /** Username */
+            username?: string | null;
+        };
+        /** DownloadClientsHealth */
+        DownloadClientsHealth: {
+            /** Clients */
+            clients: components["schemas"]["DownloadClientHealthItem"][];
+            /** Configured */
+            configured: boolean;
+            /** Healthy Clients */
+            healthy_clients: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unknown" | "healthy" | "degraded" | "unavailable";
+            /** Total Clients */
+            total_clients: number;
+        };
+        /** DownloadResponse */
+        DownloadResponse: {
+            /** Category */
+            category: string | null;
+            /**
+             * Client Id
+             * Format: uuid
+             */
+            client_id: string;
+            /** Client Name */
+            client_name: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Edition */
+            edition?: string | null;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Incoming
+             * @default false
+             */
+            incoming: boolean;
+            /** Incoming Kind */
+            incoming_kind?: ("replacement" | "release") | null;
+            /** Info Hash */
+            info_hash: string;
+            /** Is Present */
+            is_present: boolean;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Media State */
+            media_state?: ("present" | "missing") | null;
+            /** Movie Id */
+            movie_id?: string | null;
+            /** Name */
+            name: string;
+            /** Progress */
+            progress: number | null;
+            /** Quality */
+            quality?: string | null;
+            /** Reconciliation Detail */
+            reconciliation_detail?: string | null;
+            /** Reconciliation State */
+            reconciliation_state?: ("incoming" | "attached" | "historical" | "conflict") | null;
+            /** Removed At */
+            removed_at: string | null;
+            /** Reported Save Path */
+            reported_save_path: string | null;
+            /** Resolved Save Path */
+            resolved_save_path: string | null;
+            scope: components["schemas"]["DownloadScope"];
+            /** State */
+            state: string | null;
+            /** Tags */
+            tags: string[];
+            /**
+             * Torrent Id
+             * Format: uuid
+             */
+            torrent_id: string;
+            /** Total Size */
+            total_size: number | null;
+        };
+        /**
+         * DownloadScope
+         * @enum {string}
+         */
+        DownloadScope: "movies" | "shows";
+        /** DuplicateDirectoryPreview */
+        DuplicateDirectoryPreview: {
+            access_mode: components["schemas"]["AccessMode"];
+            /**
+             * Directory Id
+             * Format: uuid
+             */
+            directory_id: string;
+            /** Exists */
+            exists: boolean;
+            /** Files */
+            files?: components["schemas"]["DuplicateFilePreview"][];
+            /** Path */
+            path: string;
+            /** Storage Root */
+            storage_root: string;
+        };
+        /** DuplicateFilePreview */
+        DuplicateFilePreview: {
+            /**
+             * Is Symlink
+             * @default false
+             */
+            is_symlink: boolean;
+            /** Relative Path */
+            relative_path: string;
+            /** Size */
+            size?: number | null;
+        };
+        /** DuplicateReleasePreview */
+        DuplicateReleasePreview: {
+            /** Directories */
+            directories?: components["schemas"]["DuplicateDirectoryPreview"][];
+            /** Edition */
+            edition?: string | null;
+            /** Quality */
+            quality?: string | null;
+            /** Release Group */
+            release_group?: string | null;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** Release Name */
+            release_name: string;
+            state: components["schemas"]["ReleaseState"];
+            /** Torrents */
+            torrents?: components["schemas"]["DuplicateTorrentPreview"][];
+        };
+        /** DuplicateResolveCommitRequest */
+        DuplicateResolveCommitRequest: {
+            /** Confirmation Token */
+            confirmation_token: string;
+        };
+        /** DuplicateResolvePreviewRequest */
+        DuplicateResolvePreviewRequest: {
+            /**
+             * Delete Media
+             * @default false
+             */
+            delete_media: boolean;
+            /** Losing Release Ids */
+            losing_release_ids: string[];
+            /**
+             * Remove Torrents
+             * @default false
+             */
+            remove_torrents: boolean;
+            /**
+             * Winner Release Id
+             * Format: uuid
+             */
+            winner_release_id: string;
+        };
+        /** DuplicateResolvePreviewResponse */
+        DuplicateResolvePreviewResponse: {
+            /** Confirmation Token */
+            confirmation_token: string;
+            /** Delete Media */
+            delete_media: boolean;
+            /** Expires At */
+            expires_at: string;
+            /** Losers */
+            losers: components["schemas"]["DuplicateReleasePreview"][];
+            /**
+             * Movie Id
+             * Format: uuid
+             */
+            movie_id: string;
+            /** Movie Title */
+            movie_title: string;
+            /** Remove Torrents */
+            remove_torrents: boolean;
+            /**
+             * Torrent Backups Will Be Kept
+             * @default true
+             */
+            torrent_backups_will_be_kept: boolean;
+            /** Warnings */
+            warnings?: string[];
+            winner: components["schemas"]["DuplicateReleasePreview"];
+        };
+        /** DuplicateTorrentPreview */
+        DuplicateTorrentPreview: {
+            /** Archived */
+            archived: boolean;
+            /** Clients */
+            clients?: string[];
+            /** Info Hash */
+            info_hash: string;
+            /** Name */
+            name: string;
+            /** Qbit Present */
+            qbit_present: boolean;
+            /**
+             * Torrent Id
+             * Format: uuid
+             */
+            torrent_id: string;
+        };
+        /** EffectiveCustomFormatScore */
+        EffectiveCustomFormatScore: {
+            /**
+             * Custom Format Id
+             * Format: uuid
+             */
+            custom_format_id: string;
+            /** Custom Format Name */
+            custom_format_name: string;
+            /** Effective Score */
+            effective_score: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Override Score */
+            override_score: number | null;
+            /** Profile Score */
+            profile_score: number;
+        };
+        /** EpisodeMappingResponse */
+        EpisodeMappingResponse: {
+            /** Episode Ids */
+            episode_ids: string[];
+            /** Episode Numbers */
+            episode_numbers: number[];
+            /** Manual Override */
+            manual_override: boolean;
+            /**
+             * Media File Id
+             * Format: uuid
+             */
+            media_file_id: string;
+            /**
+             * Show Release Id
+             * Format: uuid
+             */
+            show_release_id: string;
+        };
+        /** EpisodeMappingUpdate */
+        EpisodeMappingUpdate: {
+            /** Episode Ids */
+            episode_ids: string[];
+        };
+        /** EpisodeMediaResponse */
+        EpisodeMediaResponse: {
+            /** Exists */
+            exists: boolean;
+            /**
+             * Manual Mapping
+             * @default false
+             */
+            manual_mapping: boolean;
+            /** Mapped Episode Numbers */
+            mapped_episode_numbers?: number[];
+            /**
+             * Media File Id
+             * Format: uuid
+             */
+            media_file_id: string;
+            /** Path */
+            path: string;
+            /** Quality */
+            quality?: string | null;
+            /** Release Group */
+            release_group?: string | null;
+            /** Release Name */
+            release_name?: string | null;
+            release_scope?: components["schemas"]["ReleaseScope"] | null;
+            /** Show Release Id */
+            show_release_id?: string | null;
+        };
+        /** EpisodeOrderingOption */
+        EpisodeOrderingOption: {
+            /** Description */
+            description?: string | null;
+            /** Episode Count */
+            episode_count: number;
+            /** Id */
+            id: string | null;
+            /** Name */
+            name: string;
+            /** Network */
+            network?: string | null;
+            /** Season Count */
+            season_count: number;
+            /** Selected */
+            selected: boolean;
+            /** Type Label */
+            type_label: string;
+        };
+        /** EpisodeResponse */
+        EpisodeResponse: {
+            /** Air Date */
+            air_date?: string | null;
+            /** Episode Number */
+            episode_number: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Media */
+            media?: components["schemas"]["EpisodeMediaResponse"][];
+            /** Monitored */
+            monitored: boolean;
+            /**
+             * Plex State
+             * @default unknown
+             * @enum {string}
+             */
+            plex_state: "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
+            presence_state: components["schemas"]["PresenceState"];
+            /** Quality */
+            quality?: string | null;
+            /** Revision */
+            revision: number;
+            /** Season Number */
+            season_number: number;
+            /** Title */
+            title?: string | null;
+            /** Tmdb Id */
+            tmdb_id?: number | null;
+            /** Tvdb Id */
+            tvdb_id?: number | null;
+        };
+        /** EpisodeUpdate */
+        EpisodeUpdate: {
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Monitored */
+            monitored?: boolean | null;
+        };
+        /** EventResponse */
+        EventResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /** Entity Id */
+            entity_id: string | null;
+            /** Entity Type */
+            entity_type: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message */
+            message: string;
+            severity: components["schemas"]["Severity"];
+        };
+        /** FilesystemEntry */
+        FilesystemEntry: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /**
+         * FilesystemListing
+         * @description One directory's subfolders, for picking a root by browsing.
+         */
+        FilesystemListing: {
+            /** Current Path */
+            current_path: string;
+            /** Directories */
+            directories?: components["schemas"]["FilesystemEntry"][];
+            /** Parent */
+            parent?: string | null;
+            /** Problem */
+            problem?: string | null;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * IdentityState
+         * @enum {string}
+         */
+        IdentityState: "matched" | "manual" | "uncertain" | "conflict" | "unmatched";
+        /** IndexerCreate */
+        IndexerCreate: {
+            /** Api Key */
+            api_key: string;
+            /** Categories */
+            categories?: number[];
+            /** Color */
+            color?: string | null;
+            /** Download Client Ids */
+            download_client_ids?: string[];
+            /**
+             * Enable Interactive Search
+             * @default true
+             */
+            enable_interactive_search: boolean;
+            /**
+             * Enable Rss
+             * @default true
+             */
+            enable_rss: boolean;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Minimum Seeders
+             * @default 1
+             */
+            minimum_seeders: number;
+            /** Multi Languages */
+            multi_languages?: string[];
+            /** Name */
+            name: string;
+            /**
+             * Priority
+             * @default 25
+             */
+            priority: number;
+            /** @default both */
+            scope: components["schemas"]["IndexerScope"];
+            /**
+             * Timeout Seconds
+             * @default 15
+             */
+            timeout_seconds: number;
+            /**
+             * Torznab Url
+             * Format: uri
+             */
+            torznab_url: string;
+        };
+        /** IndexerHealthItem */
+        IndexerHealthItem: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "unknown" | "healthy" | "unavailable";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Name */
+            name: string;
+            scope: components["schemas"]["IndexerScope"];
+        };
+        /** IndexerResponse */
+        IndexerResponse: {
+            /** Api Key Configured */
+            api_key_configured: boolean;
+            /** Categories */
+            categories: number[];
+            /** Color */
+            color: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Download Client Ids */
+            download_client_ids: string[];
+            /** Enable Interactive Search */
+            enable_interactive_search: boolean;
+            /** Enable Rss */
+            enable_rss: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "unknown" | "healthy" | "unavailable";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Success At */
+            last_success_at: string | null;
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Minimum Seeders */
+            minimum_seeders: number;
+            /** Multi Languages */
+            multi_languages: string[];
+            /** Name */
+            name: string;
+            /** Priority */
+            priority: number;
+            /** Revision */
+            revision: number;
+            scope: components["schemas"]["IndexerScope"];
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Torznab Url */
+            torznab_url: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * IndexerScope
+         * @enum {string}
+         */
+        IndexerScope: "movies" | "shows" | "both";
+        /** IndexerTestRequest */
+        IndexerTestRequest: {
+            /** Api Key */
+            api_key: string;
+            /**
+             * Timeout Seconds
+             * @default 15
+             */
+            timeout_seconds: number;
+            /**
+             * Torznab Url
+             * Format: uri
+             */
+            torznab_url: string;
+        };
+        /** IndexerTestResponse */
+        IndexerTestResponse: {
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "unavailable";
+            /** Title */
+            title?: string | null;
+        };
+        /** IndexerUpdate */
+        IndexerUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Categories */
+            categories?: number[] | null;
+            /** Color */
+            color?: string | null;
+            /** Download Client Ids */
+            download_client_ids?: string[] | null;
+            /** Enable Interactive Search */
+            enable_interactive_search?: boolean | null;
+            /** Enable Rss */
+            enable_rss?: boolean | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Minimum Seeders */
+            minimum_seeders?: number | null;
+            /** Multi Languages */
+            multi_languages?: string[] | null;
+            /** Name */
+            name?: string | null;
+            /** Priority */
+            priority?: number | null;
+            scope?: components["schemas"]["IndexerScope"] | null;
+            /** Timeout Seconds */
+            timeout_seconds?: number | null;
+            /** Torznab Url */
+            torznab_url?: string | null;
+        };
+        /** IndexersHealth */
+        IndexersHealth: {
+            /** Configured */
+            configured: boolean;
+            /** Enabled */
+            enabled: number;
+            /** Healthy */
+            healthy: number;
+            /** Items */
+            items: components["schemas"]["IndexerHealthItem"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unknown" | "healthy" | "degraded" | "unavailable";
+            /** Total */
+            total: number;
+        };
+        /** IntegrationHealthResponse */
+        IntegrationHealthResponse: {
+            database: components["schemas"]["DatabaseHealth"];
+            indexers: components["schemas"]["IndexersHealth"];
+            plex: components["schemas"]["ServiceHealth"];
+            qbittorrent: components["schemas"]["DownloadClientsHealth"];
+            /** Storage Roots */
+            storage_roots: components["schemas"]["StorageRootHealthItem"][];
+            tmdb: components["schemas"]["ServiceHealth"];
+            torrent_archive: components["schemas"]["TorrentArchiveHealth"];
+        };
+        /** JobAcceptedResponse */
+        JobAcceptedResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+        };
+        /** JobResponse */
+        JobResponse: {
+            /** Cancellable */
+            cancellable: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: {
+                [key: string]: unknown;
+            } | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Job Type */
+            job_type: string;
+            /** Progress */
+            progress: {
+                [key: string]: unknown;
+            };
+            /** Revision */
+            revision: number;
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["JobStatus"];
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * JobStatus
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
+        /**
+         * LibrarySummary
+         * @description Counts the Media Folders page needs to explain the library's state.
+         */
+        LibrarySummary: {
+            /**
+             * Movies
+             * @default 0
+             */
+            movies: number;
+            /**
+             * Shows
+             * @default 0
+             */
+            shows: number;
+            /**
+             * Unlinked Directories
+             * @default 0
+             */
+            unlinked_directories: number;
+        };
+        /** LivenessResponse */
+        LivenessResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "ok";
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /** LoginResponse */
+        LoginResponse: {
+            /**
+             * Authenticated
+             * @default true
+             */
+            authenticated: boolean;
+            /** Csrf Token */
+            csrf_token: string;
+            /** Default Password Warning */
+            default_password_warning: boolean;
+            user: components["schemas"]["AdminResponse"];
+        };
+        /** ManualAttachRequest */
+        ManualAttachRequest: {
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Path */
+            path: string;
+            /** Release Name */
+            release_name?: string | null;
+            /**
+             * Root Id
+             * Format: uuid
+             */
+            root_id: string;
+        };
+        /** MediaDirectoryResponse */
+        MediaDirectoryResponse: {
+            /** Exists */
+            exists: boolean;
+            /** Files */
+            files: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Missing Since */
+            missing_since: string | null;
+            /** Resolved Path */
+            resolved_path: string;
+        };
+        /**
+         * MediaDiscoveryBulk
+         * @description Approve or ignore a batch of reviewed directories.
+         */
+        MediaDiscoveryBulk: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "approve" | "ignore";
+            /** Ids */
+            ids: string[];
+        };
+        /** MediaDiscoveryBulkFailure */
+        MediaDiscoveryBulkFailure: {
+            /** Code */
+            code: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * MediaDiscoveryBulkResult
+         * @description What happened per item, so a partial success is reportable.
+         *
+         *     A batch is not all-or-nothing: one unreachable metadata lookup must not
+         *     discard the items that already went through.
+         */
+        MediaDiscoveryBulkResult: {
+            /** Failed */
+            failed?: components["schemas"]["MediaDiscoveryBulkFailure"][];
+            /** Succeeded */
+            succeeded?: string[];
+        };
+        /** MediaDiscoveryCandidate */
+        MediaDiscoveryCandidate: {
+            /** Original Title */
+            original_title?: string | null;
+            /** Overview */
+            overview?: string | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Year */
+            year?: number | null;
+        };
+        /** MediaDiscoveryCount */
+        MediaDiscoveryCount: {
+            /** Count */
+            count: number;
+        };
+        /** MediaDiscoveryEditionUpdate */
+        MediaDiscoveryEditionUpdate: {
+            /** Edition */
+            edition?: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "automatic" | "standard" | "named";
+        };
+        /**
+         * MediaDiscoveryFile
+         * @description One file inside a discovered folder.
+         */
+        MediaDiscoveryFile: {
+            /** Relative Path */
+            relative_path: string;
+            role: components["schemas"]["MediaRole"];
+        };
+        /** MediaDiscoveryResponse */
+        MediaDiscoveryResponse: {
+            /** Candidates */
+            candidates?: components["schemas"]["MediaDiscoveryCandidate"][];
+            /** Confidence */
+            confidence?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Directory Id
+             * Format: uuid
+             */
+            directory_id: string;
+            /** Edition */
+            edition?: string | null;
+            /**
+             * Edition Override Active
+             * @default false
+             */
+            edition_override_active: boolean;
+            /** Exists */
+            exists: boolean;
+            /**
+             * File Count
+             * @default 0
+             */
+            file_count: number;
+            /** Files */
+            files?: components["schemas"]["MediaDiscoveryFile"][];
+            /** Hdr */
+            hdr?: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Library Edition Conflict
+             * @default false
+             */
+            library_edition_conflict: boolean;
+            /** Manual Edition Override */
+            manual_edition_override?: string | null;
+            media_type: components["schemas"]["MediaType"];
+            /** Parsed Edition */
+            parsed_edition?: string | null;
+            /** Parsed Title */
+            parsed_title?: string | null;
+            /** Parsed Year */
+            parsed_year?: number | null;
+            /** Path */
+            path: string;
+            /** Quality */
+            quality?: string | null;
+            review_state: components["schemas"]["DiscoveryReviewState"];
+            /** Root Name */
+            root_name: string;
+            selected?: components["schemas"]["MediaDiscoveryCandidate"] | null;
+            suggested?: components["schemas"]["MediaDiscoveryCandidate"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Video Count
+             * @default 0
+             */
+            video_count: number;
+        };
+        /**
+         * MediaDiscoverySearch
+         * @description A manual re-search for one folder. Omitting the query reuses the parsed title.
+         */
+        MediaDiscoverySearch: {
+            /** Query */
+            query?: string | null;
+        };
+        /**
+         * MediaDiscoverySelection
+         * @description The identity chosen for a discovered folder.
+         *
+         *     The optional fields carry what the reviewer was already looking at when they
+         *     clicked. Supplying them lets the server record the choice without a TMDB
+         *     round trip for a title it has just been told about. They are display values
+         *     only: approving fetches real metadata, so a wrong one cannot enter the
+         *     library.
+         */
+        MediaDiscoverySelection: {
+            /** Original Title */
+            original_title?: string | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Year */
+            year?: number | null;
+        };
+        /** MediaProfileSettingsResponse */
+        MediaProfileSettingsResponse: {
+            /** Custom Format Scores */
+            custom_format_scores: components["schemas"]["EffectiveCustomFormatScore"][];
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            media_type: components["schemas"]["MediaType"];
+            minimum_quality_definition: components["schemas"]["QualityDefinitionResponse"] | null;
+            /** Minimum Quality Overridden */
+            minimum_quality_overridden: boolean;
+            profile_minimum_quality_definition: components["schemas"]["QualityDefinitionResponse"] | null;
+            /** Quality Profile Id */
+            quality_profile_id: string | null;
+            /** Quality Profile Name */
+            quality_profile_name: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** MediaProfileSettingsUpdate */
+        MediaProfileSettingsUpdate: {
+            /** Custom Format Score Overrides */
+            custom_format_score_overrides?: {
+                [key: string]: number;
+            };
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Minimum Quality Definition Override Id */
+            minimum_quality_definition_override_id?: string | null;
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+        };
+        /**
+         * MediaRole
+         * @enum {string}
+         */
+        MediaRole: "movie_video" | "episode_video" | "multi_episode_video" | "dvd_structure" | "bluray_structure" | "other_media";
+        /**
+         * MediaType
+         * @enum {string}
+         */
+        MediaType: "movies" | "shows";
+        /**
+         * MovieBulkAction
+         * @enum {string}
+         */
+        MovieBulkAction: "change_profile" | "add_tags" | "remove_tags" | "monitor" | "unmonitor" | "recheck_plex" | "reevaluate_parser" | "reevaluate_custom_formats";
+        /** MovieBulkRequest */
+        MovieBulkRequest: {
+            action: components["schemas"]["MovieBulkAction"];
+            /** Movie Ids */
+            movie_ids: string[];
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /** Tag Ids */
+            tag_ids?: string[];
+        };
+        /** MovieBulkResponse */
+        MovieBulkResponse: {
+            action: components["schemas"]["MovieBulkAction"];
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Movie Ids */
+            movie_ids: string[];
+            /** Requested */
+            requested: number;
+            /** Updated */
+            updated: number;
+        };
+        /** MovieCreate */
+        MovieCreate: {
+            /**
+             * Monitored
+             * @default true
+             */
+            monitored: boolean;
+            /** Tmdb Id */
+            tmdb_id: number;
+        };
+        /** MovieDetailResponse */
+        MovieDetailResponse: {
+            /** Confidence */
+            confidence: number | null;
+            /** Current Quality */
+            current_quality: string | null;
+            /** Edition */
+            edition: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            identity_state: components["schemas"]["IdentityState"];
+            /**
+             * Incoming
+             * @default false
+             */
+            incoming: boolean;
+            /** Incoming Downloads */
+            incoming_downloads?: components["schemas"]["MovieIncomingDownloadResponse"][];
+            /** Incoming Kind */
+            incoming_kind?: ("replacement" | "release") | null;
+            /** Last Observed At */
+            last_observed_at?: string | null;
+            /** Location */
+            location: string | null;
+            /** Monitored */
+            monitored: boolean;
+            /** Overview */
+            overview: string | null;
+            /**
+             * Plex State
+             * @enum {string}
+             */
+            plex_state: "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
+            /** Poster Ref */
+            poster_ref: string | null;
+            /**
+             * Problem Count
+             * @default 0
+             */
+            problem_count: number;
+            /** Problems */
+            problems?: components["schemas"]["MovieProblemResponse"][];
+            /** Recent Events */
+            recent_events: components["schemas"]["MovieEventResponse"][];
+            reconciliation: components["schemas"]["MovieReconciliationResponse"];
+            /** Release Count */
+            release_count: number;
+            /** Releases */
+            releases: components["schemas"]["MovieReleaseResponse"][];
+            /** Resource Id */
+            resource_id: string;
+            /**
+             * Root Affected Count
+             * @default 0
+             */
+            root_affected_count: number;
+            /** Root Health */
+            root_health?: ("available" | "unavailable" | "unknown") | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "Present" | "Missing" | "Conflict" | "Duplicate";
+            /** Storage Root */
+            storage_root?: string | null;
+            /** Tags */
+            tags?: components["schemas"]["TagResponse"][];
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id: number | null;
+            /** Torrent History */
+            torrent_history?: components["schemas"]["MovieTorrentHistoryResponse"][];
+            /** Year */
+            year: number | null;
+        };
+        /** MovieDownloadSearchRequest */
+        MovieDownloadSearchRequest: {
+            /**
+             * Quality Profile Id
+             * Format: uuid
+             */
+            quality_profile_id: string;
+            /** Tmdb Id */
+            tmdb_id: number;
+        };
+        /** MovieEditionOptionsResponse */
+        MovieEditionOptionsResponse: {
+            /** Editions */
+            editions: string[];
+        };
+        /** MovieEditionOverrideRequest */
+        MovieEditionOverrideRequest: {
+            /** Updates */
+            updates: components["schemas"]["MovieEditionOverrideUpdate"][];
+        };
+        /** MovieEditionOverrideResponse */
+        MovieEditionOverrideResponse: {
+            /** Duplicate Resolved */
+            duplicate_resolved: boolean;
+            /**
+             * Movie Id
+             * Format: uuid
+             */
+            movie_id: string;
+            /** Releases */
+            releases: components["schemas"]["MovieEditionState"][];
+        };
+        /** MovieEditionOverrideUpdate */
+        MovieEditionOverrideUpdate: {
+            /** Edition */
+            edition?: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "automatic" | "standard" | "named";
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+        };
+        /** MovieEditionState */
+        MovieEditionState: {
+            /** Edition Override Active */
+            edition_override_active: boolean;
+            /** Effective Edition */
+            effective_edition?: string | null;
+            /** Manual Edition Override */
+            manual_edition_override?: string | null;
+            /** Parsed Edition */
+            parsed_edition?: string | null;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            state: components["schemas"]["ReleaseState"];
+        };
+        /** MovieEventResponse */
+        MovieEventResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message */
+            message: string;
+            /** Type */
+            type: string;
+        };
+        /** MovieIncomingDownloadResponse */
+        MovieIncomingDownloadResponse: {
+            /** Client Name */
+            client_name: string;
+            /** Edition */
+            edition?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Incoming Kind
+             * @enum {string}
+             */
+            incoming_kind: "replacement" | "release";
+            /** Name */
+            name: string;
+            /** Progress */
+            progress: number;
+            /** Quality */
+            quality?: string | null;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** Resolved Save Path */
+            resolved_save_path?: string | null;
+            /** State */
+            state: string;
+            /**
+             * Torrent Id
+             * Format: uuid
+             */
+            torrent_id: string;
+            /** Torrent State */
+            torrent_state: string;
+        };
+        /** MovieProblemResponse */
+        MovieProblemResponse: {
+            /** Description */
+            description: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message */
+            message: string;
+            /** Reason */
+            reason: string;
+            severity: components["schemas"]["Severity"];
+            /** Title */
+            title: string;
+        };
+        /** MovieReconciliationResponse */
+        MovieReconciliationResponse: {
+            /** Degraded Count */
+            degraded_count: number;
+            /** Duplicate Count */
+            duplicate_count: number;
+            /** Incoming Count */
+            incoming_count: number;
+            /** Missing Count */
+            missing_count: number;
+            /** Plex Blocked */
+            plex_blocked: boolean;
+            /** Qbit Media Disagreement */
+            qbit_media_disagreement: boolean;
+            /** Replaced Count */
+            replaced_count: number;
+            /** Root Affected Count */
+            root_affected_count: number;
+            /** Root Offline */
+            root_offline: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "Present" | "Missing" | "Conflict" | "Duplicate";
+        };
+        /** MovieReleaseResponse */
+        MovieReleaseResponse: {
+            /** Confidence */
+            confidence: number | null;
+            /** Current Custom Format Score */
+            current_custom_format_score: number | null;
+            /** Directories */
+            directories: components["schemas"]["MediaDirectoryResponse"][];
+            /** Edition */
+            edition: string | null;
+            /**
+             * Edition Override Active
+             * @default false
+             */
+            edition_override_active: boolean;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Manual Edition Override */
+            manual_edition_override?: string | null;
+            /** Original Custom Format Score */
+            original_custom_format_score: number | null;
+            /** Parse Snapshot */
+            parse_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Parsed Edition */
+            parsed_edition?: string | null;
+            /** Quality */
+            quality: string | null;
+            /** Raw Release Name */
+            raw_release_name: string;
+            /** Release Group */
+            release_group: string | null;
+            /** Selection Snapshot */
+            selection_snapshot: {
+                [key: string]: unknown;
+            } | null;
+            state: components["schemas"]["ReleaseState"];
+        };
+        /** MovieSummaryResponse */
+        MovieSummaryResponse: {
+            /** Confidence */
+            confidence: number | null;
+            /** Current Quality */
+            current_quality: string | null;
+            /** Edition */
+            edition: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            identity_state: components["schemas"]["IdentityState"];
+            /**
+             * Incoming
+             * @default false
+             */
+            incoming: boolean;
+            /** Incoming Kind */
+            incoming_kind?: ("replacement" | "release") | null;
+            /** Last Observed At */
+            last_observed_at?: string | null;
+            /** Location */
+            location: string | null;
+            /** Monitored */
+            monitored: boolean;
+            /**
+             * Plex State
+             * @enum {string}
+             */
+            plex_state: "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /**
+             * Problem Count
+             * @default 0
+             */
+            problem_count: number;
+            /** Release Count */
+            release_count: number;
+            /** Resource Id */
+            resource_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "Present" | "Missing" | "Conflict" | "Duplicate";
+            /** Tags */
+            tags?: components["schemas"]["TagResponse"][];
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id: number | null;
+            /** Year */
+            year: number | null;
+        };
+        /** MovieTorrentHistoryResponse */
+        MovieTorrentHistoryResponse: {
+            /** Archive Path */
+            archive_path?: string | null;
+            archive_state: components["schemas"]["TorrentArchiveState"];
+            association_type: components["schemas"]["AssociationType"];
+            /** Completed At */
+            completed_at?: string | null;
+            /** Download Client Name */
+            download_client_name?: string | null;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Info Hash */
+            info_hash: string;
+            /** Manifest Path */
+            manifest_path?: string | null;
+            /** Manifest Schema Version */
+            manifest_schema_version?: number | null;
+            /** Qbit Present */
+            qbit_present: boolean;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** Release Name */
+            release_name: string;
+            /** Torrent Name */
+            torrent_name: string;
+            /** Tracker */
+            tracker?: string | null;
+        };
+        /** ParserTestRequest */
+        ParserTestRequest: {
+            /** Name */
+            name: string;
+        };
+        /** PasswordChangeRequest */
+        PasswordChangeRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /** PlexConfigurationResponse */
+        PlexConfigurationResponse: {
+            /** Configured */
+            configured: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Health
+             * @default unknown
+             * @enum {string}
+             */
+            health: "unknown" | "healthy" | "unavailable";
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Machine Identifier */
+            machine_identifier?: string | null;
+            /** Revision */
+            revision?: number | null;
+            /**
+             * Token Configured
+             * @default false
+             */
+            token_configured: boolean;
+            /** Url */
+            url?: string | null;
+        };
+        /** PlexConfigurationUpdate */
+        PlexConfigurationUpdate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Token */
+            token?: string | null;
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+        };
+        /** PlexHealthResponse */
+        PlexHealthResponse: {
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Success */
+            last_success?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Machine Identifier */
+            machine_identifier?: string | null;
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "unknown" | "healthy" | "unavailable";
+        };
+        /** PlexTestRequest */
+        PlexTestRequest: {
+            /** Token */
+            token?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /** PlexTestResponse */
+        PlexTestResponse: {
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Machine Identifier */
+            machine_identifier?: string | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "unavailable";
+        };
+        /**
+         * PresenceState
+         * @enum {string}
+         */
+        PresenceState: "present" | "missing" | "unmatched" | "conflict";
+        /** ProblemRecheckAllResponse */
+        ProblemRecheckAllResponse: {
+            /** Job Ids */
+            job_ids?: string[];
+            /** Requested */
+            requested: number;
+        };
+        /** ProblemResolveRequest */
+        ProblemResolveRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match";
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProblemResponse */
+        ProblemResponse: {
+            /** Available Actions */
+            available_actions?: ("restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match")[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /** Entity Id */
+            entity_id: string | null;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Message */
+            message: string;
+            /** Reason */
+            reason: string;
+            /** Resolution */
+            resolution: {
+                [key: string]: unknown;
+            } | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            severity: components["schemas"]["Severity"];
+            status: components["schemas"]["ProblemStatus"];
+            /** Subject */
+            subject?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            workflow: components["schemas"]["ProblemWorkflow"];
+        };
+        /**
+         * ProblemStatus
+         * @enum {string}
+         */
+        ProblemStatus: "open" | "resolved" | "dismissed";
+        /** ProblemSummaryResponse */
+        ProblemSummaryResponse: {
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
+            /**
+             * Suppressed
+             * @default 0
+             */
+            suppressed: number;
+            /** Workflows */
+            workflows?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * ProblemWorkflow
+         * @enum {string}
+         */
+        ProblemWorkflow: "manual" | "choice" | "config" | "waiting";
+        /** QualityDefinitionResponse */
+        QualityDefinitionResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Modifier */
+            modifier: string | null;
+            /** Name */
+            name: string;
+            /** Rank */
+            rank: number;
+            /** Resolution */
+            resolution: string | null;
+            /** Scan Type */
+            scan_type: string | null;
+            /** Source */
+            source: string | null;
+        };
+        /** QualityProfileCreate */
+        QualityProfileCreate: {
+            /** Custom Format Scores */
+            custom_format_scores?: components["schemas"]["QualityProfileScoreInput"][];
+            /** Minimum Quality Definition Id */
+            minimum_quality_definition_id?: string | null;
+            /** Name */
+            name: string;
+            /** Quality Definition Ids */
+            quality_definition_ids?: string[] | null;
+        };
+        /** QualityProfileResponse */
+        QualityProfileResponse: {
+            /** Assigned Titles */
+            assigned_titles: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom Format Scores */
+            custom_format_scores: components["schemas"]["QualityProfileScoreResponse"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            minimum_quality_definition: components["schemas"]["QualityDefinitionResponse"] | null;
+            /** Name */
+            name: string;
+            /** Qualities */
+            qualities: components["schemas"]["QualityDefinitionResponse"][];
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** QualityProfileScoreInput */
+        QualityProfileScoreInput: {
+            /**
+             * Custom Format Id
+             * Format: uuid
+             */
+            custom_format_id: string;
+            /** Score */
+            score: number;
+        };
+        /** QualityProfileScoreResponse */
+        QualityProfileScoreResponse: {
+            /**
+             * Custom Format Id
+             * Format: uuid
+             */
+            custom_format_id: string;
+            /** Custom Format Name */
+            custom_format_name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Score */
+            score: number;
+        };
+        /** QualityProfileUpdate */
+        QualityProfileUpdate: {
+            /** Custom Format Scores */
+            custom_format_scores?: components["schemas"]["QualityProfileScoreInput"][] | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Minimum Quality Definition Id */
+            minimum_quality_definition_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Quality Definition Ids */
+            quality_definition_ids?: string[] | null;
+        };
+        /** ReadinessResponse */
+        ReadinessResponse: {
+            /**
+             * Database
+             * @enum {string}
+             */
+            database: "available" | "unavailable";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "not_ready";
+        };
+        /** ReconciliationActionResponse */
+        ReconciliationActionResponse: {
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Movie Id
+             * Format: uuid
+             */
+            movie_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "manual_attached" | "review";
+        };
+        /** ReconciliationRootStatus */
+        ReconciliationRootStatus: {
+            /** Affected Count */
+            affected_count: number;
+            /** Health */
+            health: ("available" | "unavailable" | "unknown") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /** ReconciliationRunRequest */
+        ReconciliationRunRequest: {
+            /** Root Id */
+            root_id?: string | null;
+        };
+        /** ReconciliationRunResponse */
+        ReconciliationRunResponse: {
+            /** Active Job Ids */
+            active_job_ids?: string[];
+            /** Job Ids */
+            job_ids: string[];
+            /** Skipped Root Ids */
+            skipped_root_ids?: string[];
+            /** Uninitialized Root Ids */
+            uninitialized_root_ids?: string[];
+        };
+        /** ReconciliationStatusResponse */
+        ReconciliationStatusResponse: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Incoming Count */
+            incoming_count: number;
+            /** Missing Release Count */
+            missing_release_count: number;
+            /** Open Problem Count */
+            open_problem_count: number;
+            /** Roots */
+            roots: components["schemas"]["ReconciliationRootStatus"][];
+        };
+        /** RecoveryCapabilitiesResponse */
+        RecoveryCapabilitiesResponse: {
+            /** Database Backend */
+            database_backend: string;
+            /** Database Path */
+            database_path?: string | null;
+            /** Database Readable */
+            database_readable: boolean;
+            /** Export Directory */
+            export_directory: string;
+            /** Export Directory Writable */
+            export_directory_writable: boolean;
+            /** Migration Revision */
+            migration_revision?: string | null;
+            /** Reasons */
+            reasons?: string[];
+            /** Retention Hours */
+            retention_hours: number;
+            /** Sqlite Version */
+            sqlite_version?: string | null;
+            /** Supported */
+            supported: boolean;
+            /** Torrent Archive Readable */
+            torrent_archive_readable: boolean;
+        };
+        /** RecoveryExportAcceptedResponse */
+        RecoveryExportAcceptedResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Status
+             * @default queued
+             * @constant
+             */
+            status: "queued";
+            /**
+             * Warning
+             * @default Recovery Bundles contain a complete database backup and sensitive integration credentials. Store the downloaded ZIP securely.
+             */
+            warning: string;
+        };
+        /**
+         * ReleaseScope
+         * @enum {string}
+         */
+        ReleaseScope: "episode" | "multi_episode" | "season_pack" | "other";
+        /**
+         * ReleaseState
+         * @enum {string}
+         */
+        ReleaseState: "current" | "missing" | "replaced" | "removed" | "conflict" | "duplicate";
+        /** RemotePathMappingCreate */
+        RemotePathMappingCreate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Integration Id */
+            integration_id?: string | null;
+            /**
+             * Integration Type
+             * @enum {string}
+             */
+            integration_type: "qbittorrent" | "plex" | "prowlarr" | "tmdb" | "tvdb";
+            /** Local Prefix */
+            local_prefix: string;
+            /** Name */
+            name: string;
+            /** Remote Prefix */
+            remote_prefix: string;
+            /** Storage Root Id */
+            storage_root_id?: string | null;
+        };
+        /** RemotePathMappingResponse */
+        RemotePathMappingResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Integration Id */
+            integration_id: string | null;
+            /**
+             * Integration Type
+             * @enum {string}
+             */
+            integration_type: "qbittorrent" | "plex" | "prowlarr" | "tmdb" | "tvdb";
+            /** Local Prefix */
+            local_prefix: string;
+            /** Name */
+            name: string;
+            /** Remote Prefix */
+            remote_prefix: string;
+            /** Storage Root Id */
+            storage_root_id: string | null;
+        };
+        /** RemotePathMappingUpdate */
+        RemotePathMappingUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Integration Id */
+            integration_id?: string | null;
+            /** Integration Type */
+            integration_type?: ("qbittorrent" | "plex" | "prowlarr" | "tmdb" | "tvdb") | null;
+            /** Local Prefix */
+            local_prefix?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Remote Prefix */
+            remote_prefix?: string | null;
+            /** Storage Root Id */
+            storage_root_id?: string | null;
+        };
+        /** SearchIndexerStatus */
+        SearchIndexerStatus: {
+            /** Elapsed Ms */
+            elapsed_ms?: number | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Results
+             * @default 0
+             */
+            results: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "completed" | "failed";
+        };
+        /** SearchJobResponse */
+        SearchJobResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: {
+                [key: string]: unknown;
+            } | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Indexers */
+            indexers: components["schemas"]["SearchIndexerStatus"][];
+            progress: components["schemas"]["SearchProgressResponse"];
+            /** Result Total */
+            result_total: number;
+            /** Results */
+            results: components["schemas"]["SearchResultResponse"][];
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["JobStatus"];
+            target: components["schemas"]["SearchTargetResponse"];
+        };
+        /** SearchProgressResponse */
+        SearchProgressResponse: {
+            /**
+             * Completed Indexers
+             * @default 0
+             */
+            completed_indexers: number;
+            /**
+             * Percent
+             * @default 0
+             */
+            percent: number;
+            /**
+             * Total Indexers
+             * @default 0
+             */
+            total_indexers: number;
+        };
+        /** SearchResultDownloadRequest */
+        SearchResultDownloadRequest: {
+            /** Category */
+            category?: string | null;
+            /**
+             * Download Client Id
+             * Format: uuid
+             */
+            download_client_id: string;
+            /**
+             * Include Year In Show Folder
+             * @default false
+             */
+            include_year_in_show_folder: boolean;
+            /** Show Folder Name */
+            show_folder_name?: string | null;
+        };
+        /** SearchResultDownloadResponse */
+        SearchResultDownloadResponse: {
+            /** Category */
+            category?: string | null;
+            /** Client Name */
+            client_name: string;
+            /**
+             * Download Client Id
+             * Format: uuid
+             */
+            download_client_id: string;
+            /** Movie Id */
+            movie_id?: string | null;
+            /** Save Path */
+            save_path?: string | null;
+            /**
+             * Search Result Id
+             * Format: uuid
+             */
+            search_result_id: string;
+            /** Season Id */
+            season_id?: string | null;
+            /**
+             * Selected At
+             * Format: date-time
+             */
+            selected_at: string;
+            /** Show Id */
+            show_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "submitted" | "already_submitted";
+        };
+        /** SearchResultResponse */
+        SearchResultResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom Format Score */
+            custom_format_score: number | null;
+            /** Custom Format Snapshot */
+            custom_format_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Edition */
+            edition: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Indexer Color */
+            indexer_color?: string | null;
+            /** Indexer Id */
+            indexer_id: string | null;
+            /** Indexer Name */
+            indexer_name: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Leechers */
+            leechers: number | null;
+            media_type: components["schemas"]["MediaType"];
+            /** Minimum Quality */
+            minimum_quality: string | null;
+            /** Minimum Quality Met */
+            minimum_quality_met: boolean | null;
+            /** Parser */
+            parser: {
+                [key: string]: unknown;
+            };
+            /** Published At */
+            published_at: string | null;
+            /** Quality */
+            quality: string | null;
+            /** Quality Allowed */
+            quality_allowed: boolean;
+            /** Quality Preference */
+            quality_preference: number;
+            /** Quality Profile Id */
+            quality_profile_id: string | null;
+            /** Quality Profile Name */
+            quality_profile_name: string | null;
+            /** Release Group */
+            release_group: string | null;
+            /** Seeders */
+            seeders: number | null;
+            /** Selected At */
+            selected_at: string | null;
+            /** Selected Download Client Id */
+            selected_download_client_id: string | null;
+            /** Size */
+            size: number | null;
+            /**
+             * Target Entity Type
+             * @enum {string}
+             */
+            target_entity_type: "tmdb_movie" | "tmdb_show_season" | "movie" | "episode" | "season";
+            /** Title */
+            title: string;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** SearchTargetResponse */
+        SearchTargetResponse: {
+            /** Entity Id */
+            entity_id?: string | null;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "tmdb_movie" | "tmdb_show_season" | "movie" | "episode" | "season";
+            /** Episode */
+            episode?: number | null;
+            media_type: components["schemas"]["MediaType"];
+            /** Overview */
+            overview?: string | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Profile Entity Id */
+            profile_entity_id?: string | null;
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /** Season */
+            season?: number | null;
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id?: number | null;
+            /** Year */
+            year?: number | null;
+        };
+        /** SeasonResponse */
+        SeasonResponse: {
+            /**
+             * Counted
+             * @default true
+             */
+            counted: boolean;
+            /** Episode Count */
+            episode_count: number;
+            /** Episodes */
+            episodes?: components["schemas"]["EpisodeResponse"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Missing Count */
+            missing_count: number;
+            /** Monitored */
+            monitored: boolean;
+            /** Present Count */
+            present_count: number;
+            /** Revision */
+            revision: number;
+            /** Season Number */
+            season_number: number;
+            /** Title */
+            title?: string | null;
+        };
+        /** SeasonUpdate */
+        SeasonUpdate: {
+            /** Counted */
+            counted?: boolean | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Monitored */
+            monitored?: boolean | null;
+        };
+        /** SecurityResponse */
+        SecurityResponse: {
+            /** Default Password Warning */
+            default_password_warning: boolean;
+            /** Session Expires At */
+            session_expires_at?: string | null;
+        };
+        /** ServiceHealth */
+        ServiceHealth: {
+            /** Configured */
+            configured: boolean;
+            /** Last Success */
+            last_success?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unknown" | "healthy" | "unavailable";
+        };
+        /** SetupCompleteRequest */
+        SetupCompleteRequest: {
+            /**
+             * Complete
+             * @default true
+             */
+            complete: boolean;
+        };
+        /** SetupStatusResponse */
+        SetupStatusResponse: {
+            /** Steps */
+            steps: components["schemas"]["SetupStep"][];
+            /** Wizard Complete */
+            wizard_complete: boolean;
+            /** Wizard Required */
+            wizard_required: boolean;
+        };
+        /** SetupStep */
+        SetupStep: {
+            /** Complete */
+            complete: boolean;
+            /** Detail */
+            detail: string;
+            /** Key */
+            key: string;
+            /**
+             * Optional
+             * @default true
+             */
+            optional: boolean;
+            /** Settings Tab */
+            settings_tab?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * Severity
+         * @enum {string}
+         */
+        Severity: "info" | "warning" | "error";
+        /** ShowCreate */
+        ShowCreate: {
+            /**
+             * Monitored
+             * @default true
+             */
+            monitored: boolean;
+            /** Tmdb Id */
+            tmdb_id: number;
+        };
+        /** ShowDetailResponse */
+        ShowDetailResponse: {
+            /** Episode Count */
+            episode_count: number;
+            /** Episodes Missing */
+            episodes_missing: number;
+            /** Episodes Present */
+            episodes_present: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            identity_state: components["schemas"]["IdentityState"];
+            /** Last Observed At */
+            last_observed_at?: string | null;
+            /** Monitored */
+            monitored: boolean;
+            /** Overview */
+            overview?: string | null;
+            /**
+             * Plex State
+             * @enum {string}
+             */
+            plex_state: "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /**
+             * Problem Count
+             * @default 0
+             */
+            problem_count: number;
+            /** Problems */
+            problems?: components["schemas"]["ShowProblemResponse"][];
+            /** Recent Events */
+            recent_events?: components["schemas"]["ShowEventResponse"][];
+            /** Resource Id */
+            resource_id: string;
+            /** Revision */
+            revision: number;
+            /** Season Count */
+            season_count: number;
+            /** Seasons */
+            seasons?: components["schemas"]["SeasonResponse"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "Present" | "Missing" | "Conflict";
+            /** Storage Roots */
+            storage_roots?: components["schemas"]["ShowStorageRootResponse"][];
+            /** Title */
+            title: string;
+            /** Tmdb Episode Group Id */
+            tmdb_episode_group_id?: string | null;
+            /** Tmdb Id */
+            tmdb_id: number | null;
+            /** Tvdb Id */
+            tvdb_id?: number | null;
+            /** Year */
+            year: number | null;
+        };
+        /** ShowDownloadPreferences */
+        ShowDownloadPreferences: {
+            /**
+             * Include Year In Folder Name
+             * @default false
+             */
+            include_year_in_folder_name: boolean;
+        };
+        /** ShowDownloadPreviewResponse */
+        ShowDownloadPreviewResponse: {
+            /** Overview */
+            overview?: string | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Seasons */
+            seasons: components["schemas"]["ShowDownloadSeasonPreview"][];
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Year */
+            year?: number | null;
+        };
+        /** ShowDownloadSeasonPreview */
+        ShowDownloadSeasonPreview: {
+            /** Air Date */
+            air_date?: string | null;
+            /**
+             * Episode Count
+             * @default 0
+             */
+            episode_count: number;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Season Number */
+            season_number: number;
+            /** Title */
+            title?: string | null;
+        };
+        /** ShowEventResponse */
+        ShowEventResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message */
+            message: string;
+            /** Type */
+            type: string;
+        };
+        /** ShowProblemResponse */
+        ShowProblemResponse: {
+            /** Description */
+            description: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message */
+            message: string;
+            /** Reason */
+            reason: string;
+            severity: components["schemas"]["Severity"];
+            /** Title */
+            title: string;
+        };
+        /** ShowSeasonDownloadSearchRequest */
+        ShowSeasonDownloadSearchRequest: {
+            /**
+             * Quality Profile Id
+             * Format: uuid
+             */
+            quality_profile_id: string;
+            /** Season Number */
+            season_number: number;
+            /** Tmdb Id */
+            tmdb_id: number;
+        };
+        /** ShowStorageRootResponse */
+        ShowStorageRootResponse: {
+            /** Health */
+            health?: ("available" | "unavailable" | "unknown") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /** ShowSummaryResponse */
+        ShowSummaryResponse: {
+            /** Episode Count */
+            episode_count: number;
+            /** Episodes Missing */
+            episodes_missing: number;
+            /** Episodes Present */
+            episodes_present: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            identity_state: components["schemas"]["IdentityState"];
+            /** Last Observed At */
+            last_observed_at?: string | null;
+            /** Monitored */
+            monitored: boolean;
+            /**
+             * Plex State
+             * @enum {string}
+             */
+            plex_state: "matched" | "pending" | "not_found" | "conflict" | "multiple_versions" | "unavailable" | "unknown";
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /**
+             * Problem Count
+             * @default 0
+             */
+            problem_count: number;
+            /** Resource Id */
+            resource_id: string;
+            /** Revision */
+            revision: number;
+            /** Season Count */
+            season_count: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "Present" | "Missing" | "Conflict";
+            /** Title */
+            title: string;
+            /** Tmdb Episode Group Id */
+            tmdb_episode_group_id?: string | null;
+            /** Tmdb Id */
+            tmdb_id: number | null;
+            /** Tvdb Id */
+            tvdb_id?: number | null;
+            /** Year */
+            year: number | null;
+        };
+        /** ShowUpdate */
+        ShowUpdate: {
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Monitored */
+            monitored?: boolean | null;
+            /** Tmdb Episode Group Id */
+            tmdb_episode_group_id?: string | null;
+        };
+        /** SpecialsCountingResult */
+        SpecialsCountingResult: {
+            /** Count Specials */
+            count_specials: boolean;
+            /** Seasons Changed */
+            seasons_changed: number;
+            /** Shows Affected */
+            shows_affected: number;
+        };
+        /** SpecialsCountingState */
+        SpecialsCountingState: {
+            /** Count Specials */
+            count_specials: boolean;
+        };
+        /** StorageRootCreate */
+        StorageRootCreate: {
+            /** @default read_only */
+            access_mode: components["schemas"]["AccessMode"];
+            /** @default automatic */
+            discovery_mode: components["schemas"]["DiscoveryMode"];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            media_type: components["schemas"]["MediaType"];
+            /**
+             * Missing Grace Checks
+             * @default 2
+             */
+            missing_grace_checks: number;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /** StorageRootHealthItem */
+        StorageRootHealthItem: {
+            /** Checked At */
+            checked_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unknown" | "available" | "unavailable";
+        };
+        /**
+         * StorageRootReorder
+         * @description Ids in the order the list should be shown, top first.
+         */
+        StorageRootReorder: {
+            /** Ids */
+            ids: string[];
+        };
+        /** StorageRootResponse */
+        StorageRootResponse: {
+            access_mode: components["schemas"]["AccessMode"];
+            /**
+             * Affected Media Count
+             * @default 0
+             */
+            affected_media_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            discovery_mode: components["schemas"]["DiscoveryMode"];
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Health */
+            last_health: ("available" | "unavailable" | "unknown") | null;
+            /** Last Health Checked At */
+            last_health_checked_at: string | null;
+            /** Last Scan At */
+            last_scan_at: string | null;
+            /**
+             * Media Count
+             * @default 0
+             */
+            media_count: number;
+            media_type: components["schemas"]["MediaType"];
+            /** Missing Grace Checks */
+            missing_grace_checks: number;
+            /** Name */
+            name: string;
+            /** Resolved Root Path */
+            resolved_root_path: string;
+            scan?: components["schemas"]["StorageRootScan"] | null;
+            /**
+             * Scanning
+             * @default false
+             */
+            scanning: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * StorageRootScan
+         * @description The scan running against a root right now.
+         *
+         *     A boolean was enough to grey out a row, but not to say what the scan is
+         *     doing, so the row could show "Scanning" for minutes with nothing behind it.
+         */
+        StorageRootScan: {
+            /**
+             * Current
+             * @default 0
+             */
+            current: number;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Percent
+             * @default 0
+             */
+            percent: number;
+            /** Stage */
+            stage?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running";
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** StorageRootUpdate */
+        StorageRootUpdate: {
+            access_mode?: components["schemas"]["AccessMode"] | null;
+            discovery_mode?: components["schemas"]["DiscoveryMode"] | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            media_type?: components["schemas"]["MediaType"] | null;
+            /** Missing Grace Checks */
+            missing_grace_checks?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Path */
+            path?: string | null;
+        };
+        /** TMDBConfigurationResponse */
+        TMDBConfigurationResponse: {
+            /**
+             * Api Key Configured
+             * @default false
+             */
+            api_key_configured: boolean;
+            /** Configured */
+            configured: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Health
+             * @default unknown
+             * @enum {string}
+             */
+            health: "unknown" | "healthy" | "unavailable";
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Revision */
+            revision?: number | null;
+        };
+        /** TMDBConfigurationUpdate */
+        TMDBConfigurationUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Expected Revision */
+            expected_revision?: number | null;
+        };
+        /** TMDBMovieLookupResponse */
+        TMDBMovieLookupResponse: {
+            /** Cast */
+            cast?: string[];
+            /** Director */
+            director?: string | null;
+            /** Imdb Id */
+            imdb_id?: string | null;
+            /** Imdb Rating */
+            imdb_rating?: number | null;
+            /** Imdb Votes */
+            imdb_votes?: number | null;
+            /** Original Title */
+            original_title?: string | null;
+            /** Overview */
+            overview?: string | null;
+            /** Popularity */
+            popularity?: number | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Vote Average */
+            vote_average?: number | null;
+            /** Vote Count */
+            vote_count?: number | null;
+            /** Year */
+            year?: number | null;
+        };
+        /** TMDBShowLookupResponse */
+        TMDBShowLookupResponse: {
+            /** Cast */
+            cast?: string[];
+            /** Director */
+            director?: string | null;
+            /** Imdb Id */
+            imdb_id?: string | null;
+            /** Imdb Rating */
+            imdb_rating?: number | null;
+            /** Imdb Votes */
+            imdb_votes?: number | null;
+            /** Original Title */
+            original_title?: string | null;
+            /** Overview */
+            overview?: string | null;
+            /** Popularity */
+            popularity?: number | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Vote Average */
+            vote_average?: number | null;
+            /** Vote Count */
+            vote_count?: number | null;
+            /** Year */
+            year?: number | null;
+        };
+        /** TMDBTestRequest */
+        TMDBTestRequest: {
+            /** Api Key */
+            api_key?: string | null;
+        };
+        /** TMDBTestResponse */
+        TMDBTestResponse: {
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "unavailable";
+        };
+        /** TagCreate */
+        TagCreate: {
+            /** Name */
+            name: string;
+        };
+        /** TagResponse */
+        TagResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** TagUpdate */
+        TagUpdate: {
+            /** Name */
+            name: string;
+        };
+        /** TorrentArchiveDetail */
+        TorrentArchiveDetail: {
+            /** Archive Path */
+            archive_path?: string | null;
+            archive_state: components["schemas"]["TorrentArchiveState"];
+            /** Associations */
+            associations?: {
+                [key: string]: unknown;
+            }[];
+            /** Completed At */
+            completed_at?: string | null;
+            /** Edition */
+            edition?: string | null;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Info Hash */
+            info_hash: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Manifest Path */
+            manifest_path?: string | null;
+            /** Manifest Schema Version */
+            manifest_schema_version?: number | null;
+            /** Media Title */
+            media_title?: string | null;
+            media_type?: components["schemas"]["MediaType"] | null;
+            /** Observations */
+            observations?: {
+                [key: string]: unknown;
+            }[];
+            /** Original Download Client */
+            original_download_client?: string | null;
+            /** Previous Reported Path */
+            previous_reported_path?: string | null;
+            /** Previous Resolved Path */
+            previous_resolved_path?: string | null;
+            /**
+             * Qbit Present
+             * @default false
+             */
+            qbit_present: boolean;
+            /** Quality */
+            quality?: string | null;
+            /** Release Group */
+            release_group?: string | null;
+            /** Release Name */
+            release_name?: string | null;
+            /** Tmdb Id */
+            tmdb_id?: number | null;
+            /** Torrent Name */
+            torrent_name: string;
+            /** Total Size */
+            total_size?: number | null;
+            /** Tvdb Id */
+            tvdb_id?: number | null;
+        };
+        /** TorrentArchiveHealth */
+        TorrentArchiveHealth: {
+            /** Archived */
+            archived: number;
+            /** Message */
+            message?: string | null;
+            /** Missing Or Failed */
+            missing_or_failed: number;
+            /** Path */
+            path: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "unavailable";
+            /** Tracked */
+            tracked: number;
+            /** Writable */
+            writable: boolean;
+        };
+        /**
+         * TorrentArchiveState
+         * @enum {string}
+         */
+        TorrentArchiveState: "not_archived" | "archived" | "failed";
+        /** TorrentArchiveSummary */
+        TorrentArchiveSummary: {
+            /** Archive Path */
+            archive_path?: string | null;
+            archive_state: components["schemas"]["TorrentArchiveState"];
+            /** Completed At */
+            completed_at?: string | null;
+            /** Edition */
+            edition?: string | null;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Info Hash */
+            info_hash: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Manifest Path */
+            manifest_path?: string | null;
+            /** Manifest Schema Version */
+            manifest_schema_version?: number | null;
+            /** Media Title */
+            media_title?: string | null;
+            media_type?: components["schemas"]["MediaType"] | null;
+            /** Original Download Client */
+            original_download_client?: string | null;
+            /** Previous Reported Path */
+            previous_reported_path?: string | null;
+            /** Previous Resolved Path */
+            previous_resolved_path?: string | null;
+            /**
+             * Qbit Present
+             * @default false
+             */
+            qbit_present: boolean;
+            /** Quality */
+            quality?: string | null;
+            /** Release Group */
+            release_group?: string | null;
+            /** Release Name */
+            release_name?: string | null;
+            /** Tmdb Id */
+            tmdb_id?: number | null;
+            /** Torrent Name */
+            torrent_name: string;
+            /** Total Size */
+            total_size?: number | null;
+            /** Tvdb Id */
+            tvdb_id?: number | null;
+        };
+        /** TorrentRestoreRequest */
+        TorrentRestoreRequest: {
+            /** Category */
+            category?: string | null;
+            /**
+             * Download Client Id
+             * Format: uuid
+             */
+            download_client_id: string;
+            /** Save Path */
+            save_path: string;
+            /** Tags */
+            tags?: string[] | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
+    };
+    responses: never;
+    parameters: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
+}
+export type $defs = Record<string, never>;
+export interface operations {
+    login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    me_api_v1_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminResponse"];
+                };
+            };
+        };
+    };
+    change_password_api_v1_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    security_api_v1_auth_security_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityResponse"];
+                };
+            };
+        };
+    };
+    list_custom_formats_api_v1_custom_formats_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                scope?: components["schemas"]["CustomFormatScope"] | null;
+                enabled?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_CustomFormatResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_custom_format_api_v1_custom_formats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFormatCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_all_custom_formats_api_v1_custom_formats_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatExportBundle"];
+                };
+            };
+        };
+    };
+    import_custom_formats_api_v1_custom_formats_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFormatImportBundle"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_custom_format_layout_api_v1_custom_formats_layout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatLayout"];
+                };
+            };
+        };
+    };
+    update_custom_format_layout_api_v1_custom_formats_layout_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFormatLayout"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatLayout"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_custom_format_api_v1_custom_formats_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFormatTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_all_custom_formats_api_v1_custom_formats_test_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFormatTestAllRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatTestAllResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_custom_format_api_v1_custom_formats__custom_format_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_format_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_custom_format_api_v1_custom_formats__custom_format_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_format_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_custom_format_api_v1_custom_formats__custom_format_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_format_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFormatUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_custom_format_api_v1_custom_formats__custom_format_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_format_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFormatExportBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_discoveries_api_v1_discoveries_get: {
+        parameters: {
+            query?: {
+                state?: string;
+                media_type?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_MediaDiscoveryResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_review_api_v1_discoveries_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaDiscoveryBulk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryBulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_discoveries_api_v1_discoveries_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryCount"];
+                };
+            };
+        };
+    };
+    approve_discovery_api_v1_discoveries__discovery_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_discovery_edition_api_v1_discoveries__discovery_id__edition_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaDiscoveryEditionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_discovery_api_v1_discoveries__discovery_id__ignore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_discovery_api_v1_discoveries__discovery_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_discovery_candidates_api_v1_discoveries__discovery_id__search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaDiscoverySearch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_discovery_api_v1_discoveries__discovery_id__select_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaDiscoverySelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_download_clients_api_v1_download_clients_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_DownloadClientResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_download_client_api_v1_download_clients_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadClientCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_unsaved_download_client_api_v1_download_clients_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadClientTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_download_client_api_v1_download_clients__client_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_download_client_api_v1_download_clients__client_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadClientUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_download_client_api_v1_download_clients__client_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_download_client_categories_api_v1_download_clients__client_id__categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientCategoryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_client_health_api_v1_download_clients__client_id__health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_download_client_health_api_v1_download_clients__client_id__health_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    poll_client_api_v1_download_clients__client_id__poll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_download_client_api_v1_download_clients__client_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DownloadClientSavedTestRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadClientTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_downloads_api_v1_downloads_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                client_id?: string | null;
+                scope?: components["schemas"]["DownloadScope"] | null;
+                state?: string | null;
+                include_removed?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_DownloadResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    poll_all_clients_api_v1_downloads_poll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+        };
+    };
+    update_episode_api_v1_episodes__episode_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                episode_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EpisodeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_episode_api_v1_episodes__episode_id__interactive_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                episode_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_events_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                entity_type?: string | null;
+                entity_id?: string | null;
+                event_type?: string | null;
+                severity?: string | null;
+                sort?: string;
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_EventResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_events_api_v1_events_delete: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                entity_id?: string | null;
+                event_type?: string | null;
+                severity?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    event_stream_api_v1_events_stream_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    delete_event_api_v1_events__event_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_filesystem_api_v1_filesystem_get: {
+        parameters: {
+            query?: {
+                path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilesystemListing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_health_api_v1_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LivenessResponse"];
+                };
+            };
+        };
+    };
+    list_indexers_api_v1_indexers_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_IndexerResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_indexer_api_v1_indexers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_unsaved_indexer_api_v1_indexers_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexerTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexerTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_indexer_api_v1_indexers__indexer_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                indexer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_indexer_api_v1_indexers__indexer_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                indexer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_indexer_api_v1_indexers__indexer_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                indexer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_saved_indexer_api_v1_indexers__indexer_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                indexer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexerTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    integration_health_api_v1_integrations_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationHealthResponse"];
+                };
+            };
+        };
+    };
+    get_configuration_api_v1_integrations_plex_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlexConfigurationResponse"];
+                };
+            };
+        };
+    };
+    save_configuration_api_v1_integrations_plex_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlexConfigurationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlexConfigurationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plex_health_api_v1_integrations_plex_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlexHealthResponse"];
+                };
+            };
+        };
+    };
+    refresh_health_api_v1_integrations_plex_health_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlexTestResponse"];
+                };
+            };
+        };
+    };
+    sync_library_api_v1_integrations_plex_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+        };
+    };
+    test_connection_api_v1_integrations_plex_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlexTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlexTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_configuration_api_v1_integrations_tmdb_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TMDBConfigurationResponse"];
+                };
+            };
+        };
+    };
+    save_configuration_api_v1_integrations_tmdb_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TMDBConfigurationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TMDBConfigurationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_health_api_v1_integrations_tmdb_health_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TMDBTestResponse"];
+                };
+            };
+        };
+    };
+    test_connection_api_v1_integrations_tmdb_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TMDBTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TMDBTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_unattached_movie_api_v1_interactive_search_movies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovieDownloadSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_unattached_show_season_api_v1_interactive_search_shows_seasons_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShowSeasonDownloadSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_unattached_show_api_v1_interactive_search_shows__tmdb_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tmdb_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowDownloadPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_v1_jobs_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: string | null;
+                job_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_JobResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_api_v1_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_v1_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_summary_api_v1_library_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySummary"];
+                };
+            };
+        };
+    };
+    correct_episode_mapping_api_v1_media_files__media_file_id__episode_mappings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EpisodeMappingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_movies_api_v1_movies_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                query?: string | null;
+                state?: string | null;
+                tag?: string | null;
+                sort?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_MovieSummaryResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_movie_api_v1_movies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovieCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovieDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_movies_api_v1_movies_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovieBulkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovieBulkResponse"] | components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    movie_edition_options_api_v1_movies_edition_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovieEditionOptionsResponse"];
+                };
+            };
+        };
+    };
+    lookup_movies_api_v1_movies_lookup_get: {
+        parameters: {
+            query: {
+                query: string;
+                year?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TMDBMovieLookupResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_movie_api_v1_movies__resource_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovieDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recheck_movie_api_v1_movies__resource_id__actions_recheck_plex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_movie_duplicate_api_v1_movies__resource_id__duplicates_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateResolveCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_movie_duplicate_resolution_api_v1_movies__resource_id__duplicates_resolve_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateResolvePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateResolvePreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_movie_events_api_v1_movies__resource_id__events_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_EventResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_movie_api_v1_movies__resource_id__interactive_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_movie_profile_settings_api_v1_movies__resource_id__profile_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaProfileSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_movie_profile_settings_api_v1_movies__resource_id__profile_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaProfileSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaProfileSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_movie_release_editions_api_v1_movies__resource_id__releases_editions_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovieEditionOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovieEditionOverrideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_movie_tag_api_v1_movies__resource_id__tags__tag_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_movie_tag_api_v1_movies__resource_id__tags__tag_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_parser_api_v1_parser_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParserTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_problems_api_v1_problems_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                reason?: string | null;
+                entity_type?: string | null;
+                severity?: string | null;
+                category?: string | null;
+                workflow?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_ProblemResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_problems_api_v1_problems_count_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                workflow?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recheck_open_problems_api_v1_problems_recheck_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemRecheckAllResponse"];
+                };
+            };
+        };
+    };
+    problem_summary_api_v1_problems_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemSummaryResponse"];
+                };
+            };
+        };
+    };
+    get_problem_api_v1_problems__problem_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                problem_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_problem_api_v1_problems__problem_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                problem_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_problem_api_v1_problems__problem_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                problem_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProblemResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_quality_definitions_api_v1_quality_definitions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityDefinitionResponse"][];
+                };
+            };
+        };
+    };
+    get_quality_definition_api_v1_quality_definitions__quality_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quality_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_quality_profiles_api_v1_quality_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityProfileResponse"][];
+                };
+            };
+        };
+    };
+    create_quality_profile_api_v1_quality_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityProfileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_quality_profile_api_v1_quality_profiles__profile_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_quality_profile_api_v1_quality_profiles__profile_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_quality_profile_api_v1_quality_profiles__profile_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manual_attach_api_v1_reconciliation_movies__movie_id__manual_attach_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movie_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualAttachRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconciliationActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_reconciliation_api_v1_reconciliation_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReconciliationRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconciliationRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconciliation_status_api_v1_reconciliation_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconciliationStatusResponse"];
+                };
+            };
+        };
+    };
+    capabilities_api_v1_recovery_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCapabilitiesResponse"];
+                };
+            };
+        };
+    };
+    start_recovery_export_api_v1_recovery_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryExportAcceptedResponse"];
+                };
+            };
+        };
+    };
+    download_recovery_export_api_v1_recovery_exports__job_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mappings_api_v1_remote_path_mappings_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_RemotePathMappingResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mapping_api_v1_remote_path_mappings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemotePathMappingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemotePathMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mapping_api_v1_remote_path_mappings__mapping_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mapping_api_v1_remote_path_mappings__mapping_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemotePathMappingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemotePathMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_search_job_api_v1_search_jobs__job_id__get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_search_result_api_v1_search_results__result_id__download_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                result_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchResultDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResultDownloadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_season_api_v1_seasons__season_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeasonUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeasonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_season_api_v1_seasons__season_id__interactive_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_api_v1_setup_complete_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_v1_setup_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatusResponse"];
+                };
+            };
+        };
+    };
+    list_shows_api_v1_shows_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                query?: string | null;
+                state?: string | null;
+                sort?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_ShowSummaryResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_show_api_v1_shows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShowCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_show_download_preferences_api_v1_shows_download_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowDownloadPreferences"];
+                };
+            };
+        };
+    };
+    set_show_download_preferences_api_v1_shows_download_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShowDownloadPreferences"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowDownloadPreferences"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_shows_api_v1_shows_lookup_get: {
+        parameters: {
+            query: {
+                query: string;
+                year?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TMDBShowLookupResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_specials_counting_api_v1_shows_specials_counting_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialsCountingState"];
+                };
+            };
+        };
+    };
+    set_specials_counting_api_v1_shows_specials_counting_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecialsCountingState"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialsCountingResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_show_api_v1_shows__resource_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_show_api_v1_shows__resource_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShowUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recheck_show_api_v1_shows__resource_id__actions_recheck_plex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_episode_orderings_api_v1_shows__resource_id__episode_orderings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeOrderingOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_show_events_api_v1_shows__resource_id__events_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_EventResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_show_metadata_api_v1_shows__resource_id__metadata_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_show_profile_settings_api_v1_shows__resource_id__profile_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaProfileSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_show_profile_settings_api_v1_shows__resource_id__profile_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaProfileSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaProfileSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_storage_roots_api_v1_storage_roots_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_StorageRootResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_storage_root_api_v1_storage_roots_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageRootCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageRootResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_storage_root_health_api_v1_storage_roots_health_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_StorageRootResponse_"];
+                };
+            };
+        };
+    };
+    reorder_storage_roots_api_v1_storage_roots_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageRootReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_StorageRootResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_storage_root_api_v1_storage_roots__root_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageRootResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_storage_root_api_v1_storage_roots__root_id__delete: {
+        parameters: {
+            query?: {
+                remove_entries?: boolean;
+            };
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_storage_root_api_v1_storage_roots__root_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageRootUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageRootResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_storage_root_api_v1_storage_roots__root_id__scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tags_api_v1_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"][];
+                };
+            };
+        };
+    };
+    create_tag_api_v1_tags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tag_api_v1_tags__tag_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_tag_api_v1_tags__tag_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_torrent_archive_api_v1_torrent_archive_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                query?: string | null;
+                archive_state?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_TorrentArchiveSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_torrent_archive_item_api_v1_torrent_archive__torrent_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                torrent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TorrentArchiveDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_archived_torrent_api_v1_torrent_archive__torrent_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                torrent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TorrentRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_torrent_archive_api_v1_torrent_archive__torrent_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                torrent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    liveness_healthz_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LivenessResponse"];
+                };
+            };
+        };
+    };
+    readiness_readyz_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+        };
+    };
+}

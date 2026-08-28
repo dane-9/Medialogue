@@ -2406,10 +2406,10 @@ function downloadClientPayload(draft: DownloadClientDraft) {
   return {
     name: draft.name.trim(),
     url: draft.url.trim(),
-    username: draft.username.trim() || undefined,
+    username: draft.username.trim(),
     ...(draft.password ? { password: draft.password } : {}),
     scope: draft.scope,
-    category: draft.category.trim() || undefined,
+    category: draft.category.trim() || null,
     tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
     enabled: draft.enabled,
     poll_interval_seconds: draft.pollIntervalSeconds,

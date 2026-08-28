@@ -60,6 +60,7 @@ export const settingsApi = {
       media_scope: mediaScope,
       indexer,
       quality_profile_id: qualityProfileId || null,
+      include_disabled: false,
     } satisfies CustomFormatTestAllRequestDto
     const payload = await openApiData(openApiClient.POST('/api/v1/custom-formats/test-all', { body }))
     return {

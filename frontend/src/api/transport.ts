@@ -67,13 +67,15 @@ export const openApiClient = createClient<paths>({
 
 openApiClient.use(transportMiddleware)
 
-type OpenApiResult<T> =
-  | { data: T; error?: never; response: Response }
-  | { data?: never; error: unknown; response: Response }
+type OpenApiResult<T> = {
+  data?: T
+  error?: unknown
+  response: Response
+}
 
-export async function openApiData<T>(operation: Promise<OpenApiResult<T>>): Promise<T> {
+export async function openApiData<T>(operation: Promise<OpenApiResult<T>>): Promise<Exclude<T, undefined>> {
   const result = await operation
-  if (result.data !== undefined) return result.data
-  if (result.response.ok) return undefined as T
+  if (result.data !== undefined) return result.data as Exclude<T, undefined>
+  if (result.response.ok) return undefined as Exclude<T, undefined>
   throw await apiErrorFromResponse(result.response, result.error)
 }

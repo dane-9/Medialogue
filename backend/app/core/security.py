@@ -59,8 +59,11 @@ def verify_confirmation_payload(token: str, secret_key: str) -> dict[str, object
     try:
         encoded, sig_text = token.split(".", 1)
         expected = hmac.new(secret_key.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
-        supplied = base64.urlsafe_b64decode(sig_text + "=" * (-len(sig_text) % 4))
-        if not hmac.compare_digest(expected, supplied):
+        expected_text = base64.urlsafe_b64encode(expected).decode("ascii").rstrip("=")
+        # Compare the canonical encoded form.  Decoding first would accept
+        # alternate final Base64 characters whose unused bits differ, which
+        # makes a visibly tampered token verify as the same signature.
+        if not hmac.compare_digest(expected_text, sig_text):
             return None
         raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
         payload = json.loads(raw.decode("utf-8"))

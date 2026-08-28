@@ -1,6 +1,9 @@
 import { mapProblem } from '../mappers/problems'
 import { numberValue } from '../mappers/shared'
 import { openApiClient, openApiData } from '../transport'
+import type { components } from '../generated/schema'
+
+type ProblemAction = components['schemas']['ProblemResolveRequest']['action']
 
 export const problemsApi = {
   problemCount: async (status = 'open') => {
@@ -30,5 +33,5 @@ export const problemsApi = {
   },
   deleteProblem: (id: string) => openApiData(openApiClient.DELETE('/api/v1/problems/{problem_id}', { params: { path: { problem_id: id } } })),
   recheckProblems: () => openApiData(openApiClient.POST('/api/v1/problems/recheck')),
-  resolveProblem: async (id: string, action: string, payload: Record<string, unknown> = {}) => mapProblem(await openApiData(openApiClient.POST('/api/v1/problems/{problem_id}/resolve', { params: { path: { problem_id: id } }, body: { action, payload } }))),
+  resolveProblem: async (id: string, action: ProblemAction, payload: Record<string, unknown> = {}) => mapProblem(await openApiData(openApiClient.POST('/api/v1/problems/{problem_id}/resolve', { params: { path: { problem_id: id } }, body: { action, payload } }))),
 }
