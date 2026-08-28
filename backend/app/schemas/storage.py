@@ -117,6 +117,11 @@ class StorageRootResponse(ORMModel):
     last_health_checked_at: datetime | None
     last_scan_at: datetime | None
     affected_media_count: int = 0
+    #: Media in this root whose directory no longer exists on disk. A root can
+    #: be perfectly reachable and still have missing media, so this is separate
+    #: from last_health: without it a partially missing folder is
+    #: indistinguishable from a healthy one in the folder list.
+    missing_media_count: int = 0
     #: A scan is queued or running for this root right now. Without it a scan in
     #: progress is indistinguishable from one that never happened, because
     #: last_scan_at is only written when a scan succeeds.

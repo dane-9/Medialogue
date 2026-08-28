@@ -36,6 +36,7 @@ export function mapStorageRoot(value: StorageRootDto): StorageRoot {
     last_scan_at: value.last_scan_at ?? undefined,
     last_health_checked_at: value.last_health_checked_at ?? undefined,
     affected_media_count: value.affected_media_count,
+    missing_media_count: value.missing_media_count,
   }
 }
 

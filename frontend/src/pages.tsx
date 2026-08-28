@@ -2091,10 +2091,14 @@ function StorageSettings() {
         const scanned = Boolean(root.last_scan_at)
         const health = root.last_health ?? 'unknown'
         const offline = scanned && health === 'unavailable'
+        // A reachable folder can still have media that disappeared from disk.
+        // Without this the row reads as fully healthy while files are gone.
+        const missing = root.missing_media_count ?? 0
         const state = root.scanning ? { tone: 'blue' as const, text: 'Scanning…' }
           : !root.enabled ? { tone: 'neutral' as const, text: 'Disabled' }
-          : offline ? { tone: 'red' as const, text: 'Path not reachable' }
+          : offline ? { tone: 'red' as const, text: `Path not reachable${root.affected_media_count ? ` · ${root.affected_media_count} affected` : ''}` }
           : !scanned ? { tone: 'amber' as const, text: 'Never scanned' }
+          : missing ? { tone: 'amber' as const, text: `${missing} ${missing === 1 ? 'item' : 'items'} missing` }
           : { tone: 'green' as const, text: `Scanned ${formatAge(root.last_scan_at)}` }
         return <button type="button" className={`root-row ${root.enabled ? '' : 'root-row-disabled'} ${dragIndex === index ? 'root-row-dragging' : ''}`} key={root.id} onClick={() => editRoot(root)}
           draggable

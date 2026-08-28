@@ -42,8 +42,11 @@ from app.services.recovery import (
 
 
 @pytest.fixture
-def recovery_env():
-    root = Path(tempfile.mkdtemp(prefix="medialogue-part17-", dir=os.getcwd()))
+def recovery_env(tmp_path):
+    # Not os.getcwd(): Windows keeps the SQLite file handles open past the
+    # teardown rmtree, so a cwd-based temp dir silently survives inside the
+    # repository and the leftover .db files end up committed.
+    root = Path(tempfile.mkdtemp(prefix="medialogue-part17-", dir=tmp_path))
     db_path = root / "test.db"
     archive = root / "torrent-archive"
     export_dir = root / "config" / "recovery-exports"

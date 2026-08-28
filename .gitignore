@@ -4,6 +4,8 @@
 *.py[cod]
 .pytest*
 *.egg-info/
+backend/**/*.db
+backend/**/*.db-*
 backend/*.db
 backend/*.db-*
 backend/*.db.config/

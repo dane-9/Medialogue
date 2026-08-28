@@ -509,3 +509,37 @@ def test_a_show_also_stored_under_another_root_survives(client: TestClient, tmp_
 
     client.delete(f"/api/v1/storage-roots/{root_a['id']}?remove_entries=true", headers=headers)
     assert show_titles(client) == ["Futurama"]
+
+
+def test_a_reachable_root_still_reports_media_that_left_the_disk(client: TestClient, tmp_path):
+    """A folder can be perfectly reachable and still be missing files.
+
+    last_health only answers "can I reach the path", so without a separate
+    count the folder list shows a green, freshly scanned row while recorded
+    media has disappeared underneath it.
+    """
+
+    import asyncio
+    import uuid as _uuid
+
+    from app.db import session as db_session
+    from app.models.domain import MediaDirectory
+
+    headers = login(client)
+    folder = tmp_path / "movies"
+    folder.mkdir()
+    root = create_root(client, headers, str(folder))
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            db.add(MediaDirectory(id=_uuid.uuid4(), storage_root_id=_uuid.UUID(root["id"]), resolved_path=str(folder / "Present 2019"), exists=True))
+            db.add(MediaDirectory(id=_uuid.uuid4(), storage_root_id=_uuid.UUID(root["id"]), resolved_path=str(folder / "Gone 2020"), exists=False))
+            await db.commit()
+
+    asyncio.run(seed())
+
+    row = next(item for item in client.get("/api/v1/storage-roots").json()["items"] if item["id"] == root["id"])
+    assert row["media_count"] == 2
+    assert row["missing_media_count"] == 1
+    # The path itself is reachable, so nothing here is "affected by an offline root".
+    assert row["affected_media_count"] == 0

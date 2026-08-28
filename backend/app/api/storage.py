@@ -49,6 +49,14 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
         or 0
     )
     affected = media_count if root.last_health == "unavailable" else 0
+    missing_media = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(MediaDirectory)
+            .where(MediaDirectory.storage_root_id == root.id, MediaDirectory.exists.is_(False))
+        )
+        or 0
+    )
     job = await active_storage_root_scan_job(db, root.id)
     scan = None
     if job is not None:
@@ -64,6 +72,7 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
     return StorageRootResponse.model_validate(root).model_copy(
         update={
             "affected_media_count": affected,
+            "missing_media_count": missing_media,
             "media_count": media_count,
             "scanning": job is not None,
             "scan": scan,

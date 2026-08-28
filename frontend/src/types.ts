@@ -215,6 +215,7 @@ export interface StorageRoot {
   last_scan_at?: string
   last_health_checked_at?: string
   affected_media_count?: number
+  missing_media_count?: number
   scanning: boolean
 
   scan?: StorageRootScan
