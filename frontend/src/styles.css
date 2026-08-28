@@ -80,6 +80,11 @@
 }
 
 * { box-sizing: border-box; }
+/* Reserve the scrollbar's width whether or not it is showing. Without this the
+   page jumps sideways every time content grows past one screen, and again when
+   a modal locks body scrolling. Set on both elements because body's overflow is
+   what propagates to the viewport once a modal locks it. */
+html, body { scrollbar-gutter: stable; }
 body { margin: 0; min-width: 1080px; background: var(--bg); color: var(--text); }
 
 * {
@@ -168,7 +173,7 @@ h1, h2, h3, p { margin: 0; }
   color: var(--faint);
 }
 
-.sidebar-scroll { flex: 1; padding: var(--s3) var(--s2); overflow: auto; }
+.sidebar-scroll { flex: 1; padding: var(--s3) var(--s2); overflow: auto; scrollbar-gutter: stable; }
 .nav-section + .nav-section { margin-top: var(--s4); }
 .nav-item {
   display: flex;
@@ -2118,7 +2123,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .modal-head-spacer { flex: 1; }
 .modal-head h2 { margin-top: 0; font: 600 var(--t-xl)/1.25 var(--sans); overflow-wrap: anywhere; }
 .modal-head:has(.eyebrow) h2 { margin-top: 2px; }
-.modal-body { flex: 1; overflow: auto; }
+.modal-body { flex: 1; overflow: auto; scrollbar-gutter: stable; }
 
 .modal-foot {
   display: flex;
@@ -2252,7 +2257,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-editor-rail nav button small { overflow: hidden; color: var(--faint); font-size: var(--t-micro); text-overflow: ellipsis; white-space: nowrap; }
 .cf-editor-rail nav button > svg { color: var(--faint); }
 .cf-editor-owned { display: flex; align-items: center; gap: var(--s2); padding: var(--s2); margin-top: auto; color: var(--faint); font-size: var(--t-micro); }
-.cf-editor-content { min-width: 0; overflow-y: auto; background: var(--surface); }
+.cf-editor-content { min-width: 0; overflow-y: auto; scrollbar-gutter: stable; background: var(--surface); }
 .cf-editor-panel { display: grid; align-content: start; gap: var(--s4); min-height: 100%; padding: 28px 32px 24px; }
 .cf-editor-panel-head { max-width: 680px; }
 .cf-editor-panel-head h3 { margin: 5px 0 6px; color: var(--text); font-size: var(--t-xl); font-weight: 600; }
