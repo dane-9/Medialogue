@@ -12,14 +12,24 @@ export interface HealthIndicator {
   detail: string
 }
 
-export type PlexHealthState = 'healthy' | 'degraded' | 'unavailable' | 'unknown'
+export type PlexHealthState = 'healthy' | 'unavailable' | 'unknown'
+export type IdentityState = 'matched' | 'manual' | 'uncertain' | 'conflict' | 'unmatched'
+export type ReleaseState = 'current' | 'missing' | 'replaced' | 'removed' | 'conflict' | 'duplicate'
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+export type ProblemStatus = 'open' | 'resolved' | 'dismissed'
+export type ProblemAction = 'restore' | 'dismiss' | 'recheck' | 'confirm_movie_match' | 'confirm_show_match'
+export type SearchTargetEntityType = 'tmdb_movie' | 'tmdb_show_season' | 'movie' | 'episode' | 'season'
+export type SearchIndexerState = 'queued' | 'completed' | 'failed'
+export type TorrentArchiveState = 'not_archived' | 'archived' | 'failed'
+export type TorrentAssociationType = 'incoming' | 'attached' | 'historical'
+export type MediaRole = 'movie_video' | 'episode_video' | 'multi_episode_video' | 'dvd_structure' | 'bluray_structure' | 'other_media'
 
 export interface PlexConfiguration {
   configured: boolean
   url?: string
   token_configured: boolean
   enabled: boolean
-  health: PlexHealthState | string
+  health: PlexHealthState
   machine_identifier?: string
   last_checked_at?: string
   last_success_at?: string
@@ -29,7 +39,7 @@ export interface PlexConfiguration {
 }
 
 export interface PlexTestResult {
-  status: string
+  status: 'healthy' | 'unavailable'
   machine_identifier?: string
   latency_ms?: number
   message?: string
@@ -48,7 +58,7 @@ export interface Movie {
   confidence: number
   location: string
   tmdbId?: number
-  identityState?: string
+  identityState?: IdentityState
   monitored?: boolean
   tags?: Tag[]
   problemCount?: number
@@ -57,11 +67,9 @@ export interface Movie {
   overview?: string
   posterRef?: string
   storageRoot?: string
-  rootHealth?: string
+  rootHealth?: 'available' | 'unavailable' | 'unknown'
   rootAffectedCount?: number
   lastObservedAt?: string
-  torrentState?: string
-  mediaState?: string
   releasesDetail?: MovieRelease[]
   incoming?: IncomingDownload
   problems?: ReconciliationEvidence[]
@@ -87,12 +95,10 @@ export interface MovieRelease {
   manualEditionOverride?: string | null
   quality?: string
   releaseGroup?: string
-  state: string
+  state: ReleaseState
   confidence?: number
   firstSeenAt?: string
   directories: MovieDirectory[]
-  torrentState?: string
-  plexState?: string
   originalCustomFormatScore?: number
   currentCustomFormatScore?: number
   selectionSnapshot?: Record<string, unknown>
@@ -115,7 +121,7 @@ export interface MovieEditionUpdateResult {
     editionOverrideActive: boolean
     manualEditionOverride?: string | null
     effectiveEdition?: string
-    state: string
+    state: ReleaseState
   }>
 }
 
@@ -129,8 +135,6 @@ export interface IncomingDownload {
   state?: string
   eta?: string
   path?: string
-  mediaState?: string
-  torrentState?: string
   kind?: 'replacement' | 'release'
 }
 
@@ -160,9 +164,7 @@ export interface ReconciliationAggregate {
   replacedCount?: number
   duplicateCount?: number
   qbitMediaDisagreement?: boolean
-  qbitMediaDetail?: string
   plexBlocked?: boolean
-  plexBlockDetail?: string
   rootOffline?: boolean
   rootAffectedCount?: number
 }
@@ -193,7 +195,7 @@ export interface LibrarySummary {
 
 export interface StorageRootScan {
   job_id: string
-  status: string
+  status: 'queued' | 'running'
   stage?: string
   current: number
   total: number
@@ -209,14 +211,10 @@ export interface StorageRoot {
   discovery_mode: 'automatic' | 'review'
   enabled: boolean
   missing_grace_checks: number
-  last_health?: string
+  last_health?: 'available' | 'unavailable' | 'unknown'
   last_scan_at?: string
   last_health_checked_at?: string
   affected_media_count?: number
-  media_affected?: number
-  missing_media_count?: number
-  degraded_media_count?: number
-
   scanning: boolean
 
   scan?: StorageRootScan
@@ -294,7 +292,7 @@ export interface Show {
   tvdbId?: number
   tmdbEpisodeGroupId?: string
   monitored?: boolean
-  identityState?: string
+  identityState?: IdentityState
   problemCount?: number
   nextMissingEpisode?: string
   overview?: string
@@ -302,7 +300,7 @@ export interface Show {
   seasonDetail?: Season[]
   recentEvents?: MovieEvent[]
   problems?: ReconciliationEvidence[]
-  storageRoots?: Array<{ id: string; name: string; path: string; health?: string }>
+  storageRoots?: Array<{ id: string; name: string; path: string; health?: 'available' | 'unavailable' | 'unknown' }>
   lastObservedAt?: string
 }
 
@@ -356,13 +354,13 @@ export interface DownloadClient {
   category?: string
   tags: string[]
   enabled: boolean
-  health: string
+  health: 'unknown' | 'healthy' | 'unavailable'
   last_checked_at?: string
   last_success_at?: string
   latency_ms?: number
   last_error?: string
-  revision?: number
-  pollIntervalSeconds?: number
+  revision: number
+  pollIntervalSeconds: number
   recentPriority: 'first' | 'last'
   olderPriority: 'first' | 'last'
   sequentialOrder: boolean
@@ -402,7 +400,7 @@ export interface InteractiveSearchResult {
   indexerName: string
   indexerColor?: string
   mediaType: 'movies' | 'shows'
-  targetEntityType: string
+  targetEntityType: SearchTargetEntityType
   title: string
   size?: number
   seeders?: number
@@ -430,17 +428,38 @@ export interface InteractiveSearchResult {
 export interface InteractiveSearchIndexerStatus {
   id: string
   name: string
-  status: string
+  status: SearchIndexerState
   results: number
   elapsedMs?: number
   error?: string
 }
 
+export interface InteractiveSearchTarget {
+  mediaType: 'movies' | 'shows'
+  entityType: SearchTargetEntityType
+  entityId?: string
+  profileEntityId?: string
+  tmdbId?: number
+  season?: number
+  episode?: number
+  title: string
+  year?: number
+  overview?: string
+  posterRef?: string
+  qualityProfileId?: string
+}
+
+export interface InteractiveSearchProgress {
+  totalIndexers: number
+  completedIndexers: number
+  percent: number
+}
+
 export interface InteractiveSearchJob {
   id: string
-  status: string
-  target: Record<string, unknown>
-  progress: Record<string, unknown>
+  status: JobStatus
+  target: InteractiveSearchTarget
+  progress: InteractiveSearchProgress
   indexers: InteractiveSearchIndexerStatus[]
   results: InteractiveSearchResult[]
   resultTotal: number
@@ -451,7 +470,7 @@ export interface InteractiveSearchJob {
 }
 
 export interface DownloadClientTestResult {
-  status: string
+  status: 'unknown' | 'healthy' | 'unavailable'
   version?: string
   latency_ms?: number
   message?: string
@@ -466,7 +485,7 @@ export interface Problem {
   severity: 'high' | 'medium' | 'low'
   created: string
   reason?: string
-  status?: string
+  status?: ProblemStatus
   workflow: 'manual' | 'choice' | 'config' | 'waiting'
 
   label?: string
@@ -475,7 +494,7 @@ export interface Problem {
   details?: Record<string, unknown>
   resolution?: Record<string, unknown>
   resolvedAt?: string
-  availableActions?: string[]
+  availableActions?: ProblemAction[]
 }
 
 export interface Job {
@@ -484,7 +503,7 @@ export interface Job {
   title: string
   detail: string
   progress?: number
-  state: 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+  state: JobStatus
   updated: string
   cancellable: boolean
   error?: string
@@ -509,7 +528,7 @@ export interface RecoveryCapabilities {
 export interface EventHistoryItem {
   id: string
   eventType: string
-  severity: 'info' | 'warning' | 'error' | string
+  severity: 'info' | 'warning' | 'error'
   entityType: string
   entityId?: string
   message: string
@@ -524,7 +543,7 @@ export interface TorrentArchiveItem {
   torrentName: string
   releaseName?: string
   mediaTitle?: string
-  mediaType?: 'movies' | 'shows' | string
+  mediaType?: 'movies' | 'shows'
   tmdbId?: number
   tvdbId?: number
   quality?: string
@@ -532,7 +551,7 @@ export interface TorrentArchiveItem {
   releaseGroup?: string
   tracker?: string
   totalSize?: number
-  archiveState: 'not_archived' | 'archived' | 'failed' | string
+  archiveState: TorrentArchiveState
   archivePath?: string
   manifestPath?: string
   manifestSchemaVersion?: number
@@ -543,7 +562,7 @@ export interface TorrentArchiveItem {
   firstSeenAt?: string
   lastSeenAt?: string
   completedAt?: string
-  associationType?: string
+  associationType?: TorrentAssociationType
 }
 
 export type CustomFormatScope = 'movies' | 'shows' | 'both'
@@ -603,7 +622,7 @@ export interface CustomFormatSection {
 
 export interface CustomFormatConditionEvaluation {
   conditionId: string
-  conditionType: string
+  conditionType: CustomFormatConditionType
   name?: string
   matched: boolean
   effectiveResult: boolean
@@ -719,7 +738,7 @@ export interface Indexer {
 
   downloadClientIds: string[]
   priority: number
-  health: string
+  health: 'unknown' | 'healthy' | 'unavailable'
   lastCheckedAt?: string
   lastSuccessAt?: string
   latencyMs?: number
@@ -728,7 +747,7 @@ export interface Indexer {
 }
 
 export interface IndexerTestResult {
-  status: string
+  status: 'healthy' | 'unavailable'
   latencyMs?: number
   title?: string
   message?: string
@@ -773,7 +792,7 @@ export interface MediaDiscovery {
   selected?: TMDBMovieLookup | TMDBShowLookup
   candidates: Array<TMDBMovieLookup | TMDBShowLookup>
 
-  files: Array<{ relativePath: string; role: string }>
+  files: Array<{ relativePath: string; role: MediaRole }>
   fileCount: number
   videoCount: number
   createdAt?: string

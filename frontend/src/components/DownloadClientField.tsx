@@ -25,7 +25,7 @@ export function DownloadClientField({ clients, clientId, scope, disabled, onChan
       const test = await api.testDownloadClient(clientId)
       const rows = await api.downloadClients()
       onRefreshed(rows.filter((client) => client.enabled && client.scope === scope))
-      setResult(test.status === 'ok'
+      setResult(test.status === 'healthy'
         ? `Reachable${test.latency_ms ? ` · ${test.latency_ms} ms` : ''}`
         : test.message || 'Still unreachable.')
     } catch (reason) {

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import AnyHttpUrl, BaseModel, Field
 
@@ -20,7 +21,7 @@ class PlexConfigurationResponse(BaseModel):
     url: str | None = None
     token_configured: bool = False
     enabled: bool = False
-    health: str = "unknown"
+    health: Literal["unknown", "healthy", "unavailable"] = "unknown"
     machine_identifier: str | None = None
     last_checked_at: datetime | None = None
     last_success_at: datetime | None = None
@@ -32,7 +33,7 @@ class PlexConfigurationResponse(BaseModel):
 class PlexHealthResponse(BaseModel):
     configured: bool = False
     enabled: bool = False
-    status: str = "unknown"
+    status: Literal["unknown", "healthy", "unavailable"] = "unknown"
     machine_identifier: str | None = None
     last_success: datetime | None = None
     latency_ms: int | None = None
@@ -40,7 +41,7 @@ class PlexHealthResponse(BaseModel):
 
 
 class PlexTestResponse(BaseModel):
-    status: str
+    status: Literal["healthy", "unavailable"]
     machine_identifier: str | None = None
     latency_ms: int | None = None
     message: str | None = None

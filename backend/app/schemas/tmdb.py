@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +18,7 @@ class TMDBConfigurationResponse(BaseModel):
     configured: bool
     api_key_configured: bool = False
     enabled: bool = False
-    health: str = "unknown"
+    health: Literal["unknown", "healthy", "unavailable"] = "unknown"
     last_checked_at: datetime | None = None
     last_success_at: datetime | None = None
     latency_ms: int | None = None
@@ -26,6 +27,6 @@ class TMDBConfigurationResponse(BaseModel):
 
 
 class TMDBTestResponse(BaseModel):
-    status: str
+    status: Literal["healthy", "unavailable"]
     latency_ms: int | None = None
     message: str | None = None

@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.domain import MediaType
+
 
 class QualityDefinitionResponse(BaseModel):
     id: UUID
@@ -91,7 +93,7 @@ class EffectiveCustomFormatScore(BaseModel):
 
 
 class MediaProfileSettingsResponse(BaseModel):
-    media_type: str
+    media_type: MediaType
     entity_id: UUID
     quality_profile_id: UUID | None
     quality_profile_name: str | None

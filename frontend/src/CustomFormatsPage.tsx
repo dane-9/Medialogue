@@ -11,6 +11,7 @@ import { PageTopbar } from './components/Shell'
 import { browserSafeId } from './lib/uiState'
 import { copyName } from './lib/copyName'
 import { useUrlState } from './lib/urlState'
+import { parseCustomFormatImportBundle } from './validation/customFormats'
 import type {
   CustomFormat,
   CustomFormatCondition,
@@ -311,8 +312,8 @@ export default function CustomFormatsPageView() {
     if (!file) return
     setError(''); setMessage('')
     try {
-      const parsed = JSON.parse(await file.text()) as Record<string, unknown>
-      const result = await api.importCustomFormats(parsed)
+      const raw: unknown = JSON.parse(await file.text())
+      const result = await api.importCustomFormats(parseCustomFormatImportBundle(raw))
       await loadFormats(result.imported[0]?.id)
       setMessage(`Imported ${result.count} Custom Format${result.count === 1 ? '' : 's'}.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import Custom Formats.') }

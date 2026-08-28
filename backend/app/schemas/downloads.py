@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
@@ -24,11 +25,11 @@ class DownloadClientCreate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=100)
     enabled: bool = True
     poll_interval_seconds: int = Field(default=30, ge=5, le=3600)
-    recent_priority: str = Field(default="last", pattern="^(first|last)$")
-    older_priority: str = Field(default="last", pattern="^(first|last)$")
+    recent_priority: Literal["first", "last"] = "last"
+    older_priority: Literal["first", "last"] = "last"
     sequential_order: bool = False
     first_last_first: bool = False
-    content_layout: str = Field(default="default", pattern="^(default|original|subfolder)$")
+    content_layout: Literal["default", "original", "subfolder"] = "default"
     completed_download_handling: bool = True
 
     @field_validator("tags")
@@ -47,11 +48,11 @@ class DownloadClientUpdate(BaseModel):
     tags: list[str] | None = Field(default=None, max_length=100)
     enabled: bool | None = None
     poll_interval_seconds: int | None = Field(default=None, ge=5, le=3600)
-    recent_priority: str | None = Field(default=None, pattern="^(first|last)$")
-    older_priority: str | None = Field(default=None, pattern="^(first|last)$")
+    recent_priority: Literal["first", "last"] | None = None
+    older_priority: Literal["first", "last"] | None = None
     sequential_order: bool | None = None
     first_last_first: bool | None = None
-    content_layout: str | None = Field(default=None, pattern="^(default|original|subfolder)$")
+    content_layout: Literal["default", "original", "subfolder"] | None = None
     completed_download_handling: bool | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
@@ -73,25 +74,25 @@ class DownloadClientResponse(ORMModel):
     category: str | None
     tags: list[str]
     enabled: bool
-    health: str | None
+    health: Literal["unknown", "healthy", "unavailable"] | None
     last_health_checked_at: datetime | None = None
     last_success_at: datetime | None = None
     latency_ms: int | None = None
     last_error: str | None = None
     revision: int
     poll_interval_seconds: int
-    recent_priority: str
-    older_priority: str
+    recent_priority: Literal["first", "last"]
+    older_priority: Literal["first", "last"]
     sequential_order: bool
     first_last_first: bool
-    content_layout: str
+    content_layout: Literal["default", "original", "subfolder"]
     completed_download_handling: bool
     created_at: datetime
     updated_at: datetime
 
 
 class DownloadClientTestResponse(BaseModel):
-    status: str
+    status: Literal["unknown", "healthy", "unavailable"]
     version: str | None = None
     latency_ms: int | None = None
     message: str | None = None
@@ -145,8 +146,8 @@ class DownloadResponse(ORMModel):
     movie_id: UUID | None = None
     quality: str | None = None
     edition: str | None = None
-    media_state: str | None = None
-    reconciliation_state: str | None = None
+    media_state: Literal["present", "missing"] | None = None
+    reconciliation_state: Literal["incoming", "attached", "historical", "conflict"] | None = None
     reconciliation_detail: str | None = None
     incoming: bool = False
-    incoming_kind: str | None = None
+    incoming_kind: Literal["replacement", "release"] | None = None

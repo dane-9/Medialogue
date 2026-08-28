@@ -293,7 +293,11 @@ async def get_movie(
                 "quality": release.quality_definition.name if release.quality_definition else None,
                 "edition": release.effective_edition,
                 "resolved_save_path": observation.resolved_save_path if observation else None,
-                "incoming_kind": release.parse_snapshot.get("incoming_kind") or "release",
+                "incoming_kind": (
+                    "replacement"
+                    if str(release.parse_snapshot.get("incoming_kind") or "release").casefold() == "replacement"
+                    else "release"
+                ),
             }
         )
 
@@ -344,6 +348,7 @@ async def get_movie(
         torrent_history.append(
             {
                 "id": str(torrent.id),
+                "torrent_name": torrent.name,
                 "release_id": str(release.id),
                 "release_name": release.raw_release_name,
                 "info_hash": torrent.info_hash,

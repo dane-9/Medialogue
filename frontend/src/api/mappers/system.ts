@@ -1,0 +1,37 @@
+import type { Job } from '../../types'
+import type { components } from '../generated/schema'
+
+type JobDto = components['schemas']['JobResponse']
+
+export function mapJob(item: JobDto): Job {
+  const titles: Record<string, string> = {
+      plex_movie_recheck: 'Plex movie recheck',
+      plex_show_recheck: 'Plex show recheck',
+      plex_library_sync: 'Plex library verification',
+      tmdb_show_metadata_refresh: 'TMDB metadata refresh',
+      bulk_movie_operation: 'Bulk movie operation',
+      qbittorrent_poll: 'qBittorrent poll',
+      qbittorrent_poll_all: 'qBittorrent poll (all clients)',
+      duplicate_resolution: 'Duplicate resolution',
+      torrent_archive_retry: 'Torrent archive retry',
+      torrent_restore: 'Torrent restore',
+      reconciliation: 'Library file check',
+      confirmed_show_reconciliation: 'Show file matching',
+  }
+  const progress = item.progress
+  const summary = item.summary
+  const error = item.error
+  return {
+    id: item.id,
+    jobType: item.job_type,
+    title: titles[item.job_type] ?? item.job_type.replaceAll('_', ' '),
+    detail: typeof progress.detail === 'string' ? progress.detail : typeof summary.path === 'string' ? summary.path : typeof summary.message === 'string' ? summary.message : '',
+    progress: typeof progress.percent === 'number' ? progress.percent : undefined,
+    stage: typeof progress.stage === 'string' ? progress.stage : undefined,
+    state: item.status,
+    updated: new Date(item.updated_at).toLocaleString(),
+    cancellable: item.cancellable,
+    error: error && typeof error.message === 'string' ? error.message : undefined,
+    summary: item.summary,
+  }
+}

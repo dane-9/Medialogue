@@ -144,7 +144,12 @@ async def _download_response(
         reconciliation_detail=reconciliation_detail,
         incoming=bool(association and association.association_type == AssociationType.INCOMING),
         incoming_kind=(
-            str(release.parse_snapshot.get("incoming_kind") or "release")
+            "replacement"
+            if release
+            and association
+            and association.association_type == AssociationType.INCOMING
+            and str(release.parse_snapshot.get("incoming_kind") or "release").casefold() == "replacement"
+            else "release"
             if release and association and association.association_type == AssociationType.INCOMING
             else None
         ),

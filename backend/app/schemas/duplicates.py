@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.domain import AccessMode, ReleaseState
+
 
 class DuplicateResolvePreviewRequest(BaseModel):
     winner_release_id: UUID
@@ -23,7 +25,7 @@ class DuplicateDirectoryPreview(BaseModel):
     directory_id: UUID
     path: str
     storage_root: str
-    access_mode: str
+    access_mode: AccessMode
     exists: bool
     files: list[DuplicateFilePreview] = Field(default_factory=list)
 
@@ -43,7 +45,7 @@ class DuplicateReleasePreview(BaseModel):
     edition: str | None = None
     quality: str | None = None
     release_group: str | None = None
-    state: str
+    state: ReleaseState
     directories: list[DuplicateDirectoryPreview] = Field(default_factory=list)
     torrents: list[DuplicateTorrentPreview] = Field(default_factory=list)
 
@@ -81,7 +83,7 @@ class MovieEditionState(BaseModel):
     edition_override_active: bool
     manual_edition_override: str | None = None
     effective_edition: str | None = None
-    state: str
+    state: ReleaseState
 
 
 class MovieEditionOverrideResponse(BaseModel):

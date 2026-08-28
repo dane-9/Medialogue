@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 
 def _bencode_value_end(payload: bytes, position: int) -> int:
@@ -68,7 +69,14 @@ def _torrent_info_hash(payload: bytes) -> str | None:
 
 def _magnet_info_hash(url: str) -> str | None:
     try:
-        xt = next((value for value in parse_qs(urlparse(url).query).get("xt", []) if value.casefold().startswith("urn:btih:")), None)
+        xt = next(
+            (
+                value
+                for value in parse_qs(urlparse(url).query).get("xt", [])
+                if value.casefold().startswith("urn:btih:")
+            ),
+            None,
+        )
         if not xt:
             return None
         value = xt.rsplit(":", 1)[-1].strip()
@@ -92,6 +100,48 @@ class QBittorrentAuthError(QBittorrentError):
     def __init__(self, message: str, *, reason: str) -> None:
         super().__init__(message)
         self.reason = reason
+
+
+class _TorrentPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    hash: str = Field(min_length=1)
+    name: str | None = None
+    progress: float | None = None
+    state: str | None = None
+    save_path: str | None = None
+    content_path: str | None = None
+    category: str | None = None
+    tags: str | None = None
+    tracker: str | None = None
+    total_size: int | None = None
+    added_on: int | None = None
+    completion_on: int | None = None
+
+
+class _CategoryPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = None
+    savePath: str | None = None
+    save_path: str | None = None
+
+
+class _PreferencesPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    save_path: str | None = None
+
+
+_TORRENT_LIST = TypeAdapter(list[_TorrentPayload])
+_CATEGORY_MAP = TypeAdapter(dict[str, _CategoryPayload])
+
+
+def _validated_json(response: httpx.Response, adapter: TypeAdapter[Any], context: str) -> Any:
+    try:
+        return adapter.validate_python(response.json())
+    except (ValueError, ValidationError) as exc:
+        raise QBittorrentError(f"qBittorrent returned malformed {context} data") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,7 +267,7 @@ class QBittorrentClient:
 
     async def list_torrents(self) -> list[TorrentObservation]:
         response = await self._request("GET", "/api/v2/torrents/info")
-        return [self._observation(item) for item in response.json()]
+        return [self._observation(item) for item in _validated_json(response, _TORRENT_LIST, "torrent list")]
 
     async def list_categories(self) -> list[TorrentCategory]:
         """Return qBittorrent categories with their effective destination paths."""
@@ -226,31 +276,32 @@ class QBittorrentClient:
             self._request("GET", "/api/v2/torrents/categories"),
             self._request("GET", "/api/v2/app/preferences"),
         )
-        categories = categories_response.json()
-        preferences = preferences_response.json()
-        default_save_path = str(preferences.get("save_path") or "")
+        categories = _validated_json(categories_response, _CATEGORY_MAP, "category list")
+        try:
+            preferences = _PreferencesPayload.model_validate(preferences_response.json())
+        except (ValueError, ValidationError) as exc:
+            raise QBittorrentError("qBittorrent returned malformed preferences data") from exc
+        default_save_path = preferences.save_path or ""
         rows: list[TorrentCategory] = []
-        if isinstance(categories, dict):
-            for key, raw in categories.items():
-                item = raw if isinstance(raw, dict) else {}
-                name = str(item.get("name") or key).strip()
-                if not name:
-                    continue
-                save_path = str(item.get("savePath") or item.get("save_path") or "").strip()
-                rows.append(
-                    TorrentCategory(
-                        name=name,
-                        save_path=save_path,
-                        resolved_save_path=_resolved_category_path(default_save_path, save_path),
-                    )
+        for key, item in categories.items():
+            name = (item.name or key).strip()
+            if not name:
+                continue
+            save_path = (item.savePath or item.save_path or "").strip()
+            rows.append(
+                TorrentCategory(
+                    name=name,
+                    save_path=save_path,
+                    resolved_save_path=_resolved_category_path(default_save_path, save_path),
                 )
+            )
         return sorted(rows, key=lambda item: item.name.casefold())
 
     async def get_torrent(self, info_hash: str) -> TorrentObservation | None:
         response = await self._request(
             "GET", "/api/v2/torrents/info", params={"hashes": info_hash.lower()}
         )
-        values = response.json()
+        values = _validated_json(response, _TORRENT_LIST, "torrent details")
         return self._observation(values[0]) if values else None
 
     async def export_torrent(self, info_hash: str) -> bytes:
@@ -398,19 +449,18 @@ class QBittorrentClient:
         return response
 
     @staticmethod
-    def _observation(item: dict[str, Any]) -> TorrentObservation:
-        raw_tags = item.get("tags") or ""
+    def _observation(item: _TorrentPayload) -> TorrentObservation:
         return TorrentObservation(
-            info_hash=str(item["hash"]).lower(),
-            name=str(item.get("name") or ""),
-            progress=float(item.get("progress") or 0),
-            state=str(item.get("state") or "unknown"),
-            save_path=str(item.get("save_path") or ""),
-            content_path=item.get("content_path"),
-            category=str(item.get("category") or ""),
-            tags=tuple(tag.strip() for tag in raw_tags.split(",") if tag.strip()),
-            tracker=item.get("tracker") or None,
-            total_size=item.get("total_size"),
-            added_at=item.get("added_on"),
-            completed_at=item.get("completion_on"),
+            info_hash=item.hash.lower(),
+            name=item.name or "",
+            progress=item.progress or 0,
+            state=item.state or "unknown",
+            save_path=item.save_path or "",
+            content_path=item.content_path,
+            category=item.category or "",
+            tags=tuple(tag.strip() for tag in (item.tags or "").split(",") if tag.strip()),
+            tracker=item.tracker or None,
+            total_size=item.total_size,
+            added_at=item.added_on,
+            completed_at=item.completion_on,
         )

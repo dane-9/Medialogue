@@ -4,13 +4,15 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.models.domain import JobStatus, Severity
+
 from .common import ORMModel
 
 
 class JobResponse(ORMModel):
     id: UUID
     job_type: str
-    status: str
+    status: JobStatus
     progress: dict[str, Any]
     summary: dict[str, Any]
     error: dict[str, Any] | None
@@ -29,7 +31,7 @@ class JobAcceptedResponse(BaseModel):
 class EventResponse(ORMModel):
     id: UUID
     event_type: str
-    severity: str
+    severity: Severity
     entity_type: str
     entity_id: UUID | None
     message: str

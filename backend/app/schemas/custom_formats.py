@@ -151,11 +151,27 @@ class CustomFormatTestAllRequest(BaseModel):
     quality_profile_id: UUID | None = None
 
 
+class CustomFormatConditionEvaluationResponse(BaseModel):
+    condition_id: str
+    condition_type: CustomFormatConditionType
+    name: str | None = None
+    matched: bool
+    effective_result: bool
+    required: bool
+    negated: bool
+    evidence: Any = None
+    expected: Any = None
+    reason: str | None = None
+    group: str | None = None
+    regex_match: str | None = None
+    score_offset: int = 0
+
+
 class CustomFormatEvaluationResponse(BaseModel):
     custom_format_id: str
     custom_format_name: str
     matched: bool
-    conditions: list[dict[str, Any]]
+    conditions: list[CustomFormatConditionEvaluationResponse]
     group_results: dict[str, bool]
     score_offset: int = 0
     profile_score: int | None = None

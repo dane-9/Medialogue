@@ -3,6 +3,7 @@ from uuid import UUID
 
 from typing import Literal
 
+from app.models.domain import DiscoveryReviewState, MediaRole, MediaType
 from pydantic import BaseModel, Field
 
 
@@ -19,17 +20,17 @@ class MediaDiscoveryFile(BaseModel):
     """One file inside a discovered folder."""
 
     relative_path: str
-    role: str
+    role: MediaRole
 
 
 class MediaDiscoveryResponse(BaseModel):
     id: UUID
     directory_id: UUID
-    media_type: str
+    media_type: MediaType
     path: str
     root_name: str
     exists: bool
-    review_state: str
+    review_state: DiscoveryReviewState
     parsed_title: str | None = None
     parsed_year: int | None = None
     confidence: float | None = None

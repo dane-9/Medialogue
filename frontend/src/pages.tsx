@@ -25,7 +25,8 @@ import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
+import { parseJobStatusLiveEvent } from './validation/liveEvents'
 
 function tmdbPosterUrl(reference?: string) {
   if (!reference) return undefined
@@ -71,10 +72,8 @@ function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollInterval
     libraryInvalidationEvents.forEach((name) => stream.addEventListener(name, invalidate))
     const scanJobChanged = (event: MessageEvent<string>) => {
       if (!watchScanJobs) return
-      try {
-        const payload = JSON.parse(event.data) as { data?: { job_type?: unknown } }
-        if (payload.data?.job_type === 'storage_root_scan' || payload.data?.job_type === 'reconciliation') invalidate()
-      } catch {}
+      const payload = parseJobStatusLiveEvent(event.data)
+      if (payload && (payload.data.job_type === 'storage_root_scan' || payload.data.job_type === 'reconciliation')) invalidate()
     }
     if (watchScanJobs) stream.addEventListener('job.status', scanJobChanged)
     const poll = window.setInterval(run, pollIntervalMs)
@@ -281,11 +280,10 @@ function formatEvidenceDate(value?: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
-function releaseStateTone(state: string) {
-  const normalized = state.toLowerCase()
-  if (normalized.includes('current') || normalized.includes('present')) return 'green'
-  if (normalized.includes('missing') || normalized.includes('incoming') || normalized.includes('degraded')) return 'amber'
-  if (normalized.includes('duplicate') || normalized.includes('conflict')) return 'red'
+function releaseStateTone(state: ReleaseState) {
+  if (state === 'current') return 'green'
+  if (state === 'missing' || state === 'replaced' || state === 'removed') return 'amber'
+  if (state === 'duplicate' || state === 'conflict') return 'red'
   return 'neutral'
 }
 
@@ -338,8 +336,8 @@ function TorrentHistoryPanel({ items }: { items?: TorrentArchiveItem[] }) {
 function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
   const evidence = [...(movie.problems ?? [])]
   const aggregate = movie.reconciliation
-  if (aggregate?.qbitMediaDisagreement && !evidence.some((item) => item.code === 'QBIT_MEDIA_DISAGREEMENT')) evidence.push({ code: 'QBIT_MEDIA_DISAGREEMENT', title: 'qBittorrent / media disagreement', detail: aggregate.qbitMediaDetail ?? 'qBittorrent reports a completed item but the expected media path is not present.', severity: 'high', source: 'qBittorrent + filesystem' })
-  if ((aggregate?.rootOffline || movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable') && !evidence.some((item) => item.code === 'ROOT_OFFLINE')) evidence.push({ code: 'ROOT_OFFLINE', title: 'Media folder offline', detail: `${aggregate?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media items are affected; absence is not treated as Missing while the folder is offline.`, severity: 'high', source: 'Media folder' })
+  if (aggregate?.qbitMediaDisagreement && !evidence.some((item) => item.code === 'QBIT_MEDIA_DISAGREEMENT')) evidence.push({ code: 'QBIT_MEDIA_DISAGREEMENT', title: 'qBittorrent / media disagreement', detail: 'qBittorrent reports a completed item but the expected media path is not present.', severity: 'high', source: 'qBittorrent + filesystem' })
+  if ((aggregate?.rootOffline || movie.rootHealth === 'unavailable') && !evidence.some((item) => item.code === 'ROOT_OFFLINE')) evidence.push({ code: 'ROOT_OFFLINE', title: 'Media folder offline', detail: `${aggregate?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media items are affected; absence is not treated as Missing while the folder is offline.`, severity: 'high', source: 'Media folder' })
   return evidence
 }
 
@@ -424,7 +422,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   const refreshEvidence = async () => {
     setBusy(true); setMessage('Rechecking files…')
     try {
-      const refresh = await api.reconcileMovie(id)
+      const refresh = await api.runReconciliation()
       const jobIds = [...new Set([...(refresh.job_ids ?? []), ...(refresh.active_job_ids ?? [])].map(String))]
       const jobs = jobIds.length ? await api.waitForJobs(jobIds) : []
       await load()
@@ -445,13 +443,13 @@ export function MovieDetailPage({ id }: { id: string }) {
   if (!movie) return <Page title="Loading movie" subtitle="Retrieving current and historical release state."><EmptyState title="Loading…" detail="Loading this movie." /></Page>
   const releases = movie.releasesDetail ?? []
   const evidence = evidenceFromMovie(movie)
-  const currentReleases = releases.filter((release) => ['current', 'present', 'duplicate', 'conflict'].includes(release.state.toLowerCase()))
-  const historyReleases = releases.filter((release) => ['replaced', 'removed', 'missing', 'degraded'].includes(release.state.toLowerCase()))
+  const currentReleases = releases.filter((release) => release.state === 'current' || release.state === 'duplicate' || release.state === 'conflict')
+  const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
   const currentSummary = <div className="release-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
-    {(movie.rootHealth === 'offline' || movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
+    {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
     <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Media folder" value={movie.storageRoot ?? 'Unknown folder'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
   </Page>
 }
@@ -2091,13 +2089,12 @@ function StorageSettings() {
     <div className="root-list">
       {roots.map((root, index) => {
         const scanned = Boolean(root.last_scan_at)
-        const health = (root.last_health ?? 'unchecked').toLowerCase()
-        const offline = scanned && (health === 'offline' || health === 'unavailable')
+        const health = root.last_health ?? 'unknown'
+        const offline = scanned && health === 'unavailable'
         const state = root.scanning ? { tone: 'blue' as const, text: 'Scanning…' }
           : !root.enabled ? { tone: 'neutral' as const, text: 'Disabled' }
           : offline ? { tone: 'red' as const, text: 'Path not reachable' }
           : !scanned ? { tone: 'amber' as const, text: 'Never scanned' }
-          : health === 'degraded' ? { tone: 'amber' as const, text: 'Some files missing' }
           : { tone: 'green' as const, text: `Scanned ${formatAge(root.last_scan_at)}` }
         return <button type="button" className={`root-row ${root.enabled ? '' : 'root-row-disabled'} ${dragIndex === index ? 'root-row-dragging' : ''}`} key={root.id} onClick={() => editRoot(root)}
           draggable
@@ -2362,7 +2359,7 @@ function PlexSettings() {
     finally { setWorking(false) }
   }
 
-  const healthTone: StatusTone = configuration?.health === 'healthy' ? 'green' : configuration?.health === 'unavailable' ? 'red' : configuration?.health === 'degraded' ? 'amber' : 'neutral'
+  const healthTone: StatusTone = configuration?.health === 'healthy' ? 'green' : configuration?.health === 'unavailable' ? 'red' : 'neutral'
   const live = configuration?.configured && configuration.enabled
   return <>
     <SectionHead title="Plex"
@@ -2504,9 +2501,12 @@ function QBittorrentSettings() {
 
   const save = async () => {
     if (!draft.name.trim() || !draft.url.trim()) { setError('Name and URL are required.'); return }
+    if (!selectedId && !draft.password) { setError('Password is required for a new qBittorrent client.'); return }
     setBusy(true); setError(''); setMessage('Saving qBittorrent client…')
     try {
-      const value = selectedId ? await api.updateDownloadClient(selectedId, { ...payload(), expected_revision: clients.find((item) => item.id === selectedId)?.revision }) : await api.createDownloadClient(payload())
+      const value = selectedId
+        ? await api.updateDownloadClient(selectedId, { ...payload(), expected_revision: clients.find((item) => item.id === selectedId)?.revision })
+        : await api.createDownloadClient({ ...payload(), password: draft.password })
       setClients((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value])
       setSelectedId(value.id); setDraft(draftFromDownloadClient(value)); setDirty(false); setEditorOpen(false); setMessage(`${value.name} saved. Password is stored server-side and never returned to the browser.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save qBittorrent client.'); setMessage('') }
@@ -2551,7 +2551,7 @@ function QBittorrentSettings() {
     finally { setBusy(false) }
   }
   const selected = clients.find((item) => item.id === selectedId)
-  const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
+  const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' ? 'red' : 'neutral'
   const connectionDetail = selected ? [selected.latency_ms !== undefined ? `${selected.latency_ms} ms` : '', selected.last_success_at ? `last success ${formatEvidenceDate(selected.last_success_at)}` : selected.last_checked_at ? `checked ${formatEvidenceDate(selected.last_checked_at)}` : ''].filter(Boolean).join(' · ') : undefined
   const [togglingId, setTogglingId] = useState('')
 
@@ -2793,7 +2793,7 @@ function IndexerSettings() {
       }
       const value = selectedId
         ? await api.updateIndexer(selectedId, { ...base, ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}), expected_revision: selected?.revision })
-        : await api.createIndexer({ ...base, api_key: draft.apiKey.trim() })
+        : await api.createIndexer({ ...base, color: draft.color || undefined, api_key: draft.apiKey.trim() })
       setIndexers((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value].sort((a, b) => a.name.localeCompare(b.name)))
       setSelectedId(value.id)
       setDraft(draftFromIndexer(value))
@@ -2851,7 +2851,7 @@ function IndexerSettings() {
     finally { setBusy(false) }
   }
 
-  const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' || selected?.health === 'offline' ? 'red' : selected?.health === 'degraded' ? 'amber' : 'neutral'
+  const healthTone: StatusTone = selected?.health === 'healthy' ? 'green' : selected?.health === 'unavailable' ? 'red' : 'neutral'
   const indexerDetail = selected ? `${selected.health}${selected.latencyMs !== undefined ? ` · ${selected.latencyMs} ms` : ''}` : undefined
   const [togglingId, setTogglingId] = useState('')
 

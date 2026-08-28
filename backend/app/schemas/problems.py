@@ -1,10 +1,15 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.domain import ProblemStatus, ProblemWorkflow, Severity
+
 from .common import ORMModel
+
+
+ProblemAction = Literal["restore", "dismiss", "recheck", "confirm_movie_match", "confirm_show_match"]
 
 
 class ProblemResponse(ORMModel):
@@ -13,9 +18,9 @@ class ProblemResponse(ORMModel):
     label: str = ""
     title: str = ""
     description: str = ""
-    status: str
-    workflow: str
-    severity: str
+    status: ProblemStatus
+    workflow: ProblemWorkflow
+    severity: Severity
     entity_type: str
     entity_id: UUID | None
     message: str
@@ -24,11 +29,11 @@ class ProblemResponse(ORMModel):
     resolution: dict[str, Any] | None
     created_at: datetime
     resolved_at: datetime | None
-    available_actions: list[str] = Field(default_factory=list)
+    available_actions: list[ProblemAction] = Field(default_factory=list)
 
 
 class ProblemResolveRequest(BaseModel):
-    action: str = Field(min_length=1, max_length=128)
+    action: ProblemAction
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

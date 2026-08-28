@@ -303,7 +303,7 @@ A global **Event History** page provides filtering by severity, entity type, eve
 
 SSE is an update/invalidation channel, not the sole source of truth. If the browser disconnects or refreshes, current Jobs, Problems, health, and durable Events are reloaded from SQLite through the REST API.
 
-## Hardening and automated regression coverage
+## Hardening and manual regression coverage
 
 Part 19 adds release-readiness hardening around the existing state engine instead of changing Medialogue's leave-in-place behavior.
 
@@ -317,28 +317,32 @@ API documentation is available to an authenticated administrator at:
 
 These endpoints are intentionally not public. API responses also receive conservative browser security headers, and API responses are marked `no-store` where appropriate.
 
+
+The FastAPI schema is also the frontend transport contract. `openapi/openapi.json` is a checked-in snapshot generated directly from `app.openapi()`. The frontend generation pipeline uses pinned `openapi-typescript` output from that snapshot, and `openapi/contract-manifest.json` records the expected hashes of both generated contract files. Regenerate the contract after changing a request or response schema:
+
+```text
+python scripts/generate_api_contract.py
+```
+
+The generated TypeScript lives under `frontend/src/api/generated/` and should not be edited by hand. `openapi-fetch` consumes its `paths` contract so every frontend API operation is checked for the HTTP method, path parameters, query parameters, request body, and response shape. The shared transport middleware preserves Medialogue's session-cookie, CSRF, and API-error behavior; there is no parallel handwritten request transport.
+
+The handwritten API layer is organized by subsystem under `frontend/src/api/modules/`, while DTO-to-view-model transformations live under `frontend/src/api/mappers/`. `frontend/src/api/client.ts` is intentionally only a compatibility barrel that combines the subsystem APIs into the existing flat `api` object, so UI callers do not depend on the internal file layout.
+
+Frontend view models may still differ from transport DTOs; small mapping functions are used where the UI intentionally needs different defaults or representation. Runtime validation is deliberately limited to trust boundaries instead of re-validating every normal FastAPI response in the browser. Custom Format JSON imports are validated before submission and are validated again by Pydantic on the backend; structured `job.status` SSE payloads are validated before the UI uses their fields; TMDB and qBittorrent adapters validate external JSON structure before mapping it into Medialogue models.
+
+Run the complete verification suite manually from the repository root before a release or after a substantial refactor:
+
+```text
+./scripts/verify.sh
+```
+
+The command verifies Python compilation, both the OpenAPI snapshot and generated TypeScript contract, the backend pytest suite, frontend Vitest tests, and a strict TypeScript/production Vite build. It fails instead of silently skipping checks when dependencies are missing and prints the install command to fix the environment. Use `./scripts/verify.sh --docker` when you also want Compose validation and a production container build. Set `PYTHON=/path/to/python` if the backend environment uses a non-default interpreter. `scripts/release-check.sh` delegates to the same verification command so there is only one local quality-gate definition.
+
 Authentication maintenance is stricter as well: expired sessions are pruned during login, and changing the administrator password revokes other active sessions while keeping the session that performed the password change alive. CSRF tokens remain bound to the session that issued them.
 
 Destructive duplicate-resolution confirmations are HMAC-signed, short-lived, and tied to the exact reviewed targets. Tampered or expired confirmation tokens are rejected before any filesystem or qBittorrent operation occurs, and the existing fresh-inventory check still rejects a preview whose underlying directory contents changed.
 
 The Movies and Shows card/table view preference is persisted locally in the browser. Multi-selection and right-click behavior are implemented through deterministic UI-state helpers so selecting, context-clicking, duplicate comparison, Problem filtering, search warnings, and Custom Format regex-condition behavior can be regression-tested without relying on visual/manual testing alone.
-
-### Continuous-integration quality gates
-
-The repository includes `.github/workflows/ci.yml`. CI performs both fast application regression testing and production-relevant checks:
-
-```text
-Backend
-  Python compile check
-  SQLite-backed regression suite
-  real SQLite Alembic upgrade to head
-  SQLite transaction / uniqueness / backup integration tests
-
-Frontend
-  npm ci
-  Vitest UI-state tests
-  production Vite build
-```
 
 Production and tests both use SQLite through `aiosqlite`. Alembic exercises both the asynchronous production URL and synchronous SQLite URLs used for migration regression checks.
 

@@ -34,6 +34,21 @@ async def test_qbittorrent_observation_and_completion():
     assert values[0].tags == ("managed", "archive")
 
 
+@pytest.mark.asyncio
+async def test_qbittorrent_rejects_malformed_torrent_payload():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, text="Ok.")
+        return httpx.Response(200, json=[{"name": "Missing hash"}])
+
+    client = QBittorrentClient("http://qbit", "user", "pass", transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(QBittorrentError, match="malformed torrent list"):
+            await client.list_torrents()
+    finally:
+        await client.close()
+
+
 @pytest.mark.parametrize("state", ["checkingUP", "checkingDL", "checkingResumeData"])
 def test_qbittorrent_checking_states_are_transient_not_complete(state: str):
     from app.integrations.qbittorrent import TorrentObservation

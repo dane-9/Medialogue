@@ -6,20 +6,22 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.domain import MediaType, TorrentArchiveState
+
 
 class TorrentArchiveSummary(BaseModel):
     id: UUID
     info_hash: str
     torrent_name: str
     total_size: int | None = None
-    archive_state: str
+    archive_state: TorrentArchiveState
     archive_path: str | None = None
     manifest_path: str | None = None
     manifest_schema_version: int | None = None
     first_seen_at: datetime
     last_seen_at: datetime
     completed_at: datetime | None = None
-    media_type: str | None = None
+    media_type: MediaType | None = None
     media_title: str | None = None
     tmdb_id: int | None = None
     tvdb_id: int | None = None

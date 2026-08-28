@@ -1,21 +1,5 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-cd "$ROOT"
-
-python -m compileall -q backend/app backend/tests
-(
-  cd backend
-  pytest -q
-)
-
-if command -v npm >/dev/null 2>&1; then
-  if [ -d frontend/node_modules ]; then
-    (cd frontend && npm test && npm run build)
-  else
-    echo "frontend/node_modules is absent; run 'cd frontend && npm ci' before the frontend release gates." >&2
-  fi
-fi
-
-echo "Release source checks completed."
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+exec "$ROOT/scripts/verify.sh" "$@"

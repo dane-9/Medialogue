@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -96,7 +97,7 @@ class StorageRootScan(BaseModel):
     """
 
     job_id: UUID
-    status: str
+    status: Literal["queued", "running"]
     stage: str | None = None
     current: int = 0
     total: int = 0
@@ -112,7 +113,7 @@ class StorageRootResponse(ORMModel):
     discovery_mode: DiscoveryMode
     enabled: bool
     missing_grace_checks: int
-    last_health: str | None
+    last_health: Literal["available", "unavailable", "unknown"] | None
     last_health_checked_at: datetime | None
     last_scan_at: datetime | None
     affected_media_count: int = 0
@@ -134,9 +135,12 @@ class StorageRootResponse(ORMModel):
         return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
 
 
+RemotePathIntegrationType = Literal['qbittorrent', 'plex', 'prowlarr', 'tmdb', 'tvdb']
+
+
 class RemotePathMappingCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
-    integration_type: str
+    integration_type: RemotePathIntegrationType
     integration_id: UUID | None = None
     remote_prefix: str = Field(min_length=1, max_length=4096)
     local_prefix: str = Field(min_length=1, max_length=4096)
@@ -146,7 +150,7 @@ class RemotePathMappingCreate(BaseModel):
 
 class RemotePathMappingUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
-    integration_type: str | None = None
+    integration_type: RemotePathIntegrationType | None = None
     integration_id: UUID | None = None
     remote_prefix: str | None = Field(default=None, min_length=1, max_length=4096)
     local_prefix: str | None = Field(default=None, min_length=1, max_length=4096)
@@ -157,7 +161,7 @@ class RemotePathMappingUpdate(BaseModel):
 class RemotePathMappingResponse(ORMModel):
     id: UUID
     name: str
-    integration_type: str
+    integration_type: RemotePathIntegrationType
     integration_id: UUID | None
     remote_prefix: str
     local_prefix: str

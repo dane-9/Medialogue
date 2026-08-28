@@ -1,8 +1,22 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+from app.models.domain import IdentityState, MediaRole, PresenceState, ReleaseScope, Severity
+
+ShowCollectionState = Literal["Present", "Missing", "Conflict"]
+ShowPlexState = Literal[
+    "matched",
+    "pending",
+    "not_found",
+    "conflict",
+    "multiple_versions",
+    "unavailable",
+    "unknown",
+]
+StorageRootHealth = Literal["available", "unavailable", "unknown"]
 
 
 class ShowCreate(BaseModel):
@@ -52,7 +66,7 @@ class EpisodeMediaResponse(BaseModel):
     quality: str | None = None
     release_group: str | None = None
     release_name: str | None = None
-    release_scope: str | None = None
+    release_scope: ReleaseScope | None = None
     mapped_episode_numbers: list[int] = Field(default_factory=list)
     manual_mapping: bool = False
 
@@ -78,10 +92,10 @@ class EpisodeResponse(BaseModel):
     tmdb_id: int | None = None
     tvdb_id: int | None = None
     monitored: bool
-    presence_state: str
+    presence_state: PresenceState
     revision: int
     quality: str | None = None
-    plex_state: str = "unknown"
+    plex_state: ShowPlexState = "unknown"
     media: list[EpisodeMediaResponse] = Field(default_factory=list)
 
 
@@ -98,6 +112,31 @@ class SeasonResponse(BaseModel):
     episodes: list[EpisodeResponse] = Field(default_factory=list)
 
 
+class ShowEventResponse(BaseModel):
+    id: UUID
+    type: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class ShowProblemResponse(BaseModel):
+    id: UUID
+    reason: str
+    message: str
+    title: str
+    description: str
+    severity: Severity
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class ShowStorageRootResponse(BaseModel):
+    id: UUID
+    name: str
+    path: str
+    health: StorageRootHealth | None = None
+
+
 class ShowSummaryResponse(BaseModel):
     id: UUID
     resource_id: str
@@ -107,9 +146,9 @@ class ShowSummaryResponse(BaseModel):
     title: str
     year: int | None
     monitored: bool
-    identity_state: str
-    state: str
-    plex_state: str
+    identity_state: IdentityState
+    state: ShowCollectionState
+    plex_state: ShowPlexState
     season_count: int
     episode_count: int
     episodes_present: int
@@ -123,7 +162,7 @@ class ShowSummaryResponse(BaseModel):
 class ShowDetailResponse(ShowSummaryResponse):
     overview: str | None = None
     seasons: list[SeasonResponse] = Field(default_factory=list)
-    recent_events: list[dict[str, Any]] = Field(default_factory=list)
-    problems: list[dict[str, Any]] = Field(default_factory=list)
-    storage_roots: list[dict[str, Any]] = Field(default_factory=list)
+    recent_events: list[ShowEventResponse] = Field(default_factory=list)
+    problems: list[ShowProblemResponse] = Field(default_factory=list)
+    storage_roots: list[ShowStorageRootResponse] = Field(default_factory=list)
     last_observed_at: datetime | None = None

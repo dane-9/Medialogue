@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -21,7 +22,7 @@ class RecoveryCapabilitiesResponse(BaseModel):
 
 class RecoveryExportAcceptedResponse(BaseModel):
     job_id: UUID
-    status: str = "queued"
+    status: Literal["queued"] = "queued"
     warning: str = (
         "Recovery Bundles contain a complete database backup and sensitive integration credentials. "
         "Store the downloaded ZIP securely."

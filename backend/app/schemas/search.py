@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+from app.models.domain import JobStatus, MediaType
+
+SearchTargetEntityType = Literal["tmdb_movie", "tmdb_show_season", "movie", "episode", "season"]
+SearchIndexerState = Literal["queued", "completed", "failed"]
 
 
 class MovieDownloadSearchRequest(BaseModel):
@@ -35,14 +40,35 @@ class ShowDownloadPreviewResponse(BaseModel):
     seasons: list[ShowDownloadSeasonPreview]
 
 
+class SearchTargetResponse(BaseModel):
+    media_type: MediaType
+    entity_type: SearchTargetEntityType
+    entity_id: UUID | None = None
+    profile_entity_id: UUID | None = None
+    quality_profile_id: UUID | None = None
+    title: str
+    year: int | None = None
+    tmdb_id: int | None = None
+    overview: str | None = None
+    poster_ref: str | None = None
+    season: int | None = None
+    episode: int | None = None
+
+
+class SearchProgressResponse(BaseModel):
+    completed_indexers: int = 0
+    total_indexers: int = 0
+    percent: float = 0
+
+
 class SearchResultResponse(BaseModel):
     id: UUID
     job_id: UUID
     indexer_id: UUID | None
     indexer_name: str
     indexer_color: str | None = None
-    media_type: str
-    target_entity_type: str
+    media_type: MediaType
+    target_entity_type: SearchTargetEntityType
     title: str
     size: int | None
     seeders: int | None
@@ -70,7 +96,7 @@ class SearchResultResponse(BaseModel):
 class SearchIndexerStatus(BaseModel):
     id: UUID
     name: str
-    status: str
+    status: SearchIndexerState
     results: int = 0
     elapsed_ms: int | None = None
     error: str | None = None
@@ -78,9 +104,9 @@ class SearchIndexerStatus(BaseModel):
 
 class SearchJobResponse(BaseModel):
     id: UUID
-    status: str
-    target: dict[str, Any]
-    progress: dict[str, Any]
+    status: JobStatus
+    target: SearchTargetResponse
+    progress: SearchProgressResponse
     indexers: list[SearchIndexerStatus]
     results: list[SearchResultResponse]
     result_total: int
@@ -101,7 +127,7 @@ class SearchResultDownloadResponse(BaseModel):
     search_result_id: UUID
     download_client_id: UUID
     client_name: str
-    status: str
+    status: Literal["submitted", "already_submitted"]
     selected_at: datetime
     movie_id: UUID | None = None
     show_id: UUID | None = None

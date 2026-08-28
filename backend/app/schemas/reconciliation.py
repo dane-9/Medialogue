@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -9,7 +9,7 @@ class ReconciliationRootStatus(BaseModel):
     id: UUID
     name: str
     path: str
-    health: str | None
+    health: Literal["available", "unavailable", "unknown"] | None
     affected_count: int
 
 
@@ -41,5 +41,5 @@ class ManualAttachRequest(BaseModel):
 
 class ReconciliationActionResponse(BaseModel):
     movie_id: UUID
-    status: str
+    status: Literal["attached"]
     details: dict[str, Any] = Field(default_factory=dict)

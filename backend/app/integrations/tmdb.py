@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import httpx
+from pydantic import TypeAdapter, ValidationError
 
 
 class TMDBError(RuntimeError):
@@ -142,9 +143,9 @@ class TMDBClient:
         params: dict[str, object] = {"query": title, "include_adult": "false"}
         if year is not None:
             params["year"] = year
-        payload = (await self._get("/search/movie", params=params)).json()
+        payload = _json_object(await self._get("/search/movie", params=params), "movie search")
         matches: list[TMDBMovieMatch] = []
-        for item in payload.get("results", []):
+        for item in _object_list(payload, "results", "movie search results"):
             tmdb_id = item.get("id")
             candidate_title = item.get("title")
             if not isinstance(tmdb_id, int) or not isinstance(candidate_title, str):
@@ -157,7 +158,11 @@ class TMDBClient:
                     year=_year(item.get("release_date")),
                     overview=item.get("overview") if isinstance(item.get("overview"), str) else None,
                     poster_path=item.get("poster_path") if isinstance(item.get("poster_path"), str) else None,
-                    original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
+                    original_language=(
+                        item.get("original_language")
+                        if isinstance(item.get("original_language"), str)
+                        else None
+                    ),
                     popularity=_number(item.get("popularity")),
                     vote_count=_int(item.get("vote_count")),
                     vote_average=_number(item.get("vote_average")),
@@ -166,33 +171,37 @@ class TMDBClient:
         return matches
 
     async def get_movie(self, tmdb_id: int) -> TMDBMovieMatch:
-        payload = (await self._get(f"/movie/{tmdb_id}")).json()
+        payload = _json_object(await self._get(f"/movie/{tmdb_id}"), "movie details")
         title = payload.get("title")
         if not isinstance(title, str):
             raise TMDBError("TMDB movie response did not include a title")
         return TMDBMovieMatch(
-            tmdb_id=int(payload.get("id") or tmdb_id),
+            tmdb_id=_int(payload.get("id")) or tmdb_id,
             title=title,
             original_title=payload.get("original_title") if isinstance(payload.get("original_title"), str) else None,
             year=_year(payload.get("release_date")),
             overview=payload.get("overview") if isinstance(payload.get("overview"), str) else None,
             poster_path=payload.get("poster_path") if isinstance(payload.get("poster_path"), str) else None,
-            original_language=payload.get("original_language") if isinstance(payload.get("original_language"), str) else None,
+            original_language=(
+                payload.get("original_language")
+                if isinstance(payload.get("original_language"), str)
+                else None
+            ),
         )
 
     async def get_movie_credits(self, tmdb_id: int) -> tuple[str | None, tuple[str, ...]]:
-        payload = (await self._get(f"/movie/{tmdb_id}/credits")).json()
+        payload = _json_object(await self._get(f"/movie/{tmdb_id}/credits"), "movie credits")
         director = next(
             (
                 item.get("name")
-                for item in payload.get("crew", [])
+                for item in _object_list(payload, "crew", "movie crew")
                 if isinstance(item, dict) and item.get("job") == "Director" and isinstance(item.get("name"), str)
             ),
             None,
         )
         cast = tuple(
             item["name"]
-            for item in payload.get("cast", [])[:3]
+            for item in _object_list(payload, "cast", "movie cast")[:3]
             if isinstance(item, dict) and isinstance(item.get("name"), str)
         )
         return director, cast
@@ -206,11 +215,12 @@ class TMDBClient:
         display title.
         """
 
-        payload = (await self._get(f"/movie/{tmdb_id}/alternative_titles")).json()
+        payload = _json_object(
+            await self._get(f"/movie/{tmdb_id}/alternative_titles"),
+            "movie alternative titles",
+        )
         titles: list[str] = []
-        for item in payload.get("titles", []):
-            if not isinstance(item, dict):
-                continue
+        for item in _object_list(payload, "titles", "movie alternative titles"):
             title = item.get("title")
             if isinstance(title, str) and title.strip() and title not in titles:
                 titles.append(title.strip())
@@ -220,9 +230,9 @@ class TMDBClient:
         params: dict[str, object] = {"query": title, "include_adult": "false"}
         if year is not None:
             params["first_air_date_year"] = year
-        payload = (await self._get("/search/tv", params=params)).json()
+        payload = _json_object(await self._get("/search/tv", params=params), "show search")
         matches: list[TMDBShowMatch] = []
-        for item in payload.get("results", []):
+        for item in _object_list(payload, "results", "show search results"):
             tmdb_id = item.get("id")
             candidate_title = item.get("name")
             if not isinstance(tmdb_id, int) or not isinstance(candidate_title, str):
@@ -235,7 +245,11 @@ class TMDBClient:
                     year=_year(item.get("first_air_date")),
                     overview=item.get("overview") if isinstance(item.get("overview"), str) else None,
                     poster_path=item.get("poster_path") if isinstance(item.get("poster_path"), str) else None,
-                    original_language=item.get("original_language") if isinstance(item.get("original_language"), str) else None,
+                    original_language=(
+                        item.get("original_language")
+                        if isinstance(item.get("original_language"), str)
+                        else None
+                    ),
                     popularity=_number(item.get("popularity")),
                     vote_count=_int(item.get("vote_count")),
                     vote_average=_number(item.get("vote_average")),
@@ -244,26 +258,29 @@ class TMDBClient:
         return matches
 
     async def get_show(self, tmdb_id: int) -> TMDBShowDetails:
-        payload = (await self._get(f"/tv/{tmdb_id}", params={"append_to_response": "external_ids"})).json()
+        payload = _json_object(
+            await self._get(f"/tv/{tmdb_id}", params={"append_to_response": "external_ids"}),
+            "show details",
+        )
         title = payload.get("name")
         if not isinstance(title, str):
             raise TMDBError("TMDB show response did not include a title")
         external = payload.get("external_ids") if isinstance(payload.get("external_ids"), dict) else {}
         seasons: list[TMDBSeasonMetadata] = []
-        for item in payload.get("seasons", []):
-            if not isinstance(item, dict) or not isinstance(item.get("season_number"), int):
+        for item in _object_list(payload, "seasons", "show seasons"):
+            if not isinstance(item.get("season_number"), int):
                 continue
             seasons.append(
                 TMDBSeasonMetadata(
                     season_number=int(item["season_number"]),
                     title=item.get("name") if isinstance(item.get("name"), str) else None,
-                    episode_count=int(item.get("episode_count") or 0),
+                    episode_count=_int(item.get("episode_count")) or 0,
                     air_date=_date(item.get("air_date")),
                     poster_path=item.get("poster_path") if isinstance(item.get("poster_path"), str) else None,
                 )
             )
         return TMDBShowDetails(
-            tmdb_id=int(payload.get("id") or tmdb_id),
+            tmdb_id=_int(payload.get("id")) or tmdb_id,
             title=title,
             original_title=payload.get("original_name") if isinstance(payload.get("original_name"), str) else None,
             year=_year(payload.get("first_air_date")),
@@ -271,37 +288,44 @@ class TMDBClient:
             poster_path=payload.get("poster_path") if isinstance(payload.get("poster_path"), str) else None,
             tvdb_id=int(external["tvdb_id"]) if isinstance(external.get("tvdb_id"), int) else None,
             seasons=tuple(sorted(seasons, key=lambda item: item.season_number)),
-            original_language=payload.get("original_language") if isinstance(payload.get("original_language"), str) else None,
+            original_language=(
+                payload.get("original_language")
+                if isinstance(payload.get("original_language"), str)
+                else None
+            ),
         )
 
     async def get_show_credits(self, tmdb_id: int) -> tuple[str | None, tuple[str, ...]]:
-        payload = (await self._get(f"/tv/{tmdb_id}", params={"append_to_response": "credits"})).json()
+        payload = _json_object(
+            await self._get(f"/tv/{tmdb_id}", params={"append_to_response": "credits"}),
+            "show credits",
+        )
         creator = next(
             (
                 item.get("name")
-                for item in payload.get("created_by", [])
+                for item in _object_list(payload, "created_by", "show creators")
                 if isinstance(item, dict) and isinstance(item.get("name"), str)
             ),
             None,
         )
-        credits = payload.get("credits") if isinstance(payload.get("credits"), dict) else {}
+        credits = _optional_object(payload.get("credits"), "show credits")
         cast = tuple(
             item["name"]
-            for item in credits.get("cast", [])[:3]
-            if isinstance(item, dict) and isinstance(item.get("name"), str)
+            for item in _object_list(credits, "cast", "show cast")[:3]
+            if isinstance(item.get("name"), str)
         )
         return creator, cast
 
     async def get_season(self, tmdb_id: int, season_number: int) -> list[TMDBEpisodeMetadata]:
-        payload = (await self._get(f"/tv/{tmdb_id}/season/{season_number}")).json()
+        payload = _json_object(await self._get(f"/tv/{tmdb_id}/season/{season_number}"), "season details")
         episodes: list[TMDBEpisodeMetadata] = []
-        for item in payload.get("episodes", []):
-            if not isinstance(item, dict) or not isinstance(item.get("episode_number"), int):
+        for item in _object_list(payload, "episodes", "season episodes"):
+            if not isinstance(item.get("episode_number"), int):
                 continue
             episodes.append(
                 TMDBEpisodeMetadata(
                     tmdb_id=int(item["id"]) if isinstance(item.get("id"), int) else None,
-                    season_number=int(item.get("season_number") or season_number),
+                    season_number=_int(item.get("season_number")) or season_number,
                     episode_number=int(item["episode_number"]),
                     title=item.get("name") if isinstance(item.get("name"), str) else None,
                     air_date=_date(item.get("air_date")),
@@ -311,33 +335,37 @@ class TMDBClient:
         return sorted(episodes, key=lambda item: item.episode_number)
 
     async def list_episode_groups(self, tmdb_id: int) -> list[TMDBEpisodeGroupSummary]:
-        payload = (await self._get(f"/tv/{tmdb_id}/episode_groups")).json()
+        payload = _json_object(await self._get(f"/tv/{tmdb_id}/episode_groups"), "episode groups")
         groups: list[TMDBEpisodeGroupSummary] = []
-        for item in payload.get("results", []):
-            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+        for item in _object_list(payload, "results", "episode group summaries"):
+            if not isinstance(item.get("id"), str):
                 continue
             network = item.get("network")
             groups.append(
                 TMDBEpisodeGroupSummary(
                     id=item["id"],
                     name=item.get("name") if isinstance(item.get("name"), str) else "Unnamed group",
-                    type=int(item.get("type") or 0),
-                    group_count=int(item.get("group_count") or 0),
-                    episode_count=int(item.get("episode_count") or 0),
+                    type=_int(item.get("type")) or 0,
+                    group_count=_int(item.get("group_count")) or 0,
+                    episode_count=_int(item.get("episode_count")) or 0,
                     description=item.get("description") if isinstance(item.get("description"), str) else None,
-                    network=network.get("name") if isinstance(network, dict) and isinstance(network.get("name"), str) else None,
+                    network=(
+                        network.get("name")
+                        if isinstance(network, dict) and isinstance(network.get("name"), str)
+                        else None
+                    ),
                 )
             )
         return groups
 
     async def get_episode_group(self, group_id: str) -> TMDBEpisodeGroup:
-        payload = (await self._get(f"/tv/episode_group/{group_id}")).json()
+        payload = _json_object(await self._get(f"/tv/episode_group/{group_id}"), "episode group")
         seasons: list[tuple[int, str | None, tuple[TMDBEpisodeMetadata, ...]]] = []
-        raw_groups = [item for item in payload.get("groups", []) if isinstance(item, dict)]
+        raw_groups = _object_list(payload, "groups", "episode group seasons")
         raw_groups.sort(key=lambda item: item.get("order") if isinstance(item.get("order"), int) else 0)
         for index, group in enumerate(raw_groups):
             episodes: list[TMDBEpisodeMetadata] = []
-            raw_episodes = [item for item in group.get("episodes", []) if isinstance(item, dict)]
+            raw_episodes = _object_list(group, "episodes", "episode group episodes")
             raw_episodes.sort(key=lambda item: item.get("order") if isinstance(item.get("order"), int) else 0)
             season_number = group.get("order") if isinstance(group.get("order"), int) else index + 1
             for position, item in enumerate(raw_episodes, start=1):
@@ -359,7 +387,7 @@ class TMDBClient:
         return TMDBEpisodeGroup(
             id=str(payload.get("id") or group_id),
             name=payload.get("name") if isinstance(payload.get("name"), str) else "Unnamed group",
-            type=int(payload.get("type") or 0),
+            type=_int(payload.get("type")) or 0,
             seasons=tuple(seasons),
         )
 
@@ -370,6 +398,33 @@ class TMDBClient:
         except httpx.HTTPError as exc:
             raise TMDBError(f"TMDB request failed: {response.status_code}") from exc
         return response
+
+
+_JSON_OBJECT = TypeAdapter(dict[str, object])
+_JSON_OBJECT_LIST = TypeAdapter(list[dict[str, object]])
+
+
+def _json_object(response: httpx.Response, context: str) -> dict[str, object]:
+    try:
+        return _JSON_OBJECT.validate_python(response.json())
+    except (ValueError, ValidationError) as exc:
+        raise TMDBError(f"TMDB returned malformed {context} data") from exc
+
+
+def _optional_object(value: object, context: str) -> dict[str, object]:
+    if value is None:
+        return {}
+    try:
+        return _JSON_OBJECT.validate_python(value)
+    except ValidationError as exc:
+        raise TMDBError(f"TMDB returned malformed {context} data") from exc
+
+
+def _object_list(payload: dict[str, object], field: str, context: str) -> list[dict[str, object]]:
+    try:
+        return _JSON_OBJECT_LIST.validate_python(payload.get(field, []))
+    except ValidationError as exc:
+        raise TMDBError(f"TMDB returned malformed {context} data") from exc
 
 
 def _number(value: object) -> float | None:

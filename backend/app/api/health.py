@@ -7,6 +7,7 @@ from app.api.dependencies import require_admin
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import StorageRoot, Torrent, TorrentArchiveState
+from app.schemas.health import IntegrationHealthResponse, LivenessResponse, ReadinessResponse
 
 from app.services.integration_state import get_configured_plex, get_configured_tmdb, list_configured_download_clients, list_configured_indexers
 from app.services.torrent_archive import archive_mount_health
@@ -14,28 +15,28 @@ from app.services.torrent_archive import archive_mount_health
 router = APIRouter(tags=["health"])
 
 
-@router.get("/healthz")
-async def liveness() -> dict[str, str]:
-    return {"status": "ok"}
+@router.get("/healthz", response_model=LivenessResponse)
+async def liveness() -> LivenessResponse:
+    return LivenessResponse(status="ok")
 
 
-@router.get("/api/v1/health")
-async def api_health() -> dict[str, str]:
-    return {"status": "ok"}
+@router.get("/api/v1/health", response_model=LivenessResponse)
+async def api_health() -> LivenessResponse:
+    return LivenessResponse(status="ok")
 
 
-@router.get("/readyz")
-async def readiness(db: AsyncSession = Depends(get_db)) -> dict[str, object]:
+@router.get("/readyz", response_model=ReadinessResponse)
+async def readiness(db: AsyncSession = Depends(get_db)) -> ReadinessResponse:
     try:
         await db.execute(text("SELECT 1"))
     except Exception:
-        return {"status": "not_ready", "database": "unavailable"}
-    return {"status": "ok", "database": "available"}
+        return ReadinessResponse(status="not_ready", database="unavailable")
+    return ReadinessResponse(status="ok", database="available")
 
 
-@router.get("/integrations/health")
-@router.get("/api/v1/integrations/health")
-async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict[str, object]:
+@router.get("/integrations/health", response_model=IntegrationHealthResponse, include_in_schema=False)
+@router.get("/api/v1/integrations/health", response_model=IntegrationHealthResponse)
+async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> IntegrationHealthResponse:
     roots = (await db.scalars(select(StorageRoot))).all()
     plex = await get_configured_plex(db)
     tmdb = await get_configured_tmdb(db)
@@ -73,7 +74,7 @@ async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSes
         indexer_status = "unavailable"
     else:
         indexer_status = "unknown"
-    return {
+    return IntegrationHealthResponse.model_validate({
         "database": {"status": "healthy"},
         "plex": {
             "configured": plex is not None,
@@ -139,4 +140,4 @@ async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSes
             {"id": str(root.id), "name": root.name, "status": root.last_health or "unknown", "checked_at": root.last_health_checked_at}
             for root in roots
         ],
-    }
+    })

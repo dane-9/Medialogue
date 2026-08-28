@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import AnyHttpUrl, BaseModel, Field
@@ -66,7 +67,7 @@ class IndexerResponse(ORMModel):
     color: str | None
     multi_languages: list[str]
     download_client_ids: list[UUID]
-    health: str
+    health: Literal["unknown", "healthy", "unavailable"]
     last_checked_at: datetime | None
     last_success_at: datetime | None
     latency_ms: int | None
@@ -83,7 +84,7 @@ class IndexerTestRequest(BaseModel):
 
 
 class IndexerTestResponse(BaseModel):
-    status: str
+    status: Literal["healthy", "unavailable"]
     latency_ms: int | None = None
     title: str | None = None
     message: str | None = None

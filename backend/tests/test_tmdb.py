@@ -45,6 +45,26 @@ def test_tmdb_movie_search_maps_identity_and_metadata() -> None:
     assert matches[0].poster_path == "/poster.jpg"
 
 
+def test_tmdb_rejects_malformed_search_payloads() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/3/search/movie"
+        return httpx.Response(200, json={"results": "not-a-list"})
+
+    async def run() -> None:
+        client = TMDBClient("test-key", transport=httpx.MockTransport(handler))
+        try:
+            try:
+                await client.search_movie("Inception")
+            except TMDBError as exc:
+                assert "malformed movie search results" in str(exc)
+                return
+        finally:
+            await client.close()
+        raise AssertionError("Malformed TMDB payload unexpectedly succeeded")
+
+    asyncio.run(run())
+
+
 def test_tmdb_health_surfaces_http_failure() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"status_message": "Invalid API key"})
