@@ -40,6 +40,7 @@ export default function QualityProfilesPage() {
   const [scores, setScores] = useState<Record<string, number>>({})
   const [savedScores, setSavedScores] = useState<Record<string, number>>({})
   const [editorView, setEditorView] = useState<'details' | 'qualities' | 'formats'>('details')
+  const [profileFilter, setProfileFilter] = useState('')
   const [formatFilter, setFormatFilter] = useState('')
   const [qualityFilter, setQualityFilter] = useState('')
   const [scoreView, setScoreView] = useState<'all' | 'selected'>('all')
@@ -272,22 +273,42 @@ export default function QualityProfilesPage() {
     })).filter((group) => group.qualities.length)
   }, [orderedQualities, qualityIds])
 
+  // Same shape as the Custom Formats filter: the card shows the profile name,
+  // its minimum quality and its scored formats, so all three are searchable.
+  const visibleProfiles = useMemo(() => {
+    const term = profileFilter.trim().toLowerCase()
+    if (!term) return profiles
+    return profiles.filter((profile) =>
+      profile.name.toLowerCase().includes(term)
+      || (profile.minimumQuality?.name ?? '').toLowerCase().includes(term)
+      || profile.customFormatScores.some((entry) => (formatById.get(entry.customFormatId)?.name ?? '').toLowerCase().includes(term)))
+  }, [profiles, profileFilter, formatById])
+
   const selectVisibleQualities = () => {
     const selected = new Set([...qualityIds, ...visibleQualities.map((quality) => quality.id)])
     setQualityIds(qualityOrderIds.filter((id) => selected.has(id)))
   }
 
   return <main className="page">
-    <PageTopbar title="Quality Profiles" subtitle="Set a warning floor and base scores for matching Custom Formats. Rule offsets are added automatically." action={<Button variant="primary" icon="plus" onClick={beginNew}>New profile</Button>} />
+    <PageTopbar title="Quality Profiles" subtitle="Set a warning floor and base scores for matching Custom Formats. Rule offsets are added automatically." />
 
     {message && <div className="settings-note"><Icon name="activity" size={15} /><span>{message}</span></div>}
+
+    <div className="toolbar">
+      <div className="search-field"><Icon name="search" size={16} /><Input value={profileFilter} onChange={(event) => setProfileFilter(event.target.value)} placeholder="Filter profiles, qualities and formats…" /></div>
+      <Button variant="primary" icon="plus" onClick={beginNew}>New profile</Button>
+      <div className="toolbar-spacer" />
+      <span className="selection-count">{profiles.length} profile{profiles.length === 1 ? '' : 's'}</span>
+    </div>
 
     {loading
       ? null
       : !profiles.length
       ? <EmptyState icon="quality-profile" title="No Quality Profiles yet" detail="Create one when you want minimum-quality warnings or Custom Format scoring on your searches." action={<Button variant="primary" icon="plus" onClick={beginNew}>Create the first one</Button>} />
+      : !visibleProfiles.length
+      ? <EmptyState icon="search" title="No profiles match that filter" detail="Nothing here matches the text you typed. Clear the filter to see every profile." />
       : <div className="cf-card-grid">
-          {profiles.map((profile) => <ProfileCard key={profile.id} profile={profile} formatById={formatById} onOpen={() => openProfile(profile)} onDuplicate={() => void duplicateProfileNow(profile)} />)}
+          {visibleProfiles.map((profile) => <ProfileCard key={profile.id} profile={profile} formatById={formatById} onOpen={() => openProfile(profile)} onDuplicate={() => void duplicateProfileNow(profile)} />)}
         </div>}
 
     {editorOpen && <Modal
