@@ -5,3 +5,5 @@
 Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+openapi/*.json text eol=lf
+frontend/src/api/generated/*.ts text eol=lf

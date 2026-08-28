@@ -23,6 +23,7 @@
   "devDependencies": {
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "openapi-typescript": "7.13.0",
     "typescript": "~5.7.2",
     "vitest": "^2.1.8"
   }

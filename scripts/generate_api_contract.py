@@ -35,8 +35,8 @@ def generate_types() -> None:
     GENERATED_TYPES_PATH.parent.mkdir(parents=True, exist_ok=True)
     run(
         npx,
-        "--yes",
-        f"openapi-typescript@{OPENAPI_TYPESCRIPT_VERSION}",
+        "--no-install",
+        "openapi-typescript",
         str(OPENAPI_PATH),
         "--output",
         str(GENERATED_TYPES_PATH),
@@ -50,7 +50,11 @@ def write_manifest() -> None:
         "openapi_sha256": sha256(OPENAPI_PATH),
         "typescript_sha256": sha256(GENERATED_TYPES_PATH),
     }
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    MANIFEST_PATH.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def check_manifest() -> int:

@@ -43,7 +43,7 @@ def main() -> int:
         return 0
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(rendered, encoding="utf-8")
+    output.write_text(rendered, encoding="utf-8", newline="\n")
     print(output)
     return 0
 
