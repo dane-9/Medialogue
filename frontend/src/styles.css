@@ -2488,9 +2488,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .problems-row:hover { background: rgba(255,255,255,.018); }
 .problems-row.selected { background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); }
 .problems-severity { display: grid; width: 28px; height: 28px; place-items: center; border-radius: var(--r-md); }
-.problems-severity
-.problems-severity
-.problems-severity
+.problems-severity.severity-high { color: #dd8991; border: 1px solid var(--err-line); background: var(--err-soft); }
+.problems-severity.severity-medium { color: #d1a45e; border: 1px solid var(--warn-line); background: var(--warn-soft); }
+.problems-severity.severity-low { color: var(--muted); border: 1px solid var(--line-strong); background: rgba(138,138,144,.08); }
 .problems-row-copy { display: flex; min-width: 0; flex-direction: column; }
 .problems-row-copy > strong, .problems-row-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .problems-row-copy > strong { font-size: var(--t-sm); font-weight: 600; }
@@ -3136,6 +3136,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-transform: uppercase;
 }
 
+.review-row { display: contents; }
+
 .review-folder-cell, .review-match-cell {
   display: flex;
   align-items: center;
@@ -3149,7 +3151,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 
 .review-match-main { display: flex; flex: 1; align-items: center; gap: var(--s2); min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
-.review-match-cell { cursor: pointer; }
+/* Both halves of a row open the same folder, so both look and behave clickable. */
+.review-match-cell, .review-folder-cell { cursor: pointer; }
 
 .review-match-sub { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .review-edition-cell { flex: none; min-width: 0; }
@@ -3162,7 +3165,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   opacity: 0;
   transition: opacity .16s ease, visibility 0s linear .16s;
 }
-.review-match-cell:hover .review-edition-cell.optional,
+.review-row:hover .review-edition-cell.optional,
 .review-match-cell:focus-within .review-edition-cell.optional,
 .review-match-cell:has(.dropdown-trigger.open) .review-edition-cell.optional {
   visibility: visible;
@@ -3187,7 +3190,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   .review-edition-cell .dropdown-trigger,
   .review-edition-cell .dropdown-trigger > svg { transition: none; }
 }
-.review-scroll > :nth-last-child(2), .review-scroll > :last-child { border-radius: 0 0 var(--r-md) var(--r-md); }
+.review-scroll > :last-child > .review-folder-cell,
+.review-scroll > :last-child > .review-match-cell { border-radius: 0 0 var(--r-md) var(--r-md); }
 
 .review-folder-cell > span { display: flex; align-items: center; min-width: 0; }
 
@@ -3196,7 +3200,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .review-folder-cell > .review-state { margin-left: auto; }
 .review-match-cell { text-align: left; }
 .review-folder-cell.active, .review-match-cell.active { border-color: var(--accent-line); background: var(--accent-soft); }
-.review-match-cell:hover:not(.active) { background: var(--raised); }
+.review-row:hover > .review-folder-cell:not(.active),
+.review-row:hover > .review-match-cell:not(.active) { background: var(--raised); }
 .review-folder-cell.excluded, .review-match-cell.excluded { opacity: .45; }
 
 .review-check { display: grid; width: 16px; height: 16px; flex: none; align-self: center; place-items: center; padding: 0; border: 1px solid var(--line-strong); border-radius: 3px; color: #fff; background: var(--raised); cursor: pointer; }

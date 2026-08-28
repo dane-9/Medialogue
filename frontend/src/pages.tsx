@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { badgeColor } from './lib/badgeColor'
 import { eventLabel, eventStamp } from './lib/eventLabel'
@@ -932,6 +932,14 @@ function problemLabel(problem: Problem): string {
   return problem.label || raw.replace(/_/g, ' ').toLowerCase().replace(/^./, (character) => character.toUpperCase()) || 'Problem'
 }
 
+// The row already carries the reason as a pill. subject falls back to that same
+// label whenever the entity behind a Problem cannot be resolved to a title, so
+// rendering both prints the identical words twice on consecutive lines.
+function problemSubjectLine(problem: Problem): string {
+  const subject = (problem.subject ?? '').trim()
+  return subject.toLowerCase() === problemLabel(problem).toLowerCase() ? '' : subject
+}
+
 function problemCandidateFromEvidence(candidate: Record<string, unknown>): TMDBCandidate | undefined {
   return problemTMDBCandidateLookup(candidate)
 }
@@ -1296,7 +1304,7 @@ export function ProblemsPage() {
     <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><div className="problems-toolbar-rest"><Select value={reasonFilter} onChange={(event) => updateProblemView({ reason: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => updateProblemView({ severity: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></Select><div className="problems-toolbar-actions"><Button variant="ghost" onClick={() => updateProblemView({ problemStatus: queueStatus === 'dismissed' ? null : 'dismissed', problem: null, page: null })}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     <section className={`problems-layout ${selected ? 'show-detail' : ''}`}>
-      <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong><span>{problem.subject}</span><small><b className={`problems-state state-${problem.workflow}`}>{problemLabel(problem)}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
+      <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong>{problemSubjectLine(problem) ? <span>{problemSubjectLine(problem)}</span> : null}<small><b className={`problems-state state-${problem.workflow}`}>{problemLabel(problem)}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
       <article className="problems-detail">{current ? <><header className="problems-detail-head"><button className="icon-button problems-back-button" type="button" onClick={() => setSelected('')} aria-label="Back to Problems"><Icon name="chevron" size={16} style={{ transform: 'rotate(180deg)' }} /></button>
 <div>{queueStatus === 'dismissed' && <div className="eyebrow">SUPPRESSED</div>}<h2>{current.title}</h2></div>
 <div className="problems-detail-actions">
@@ -1478,15 +1486,22 @@ export function ReviewPage() {
             const state = !match ? { tone: 'needs-match', text: 'No results' }
               : item.confidence !== undefined && item.confidence < CONFIDENT ? { tone: 'unsure', text: `${Math.round(item.confidence * 100)}%` }
               : null
-            return <Fragment key={item.id}>
-              <div className={`review-folder-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}>
+            // A display:contents wrapper, so both cells stay direct grid items
+            // while still sharing one hover target across the whole row.
+            return <div className="review-row" key={item.id}>
+              <div
+                className={`review-folder-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
+                onClick={() => setSelectedId(active ? '' : item.id)}
+              >
                 <button
                   type="button"
                   role="checkbox"
                   aria-checked={included && !blocked}
                   aria-label={`Import ${reviewFolderName(item.path)}`}
                   className={`review-check ${included && !blocked ? 'on' : ''}`}
-                  onClick={() => toggle(item.id)}
+                  // Including or leaving out a folder is not the same intent as
+                  // opening it, so the checkbox must not also select the row.
+                  onClick={(event) => { event.stopPropagation(); toggle(item.id) }}
                   disabled={blocked}
                 >{included && !blocked && <Icon name="check" size={11} />}</button>
                 <Tooltip content={item.path}><code>{reviewFolderName(item.path)}</code></Tooltip>
@@ -1523,7 +1538,7 @@ export function ReviewPage() {
                   </span>
                 </button>
               </div>
-            </Fragment>
+            </div>
         })}
       </div>
 
