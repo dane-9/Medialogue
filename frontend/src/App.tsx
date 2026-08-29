@@ -1,6 +1,9 @@
 import { Component, FormEvent, useEffect, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
+import medialogueBanner from './assets/medialogue-banner.png'
+import medialogueLogoAnimated from './assets/medialogue-logo-animated.svg'
+import medialogueLogo from './assets/medialogue-logo.svg'
 import { ConfirmProvider } from './components/Confirm'
 import { ApiError, api } from './api/client'
 import { AppShell } from './components/Shell'
@@ -65,7 +68,7 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
   }
 }
 
-function BootScreen() { return <div className="boot-screen"><div className="brand-mark"><span>✦</span></div><span>Loading Medialogue…</span></div> }
+function BootScreen() { return <div className="boot-screen"><picture className="boot-logo"><source media="(prefers-reduced-motion: reduce)" srcSet={medialogueLogo} /><img src={medialogueLogoAnimated} alt="" /></picture><span>Loading Medialogue…</span></div> }
 function MovieDetailRoute() { const { id = 'inception' } = useParams(); return <MovieDetailPage id={id} /> }
 function ShowDetailRoute() { const { id = '' } = useParams(); return <ShowDetailPage id={id} /> }
 
@@ -84,7 +87,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
       else setError('Unable to reach the server. Wait for the API to become ready and try again.')
     } finally { setLoading(false) }
   }
-  return <div className="login-screen"><div className="login-glow login-glow-one" /><div className="login-glow login-glow-two" /><div className="login-panel"><div className="login-brand"><div className="brand-mark"><span>✦</span></div><div><div className="brand-name">MEDIA<span>LOGUE</span></div><div className="brand-caption">LEAVE-IN-PLACE LIBRARY</div></div></div><div className="login-copy"><div className="eyebrow">ADMIN CONSOLE</div><h1>Welcome back.</h1><p>Manage your library while it stays exactly where you left it.</p></div><form onSubmit={submit} className="login-form"><label><span className="field-label">Username</span><Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label><label><span className="field-label">Password</span><Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" autoFocus /></label>{error && <div className="login-error">{error}</div>}<Button type="submit" variant="primary" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}<span className="button-arrow">→</span></Button></form><div className="login-footer"><span><span className="health-dot green" />Local session security enabled</span><span>v0.1.0</span></div></div><div className="login-rail"><div className="rail-quote">“The filesystem is the source of truth.”</div><div className="rail-lines"><span /><span /><span /></div><div className="rail-caption"><span className="health-dot green" />All media remains in place</div></div></div>
+  return <div className="login-screen"><div className="login-glow login-glow-one" /><div className="login-glow login-glow-two" /><div className="login-panel"><div className="login-brand"><img className="login-brand-banner" src={medialogueBanner} alt="Medialogue" /></div><div className="login-copy"><div className="eyebrow">ADMIN CONSOLE</div><h1>Welcome back.</h1><p>Manage your library while it stays exactly where you left it.</p></div><form onSubmit={submit} className="login-form"><label><span className="field-label">Username</span><Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label><label><span className="field-label">Password</span><Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" autoFocus /></label>{error && <div className="login-error">{error}</div>}<Button type="submit" variant="primary" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}<span className="button-arrow">→</span></Button></form><div className="login-footer"><span><span className="health-dot green" />Local session security enabled</span><span>v0.1.0</span></div></div><div className="login-rail"><div className="rail-quote">“The filesystem is the source of truth.”</div><div className="rail-lines"><span /><span /><span /></div><div className="rail-caption"><span className="health-dot green" />All media remains in place</div></div></div>
 }
 
 export default App

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import medialogueBanner from '../assets/medialogue-banner.png'
 import type { HealthIndicator } from '../types'
 import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
 import { Icon } from './Icon'
@@ -137,8 +138,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-identity" onClick={() => navigate('/movies')} role="button" tabIndex={0}>
-          <div className="brand-mark"><Icon name="spark" size={18} /></div>
-          <div className="brand-name">MEDIA<span>LOGUE</span></div>
+          <img className="brand-banner" src={medialogueBanner} alt="Medialogue" />
         </div>
         <GlobalSearchButton onOpen={() => setSearchOpen(true)} />
       </div>

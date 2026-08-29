@@ -142,6 +142,7 @@ h1, h2, h3, p { margin: 0; }
   border-bottom: 1px solid var(--line);
 }
 .brand-identity { display: flex; align-items: center; gap: var(--s3); flex: 1; min-width: 0; cursor: pointer; }
+.brand-banner { display: block; width: 100%; max-width: 156px; height: auto; object-fit: contain; }
 .brand-search {
   display: grid;
   place-items: center;
@@ -1889,6 +1890,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   box-shadow: 0 25px 90px rgba(0, 0, 0, .5);
 }
 .login-brand { margin-bottom: var(--s7); }
+.login-brand-banner { display: block; width: 100%; max-width: 310px; height: auto; object-fit: contain; }
 .login-copy .eyebrow { color: var(--accent-text); }
 .login-copy h1 { margin: var(--s2) 0 var(--s1); font: 600 var(--t-2xl) var(--sans); letter-spacing: -.02em; }
 .login-copy p { margin-bottom: var(--s5); color: var(--muted); font-size: var(--t-md); }
@@ -1935,7 +1937,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   background: var(--bg);
   font-size: var(--t-sm);
 }
-.boot-screen .brand-mark { margin: auto; }
+.boot-logo { display: block; width: 72px; height: 72px; }
+.boot-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 
 @media (max-width: 1400px) {
   .split { --rail: 240px; }}
