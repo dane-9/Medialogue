@@ -490,6 +490,8 @@ export interface Problem {
   code: string
   title: string
   subject: string
+  /** Artwork for the title this Problem is about. */
+  posterRef?: string
   detail: string
   severity: 'high' | 'medium' | 'low'
   created: string

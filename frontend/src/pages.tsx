@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { badgeColor } from './lib/badgeColor'
 import { eventLabel, eventStamp } from './lib/eventLabel'
 import { formatAge } from './lib/age'
@@ -28,6 +28,8 @@ import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './l
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
+import prowlarrIcon from './assets/prowlarr.svg'
+import jackettIcon from './assets/jackett.svg'
 
 function tmdbPosterUrl(reference?: string) {
   if (!reference) return undefined
@@ -980,8 +982,6 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
   }
 
   if (problem.code === 'PLEX_IDENTITY_MISMATCH') {
-    const localIdentity = problemText(details.local_identity) ?? problemIdentity(details.local_title ?? details.medialogue_title, details.local_year ?? details.medialogue_year)
-    const plexIdentity = problemText(details.plex_identity) ?? problemIdentity(details.plex_title, details.plex_year)
     const localPath = problemText(details.local_path ?? details.medialogue_path)
     const plexPath = problemText(details.plex_path ?? details.plex_reported_path)
     const differences = Array.isArray(details.differences) ? details.differences.map((value) => problemText(value)).filter((value): value is string => Boolean(value)) : []
@@ -990,10 +990,12 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
       <div className="problem-evidence-note">Plex show titles are advisory. This Problem exists only because Plex mapped the same physical file to different season/episode numbers.</div>
       <div className="problem-candidate-list">{conflicts.map((conflict, index) => <div className="problem-candidate" key={`${problem.id}-plex-${index}`}><strong>{problemText(conflict.local_episode) ?? 'Medialogue episode'} → {problemText(conflict.plex_episode) ?? 'Plex episode'}</strong><span>{problemText(conflict.local_show_title) ?? 'Show'} · Medialogue: {problemText(conflict.local_path) ?? 'unknown path'}</span><span>Plex metadata: {problemText(conflict.plex_show_title) ?? 'unknown show title'}{problemText(conflict.plex_episode_title) ? ` · ${problemText(conflict.plex_episode_title)}` : ''} · {problemText(conflict.plex_path) ?? 'unknown path'}</span><span>Different: {Array.isArray(conflict.differences) ? conflict.differences.map(readableEvidenceValue).join(', ') : 'episode numbering'}</span></div>)}</div>
     </div>
+    // The comparison itself is shown above the fold now; this keeps only the
+    // raw values a troubleshooter needs and the panel does not repeat itself.
     return <div className="problem-evidence-block">
       <div className="problem-evidence-grid">
-        <div className="problem-evidence-side"><span className="eyebrow">MEDIALOGUE</span><strong>{localIdentity ?? 'Local identity not stored'}</strong><code>{localPath ?? 'Local path not recorded'}</code></div>
-        <div className="problem-evidence-side"><span className="eyebrow">PLEX</span><strong>{plexIdentity ?? 'Plex identity not stored'}</strong><code>{plexPath ?? 'Plex path not recorded'}</code></div>
+        <div className="problem-evidence-side"><span className="eyebrow">LOCAL PATH</span><code>{localPath ?? problemText(details.path) ?? 'Not recorded'}</code></div>
+        <div className="problem-evidence-side"><span className="eyebrow">PLEX PATH</span><code>{plexPath ?? 'Not recorded'}</code></div>
       </div>
       {differences.length > 0 && <div className="problem-difference"><strong>Different:</strong> {differences.join(', ')}</div>}
     </div>
@@ -1026,6 +1028,67 @@ function duplicateMovieReleases(problem: Problem, movie: Movie | null): MovieRel
   const ids = new Set(Array.isArray(problem.details?.release_ids) ? problem.details.release_ids.map(String) : [])
   if (ids.size) return releases.filter((release) => ids.has(release.id))
   return releases.filter((release) => ['duplicate', 'current'].includes(release.state.toLowerCase()))
+}
+
+/** The two identities a PLEX_IDENTITY_MISMATCH is actually about.
+ *
+ * The details payload names its keys differently depending on where the
+ * Problem was raised, and the local folder arrives as `path` rather than
+ * `local_path`, so reading only the `local_*` keys reported "not recorded"
+ * for evidence that was present all along.
+ */
+function plexIdentitySides(problem: Problem) {
+  const details = problem.details ?? {}
+  const localPath = problemText(details.local_path ?? details.medialogue_path ?? details.path ?? details.resolved_path)
+  const plexPath = problemText(details.plex_path ?? details.plex_reported_path)
+  const folderName = localPath ? localPath.split(/[\\/]/).filter(Boolean).pop() : undefined
+  const localTitle = problemText(details.local_title ?? details.medialogue_title)
+    ?? (problem.subject && problem.subject !== localPath ? problem.subject : undefined)
+    ?? folderName
+  return {
+    local: {
+      identity: problemText(details.local_identity) ?? problemIdentity(localTitle, details.local_year ?? details.medialogue_year) ?? localTitle,
+      path: localPath,
+    },
+    plex: {
+      identity: problemText(details.plex_identity) ?? problemIdentity(details.plex_title, details.plex_year),
+      path: plexPath,
+    },
+    differences: Array.isArray(details.differences)
+      ? details.differences.map((value) => problemText(value)).filter((value): value is string => Boolean(value))
+      : [],
+  }
+}
+
+function IdentityCard({ source, identity, path, poster, tone }: { source: string; identity?: string; path?: string; poster?: string; tone: 'local' | 'plex' }) {
+  return <div className={`identity-card identity-card-${tone}`}>
+    <div className="identity-poster">
+      {poster
+        ? <PosterImage reference={poster} title={identity ?? source} />
+        : <Icon name={tone === 'plex' ? 'plex' : 'clapper'} size={22} />}
+    </div>
+    <div className="identity-copy">
+      <span className="identity-source">{source}</span>
+      <strong>{identity ?? 'Not recorded'}</strong>
+      {path && <code title={path}>{path}</code>}
+    </div>
+  </div>
+}
+
+/** Front and centre, not folded into troubleshooting: an identity disagreement
+ *  is a question about which title this is, and that is the whole Problem. */
+function PlexIdentityComparison({ problem }: { problem: Problem }) {
+  const { local, plex, differences } = plexIdentitySides(problem)
+  return <section className="identity-conflict">
+    <div className="identity-conflict-grid">
+      <IdentityCard source="Medialogue says" identity={local.identity} path={local.path} poster={problem.posterRef} tone="local" />
+      <span className="identity-versus">vs</span>
+      {/* No poster on this side: Plex artwork is served from the Plex server
+          behind its own token, so nothing is fetchable from the browser. */}
+      <IdentityCard source="Plex says" identity={plex.identity} path={plex.path} tone="plex" />
+    </div>
+    {differences.length > 0 && <p className="identity-differences">Disagrees on {differences.join(', ')}.</p>}
+  </section>
 }
 
 function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; duplicateMovie: Movie | null }) {
@@ -1381,7 +1444,8 @@ export function ProblemsPage() {
     <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><div className="problems-toolbar-rest"><Select value={reasonFilter} onChange={(event) => updateProblemView({ reason: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => updateProblemView({ severity: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></Select><div className="problems-toolbar-actions"><Button variant="ghost" onClick={() => updateProblemView({ problemStatus: queueStatus === 'dismissed' ? null : 'dismissed', problem: null, page: null })}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     <section className={`problems-layout ${selected ? 'show-detail' : ''}`}>
-      <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong>{problemSubjectLine(problem) ? <span>{problemSubjectLine(problem)}</span> : null}<small><b className={`problems-state state-${problem.workflow}`}>{problemLabel(problem)}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
+      <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}>{/* The poster answers "which title is this" before the text does. */}
+                    <span className={`problems-severity severity-${problem.severity} ${problem.posterRef ? 'has-poster' : ''}`}>{problem.posterRef ? <PosterImage reference={problem.posterRef} title={problem.subject} /> : <Icon name="alert" size={15} />}</span><span className="problems-row-copy"><strong>{problem.title}</strong>{problemSubjectLine(problem) ? <span>{problemSubjectLine(problem)}</span> : null}<small><b className={`problems-state state-${problem.workflow}`}>{problemLabel(problem)}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
       <article className="problems-detail">{current ? <><header className="problems-detail-head"><button className="icon-button problems-back-button" type="button" onClick={() => setSelected('')} aria-label="Back to Problems"><Icon name="chevron" size={16} style={{ transform: 'rotate(180deg)' }} /></button>
 <div>{queueStatus === 'dismissed' && <div className="eyebrow">SUPPRESSED</div>}<h2>{current.title}</h2></div>
 <div className="problems-detail-actions">
@@ -1390,6 +1454,7 @@ export function ProblemsPage() {
     : <Button variant="ghost" onClick={() => void adminAction('dismiss')}>Suppress</Button>}
   <Button variant="danger" onClick={() => void adminAction('delete')}>Delete</Button>
 </div></header><div className="problems-detail-body"><div className="problems-lead"><p>{current.detail}</p><div><span className={`problems-priority priority-${current.severity}`}>{current.severity} priority</span><span className={`problems-state state-${current.workflow}`}>{problemLabel(current)}</span></div></div>
+        {current.code === 'PLEX_IDENTITY_MISMATCH' && <PlexIdentityComparison problem={current} />}
         <ProblemKeyDetails problem={current} duplicateMovie={duplicateMovie} />
         {queueStatus === 'open' && current.code === 'DUPLICATE_PHYSICAL_RELEASE' && duplicateMovie && <MovieEditionResolver key={`${current.id}-${duplicateMovie.releasesDetail?.map((release) => `${release.id}:${release.editionOverrideActive}:${release.edition ?? ''}`).join('|')}`} problem={current} movie={duplicateMovie} options={editionOptions} loading={loading} onSaved={editionsSaved} />}
         {queueStatus === 'open' && current.workflow === 'manual' && current.code !== 'DUPLICATE_PHYSICAL_RELEASE' && <div className="problems-resolution"><p>Delete the unwanted copy from your drive, then recheck. Medialogue will not delete media or choose a preferred copy for you.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
@@ -2841,6 +2906,42 @@ type IndexerDraft = {
   downloadClientIds: string[]
 }
 
+type IndexerPreset = 'prowlarr' | 'jackett'
+
+const indexerPresets: Record<IndexerPreset, {
+  name: string
+  icon: string
+  description: string
+  urlPlaceholder: string
+  urlHelp: ReactNode
+  keyHelp: string
+}> = {
+  prowlarr: {
+    name: 'Prowlarr',
+    icon: prowlarrIcon,
+    description: 'Use the Torznab feed for one indexer configured in Prowlarr.',
+    urlPlaceholder: 'http://prowlarr:9696/1/api',
+    urlHelp: <>Copy the full Torznab feed URL for one Prowlarr indexer, including the trailing <code>/api</code>. Example: <code>http://prowlarr:9696/1/api</code>.</>,
+    keyHelp: 'The API key from Prowlarr.',
+  },
+  jackett: {
+    name: 'Jackett',
+    icon: jackettIcon,
+    description: 'Use the individual Torznab feed for one indexer configured in Jackett.',
+    urlPlaceholder: 'http://jackett:9117/api/v2.0/indexers/indexer-name/results/torznab/api',
+    urlHelp: <>Copy the full Torznab feed URL for one configured Jackett indexer. Add indexers individually; do not use Jackett&apos;s <code>/indexers/all/</code> endpoint.</>,
+    keyHelp: 'The API key shown in Jackett.',
+  },
+}
+
+function presetFromUrl(url: string): IndexerPreset {
+  return /\/api\/v2\.0\/indexers\//i.test(url) ? 'jackett' : 'prowlarr'
+}
+
+function isJackettAllUrl(url: string) {
+  return /\/api\/v2\.0\/indexers\/all\/results\/torznab(?:\/api)?\/?(?:\?|$)/i.test(url.trim())
+}
+
 const emptyIndexer: IndexerDraft = {
   name: '',
   torznabUrl: '',
@@ -2895,6 +2996,8 @@ function IndexerSettings() {
   const [message, setMessage] = useState('')
   const [dirty, setDirty] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
+  const [presetPickerOpen, setPresetPickerOpen] = useState(false)
+  const [preset, setPreset] = useState<IndexerPreset>('prowlarr')
 
   const load = async () => {
     setLoading(true)
@@ -2919,6 +3022,7 @@ function IndexerSettings() {
     const item = indexers.find((candidate) => candidate.id === id)
     setSelectedId(id)
     setDraft(item ? draftFromIndexer(item) : emptyIndexer)
+    if (item) setPreset(presetFromUrl(item.torznabUrl))
     setDirty(false)
     setMessage('')
     setError('')
@@ -2929,6 +3033,10 @@ function IndexerSettings() {
   const save = async () => {
     if (!draft.name.trim() || !draft.torznabUrl.trim()) { setError('Name and Torznab URL are required.'); return }
     if (!selectedId && !draft.apiKey.trim()) { setError('API key is required for a new indexer.'); return }
+    if (preset === 'jackett' && isJackettAllUrl(draft.torznabUrl)) { setError('Add Jackett indexers individually. The aggregate “all” endpoint is not supported.'); return }
+    // Grabs need somewhere to go. Not enforced when nothing is configured to
+    // choose from, or a fresh install could never add its first indexer.
+    if (clients.length && !draft.downloadClientIds.length) { setError('Choose at least one download client for this indexer.'); return }
     setBusy(true); setError(''); setMessage('Saving indexer…')
     try {
       const base = {
@@ -2963,6 +3071,7 @@ function IndexerSettings() {
 
   const test = async () => {
     if (!selectedId && (!draft.torznabUrl.trim() || !draft.apiKey.trim())) { setError('Torznab URL and API key are required to test a new indexer.'); return }
+    if (preset === 'jackett' && isJackettAllUrl(draft.torznabUrl)) { setError('Add Jackett indexers individually. The aggregate “all” endpoint is not supported.'); return }
     setBusy(true); setError(''); setMessage('Testing indexer connection…')
     try {
       const result = selectedId
@@ -3019,7 +3128,19 @@ function IndexerSettings() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this indexer.') }
     finally { setTogglingId('') }
   }
-  const beginAdd = () => { setSelectedId(''); setDraft(emptyIndexer); setDirty(false); setMessage(''); setError(''); setEditorOpen(true) }
+  const beginAdd = () => {
+    setSelectedId('')
+    setDraft(emptyIndexer)
+    setDirty(false)
+    setMessage('')
+    setError('')
+    setPresetPickerOpen(true)
+  }
+  const choosePreset = (next: IndexerPreset) => {
+    setPreset(next)
+    setPresetPickerOpen(false)
+    setEditorOpen(true)
+  }
   const closeEditor = async () => {
     if (dirty && !await confirm(DISCARD_CHANGES)) return
     setEditorOpen(false); setMessage(''); setError('')
@@ -3029,15 +3150,26 @@ function IndexerSettings() {
     {error && !editorOpen && <Note message={{ tone: 'error', text: error }} />}
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
     <div className="provider-card-grid">
-      {indexers.map((indexer) => <article className={`provider-card ${indexer.enabled ? '' : 'provider-card-disabled'}`} role="button" tabIndex={0} key={indexer.id} onClick={() => selectIndexer(indexer.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectIndexer(indexer.id) } }}>
-        <div className="provider-card-head"><div className="provider-card-icon" style={indexerBadgePreview(indexer.color ?? '')}><Icon name="search" size={20} /></div><button type="button" className={`badge cf-card-toggle ${indexer.enabled ? 'badge-green' : ''}`} aria-pressed={indexer.enabled} aria-label={`Turn ${indexer.name} ${indexer.enabled ? 'off' : 'on'}`} disabled={togglingId === indexer.id} onClick={(event) => { event.stopPropagation(); void toggleIndexer(indexer) }}><span className="badge-dot" />{togglingId === indexer.id ? 'Saving…' : indexer.enabled ? 'Enabled' : 'Disabled'}</button></div>
+      {indexers.map((indexer) => { const source = presetFromUrl(indexer.torznabUrl); return <article className={`provider-card ${indexer.enabled ? '' : 'provider-card-disabled'}`} role="button" tabIndex={0} key={indexer.id} onClick={() => selectIndexer(indexer.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectIndexer(indexer.id) } }}>
+        <div className="provider-card-head"><div className={`provider-card-icon indexer-source-icon indexer-source-${source}`} style={indexerBadgePreview(indexer.color ?? '')}><img src={indexerPresets[source].icon} alt={`${indexerPresets[source].name} icon`} /></div><button type="button" className={`badge cf-card-toggle ${indexer.enabled ? 'badge-green' : ''}`} aria-pressed={indexer.enabled} aria-label={`Turn ${indexer.name} ${indexer.enabled ? 'off' : 'on'}`} disabled={togglingId === indexer.id} onClick={(event) => { event.stopPropagation(); void toggleIndexer(indexer) }}><span className="badge-dot" />{togglingId === indexer.id ? 'Saving…' : indexer.enabled ? 'Enabled' : 'Disabled'}</button></div>
         <strong>{indexer.name}</strong><span>{indexer.torznabUrl}</span>
         <div className="provider-card-meta"><span className={`provider-health ${indexer.health === 'healthy' ? 'healthy' : indexer.health === 'unavailable' ? 'error' : ''}`}><i />{indexer.health}</span></div>
-      </article>)}
+      </article>})}
     </div>
     {!indexers.length && !loading && <p className="provider-empty-copy">No indexers configured yet. Add a Torznab endpoint to run interactive searches.</p>}
 
+    {presetPickerOpen && <Modal title="Choose indexer provider" onClose={() => setPresetPickerOpen(false)} className="indexer-preset-modal">
+      <div className="indexer-preset-grid">
+        {(Object.entries(indexerPresets) as Array<[IndexerPreset, typeof indexerPresets[IndexerPreset]]>).map(([key, option]) => <button type="button" className={`indexer-preset-card indexer-preset-${key}`} key={key} onClick={() => choosePreset(key)}>
+          <span className="indexer-preset-heading"><span className="indexer-preset-icon"><img src={option.icon} alt="" /></span><strong>{option.name}</strong></span>
+          <small className="indexer-preset-description">{option.description}</small>
+          <Icon name="chevron" size={17} />
+        </button>)}
+      </div>
+    </Modal>}
+
     {editorOpen && <Modal wide title={selected ? selected.name : 'Add indexer'} onClose={closeEditor}
+      brand={<img className={`indexer-editor-brand indexer-editor-brand-${preset}`} src={indexerPresets[preset].icon} alt="" />}
       titleAction={<>
         <EnabledButton enabled={draft.enabled} onChange={(next) => updateDraft('enabled', next)} />
         <Button variant="ghost" icon="refresh" onClick={test} disabled={busy}>{busy ? 'Working…' : 'Test'}</Button>
@@ -3063,11 +3195,11 @@ function IndexerSettings() {
               options={[{ value: 'both', label: 'Both' }, { value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
             />
           </Field>
-          <Field label="Torznab URL" help={<>Full endpoint, <strong>including the trailing <code>/api</code></strong>. In Prowlarr this is the per-indexer URL. Example: <code>https://prowlarr.host/1/api</code></>}>
-            <Input value={draft.torznabUrl} onChange={(event) => updateDraft('torznabUrl', event.target.value)} placeholder="https://prowlarr.host/1/api" />
+          <Field label="Torznab URL" help={indexerPresets[preset].urlHelp}>
+            <Input value={draft.torznabUrl} onChange={(event) => updateDraft('torznabUrl', event.target.value)} placeholder={indexerPresets[preset].urlPlaceholder} />
           </Field>
           <Field label="API key"
-            help={selected?.apiKeyConfigured ? 'The API key from Prowlarr. Held server-side. Leave blank to keep the current one.' : 'The API key from Prowlarr. Held server-side and never sent back to the browser.'}>
+            help={`${indexerPresets[preset].keyHelp} ${selected?.apiKeyConfigured ? 'Held server-side. Leave blank to keep the current one.' : 'Held server-side and never sent back to the browser.'}`}>
             <Secret value={draft.apiKey} onChange={(event) => updateDraft('apiKey', event.target.value)} placeholder={selected?.apiKeyConfigured ? 'Stored server-side · leave blank to preserve' : 'Required'} />
           </Field>
           <Field label="Timeout" help="How long to wait before this indexer is skipped. Others still return results.">
@@ -3091,19 +3223,28 @@ function IndexerSettings() {
           <Field label="MULTI languages" help="What a MULTI-tagged release here actually contains. Comma-separated.">
             <Input value={draft.multiLanguages} onChange={(event) => updateDraft('multiLanguages', event.target.value)} placeholder="English, French" />
           </Field>
-          <Field label="Download clients" help="Which clients grabs from this indexer may be sent to. None selected means any eligible client.">
+          <Field label="Download clients" help="Which download clients receive grabs from this indexer. At least one is required.">
             {clients.length ? <div className="client-choice">
+              {/* Checkboxes, not badges: these were styled as the same read-only
+                  status pills used elsewhere, so nothing said they were
+                  selectable, and clients named after media types read as a
+                  second, broken copy of the Scope control above. */}
               {clients.map((client) => {
                 const chosen = draft.downloadClientIds.includes(client.id)
                 return <button
                   key={client.id}
                   type="button"
-                  className={`badge client-choice-option ${chosen ? 'badge-green' : ''}`}
-                  aria-pressed={chosen}
+                  role="checkbox"
+                  aria-checked={chosen}
+                  className={`client-choice-option ${chosen ? 'chosen' : ''}`}
                   onClick={() => updateDraft('downloadClientIds', chosen
                     ? draft.downloadClientIds.filter((id) => id !== client.id)
                     : [...draft.downloadClientIds, client.id])}
-                ><span className="badge-dot" />{client.name}</button>
+                >
+                  <span className="client-choice-box">{chosen && <Icon name="check" size={11} />}</span>
+                  <span className="client-choice-name">{client.name}</span>
+                  <span className="client-choice-scope">{client.scope === 'movies' ? 'Movies' : client.scope === 'shows' ? 'Shows' : 'Both'}</span>
+                </button>
               })}
             </div> : <span className="field-help">No download clients are configured yet.</span>}
           </Field>

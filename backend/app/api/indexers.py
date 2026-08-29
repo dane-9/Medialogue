@@ -92,12 +92,33 @@ async def list_indexers(
     )
 
 
+def _require_download_clients(client_ids: list) -> None:
+    """An indexer with no download client cannot deliver what it finds.
+
+    Enforced here as well as in the UI because the API is reachable directly.
+    Skipped when nothing is configured to choose from: requiring a client
+    unconditionally would make a fresh install unable to add its first indexer
+    until qBittorrent was set up, which is a worse deadlock than the problem.
+    """
+
+    if client_ids:
+        return
+    if not get_integration_config_store().list_download_clients():
+        return
+    raise AppError(
+        "DOWNLOAD_CLIENT_REQUIRED",
+        "Choose at least one download client for this indexer.",
+        status_code=422,
+    )
+
+
 @router.post("", response_model=IndexerResponse, status_code=status.HTTP_201_CREATED)
 async def create_indexer(
     payload: IndexerCreate,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> IndexerResponse:
+    _require_download_clients(payload.download_client_ids)
     store = get_integration_config_store()
     config = store.save_indexer(
         IndexerConfig(
@@ -168,6 +189,7 @@ async def update_indexer(
         download_client_ids=(list(payload.download_client_ids) if payload.download_client_ids is not None else list(current.download_client_ids)),
         revision=current.revision,
     )
+    _require_download_clients(updated.download_client_ids)
     try:
         get_integration_config_store().save_indexer(updated, expected_revision=payload.expected_revision)
     except ValueError as exc:

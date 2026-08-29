@@ -419,6 +419,83 @@ def _parse_severity(value: str) -> Severity:
         raise AppError("INVALID_SEVERITY", "Unknown problem severity.", status_code=422) from exc
 
 
+async def _problem_posters(db: AsyncSession, problems: list[Problem]) -> dict[tuple[str, UUID], str]:
+    """Artwork for the title each Problem is about, batched like subjects.
+
+    An identity disagreement is a question about which title this is, and two
+    posters answer it faster than two strings do.
+    """
+
+    by_type: dict[str, set[UUID]] = {}
+    for problem in problems:
+        if problem.entity_id is not None:
+            by_type.setdefault(problem.entity_type, set()).add(problem.entity_id)
+    posters: dict[tuple[str, UUID], str] = {}
+
+    movie_ids = by_type.get("movie", set())
+    if movie_ids:
+        for movie in (await db.scalars(select(Movie).where(Movie.id.in_(movie_ids)))).all():
+            if movie.poster_ref:
+                posters[("movie", movie.id)] = movie.poster_ref
+
+    show_ids = by_type.get("show", set())
+    if show_ids:
+        for show in (await db.scalars(select(Show).where(Show.id.in_(show_ids)))).all():
+            if show.poster_ref:
+                posters[("show", show.id)] = show.poster_ref
+
+    episode_ids = by_type.get("episode", set())
+    if episode_ids:
+        rows = (await db.execute(select(Episode.id, Show.poster_ref).join(Show, Show.id == Episode.show_id).where(Episode.id.in_(episode_ids)))).all()
+        for episode_id, poster_ref in rows:
+            if poster_ref:
+                posters[("episode", episode_id)] = poster_ref
+
+    # A directory's artwork is its title's, reached through the release it is
+    # attached to. Identity Problems are raised against the directory, so
+    # without this hop the side that matters most has no poster.
+    directory_ids = by_type.get("media_directory", set())
+    if directory_ids:
+        rows = (
+            await db.execute(
+                select(MediaDirectory.id, Movie.poster_ref)
+                .join(MovieRelease, MovieRelease.id == MediaDirectory.movie_release_id)
+                .join(Movie, Movie.id == MovieRelease.movie_id)
+                .where(MediaDirectory.id.in_(directory_ids))
+            )
+        ).all()
+        for directory_id, poster_ref in rows:
+            if poster_ref:
+                posters[("media_directory", directory_id)] = poster_ref
+        rows = (
+            await db.execute(
+                select(MediaDirectory.id, Show.poster_ref)
+                .join(ShowRelease, ShowRelease.id == MediaDirectory.show_release_id)
+                .join(Show, Show.id == ShowRelease.show_id)
+                .where(MediaDirectory.id.in_(directory_ids))
+            )
+        ).all()
+        for directory_id, poster_ref in rows:
+            if poster_ref and ("media_directory", directory_id) not in posters:
+                posters[("media_directory", directory_id)] = poster_ref
+
+    movie_release_ids = by_type.get("movie_release", set())
+    if movie_release_ids:
+        rows = (await db.execute(select(MovieRelease.id, Movie.poster_ref).join(Movie, Movie.id == MovieRelease.movie_id).where(MovieRelease.id.in_(movie_release_ids)))).all()
+        for release_id, poster_ref in rows:
+            if poster_ref:
+                posters[("movie_release", release_id)] = poster_ref
+
+    show_release_ids = by_type.get("show_release", set())
+    if show_release_ids:
+        rows = (await db.execute(select(ShowRelease.id, Show.poster_ref).join(Show, Show.id == ShowRelease.show_id).where(ShowRelease.id.in_(show_release_ids)))).all()
+        for release_id, poster_ref in rows:
+            if poster_ref:
+                posters[("show_release", release_id)] = poster_ref
+
+    return posters
+
+
 async def _problem_subjects(db: AsyncSession, problems: list[Problem]) -> dict[tuple[str, UUID], str]:
     """Resolve subjects in bounded batches instead of one query per Problem."""
 
@@ -479,12 +556,18 @@ async def _problem_subjects(db: AsyncSession, problems: list[Problem]) -> dict[t
     return subjects
 
 
-def _response(problem: Problem, subjects: dict[tuple[str, UUID], str]) -> ProblemResponse:
-    subject = subjects.get((problem.entity_type, problem.entity_id)) if problem.entity_id else None
+def _response(
+    problem: Problem,
+    subjects: dict[tuple[str, UUID], str],
+    posters: dict[tuple[str, UUID], str] | None = None,
+) -> ProblemResponse:
+    key = (problem.entity_type, problem.entity_id) if problem.entity_id else None
+    subject = subjects.get(key) if key else None
     return ProblemResponse.model_validate(problem).model_copy(
         update={
             "available_actions": available_actions(problem),
             "subject": subject,
+            "poster_ref": (posters or {}).get(key) if key else None,
             "label": problem_label(problem.reason),
             "title": problem_title(problem.reason),
             "description": problem_description(problem.reason, problem.message),
@@ -554,7 +637,8 @@ async def list_problems(
         page = pages
     rows = (await db.scalars(query.order_by(Problem.created_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
     subjects = await _problem_subjects(db, list(rows))
-    return Collection(items=[_response(row, subjects) for row in rows], page=page, page_size=page_size, total=total, pages=pages)
+    posters = await _problem_posters(db, list(rows))
+    return Collection(items=[_response(row, subjects, posters) for row in rows], page=page, page_size=page_size, total=total, pages=pages)
 
 
 @router.get("/count")
@@ -670,7 +754,7 @@ async def get_problem(problem_id: UUID, _: AdminUser = Depends(require_admin), d
     if problem is None or problem.reason in RETIRED_PROBLEM_REASONS:
         raise AppError("NOT_FOUND", "Problem was not found.", status_code=404)
     subjects = await _problem_subjects(db, [problem])
-    return _response(problem, subjects)
+    return _response(problem, subjects, await _problem_posters(db, [problem]))
 
 
 @router.post("/{problem_id}/resolve", response_model=ProblemResponse)
@@ -740,4 +824,4 @@ async def resolve_problem(
                     ),
                 )
     subjects = await _problem_subjects(db, [problem])
-    return _response(problem, subjects)
+    return _response(problem, subjects, await _problem_posters(db, [problem]))

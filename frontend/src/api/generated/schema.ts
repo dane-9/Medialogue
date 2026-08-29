@@ -2635,7 +2635,7 @@ export interface components {
              */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem-Output"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem"][];
             /**
              * Schema Version
              * @default 1
@@ -2643,28 +2643,7 @@ export interface components {
             schema_version: number;
         };
         /** CustomFormatExportItem */
-        "CustomFormatExportItem-Input": {
-            /** Conditions */
-            conditions: components["schemas"]["CustomFormatConditionInput"][];
-            /** Description */
-            description?: string | null;
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled: boolean;
-            /** @default both */
-            media_scope: components["schemas"]["CustomFormatScope"];
-            /** Name */
-            name: string;
-            /**
-             * Schema Version
-             * @default 1
-             */
-            schema_version: number;
-        };
-        /** CustomFormatExportItem */
-        "CustomFormatExportItem-Output": {
+        CustomFormatExportItem: {
             /** Conditions */
             conditions: components["schemas"]["CustomFormatConditionInput"][];
             /** Description */
@@ -2689,7 +2668,7 @@ export interface components {
             /** Application */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem-Input"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem"][];
             /** Schema Version */
             schema_version: number;
         };
@@ -4770,6 +4749,8 @@ export interface components {
             label: string;
             /** Message */
             message: string;
+            /** Poster Ref */
+            poster_ref?: string | null;
             /** Reason */
             reason: string;
             /** Resolution */

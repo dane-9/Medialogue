@@ -2,11 +2,14 @@ import { useEffect } from 'react'
 import type { PropsWithChildren, ReactNode } from 'react'
 import { Icon } from './Icon'
 
-export function Modal({ title, eyebrow, icon, onClose, footer, titleAction, headerAction, headerCenter, wide, className, children }: PropsWithChildren<{
+export function Modal({ title, eyebrow, icon, brand, onClose, footer, titleAction, headerAction, headerCenter, wide, className, children }: PropsWithChildren<{
   title: string
   eyebrow?: string
 
   icon?: Parameters<typeof Icon>[0]['name']
+
+  /** Provider artwork shown ahead of the title, where a built-in icon would sit. */
+  brand?: ReactNode
   onClose: () => void
   footer?: ReactNode
 
@@ -33,6 +36,7 @@ export function Modal({ title, eyebrow, icon, onClose, footer, titleAction, head
   return <div className="modal-backdrop" onClick={onClose}>
     <div className={`modal ${wide ? 'modal-wide' : ''} ${className ?? ''}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
       <div className="modal-head">
+        {brand && <span className="modal-head-brand">{brand}</span>}
         {icon && <span className="modal-head-icon"><Icon name={icon} size={18} /></span>}
         <div className="modal-head-copy">
           {eyebrow && <div className="eyebrow">{eyebrow}</div>}

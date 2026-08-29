@@ -25,6 +25,8 @@ class ProblemResponse(ORMModel):
     entity_id: UUID | None
     message: str
     subject: str | None = None
+    #: Artwork for the title this Problem is about, when it has one.
+    poster_ref: str | None = None
     details: dict[str, Any]
     resolution: dict[str, Any] | None
     created_at: datetime

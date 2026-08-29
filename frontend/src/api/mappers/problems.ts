@@ -10,6 +10,7 @@ export function mapProblem(value: ProblemDto): Problem {
     code: value.reason,
     title: value.title || value.reason.replaceAll('_', ' '),
     subject,
+    posterRef: value.poster_ref ?? undefined,
     detail: value.description || value.message,
     severity: value.severity === 'error' ? 'high' : value.severity === 'info' ? 'low' : 'medium',
     created: new Date(value.created_at).toLocaleString(),

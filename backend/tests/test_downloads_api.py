@@ -758,3 +758,46 @@ def test_qbit_connectivity_health_survives_internal_processing_failure(client: T
     finally:
         if root.exists():
             root.rmdir()
+
+
+def test_an_indexer_needs_a_download_client_once_one_exists(client: TestClient) -> None:
+    """An indexer with nowhere to send a grab finds results it cannot act on.
+
+    Not enforced before the first client is configured: requiring one on a
+    fresh install would make it impossible to add any indexer until
+    qBittorrent was set up.
+    """
+
+    headers = _login(client)
+    base = {
+        "name": "Nebula",
+        "torznab_url": "http://indexer.test/api",
+        "api_key": "indexer-key",
+        "scope": "movies",
+    }
+
+    allowed = client.post("/api/v1/indexers", headers=headers, json=base)
+    assert allowed.status_code == 201, allowed.text
+    client.delete(f"/api/v1/indexers/{allowed.json()['id']}", headers=headers)
+
+    download_client = _create_client(client, headers)
+
+    refused = client.post("/api/v1/indexers", headers=headers, json=base)
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["error"]["code"] == "DOWNLOAD_CLIENT_REQUIRED"
+
+    created = client.post(
+        "/api/v1/indexers",
+        headers=headers,
+        json={**base, "download_client_ids": [download_client["id"]]},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["download_client_ids"] == [download_client["id"]]
+
+    cleared = client.patch(
+        f"/api/v1/indexers/{created.json()['id']}",
+        headers=headers,
+        json={"download_client_ids": [], "expected_revision": created.json()["revision"]},
+    )
+    assert cleared.status_code == 422, cleared.text
+    assert cleared.json()["error"]["code"] == "DOWNLOAD_CLIENT_REQUIRED"
