@@ -367,7 +367,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
             asChild
 
             content={<>
-              <p>Off by default. When enabled, Specials (season 0) appears as its own season-pack search tab, and is searched and downloaded like any other season.</p>
+              <p>Off by default. When on, Specials (season 0) appears as its own season-pack search tab, and is searched and downloaded like any other season.</p>
               <p>This applies to this download only. Whether Specials count toward episode totals is a separate, library-wide setting.</p>
             </>}
           >

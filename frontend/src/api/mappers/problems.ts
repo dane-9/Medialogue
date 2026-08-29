@@ -11,6 +11,7 @@ export function mapProblem(value: ProblemDto): Problem {
     title: value.title || value.reason.replaceAll('_', ' '),
     subject,
     posterRef: value.poster_ref ?? undefined,
+    tmdbId: value.tmdb_id ?? undefined,
     detail: value.description || value.message,
     severity: value.severity === 'error' ? 'high' : value.severity === 'info' ? 'low' : 'medium',
     created: new Date(value.created_at).toLocaleString(),

@@ -21,6 +21,14 @@ DB = REPO / ".local" / "medialogue.db"
 MARKER = "sample_problem"
 
 SHOW_PATH = r"\\TRUENAS\Shows 2\Cartoons\Super Friends"
+SEP = "\\"
+RELEASE_FOLDER = "Super.Friends.S09.1080p.BluRay.Remux.AVC.DTS-HD.MA.2.0-Tooncore"
+EPISODE_FILE_NAMES = [
+    "Super.Friends.S09E04.1080p.BluRay.Remux.AVC.DTS-HD.MA.2.0-Tooncore.mkv",
+    "Super.Friends.S09E03-E04.1080p.BluRay.Remux.AVC.DTS-HD.MA.2.0-Tooncore.mkv",
+]
+#: Fixed so re-seeding does not invent new ids for the same sample files.
+EPISODE_FILE_IDS = [uuid.UUID(int=0xE9150DE1), uuid.UUID(int=0xE9150DE2)]
 MOVIE_PATH = r"\\TRUENAS\Movies\Cartoons\Aladdin.1992.NORDiC.ENG.REMUX.2160p"
 
 SAMPLES: list[tuple[str, str, str, str, dict]] = [
@@ -39,7 +47,28 @@ SAMPLES: list[tuple[str, str, str, str, dict]] = [
     (
         "DUPLICATE_EPISODE_RELEASE", "episode", "warning",
         "S09E04 has multiple physical media files.",
-        {"path": SHOW_PATH, "episode": "S09E04", "media_file_ids": []},
+        # Two files, shaped like _refresh_episode_duplicate_problem writes them.
+        # An empty media_file_ids list left the page showing a single path for a
+        # Problem whose entire point is that there is more than one file.
+        {
+            "episode": "S09E04",
+            "media_file_ids": [str(EPISODE_FILE_IDS[0]), str(EPISODE_FILE_IDS[1])],
+            "verified_physical_file_count": 2,
+            "media_files": [
+                {
+                    "media_file_id": str(EPISODE_FILE_IDS[index]),
+                    "filename": name,
+                    "path": SHOW_PATH + SEP + RELEASE_FOLDER + SEP + name,
+                    "storage_root_name": "Shows 2",
+                    "release_name": name.removesuffix(".mkv"),
+                    "catalogue_exists": True,
+                    "physical_exists": True,
+                    "missing_since": None,
+                    "manual_mapping": False,
+                }
+                for index, name in enumerate(EPISODE_FILE_NAMES)
+            ],
+        },
     ),
     (
         "TORRENT_PATH_NOT_FOUND", "torrent", "error",

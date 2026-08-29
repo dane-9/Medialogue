@@ -1544,6 +1544,29 @@ export interface paths {
         patch: operations["update_quality_profile_api_v1_quality_profiles__profile_id__patch"];
         trace?: never;
     };
+    "/api/v1/quality-profiles/{profile_id}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Default Quality Profile
+         * @description Choose the profile titles without one of their own inherit.
+         *
+         *     Exactly one profile holds the role, so the flag is cleared everywhere else
+         *     in the same transaction rather than relying on callers to tidy up.
+         */
+        post: operations["set_default_quality_profile_api_v1_quality_profiles__profile_id__default_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reconciliation/movies/{movie_id}/manual-attach": {
         parameters: {
             query?: never;
@@ -4768,6 +4791,8 @@ export interface components {
              * @default
              */
             title: string;
+            /** Tmdb Id */
+            tmdb_id?: number | null;
             workflow: components["schemas"]["ProblemWorkflow"];
         };
         /**
@@ -4834,6 +4859,16 @@ export interface components {
         };
         /** QualityProfileResponse */
         QualityProfileResponse: {
+            /**
+             * Assigned Movies
+             * @default 0
+             */
+            assigned_movies: number;
+            /**
+             * Assigned Shows
+             * @default 0
+             */
+            assigned_shows: number;
             /** Assigned Titles */
             assigned_titles: number;
             /**
@@ -9371,6 +9406,37 @@ export interface operations {
                 "application/json": components["schemas"]["QualityProfileUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_default_quality_profile_api_v1_quality_profiles__profile_id__default_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

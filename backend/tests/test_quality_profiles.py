@@ -804,8 +804,20 @@ def test_the_default_profile_cannot_be_deleted(client: TestClient):
 
     refused = client.delete(f"/api/v1/quality-profiles/{default['id']}", headers=headers)
     assert refused.status_code == 409, refused.text
-    assert refused.json()["error"]["code"] == "SYSTEM_QUALITY_PROFILE"
+    assert refused.json()["error"]["code"] == "DEFAULT_QUALITY_PROFILE"
     assert any(item["name"] == "Default" for item in client.get("/api/v1/quality-profiles").json())
+
+    # Handing the role to another profile releases the original for deletion:
+    # the rule protects whichever profile titles currently inherit, not one
+    # particular row.
+    replacement = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "Preferred", "custom_format_scores": []}).json()
+    promoted = client.post(f"/api/v1/quality-profiles/{replacement['id']}/default", headers=headers)
+    assert promoted.status_code == 200, promoted.text
+    assert promoted.json()["is_default"] is True
+
+    listed = {item["name"]: item["is_default"] for item in client.get("/api/v1/quality-profiles").json()}
+    assert listed == {"Default": False, "Preferred": True}
+    assert client.delete(f"/api/v1/quality-profiles/{default['id']}", headers=headers).status_code == 204
 
 
 def test_a_movie_with_no_profile_of_its_own_uses_the_default(client: TestClient):
@@ -826,3 +838,59 @@ def test_a_movie_with_no_profile_of_its_own_uses_the_default(client: TestClient)
     owned = client.get(f"/api/v1/movies/{movie}/profile-settings").json()
     assert owned["quality_profile_name"] == "Mine"
     assert owned["quality_profile_inherited"] is False
+
+
+def test_the_inherited_profile_follows_the_chosen_default(client: TestClient):
+    """A title with no profile of its own inherits whichever is the default now.
+
+    The role used to be pinned to the seeded profile with no way to move it, so
+    a profile the user built could never become what new titles use.
+    """
+
+    headers = login(client)
+    movie = seed_movie(with_release=True)
+    assert client.get(f"/api/v1/movies/{movie}/profile-settings").json()["quality_profile_name"] == "Default"
+
+    preferred = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "Preferred", "custom_format_scores": []}).json()
+    assert client.post(f"/api/v1/quality-profiles/{preferred['id']}/default", headers=headers).status_code == 200
+
+    inherited = client.get(f"/api/v1/movies/{movie}/profile-settings").json()
+    assert inherited["quality_profile_name"] == "Preferred"
+    assert inherited["quality_profile_inherited"] is True
+
+
+def test_only_one_profile_is_the_default_at_a_time(client: TestClient):
+    headers = login(client)
+    first = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "First", "custom_format_scores": []}).json()
+    second = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "Second", "custom_format_scores": []}).json()
+
+    client.post(f"/api/v1/quality-profiles/{first['id']}/default", headers=headers)
+    client.post(f"/api/v1/quality-profiles/{second['id']}/default", headers=headers)
+
+    defaults = [item["name"] for item in client.get("/api/v1/quality-profiles").json() if item["is_default"]]
+    assert defaults == ["Second"]
+
+
+def test_a_profile_reports_how_many_movies_and_shows_use_it(client: TestClient):
+    """Deleting a profile drops its titles back to the default.
+
+    A single total could not say what was at stake; the split is what the
+    delete confirmation quotes back before the user commits.
+    """
+
+    headers = login(client)
+    movie = seed_movie(with_release=True)
+    profile = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "Counted", "custom_format_scores": []}).json()
+    assert profile["assigned_movies"] == 0
+    assert profile["assigned_shows"] == 0
+
+    client.put(f"/api/v1/movies/{movie}/profile-settings", headers=headers, json={
+        "quality_profile_id": profile["id"],
+        "custom_format_score_overrides": {},
+        "expected_revision": 0,
+    })
+
+    counted = next(item for item in client.get("/api/v1/quality-profiles").json() if item["id"] == profile["id"])
+    assert counted["assigned_movies"] == 1
+    assert counted["assigned_shows"] == 0
+    assert counted["assigned_titles"] == 1

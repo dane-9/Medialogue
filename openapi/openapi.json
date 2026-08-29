@@ -7055,6 +7055,17 @@
             "title": "Title",
             "type": "string"
           },
+          "tmdb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmdb Id"
+          },
           "workflow": {
             "$ref": "#/components/schemas/ProblemWorkflow"
           }
@@ -7261,6 +7272,16 @@
       },
       "QualityProfileResponse": {
         "properties": {
+          "assigned_movies": {
+            "default": 0,
+            "title": "Assigned Movies",
+            "type": "integer"
+          },
+          "assigned_shows": {
+            "default": 0,
+            "title": "Assigned Shows",
+            "type": "integer"
+          },
           "assigned_titles": {
             "title": "Assigned Titles",
             "type": "integer"
@@ -16166,6 +16187,50 @@
           }
         },
         "summary": "Update Quality Profile",
+        "tags": [
+          "quality profiles"
+        ]
+      }
+    },
+    "/api/v1/quality-profiles/{profile_id}/default": {
+      "post": {
+        "description": "Choose the profile titles without one of their own inherit.\n\nExactly one profile holds the role, so the flag is cleared everywhere else\nin the same transaction rather than relying on callers to tidy up.",
+        "operationId": "set_default_quality_profile_api_v1_quality_profiles__profile_id__default_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Default Quality Profile",
         "tags": [
           "quality profiles"
         ]

@@ -68,7 +68,7 @@ export function EnabledButton({ enabled, onChange, disabled, labels }: {
   disabled?: boolean
   labels?: [on: string, off: string]
 }) {
-  const [on, off] = labels ?? ['Enabled', 'Disabled']
+  const [on, off] = labels ?? ['On', 'Off']
   return <button
     type="button"
     className={`enabled-button ${enabled ? 'on' : 'off'}`}

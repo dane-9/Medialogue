@@ -10,6 +10,7 @@ import { rootBrowseStart, rootDraftChanged, rootPathAfterBrowse } from './lib/ro
 import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
 import { needsAttention, statusTone } from './lib/status'
+import { pathParts } from './lib/pathParts'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
 import { qualityMark } from './lib/qualityMark'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -20,7 +21,7 @@ import { Tooltip } from './components/Tooltip'
 import { Dropdown } from './components/Dropdown'
 import { useConfirm } from './components/Confirm'
 import { Modal } from './components/Modal'
-import { PageTopbar } from './components/Shell'
+import { PageTopbar, usePlexAvailable } from './components/Shell'
 import { Badge, Button, EmptyState, EnabledButton, Input, Panel, Progress, Segmented, Select, Slider, Stat } from './components/ui'
 import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
@@ -242,20 +243,25 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
 }
 
 function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'search' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
+  const plexAvailable = usePlexAvailable()
   const mark = qualityMark(movie.quality, movie.edition)
   const run = (action: 'search' | 'plex' | 'monitor' | 'unmonitor') => (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onAction(movie, action) }
   return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <Link className="media-card-link" to={`/movies/${movie.id}`} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}>
       <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
-      <div className="media-card-body"><div className="media-card-title"><strong>{movie.title}</strong><span className="media-card-sub">{movie.year || 'Year unknown'}{mark && <em className="media-card-quality">{mark}</em>}</span></div><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}<Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>{movie.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div></div>
+      <div className="media-card-body"><div className="media-card-title"><strong>{movie.title}</strong><span className="media-card-sub">{movie.year || 'Year unknown'}{mark && <em className="media-card-quality">{mark}</em>}</span></div><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{movie.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div></div>
     </Link>
-    <div className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Interactive search"><button className="icon-button" aria-label={`Search for ${movie.title}`} disabled={busy} onClick={run('search')}><Icon name="search" size={14} /></button></Tooltip><Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={14} /></button></Tooltip><Tooltip asChild content={movie.monitored === false ? 'Monitor' : 'Unmonitor'}><button className="icon-button" aria-label={movie.monitored === false ? `Monitor ${movie.title}` : `Unmonitor ${movie.title}`} disabled={busy} onClick={run(movie.monitored === false ? 'monitor' : 'unmonitor')}><Icon name={movie.monitored === false ? 'eye' : 'eye-off'} size={14} /></button></Tooltip></div>
+    <div className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Interactive search"><button className="icon-button" aria-label={`Search for ${movie.title}`} disabled={busy} onClick={run('search')}><Icon name="search" size={14} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={14} /></button></Tooltip>}<Tooltip asChild content={movie.monitored === false ? 'Monitor' : 'Unmonitor'}><button className="icon-button" aria-label={movie.monitored === false ? `Monitor ${movie.title}` : `Unmonitor ${movie.title}`} disabled={busy} onClick={run(movie.monitored === false ? 'monitor' : 'unmonitor')}><Icon name={movie.monitored === false ? 'eye' : 'eye-off'} size={14} /></button></Tooltip></div>
   </article>
 }
 
-function MovieTable({ items, selected, onToggle, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) { return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Title</th><th>State</th><th>Current release</th><th>Plex</th><th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody>{items.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /></span>{movie.title}<span className="muted">{movie.year}</span>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td><td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td>{selected.has(movie.id) ? <Icon name="check" size={15} /> : <Icon name="chevron" size={15} />}</td></tr>)}</tbody></table></Panel> }
+function MovieTable({ items, selected, onToggle, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) {
+  const plexAvailable = usePlexAvailable()
+  return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Title</th><th>State</th><th>Current release</th>{plexAvailable && <th>Plex</th>}<th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody>{items.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /></span>{movie.title}<span className="muted">{movie.year}</span>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td>{plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}<td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td>{selected.has(movie.id) ? <Icon name="check" size={15} /> : <Icon name="chevron" size={15} />}</td></tr>)}</tbody></table></Panel>
+}
 
 function MovieBulkContextMenu({ position, count, profiles, tags, busy, onRun, onCreateTag, onClear }: { position: { x: number; y: number }; count: number; profiles: QualityProfile[]; tags: Tag[]; busy: boolean; onRun: (action: Parameters<typeof api.bulkMovies>[0]['action'], options?: { profileId?: string | null; tagIds?: string[] }) => Promise<void>; onCreateTag: (name: string) => Promise<Tag>; onClear: () => void }) {
+  const plexAvailable = usePlexAvailable()
   const [profileId, setProfileId] = useState('')
   const [tagId, setTagId] = useState('')
   const [newTag, setNewTag] = useState('')
@@ -269,7 +275,7 @@ function MovieBulkContextMenu({ position, count, profiles, tags, busy, onRun, on
   }
   return <div className="bulk-context-menu" style={{ left, top }} onClick={(event) => event.stopPropagation()}>
     <div className="bulk-context-head"><div><div className="eyebrow">BULK MOVIE ACTIONS</div><strong>{count} selected</strong></div><button className="icon-button" onClick={onClear} aria-label="Clear selection"><Icon name="close" size={14} /></button></div>
-    <div className="context-action-grid"><button onClick={() => void onRun('monitor')} disabled={busy}><Icon name="check" size={14} />Monitor</button><button onClick={() => void onRun('unmonitor')} disabled={busy}><Icon name="pause" size={14} />Unmonitor</button><button onClick={() => void onRun('recheck_plex')} disabled={busy}><Icon name="refresh" size={14} />Recheck Plex</button><button onClick={() => void onRun('reevaluate_parser')} disabled={busy}><Icon name="activity" size={14} />Re-evaluate parser</button><button onClick={() => void onRun('reevaluate_custom_formats')} disabled={busy}><Icon name="sliders" size={14} />Re-evaluate CFs</button></div>
+    <div className="context-action-grid"><button onClick={() => void onRun('monitor')} disabled={busy}><Icon name="check" size={14} />Monitor</button><button onClick={() => void onRun('unmonitor')} disabled={busy}><Icon name="pause" size={14} />Unmonitor</button>{plexAvailable && <button onClick={() => void onRun('recheck_plex')} disabled={busy}><Icon name="refresh" size={14} />Recheck Plex</button>}<button onClick={() => void onRun('reevaluate_parser')} disabled={busy}><Icon name="activity" size={14} />Re-evaluate parser</button><button onClick={() => void onRun('reevaluate_custom_formats')} disabled={busy}><Icon name="sliders" size={14} />Re-evaluate CFs</button></div>
     <div className="context-section"><span className="field-label">Quality Profile</span><div className="context-inline"><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select><Button variant="ghost" disabled={busy} onClick={() => void onRun('change_profile', { profileId: profileId || null })}>Apply</Button></div><small>Per-title score/minimum overrides are preserved.</small></div>
     <div className="context-section"><span className="field-label">Tags</span><div className="context-inline"><Select value={tagId} onChange={(event) => setTagId(event.target.value)}><option value="">Choose tag…</option>{tags.map((tag) => <option value={tag.id} key={tag.id}>{tag.name}</option>)}</Select></div><div className="context-inline"><Button variant="ghost" disabled={busy || !tagId} onClick={() => void onRun('add_tags', { tagIds: [tagId] })}>Add</Button><Button variant="ghost" disabled={busy || !tagId} onClick={() => void onRun('remove_tags', { tagIds: [tagId] })}>Remove</Button></div><div className="context-inline"><Input value={newTag} onChange={(event) => setNewTag(event.target.value)} placeholder="New tag…" onKeyDown={(event) => { if (event.key === 'Enter') void create() }} /><Button variant="ghost" disabled={!newTag.trim()} onClick={() => void create()}>Create</Button></div></div>
     {localMessage && <small className="context-message">{localMessage}</small>}
@@ -286,6 +292,9 @@ function formatEvidenceDate(value?: string) {
 // Every title resolves to a profile: the one it was given, or the default it
 // inherits. "No profile" is no longer reachable, so the empty option names what
 // actually happens instead of implying nothing applies.
+/** Trigger-only value: the included folders do not agree on one profile. */
+const MIXED_PROFILE = '__mixed__'
+
 function defaultProfileLabel(profiles: QualityProfile[]): string {
   const fallback = profiles.find((profile) => profile.isDefault)
   return fallback ? `Use default (${fallback.name})` : 'Use default'
@@ -471,6 +480,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
 }
 
 export function MovieDetailPage({ id }: { id: string }) {
+  const plexAvailable = usePlexAvailable()
   const [movie, setMovie] = useState<Movie | null>(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -525,10 +535,10 @@ export function MovieDetailPage({ id }: { id: string }) {
   const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
   const currentSummary = <div className="release-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
-  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
+  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button>{plexAvailable && <Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}<Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
-    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Media folder" value={movie.storageRoot ?? 'Unknown folder'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
+    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge>{plexAvailable && <Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge>}<Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} />{plexAvailable && <DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} />}<DetailFact label="Media folder" value={movie.storageRoot ?? 'Unknown folder'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>{plexAvailable ? 'Identity, qBittorrent, Plex, and path evidence agree.' : 'Identity, qBittorrent, and path evidence agree.'}</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -536,6 +546,7 @@ function DetailFact({ label, value, tone }: { label: string; value: string; tone
 
 export function ShowsPage() {
   const confirm = useConfirm()
+  const plexAvailable = usePlexAvailable()
   const [items, setItems] = useState<Show[]>([])
   const [view, setView] = useState<'cards' | 'table'>(() => normalizeMediaView(window.localStorage.getItem('medialogue.shows.view')))
   const [query, setQuery] = useState('')
@@ -581,18 +592,20 @@ export function ShowsPage() {
     <div className="stats-row media-stats-row"><Stat label="Shows" value={String(items.length)} tone="blue" /><Stat label="Episodes" value={String(totalEpisodes)} tone="green" /><Stat label="Missing" value={String(missingEpisodes)} tone="amber" /><Stat label="Problems" value={String(items.filter(needsReview).length)} tone="red" /></div>
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search shows…" /></div><Select aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><FilterChips value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} className="toolbar-filter-row" onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals on every show' : 'Specials are excluded from episode totals. Monitoring is unaffected.'}><div className="specials-toggle"><span className="specials-toggle-label">Count specials</span><button type="button" className="toggle" aria-pressed={countSpecials} aria-label="Count Specials toward episode totals on every show" disabled={specialsBusy} onClick={() => void toggleSpecials()}><span /></button><span className="toggle-label">{specialsBusy ? 'Applying…' : countSpecials ? 'Yes' : 'No'}</span></div></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button></div>
     {error && <EmptyState title="Could not load Shows" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>Plex</th><th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td><td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
+    {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
     {!error && !loading && !filtered.length && <EmptyState title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
 
 function ShowCard({ show }: { show: Show }) {
+  const plexAvailable = usePlexAvailable()
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
-  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-mark">{show.seasons === 1 ? '1 SEASON' : `${show.seasons} SEASONS`}</span></div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div><div className="media-card-meta">{needsAttention(show.status) && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="episode-progress"><div><span>Episodes</span><strong>{show.episodesPresent} / {show.episodesTotal}</strong></div><Progress value={percent} tone={percent === 100 ? 'green' : 'amber'} /></div><div className="media-card-path"><Icon name="tv-screen" size={13} />{(show.problemCount ?? 0) === 1 ? '1 problem' : `${show.problemCount ?? 0} problems`}</div></div></Link></article>
+  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-mark">{show.seasons === 1 ? '1 SEASON' : `${show.seasons} SEASONS`}</span></div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div><div className="media-card-meta">{needsAttention(show.status) && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="episode-progress"><div><span>Episodes</span><strong>{show.episodesPresent} / {show.episodesTotal}</strong></div><Progress value={percent} tone={percent === 100 ? 'green' : 'amber'} /></div><div className="media-card-path"><Icon name="tv-screen" size={13} />{(show.problemCount ?? 0) === 1 ? '1 problem' : `${show.problemCount ?? 0} problems`}</div></div></Link></article>
 }
 
 export function ShowDetailPage({ id }: { id: string }) {
   const confirm = useConfirm()
+  const plexAvailable = usePlexAvailable()
   const [show, setShow] = useState<Show | null>(null)
   const [selectedSeasonId, setSelectedSeasonId] = useState('')
   const [episodeFilter, setEpisodeFilter] = useState<'all' | 'missing' | 'problems'>('all')
@@ -680,16 +693,16 @@ export function ShowDetailPage({ id }: { id: string }) {
   if (error) return <Page title="Show unavailable" subtitle={error} back="Back to Shows" backTo="/shows"><EmptyState title="Could not load this Show" detail={error} /></Page>
   if (!show) return <Page title="Loading Show" subtitle="Retrieving seasons and episode inventory." back="Back to Shows" backTo="/shows"><EmptyState title="Loading…" detail="Loading this show." /></Page>
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? seasons[0]
-  const visibleEpisodes = selectedSeason?.episodes.filter((episode) => episodeFilter === 'all' || episodeFilter === 'missing' && episode.status !== 'Present' || episodeFilter === 'problems' && (episode.status === 'Conflict' || episode.status === 'Unmatched' || episode.plex === 'Conflict')) ?? []
-  return <Page title={show.title} subtitle={`${show.year || 'Year unknown'} · ${show.tmdbId ? `TMDB ${show.tmdbId}` : show.id}${show.tvdbId ? ` · TVDB ${show.tvdbId}` : ''}`} back="Back to Shows" backTo="/shows" action={<><Button variant="ghost" icon="refresh" onClick={() => void refreshMetadata()} disabled={busy}>{busy ? 'Working…' : 'Refresh metadata'}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckPlex()} disabled={busy}>{busy ? 'Working…' : 'Recheck Plex'}</Button></>}>
+  const visibleEpisodes = selectedSeason?.episodes.filter((episode) => episodeFilter === 'all' || episodeFilter === 'missing' && episode.status !== 'Present' || episodeFilter === 'problems' && (episode.status === 'Conflict' || episode.status === 'Unmatched' || plexAvailable && episode.plex === 'Conflict')) ?? []
+  return <Page title={show.title} subtitle={`${show.year || 'Year unknown'} · ${show.tmdbId ? `TMDB ${show.tmdbId}` : show.id}${show.tvdbId ? ` · TVDB ${show.tvdbId}` : ''}`} back="Back to Shows" backTo="/shows" action={<><Button variant="ghost" icon="refresh" onClick={() => void refreshMetadata()} disabled={busy}>{busy ? 'Working…' : 'Refresh metadata'}</Button>{plexAvailable && <Button variant="ghost" icon="refresh" onClick={() => void recheckPlex()} disabled={busy}>{busy ? 'Working…' : 'Recheck Plex'}</Button>}</>}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {mappingEditor && <Panel title="Correct episode mapping" eyebrow="LOGICAL MAPPING ONLY"><div className="settings-note"><Icon name="info" size={15} /><span>This changes only Medialogue's episode mapping. The file is not renamed, moved, copied, or modified.</span></div><div className="mapping-path">{mappingEditor.media.path}</div><div className="mapping-grid">{mappingEditor.season.episodes.map((episode) => <label className="inline-check" key={episode.id}><input type="checkbox" checked={mappingEpisodeIds.includes(episode.id)} onChange={(event) => setMappingEpisodeIds((current) => event.target.checked ? [...current, episode.id] : current.filter((item) => item !== episode.id))} />S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</label>)}</div><div className="settings-footer"><Button variant="ghost" onClick={() => setMappingEditor(null)}>Cancel</Button><Button variant="primary" onClick={() => void saveMapping()} disabled={busy || !mappingEpisodeIds.length}>{busy ? 'Saving…' : 'Save mapping'}</Button></div></Panel>}
-    <Panel className="detail-hero"><div className={`detail-poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="detail-intro"><div className="eyebrow">SHOW {show.tmdbId ? `· TMDB ${show.tmdbId}` : ''}</div><h2>{show.title} {show.year ? <span className="detail-year">({show.year})</span> : null}</h2><div className="badge-row"><Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex {show.plex}</Badge><Badge tone={show.monitored === false ? 'neutral' : 'blue'} className="media-card-secondary-badge">{show.monitored === false ? 'Unmonitored' : 'Monitored'}</Badge></div><div className="detail-summary-grid"><div><strong>{show.episodesPresent} / {show.episodesTotal}</strong><span>episodes present</span></div><div><strong>{show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)}</strong><span>missing</span></div><div><strong>{show.seasons}</strong><span>seasons</span></div></div><p className="detail-description">{show.overview ?? 'Episode presence is tracked independently while every file stays at its existing path.'}</p></div></Panel>
+    <Panel className="detail-hero"><div className={`detail-poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="detail-intro"><div className="eyebrow">SHOW {show.tmdbId ? `· TMDB ${show.tmdbId}` : ''}</div><h2>{show.title} {show.year ? <span className="detail-year">({show.year})</span> : null}</h2><div className="badge-row"><Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>{plexAvailable && <Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex {show.plex}</Badge>}<Badge tone={show.monitored === false ? 'neutral' : 'blue'} className="media-card-secondary-badge">{show.monitored === false ? 'Unmonitored' : 'Monitored'}</Badge></div><div className="detail-summary-grid"><div><strong>{show.episodesPresent} / {show.episodesTotal}</strong><span>episodes present</span></div><div><strong>{show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)}</strong><span>missing</span></div><div><strong>{show.seasons}</strong><span>seasons</span></div></div><p className="detail-description">{show.overview ?? 'Episode presence is tracked independently while every file stays at its existing path.'}</p></div></Panel>
     <div className="detail-layout show-detail-layout"><div><Panel title="Episode ordering" eyebrow="TMDB STRUCTURE" action={orderings ? undefined : <Button variant="ghost" onClick={() => void loadOrderings()} disabled={orderingBusy}>{orderingBusy ? 'Loading…' : 'Show orderings'}</Button>}>
       {orderings ? <div className="ordering-list">{orderings.map((option) => <button className={`ordering-option ${option.selected ? 'selected' : ''}`} key={option.id ?? 'default'} disabled={orderingBusy} onClick={() => void chooseOrdering(option)}><span className="ordering-copy"><strong>{option.name}</strong><span>{option.season_count} season{option.season_count === 1 ? '' : 's'} · {option.episode_count} episode{option.episode_count === 1 ? '' : 's'}{option.network ? ` · ${option.network}` : ''}</span>{option.description && <small>{option.description}</small>}</span><Badge tone={option.selected ? 'green' : 'neutral'}>{option.selected ? 'In use' : option.type_label}</Badge></button>)}<p className="cf-modal-note">TMDB stores alternate orderings for many shows. Switching renumbers the existing episode identities rather than replacing them.</p></div> : <div className="ordering-summary"><span className="muted">Using {show.tmdbEpisodeGroupId ? 'a custom TMDB episode group' : "TMDB's default season structure"}.</span><small>If this show&rsquo;s seasons do not match your files, another ordering probably does.</small></div>}
     </Panel><div className="show-season-workspace"><Panel className="season-nav-panel" title="Seasons" eyebrow={`${show.episodesPresent} / ${show.episodesTotal} PRESENT`}><div className="season-nav-list">{seasons.map((season) => <button type="button" className={`season-nav-item ${selectedSeason?.id === season.id ? 'selected' : ''}`} key={season.id} onClick={() => { setSelectedSeasonId(season.id); setEpisodeFilter('all') }}><span><strong>{season.title || (season.seasonNumber === 0 ? 'Specials' : `Season ${season.seasonNumber}`)}</strong><small>{season.presentCount} / {season.episodeCount} present</small></span><Badge tone={season.missingCount ? 'amber' : 'green'}>{season.missingCount ? `${season.missingCount} missing` : 'Complete'}</Badge></button>)}</div>{!seasons.length && <div className="history-empty">No season metadata exists yet.</div>}</Panel><div className="season-main"><Panel className="season-detail-panel" title={selectedSeason ? (selectedSeason.title || (selectedSeason.seasonNumber === 0 ? 'Specials' : `Season ${selectedSeason.seasonNumber}`)) : 'Season'} eyebrow={selectedSeason ? `${selectedSeason.presentCount} / ${selectedSeason.episodeCount} PRESENT` : 'EPISODE INVENTORY'} action={selectedSeason && <div className="season-header-actions"><Button variant="ghost" onClick={() => void searchSeason(selectedSeason)}>Search season</Button><Button variant="ghost" onClick={() => void setSeasonMonitored(selectedSeason, !selectedSeason.monitored)}>{selectedSeason.monitored ? 'Unmonitor' : 'Monitor'}</Button></div>}>
-      {selectedSeason && <><div className="season-control-row"><div className="season-control-copy"><span>{selectedSeason.missingCount ? `${selectedSeason.missingCount} episode${selectedSeason.missingCount === 1 ? '' : 's'} missing` : 'Everything present'}</span><span>{selectedSeason.counted ? 'Included in show totals' : 'Excluded from show totals'}</span></div><div className="season-control-actions"><label className="inline-check"><input type="checkbox" checked={selectedSeason.counted} onChange={(event) => void setSeasonCounted(selectedSeason, event.target.checked)} />Counted</label><div className="episode-filter-chips"><button className={episodeFilter === 'all' ? 'active' : ''} onClick={() => setEpisodeFilter('all')}>All</button><button className={episodeFilter === 'missing' ? 'active' : ''} onClick={() => setEpisodeFilter('missing')}>Missing</button><button className={episodeFilter === 'problems' ? 'active' : ''} onClick={() => setEpisodeFilter('problems')}>Problems</button></div></div></div><div className="episode-table-wrap"><table className="data-table episode-table"><thead><tr><th>Episode</th><th>Media</th><th>State</th><th>Plex</th><th /></tr></thead><tbody>{visibleEpisodes.map((episode) => <tr key={episode.id}><td><div className="episode-title-cell"><strong>S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</strong>{episode.airDate && <small>{episode.airDate}</small>}</div></td><td><div className="episode-media-cell"><strong>{episode.quality || 'No media'}</strong>{episode.media[0]?.path && <small>{episode.media[0].path}</small>}<div className="badge-row compact">{episode.media[0]?.releaseScope === 'season_pack' && <Badge tone="purple">Season pack</Badge>}{episode.media[0]?.mappedEpisodeNumbers.length > 1 && <Badge tone="blue">Multi-episode</Badge>}{episode.media[0]?.manualMapping && <Badge tone="neutral">Manual mapping</Badge>}</div></div></td><td><Badge tone={statusTone(episode.status)} className="media-card-primary-badge">{episode.status}</Badge></td><td><Badge tone={statusTone(episode.plex)} className="media-card-secondary-badge">{episode.plex}</Badge></td><td><details className="episode-actions-menu"><summary className="button button-ghost"><Icon name="menu" size={14} />Actions</summary><div className="episode-actions-popover"><label className="inline-check"><input type="checkbox" checked={episode.monitored} onChange={(event) => void setEpisodeMonitored(episode, event.target.checked)} />Monitored</label>{episode.media[0] && <button type="button" onClick={() => editMapping(episode.media[0], selectedSeason)}>Map episode</button>}</div></details></td></tr>)}</tbody></table>{!visibleEpisodes.length && <div className="history-empty">No episodes match this filter.</div>}</div></>}
-    </Panel><ShowProfilePanel resourceId={id} /><Panel title="Recent history" eyebrow="EVENTS">{show.recentEvents?.length ? show.recentEvents.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div></div>) : <div className="history-empty">No Show or episode events recorded yet.</div>}</Panel></div></div></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={show.status} tone={statusTone(show.status)} /><DetailFact label="Plex verification" value={show.plex} tone={statusTone(show.plex)} /><DetailFact label="Episodes present" value={`${show.episodesPresent} / ${show.episodesTotal}`} /><DetailFact label="Last observed" value={formatEvidenceDate(show.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={`${show.problemCount ?? 0} NEED ATTENTION`}>{show.problems?.length ? show.problems.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Mapped episode files are consistent with current evidence.</span></div></div>}</Panel></aside></div>
+      {selectedSeason && <><div className="season-control-row"><div className="season-control-copy"><span>{selectedSeason.missingCount ? `${selectedSeason.missingCount} episode${selectedSeason.missingCount === 1 ? '' : 's'} missing` : 'Everything present'}</span><span>{selectedSeason.counted ? 'Included in show totals' : 'Excluded from show totals'}</span></div><div className="season-control-actions"><label className="inline-check"><input type="checkbox" checked={selectedSeason.counted} onChange={(event) => void setSeasonCounted(selectedSeason, event.target.checked)} />Counted</label><div className="episode-filter-chips"><button className={episodeFilter === 'all' ? 'active' : ''} onClick={() => setEpisodeFilter('all')}>All</button><button className={episodeFilter === 'missing' ? 'active' : ''} onClick={() => setEpisodeFilter('missing')}>Missing</button><button className={episodeFilter === 'problems' ? 'active' : ''} onClick={() => setEpisodeFilter('problems')}>Problems</button></div></div></div><div className="episode-table-wrap"><table className="data-table episode-table"><thead><tr><th>Episode</th><th>Media</th><th>State</th>{plexAvailable && <th>Plex</th>}<th /></tr></thead><tbody>{visibleEpisodes.map((episode) => <tr key={episode.id}><td><div className="episode-title-cell"><strong>S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</strong>{episode.airDate && <small>{episode.airDate}</small>}</div></td><td><div className="episode-media-cell"><strong>{episode.quality || 'No media'}</strong>{episode.media[0]?.path && <small>{episode.media[0].path}</small>}<div className="badge-row compact">{episode.media[0]?.releaseScope === 'season_pack' && <Badge tone="purple">Season pack</Badge>}{episode.media[0]?.mappedEpisodeNumbers.length > 1 && <Badge tone="blue">Multi-episode</Badge>}{episode.media[0]?.manualMapping && <Badge tone="neutral">Manual mapping</Badge>}</div></div></td><td><Badge tone={statusTone(episode.status)} className="media-card-primary-badge">{episode.status}</Badge></td>{plexAvailable && <td><Badge tone={statusTone(episode.plex)} className="media-card-secondary-badge">{episode.plex}</Badge></td>}<td><details className="episode-actions-menu"><summary className="button button-ghost"><Icon name="menu" size={14} />Actions</summary><div className="episode-actions-popover"><label className="inline-check"><input type="checkbox" checked={episode.monitored} onChange={(event) => void setEpisodeMonitored(episode, event.target.checked)} />Monitored</label>{episode.media[0] && <button type="button" onClick={() => editMapping(episode.media[0], selectedSeason)}>Map episode</button>}</div></details></td></tr>)}</tbody></table>{!visibleEpisodes.length && <div className="history-empty">No episodes match this filter.</div>}</div></>}
+    </Panel><ShowProfilePanel resourceId={id} /><Panel title="Recent history" eyebrow="EVENTS">{show.recentEvents?.length ? show.recentEvents.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div></div>) : <div className="history-empty">No Show or episode events recorded yet.</div>}</Panel></div></div></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={show.status} tone={statusTone(show.status)} />{plexAvailable && <DetailFact label="Plex verification" value={show.plex} tone={statusTone(show.plex)} />}<DetailFact label="Episodes present" value={`${show.episodesPresent} / ${show.episodesTotal}`} /><DetailFact label="Last observed" value={formatEvidenceDate(show.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={`${show.problemCount ?? 0} NEED ATTENTION`}>{show.problems?.length ? show.problems.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Mapped episode files are consistent with current evidence.</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -951,19 +964,11 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
   const details = problem.details ?? {}
   if (problem.code === 'DUPLICATE_EPISODE_RELEASE') {
     const files = Array.isArray(details.media_files) ? details.media_files.map(problemRecord) : []
-    const preferredId = problemText(details.preferred_media_file_id)
+    // The files themselves are listed once, above. Only the caveat is left, and
+    // only when a row it describes is actually on screen.
+    if (!files.length || files.every((file) => file.physical_exists === true)) return null
     return <div className="problem-evidence-block">
       <div className="problem-evidence-note">Only distinct paths verified on disk count as physical duplicates. Catalogue rows in a missing-file grace period are shown for diagnosis but cannot be selected.</div>
-      <div className="problem-candidate-list">{files.map((file, index) => {
-        const id = problemText(file.media_file_id) ?? `${problem.id}-file-${index}`
-        const physical = file.physical_exists === true
-        const preferred = id === preferredId
-        return <div className={`problem-candidate ${preferred ? 'selected' : ''}`} key={id}>
-          <strong>{problemText(file.filename) ?? 'Unknown episode file'}{preferred ? ' · preferred' : ''}</strong>
-          <code>{problemText(file.path) ?? 'Path not recorded'}</code>
-          <span>{problemText(file.release_name) ? `Release: ${problemText(file.release_name)} · ` : ''}{physical ? 'Verified on disk' : file.missing_since ? `Not observed since ${problemText(file.missing_since)}` : 'Not present on disk'}{file.manual_mapping === true ? ' · manual mapping' : ''}</span>
-        </div>
-      })}</div>
     </div>
   }
 
@@ -978,7 +983,10 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
         <div className="problem-evidence-side"><span className="eyebrow">MEDIALOGUE MAPPED MEDIA</span><strong>{mapped.length} mapped {mapped.length === 1 ? 'path' : 'paths'}</strong>{mapped.length ? mapped.map((item, index) => <div className="problem-candidate" key={`${problem.id}-mapped-${problemText(item.media_file_id) ?? index}`}><code>{problemText(item.path) ?? 'Path not recorded'}</code><span>{item.physical_exists === true ? 'Verified on disk' : 'Not found on disk'} · catalogue: {item.catalogue_exists === true ? 'present' : 'missing'}{problemText(item.missing_since) ? ` · missing since ${problemText(item.missing_since)}` : ''}</span></div>) : <span>No mapped paths are attached to this release.</span>}</div>
       </div>
     </div>
-    return <div className="problem-evidence-block"><div className="problem-evidence-note">This warning predates detailed path evidence. Recheck it to collect the current qBittorrent path, translated local path, and mapped filesystem state.</div></div>
+    // Not "recheck to collect evidence": a recheck reads the download clients,
+    // so when none of them still holds this torrent there is nothing to collect
+    // and the old note asked for something that could never succeed.
+    return <div className="problem-evidence-block"><div className="problem-evidence-note">No download client currently reports this torrent, so there is no live path evidence to compare against.</div></div>
   }
 
   if (problem.code === 'PLEX_IDENTITY_MISMATCH') {
@@ -990,20 +998,14 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
       <div className="problem-evidence-note">Plex show titles are advisory. This Problem exists only because Plex mapped the same physical file to different season/episode numbers.</div>
       <div className="problem-candidate-list">{conflicts.map((conflict, index) => <div className="problem-candidate" key={`${problem.id}-plex-${index}`}><strong>{problemText(conflict.local_episode) ?? 'Medialogue episode'} → {problemText(conflict.plex_episode) ?? 'Plex episode'}</strong><span>{problemText(conflict.local_show_title) ?? 'Show'} · Medialogue: {problemText(conflict.local_path) ?? 'unknown path'}</span><span>Plex metadata: {problemText(conflict.plex_show_title) ?? 'unknown show title'}{problemText(conflict.plex_episode_title) ? ` · ${problemText(conflict.plex_episode_title)}` : ''} · {problemText(conflict.plex_path) ?? 'unknown path'}</span><span>Different: {Array.isArray(conflict.differences) ? conflict.differences.map(readableEvidenceValue).join(', ') : 'episode numbering'}</span></div>)}</div>
     </div>
-    // The comparison itself is shown above the fold now; this keeps only the
-    // raw values a troubleshooter needs and the panel does not repeat itself.
-    return <div className="problem-evidence-block">
-      <div className="problem-evidence-grid">
-        <div className="problem-evidence-side"><span className="eyebrow">LOCAL PATH</span><code>{localPath ?? problemText(details.path) ?? 'Not recorded'}</code></div>
-        <div className="problem-evidence-side"><span className="eyebrow">PLEX PATH</span><code>{plexPath ?? 'Not recorded'}</code></div>
-      </div>
-      {differences.length > 0 && <div className="problem-difference"><strong>Different:</strong> {differences.join(', ')}</div>}
-    </div>
+    // Identity, paths and differences are all covered by the comparison and the
+    // key details above, so there is nothing left for this block to add.
+    return null
   }
 
-  const entries = Object.entries(details).filter(([key]) => key !== 'parse')
-  if (!entries.length) return null
-  return <div className="problem-evidence-block problem-evidence-facts">{entries.map(([key, value]) => <div className="problem-evidence-fact" key={key}><span>{key.replaceAll('_', ' ')}</span><strong>{readableEvidenceValue(value)}</strong></div>)}</div>
+  // A dump of raw detail keys is not evidence: the values worth reading are
+  // already pulled out by ProblemKeyDetails, and the rest is machine state.
+  return null
 }
 
 function problemLabel(problem: Problem): string {
@@ -1030,29 +1032,25 @@ function duplicateMovieReleases(problem: Problem, movie: Movie | null): MovieRel
   return releases.filter((release) => ['duplicate', 'current'].includes(release.state.toLowerCase()))
 }
 
-/** The two identities a PLEX_IDENTITY_MISMATCH is actually about.
- *
- * The details payload names its keys differently depending on where the
- * Problem was raised, and the local folder arrives as `path` rather than
- * `local_path`, so reading only the `local_*` keys reported "not recorded"
- * for evidence that was present all along.
- */
 function plexIdentitySides(problem: Problem) {
   const details = problem.details ?? {}
   const localPath = problemText(details.local_path ?? details.medialogue_path ?? details.path ?? details.resolved_path)
-  const plexPath = problemText(details.plex_path ?? details.plex_reported_path)
   const folderName = localPath ? localPath.split(/[\\/]/).filter(Boolean).pop() : undefined
-  const localTitle = problemText(details.local_title ?? details.medialogue_title)
-    ?? (problem.subject && problem.subject !== localPath ? problem.subject : undefined)
-    ?? folderName
+  // Not problem.subject unconditionally: when the entity cannot be resolved the
+  // mapper falls back to the reason label, which rendered as "Identity conflict
+  // (1973)" — the name of the problem, presented as the name of the title.
+  const resolvedSubject = problem.subject && problem.subject !== problem.label && problem.subject !== localPath
+    ? problem.subject
+    : undefined
+  const localTitle = problemText(details.local_title ?? details.medialogue_title) ?? resolvedSubject ?? folderName
   return {
     local: {
       identity: problemText(details.local_identity) ?? problemIdentity(localTitle, details.local_year ?? details.medialogue_year) ?? localTitle,
-      path: localPath,
+      tmdbId: problem.tmdbId ?? (typeof details.local_tmdb_id === 'number' ? details.local_tmdb_id : undefined),
     },
     plex: {
       identity: problemText(details.plex_identity) ?? problemIdentity(details.plex_title, details.plex_year),
-      path: plexPath,
+      tmdbId: typeof details.plex_tmdb_id === 'number' ? details.plex_tmdb_id : undefined,
     },
     differences: Array.isArray(details.differences)
       ? details.differences.map((value) => problemText(value)).filter((value): value is string => Boolean(value))
@@ -1060,7 +1058,7 @@ function plexIdentitySides(problem: Problem) {
   }
 }
 
-function IdentityCard({ source, identity, path, poster, tone }: { source: string; identity?: string; path?: string; poster?: string; tone: 'local' | 'plex' }) {
+function IdentityCard({ source, identity, tmdbId, poster, tone }: { source: string; identity?: string; tmdbId?: number; poster?: string; tone: 'local' | 'plex' }) {
   return <div className={`identity-card identity-card-${tone}`}>
     <div className="identity-poster">
       {poster
@@ -1069,8 +1067,11 @@ function IdentityCard({ source, identity, path, poster, tone }: { source: string
     </div>
     <div className="identity-copy">
       <span className="identity-source">{source}</span>
-      <strong>{identity ?? 'Not recorded'}</strong>
-      {path && <code title={path}>{path}</code>}
+      <strong title={identity}>{identity ?? 'Not recorded'}</strong>
+      {/* The id is what actually settles the dispute. Nothing is shown when
+          there is none: Plex artwork and ids are not captured, and a line
+          announcing that on every card says nothing about this title. */}
+      {tmdbId ? <code>TMDB {tmdbId}</code> : null}
     </div>
   </div>
 }
@@ -1081,11 +1082,11 @@ function PlexIdentityComparison({ problem }: { problem: Problem }) {
   const { local, plex, differences } = plexIdentitySides(problem)
   return <section className="identity-conflict">
     <div className="identity-conflict-grid">
-      <IdentityCard source="Medialogue says" identity={local.identity} path={local.path} poster={problem.posterRef} tone="local" />
+      <IdentityCard source="Medialogue says" identity={local.identity} tmdbId={local.tmdbId} poster={problem.posterRef} tone="local" />
       <span className="identity-versus">vs</span>
       {/* No poster on this side: Plex artwork is served from the Plex server
           behind its own token, so nothing is fetchable from the browser. */}
-      <IdentityCard source="Plex says" identity={plex.identity} path={plex.path} tone="plex" />
+      <IdentityCard source="Plex says" identity={plex.identity} tmdbId={plex.tmdbId} tone="plex" />
     </div>
     {differences.length > 0 && <p className="identity-differences">Disagrees on {differences.join(', ')}.</p>}
   </section>
@@ -1097,14 +1098,41 @@ function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; dupl
   if (problem.code === 'DUPLICATE_PHYSICAL_RELEASE' && duplicateMovie?.releasesDetail?.length) {
     duplicateMovieReleases(problem, duplicateMovie).forEach((release, index) => {
       const directory = release.directories.find((item) => item.exists) ?? release.directories[0]
-      rows.push([`Copy ${index + 1}`, directory?.path ?? release.name, [release.quality, release.edition, release.releaseGroup].filter(Boolean).join(' · ')])
+      const parts = pathParts(directory?.path)
+      rows.push([
+        `Copy ${index + 1}`,
+        parts?.name ?? release.name,
+        [directory?.storageRoot, parts?.parent, [release.quality, release.edition].filter(Boolean).join(' · ')].filter(Boolean).join(' · '),
+      ])
+    })
+  } else if (problem.code === 'DUPLICATE_PHYSICAL_RELEASE' && Array.isArray(details.release_names)) {
+    // Without the movie loaded the generic branch printed a single Path row for
+    // a Problem whose whole point is that there are two copies.
+    const base = pathParts(problemText(details.path))?.parent
+    details.release_names.map((value) => problemText(value)).filter(Boolean).forEach((name, index) => {
+      rows.push([`Copy ${index + 1}`, name as string, base])
     })
   } else if (problem.code === 'DUPLICATE_EPISODE_RELEASE' && Array.isArray(details.media_files)) {
-    details.media_files.map(problemRecord).forEach((file, index) => rows.push([
-      `File ${index + 1}`,
-      problemText(file.path) ?? problemText(file.filename) ?? 'Path not recorded',
-      file.physical_exists === true ? 'Verified on disk' : 'Not currently verified on disk',
-    ]))
+    const preferredId = problemText(details.preferred_media_file_id)
+    // The filename leads, because duplicates of one episode share almost all of
+    // their path. The folder that contains it follows, without repeating the
+    // name. "Verified on disk" is dropped: it is true of every row that counts
+    // as a duplicate, so only the exception is worth saying.
+    details.media_files.map(problemRecord).forEach((file, index) => {
+      const parts = pathParts(problemText(file.path))
+      const filename = problemText(file.filename) ?? parts?.name
+      const directory = parts?.parent
+      rows.push([
+        `File ${index + 1}`,
+        filename ?? 'File not recorded',
+        [
+          problemText(file.media_file_id) === preferredId ? 'Preferred' : '',
+          problemText(file.storage_root_name) ?? 'Unknown media folder',
+          directory ?? '',
+          file.physical_exists === true ? '' : file.missing_since ? `Not observed since ${problemText(file.missing_since)}` : 'Not currently verified on disk',
+        ].filter(Boolean).join(' · '),
+      ])
+    })
   } else if (problem.code === 'PLEX_IDENTITY_MISMATCH' && Array.isArray(details.conflicts)) {
     const conflict = problemRecord(details.conflicts[0])
     rows.push(
@@ -1113,15 +1141,17 @@ function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; dupl
     )
   } else {
     const path = problemText(details.path ?? details.local_path ?? details.reported_path ?? details.resolved_path)
-    if (path) rows.push(['Path', path])
+    const parts = pathParts(path)
+    if (parts) rows.push(['Path', parts.name, parts.parent])
     const parsed = parserIdentity(details)
     const parserWarnings = parsed.warnings
     if (parsed.identity) rows.push(['Parsed as', parsed.identity, parserWarnings.length ? parserWarnings.join(' · ') : undefined])
     const qbitPath = problemText(details.qbittorrent_path ?? details.remote_path)
-    if (qbitPath && qbitPath !== path) rows.push(['qBittorrent path', qbitPath])
+    const qbitParts = qbitPath && qbitPath !== path ? pathParts(qbitPath) : undefined
+    if (qbitParts) rows.push(['qBittorrent path', qbitParts.name, qbitParts.parent])
   }
   if (!rows.length) rows.push(['Affected media', problem.subject, problem.entityType ? `${problem.entityType} evidence` : undefined])
-  return <section className="problems-key-details">{rows.map(([label, value, note], index) => <div className="problems-detail-row" key={`${label}-${index}`}><span>{label}</span><div><strong>{value}</strong>{note && <small>{note}</small>}</div></div>)}</section>
+  return <section className="problems-key-details">{rows.map(([label, value, note], index) => <div className="problems-detail-row" key={`${label}-${index}`}><span>{label}</span><div><strong title={value}>{value}</strong>{note && <small>{note}</small>}</div></div>)}</section>
 }
 
 const CUSTOM_EDITION = '__custom__'
@@ -1444,16 +1474,16 @@ export function ProblemsPage() {
     <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><div className="problems-toolbar-rest"><Select value={reasonFilter} onChange={(event) => updateProblemView({ reason: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => updateProblemView({ severity: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></Select><div className="problems-toolbar-actions"><Button variant="ghost" onClick={() => updateProblemView({ problemStatus: queueStatus === 'dismissed' ? null : 'dismissed', problem: null, page: null })}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     <section className={`problems-layout ${selected ? 'show-detail' : ''}`}>
-      <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}>{/* The poster answers "which title is this" before the text does. */}
-                    <span className={`problems-severity severity-${problem.severity} ${problem.posterRef ? 'has-poster' : ''}`}>{problem.posterRef ? <PosterImage reference={problem.posterRef} title={problem.subject} /> : <Icon name="alert" size={15} />}</span><span className="problems-row-copy"><strong>{problem.title}</strong>{problemSubjectLine(problem) ? <span>{problemSubjectLine(problem)}</span> : null}<small><b className={`problems-state state-${problem.workflow}`}>{problemLabel(problem)}</b>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
+      <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong>{problemSubjectLine(problem) ? <span>{problemSubjectLine(problem)}</span> : null}<small>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
       <article className="problems-detail">{current ? <><header className="problems-detail-head"><button className="icon-button problems-back-button" type="button" onClick={() => setSelected('')} aria-label="Back to Problems"><Icon name="chevron" size={16} style={{ transform: 'rotate(180deg)' }} /></button>
-<div>{queueStatus === 'dismissed' && <div className="eyebrow">SUPPRESSED</div>}<h2>{current.title}</h2></div>
+<div>{queueStatus === 'dismissed' && <div className="eyebrow">SUPPRESSED</div>}<h2><span className="problems-detail-title">{current.title}</span><span className={`problems-priority priority-${current.severity}`}>{current.severity} priority</span></h2></div>
 <div className="problems-detail-actions">
   {queueStatus === 'dismissed'
     ? <Button variant="ghost" onClick={() => void adminAction('restore')}>Restore</Button>
     : <Button variant="ghost" onClick={() => void adminAction('dismiss')}>Suppress</Button>}
   <Button variant="danger" onClick={() => void adminAction('delete')}>Delete</Button>
-</div></header><div className="problems-detail-body"><div className="problems-lead"><p>{current.detail}</p><div><span className={`problems-priority priority-${current.severity}`}>{current.severity} priority</span><span className={`problems-state state-${current.workflow}`}>{problemLabel(current)}</span></div></div>
+</div></header><div className="problems-detail-body">{/* Its description is word for word the resolution guidance shown below. */}
+        {current.code !== 'DUPLICATE_EPISODE_RELEASE' && <div className="problems-lead"><p>{current.detail}</p></div>}
         {current.code === 'PLEX_IDENTITY_MISMATCH' && <PlexIdentityComparison problem={current} />}
         <ProblemKeyDetails problem={current} duplicateMovie={duplicateMovie} />
         {queueStatus === 'open' && current.code === 'DUPLICATE_PHYSICAL_RELEASE' && duplicateMovie && <MovieEditionResolver key={`${current.id}-${duplicateMovie.releasesDetail?.map((release) => `${release.id}:${release.editionOverrideActive}:${release.edition ?? ''}`).join('|')}`} problem={current} movie={duplicateMovie} options={editionOptions} loading={loading} onSaved={editionsSaved} />}
@@ -1462,7 +1492,7 @@ export function ProblemsPage() {
         {queueStatus === 'open' && current.code === 'PLEX_IDENTITY_MISMATCH' && !editingPlexIdentity && <div className="problems-resolution"><p>Which system needs correcting?</p><Button variant="primary" icon="external" onClick={openPlex}>Medialogue is correct, open Plex</Button>{current.availableActions?.some((action) => action === 'confirm_movie_match' || action === 'confirm_show_match') && <Button variant="ghost" onClick={beginPlexIdentityChange}>Medialogue is wrong, change identity</Button>}<Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && current.workflow === 'waiting' && current.code !== 'PLEX_IDENTITY_MISMATCH' && <div className="problems-resolution"><p>Recheck the current external and filesystem evidence. If the condition is gone, this Problem will leave the queue.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && (current.workflow === 'choice' || editingPlexIdentity) && <ProblemsIdentityPicker problem={current} matches={tmdbMatches} selected={selectedTmdb} query={tmdbQuery} loading={loading} onQuery={setTmdbQuery} onSearch={() => void runTmdbSearch()} onSelect={setSelectedTmdb} onApply={() => void applyTmdbMatch()} onCancel={editingPlexIdentity ? () => setEditingPlexIdentity(false) : undefined} />}
-        <details className="problems-evidence"><summary><Icon name="chevron" size={15} /><strong>Evidence & technical details</strong><span>For troubleshooting</span></summary><ProblemEvidenceDetails problem={current} /></details>
+        <ProblemEvidenceDetails problem={current} />
       </div></> : <EmptyState icon="alert" title="Select a Problem" detail="Choose an item to see the details and what to do next." />}</article>
     </section>
     {pages > 1 && <div className="pagination-bar"><Button variant="ghost" disabled={page <= 1 || loading} onClick={() => void load(page - 1)}>Previous</Button><span>Page {page} of {pages}</span><Button variant="ghost" disabled={page >= pages || loading} onClick={() => void load(page + 1)}>Next</Button></div>}
@@ -1566,6 +1596,15 @@ export function ReviewPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
     finally { setProfileBusy(false) }
   }
+
+  // What the included folders are already set to, or undefined when they differ.
+  // Without this the control had nothing to display and needed a placeholder.
+  const sharedProfile = useMemo(() => {
+    const targets = rows.filter((item) => !excluded.has(item.id))
+    if (!targets.length) return undefined
+    const first = targets[0].qualityProfileId ?? ''
+    return targets.every((item) => (item.qualityProfileId ?? '') === first) ? first : undefined
+  }, [rows, excluded])
 
   // Applies to the folders currently listed and still included, not to the whole
   // queue: the visible selection is what the reviewer believes they are changing.
@@ -1735,13 +1774,20 @@ export function ReviewPage() {
         {/* Sits with the import action because it describes what is about to be
             imported, and it is one write for the whole visible selection. */}
         <span className="review-import-profile">
-          <span className="review-import-profile-label">Quality Profile for all</span>
+          <span className="review-import-profile-label">Quality Profile</span>
+          {/* A value, not a command: it shows what the included folders are set
+              to and changing it sets them. The old placeholder option was an
+              action sitting in a list of values, and read as one more choice. */}
           <Dropdown
             ariaLabel="Quality Profile for every included folder"
-            value=""
+            value={sharedProfile ?? MIXED_PROFILE}
             disabled={profileBusy || !rows.some((item) => !excluded.has(item.id))}
-            options={[{ value: '', label: 'Set all to…' }, { value: 'none', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
-            onChange={(value) => { if (value) void setAllProfiles(value === 'none' ? null : value) }}
+            options={[
+              ...(sharedProfile === undefined ? [{ value: MIXED_PROFILE, label: 'Mixed', disabled: true }] : []),
+              { value: '', label: defaultProfileLabel(profiles) },
+              ...profiles.map((profile) => ({ value: profile.id, label: profile.name })),
+            ]}
+            onChange={(value) => void setAllProfiles(value || null)}
           />
         </span>
         <div className="toolbar-spacer" />
@@ -2167,7 +2213,7 @@ function StorageSettings() {
         // and leaving that as a second step people had to discover was the
         // main reason adding one felt like it had not worked.
         if (!rootEnabled) {
-          setMessage(ok(`${saved.name} added. It is disabled, so nothing will be scanned until you enable it.`))
+          setMessage(ok(`${saved.name} added. It is off, so nothing will be scanned until you turn it on.`))
         } else if (!tmdbReady) {
           setMessage(ok(`${saved.name} added. Configure TMDB, then scan it.`))
         } else {
@@ -2311,7 +2357,7 @@ function StorageSettings() {
         // Without this the row reads as fully healthy while files are gone.
         const missing = root.missing_media_count ?? 0
         const state = root.scanning ? { tone: 'blue' as const, text: 'Scanning…' }
-          : !root.enabled ? { tone: 'neutral' as const, text: 'Disabled' }
+          : !root.enabled ? { tone: 'neutral' as const, text: 'Off' }
           : offline ? { tone: 'red' as const, text: `Path not reachable${root.affected_media_count ? ` · ${root.affected_media_count} affected` : ''}` }
           : !scanned ? { tone: 'amber' as const, text: 'Never scanned' }
           : missing ? { tone: 'amber' as const, text: `${missing} ${missing === 1 ? 'item' : 'items'} missing` }
@@ -2453,7 +2499,7 @@ function StorageSettings() {
       const client = clients.find((item) => item.id === mapping.integration_id)
       const root = roots.find((item) => item.id === mapping.storage_root_id)
       return <button type="button" className={`provider-card ${mapping.enabled ? '' : 'provider-card-disabled'}`} key={mapping.id} onClick={() => editMapping(mapping)}>
-        <div className="provider-card-head"><div className="provider-card-icon"><Icon name="arrow" size={20} /></div><Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
+        <div className="provider-card-head"><div className="provider-card-icon"><Icon name="arrow" size={20} /></div><Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'On' : 'Off'}</Badge></div>
         <strong>{mapping.name}</strong><span className="remote-mapping-route"><b>{mapping.remote_prefix}</b><Icon name="arrow" size={13} /><b>{mapping.local_prefix}</b></span>
         <div className="provider-card-meta"><span>{client?.name ?? 'All qBittorrent clients'}</span><span>{root?.name ?? 'Any matching media folder'}</span></div>
       </button>
@@ -2470,7 +2516,7 @@ function StorageSettings() {
       <Button variant="primary" onClick={() => void saveMapping()} disabled={mappingBusy || Boolean(selectedMapping && !mappingDirty)}>{mappingBusy ? 'Saving…' : selectedMapping ? 'Save mapping' : 'Add mapping'}</Button>
     </>}>
       <div className="provider-modal-editor">
-        <SectionHead title={selectedMapping ? selectedMapping.name : 'Map a reported path'} description="Translate the path reported by qBittorrent into the equivalent path visible to Medialogue." status={selectedMapping ? mappingEnabled ? 'Enabled' : 'Disabled' : 'New mapping'} statusTone={mappingEnabled ? 'green' : 'neutral'} />
+        <SectionHead title={selectedMapping ? selectedMapping.name : 'Map a reported path'} description="Translate the path reported by qBittorrent into the equivalent path visible to Medialogue." status={selectedMapping ? mappingEnabled ? 'On' : 'Off' : 'New mapping'} statusTone={mappingEnabled ? 'green' : 'neutral'} />
         <div className="settings-form">
           <Field label="Name" help="Shown in Medialogue only.">
             <Input value={mappingName} onChange={(event) => updateMappingDraft(() => setMappingName(event.target.value))} />
@@ -2558,6 +2604,7 @@ function PlexSettings() {
     try {
       const value = await api.savePlex({ url: url.trim(), token: token || undefined, enabled, expected_revision: configuration?.revision })
       setConfiguration(value); setToken(''); setDirty(false); setMessage(ok('Plex settings saved.'))
+      window.dispatchEvent(new Event('medialogue-plex-configuration-changed'))
     } catch (reason) { setMessage(failed(reason, 'Could not save Plex settings.')) }
     finally { setWorking(false) }
   }
@@ -2794,14 +2841,19 @@ function QBittorrentSettings() {
     <SectionHead title="Download clients" description="qBittorrent instances Medialogue observes and uses for explicit grabs." action={<div className="button-row"><Button variant="secondary" icon="refresh" onClick={() => void refreshAll()} disabled={busy || !clients.length}>{busy ? 'Refreshing…' : 'Refresh health'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add client</Button></div>} />
     {error && !editorOpen && <Note message={{ tone: 'error', text: error }} />}
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
-    <div className="provider-card-grid">
+    {clients.length > 0 && <div className="provider-card-grid">
       {clients.map((client) => <article className={`provider-card ${client.enabled ? '' : 'provider-card-disabled'}`} role="button" tabIndex={0} key={client.id} onClick={() => selectClient(client.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectClient(client.id) } }}>
-        <div className="provider-card-head"><div className={`provider-card-icon ${client.scope === 'movies' ? 'kind-movie' : 'kind-show'}`}><Icon name={client.scope === 'movies' ? 'clapper' : 'tv-screen'} size={20} /></div><button type="button" className={`badge cf-card-toggle ${client.enabled ? 'badge-green' : ''}`} aria-pressed={client.enabled} aria-label={`Turn ${client.name} ${client.enabled ? 'off' : 'on'}`} disabled={togglingId === client.id} onClick={(event) => { event.stopPropagation(); void toggleClient(client) }}><span className="badge-dot" />{togglingId === client.id ? 'Saving…' : client.enabled ? 'Enabled' : 'Disabled'}</button></div>
+        <div className="provider-card-head"><div className={`provider-card-icon ${client.scope === 'movies' ? 'kind-movie' : 'kind-show'}`}><Icon name={client.scope === 'movies' ? 'clapper' : 'tv-screen'} size={20} /></div><button type="button" className={`badge cf-card-toggle ${client.enabled ? 'badge-green' : ''}`} aria-pressed={client.enabled} aria-label={`Turn ${client.name} ${client.enabled ? 'off' : 'on'}`} disabled={togglingId === client.id} onClick={(event) => { event.stopPropagation(); void toggleClient(client) }}><span className="badge-dot" />{togglingId === client.id ? 'Saving…' : client.enabled ? 'On' : 'Off'}</button></div>
         <strong>{client.name}</strong><span>{client.url}</span>
         <div className="provider-card-meta"><span className={`provider-health ${client.health === 'healthy' ? 'healthy' : client.health === 'unavailable' ? 'error' : ''}`}><i />{client.health}</span></div>
       </article>)}
-    </div>
-    {!clients.length && !loading && <p className="provider-empty-copy">No clients configured yet. Add one to observe downloads and submit grabs.</p>}
+    </div>}
+    {!clients.length && !loading && <EmptyState
+      icon="qbittorrent"
+      title="No download clients yet"
+      detail="Add a qBittorrent instance so Medialogue can observe downloads and send grabs to it."
+      action={<Button variant="primary" icon="plus" onClick={beginAdd}>Add client</Button>}
+    />}
 
     {editorOpen && <Modal wide title={selected ? selected.name : 'Add qBittorrent client'} onClose={closeEditor}
       titleAction={<>
@@ -3149,14 +3201,19 @@ function IndexerSettings() {
     <SectionHead title="Indexers" description="Torznab endpoints used for interactive Movie and Show searches." action={<div className="button-row"><Button variant="secondary" onClick={() => void testAll()} disabled={busy || !indexers.length}>{busy ? 'Testing…' : 'Test all'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add indexer</Button></div>} />
     {error && !editorOpen && <Note message={{ tone: 'error', text: error }} />}
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
-    <div className="provider-card-grid">
+    {indexers.length > 0 && <div className="provider-card-grid">
       {indexers.map((indexer) => { const source = presetFromUrl(indexer.torznabUrl); return <article className={`provider-card ${indexer.enabled ? '' : 'provider-card-disabled'}`} role="button" tabIndex={0} key={indexer.id} onClick={() => selectIndexer(indexer.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectIndexer(indexer.id) } }}>
-        <div className="provider-card-head"><div className={`provider-card-icon indexer-source-icon indexer-source-${source}`} style={indexerBadgePreview(indexer.color ?? '')}><img src={indexerPresets[source].icon} alt={`${indexerPresets[source].name} icon`} /></div><button type="button" className={`badge cf-card-toggle ${indexer.enabled ? 'badge-green' : ''}`} aria-pressed={indexer.enabled} aria-label={`Turn ${indexer.name} ${indexer.enabled ? 'off' : 'on'}`} disabled={togglingId === indexer.id} onClick={(event) => { event.stopPropagation(); void toggleIndexer(indexer) }}><span className="badge-dot" />{togglingId === indexer.id ? 'Saving…' : indexer.enabled ? 'Enabled' : 'Disabled'}</button></div>
+        <div className="provider-card-head"><div className={`provider-card-icon indexer-source-icon indexer-source-${source}`} style={indexerBadgePreview(indexer.color ?? '')}><img src={indexerPresets[source].icon} alt={`${indexerPresets[source].name} icon`} /></div><button type="button" className={`badge cf-card-toggle ${indexer.enabled ? 'badge-green' : ''}`} aria-pressed={indexer.enabled} aria-label={`Turn ${indexer.name} ${indexer.enabled ? 'off' : 'on'}`} disabled={togglingId === indexer.id} onClick={(event) => { event.stopPropagation(); void toggleIndexer(indexer) }}><span className="badge-dot" />{togglingId === indexer.id ? 'Saving…' : indexer.enabled ? 'On' : 'Off'}</button></div>
         <strong>{indexer.name}</strong><span>{indexer.torznabUrl}</span>
         <div className="provider-card-meta"><span className={`provider-health ${indexer.health === 'healthy' ? 'healthy' : indexer.health === 'unavailable' ? 'error' : ''}`}><i />{indexer.health}</span></div>
       </article>})}
-    </div>
-    {!indexers.length && !loading && <p className="provider-empty-copy">No indexers configured yet. Add a Torznab endpoint to run interactive searches.</p>}
+    </div>}
+    {!indexers.length && !loading && <EmptyState
+      icon="indexers"
+      title="No indexers yet"
+      detail="Interactive Movie and Show searches need at least one Torznab endpoint from Prowlarr or Jackett."
+      action={<Button variant="primary" icon="plus" onClick={beginAdd}>Add indexer</Button>}
+    />}
 
     {presetPickerOpen && <Modal title="Choose indexer provider" onClose={() => setPresetPickerOpen(false)} className="indexer-preset-modal">
       <div className="indexer-preset-grid">

@@ -467,6 +467,7 @@ export default function CustomFormatsPageView() {
       footer={<>
         {draft.id && !draft.builtin ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
         {draft.id ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
+        <span className="modal-foot-spacer" />
         {dirty && <span className="footer-state">Unsaved changes</span>}
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty || !draft.name.trim() || !draft.conditions.length}>{saving ? 'Saving…' : draft.builtin ? 'Save enabled state' : 'Save format'}</Button>
@@ -547,7 +548,7 @@ export default function CustomFormatsPageView() {
 function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { format: CustomFormat; toggling: boolean; onToggle: () => void; onOpen: () => void; onDuplicate: () => void }) {
   return <article className={`cf-card ${format.enabled ? '' : 'cf-card-off'}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen() } }}>
     <div className="cf-card-head">
-      <strong>{format.name}</strong>
+      <strong title={format.name}>{format.name}</strong>
       <span className="cf-card-badges">
         {format.builtin && <Badge tone="blue">Built-in</Badge>}
         <button type="button" className={`badge cf-card-toggle ${format.enabled ? 'badge-green' : ''}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}><span className="badge-dot" />{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>

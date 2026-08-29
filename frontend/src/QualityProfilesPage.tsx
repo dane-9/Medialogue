@@ -151,9 +151,17 @@ export default function QualityProfilesPage() {
 
   const remove = async () => {
     if (!selected) return
+    // Named counts, not "anything": the user is about to change how their
+    // titles are scored and should see how many before committing.
+    const affected = [
+      selected.assignedMovies ? `${selected.assignedMovies} ${selected.assignedMovies === 1 ? 'movie' : 'movies'}` : '',
+      selected.assignedShows ? `${selected.assignedShows} ${selected.assignedShows === 1 ? 'show' : 'shows'}` : '',
+    ].filter(Boolean).join(' and ')
     if (!await confirm({
       title: `Delete "${selected.name}"?`,
-      body: 'Anything assigned to this profile falls back to the default. Media files and existing releases are never changed.',
+      body: affected
+        ? `${affected} using this profile fall back to the default. Their own score and minimum overrides are kept.`
+        : 'Nothing is assigned to this profile.',
       confirmLabel: 'Delete profile',
     })) return
     setBusy(true)
@@ -163,6 +171,19 @@ export default function QualityProfilesPage() {
       setSelectedId(''); setEditorOpen(false)
       setMessage('Quality Profile deleted. Media and torrent data were untouched.')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not delete Quality Profile.') }
+    finally { setBusy(false) }
+  }
+
+  // The role the seeded profile used to hold permanently. Moving it is what
+  // makes "Use default" mean a profile the user actually chose.
+  const makeDefault = async () => {
+    if (!selected || selected.isDefault) return
+    setBusy(true)
+    try {
+      const updated = await api.setDefaultQualityProfile(selected.id)
+      setProfiles((items) => items.map((item) => ({ ...item, isDefault: item.id === updated.id })))
+      setMessage(`${updated.name} is now the default. Titles without a profile of their own use it.`)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not set the default Quality Profile.') }
     finally { setBusy(false) }
   }
 
@@ -322,8 +343,13 @@ export default function QualityProfilesPage() {
       title={name || 'Untitled Quality Profile'}
       onClose={closeEditor}
       footer={<>
-        {!creating && selected && <Button variant="danger" onClick={() => void remove()} disabled={busy}>Delete</Button>}
+        {!creating && selected && !selected.isDefault && <Button variant="danger" onClick={() => void remove()} disabled={busy}>Delete</Button>}
+        {/* Delete stays hard left, away from the buttons people reach for. */}
+        <span className="modal-foot-spacer" />
         {dirty && <span className="footer-state">Unsaved changes</span>}
+        {!creating && selected && (selected.isDefault
+          ? <span className="footer-state">Default profile</span>
+          : <Button variant="ghost" onClick={() => void makeDefault()} disabled={busy}>Set as Default</Button>)}
         <Button variant="secondary" onClick={closeEditor} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || !name.trim() || !qualityIds.length}>{busy ? 'Saving…' : 'Save profile'}</Button>
       </>}
@@ -411,7 +437,7 @@ export default function QualityProfilesPage() {
                   const configuredOffsets = format.conditions.map((condition) => condition.scoreOffset).filter(Boolean)
                   return <div className={`qp-format-row ${included ? 'selected' : ''}`} key={format.id}>
                     <label className="qp-format-check"><input type="checkbox" checked={included} onChange={() => toggleFormat(format.id)} /><span /></label>
-                    <div className="qp-format-copy"><div><strong>{format.name}</strong>{format.builtin && <Badge tone="blue">Built-in</Badge>}{!format.enabled && <Badge tone="neutral">Disabled</Badge>}{configuredOffsets.length > 0 && <Badge tone="neutral">Offset {scoreLabel(Math.max(...configuredOffsets))}</Badge>}</div></div>
+                    <div className="qp-format-copy"><div><strong>{format.name}</strong>{format.builtin && <Badge tone="blue">Built-in</Badge>}{!format.enabled && <Badge tone="neutral">Off</Badge>}{configuredOffsets.length > 0 && <Badge tone="neutral">Offset {scoreLabel(Math.max(...configuredOffsets))}</Badge>}</div></div>
                     <label className="qp-format-score"><span>Score</span><Input type="number" value={String(score)} onChange={(event) => setScores((current) => ({ ...current, [format.id]: Number(event.target.value) || 0 }))} /></label>
                     <strong className={score < 0 ? 'score-negative' : score > 0 ? 'score-positive' : 'muted'}>{included ? scoreLabel(score) : '—'}</strong>
                   </div>
@@ -438,10 +464,15 @@ function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: Qu
     onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen() } }}
   >
     <div className="cf-card-head">
-      <strong>{profile.name}</strong>
+      {/* Truncated names stay readable on hover. */}
+      <strong title={profile.name}>{profile.name}</strong>
       <span className="cf-card-badges">
-        <Badge tone={profile.minimumQuality ? 'blue' : 'neutral'}>{profile.minimumQuality?.name ?? 'No minimum'}</Badge>
-        <Badge tone={profile.minimumCustomFormatScore !== undefined ? 'blue' : 'neutral'}>{profile.minimumCustomFormatScore !== undefined ? `Score ≥ ${profile.minimumCustomFormatScore}` : 'Any score'}</Badge>
+        {profile.isDefault && <Tooltip asChild content="Titles without a profile of their own use this one"><Badge tone="green">Default</Badge></Tooltip>}
+        {/* Only floors that are actually set. "No minimum" and "Any score" are
+            the absence of a setting: they are the common case, they cannot be
+            acted on, and they crowded out the name to say nothing. */}
+        {profile.minimumQuality && <Tooltip asChild content="Releases below this quality are flagged"><Badge tone="blue">{profile.minimumQuality.name}</Badge></Tooltip>}
+        {profile.minimumCustomFormatScore !== undefined && <Tooltip asChild content="Releases scoring below this are flagged"><Badge tone="blue">Score ≥ {profile.minimumCustomFormatScore}</Badge></Tooltip>}
         <Tooltip asChild content="Create a copy of this Quality Profile"><button
           type="button"
           className="badge cf-card-duplicate"
@@ -458,5 +489,12 @@ function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: Qu
       {ranked.length > shown && <span className="cf-condition-chip cf-condition-more">+{ranked.length - shown} more</span>}
       {!ranked.length && <span className="cf-condition-chip cf-condition-more">No scored formats</span>}
     </div>
+    {/* What this profile is responsible for, without opening it. */}
+    <div className="qp-card-usage">{profile.assignedMovies || profile.assignedShows
+      ? [
+          profile.assignedMovies ? `${profile.assignedMovies} ${profile.assignedMovies === 1 ? 'movie' : 'movies'}` : '',
+          profile.assignedShows ? `${profile.assignedShows} ${profile.assignedShows === 1 ? 'show' : 'shows'}` : '',
+        ].filter(Boolean).join(' · ')
+      : profile.isDefault ? 'Used by everything without its own profile' : 'Not assigned to any title'}</div>
   </article>
 }

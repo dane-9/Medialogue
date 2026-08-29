@@ -126,6 +126,8 @@ export function mapQualityProfile(value: QualityProfileDto): QualityProfile {
       enabled: score.enabled,
     })),
     assignedTitles: value.assigned_titles,
+    assignedMovies: value.assigned_movies ?? 0,
+    assignedShows: value.assigned_shows ?? 0,
     isDefault: value.is_default ?? false,
     revision: value.revision,
     createdAt: value.created_at,

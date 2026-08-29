@@ -66,6 +66,9 @@ class QualityProfileResponse(BaseModel):
     qualities: list[QualityDefinitionResponse]
     custom_format_scores: list[QualityProfileScoreResponse]
     assigned_titles: int
+    #: The same total split by kind, so a deletion can say what it affects.
+    assigned_movies: int = 0
+    assigned_shows: int = 0
     #: The seeded profile every title without its own falls back to. It is
     #: renameable, so callers must not identify it by name.
     is_default: bool = False

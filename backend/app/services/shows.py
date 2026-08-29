@@ -287,17 +287,18 @@ async def _prepare_show_release(
 async def _refresh_episode_duplicate_problem(db: AsyncSession, episode: Episode) -> None:
     rows = (
         await db.execute(
-            select(EpisodeMediaMap, MediaFile, MediaDirectory, ShowRelease)
+            select(EpisodeMediaMap, MediaFile, MediaDirectory, ShowRelease, StorageRoot.name)
             .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
             .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
             .outerjoin(ShowRelease, ShowRelease.id == EpisodeMediaMap.show_release_id)
+            .outerjoin(StorageRoot, StorageRoot.id == MediaDirectory.storage_root_id)
             .where(EpisodeMediaMap.episode_id == episode.id)
         )
     ).all()
 
     evidence: list[dict[str, Any]] = []
     verified_by_path: dict[str, dict[str, Any]] = {}
-    for mapping, media_file, directory, release in rows:
+    for mapping, media_file, directory, release, storage_root_name in rows:
         path = Path(directory.resolved_path) / media_file.relative_path
         canonical_path = str(path.resolve(strict=False))
         physically_present = bool(
@@ -317,6 +318,10 @@ async def _refresh_episode_duplicate_problem(db: AsyncSession, episode: Episode)
             "missing_since": media_file.missing_since.isoformat() if media_file.missing_since else None,
             "show_release_id": str(mapping.show_release_id) if mapping.show_release_id else None,
             "release_name": release.raw_release_name if release is not None else None,
+            # Which media folder the copy sits in. Two duplicates of one episode
+            # commonly live under different roots, and that is what tells them
+            # apart once the shared path prefix is no longer shown.
+            "storage_root_name": storage_root_name,
             "manual_mapping": bool(mapping.manual_override),
         }
         evidence.append(item)

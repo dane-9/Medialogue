@@ -583,6 +583,9 @@ def test_duplicate_episode_files_are_flagged_and_left_untouched(client: TestClie
             str(first),
             str(second),
         }
+        # The duplicates page shows the filename and the media folder rather
+        # than the full path, so the folder has to travel with the evidence.
+        assert {item["storage_root_name"] for item in details["media_files"]} == {"Shows"}
         assert first.exists() and first.read_bytes() == b"first"
         assert second.exists() and second.read_bytes() == b"second"
     finally:

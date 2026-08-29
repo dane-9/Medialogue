@@ -492,6 +492,8 @@ export interface Problem {
   subject: string
   /** Artwork for the title this Problem is about. */
   posterRef?: string
+  /** TMDB id of that title, which is what settles an identity dispute. */
+  tmdbId?: number
   detail: string
   severity: 'high' | 'medium' | 'low'
   created: string
@@ -699,6 +701,8 @@ export interface QualityProfile {
   qualities: QualityDefinition[]
   customFormatScores: QualityProfileScore[]
   assignedTitles: number
+  assignedMovies: number
+  assignedShows: number
   /** The seeded profile titles fall back to. Renameable, so never match by name. */
   isDefault: boolean
   revision: number

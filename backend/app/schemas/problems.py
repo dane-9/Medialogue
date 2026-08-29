@@ -27,6 +27,8 @@ class ProblemResponse(ORMModel):
     subject: str | None = None
     #: Artwork for the title this Problem is about, when it has one.
     poster_ref: str | None = None
+    #: TMDB id of that title, which is what actually settles an identity dispute.
+    tmdb_id: int | None = None
     details: dict[str, Any]
     resolution: dict[str, Any] | None
     created_at: datetime

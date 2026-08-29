@@ -419,6 +419,41 @@ def _parse_severity(value: str) -> Severity:
         raise AppError("INVALID_SEVERITY", "Unknown problem severity.", status_code=422) from exc
 
 
+async def _problem_tmdb_ids(db: AsyncSession, problems: list[Problem]) -> dict[tuple[str, UUID], int]:
+    """TMDB id of the title each Problem is about.
+
+    An identity disagreement is settled by ids, not titles, so the side
+    Medialogue is asserting has to be able to show its own.
+    """
+
+    by_type: dict[str, set[UUID]] = {}
+    for problem in problems:
+        if problem.entity_id is not None:
+            by_type.setdefault(problem.entity_type, set()).add(problem.entity_id)
+    ids: dict[tuple[str, UUID], int] = {}
+
+    movie_ids = by_type.get("movie", set())
+    if movie_ids:
+        for row_id, tmdb_id in (await db.execute(select(Movie.id, Movie.tmdb_id).where(Movie.id.in_(movie_ids)))).all():
+            if tmdb_id:
+                ids[("movie", row_id)] = int(tmdb_id)
+
+    show_ids = by_type.get("show", set())
+    if show_ids:
+        for row_id, tmdb_id in (await db.execute(select(Show.id, Show.tmdb_id).where(Show.id.in_(show_ids)))).all():
+            if tmdb_id:
+                ids[("show", row_id)] = int(tmdb_id)
+
+    episode_ids = by_type.get("episode", set())
+    if episode_ids:
+        rows = (await db.execute(select(Episode.id, Show.tmdb_id).join(Show, Show.id == Episode.show_id).where(Episode.id.in_(episode_ids)))).all()
+        for row_id, tmdb_id in rows:
+            if tmdb_id:
+                ids[("episode", row_id)] = int(tmdb_id)
+
+    return ids
+
+
 async def _problem_posters(db: AsyncSession, problems: list[Problem]) -> dict[tuple[str, UUID], str]:
     """Artwork for the title each Problem is about, batched like subjects.
 
@@ -560,6 +595,7 @@ def _response(
     problem: Problem,
     subjects: dict[tuple[str, UUID], str],
     posters: dict[tuple[str, UUID], str] | None = None,
+    tmdb_ids: dict[tuple[str, UUID], int] | None = None,
 ) -> ProblemResponse:
     key = (problem.entity_type, problem.entity_id) if problem.entity_id else None
     subject = subjects.get(key) if key else None
@@ -568,6 +604,7 @@ def _response(
             "available_actions": available_actions(problem),
             "subject": subject,
             "poster_ref": (posters or {}).get(key) if key else None,
+            "tmdb_id": (tmdb_ids or {}).get(key) if key else None,
             "label": problem_label(problem.reason),
             "title": problem_title(problem.reason),
             "description": problem_description(problem.reason, problem.message),
@@ -638,7 +675,8 @@ async def list_problems(
     rows = (await db.scalars(query.order_by(Problem.created_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
     subjects = await _problem_subjects(db, list(rows))
     posters = await _problem_posters(db, list(rows))
-    return Collection(items=[_response(row, subjects, posters) for row in rows], page=page, page_size=page_size, total=total, pages=pages)
+    tmdb_ids = await _problem_tmdb_ids(db, list(rows))
+    return Collection(items=[_response(row, subjects, posters, tmdb_ids) for row in rows], page=page, page_size=page_size, total=total, pages=pages)
 
 
 @router.get("/count")
@@ -754,7 +792,7 @@ async def get_problem(problem_id: UUID, _: AdminUser = Depends(require_admin), d
     if problem is None or problem.reason in RETIRED_PROBLEM_REASONS:
         raise AppError("NOT_FOUND", "Problem was not found.", status_code=404)
     subjects = await _problem_subjects(db, [problem])
-    return _response(problem, subjects, await _problem_posters(db, [problem]))
+    return _response(problem, subjects, await _problem_posters(db, [problem]), await _problem_tmdb_ids(db, [problem]))
 
 
 @router.post("/{problem_id}/resolve", response_model=ProblemResponse)
@@ -824,4 +862,4 @@ async def resolve_problem(
                     ),
                 )
     subjects = await _problem_subjects(db, [problem])
-    return _response(problem, subjects, await _problem_posters(db, [problem]))
+    return _response(problem, subjects, await _problem_posters(db, [problem]), await _problem_tmdb_ids(db, [problem]))

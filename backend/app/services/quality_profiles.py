@@ -16,21 +16,36 @@ from app.models.domain import (
     QualityDefinition,
     QualityProfile,
 )
+from collections.abc import Sequence
+
 from app.parser.quality import QUALITY_BY_NAME
 from app.services.builtin_formats import DEFAULT_QUALITY_PROFILE_MARKER
 
 
-def is_system_profile(profile: QualityProfile) -> bool:
+#: Marks the profile bootstrap created. Provenance only: it stops reseeding, and
+#: is deliberately separate from which profile is currently the default, so the
+#: user can hand that role to a profile they made themselves.
+def is_seeded_profile(profile: QualityProfile) -> bool:
     return (profile.settings or {}).get("system_profile") == DEFAULT_QUALITY_PROFILE_MARKER
 
 
-async def load_system_profile(db: AsyncSession) -> QualityProfile | None:
-    """The seeded Default profile every title falls back to.
+def is_marked_default(profile: QualityProfile) -> bool:
+    return bool((profile.settings or {}).get("default_profile"))
 
-    Loaded by its marker rather than its name: the profile is renameable, and
-    bootstrap recreates it only when no marked profile exists.
+
+def resolve_default_profile(profiles: Sequence[QualityProfile]) -> QualityProfile | None:
+    """Which profile titles without one of their own inherit.
+
+    The user's explicit choice wins. Falling back to the seeded profile keeps
+    installs that never made a choice behaving exactly as they did before the
+    role became selectable, so no migration is needed.
     """
 
+    chosen = next((row for row in profiles if is_marked_default(row)), None)
+    return chosen or next((row for row in profiles if is_seeded_profile(row)), None)
+
+
+async def load_default_profile(db: AsyncSession) -> QualityProfile | None:
     rows = (
         await db.scalars(
             select(QualityProfile).options(
@@ -39,7 +54,7 @@ async def load_system_profile(db: AsyncSession) -> QualityProfile | None:
             )
         )
     ).all()
-    return next((row for row in rows if is_system_profile(row)), None)
+    return resolve_default_profile(rows)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,10 +148,10 @@ async def load_effective_profile(
     # No explicit assignment means "inherit the default", not "score nothing".
     # Resolved here rather than written as a row per title so that an inherited
     # profile stays distinguishable from one the user actually chose, which is
-    # what assigned_title_count reports.
+    # what the assigned-title counts report.
     profile_inherited = profile is None
     if profile is None:
-        profile = await load_system_profile(db)
+        profile = await load_default_profile(db)
 
     profile_scores: dict[str, int] = {}
     score_names: dict[str, str] = {}
@@ -367,6 +382,25 @@ async def assigned_title_count(db: AsyncSession, profile_id: UUID) -> int:
         )
         or 0
     )
+
+
+async def assigned_titles_by_type(db: AsyncSession, profile_id: UUID) -> tuple[int, int]:
+    """Movies and shows explicitly assigned to a profile.
+
+    Split rather than totalled: deleting a profile drops these titles back to
+    the default, and "3 movies and 1 show" says what is at stake in a way one
+    number does not.
+    """
+
+    rows = (
+        await db.execute(
+            select(MediaProfileOverride.media_type, func.count())
+            .where(MediaProfileOverride.quality_profile_id == profile_id)
+            .group_by(MediaProfileOverride.media_type)
+        )
+    ).all()
+    counts = {media_type: int(count) for media_type, count in rows}
+    return counts.get(MediaType.MOVIES, 0), counts.get(MediaType.SHOWS, 0)
 
 
 async def validate_profile_references(

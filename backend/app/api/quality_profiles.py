@@ -33,9 +33,11 @@ from app.schemas.quality_profiles import (
 )
 from app.services.events import create_event
 from app.services.quality_profiles import (
-    assigned_title_count,
     get_assignment,
-    is_system_profile,
+    assigned_titles_by_type,
+    is_marked_default,
+    load_default_profile,
+    resolve_default_profile,
     load_effective_profile,
     profile_name_exists,
     refresh_movie_release_scores,
@@ -76,7 +78,7 @@ async def _profile_qualities(db: AsyncSession, profile: QualityProfile) -> list[
     return [by_id[str(item)] for item in configured if str(item) in by_id]
 
 
-async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityProfileResponse:
+async def _profile_response(db: AsyncSession, row: QualityProfile, default_id: UUID | None = None) -> QualityProfileResponse:
     loaded = await db.scalar(
         select(QualityProfile)
         .options(
@@ -87,6 +89,10 @@ async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityPro
     )
     if loaded is None:
         raise AppError("NOT_FOUND", "Quality Profile was not found.", status_code=404)
+    if default_id is None:
+        current_default = await load_default_profile(db)
+        default_id = current_default.id if current_default else None
+    assigned_movies, assigned_shows = await assigned_titles_by_type(db, loaded.id)
     scores = sorted(
         (
             QualityProfileScoreResponse(
@@ -110,8 +116,10 @@ async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityPro
         ),
         qualities=[_quality_response(item) for item in await _profile_qualities(db, loaded) if item is not None],
         custom_format_scores=scores,
-        assigned_titles=await assigned_title_count(db, loaded.id),
-        is_default=is_system_profile(loaded),
+        assigned_titles=assigned_movies + assigned_shows,
+        assigned_movies=assigned_movies,
+        assigned_shows=assigned_shows,
+        is_default=loaded.id == default_id,
         revision=loaded.revision,
         created_at=loaded.created_at,
         updated_at=loaded.updated_at,
@@ -151,7 +159,9 @@ async def list_quality_profiles(
     db: AsyncSession = Depends(get_db),
 ) -> list[QualityProfileResponse]:
     rows = (await db.scalars(select(QualityProfile).order_by(QualityProfile.name))).all()
-    return [await _profile_response(db, row) for row in rows]
+    current_default = resolve_default_profile(rows)
+    default_id = current_default.id if current_default else None
+    return [await _profile_response(db, row, default_id) for row in rows]
 
 
 @router.post("/quality-profiles", response_model=QualityProfileResponse, status_code=status.HTTP_201_CREATED)
@@ -308,6 +318,38 @@ async def update_quality_profile(
     return await _profile_response(db, row)
 
 
+@router.post("/quality-profiles/{profile_id}/default", response_model=QualityProfileResponse)
+async def set_default_quality_profile(
+    profile_id: UUID,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> QualityProfileResponse:
+    """Choose the profile titles without one of their own inherit.
+
+    Exactly one profile holds the role, so the flag is cleared everywhere else
+    in the same transaction rather than relying on callers to tidy up.
+    """
+
+    row = await db.get(QualityProfile, profile_id)
+    if row is None:
+        raise AppError("NOT_FOUND", "Quality Profile was not found.", status_code=404)
+    rows = (await db.scalars(select(QualityProfile))).all()
+    for candidate in rows:
+        settings = dict(candidate.settings or {})
+        should_be_default = candidate.id == row.id
+        if bool(settings.get("default_profile")) == should_be_default:
+            continue
+        if should_be_default:
+            settings["default_profile"] = True
+        else:
+            settings.pop("default_profile", None)
+        candidate.settings = settings
+        candidate.revision += 1
+    await db.commit()
+    await db.refresh(row)
+    return await _profile_response(db, row, row.id)
+
+
 @router.delete("/quality-profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_quality_profile(
     profile_id: UUID,
@@ -320,10 +362,11 @@ async def delete_quality_profile(
     # Every title without an explicit assignment resolves to this one, so
     # deleting it would leave the whole library with no scoring at all until the
     # next restart reseeded it, and would not restore the assignments it cleared.
-    if is_system_profile(row):
+    current_default = await load_default_profile(db)
+    if current_default is not None and current_default.id == row.id:
         raise AppError(
-            "SYSTEM_QUALITY_PROFILE",
-            "The default Quality Profile cannot be deleted. Titles without their own profile use it.",
+            "DEFAULT_QUALITY_PROFILE",
+            "This is the default Quality Profile. Make another profile the default before deleting it.",
             status_code=409,
         )
     name = row.name

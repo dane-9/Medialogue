@@ -33,6 +33,11 @@ const fallbackHealth: HealthIndicator[] = [
 ]
 
 const PageTopbarHostContext = createContext<HTMLElement | null>(null)
+const PlexAvailableContext = createContext(false)
+
+export function usePlexAvailable() {
+  return useContext(PlexAvailableContext)
+}
 
 export function PageTopbar({ title, subtitle, action, back, onBack }: { title: string; subtitle?: string; action?: React.ReactNode; back?: string; onBack?: () => void }) {
   const host = useContext(PageTopbarHostContext)
@@ -49,6 +54,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const [jobsOpen, setJobsOpen] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
+  const [plexAvailable, setPlexAvailable] = useState(false)
   const [problemCount, setProblemCount] = useState(0)
   const [reviewCount, setReviewCount] = useState(0)
   const reviewCountGeneration = useRef(0)
@@ -75,8 +81,12 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     let alive = true
     const refreshProblemCount = () => api.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
     const refreshHealth = () => api.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
+    const refreshPlexAvailability = () => api.plexConfiguration().then((configuration) => {
+      if (alive) setPlexAvailable(configuration.configured && configuration.enabled && configuration.token_configured)
+    }).catch(() => undefined)
     const refreshJobs = () => api.jobs().then((payload) => { if (alive) setJobs(payload) }).catch(() => undefined)
     void refreshHealth()
+    void refreshPlexAvailability()
     void refreshJobs()
     void refreshProblemCount()
     void refreshReviewCount()
@@ -87,7 +97,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     // authoritative count, so reconnects, rollbacks and duplicate-resolution
     // events can never leave the badge drifting from the queue.
     const problemChangedListener = () => void refreshProblemCount()
-    const healthListener = () => void refreshHealth()
+    const healthListener = () => { void refreshHealth(); void refreshPlexAvailability() }
     stream.addEventListener('job.status', jobListener)
     stream.addEventListener('problem.created', problemChangedListener)
     stream.addEventListener('problem.updated', problemChangedListener)
@@ -99,16 +109,19 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
 
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
     const reviewChangedListener = () => void refreshReviewCount()
+    const plexConfigurationChangedListener = () => { void refreshPlexAvailability(); void refreshHealth() }
     window.addEventListener('medialogue-review-changed', reviewChangedListener)
+    window.addEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
     const reviewTimer = window.setInterval(() => void refreshReviewCount(), 60000)
     const jobTimer = window.setInterval(refreshJobs, 30000)
-    const healthTimer = window.setInterval(refreshHealth, 60000)
+    const healthTimer = window.setInterval(() => { void refreshHealth(); void refreshPlexAvailability() }, 60000)
     return () => {
       alive = false
       stream.close()
       window.clearInterval(problemTimer)
       window.clearInterval(reviewTimer)
       window.removeEventListener('medialogue-review-changed', reviewChangedListener)
+      window.removeEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
       window.clearInterval(jobTimer)
       window.clearInterval(healthTimer)
       reviewCountGeneration.current += 1
@@ -118,7 +131,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const activeJobs = jobs.filter((job) => job.state === 'running' || job.state === 'queued').length
   const currentTitle = location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/review') ? 'Review' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
 
-  return <PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
+  return <PlexAvailableContext.Provider value={plexAvailable}><PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-identity" onClick={() => navigate('/movies')} role="button" tabIndex={0}>
@@ -140,7 +153,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       <header className="topbar">
         <div className="topbar-page-host" ref={setPageTopbarHost}>{!pageTopbarHost && <strong>{currentTitle}</strong>}</div>
         <div className="topbar-actions">
-          <div className="health-strip">{health.map((item) => <HealthPill key={item.name} item={item} />)}</div>
+          <div className="health-strip">{health.filter((item) => item.name !== 'Plex' || plexAvailable).map((item) => <HealthPill key={item.name} item={item} />)}</div>
           <button className="jobs-button" onClick={() => setJobsOpen(true)} aria-label="Open jobs drawer"><Icon name="activity" size={17} /><span>Jobs</span>{activeJobs > 0 && <b>{activeJobs}</b>}</button>
         </div>
       </header>
@@ -148,7 +161,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     </main>
     {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
     {jobsOpen && <JobsDrawer jobs={jobs} onClose={() => setJobsOpen(false)} onChanged={(next) => setJobs(next)} onOpenEvents={() => { setJobsOpen(false); navigate('/events') }} />}
-  </div></PageTopbarHostContext.Provider>
+  </div></PageTopbarHostContext.Provider></PlexAvailableContext.Provider>
 }
 
 function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number }> }) {
@@ -173,7 +186,7 @@ function JobsDrawer({ jobs, onClose, onChanged, onOpenEvents }: { jobs: Job[]; o
     }
   }
   return <div className="drawer-backdrop" onClick={onClose}><aside className="jobs-drawer" onClick={(event) => event.stopPropagation()}>
-    <div className="drawer-header"><div><div className="eyebrow">BACKGROUND ACTIVITY</div><h2>Jobs</h2></div><button className="icon-button" onClick={onClose}><Icon name="close" size={18} /></button></div>
+    <div className="drawer-header"><div><h2>Jobs</h2></div><button className="icon-button" onClick={onClose}><Icon name="close" size={18} /></button></div>
     <div className="drawer-note"><Icon name="info" size={16} /><span>Jobs persist across navigation and browser refresh. Interrupted work is preserved after an application restart instead of silently resuming.</span></div>
     {cancelError && <div className="drawer-note error-note"><Icon name="alert" size={16} /><span>{cancelError}</span></div>}
     <div className="job-list">{jobs.length ? jobs.map((job) => <div className="job-item" key={job.id}><div className="job-item-top"><span className={`job-state job-${job.state}`}><span />{job.state}</span><span className="muted">{job.updated}</span></div><strong>{job.title}</strong><span className="job-detail">{job.error || job.detail || 'Background job'}</span>{job.progress !== undefined && <div className="job-progress-line"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div>}{job.cancellable && (job.state === 'running' || job.state === 'queued') && <div className="job-actions"><Button variant="ghost" onClick={() => void cancel(job)}>Cancel</Button></div>}</div>) : <div className="drawer-note"><Icon name="check" size={16} /><span>No background jobs have been recorded yet.</span></div>}</div>
