@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
@@ -21,8 +22,10 @@ from app.models.domain import (
     MediaDiscovery,
     MediaRole,
     MediaType,
+    MediaProfileOverride,
     Movie,
     MovieRelease,
+    QualityProfile,
     ReleaseState,
     Show,
 )
@@ -36,6 +39,8 @@ from app.schemas.discoveries import (
     MediaDiscoveryCount,
     MediaDiscoveryFile,
     MediaDiscoveryEditionUpdate,
+    MediaDiscoveryQualityProfile,
+    MediaDiscoveryQualityProfileBulk,
     MediaDiscoveryResponse,
     MediaDiscoverySearch,
     MediaDiscoverySelection,
@@ -100,7 +105,22 @@ def _edition_slot(value: str | None) -> str:
     return "" if normalized in {"", "theatrical cut"} else normalized
 
 
-def _response(discovery: MediaDiscovery, *, library_edition_conflict: bool = False) -> MediaDiscoveryResponse:
+async def _profile_names(db: AsyncSession, discoveries: Sequence[MediaDiscovery]) -> dict[UUID, str]:
+    """Resolve the chosen profiles in one query rather than per row."""
+
+    ids = {item.quality_profile_id for item in discoveries if item.quality_profile_id is not None}
+    if not ids:
+        return {}
+    rows = await db.execute(select(QualityProfile.id, QualityProfile.name).where(QualityProfile.id.in_(ids)))
+    return {row.id: row.name for row in rows}
+
+
+def _response(
+    discovery: MediaDiscovery,
+    *,
+    library_edition_conflict: bool = False,
+    profile_names: Mapping[UUID, str] | None = None,
+) -> MediaDiscoveryResponse:
     directory = discovery.media_directory
     root = directory.storage_root
     raw_candidates = [value for value in discovery.candidates if isinstance(value, dict)]
@@ -132,6 +152,10 @@ def _response(discovery: MediaDiscovery, *, library_edition_conflict: bool = Fal
         edition_override_active=discovery.edition_override_active,
         manual_edition_override=discovery.manual_edition_override,
         library_edition_conflict=library_edition_conflict,
+        # A profile deleted after it was chosen reads back as unset rather than
+        # as a dangling id the UI would have to render as a bare UUID.
+        quality_profile_id=discovery.quality_profile_id if (profile_names or {}).get(discovery.quality_profile_id) else None,
+        quality_profile_name=(profile_names or {}).get(discovery.quality_profile_id),
         hdr=[str(value) for value in hdr_values if value],
         suggested=by_id.get(discovery.suggested_tmdb_id),
         selected=by_id.get(discovery.selected_tmdb_id),
@@ -188,7 +212,11 @@ async def _library_conflict_ids(db: AsyncSession, discoveries: list[MediaDiscove
 
 async def _current_response(db: AsyncSession, discovery: MediaDiscovery) -> MediaDiscoveryResponse:
     conflicts = await _library_conflict_ids(db, [discovery])
-    return _response(discovery, library_edition_conflict=discovery.id in conflicts)
+    return _response(
+        discovery,
+        library_edition_conflict=discovery.id in conflicts,
+        profile_names=await _profile_names(db, [discovery]),
+    )
 
 
 @router.get("/count", response_model=MediaDiscoveryCount)
@@ -248,7 +276,11 @@ async def list_discoveries(
     start = (page - 1) * page_size
     page_rows = rows[start : start + page_size]
     library_conflicts = await _library_conflict_ids(db, page_rows)
-    items = [_response(item, library_edition_conflict=item.id in library_conflicts) for item in page_rows]
+    page_profiles = await _profile_names(db, page_rows)
+    items = [
+        _response(item, library_edition_conflict=item.id in library_conflicts, profile_names=page_profiles)
+        for item in page_rows
+    ]
     return Collection(items=items, page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size)
 
 
@@ -352,6 +384,30 @@ def _directory_observation(directory: MediaDirectory) -> DirectoryObservation:
     )
 
 
+async def _apply_review_profile(db: AsyncSession, movie: Movie, quality_profile_id: UUID | None) -> None:
+    """Give a newly created movie the profile chosen during review.
+
+    Only for movies this import just created: adding a second edition of a title
+    you already own must not silently rewrite the scoring you set up for it.
+    A profile deleted between the choice and the import is skipped rather than
+    written as a dangling id.
+    """
+
+    if quality_profile_id is None:
+        return
+    if await db.scalar(select(QualityProfile.id).where(QualityProfile.id == quality_profile_id)) is None:
+        return
+    db.add(
+        MediaProfileOverride(
+            media_type=MediaType.MOVIES,
+            movie_id=movie.id,
+            quality_profile_id=quality_profile_id,
+            override_definition={},
+        )
+    )
+    await db.flush()
+
+
 async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_factory) -> MediaDiscovery:
     """Add one reviewed directory to the library.
 
@@ -394,6 +450,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
             except Exception as exc:
                 await db.rollback()
                 raise AppError("TMDB_MOVIE_METADATA_FAILED", f"Could not add the selected movie: {exc}", status_code=503) from exc
+            await _apply_review_profile(db, media, discovery.quality_profile_id)
         await reconcile_movie_directory(
             db,
             root,
@@ -434,6 +491,62 @@ async def _ignore_one(db: AsyncSession, discovery: MediaDiscovery) -> MediaDisco
     await db.commit()
     await db.refresh(discovery)
     return discovery
+
+
+async def _validated_profile_id(db: AsyncSession, quality_profile_id: UUID | None) -> UUID | None:
+    if quality_profile_id is None:
+        return None
+    exists = await db.scalar(select(QualityProfile.id).where(QualityProfile.id == quality_profile_id))
+    if exists is None:
+        raise AppError("QUALITY_PROFILE_NOT_FOUND", "That Quality Profile no longer exists.", status_code=404)
+    return exists
+
+
+@router.patch("/{discovery_id}/quality-profile", response_model=MediaDiscoveryResponse)
+async def set_discovery_quality_profile(
+    discovery_id: UUID,
+    payload: MediaDiscoveryQualityProfile,
+    _: object = Depends(require_csrf),
+    __: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MediaDiscoveryResponse:
+    """Choose the Quality Profile the imported title will be created with."""
+    discovery = await _get_discovery(db, discovery_id)
+    if discovery.review_state != DiscoveryReviewState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+    discovery.quality_profile_id = await _validated_profile_id(db, payload.quality_profile_id)
+    await db.commit()
+    await db.refresh(discovery)
+    return await _current_response(db, discovery)
+
+
+@router.post("/quality-profile", response_model=MediaDiscoveryBulkResult)
+async def set_discoveries_quality_profile(
+    payload: MediaDiscoveryQualityProfileBulk,
+    _: object = Depends(require_csrf),
+    __: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MediaDiscoveryBulkResult:
+    """Apply one Quality Profile across a reviewed batch.
+
+    Validated once rather than per item: a profile that does not exist is a bad
+    request for the whole call, not five hundred identical per-item failures.
+    """
+    profile_id = await _validated_profile_id(db, payload.quality_profile_id)
+    updated: list[UUID] = []
+    failures: list[MediaDiscoveryBulkFailure] = []
+    for discovery_id in payload.ids:
+        try:
+            discovery = await _get_discovery(db, discovery_id)
+            if discovery.review_state != DiscoveryReviewState.PENDING:
+                raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+        except AppError as exc:
+            failures.append(MediaDiscoveryBulkFailure(id=discovery_id, code=exc.code, message=exc.message))
+            continue
+        discovery.quality_profile_id = profile_id
+        updated.append(discovery_id)
+    await db.commit()
+    return MediaDiscoveryBulkResult(succeeded=updated, failed=failures)
 
 
 @router.post("/{discovery_id}/search", response_model=MediaDiscoveryResponse)
@@ -504,7 +617,7 @@ async def approve_discovery(
     client_factory=Depends(get_tmdb_client_factory),
 ) -> MediaDiscoveryResponse:
     discovery = await _get_discovery(db, discovery_id)
-    return _response(await _approve_one(db, discovery, client_factory))
+    return await _current_response(db, await _approve_one(db, discovery, client_factory))
 
 
 @router.post("/bulk", response_model=MediaDiscoveryBulkResult)
@@ -593,4 +706,4 @@ async def ignore_discovery(
     db: AsyncSession = Depends(get_db),
 ) -> MediaDiscoveryResponse:
     discovery = await _get_discovery(db, discovery_id)
-    return _response(await _ignore_one(db, discovery))
+    return await _current_response(db, await _ignore_one(db, discovery))

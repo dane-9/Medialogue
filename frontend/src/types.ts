@@ -84,6 +84,10 @@ export interface MovieDirectory {
   exists: boolean
   missingSince?: string
   files?: string[]
+  /** Media folder this copy sits under; can differ between releases of one movie. */
+  storageRoot?: string
+  /** Filename of the video file itself, without the directory path. */
+  mediaFilename?: string
 }
 
 export interface MovieRelease {
@@ -102,6 +106,8 @@ export interface MovieRelease {
   originalCustomFormatScore?: number
   currentCustomFormatScore?: number
   selectionSnapshot?: Record<string, unknown>
+  /** What the parser read out of the release name: HDR, audio, codec, flags. */
+  parser?: Record<string, unknown>
 }
 
 export type MovieEditionMode = 'automatic' | 'standard' | 'named'
@@ -417,6 +423,8 @@ export interface InteractiveSearchResult {
   qualityProfileName?: string
   minimumQuality?: string
   minimumQualityMet?: boolean
+  minimumCustomFormatScore?: number
+  minimumCustomFormatScoreMet?: boolean
   customFormatSnapshot: Record<string, unknown>
   parser: Record<string, unknown>
   warnings: string[]
@@ -685,9 +693,12 @@ export interface QualityProfile {
   id: string
   name: string
   minimumQuality?: QualityDefinition
+  minimumCustomFormatScore?: number
   qualities: QualityDefinition[]
   customFormatScores: QualityProfileScore[]
   assignedTitles: number
+  /** The seeded profile titles fall back to. Renameable, so never match by name. */
+  isDefault: boolean
   revision: number
   createdAt: string
   updatedAt: string
@@ -707,9 +718,14 @@ export interface MediaProfileSettings {
   entityId: string
   qualityProfileId?: string
   qualityProfileName?: string
+  /** True when the title has no profile of its own and is using the default. */
+  qualityProfileInherited: boolean
   minimumQuality?: QualityDefinition
   profileMinimumQuality?: QualityDefinition
   minimumQualityOverridden: boolean
+  minimumCustomFormatScore?: number
+  profileMinimumCustomFormatScore?: number
+  minimumCustomFormatScoreOverridden: boolean
   customFormatScores: MediaProfileScore[]
   revision: number
 }
@@ -788,6 +804,9 @@ export interface MediaDiscovery {
   editionOverrideActive: boolean
   manualEditionOverride?: string | null
   libraryEditionConflict: boolean
+  /** Quality Profile the imported title will be created with. */
+  qualityProfileId?: string
+  qualityProfileName?: string
   hdr: string[]
   suggested?: TMDBMovieLookup | TMDBShowLookup
   selected?: TMDBMovieLookup | TMDBShowLookup

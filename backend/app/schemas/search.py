@@ -84,6 +84,8 @@ class SearchResultResponse(BaseModel):
     quality_profile_name: str | None
     minimum_quality: str | None
     minimum_quality_met: bool | None
+    minimum_custom_format_score: int | None
+    minimum_custom_format_score_met: bool | None
     custom_format_snapshot: dict[str, Any]
     parser: dict[str, Any]
     warnings: list[str]

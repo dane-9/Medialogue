@@ -28,6 +28,8 @@ export function mapMediaDiscovery(value: MediaDiscoveryDto): MediaDiscovery {
     parsedTitle: value.parsed_title ?? undefined,
     parsedYear: value.parsed_year ?? undefined,
     confidence: value.confidence ?? undefined,
+    qualityProfileId: value.quality_profile_id ?? undefined,
+    qualityProfileName: value.quality_profile_name ?? undefined,
     quality: value.quality ?? undefined,
     edition: value.edition ?? undefined,
     parsedEdition: value.parsed_edition ?? undefined,

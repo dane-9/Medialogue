@@ -68,6 +68,8 @@ def _search_result_response(
         quality_profile_name=(row.custom_format_snapshot or {}).get("profile_name"),
         minimum_quality=(row.custom_format_snapshot or {}).get("minimum_quality"),
         minimum_quality_met=(row.custom_format_snapshot or {}).get("minimum_quality_met"),
+        minimum_custom_format_score=(row.custom_format_snapshot or {}).get("minimum_custom_format_score"),
+        minimum_custom_format_score_met=(row.custom_format_snapshot or {}).get("minimum_custom_format_score_met"),
         custom_format_snapshot=dict(row.custom_format_snapshot or {}),
         parser=dict(row.parse_snapshot or {}),
         warnings=list(row.warnings or []),
@@ -353,6 +355,7 @@ async def get_search_job(
         all_rows,
         key=lambda item: (
             -int(bool((item.custom_format_snapshot or {}).get("quality_allowed", True))),
+            -int((item.custom_format_snapshot or {}).get("minimum_custom_format_score_met") is not False),
             -int((item.custom_format_snapshot or {}).get("quality_preference", 0)),
             -int(item.custom_format_score or 0),
             -int(item.seeders or 0),

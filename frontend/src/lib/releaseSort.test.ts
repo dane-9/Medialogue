@@ -69,6 +69,14 @@ describe('quality outranks Custom Format score', () => {
 })
 
 describe('blocked releases', () => {
+  it('sinks score-rejected releases without removing them', () => {
+    const list = [
+      release({ id: 'rejected', qualityPreference: REMUX, customFormatScore: 9999, minimumCustomFormatScoreMet: false }),
+      release({ id: 'accepted', qualityPreference: WEBDL, customFormatScore: 1, minimumCustomFormatScoreMet: true }),
+    ]
+    expect(ids(asOpened(list))).toEqual(['accepted', 'rejected'])
+  })
+
   it('sink below every allowed release even with the best quality and score', () => {
     const list = [
       release({ id: 'blocked', qualityPreference: REMUX, customFormatScore: 9999, qualityAllowed: false }),

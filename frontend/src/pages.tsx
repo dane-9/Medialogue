@@ -10,6 +10,7 @@ import { rootBrowseStart, rootDraftChanged, rootPathAfterBrowse } from './lib/ro
 import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
 import { needsAttention, statusTone } from './lib/status'
+import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
 import { qualityMark } from './lib/qualityMark'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
@@ -267,7 +268,7 @@ function MovieBulkContextMenu({ position, count, profiles, tags, busy, onRun, on
   return <div className="bulk-context-menu" style={{ left, top }} onClick={(event) => event.stopPropagation()}>
     <div className="bulk-context-head"><div><div className="eyebrow">BULK MOVIE ACTIONS</div><strong>{count} selected</strong></div><button className="icon-button" onClick={onClear} aria-label="Clear selection"><Icon name="close" size={14} /></button></div>
     <div className="context-action-grid"><button onClick={() => void onRun('monitor')} disabled={busy}><Icon name="check" size={14} />Monitor</button><button onClick={() => void onRun('unmonitor')} disabled={busy}><Icon name="pause" size={14} />Unmonitor</button><button onClick={() => void onRun('recheck_plex')} disabled={busy}><Icon name="refresh" size={14} />Recheck Plex</button><button onClick={() => void onRun('reevaluate_parser')} disabled={busy}><Icon name="activity" size={14} />Re-evaluate parser</button><button onClick={() => void onRun('reevaluate_custom_formats')} disabled={busy}><Icon name="sliders" size={14} />Re-evaluate CFs</button></div>
-    <div className="context-section"><span className="field-label">Quality Profile</span><div className="context-inline"><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">No profile</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select><Button variant="ghost" disabled={busy} onClick={() => void onRun('change_profile', { profileId: profileId || null })}>Apply</Button></div><small>Per-title score/minimum overrides are preserved.</small></div>
+    <div className="context-section"><span className="field-label">Quality Profile</span><div className="context-inline"><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select><Button variant="ghost" disabled={busy} onClick={() => void onRun('change_profile', { profileId: profileId || null })}>Apply</Button></div><small>Per-title score/minimum overrides are preserved.</small></div>
     <div className="context-section"><span className="field-label">Tags</span><div className="context-inline"><Select value={tagId} onChange={(event) => setTagId(event.target.value)}><option value="">Choose tag…</option>{tags.map((tag) => <option value={tag.id} key={tag.id}>{tag.name}</option>)}</Select></div><div className="context-inline"><Button variant="ghost" disabled={busy || !tagId} onClick={() => void onRun('add_tags', { tagIds: [tagId] })}>Add</Button><Button variant="ghost" disabled={busy || !tagId} onClick={() => void onRun('remove_tags', { tagIds: [tagId] })}>Remove</Button></div><div className="context-inline"><Input value={newTag} onChange={(event) => setNewTag(event.target.value)} placeholder="New tag…" onKeyDown={(event) => { if (event.key === 'Enter') void create() }} /><Button variant="ghost" disabled={!newTag.trim()} onClick={() => void create()}>Create</Button></div></div>
     {localMessage && <small className="context-message">{localMessage}</small>}
     <div className="context-foot">Ctrl/Cmd-click additional movies before right-clicking to build a selection.</div>
@@ -280,6 +281,23 @@ function formatEvidenceDate(value?: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
+// Every title resolves to a profile: the one it was given, or the default it
+// inherits. "No profile" is no longer reachable, so the empty option names what
+// actually happens instead of implying nothing applies.
+function defaultProfileLabel(profiles: QualityProfile[]): string {
+  const fallback = profiles.find((profile) => profile.isDefault)
+  return fallback ? `Use default (${fallback.name})` : 'Use default'
+}
+
+function releaseStateHelp(state: ReleaseState): string {
+  if (state === 'duplicate') return 'Another registered copy has the same edition. Remove one outside Medialogue and recheck.'
+  if (state === 'conflict') return 'The evidence for this copy disagrees with another source.'
+  if (state === 'missing') return 'The files were registered once but are not on disk now.'
+  if (state === 'replaced') return 'A newer copy took over this slot. The old evidence is kept.'
+  if (state === 'removed') return 'This copy is no longer part of the library.'
+  return 'This copy is registered and present.'
+}
+
 function releaseStateTone(state: ReleaseState) {
   if (state === 'current') return 'green'
   if (state === 'missing' || state === 'replaced' || state === 'removed') return 'amber'
@@ -287,11 +305,65 @@ function releaseStateTone(state: ReleaseState) {
   return 'neutral'
 }
 
-function ReleaseEvidenceRow({ release }: { release: MovieRelease }) {
+/** Whether a torrent for this copy is still loaded in a download client.
+ *
+ * The question before deleting a copy is "am I still seeding this", and the
+ * answer already exists per release in the torrent history; it was only ever
+ * shown grouped at the bottom of the page.
+ */
+function releaseSeeding(release: MovieRelease, torrents: TorrentArchiveItem[]): { present: number; total: number } | undefined {
+  const linked = torrents.filter((item) => item.releaseId && item.releaseId === release.id)
+  if (!linked.length) return undefined
+  return { present: linked.filter((item) => item.qbitPresent).length, total: linked.length }
+}
+
+function ReleaseEvidenceRow({ release, torrents = [] }: { release: MovieRelease; torrents?: TorrentArchiveItem[] }) {
   const directory = release.directories.find((item) => item.exists) ?? release.directories[0]
-  const label = [release.quality, release.edition, release.releaseGroup].filter(Boolean).join(' · ') || release.name
-  const scoreChanged = release.originalCustomFormatScore !== undefined && release.currentCustomFormatScore !== undefined && release.originalCustomFormatScore !== release.currentCustomFormatScore
-  return <div className="release-evidence-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{label}</strong><span>{directory?.path ?? 'No directory recorded'}{directory && !directory.exists ? ' · path absent' : ''}</span><small>{release.name}</small>{(release.originalCustomFormatScore !== undefined || release.currentCustomFormatScore !== undefined) && <small>CF score · downloaded {release.originalCustomFormatScore ?? 'n/a'} · current {release.currentCustomFormatScore ?? 0}</small>}</div>{scoreChanged && <Badge tone="neutral">Score changed</Badge>}<Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>{release.state}</Badge>{release.confidence !== undefined && <span className="release-confidence">{Math.round(release.confidence)}%</span>}</div>
+  const folder = directory?.path.split(/[\\/]/).filter(Boolean).pop()
+  const filename = directory?.mediaFilename
+  // The file is usually the folder name with an extension on the end, so it only
+  // earns its own line when it actually says something different.
+  const separateFile = filename && folder && filename.replace(/\.[^.]+$/, '').toLowerCase() !== folder.toLowerCase() ? filename : undefined
+  const score = release.currentCustomFormatScore
+  const scoreChanged = release.originalCustomFormatScore !== undefined && score !== undefined && release.originalCustomFormatScore !== score
+  // Quality alone cannot separate two REMUXes of one movie; HDR flavour, audio
+  // track and Proper/Repack are what actually differ between them.
+  const pills = [
+    release.quality,
+    release.edition,
+    ...releaseHdr(release.parser),
+    releaseAudio(release.parser),
+    releaseVideoCodec(release.parser),
+  ].filter(Boolean) as string[]
+  const flags = releaseFlags(release.parser)
+  const seeding = releaseSeeding(release, torrents)
+  return <div className="release-evidence-row">
+    <div className="release-icon"><Icon name="clapper" size={18} /></div>
+    <div className="release-main">
+      <strong title={directory?.path}>{folder ?? release.name}</strong>
+      {separateFile && <small title={separateFile}>{separateFile}</small>}
+      <div className="release-pills">
+        {directory?.storageRoot && <Tooltip content={`Media folder: ${directory.storageRoot}`}><span className="release-pill release-pill-folder"><Icon name="folder" size={11} />{directory.storageRoot}</span></Tooltip>}
+        {pills.map((pill) => <span className="release-pill" key={pill}>{pill}</span>)}
+        {flags.map((flag) => <Tooltip key={flag} content={flag === 'Proper' ? 'Re-released to fix a problem with the original' : flag === 'Repack' ? 'Repackaged by the release group' : 'Built from more than one source'}><span className="release-pill release-pill-flag">{flag}</span></Tooltip>)}
+        {(score !== undefined && score !== 0) || scoreChanged
+          ? <Tooltip content={scoreChanged ? `Custom Format score: ${release.originalCustomFormatScore} when downloaded, ${score} under the current profile` : 'Custom Format score under the current profile'}><span className={`release-pill ${scoreChanged ? 'release-pill-warn' : ''}`}>Score {score ?? 0}{scoreChanged ? ` (was ${release.originalCustomFormatScore})` : ''}</span></Tooltip>
+          : null}
+      </div>
+    </div>
+    {/* Only exceptions get called out on the right. Saying "current, 100%" on
+        every healthy row taught nobody what either number meant. */}
+    <div className="release-tags">
+      {seeding && <Tooltip content={seeding.present
+        ? `${seeding.present} of ${seeding.total} torrent${seeding.total === 1 ? '' : 's'} for this copy ${seeding.present === 1 ? 'is' : 'are'} still loaded in a download client`
+        : `${seeding.total} archived torrent${seeding.total === 1 ? '' : 's'} for this copy, none still in a download client`}>
+        <Badge tone={seeding.present ? 'green' : 'neutral'}>{seeding.present ? 'Seeding' : 'Not seeding'}</Badge>
+      </Tooltip>}
+      {directory && !directory.exists && <Tooltip content="This folder was not found on disk at the last file check"><Badge tone="amber">File missing</Badge></Tooltip>}
+      {release.state !== 'current' && <Tooltip content={releaseStateHelp(release.state)}><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>{release.state}</Badge></Tooltip>}
+      {release.confidence !== undefined && release.confidence < 100 && <Tooltip content="How sure Medialogue is that this release belongs to this movie"><Badge tone="amber">{Math.round(release.confidence)}% match</Badge></Tooltip>}
+    </div>
+  </div>
 }
 
 function IncomingReplacement({ incoming }: { incoming: IncomingDownload }) {
@@ -348,6 +420,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   const [formats, setFormats] = useState<CustomFormat[]>([])
   const [profileId, setProfileId] = useState('')
   const [minimumOverrideId, setMinimumOverrideId] = useState('')
+  const [minimumScoreOverride, setMinimumScoreOverride] = useState('')
   const [overrides, setOverrides] = useState<Record<string, number>>({})
   const [newOverride, setNewOverride] = useState('')
   const [busy, setBusy] = useState(false)
@@ -358,6 +431,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
       setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setFormats(formatRows)
       setProfileId(value.qualityProfileId ?? '')
       setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : '')
+      setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '')
       setOverrides(Object.fromEntries(value.customFormatScores.filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])))
       setMessage('')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load profile settings.') }
@@ -369,6 +443,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
       const value = await api.saveMovieProfileSettings(resourceId, {
         quality_profile_id: profileId || null,
         minimum_quality_definition_override_id: minimumOverrideId || null,
+        minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride),
         custom_format_score_overrides: overrides,
         expected_revision: settings?.revision ?? 0,
       })
@@ -380,13 +455,14 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   const formatById = new Map(formats.map((item) => [item.id, item]))
   const available = formats.filter((item) => !Object.prototype.hasOwnProperty.call(overrides, item.id))
   return <Panel title="Quality Profile & Overrides" eyebrow="SEARCH SCORING">
-    <div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">No profile</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label></div>
+    <div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>
     <div className="settings-note"><Icon name="info" size={16} /><span>Overrides replace this title's profile score for the selected Custom Format. They never alter the Custom Format definition or another title.</span></div>
     <div className="score-section"><div className="section-title"><div><div className="eyebrow">TITLE OVERRIDES</div><h3>Differences from profile</h3></div><div className="search-client-chooser"><Select value={newOverride} onChange={(event) => setNewOverride(event.target.value)}><option value="">Add override…</option>{available.map((format) => <option value={format.id} key={format.id}>{format.name}</option>)}</Select><Button variant="ghost" icon="plus" disabled={!newOverride} onClick={() => { if (newOverride) { const inherited = effectiveRows.find((item) => item.customFormatId === newOverride)?.profileScore ?? 0; setOverrides((value) => ({ ...value, [newOverride]: inherited })); setNewOverride('') } }}>Add</Button></div></div>
       {Object.entries(overrides).map(([formatId, score]) => { const inherited = effectiveRows.find((item) => item.customFormatId === formatId)?.profileScore ?? 0; return <div className="score-row" key={formatId}><span><strong>{formatById.get(formatId)?.name ?? effectiveRows.find((item) => item.customFormatId === formatId)?.customFormatName ?? 'Custom Format'}</strong><small>Profile {inherited > 0 ? '+' : ''}{inherited} → override {score > 0 ? '+' : ''}{score}</small></span><Input type="number" value={String(score)} onChange={(event) => setOverrides((value) => ({ ...value, [formatId]: Number(event.target.value) || 0 }))} /><strong className={score < 0 ? 'score-negative' : 'score-positive'}>{score > 0 ? '+' : ''}{score}</strong><button className="icon-button" onClick={() => setOverrides((value) => { const next = { ...value }; delete next[formatId]; return next })}><Icon name="close" size={14} /></button></div> })}
-      {!Object.keys(overrides).length && !minimumOverrideId && <span className="muted">No per-title overrides. This movie inherits its assigned profile exactly.</span>}
+      {!Object.keys(overrides).length && !minimumOverrideId && minimumScoreOverride === '' && <span className="muted">No per-title overrides. This movie inherits its assigned profile exactly.</span>}
     </div>
     {settings?.minimumQuality && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum: {settings.minimumQuality.name}{settings.minimumQualityOverridden ? ' (title override)' : ' (profile)'}</span></div>}
+    {settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (title override)' : ' (profile)'}</span></div>}
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     <div className="settings-footer"><Button variant="primary" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save profile settings'}</Button></div>
   </Panel>
@@ -450,7 +526,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button><Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button><Button variant="primary" icon="search">Interactive search</Button></>}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
-    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Media folder" value={movie.storageRoot ?? 'Unknown folder'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
+    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge><Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge><Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} /><DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} /><DetailFact label="Media folder" value={movie.storageRoot ?? 'Unknown folder'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>Identity, qBittorrent, Plex, and path evidence agree.</span></div></div>}</Panel></aside></div>
   </Page>
 }
 
@@ -621,11 +697,12 @@ function ShowProfilePanel({ resourceId }: { resourceId: string }) {
   const [qualities, setQualities] = useState<QualityDefinition[]>([])
   const [profileId, setProfileId] = useState('')
   const [minimumOverrideId, setMinimumOverrideId] = useState('')
+  const [minimumScoreOverride, setMinimumScoreOverride] = useState('')
   const [message, setMessage] = useState('')
-  const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([api.showProfileSettings(resourceId), api.qualityProfiles(), api.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
+  const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([api.showProfileSettings(resourceId), api.qualityProfiles(), api.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : ''); setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
   useEffect(() => { void load() }, [resourceId])
-  const save = async () => { try { const value = await api.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
-  return <Panel title="Quality Profile" eyebrow="SHOW SEARCH SCORING"><div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">No profile</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label></div>{message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div></Panel>
+  const save = async () => { try { const value = await api.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride), custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
+  return <Panel title="Quality Profile" eyebrow="SHOW SEARCH SCORING"><div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>{settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (show override)' : ' (profile)'}</span></div>}{message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div></Panel>
 }
 
 export function DownloadsPage() {
@@ -1345,6 +1422,8 @@ export function ReviewPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [editionOptions, setEditionOptions] = useState<string[]>([])
+  const [profiles, setProfiles] = useState<QualityProfile[]>([])
+  const [profileBusy, setProfileBusy] = useState(false)
 
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
@@ -1352,7 +1431,11 @@ export function ReviewPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load Review.') }
     finally { if (!quiet) setLoading(false) }
   }
-  useEffect(() => { void load(); void api.movieEditionOptions().then(setEditionOptions).catch(() => undefined) }, [])
+  useEffect(() => {
+    void load()
+    void api.movieEditionOptions().then(setEditionOptions).catch(() => undefined)
+    void api.qualityProfiles().then(setProfiles).catch(() => undefined)
+  }, [])
   useLiveLibraryRefresh(() => load(true))
 
   // Confirmed-missing directories are not actionable review work. The API
@@ -1409,6 +1492,31 @@ export function ReviewPage() {
     else next.add(id)
     return next
   })
+
+  const setRowProfile = async (item: MediaDiscovery, profileId: string | null) => {
+    setProfileBusy(true); setError('')
+    try {
+      const updated = await api.updateDiscoveryQualityProfile(item.id, profileId)
+      setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
+    finally { setProfileBusy(false) }
+  }
+
+  // Applies to the folders currently listed and still included, not to the whole
+  // queue: the visible selection is what the reviewer believes they are changing.
+  const setAllProfiles = async (profileId: string | null) => {
+    const targets = rows.filter((item) => !excluded.has(item.id))
+    if (!targets.length) return
+    setProfileBusy(true); setError(''); setMessage('')
+    try {
+      const result = await api.bulkDiscoveryQualityProfile(targets.map((item) => item.id), profileId)
+      await load(true)
+      const name = profiles.find((profile) => profile.id === profileId)?.name
+      setMessage(`${result.succeeded.length} folder${result.succeeded.length === 1 ? '' : 's'} set to ${name ?? 'no Quality Profile'}.`)
+      if (result.failed.length) setError(`${result.failed.length} could not be changed: ${result.failed[0].message}`)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
+    finally { setProfileBusy(false) }
+  }
 
   const runImport = async () => {
     const ids = importable.map((item) => item.id)
@@ -1504,7 +1612,23 @@ export function ReviewPage() {
                   onClick={(event) => { event.stopPropagation(); toggle(item.id) }}
                   disabled={blocked}
                 >{included && !blocked && <Icon name="check" size={11} />}</button>
-                <Tooltip content={item.path}><code>{reviewFolderName(item.path)}</code></Tooltip>
+                <div className="review-folder-copy">
+                  <Tooltip content={item.path}><code>{reviewFolderName(item.path)}</code></Tooltip>
+                  {/* Reveals on row hover like the edition control, but keeps its
+                      space so the row does not resize under the pointer. */}
+                  <span
+                    className={`review-profile-cell ${item.qualityProfileId ? '' : 'optional'}`}
+                    onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+                  >
+                    <Dropdown
+                      ariaLabel={`Quality Profile for ${reviewFolderName(item.path)}`}
+                      value={item.qualityProfileId ?? ''}
+                      disabled={profileBusy}
+                      options={[{ value: '', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
+                      onChange={(value) => void setRowProfile(item, value || null)}
+                    />
+                  </span>
+                </div>
                 {state && <span className={`review-state ${state.tone}`}>{state.text}</span>}
               </div>
 
@@ -1543,7 +1667,19 @@ export function ReviewPage() {
       </div>
 
       <div className="review-import">
-
+        {/* Sits with the import action because it describes what is about to be
+            imported, and it is one write for the whole visible selection. */}
+        <span className="review-import-profile">
+          <span className="review-import-profile-label">Quality Profile for all</span>
+          <Dropdown
+            ariaLabel="Quality Profile for every included folder"
+            value=""
+            disabled={profileBusy || !rows.some((item) => !excluded.has(item.id))}
+            options={[{ value: '', label: 'Set all to…' }, { value: 'none', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
+            onChange={(value) => { if (value) void setAllProfiles(value === 'none' ? null : value) }}
+          />
+        </span>
+        <div className="toolbar-spacer" />
         {hasEditionConflicts && <span className="review-import-warning">Resolve same-edition copies or leave one out before importing.</span>}
         <Button variant="primary" icon="check" onClick={() => void runImport()} disabled={importing || !importable.length || hasEditionConflicts}>
           {importing ? 'Adding…' : `Add ${importable.length} ${importable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}

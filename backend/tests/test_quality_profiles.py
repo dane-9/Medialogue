@@ -156,22 +156,28 @@ def test_quality_profile_crud_assignment_and_override_replaces_score(client: Tes
     created = client.post("/api/v1/quality-profiles", headers=headers, json={
         "name": "4K Movies",
         "minimum_quality_definition_id": minimum,
+        "minimum_custom_format_score": 100,
         "custom_format_scores": [{"custom_format_id": cf["id"], "score": 120}],
     })
     assert created.status_code == 201, created.text
     profile = created.json()
     assert profile["custom_format_scores"][0]["score"] == 120
+    assert profile["minimum_custom_format_score"] == 100
     assert profile["assigned_titles"] == 0
     assert profile["revision"] == 1
 
     assigned = client.put(f"/api/v1/movies/{movie}/profile-settings", headers=headers, json={
         "quality_profile_id": profile["id"],
+        "minimum_custom_format_score_override": 50,
         "custom_format_score_overrides": {cf["id"]: -25},
         "expected_revision": 0,
     })
     assert assigned.status_code == 200, assigned.text
     settings = assigned.json()
     assert settings["quality_profile_name"] == "4K Movies"
+    assert settings["minimum_custom_format_score"] == 50
+    assert settings["profile_minimum_custom_format_score"] == 100
+    assert settings["minimum_custom_format_score_overridden"] is True
     score = settings["custom_format_scores"][0]
     assert score["profile_score"] == 120
     assert score["override_score"] == -25
@@ -199,6 +205,7 @@ def test_interactive_search_scores_warns_below_minimum_and_preserves_snapshot(cl
     profile = client.post("/api/v1/quality-profiles", headers=headers, json={
         "name": "Reference",
         "minimum_quality_definition_id": minimum,
+        "minimum_custom_format_score": 800,
         "custom_format_scores": [{"custom_format_id": cf["id"], "score": 500}],
     }).json()
     client.put(f"/api/v1/movies/{movie}/profile-settings", headers=headers, json={
@@ -223,7 +230,10 @@ def test_interactive_search_scores_warns_below_minimum_and_preserves_snapshot(cl
         assert result["custom_format_score"] == 750
         assert result["minimum_quality"] == "2160p BluRay REMUX"
         assert result["minimum_quality_met"] is False
+        assert result["minimum_custom_format_score"] == 800
+        assert result["minimum_custom_format_score_met"] is False
         assert any("Below minimum quality" in item for item in result["warnings"])
+        assert any("Below minimum Custom Format score" in item for item in result["warnings"])
         breakdown = _format_named(result["custom_format_snapshot"], "Hybrid")
         assert breakdown["matched"] is True
         assert breakdown["profile_score"] == 500
@@ -268,6 +278,7 @@ def test_default_quality_profile_is_seeded_once_and_remains_editable(client: Tes
     assert response.status_code == 200, response.text
     profiles = response.json()
     default = next(item for item in profiles if item["name"] == "Default")
+    assert default["minimum_custom_format_score"] is None
 
     expected_scores = {builtin.name: DEFAULT_FORMAT_SCORES[builtin.key] for builtin in BUILTIN_FORMATS}
     actual_scores = {item["custom_format_name"]: item["score"] for item in default["custom_format_scores"]}
@@ -438,17 +449,33 @@ def test_deleting_profile_keeps_title_overrides_and_recomputes_current_score(cli
     settings = client.get(f"/api/v1/movies/{movie}/profile-settings")
     assert settings.status_code == 200, settings.text
     payload = settings.json()
-    assert payload["quality_profile_id"] is None
+    # The title's own assignment is cleared, but a title is never left with no
+    # scoring at all: it falls back to the default profile.
+    assert payload["quality_profile_inherited"] is True
+    assert payload["quality_profile_name"] == "Default"
     assert payload["revision"] == old_revision + 1
-    assert payload["custom_format_scores"][0]["override_score"] == -44
-    assert payload["custom_format_scores"][0]["effective_score"] == -44
+    # Located by id, not position: the default profile contributes its own
+    # built-in format scores, so this row is no longer the only one listed.
+    scored = next(item for item in payload["custom_format_scores"] if item["custom_format_id"] == cf["id"])
+    assert scored["override_score"] == -44
+    assert scored["effective_score"] == -44
 
     async def current_score():
         async with db_session.async_session_factory() as db:
             release = await db.scalar(select(MovieRelease))
             return release.current_custom_format_score
 
-    assert asyncio.run(current_score()) == -44
+    # The stored score is now the inherited default's matches plus this title's
+    # override. Asserting the delta rather than a total keeps the test honest
+    # when the built-in default scores are retuned.
+    with_override = asyncio.run(current_score())
+    cleared = client.put(f"/api/v1/movies/{movie}/profile-settings", headers=headers, json={
+        "quality_profile_id": None,
+        "custom_format_score_overrides": {},
+        "expected_revision": payload["revision"],
+    })
+    assert cleared.status_code == 200, cleared.text
+    assert asyncio.run(current_score()) == with_override + 44
 
 
 def test_episode_search_uses_parent_show_profile(client: TestClient):
@@ -762,3 +789,40 @@ def test_indexer_colour_defaults_to_none_and_rejects_malformed_values(client: Te
             "scope": "movies", "enabled": True, "color": bad,
         })
         assert rejected.status_code == 422, f"{bad} should be rejected, got {rejected.status_code}"
+
+
+def test_the_default_profile_cannot_be_deleted(client: TestClient):
+    """Every title without its own profile resolves to this one.
+
+    Deleting it left the whole library unscored until the next restart reseeded
+    it, and reseeding does not restore the assignments the delete had cleared.
+    """
+
+    headers = login(client)
+    profiles = client.get("/api/v1/quality-profiles").json()
+    default = next(item for item in profiles if item["name"] == "Default")
+
+    refused = client.delete(f"/api/v1/quality-profiles/{default['id']}", headers=headers)
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "SYSTEM_QUALITY_PROFILE"
+    assert any(item["name"] == "Default" for item in client.get("/api/v1/quality-profiles").json())
+
+
+def test_a_movie_with_no_profile_of_its_own_uses_the_default(client: TestClient):
+    headers = login(client)
+    movie = seed_movie(with_release=True)
+
+    payload = client.get(f"/api/v1/movies/{movie}/profile-settings").json()
+    assert payload["quality_profile_name"] == "Default"
+    assert payload["quality_profile_inherited"] is True
+
+    # An explicit choice is still recorded as the title's own, not as inherited.
+    chosen = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "Mine", "custom_format_scores": []}).json()
+    client.put(f"/api/v1/movies/{movie}/profile-settings", headers=headers, json={
+        "quality_profile_id": chosen["id"],
+        "custom_format_score_overrides": {},
+        "expected_revision": 0,
+    })
+    owned = client.get(f"/api/v1/movies/{movie}/profile-settings").json()
+    assert owned["quality_profile_name"] == "Mine"
+    assert owned["quality_profile_inherited"] is False

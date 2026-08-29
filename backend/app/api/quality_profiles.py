@@ -35,6 +35,7 @@ from app.services.events import create_event
 from app.services.quality_profiles import (
     assigned_title_count,
     get_assignment,
+    is_system_profile,
     load_effective_profile,
     profile_name_exists,
     refresh_movie_release_scores,
@@ -102,9 +103,15 @@ async def _profile_response(db: AsyncSession, row: QualityProfile) -> QualityPro
         id=loaded.id,
         name=loaded.name,
         minimum_quality_definition=_quality_response(loaded.minimum_quality_definition),
+        minimum_custom_format_score=(
+            int(loaded.settings["minimum_custom_format_score"])
+            if (loaded.settings or {}).get("minimum_custom_format_score") is not None
+            else None
+        ),
         qualities=[_quality_response(item) for item in await _profile_qualities(db, loaded) if item is not None],
         custom_format_scores=scores,
         assigned_titles=await assigned_title_count(db, loaded.id),
+        is_default=is_system_profile(loaded),
         revision=loaded.revision,
         created_at=loaded.created_at,
         updated_at=loaded.updated_at,
@@ -180,7 +187,10 @@ async def create_quality_profile(
     row = QualityProfile(
         name=payload.name,
         minimum_quality_definition_id=payload.minimum_quality_definition_id,
-        settings={"quality_definition_ids": [str(item) for item in quality_definition_ids]},
+        settings={
+            "quality_definition_ids": [str(item) for item in quality_definition_ids],
+            "minimum_custom_format_score": payload.minimum_custom_format_score,
+        },
         revision=1,
     )
     db.add(row)
@@ -257,6 +267,11 @@ async def update_quality_profile(
             **dict(row.settings or {}),
             "quality_definition_ids": [str(item) for item in payload.quality_definition_ids],
         }
+    if "minimum_custom_format_score" in payload.model_fields_set:
+        row.settings = {
+            **dict(row.settings or {}),
+            "minimum_custom_format_score": payload.minimum_custom_format_score,
+        }
     if payload.custom_format_scores is not None:
         if len({item.custom_format_id for item in payload.custom_format_scores}) != len(payload.custom_format_scores):
             raise AppError("INVALID_QUALITY_PROFILE", "Each Custom Format can appear only once in a profile.", status_code=422)
@@ -302,6 +317,15 @@ async def delete_quality_profile(
     row = await db.get(QualityProfile, profile_id)
     if row is None:
         raise AppError("NOT_FOUND", "Quality Profile was not found.", status_code=404)
+    # Every title without an explicit assignment resolves to this one, so
+    # deleting it would leave the whole library with no scoring at all until the
+    # next restart reseeded it, and would not restore the assignments it cleared.
+    if is_system_profile(row):
+        raise AppError(
+            "SYSTEM_QUALITY_PROFILE",
+            "The default Quality Profile cannot be deleted. Titles without their own profile use it.",
+            status_code=409,
+        )
     name = row.name
     assignments = (
         await db.scalars(select(MediaProfileOverride).where(MediaProfileOverride.quality_profile_id == row.id))
@@ -389,9 +413,13 @@ async def _settings_response(db: AsyncSession, media_type: MediaType, entity_id:
         entity_id=entity_id,
         quality_profile_id=effective.profile_id,
         quality_profile_name=effective.profile_name,
+        quality_profile_inherited=effective.profile_inherited,
         minimum_quality_definition=_quality_response(minimum),
         profile_minimum_quality_definition=_quality_response(profile_minimum),
         minimum_quality_overridden=effective.minimum_quality_overridden,
+        minimum_custom_format_score=effective.minimum_custom_format_score,
+        profile_minimum_custom_format_score=effective.profile_minimum_custom_format_score,
+        minimum_custom_format_score_overridden=effective.minimum_custom_format_score_overridden,
         custom_format_scores=score_rows,
         revision=effective.assignment_revision or 0,
     )
@@ -475,6 +503,7 @@ async def _save_settings(
     row.quality_profile_id = payload.quality_profile_id
     row.override_definition = {
         "minimum_quality_definition_id": str(payload.minimum_quality_definition_override_id) if payload.minimum_quality_definition_override_id else None,
+        "minimum_custom_format_score": payload.minimum_custom_format_score_override,
         "custom_format_scores": {str(key): int(value) for key, value in payload.custom_format_score_overrides.items()},
     }
     await db.flush()
@@ -491,6 +520,7 @@ async def _save_settings(
         details={
             "quality_profile_id": str(row.quality_profile_id) if row.quality_profile_id else None,
             "minimum_quality_override_id": str(payload.minimum_quality_definition_override_id) if payload.minimum_quality_definition_override_id else None,
+            "minimum_custom_format_score_override": payload.minimum_custom_format_score_override,
             "custom_format_override_count": len(payload.custom_format_score_overrides),
             "revision": row.revision,
         },

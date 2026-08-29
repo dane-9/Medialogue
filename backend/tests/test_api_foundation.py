@@ -193,6 +193,13 @@ def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: Tes
         assert movie["edition"] is None
         assert movie["state"] == "Present"
 
+        # The detail row identifies a copy by its file and the folder holding it.
+        # The resolved path is mostly the release name again, at a width no list
+        # can show, and the folder differs per release rather than per movie.
+        present = client.get(f"/api/v1/movies/{movie['id']}").json()["releases"][0]["directories"][0]
+        assert present["media_filename"] == f"{release_name}.mkv"
+        assert present["storage_root_name"] == "Scan Movies"
+
         second_job = _scan(client, headers, root_id)
         assert second_job["status"] == "completed", second_job
         assert client.get("/api/v1/movies").json()["total"] == 1

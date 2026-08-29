@@ -287,6 +287,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discoveries/quality-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Discoveries Quality Profile
+         * @description Apply one Quality Profile across a reviewed batch.
+         *
+         *     Validated once rather than per item: a profile that does not exist is a bad
+         *     request for the whole call, not five hundred identical per-item failures.
+         */
+        post: operations["set_discoveries_quality_profile_api_v1_discoveries_quality_profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discoveries/{discovery_id}/approve": {
         parameters: {
             query?: never;
@@ -336,6 +359,26 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discoveries/{discovery_id}/quality-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Discovery Quality Profile
+         * @description Choose the Quality Profile the imported title will be created with.
+         */
+        patch: operations["set_discovery_quality_profile_api_v1_discoveries__discovery_id__quality_profile_patch"];
         trace?: never;
     };
     "/api/v1/discoveries/{discovery_id}/restore": {
@@ -2592,7 +2635,7 @@ export interface components {
              */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem-Output"][];
             /**
              * Schema Version
              * @default 1
@@ -2600,7 +2643,28 @@ export interface components {
             schema_version: number;
         };
         /** CustomFormatExportItem */
-        CustomFormatExportItem: {
+        "CustomFormatExportItem-Input": {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionInput"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Name */
+            name: string;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** CustomFormatExportItem */
+        "CustomFormatExportItem-Output": {
             /** Conditions */
             conditions: components["schemas"]["CustomFormatConditionInput"][];
             /** Description */
@@ -2625,7 +2689,7 @@ export interface components {
             /** Application */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem-Input"][];
             /** Schema Version */
             schema_version: number;
         };
@@ -3832,10 +3896,14 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Media Filename */
+            media_filename?: string | null;
             /** Missing Since */
             missing_since: string | null;
             /** Resolved Path */
             resolved_path: string;
+            /** Storage Root Name */
+            storage_root_name?: string | null;
         };
         /**
          * MediaDiscoveryBulk
@@ -3914,6 +3982,27 @@ export interface components {
             relative_path: string;
             role: components["schemas"]["MediaRole"];
         };
+        /**
+         * MediaDiscoveryQualityProfile
+         * @description The Quality Profile to give the titles these directories become.
+         *
+         *     Null clears it, which is not the same as leaving it unset: the reviewer is
+         *     saying "add these with no profile" rather than "I have not decided".
+         */
+        MediaDiscoveryQualityProfile: {
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+        };
+        /**
+         * MediaDiscoveryQualityProfileBulk
+         * @description One profile applied across a reviewed batch.
+         */
+        MediaDiscoveryQualityProfileBulk: {
+            /** Ids */
+            ids: string[];
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+        };
         /** MediaDiscoveryResponse */
         MediaDiscoveryResponse: {
             /** Candidates */
@@ -3971,6 +4060,10 @@ export interface components {
             path: string;
             /** Quality */
             quality?: string | null;
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /** Quality Profile Name */
+            quality_profile_name?: string | null;
             review_state: components["schemas"]["DiscoveryReviewState"];
             /** Root Name */
             root_name: string;
@@ -4027,12 +4120,23 @@ export interface components {
              */
             entity_id: string;
             media_type: components["schemas"]["MediaType"];
+            /** Minimum Custom Format Score */
+            minimum_custom_format_score: number | null;
+            /** Minimum Custom Format Score Overridden */
+            minimum_custom_format_score_overridden: boolean;
             minimum_quality_definition: components["schemas"]["QualityDefinitionResponse"] | null;
             /** Minimum Quality Overridden */
             minimum_quality_overridden: boolean;
+            /** Profile Minimum Custom Format Score */
+            profile_minimum_custom_format_score: number | null;
             profile_minimum_quality_definition: components["schemas"]["QualityDefinitionResponse"] | null;
             /** Quality Profile Id */
             quality_profile_id: string | null;
+            /**
+             * Quality Profile Inherited
+             * @default false
+             */
+            quality_profile_inherited: boolean;
             /** Quality Profile Name */
             quality_profile_name: string | null;
             /** Revision */
@@ -4046,6 +4150,8 @@ export interface components {
             };
             /** Expected Revision */
             expected_revision?: number | null;
+            /** Minimum Custom Format Score Override */
+            minimum_custom_format_score_override?: number | null;
             /** Minimum Quality Definition Override Id */
             minimum_quality_definition_override_id?: string | null;
             /** Quality Profile Id */
@@ -4736,6 +4842,8 @@ export interface components {
         QualityProfileCreate: {
             /** Custom Format Scores */
             custom_format_scores?: components["schemas"]["QualityProfileScoreInput"][];
+            /** Minimum Custom Format Score */
+            minimum_custom_format_score?: number | null;
             /** Minimum Quality Definition Id */
             minimum_quality_definition_id?: string | null;
             /** Name */
@@ -4759,6 +4867,13 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Minimum Custom Format Score */
+            minimum_custom_format_score: number | null;
             minimum_quality_definition: components["schemas"]["QualityDefinitionResponse"] | null;
             /** Name */
             name: string;
@@ -4802,6 +4917,8 @@ export interface components {
             custom_format_scores?: components["schemas"]["QualityProfileScoreInput"][] | null;
             /** Expected Revision */
             expected_revision?: number | null;
+            /** Minimum Custom Format Score */
+            minimum_custom_format_score?: number | null;
             /** Minimum Quality Definition Id */
             minimum_quality_definition_id?: string | null;
             /** Name */
@@ -5169,6 +5286,10 @@ export interface components {
             /** Leechers */
             leechers: number | null;
             media_type: components["schemas"]["MediaType"];
+            /** Minimum Custom Format Score */
+            minimum_custom_format_score: number | null;
+            /** Minimum Custom Format Score Met */
+            minimum_custom_format_score_met: boolean | null;
             /** Minimum Quality */
             minimum_quality: string | null;
             /** Minimum Quality Met */
@@ -6660,6 +6781,39 @@ export interface operations {
             };
         };
     };
+    set_discoveries_quality_profile_api_v1_discoveries_quality_profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaDiscoveryQualityProfileBulk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryBulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     approve_discovery_api_v1_discoveries__discovery_id__approve_post: {
         parameters: {
             query?: never;
@@ -6736,6 +6890,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_discovery_quality_profile_api_v1_discoveries__discovery_id__quality_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaDiscoveryQualityProfile"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

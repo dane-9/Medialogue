@@ -35,6 +35,7 @@ export default function QualityProfilesPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [name, setName] = useState('')
   const [minimumId, setMinimumId] = useState('')
+  const [minimumScore, setMinimumScore] = useState('')
   const [qualityIds, setQualityIds] = useState<string[]>([])
   const [qualityOrderIds, setQualityOrderIds] = useState<string[]>([])
   const [scores, setScores] = useState<Record<string, number>>({})
@@ -69,6 +70,7 @@ export default function QualityProfilesPage() {
     if (!current) return
     setName(current.name)
     setMinimumId(current.minimumQuality?.id ?? '')
+    setMinimumScore(current.minimumCustomFormatScore === undefined ? '' : String(current.minimumCustomFormatScore))
     const selectedQualityIds = current.qualities.map((quality) => quality.id)
     setQualityIds(selectedQualityIds)
     setQualityOrderIds([...selectedQualityIds, ...qualities.map((quality) => quality.id).filter((id) => !selectedQualityIds.includes(id))])
@@ -78,21 +80,23 @@ export default function QualityProfilesPage() {
   }, [selectedId, profiles, qualities, creating])
 
   const dirty = useMemo(() => {
-    if (creating) return Boolean(name.trim()) || Boolean(minimumId) || Object.keys(scores).length > 0
+    if (creating) return Boolean(name.trim()) || Boolean(minimumId) || minimumScore !== '' || Object.keys(scores).length > 0
     if (!selected) return false
     const original = Object.fromEntries(selected.customFormatScores.map((item) => [item.customFormatId, item.score]))
     const originalQualities = selected.qualities.map((quality) => quality.id)
     return name !== selected.name
       || minimumId !== (selected.minimumQuality?.id ?? '')
+      || minimumScore !== (selected.minimumCustomFormatScore === undefined ? '' : String(selected.minimumCustomFormatScore))
       || JSON.stringify(qualityIds) !== JSON.stringify(originalQualities)
       || JSON.stringify(original) !== JSON.stringify(scores)
-  }, [creating, name, minimumId, qualityIds, scores, selected])
+  }, [creating, name, minimumId, minimumScore, qualityIds, scores, selected])
 
   const openProfile = (profile: QualityProfile) => {
     setCreating(false)
     setSelectedId(profile.id)
     setName(profile.name)
     setMinimumId(profile.minimumQuality?.id ?? '')
+    setMinimumScore(profile.minimumCustomFormatScore === undefined ? '' : String(profile.minimumCustomFormatScore))
     const selectedQualityIds = profile.qualities.map((quality) => quality.id)
     setQualityIds(selectedQualityIds)
     setQualityOrderIds([...selectedQualityIds, ...qualities.map((quality) => quality.id).filter((id) => !selectedQualityIds.includes(id))])
@@ -103,7 +107,7 @@ export default function QualityProfilesPage() {
   }
   const beginNew = () => {
     const allQualityIds = qualities.map((quality) => quality.id)
-    setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setQualityIds(allQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
+    setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setMinimumScore(''); setQualityIds(allQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
     setEditorView('details'); setFormatFilter(''); setQualityFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
   }
 
@@ -113,6 +117,7 @@ export default function QualityProfilesPage() {
       const created = await api.createQualityProfile({
         name: copyName(source.name, profiles.map((item) => item.name)),
         minimum_quality_definition_id: source.minimumQuality?.id ?? null,
+        minimum_custom_format_score: source.minimumCustomFormatScore ?? null,
         quality_definition_ids: source.qualities.map((quality) => quality.id),
         custom_format_scores: source.customFormatScores.map((item) => ({ custom_format_id: item.customFormatId, score: item.score })),
       })
@@ -132,11 +137,11 @@ export default function QualityProfilesPage() {
     const custom_format_scores = Object.entries(scores).map(([custom_format_id, score]) => ({ custom_format_id, score }))
     try {
       if (creating) {
-        const created = await api.createQualityProfile({ name: name.trim(), minimum_quality_definition_id: minimumId || null, quality_definition_ids: qualityIds, custom_format_scores })
+        const created = await api.createQualityProfile({ name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), quality_definition_ids: qualityIds, custom_format_scores })
         setProfiles((items) => [...items, created].sort((a, b) => a.name.localeCompare(b.name)))
         setCreating(false); setSelectedId(created.id); setEditorOpen(false); setMessage('Quality Profile created.')
       } else if (selected) {
-        const updated = await api.updateQualityProfile(selected.id, { name: name.trim(), minimum_quality_definition_id: minimumId || null, quality_definition_ids: qualityIds, custom_format_scores, expected_revision: selected.revision })
+        const updated = await api.updateQualityProfile(selected.id, { name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), quality_definition_ids: qualityIds, custom_format_scores, expected_revision: selected.revision })
         setProfiles((items) => items.map((item) => item.id === updated.id ? updated : item).sort((a, b) => a.name.localeCompare(b.name)))
         setEditorOpen(false); setMessage('Quality Profile saved. Assigned release scores were re-evaluated.')
       }
@@ -290,7 +295,7 @@ export default function QualityProfilesPage() {
   }
 
   return <main className="page">
-    <PageTopbar title="Quality Profiles" subtitle="Set a warning floor and base scores for matching Custom Formats. Rule offsets are added automatically." />
+    <PageTopbar title="Quality Profiles" subtitle="Set quality warnings, score acceptance, and base scores for matching Custom Formats. Rule offsets are added automatically." />
 
     {message && <div className="settings-note"><Icon name="activity" size={15} /><span>{message}</span></div>}
 
@@ -334,7 +339,7 @@ export default function QualityProfilesPage() {
 
         <div className="cf-editor-content">
           {editorView === 'details' && <section className="cf-editor-panel qp-details-panel">
-            <div className="cf-editor-panel-head"><div className="eyebrow">STEP 1 OF 3</div><h3>Profile details</h3><p>Name this ranking policy and optionally choose when a release should receive a quality warning.</p></div>
+            <div className="cf-editor-panel-head"><div className="eyebrow">STEP 1 OF 3</div><h3>Profile details</h3><p>Name this ranking policy and optionally configure quality warnings and score acceptance.</p></div>
             <div className="qp-details-fields">
               <Field label="Profile name" help="Shown when assigning this profile to a movie or show.">
                 <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Remux first" autoFocus={creating} />
@@ -346,6 +351,9 @@ export default function QualityProfilesPage() {
                     {group.qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}
                   </optgroup>)}
                 </Select>
+              </Field>
+              <Field label="Minimum acceptable Custom Format score" help="Releases below this total remain visible but are rejected for automatic selection. Manual download remains available.">
+                <Input type="number" value={minimumScore} onChange={(event) => setMinimumScore(event.target.value)} placeholder="No minimum score" />
               </Field>
             </div>
             <div className="cf-editor-next"><Button variant="primary" onClick={() => setEditorView('qualities')} disabled={!name.trim()}>Continue to qualities</Button></div>
@@ -433,6 +441,7 @@ function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: Qu
       <strong>{profile.name}</strong>
       <span className="cf-card-badges">
         <Badge tone={profile.minimumQuality ? 'blue' : 'neutral'}>{profile.minimumQuality?.name ?? 'No minimum'}</Badge>
+        <Badge tone={profile.minimumCustomFormatScore !== undefined ? 'blue' : 'neutral'}>{profile.minimumCustomFormatScore !== undefined ? `Score ≥ ${profile.minimumCustomFormatScore}` : 'Any score'}</Badge>
         <Tooltip asChild content="Create a copy of this Quality Profile"><button
           type="button"
           className="badge cf-card-duplicate"

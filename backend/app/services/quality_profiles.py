@@ -17,6 +17,29 @@ from app.models.domain import (
     QualityProfile,
 )
 from app.parser.quality import QUALITY_BY_NAME
+from app.services.builtin_formats import DEFAULT_QUALITY_PROFILE_MARKER
+
+
+def is_system_profile(profile: QualityProfile) -> bool:
+    return (profile.settings or {}).get("system_profile") == DEFAULT_QUALITY_PROFILE_MARKER
+
+
+async def load_system_profile(db: AsyncSession) -> QualityProfile | None:
+    """The seeded Default profile every title falls back to.
+
+    Loaded by its marker rather than its name: the profile is renameable, and
+    bootstrap recreates it only when no marked profile exists.
+    """
+
+    rows = (
+        await db.scalars(
+            select(QualityProfile).options(
+                selectinload(QualityProfile.minimum_quality_definition),
+                selectinload(QualityProfile.custom_format_scores).selectinload(ProfileCustomFormatScore.custom_format),
+            )
+        )
+    ).all()
+    return next((row for row in rows if is_system_profile(row)), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,12 +56,17 @@ class EffectiveProfile:
     profile_minimum_quality_definition_id: UUID | None
     profile_minimum_quality_name: str | None
     minimum_quality_overridden: bool
+    minimum_custom_format_score: int | None
+    profile_minimum_custom_format_score: int | None
+    minimum_custom_format_score_overridden: bool
     quality_order: tuple[str, ...]
     profile_scores: dict[str, int]
     overrides: dict[str, int]
     effective_scores: dict[str, int]
     score_names: dict[str, str]
     enabled_formats: dict[str, bool]
+    #: True when the title has no profile of its own and is using the default.
+    profile_inherited: bool = False
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -50,11 +78,15 @@ class EffectiveProfile:
             "profile_id": str(self.profile_id) if self.profile_id else None,
             "profile_name": self.profile_name,
             "profile_revision": self.profile_revision,
+            "profile_inherited": self.profile_inherited,
             "minimum_quality_definition_id": str(self.minimum_quality_definition_id) if self.minimum_quality_definition_id else None,
             "minimum_quality": self.minimum_quality_name,
             "profile_minimum_quality_definition_id": str(self.profile_minimum_quality_definition_id) if self.profile_minimum_quality_definition_id else None,
             "profile_minimum_quality": self.profile_minimum_quality_name,
             "minimum_quality_overridden": self.minimum_quality_overridden,
+            "minimum_custom_format_score": self.minimum_custom_format_score,
+            "profile_minimum_custom_format_score": self.profile_minimum_custom_format_score,
+            "minimum_custom_format_score_overridden": self.minimum_custom_format_score_overridden,
             "quality_order": list(self.quality_order),
             "profile_scores": dict(self.profile_scores),
             "score_overrides": dict(self.overrides),
@@ -98,6 +130,13 @@ async def load_effective_profile(
             )
             .where(QualityProfile.id == assignment.quality_profile_id)
         )
+    # No explicit assignment means "inherit the default", not "score nothing".
+    # Resolved here rather than written as a row per title so that an inherited
+    # profile stays distinguishable from one the user actually chose, which is
+    # what assigned_title_count reports.
+    profile_inherited = profile is None
+    if profile is None:
+        profile = await load_system_profile(db)
 
     profile_scores: dict[str, int] = {}
     score_names: dict[str, str] = {}
@@ -113,6 +152,16 @@ async def load_effective_profile(
     override_definition = dict(assignment.override_definition or {}) if assignment else {}
     raw_overrides = override_definition.get("custom_format_scores") or {}
     overrides = {str(key): int(value) for key, value in raw_overrides.items()}
+    profile_minimum_custom_format_score = (
+        int(profile.settings["minimum_custom_format_score"])
+        if profile and (profile.settings or {}).get("minimum_custom_format_score") is not None
+        else None
+    )
+    override_minimum_custom_format_score = (
+        int(override_definition["minimum_custom_format_score"])
+        if override_definition.get("minimum_custom_format_score") is not None
+        else None
+    )
 
     missing_format_ids = []
     for key in overrides:
@@ -179,12 +228,20 @@ async def load_effective_profile(
         profile_minimum_quality_definition_id=profile_minimum_id,
         profile_minimum_quality_name=profile_minimum_name,
         minimum_quality_overridden=override_minimum_id is not None,
+        minimum_custom_format_score=(
+            override_minimum_custom_format_score
+            if override_minimum_custom_format_score is not None
+            else profile_minimum_custom_format_score
+        ),
+        profile_minimum_custom_format_score=profile_minimum_custom_format_score,
+        minimum_custom_format_score_overridden=override_minimum_custom_format_score is not None,
         quality_order=quality_order,
         profile_scores=profile_scores,
         overrides=overrides,
         effective_scores=effective_scores,
         score_names=score_names,
         enabled_formats=enabled_formats,
+        profile_inherited=profile_inherited and profile is not None,
     )
 
 
@@ -243,6 +300,11 @@ async def load_quality_profile_for_search(
 
     minimum_id = profile.minimum_quality_definition_id
     minimum_name = profile.minimum_quality_definition.name if profile.minimum_quality_definition else None
+    minimum_custom_format_score = (
+        int(profile.settings["minimum_custom_format_score"])
+        if (profile.settings or {}).get("minimum_custom_format_score") is not None
+        else None
+    )
     return EffectiveProfile(
         media_type=media_type,
         entity_id=None,
@@ -256,6 +318,9 @@ async def load_quality_profile_for_search(
         profile_minimum_quality_definition_id=minimum_id,
         profile_minimum_quality_name=minimum_name,
         minimum_quality_overridden=False,
+        minimum_custom_format_score=minimum_custom_format_score,
+        profile_minimum_custom_format_score=minimum_custom_format_score,
+        minimum_custom_format_score_overridden=False,
         quality_order=quality_order,
         profile_scores=profile_scores,
         overrides={},

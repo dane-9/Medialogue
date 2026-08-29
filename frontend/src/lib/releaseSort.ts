@@ -39,6 +39,9 @@ export function sortReleases(
   const direction = desc ? -1 : 1
   return [...results].sort((left, right) => {
     if (left.qualityAllowed !== right.qualityAllowed) return left.qualityAllowed ? -1 : 1
+    const leftScoreAccepted = left.minimumCustomFormatScoreMet !== false
+    const rightScoreAccepted = right.minimumCustomFormatScoreMet !== false
+    if (leftScoreAccepted !== rightScoreAccepted) return leftScoreAccepted ? -1 : 1
     if (sort === 'rank') return direction * compareRank(left, right) * -1
     if (sort === 'title') return direction * left.title.localeCompare(right.title)
     return direction * (value(left, sort) - value(right, sort))

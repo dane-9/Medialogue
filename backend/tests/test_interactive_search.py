@@ -341,9 +341,12 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
         assert first["quality"] == "2160p BluRay REMUX"
         assert first["edition"] is None
         assert first["release_group"] == "LM"
-        assert first["custom_format_score"] == 0
+        # Scored under the inherited default profile: a search target without a
+        # profile of its own is no longer scored by nothing.
+        assert first["custom_format_score"] > 0
         assert first["custom_format_snapshot"]["score_evaluated"] is True
-        assert first["quality_profile_id"] is None
+        # The default profile, inherited: a search is never scored by nothing.
+        assert first["quality_profile_name"] == "Default"
         assert custom_format_id in first["custom_format_snapshot"]["matched_format_ids"]
         match = _format_named(first["custom_format_snapshot"], "Hybrid REMUX")
         assert match["matched"] is True

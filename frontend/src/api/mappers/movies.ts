@@ -19,6 +19,8 @@ export function mapDirectory(value: MediaDirectoryDto): MovieDirectory {
     exists: value.exists,
     missingSince: value.missing_since ?? undefined,
     files: value.files,
+    storageRoot: value.storage_root_name ?? undefined,
+    mediaFilename: value.media_filename ?? undefined,
   }
 }
 
@@ -39,6 +41,7 @@ export function mapRelease(value: MovieReleaseDto): MovieRelease {
     originalCustomFormatScore: value.original_custom_format_score ?? undefined,
     currentCustomFormatScore: value.current_custom_format_score ?? undefined,
     selectionSnapshot: value.selection_snapshot ?? undefined,
+    parser: value.parse_snapshot,
   }
 }
 

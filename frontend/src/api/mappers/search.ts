@@ -28,6 +28,8 @@ export function mapInteractiveSearchResult(value: SearchResultDto): InteractiveS
     qualityProfileName: value.quality_profile_name ?? undefined,
     minimumQuality: value.minimum_quality ?? undefined,
     minimumQualityMet: value.minimum_quality_met ?? undefined,
+    minimumCustomFormatScore: value.minimum_custom_format_score ?? undefined,
+    minimumCustomFormatScoreMet: value.minimum_custom_format_score_met ?? undefined,
     customFormatSnapshot: value.custom_format_snapshot,
     parser: value.parser,
     warnings: value.warnings,

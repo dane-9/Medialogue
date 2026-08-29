@@ -454,6 +454,7 @@ async def _store_results(
     profile_scores = {str(key): int(value) for key, value in (profile_snapshot.get("profile_scores") or {}).items()}
     score_overrides = {str(key): int(value) for key, value in (profile_snapshot.get("score_overrides") or {}).items()}
     minimum_quality = profile_snapshot.get("minimum_quality")
+    minimum_custom_format_score = profile_snapshot.get("minimum_custom_format_score")
     quality_order = [str(value) for value in (profile_snapshot.get("quality_order") or [])]
     quality_preferences = {name: len(quality_order) - index for index, name in enumerate(quality_order)}
 
@@ -489,6 +490,15 @@ async def _store_results(
             score_overrides=score_overrides,
             context={"indexer": indexer_name},
         )
+        minimum_custom_format_score_met = (
+            int(evaluation.total_score) >= int(minimum_custom_format_score)
+            if minimum_custom_format_score is not None
+            else None
+        )
+        if minimum_custom_format_score_met is False:
+            warnings.append(
+                f"Below minimum Custom Format score: {int(evaluation.total_score)} is below {int(minimum_custom_format_score)}. Manual download is still available."
+            )
         floor_status = minimum_quality_status(
             parsed.quality.canonical,
             str(minimum_quality) if minimum_quality else None,
@@ -533,6 +543,8 @@ async def _store_results(
             "quality_preference": quality_preference,
             "indexer_priority": indexer_priority,
             "minimum_quality_met": floor_status,
+            "minimum_custom_format_score": minimum_custom_format_score,
+            "minimum_custom_format_score_met": minimum_custom_format_score_met,
             "score_evaluated": True,
             "total_score": int(evaluation.total_score),
             "formats": format_snapshots,

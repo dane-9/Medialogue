@@ -111,6 +111,7 @@ def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> 
         "0004_remove_metadata_provider_columns.py",
         "0005_movie_edition_overrides.py",
         "0006_review_movie_editions.py",
+        "0007_review_quality_profiles.py",
     ]
 
     previous = None

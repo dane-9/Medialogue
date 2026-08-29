@@ -27,6 +27,7 @@ class QualityProfileScoreInput(BaseModel):
 class QualityProfileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     minimum_quality_definition_id: UUID | None = None
+    minimum_custom_format_score: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
     quality_definition_ids: list[UUID] | None = Field(default=None, max_length=1000)
     custom_format_scores: list[QualityProfileScoreInput] = Field(default_factory=list, max_length=1000)
 
@@ -39,6 +40,7 @@ class QualityProfileCreate(BaseModel):
 class QualityProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     minimum_quality_definition_id: UUID | None = None
+    minimum_custom_format_score: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
     quality_definition_ids: list[UUID] | None = Field(default=None, max_length=1000)
     custom_format_scores: list[QualityProfileScoreInput] | None = Field(default=None, max_length=1000)
     expected_revision: int | None = Field(default=None, ge=1)
@@ -60,9 +62,13 @@ class QualityProfileResponse(BaseModel):
     id: UUID
     name: str
     minimum_quality_definition: QualityDefinitionResponse | None
+    minimum_custom_format_score: int | None
     qualities: list[QualityDefinitionResponse]
     custom_format_scores: list[QualityProfileScoreResponse]
     assigned_titles: int
+    #: The seeded profile every title without its own falls back to. It is
+    #: renameable, so callers must not identify it by name.
+    is_default: bool = False
     revision: int
     created_at: datetime
     updated_at: datetime
@@ -71,6 +77,7 @@ class QualityProfileResponse(BaseModel):
 class MediaProfileSettingsUpdate(BaseModel):
     quality_profile_id: UUID | None = None
     minimum_quality_definition_override_id: UUID | None = None
+    minimum_custom_format_score_override: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
     custom_format_score_overrides: dict[UUID, int] = Field(default_factory=dict)
     expected_revision: int | None = Field(default=None, ge=0)
 
@@ -97,8 +104,14 @@ class MediaProfileSettingsResponse(BaseModel):
     entity_id: UUID
     quality_profile_id: UUID | None
     quality_profile_name: str | None
+    #: True when this title has no profile of its own and is using the default.
+    #: The id above is then the default's, not a choice the user made here.
+    quality_profile_inherited: bool = False
     minimum_quality_definition: QualityDefinitionResponse | None
     profile_minimum_quality_definition: QualityDefinitionResponse | None
     minimum_quality_overridden: bool
+    minimum_custom_format_score: int | None
+    profile_minimum_custom_format_score: int | None
+    minimum_custom_format_score_overridden: bool
     custom_format_scores: list[EffectiveCustomFormatScore]
     revision: int

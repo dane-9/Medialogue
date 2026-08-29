@@ -40,6 +40,10 @@ class MediaDiscoveryResponse(BaseModel):
     edition_override_active: bool = False
     manual_edition_override: str | None = None
     library_edition_conflict: bool = False
+    #: Quality Profile the title will be created with. Null means the title is
+    #: added without one, exactly as it was before this could be chosen.
+    quality_profile_id: UUID | None = None
+    quality_profile_name: str | None = None
     hdr: list[str] = Field(default_factory=list)
     suggested: MediaDiscoveryCandidate | None = None
     selected: MediaDiscoveryCandidate | None = None
@@ -88,6 +92,22 @@ class MediaDiscoveryBulk(BaseModel):
 
     ids: list[UUID] = Field(min_length=1, max_length=500)
     action: Literal["approve", "ignore"]
+
+
+class MediaDiscoveryQualityProfile(BaseModel):
+    """The Quality Profile to give the titles these directories become.
+
+    Null clears it, which is not the same as leaving it unset: the reviewer is
+    saying "add these with no profile" rather than "I have not decided".
+    """
+
+    quality_profile_id: UUID | None = None
+
+
+class MediaDiscoveryQualityProfileBulk(MediaDiscoveryQualityProfile):
+    """One profile applied across a reviewed batch."""
+
+    ids: list[UUID] = Field(min_length=1, max_length=500)
 
 
 class MediaDiscoveryBulkFailure(BaseModel):

@@ -96,6 +96,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
       const { resolution, type } = splitQuality(result.quality, parsedResolution(result.parser))
       const formats = matchedFormatNames(result)
       const warnings = result.warnings ?? []
+      const scoreRejected = result.minimumCustomFormatScoreMet === false
       const languages = releaseLanguages(result.parser)
       const indexerBadge = badgeColor(result.indexerColor)
 
@@ -137,11 +138,11 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
             {tag ? <em>{tag}</em> : null}
             {warnings.length
               ? <Tooltip
-                  className={`release-pill ${result.qualityAllowed ? 'release-warned' : 'release-blocked'}`}
+                  className={`release-pill ${result.qualityAllowed && !scoreRejected ? 'release-warned' : 'release-blocked'}`}
                   content={<>
                     <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
                   </>}
-                ><Icon name="alert" size={11} />{result.qualityAllowed ? warnings.length : 'Blocked by profile'}</Tooltip>
+                ><Icon name="alert" size={11} />{!result.qualityAllowed ? 'Blocked by profile' : scoreRejected ? 'Rejected by score' : warnings.length}</Tooltip>
               : null}
           </span>
         </span>

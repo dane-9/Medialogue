@@ -290,8 +290,12 @@ def test_bulk_custom_format_reevaluation_refreshes_current_score(client: TestCli
     job = wait_job(client, response.json()["job_id"])
     assert job["status"] == "completed", job
     release = db_run(lambda db: db.get(MovieRelease, release_id))
-    assert release.current_custom_format_score == 0
-    assert release.parse_snapshot["current_score_snapshot"]["total_score"] == 0
+    # The stale sentinel is replaced by a real evaluation. It is not 0: a movie
+    # with no profile of its own inherits the default, whose built-in Custom
+    # Format scores match this release.
+    assert release.current_custom_format_score != 9999
+    assert release.current_custom_format_score > 0
+    assert release.parse_snapshot["current_score_snapshot"]["total_score"] == release.current_custom_format_score
 
 
 class FakePlexClient:

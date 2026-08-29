@@ -117,6 +117,7 @@ export function mapQualityProfile(value: QualityProfileDto): QualityProfile {
     minimumQuality: value.minimum_quality_definition
       ? mapQualityDefinition(value.minimum_quality_definition)
       : undefined,
+    minimumCustomFormatScore: value.minimum_custom_format_score ?? undefined,
     qualities: value.qualities.map(mapQualityDefinition),
     customFormatScores: value.custom_format_scores.map((score) => ({
       customFormatId: score.custom_format_id,
@@ -125,6 +126,7 @@ export function mapQualityProfile(value: QualityProfileDto): QualityProfile {
       enabled: score.enabled,
     })),
     assignedTitles: value.assigned_titles,
+    isDefault: value.is_default ?? false,
     revision: value.revision,
     createdAt: value.created_at,
     updatedAt: value.updated_at,
@@ -136,10 +138,14 @@ export function mapMediaProfileSettings(value: MediaProfileSettingsDto): MediaPr
     mediaType: value.media_type,
     entityId: value.entity_id,
     qualityProfileId: value.quality_profile_id ?? undefined,
+    qualityProfileInherited: value.quality_profile_inherited ?? false,
     qualityProfileName: value.quality_profile_name ?? undefined,
     minimumQuality: value.minimum_quality_definition ? mapQualityDefinition(value.minimum_quality_definition) : undefined,
     profileMinimumQuality: value.profile_minimum_quality_definition ? mapQualityDefinition(value.profile_minimum_quality_definition) : undefined,
     minimumQualityOverridden: value.minimum_quality_overridden,
+    minimumCustomFormatScore: value.minimum_custom_format_score ?? undefined,
+    profileMinimumCustomFormatScore: value.profile_minimum_custom_format_score ?? undefined,
+    minimumCustomFormatScoreOverridden: value.minimum_custom_format_score_overridden,
     customFormatScores: value.custom_format_scores.map((score) => ({
       customFormatId: score.custom_format_id,
       customFormatName: score.custom_format_name,

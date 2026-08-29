@@ -934,7 +934,7 @@
           },
           "custom_formats": {
             "items": {
-              "$ref": "#/components/schemas/CustomFormatExportItem"
+              "$ref": "#/components/schemas/CustomFormatExportItem-Output"
             },
             "title": "Custom Formats",
             "type": "array"
@@ -951,7 +951,53 @@
         "title": "CustomFormatExportBundle",
         "type": "object"
       },
-      "CustomFormatExportItem": {
+      "CustomFormatExportItem-Input": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/CustomFormatConditionInput"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "media_scope": {
+            "$ref": "#/components/schemas/CustomFormatScope",
+            "default": "both"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "conditions"
+        ],
+        "title": "CustomFormatExportItem",
+        "type": "object"
+      },
+      "CustomFormatExportItem-Output": {
         "properties": {
           "conditions": {
             "items": {
@@ -1005,7 +1051,7 @@
           },
           "custom_formats": {
             "items": {
-              "$ref": "#/components/schemas/CustomFormatExportItem"
+              "$ref": "#/components/schemas/CustomFormatExportItem-Input"
             },
             "maxItems": 500,
             "minItems": 1,
@@ -4477,6 +4523,17 @@
             "title": "Id",
             "type": "string"
           },
+          "media_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Filename"
+          },
           "missing_since": {
             "anyOf": [
               {
@@ -4492,6 +4549,17 @@
           "resolved_path": {
             "title": "Resolved Path",
             "type": "string"
+          },
+          "storage_root_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Root Name"
           }
         },
         "required": [
@@ -4702,6 +4770,57 @@
         "title": "MediaDiscoveryFile",
         "type": "object"
       },
+      "MediaDiscoveryQualityProfile": {
+        "description": "The Quality Profile to give the titles these directories become.\n\nNull clears it, which is not the same as leaving it unset: the reviewer is\nsaying \"add these with no profile\" rather than \"I have not decided\".",
+        "properties": {
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          }
+        },
+        "title": "MediaDiscoveryQualityProfile",
+        "type": "object"
+      },
+      "MediaDiscoveryQualityProfileBulk": {
+        "description": "One profile applied across a reviewed batch.",
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "MediaDiscoveryQualityProfileBulk",
+        "type": "object"
+      },
       "MediaDiscoveryResponse": {
         "properties": {
           "candidates": {
@@ -4842,6 +4961,29 @@
               }
             ],
             "title": "Quality"
+          },
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          },
+          "quality_profile_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Name"
           },
           "review_state": {
             "$ref": "#/components/schemas/DiscoveryReviewState"
@@ -4993,6 +5135,21 @@
           "media_type": {
             "$ref": "#/components/schemas/MediaType"
           },
+          "minimum_custom_format_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Custom Format Score"
+          },
+          "minimum_custom_format_score_overridden": {
+            "title": "Minimum Custom Format Score Overridden",
+            "type": "boolean"
+          },
           "minimum_quality_definition": {
             "anyOf": [
               {
@@ -5006,6 +5163,17 @@
           "minimum_quality_overridden": {
             "title": "Minimum Quality Overridden",
             "type": "boolean"
+          },
+          "profile_minimum_custom_format_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Minimum Custom Format Score"
           },
           "profile_minimum_quality_definition": {
             "anyOf": [
@@ -5028,6 +5196,11 @@
               }
             ],
             "title": "Quality Profile Id"
+          },
+          "quality_profile_inherited": {
+            "default": false,
+            "title": "Quality Profile Inherited",
+            "type": "boolean"
           },
           "quality_profile_name": {
             "anyOf": [
@@ -5053,6 +5226,9 @@
           "minimum_quality_definition",
           "profile_minimum_quality_definition",
           "minimum_quality_overridden",
+          "minimum_custom_format_score",
+          "profile_minimum_custom_format_score",
+          "minimum_custom_format_score_overridden",
           "custom_format_scores",
           "revision"
         ],
@@ -5082,6 +5258,19 @@
               }
             ],
             "title": "Expected Revision"
+          },
+          "minimum_custom_format_score_override": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": -1000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Custom Format Score Override"
           },
           "minimum_quality_definition_override_id": {
             "anyOf": [
@@ -7051,6 +7240,19 @@
             "title": "Custom Format Scores",
             "type": "array"
           },
+          "minimum_custom_format_score": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": -1000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Custom Format Score"
+          },
           "minimum_quality_definition_id": {
             "anyOf": [
               {
@@ -7115,6 +7317,22 @@
             "title": "Id",
             "type": "string"
           },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "minimum_custom_format_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Custom Format Score"
+          },
           "minimum_quality_definition": {
             "anyOf": [
               {
@@ -7150,6 +7368,7 @@
           "id",
           "name",
           "minimum_quality_definition",
+          "minimum_custom_format_score",
           "qualities",
           "custom_format_scores",
           "assigned_titles",
@@ -7238,6 +7457,19 @@
               }
             ],
             "title": "Expected Revision"
+          },
+          "minimum_custom_format_score": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": -1000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Custom Format Score"
           },
           "minimum_quality_definition_id": {
             "anyOf": [
@@ -8251,6 +8483,28 @@
           "media_type": {
             "$ref": "#/components/schemas/MediaType"
           },
+          "minimum_custom_format_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Custom Format Score"
+          },
+          "minimum_custom_format_score_met": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Custom Format Score Met"
+          },
           "minimum_quality": {
             "anyOf": [
               {
@@ -8434,6 +8688,8 @@
           "quality_profile_name",
           "minimum_quality",
           "minimum_quality_met",
+          "minimum_custom_format_score",
+          "minimum_custom_format_score_met",
           "custom_format_snapshot",
           "parser",
           "warnings",
@@ -11860,6 +12116,48 @@
         ]
       }
     },
+    "/api/v1/discoveries/quality-profile": {
+      "post": {
+        "description": "Apply one Quality Profile across a reviewed batch.\n\nValidated once rather than per item: a profile that does not exist is a bad\nrequest for the whole call, not five hundred identical per-item failures.",
+        "operationId": "set_discoveries_quality_profile_api_v1_discoveries_quality_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaDiscoveryQualityProfileBulk"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDiscoveryBulkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Discoveries Quality Profile",
+        "tags": [
+          "discoveries"
+        ]
+      }
+    },
     "/api/v1/discoveries/{discovery_id}/approve": {
       "post": {
         "operationId": "approve_discovery_api_v1_discoveries__discovery_id__approve_post",
@@ -11994,6 +12292,60 @@
           }
         },
         "summary": "Ignore Discovery",
+        "tags": [
+          "discoveries"
+        ]
+      }
+    },
+    "/api/v1/discoveries/{discovery_id}/quality-profile": {
+      "patch": {
+        "description": "Choose the Quality Profile the imported title will be created with.",
+        "operationId": "set_discovery_quality_profile_api_v1_discoveries__discovery_id__quality_profile_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discovery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discovery Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaDiscoveryQualityProfile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDiscoveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Discovery Quality Profile",
         "tags": [
           "discoveries"
         ]

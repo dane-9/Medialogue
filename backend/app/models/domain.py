@@ -402,6 +402,10 @@ class MediaDiscovery(TimestampMixin, Base):
     selected_tmdb_id: Mapped[int | None] = mapped_column(Integer)
     manual_edition_override: Mapped[str | None] = mapped_column(String(128))
     edition_override_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Quality Profile to give the title this directory becomes. Unconstrained on
+    #: purpose: a profile deleted between review and import must not make the
+    #: directory unimportable, so an unknown id reads back as "no profile".
+    quality_profile_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     approved_media_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))

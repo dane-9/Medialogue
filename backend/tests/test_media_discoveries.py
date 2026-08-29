@@ -803,3 +803,148 @@ def test_a_folder_that_disappears_leaves_review_immediately(client: TestClient, 
     scan(client, headers, storage["id"])
 
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0
+
+
+def _quality_profile(client: TestClient, headers: dict[str, str], name: str) -> dict:
+    minimum = next(item["id"] for item in client.get("/api/v1/quality-definitions").json() if item["name"] == "2160p BluRay REMUX")
+    created = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={"name": name, "minimum_quality_definition_id": minimum, "custom_format_scores": []},
+    )
+    assert created.status_code == 201, created.text
+    return created.json()
+
+
+def test_a_quality_profile_chosen_in_review_reaches_the_imported_movie(client: TestClient, tmp_path: Path) -> None:
+    """Choosing the profile before import is the point of choosing it there.
+
+    Assigning it afterwards meant every imported title spent its first moments
+    scored by nothing, and a queue had to be corrected one title at a time.
+    """
+
+    headers = login(client)
+    configure_tmdb(client, headers)
+    movie_root = tmp_path / "movies"
+    folder = movie_root / "Dune.2021.2160p.BluRay.REMUX-GROUP"
+    folder.mkdir(parents=True)
+    (folder / "Dune.2021.2160p.BluRay.REMUX-GROUP.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, movie_root, "movies")
+    scan(client, headers, storage["id"])
+    discovery = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
+    profile = _quality_profile(client, headers, "4K Movies")
+
+    chosen = client.patch(
+        f"/api/v1/discoveries/{discovery['id']}/quality-profile",
+        headers=headers,
+        json={"quality_profile_id": profile["id"]},
+    )
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["quality_profile_id"] == profile["id"]
+    assert chosen.json()["quality_profile_name"] == "4K Movies"
+
+    approved = client.post(f"/api/v1/discoveries/{discovery['id']}/approve", headers=headers)
+    assert approved.status_code == 200, approved.text
+
+    movie_id = client.get("/api/v1/movies").json()["items"][0]["id"]
+    settings = client.get(f"/api/v1/movies/{movie_id}/profile-settings").json()
+    assert settings["quality_profile_id"] == profile["id"]
+
+
+def test_one_quality_profile_can_be_applied_across_a_review_batch(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    movie_root = tmp_path / "movies"
+    for name in ("Dune.2021.2160p.BluRay.REMUX-GROUP", "Inception.2010.2160p.BluRay.REMUX-GROUP"):
+        folder = movie_root / name
+        folder.mkdir(parents=True)
+        (folder / f"{name}.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, movie_root, "movies")
+    scan(client, headers, storage["id"])
+    discoveries = client.get("/api/v1/discoveries?page_size=250").json()["items"]
+    assert len(discoveries) == 2
+    profile = _quality_profile(client, headers, "Everything 4K")
+
+    applied = client.post(
+        "/api/v1/discoveries/quality-profile",
+        headers=headers,
+        json={"ids": [item["id"] for item in discoveries], "quality_profile_id": profile["id"]},
+    )
+    assert applied.status_code == 200, applied.text
+    assert len(applied.json()["succeeded"]) == 2
+    assert applied.json()["failed"] == []
+
+    names = {item["quality_profile_name"] for item in client.get("/api/v1/discoveries?page_size=250").json()["items"]}
+    assert names == {"Everything 4K"}
+
+    cleared = client.post(
+        "/api/v1/discoveries/quality-profile",
+        headers=headers,
+        json={"ids": [item["id"] for item in discoveries], "quality_profile_id": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert all(item["quality_profile_id"] is None for item in client.get("/api/v1/discoveries?page_size=250").json()["items"])
+
+
+def test_importing_another_edition_keeps_the_profile_the_movie_already_has(client: TestClient, tmp_path: Path) -> None:
+    """A second edition must not rewrite scoring configured earlier.
+
+    The review choice creates the title's profile; it does not reassign one the
+    user has already set up, which would make importing one folder silently
+    change an existing title.
+    """
+
+    headers = login(client)
+    configure_tmdb(client, headers)
+    movie_root = tmp_path / "movies"
+    first = movie_root / "Dune.2021.2160p.BluRay.REMUX-GROUP"
+    first.mkdir(parents=True)
+    (first / "Dune.2021.2160p.BluRay.REMUX-GROUP.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, movie_root, "movies")
+    scan(client, headers, storage["id"])
+    original = _quality_profile(client, headers, "Original choice")
+    discovery = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
+    client.patch(
+        f"/api/v1/discoveries/{discovery['id']}/quality-profile",
+        headers=headers,
+        json={"quality_profile_id": original["id"]},
+    )
+    assert client.post(f"/api/v1/discoveries/{discovery['id']}/approve", headers=headers).status_code == 200
+    movie_id = client.get("/api/v1/movies").json()["items"][0]["id"]
+
+    second = movie_root / "Dune.2021.Directors.Cut.2160p.BluRay.REMUX-OTHER"
+    second.mkdir(parents=True)
+    (second / "Dune.2021.Directors.Cut.2160p.BluRay.REMUX-OTHER.mkv").write_bytes(b"movie")
+    scan(client, headers, storage["id"])
+    pending = [item for item in client.get("/api/v1/discoveries?page_size=250").json()["items"] if item["review_state"] == "pending"]
+    if pending:
+        other = _quality_profile(client, headers, "Different choice")
+        client.patch(
+            f"/api/v1/discoveries/{pending[0]['id']}/quality-profile",
+            headers=headers,
+            json={"quality_profile_id": other["id"]},
+        )
+        client.post(f"/api/v1/discoveries/{pending[0]['id']}/approve", headers=headers)
+
+    settings = client.get(f"/api/v1/movies/{movie_id}/profile-settings").json()
+    assert settings["quality_profile_id"] == original["id"]
+
+
+def test_a_profile_that_no_longer_exists_is_refused_rather_than_stored(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    movie_root = tmp_path / "movies"
+    folder = movie_root / "Dune.2021.2160p.BluRay.REMUX-GROUP"
+    folder.mkdir(parents=True)
+    (folder / "Dune.2021.2160p.BluRay.REMUX-GROUP.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, movie_root, "movies")
+    scan(client, headers, storage["id"])
+    discovery = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
+
+    refused = client.patch(
+        f"/api/v1/discoveries/{discovery['id']}/quality-profile",
+        headers=headers,
+        json={"quality_profile_id": "00000000-0000-0000-0000-000000000001"},
+    )
+    assert refused.status_code == 404, refused.text
+    assert refused.json()["error"]["code"] == "QUALITY_PROFILE_NOT_FOUND"

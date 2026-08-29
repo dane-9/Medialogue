@@ -27,6 +27,12 @@ class MediaDirectoryResponse(BaseModel):
     exists: bool
     missing_since: datetime | None
     files: list[str]
+    #: Which media folder this copy lives under. Two releases of the same movie
+    #: can sit in different roots, so this cannot be read off the movie.
+    storage_root_name: str | None = None
+    #: The video file itself. The resolved path is long enough to be unreadable
+    #: in a list, and the filename is the part that identifies the copy.
+    media_filename: str | None = None
 
 
 class MovieReleaseResponse(BaseModel):

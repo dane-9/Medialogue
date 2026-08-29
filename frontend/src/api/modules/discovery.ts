@@ -30,4 +30,9 @@ export const discoveryApi = {
     },
   }))),
   updateDiscoveryEdition: async (id: string, update: { mode: 'automatic' | 'standard' | 'named'; edition?: string }) => mapMediaDiscovery(await openApiData(openApiClient.PATCH('/api/v1/discoveries/{discovery_id}/edition', { params: { path: { discovery_id: id } }, body: update }))),
+  updateDiscoveryQualityProfile: async (id: string, qualityProfileId: string | null) => mapMediaDiscovery(await openApiData(openApiClient.PATCH('/api/v1/discoveries/{discovery_id}/quality-profile', { params: { path: { discovery_id: id } }, body: { quality_profile_id: qualityProfileId } }))),
+  bulkDiscoveryQualityProfile: async (ids: string[], qualityProfileId: string | null) => {
+    const payload = await openApiData(openApiClient.POST('/api/v1/discoveries/quality-profile', { body: { ids, quality_profile_id: qualityProfileId } }))
+    return { succeeded: payload.succeeded ?? [], failed: payload.failed ?? [] }
+  },
 }

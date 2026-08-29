@@ -18,6 +18,7 @@ from app.models.domain import (
     AssociationType,
     Event,
     MediaDirectory,
+    MediaRole,
     Movie,
     MovieRelease,
     MovieReleaseTorrent,
@@ -52,6 +53,7 @@ router = APIRouter(prefix="/movies", tags=["movies"])
 def _movie_query():
     return select(Movie).options(
         selectinload(Movie.releases).selectinload(MovieRelease.directories).selectinload(MediaDirectory.files),
+        selectinload(Movie.releases).selectinload(MovieRelease.directories).selectinload(MediaDirectory.storage_root),
         selectinload(Movie.releases).selectinload(MovieRelease.quality_definition),
         selectinload(Movie.plex_observations),
         selectinload(Movie.tags),
@@ -573,6 +575,19 @@ def _summary(movie: Movie, problem_count: int, incoming_kind: str | None = None)
     )
 
 
+def _media_filename(directory: MediaDirectory) -> str | None:
+    """The video file that represents this copy.
+
+    media_role is what distinguishes the feature from samples, extras and
+    subtitle sidecars, so the role decides rather than the filename.
+    """
+
+    files = [item for item in directory.files if item.exists] or list(directory.files)
+    primary = next((item for item in files if item.media_role == MediaRole.MOVIE_VIDEO), None)
+    chosen = primary or next(iter(files), None)
+    return chosen.filename if chosen else None
+
+
 def _release(release: MovieRelease) -> MovieReleaseResponse:
     confidence = release.parse_snapshot.get("identity_confidence")
     return MovieReleaseResponse(
@@ -597,6 +612,8 @@ def _release(release: MovieRelease) -> MovieReleaseResponse:
                 exists=directory.exists,
                 missing_since=directory.missing_since,
                 files=[item.relative_path for item in directory.files],
+                storage_root_name=directory.storage_root.name if directory.storage_root else None,
+                media_filename=_media_filename(directory),
             )
             for directory in release.directories
         ],
