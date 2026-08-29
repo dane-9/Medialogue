@@ -129,17 +129,19 @@ def _ensure_private_directory(path: Path) -> None:
         pass
 
 
-def cleanup_expired_recovery_exports(settings: Settings | None = None) -> None:
+def cleanup_expired_recovery_exports(settings: Settings | None = None) -> int:
     settings = settings or get_settings()
     root = recovery_export_root(settings)
     if not root.is_dir():
-        return
+        return 0
     cutoff = utcnow() - timedelta(hours=max(1, settings.recovery_export_retention_hours))
+    removed = 0
     for path in root.glob("medialogue-recovery-*.zip"):
         try:
             modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
             if modified < cutoff:
                 path.unlink(missing_ok=True)
+                removed += 1
         except OSError:
             continue
     for path in root.glob(".recovery-tmp-*"):
@@ -147,8 +149,10 @@ def cleanup_expired_recovery_exports(settings: Settings | None = None) -> None:
             modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
             if modified < cutoff:
                 shutil.rmtree(path, ignore_errors=True)
+                removed += 1
         except OSError:
             continue
+    return removed
 
 
 def sqlite_database_path(settings: Settings | None = None) -> Path:

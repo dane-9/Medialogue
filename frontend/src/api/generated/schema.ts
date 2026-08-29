@@ -2150,6 +2150,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Task */
+        patch: operations["update_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/run": {
         parameters: {
             query?: never;
@@ -5199,6 +5216,10 @@ export interface components {
             /** Active Job Id */
             active_job_id?: string | null;
             active_job_status?: components["schemas"]["JobStatus"] | null;
+            /** Configurable */
+            configurable: boolean;
+            /** Description */
+            description: string;
             /** Enabled */
             enabled: boolean;
             /**
@@ -5206,6 +5227,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Interval Options */
+            interval_options: number[];
             /** Interval Seconds */
             interval_seconds: number;
             /** Job Type */
@@ -5230,6 +5253,11 @@ export interface components {
              * Format: uuid
              */
             job_id: string;
+        };
+        /** ScheduledTaskUpdateRequest */
+        ScheduledTaskUpdateRequest: {
+            /** Interval Seconds */
+            interval_seconds: number | null;
         };
         /** SearchIndexerStatus */
         SearchIndexerStatus: {
@@ -10874,6 +10902,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduledTaskResponse"][];
+                };
+            };
+        };
+    };
+    update_task_api_v1_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduledTaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

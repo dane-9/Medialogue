@@ -27,6 +27,7 @@ import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
+import { isTaskOverdue } from './lib/taskTiming'
 import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, ScheduledTask, Tag } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
@@ -759,6 +760,8 @@ export function DownloadsPage() {
 
 function taskInterval(seconds: number) {
   if (seconds < 60) return `${seconds} seconds`
+  if (seconds % 604800 === 0) { const weeks = seconds / 604800; return `${weeks} week${weeks === 1 ? '' : 's'}` }
+  if (seconds % 86400 === 0) { const days = seconds / 86400; return `${days} day${days === 1 ? '' : 's'}` }
   if (seconds % 3600 === 0) { const hours = seconds / 3600; return `${hours} hour${hours === 1 ? '' : 's'}` }
   const minutes = Math.round(seconds / 60)
   return `${minutes} minute${minutes === 1 ? '' : 's'}`
@@ -771,6 +774,8 @@ function taskTime(value?: string, future = false) {
   if (!Number.isFinite(remaining) || remaining <= 0) return 'now'
   const seconds = Math.ceil(remaining / 1000)
   if (seconds < 60) return `in ${seconds} seconds`
+  if (seconds >= 86400) { const days = Math.ceil(seconds / 86400); return `in ${days} day${days === 1 ? '' : 's'}` }
+  if (seconds >= 3600) { const hours = Math.ceil(seconds / 3600); return `in ${hours} hour${hours === 1 ? '' : 's'}` }
   const minutes = Math.ceil(seconds / 60)
   return `in ${minutes} minute${minutes === 1 ? '' : 's'}`
 }
@@ -796,6 +801,7 @@ export function TasksPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [runningId, setRunningId] = useState('')
+  const [updatingId, setUpdatingId] = useState('')
   const [cancellingId, setCancellingId] = useState('')
   const [error, setError] = useState('')
 
@@ -826,6 +832,15 @@ export function TasksPage() {
     finally { setRunningId('') }
   }
 
+  const updateInterval = async (task: ScheduledTask, value: string) => {
+    setUpdatingId(task.id); setError('')
+    try {
+      const updated = await api.updateScheduledTask(task.id, value === 'manual' ? null : Number(value))
+      setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))
+    } catch (reason) { setError(reason instanceof Error ? reason.message : `Could not update ${task.name}.`) }
+    finally { setUpdatingId('') }
+  }
+
   const cancel = async (job: Job) => {
     setCancellingId(job.id); setError('')
     try { await api.cancelJob(job.id); await load() }
@@ -833,14 +848,15 @@ export function TasksPage() {
     finally { setCancellingId('') }
   }
 
-  return <Page title="Tasks" subtitle="Scheduled tasks, active background work, and recent executions in one place." action={<Button variant="ghost" icon="refresh" onClick={() => void load(true)} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
+  return <Page title="Tasks" subtitle="Available tasks, active background work, and recent executions in one place." action={<Button variant="ghost" icon="refresh" onClick={() => void load(true)} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
-    <Panel className="table-panel tasks-panel" title="Scheduled" eyebrow={`${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`}>
+    <Panel className="table-panel tasks-panel" title="Available Tasks" eyebrow={`${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`}>
       <div className="tasks-table-wrap"><table className="data-table tasks-table"><thead><tr><th>Name</th><th>Interval</th><th>Last execution</th><th>Last duration</th><th>Next execution</th><th /></tr></thead><tbody>{tasks.map((task) => {
           const active = Boolean(task.activeJobId)
-          return <tr key={task.id}><td><strong>{task.name}</strong>{task.lastStatus && <span className="table-sub">{task.lastStatus.replaceAll('_', ' ')}</span>}</td><td>{task.enabled ? taskInterval(task.intervalSeconds) : 'Disabled'}</td><td>{taskTime(task.lastFinishedAt)}</td><td className="task-duration">{taskDuration(task.lastDurationMs)}</td><td>{active ? <Badge tone="blue">{task.activeJobStatus ?? 'queued'}</Badge> : task.enabled ? taskTime(task.nextRunAt, true) : '—'}</td><td><Tooltip asChild content={active ? 'Task is already running' : `Run ${task.name} now`}><button className="icon-button" aria-label={`Run ${task.name} now`} disabled={active || runningId === task.id || !task.enabled} onClick={() => void run(task)}><Icon name={active ? 'activity' : 'refresh'} size={15} /></button></Tooltip></td></tr>
+          const overdue = task.enabled && !active && isTaskOverdue(task.nextRunAt, task.intervalSeconds)
+          return <tr key={task.id}><td><strong>{task.name}</strong><span className="table-sub">{task.description}</span></td><td>{task.configurable ? <Select aria-label={`Interval for ${task.name}`} value={task.enabled ? String(task.intervalSeconds) : 'manual'} disabled={updatingId === task.id} onChange={(event) => void updateInterval(task, event.target.value)}><option value="manual">Manual only</option>{task.intervalOptions.map((seconds) => <option value={seconds} key={seconds}>{taskInterval(seconds)}</option>)}</Select> : taskInterval(task.intervalSeconds)}</td><td>{taskTime(task.lastFinishedAt)}</td><td className="task-duration">{taskDuration(task.lastDurationMs)}</td><td>{active ? <Badge tone="blue">{task.activeJobStatus ?? 'queued'}</Badge> : overdue ? <Tooltip asChild content="The scheduler has not started this task within its expected grace period"><span><Badge tone="red">Overdue</Badge></span></Tooltip> : task.enabled ? taskTime(task.nextRunAt, true) : 'Manual only'}</td><td><Tooltip asChild content={active ? 'Task is already running' : `Run ${task.name} now`}><button className="icon-button" aria-label={`Run ${task.name} now`} disabled={active || runningId === task.id} onClick={() => void run(task)}><Icon name={active ? 'activity' : 'refresh'} size={15} /></button></Tooltip></td></tr>
         })}</tbody></table></div>
-      {!loading && !tasks.length && <EmptyState icon="activity" title="No scheduled tasks" detail="No recurring backend work is registered." />}
+      {!loading && !tasks.length && <EmptyState icon="activity" title="No available tasks" detail="No background tasks are registered." />}
     </Panel>
     <Panel className="table-panel tasks-panel" title="Queue" eyebrow={`${jobs.length} RECENT EXECUTION${jobs.length === 1 ? '' : 'S'}`}>
       <div className="tasks-table-wrap"><table className="data-table tasks-table tasks-queue-table"><thead><tr><th>Name</th><th>Status</th><th>Started</th><th>Ended</th><th>Duration</th><th>Progress</th><th>Detail</th><th /></tr></thead><tbody>{jobs.map((job) => {

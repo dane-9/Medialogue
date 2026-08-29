@@ -14,7 +14,6 @@ from app.services.integration_state import (
 )
 from app.services.jobs import checkpoint_job, run_job, update_job
 from app.services.plex import refresh_plex_health
-from app.services.qbittorrent import poll_due_download_clients
 from app.services.reconciliation import mark_root_available, mark_root_unavailable
 from app.services.tmdb import refresh_tmdb_health
 from app.services.torrent_archive import archive_mount_health
@@ -89,11 +88,9 @@ async def run_integration_health_sweep(job_id) -> None:
             unavailable += int(not reachable)
         results["storage_roots"] = root_results
 
-        # qBittorrent's observation poll is also its connectivity probe. Calling
-        # the due-only entry point here never duplicates a client poll and keeps
-        # the authentication-ban safeguard in one place.
-        qbit_results = await poll_due_download_clients(db)
-        results["qbittorrent"] = qbit_results
+        # qBittorrent owns a separate due-client observer with per-client
+        # intervals. Keeping it out of this sweep prevents two loops from
+        # deciding that the same client is due before either acquires its lock.
         results["torrent_archive"] = archive_mount_health()
 
         summary = {

@@ -9,7 +9,10 @@ export const systemApi = {
       id: item.id,
       name: item.name,
       jobType: item.job_type,
+      description: item.description,
       intervalSeconds: item.interval_seconds,
+      intervalOptions: item.interval_options,
+      configurable: item.configurable,
       enabled: item.enabled,
       lastStartedAt: item.last_started_at ?? undefined,
       lastFinishedAt: item.last_finished_at ?? undefined,
@@ -19,6 +22,26 @@ export const systemApi = {
       activeJobId: item.active_job_id ?? undefined,
       activeJobStatus: item.active_job_status ?? undefined,
     }))
+  },
+  updateScheduledTask: async (taskId: string, intervalSeconds: number | null): Promise<ScheduledTask> => {
+    const item = await openApiData(openApiClient.PATCH('/api/v1/tasks/{task_id}', { params: { path: { task_id: taskId } }, body: { interval_seconds: intervalSeconds } }))
+    return {
+      id: item.id,
+      name: item.name,
+      jobType: item.job_type,
+      description: item.description,
+      intervalSeconds: item.interval_seconds,
+      intervalOptions: item.interval_options,
+      configurable: item.configurable,
+      enabled: item.enabled,
+      lastStartedAt: item.last_started_at ?? undefined,
+      lastFinishedAt: item.last_finished_at ?? undefined,
+      nextRunAt: item.next_run_at ?? undefined,
+      lastStatus: item.last_status ?? undefined,
+      lastDurationMs: item.last_duration_ms ?? undefined,
+      activeJobId: item.active_job_id ?? undefined,
+      activeJobStatus: item.active_job_status ?? undefined,
+    }
   },
   runScheduledTask: (taskId: string) => openApiData(openApiClient.POST('/api/v1/tasks/{task_id}/run', { params: { path: { task_id: taskId } } })),
   health: async () => {

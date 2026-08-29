@@ -10,6 +10,9 @@ def test_uuid_primary_keys_and_required_tables() -> None:
     assert "movies" in Base.metadata.tables
     assert "jobs" in Base.metadata.tables
     assert {"next_run_at", "last_status", "last_duration_ms"} <= set(Base.metadata.tables["schedules"].c.keys())
+    jobs = Base.metadata.tables["jobs"]
+    assert "schedule_id" in jobs.c
+    assert {"ix_jobs_created", "uq_jobs_active_schedule"} <= {index.name for index in jobs.indexes}
 
 
 def test_model_defaults_are_callable() -> None:

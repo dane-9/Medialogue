@@ -18,6 +18,10 @@ export function mapJob(item: JobDto): Job {
       reconciliation: 'Library file check',
       confirmed_show_reconciliation: 'Show file matching',
       integration_health_sweep: 'Check Integration Health',
+      scheduled_housekeeping: 'Housekeeping',
+      verify_known_media_files: 'Verify Known Media Files',
+      full_media_folder_scan: 'Full Media Folder Scan',
+      storage_root_scan: 'Media folder scan',
   }
   const progress = item.progress
   const summary = item.summary

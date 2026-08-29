@@ -10,7 +10,10 @@ class ScheduledTaskResponse(BaseModel):
     id: UUID
     name: str
     job_type: str
+    description: str
     interval_seconds: int
+    interval_options: list[int]
+    configurable: bool
     enabled: bool
     last_started_at: datetime | None = None
     last_finished_at: datetime | None = None
@@ -30,3 +33,7 @@ class ScheduledTaskResponse(BaseModel):
 
 class ScheduledTaskRunResponse(BaseModel):
     job_id: UUID
+
+
+class ScheduledTaskUpdateRequest(BaseModel):
+    interval_seconds: int | None

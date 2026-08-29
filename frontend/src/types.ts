@@ -530,7 +530,10 @@ export interface ScheduledTask {
   id: string
   name: string
   jobType: string
+  description: string
   intervalSeconds: number
+  intervalOptions: number[]
+  configurable: boolean
   enabled: boolean
   lastStartedAt?: string
   lastFinishedAt?: string

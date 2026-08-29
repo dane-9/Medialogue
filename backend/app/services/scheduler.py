@@ -6,11 +6,14 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session as db_session
 from app.models.domain import Job, JobStatus, Schedule
 from app.services.health_sweep import run_integration_health_sweep
+from app.services.housekeeping import run_scheduled_housekeeping
+from app.services.scheduled_media import run_full_media_folder_scan, run_known_media_verification
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 
@@ -18,7 +21,38 @@ from app.services.runtime_jobs import launch_runtime_job
 logger = logging.getLogger(__name__)
 ACTIVE_STATES = (JobStatus.QUEUED, JobStatus.RUNNING)
 DEFAULT_SCHEDULES = {
-    "integration_health_sweep": {"name": "Check Integration Health", "interval_seconds": 60},
+    "integration_health_sweep": {
+        "name": "Check Integration Health",
+        "description": "Checks configured integrations and media-folder availability.",
+        "interval_seconds": 60,
+        "interval_options": [60, 300, 900, 3600, 21600],
+        "configurable": True,
+        "enabled": True,
+    },
+    "verify_known_media_files": {
+        "name": "Verify Known Media Files",
+        "description": "Checks only media paths already known to Medialogue; it does not discover new folders.",
+        "interval_seconds": 21600,
+        "interval_options": [21600, 43200, 86400, 604800],
+        "configurable": True,
+        "enabled": True,
+    },
+    "full_media_folder_scan": {
+        "name": "Full Media Folder Scan",
+        "description": "Recursively scans initialized media folders and reconciles newly discovered or changed media.",
+        "interval_seconds": 86400,
+        "interval_options": [86400, 259200, 604800, 1209600, 2592000],
+        "configurable": True,
+        "enabled": False,
+    },
+    "scheduled_housekeeping": {
+        "name": "Housekeeping",
+        "description": "Removes expired background-task history and temporary application data.",
+        "interval_seconds": 86400,
+        "interval_options": [],
+        "configurable": False,
+        "enabled": True,
+    },
 }
 
 
@@ -44,36 +78,37 @@ def schedule_name(schedule: Schedule) -> str:
     return str((schedule.settings or {}).get("name") or (configured or {}).get("name") or schedule.job_type.replace("_", " ").title())
 
 
+def schedule_definition(schedule: Schedule) -> dict:
+    return DEFAULT_SCHEDULES.get(schedule.job_type, {})
+
+
 async def ensure_default_schedules(db: AsyncSession) -> None:
     now = utcnow()
     existing = {item.job_type: item for item in (await db.scalars(select(Schedule))).all()}
     for job_type, definition in DEFAULT_SCHEDULES.items():
         schedule = existing.get(job_type)
         if schedule is None:
+            enabled = bool(definition["enabled"])
             db.add(Schedule(
                 job_type=job_type,
                 expression=str(definition["interval_seconds"]),
-                enabled=True,
+                enabled=enabled,
                 settings={"name": definition["name"]},
-                next_run_at=now + timedelta(seconds=int(definition["interval_seconds"])),
+                next_run_at=now + timedelta(seconds=int(definition["interval_seconds"])) if enabled else None,
             ))
         else:
-            schedule.expression = str(definition["interval_seconds"])
             schedule.settings = {**dict(schedule.settings or {}), "name": definition["name"]}
-            if schedule.next_run_at is None:
+            if schedule.enabled and schedule.next_run_at is None:
                 schedule.next_run_at = now + timedelta(seconds=int(definition["interval_seconds"]))
     await db.flush()
 
 
-async def _active_job(db: AsyncSession, schedule: Schedule) -> Job | None:
-    rows = (
-        await db.scalars(
-            select(Job)
-            .where(Job.job_type == schedule.job_type, Job.status.in_(ACTIVE_STATES))
-            .order_by(Job.created_at.desc())
-        )
-    ).all()
-    return next((job for job in rows if str((job.summary or {}).get("schedule_id") or "") == str(schedule.id)), None)
+async def _active_job(db: AsyncSession, schedule_id: UUID) -> Job | None:
+    return await db.scalar(
+        select(Job)
+        .where(Job.schedule_id == schedule_id, Job.status.in_(ACTIVE_STATES))
+        .order_by(Job.created_at.desc())
+    )
 
 
 async def _finish_schedule(schedule_id: UUID, job_id: UUID) -> None:
@@ -88,14 +123,21 @@ async def _finish_schedule(schedule_id: UUID, job_id: UUID) -> None:
         started = _aware(schedule.last_started_at)
         finished = _aware(schedule.last_finished_at)
         schedule.last_duration_ms = max(0, round((finished - started).total_seconds() * 1000)) if started and finished else None
-        schedule.next_run_at = utcnow() + timedelta(seconds=schedule_interval(schedule))
+        schedule.next_run_at = utcnow() + timedelta(seconds=schedule_interval(schedule)) if schedule.enabled else None
         await db.commit()
 
 
 async def _run_schedule(schedule_id: UUID, job_id: UUID) -> None:
     try:
-        if (await _schedule_job_type(schedule_id)) == "integration_health_sweep":
+        job_type = await _schedule_job_type(schedule_id)
+        if job_type == "integration_health_sweep":
             await run_integration_health_sweep(job_id)
+        elif job_type == "scheduled_housekeeping":
+            await run_scheduled_housekeeping(job_id)
+        elif job_type == "verify_known_media_files":
+            await run_known_media_verification(job_id)
+        elif job_type == "full_media_folder_scan":
+            await run_full_media_folder_scan(job_id)
     finally:
         await _finish_schedule(schedule_id, job_id)
 
@@ -107,22 +149,33 @@ async def _schedule_job_type(schedule_id: UUID) -> str | None:
 
 
 async def trigger_schedule(db: AsyncSession, schedule: Schedule, *, trigger: str) -> Job:
-    active = await _active_job(db, schedule)
+    schedule_id = schedule.id
+    active = await _active_job(db, schedule_id)
     if active is not None:
         return active
     now = utcnow()
-    job = await create_job(
-        db,
-        schedule.job_type,
-        cancellable=False,
-        summary={"schedule_id": str(schedule.id), "schedule_name": schedule_name(schedule), "trigger": trigger},
-    )
-    schedule.last_started_at = now
-    schedule.last_status = JobStatus.QUEUED.value
-    schedule.next_run_at = now + timedelta(seconds=schedule_interval(schedule))
-    await db.commit()
+    try:
+        job = await create_job(
+            db,
+            schedule.job_type,
+            schedule_id=schedule_id,
+            cancellable=False,
+            summary={"schedule_id": str(schedule_id), "schedule_name": schedule_name(schedule), "trigger": trigger},
+        )
+        schedule.last_started_at = now
+        schedule.last_status = JobStatus.QUEUED.value
+        schedule.next_run_at = now + timedelta(seconds=schedule_interval(schedule)) if schedule.enabled else None
+        await db.commit()
+    except IntegrityError:
+        # The partial unique index is the final arbiter when a manual request,
+        # configuration-triggered request and scheduler tick arrive together.
+        await db.rollback()
+        active = await _active_job(db, schedule_id)
+        if active is not None:
+            return active
+        raise
     publish_job_status(job)
-    launch_runtime_job(job.id, lambda: _run_schedule(schedule.id, job.id))
+    launch_runtime_job(job.id, lambda: _run_schedule(schedule_id, job.id))
     return job
 
 

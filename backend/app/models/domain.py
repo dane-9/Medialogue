@@ -741,10 +741,20 @@ class Event(Base):
 
 class Job(Base):
     __tablename__ = "jobs"
-    __table_args__ = (Index("ix_jobs_status_created", "status", "created_at"),)
+    __table_args__ = (
+        Index("ix_jobs_status_created", "status", "created_at"),
+        Index("ix_jobs_created", "created_at"),
+        Index(
+            "uq_jobs_active_schedule",
+            "schedule_id",
+            unique=True,
+            sqlite_where=text("schedule_id IS NOT NULL AND status IN ('QUEUED', 'RUNNING')"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     status: Mapped[JobStatus] = mapped_column(SAEnum(JobStatus, native_enum=False), default=JobStatus.QUEUED, nullable=False)
     progress: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     summary: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)

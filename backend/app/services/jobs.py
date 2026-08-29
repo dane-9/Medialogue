@@ -81,8 +81,9 @@ async def create_job(
     *,
     cancellable: bool = True,
     summary: dict[str, Any] | None = None,
+    schedule_id: UUID | None = None,
 ) -> Job:
-    job = Job(job_type=job_type, cancellable=cancellable, summary=summary or {}, status=JobStatus.QUEUED)
+    job = Job(job_type=job_type, schedule_id=schedule_id, cancellable=cancellable, summary=summary or {}, status=JobStatus.QUEUED)
     db.add(job)
     await db.flush()
     publish_job_status(job)

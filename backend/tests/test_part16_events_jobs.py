@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import Settings
@@ -22,6 +23,8 @@ from app.models.domain import (
     Event,
     Job,
     JobStatus,
+    MediaDirectory,
+    MediaFile,
     MediaType,
     Movie,
     MovieRelease,
@@ -35,6 +38,7 @@ from app.models.domain import (
 )
 from app.services.events import create_event, subscribe, unsubscribe
 from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job, update_job
+from app.services.housekeeping import prune_scheduled_job_history
 from app.services.reconciliation import mark_root_available, mark_root_unavailable, open_problem
 
 
@@ -108,9 +112,18 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     headers = login_headers(client)
     response = client.get("/api/v1/tasks", headers=headers)
     assert response.status_code == 200, response.text
-    task = next(item for item in response.json() if item["job_type"] == "integration_health_sweep")
+    listed = response.json()
+    assert {item["job_type"] for item in listed} == {
+        "integration_health_sweep",
+        "verify_known_media_files",
+        "full_media_folder_scan",
+        "scheduled_housekeeping",
+    }
+    task = next(item for item in listed if item["job_type"] == "integration_health_sweep")
     assert task["name"] == "Check Integration Health"
     assert task["interval_seconds"] == 60
+    assert task["configurable"] is True
+    assert 300 in task["interval_options"]
     assert task["next_run_at"] is not None
     assert task["next_run_at"].endswith(("Z", "+00:00"))
 
@@ -132,6 +145,154 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     task = next(item for item in refreshed if item["id"] == task["id"])
     assert task["last_status"] == "completed"
     assert task["last_duration_ms"] is not None
+
+
+def test_task_interval_can_be_changed_or_made_manual_only(client: TestClient) -> None:
+    headers = login_headers(client)
+    listed = client.get("/api/v1/tasks", headers=headers).json()
+    health = next(item for item in listed if item["job_type"] == "integration_health_sweep")
+    full_scan = next(item for item in listed if item["job_type"] == "full_media_folder_scan")
+    housekeeping = next(item for item in listed if item["job_type"] == "scheduled_housekeeping")
+
+    changed = client.patch(f"/api/v1/tasks/{health['id']}", headers=headers, json={"interval_seconds": 300})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["interval_seconds"] == 300
+    assert changed.json()["enabled"] is True
+    # Default seeding runs on every list request and must preserve the user's choice.
+    persisted = next(item for item in client.get("/api/v1/tasks", headers=headers).json() if item["id"] == health["id"])
+    assert persisted["interval_seconds"] == 300
+
+    manual = client.patch(f"/api/v1/tasks/{full_scan['id']}", headers=headers, json={"interval_seconds": None})
+    assert manual.status_code == 200, manual.text
+    assert manual.json()["enabled"] is False
+    assert manual.json()["next_run_at"] is None
+
+    started = client.post(f"/api/v1/tasks/{full_scan['id']}/run", headers=headers)
+    assert started.status_code == 200, started.text
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        job = client.get(f"/api/v1/jobs/{started.json()['job_id']}", headers=headers).json()
+        if job["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "completed", job
+
+    fixed = client.patch(f"/api/v1/tasks/{housekeeping['id']}", headers=headers, json={"interval_seconds": 604800})
+    assert fixed.status_code == 409
+    assert fixed.json()["error"]["code"] == "TASK_INTERVAL_FIXED"
+
+    invalid = client.patch(f"/api/v1/tasks/{health['id']}", headers=headers, json={"interval_seconds": 123})
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "TASK_INTERVAL_INVALID"
+
+
+def test_known_media_verification_checks_stored_files_without_discovery(client: TestClient) -> None:
+    headers = login_headers(client)
+    with tempfile.TemporaryDirectory() as root_path:
+        known_folder = Path(root_path) / "Known Movie"
+        known_folder.mkdir()
+        (Path(root_path) / "Unknown Movie").mkdir()
+
+        async def seed() -> uuid.UUID:
+            async with db_session.async_session_factory() as db:
+                root = StorageRoot(
+                    name="Movies",
+                    resolved_root_path=root_path,
+                    media_type=MediaType.MOVIES,
+                    enabled=True,
+                    missing_grace_checks=2,
+                    last_scan_at=datetime.now(timezone.utc),
+                )
+                directory = MediaDirectory(storage_root=root, resolved_path=str(known_folder))
+                media_file = MediaFile(media_directory=directory, relative_path="missing.mkv", filename="missing.mkv")
+                db.add_all((root, directory, media_file))
+                await db.commit()
+                return media_file.id
+
+        media_file_id = asyncio.run(seed())
+        task = next(
+            item
+            for item in client.get("/api/v1/tasks", headers=headers).json()
+            if item["job_type"] == "verify_known_media_files"
+        )
+        for _ in range(2):
+            started = client.post(f"/api/v1/tasks/{task['id']}/run", headers=headers)
+            assert started.status_code == 200, started.text
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                job = client.get(f"/api/v1/jobs/{started.json()['job_id']}", headers=headers).json()
+                if job["status"] in {"completed", "failed"}:
+                    break
+                time.sleep(0.05)
+            assert job["status"] == "completed", job
+
+        async def inspect() -> tuple[bool, int, int]:
+            async with db_session.async_session_factory() as db:
+                media_file = await db.get(MediaFile, media_file_id)
+                assert media_file is not None
+                directory_count = len((await db.scalars(select(MediaDirectory))).all())
+                return media_file.exists, media_file.missing_check_count, directory_count
+
+        exists, missing_checks, directory_count = asyncio.run(inspect())
+        assert exists is False
+        assert missing_checks == 2
+        assert directory_count == 1
+
+
+def test_active_schedule_jobs_are_unique_and_history_pruning_is_scoped(client: TestClient) -> None:
+    async def scenario():
+        now = datetime.now(timezone.utc)
+        async with db_session.async_session_factory() as db:
+            schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "integration_health_sweep"))
+            assert schedule is not None
+            active = Job(job_type="integration_health_sweep", schedule_id=schedule.id, status=JobStatus.QUEUED)
+            db.add(active)
+            await db.commit()
+            active_id = active.id
+
+            db.add(Job(job_type="integration_health_sweep", schedule_id=schedule.id, status=JobStatus.RUNNING))
+            with pytest.raises(IntegrityError):
+                await db.commit()
+            await db.rollback()
+
+            active = await db.get(Job, active_id)
+            assert active is not None
+            active.status = JobStatus.COMPLETED
+            active.started_at = now - timedelta(days=8, seconds=3)
+            active.finished_at = now - timedelta(days=8)
+            old_failure = Job(
+                job_type="integration_health_sweep",
+                status=JobStatus.FAILED,
+                started_at=now - timedelta(days=31, seconds=2),
+                finished_at=now - timedelta(days=31),
+            )
+            recent_health = Job(
+                job_type="integration_health_sweep",
+                status=JobStatus.COMPLETED,
+                started_at=now - timedelta(hours=1, seconds=2),
+                finished_at=now - timedelta(hours=1),
+            )
+            old_user_job = Job(
+                job_type="interactive_search",
+                status=JobStatus.COMPLETED,
+                started_at=now - timedelta(days=90, seconds=2),
+                finished_at=now - timedelta(days=90),
+            )
+            db.add_all((old_failure, recent_health, old_user_job))
+            await db.commit()
+            ids = {"old_health": active.id, "old_failure": old_failure.id, "recent": recent_health.id, "user": old_user_job.id}
+
+            deleted = await prune_scheduled_job_history(db, now=now)
+            await db.commit()
+            remaining = set((await db.scalars(select(Job.id))).all())
+            return deleted, ids, remaining
+
+    deleted, ids, remaining = asyncio.run(scenario())
+    assert deleted == 2
+    assert ids["old_health"] not in remaining
+    assert ids["old_failure"] not in remaining
+    assert ids["recent"] in remaining
+    assert ids["user"] in remaining
 
 
 def test_scheduled_health_task_restores_plex_without_manual_plex_refresh(client: TestClient, monkeypatch) -> None:

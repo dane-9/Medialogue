@@ -8138,6 +8138,14 @@
               }
             ]
           },
+          "configurable": {
+            "title": "Configurable",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -8146,6 +8154,13 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "interval_options": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Interval Options",
+            "type": "array"
           },
           "interval_seconds": {
             "title": "Interval Seconds",
@@ -8222,7 +8237,10 @@
           "id",
           "name",
           "job_type",
+          "description",
           "interval_seconds",
+          "interval_options",
+          "configurable",
           "enabled"
         ],
         "title": "ScheduledTaskResponse",
@@ -8240,6 +8258,26 @@
           "job_id"
         ],
         "title": "ScheduledTaskRunResponse",
+        "type": "object"
+      },
+      "ScheduledTaskUpdateRequest": {
+        "properties": {
+          "interval_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Seconds"
+          }
+        },
+        "required": [
+          "interval_seconds"
+        ],
+        "title": "ScheduledTaskUpdateRequest",
         "type": "object"
       },
       "SearchIndexerStatus": {
@@ -18293,6 +18331,59 @@
           }
         },
         "summary": "List Tasks",
+        "tags": [
+          "scheduled tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "patch": {
+        "operationId": "update_task_api_v1_tasks__task_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledTaskUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Task",
         "tags": [
           "scheduled tasks"
         ]

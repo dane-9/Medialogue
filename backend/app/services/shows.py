@@ -418,6 +418,12 @@ async def _refresh_episode_presence(db: AsyncSession, episode: Episode, *, emit_
     await _refresh_episode_duplicate_problem(db, episode)
 
 
+async def refresh_episode_presence(db: AsyncSession, episode: Episode, *, emit_event: bool = True) -> None:
+    """Refresh public episode presence after an external known-file check."""
+
+    await _refresh_episode_presence(db, episode, emit_event=emit_event)
+
+
 def _season_from_relative_path(relative_path: str) -> int | None:
     """Season number implied by the folders a file sits in, nearest first.
 
