@@ -2133,6 +2133,40 @@ export interface paths {
         patch: operations["update_tag_api_v1_tags__tag_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tasks */
+        get: operations["list_tasks_api_v1_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Task */
+        post: operations["run_task_api_v1_tasks__task_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/torrent-archive": {
         parameters: {
             query?: never;
@@ -2658,7 +2692,7 @@ export interface components {
              */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem-Output"][];
             /**
              * Schema Version
              * @default 1
@@ -2666,7 +2700,28 @@ export interface components {
             schema_version: number;
         };
         /** CustomFormatExportItem */
-        CustomFormatExportItem: {
+        "CustomFormatExportItem-Input": {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionInput"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Name */
+            name: string;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** CustomFormatExportItem */
+        "CustomFormatExportItem-Output": {
             /** Conditions */
             conditions: components["schemas"]["CustomFormatConditionInput"][];
             /** Description */
@@ -2691,7 +2746,7 @@ export interface components {
             /** Application */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem-Input"][];
             /** Schema Version */
             schema_version: number;
         };
@@ -5138,6 +5193,43 @@ export interface components {
             remote_prefix?: string | null;
             /** Storage Root Id */
             storage_root_id?: string | null;
+        };
+        /** ScheduledTaskResponse */
+        ScheduledTaskResponse: {
+            /** Active Job Id */
+            active_job_id?: string | null;
+            active_job_status?: components["schemas"]["JobStatus"] | null;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Interval Seconds */
+            interval_seconds: number;
+            /** Job Type */
+            job_type: string;
+            /** Last Duration Ms */
+            last_duration_ms?: number | null;
+            /** Last Finished At */
+            last_finished_at?: string | null;
+            /** Last Started At */
+            last_started_at?: string | null;
+            /** Last Status */
+            last_status?: string | null;
+            /** Name */
+            name: string;
+            /** Next Run At */
+            next_run_at?: string | null;
+        };
+        /** ScheduledTaskRunResponse */
+        ScheduledTaskRunResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
         };
         /** SearchIndexerStatus */
         SearchIndexerStatus: {
@@ -10753,6 +10845,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_api_v1_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledTaskResponse"][];
+                };
+            };
+        };
+    };
+    run_task_api_v1_tasks__task_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledTaskRunResponse"];
                 };
             };
             /** @description Validation Error */

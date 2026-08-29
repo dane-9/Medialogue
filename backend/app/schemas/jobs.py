@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.models.domain import JobStatus, Severity
 
@@ -22,6 +22,13 @@ class JobResponse(ORMModel):
     started_at: datetime | None
     finished_at: datetime | None
     updated_at: datetime
+
+    @field_validator("created_at", "started_at", "finished_at", "updated_at", mode="after")
+    @classmethod
+    def timestamps_are_utc(cls, value: datetime | None) -> datetime | None:
+        # SQLite drops timezone metadata even though job timestamps are UTC.
+        # Explicit offsets prevent browsers from treating them as local time.
+        return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
 
 
 class JobAcceptedResponse(BaseModel):

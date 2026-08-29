@@ -30,6 +30,7 @@ from app.services.plex import (
 )
 from app.services.plex_sync import run_plex_library_sync, run_plex_movie_recheck, run_plex_show_recheck
 from app.services.runtime_jobs import launch_runtime_job
+from app.services.scheduler import request_health_sweep
 
 router = APIRouter(tags=["plex"])
 
@@ -108,6 +109,7 @@ async def save_configuration(
     configuration.last_error = None
     configuration.last_checked_at = None
     configuration.latency_ms = None
+    await request_health_sweep(db)
     await db.commit()
     return _response(configuration)
 

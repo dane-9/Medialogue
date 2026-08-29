@@ -279,31 +279,6 @@ h1, h2, h3, p { margin: 0; }
 .health-dot.red { background: var(--err); }
 .health-dot.amber { background: var(--warn); }
 
-.jobs-button {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  height: var(--control-sm);
-  padding: 0 var(--s2);
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--t-sm);
-}
-.jobs-button:hover { color: var(--text); background: var(--raised); }
-.jobs-button b {
-  display: grid;
-  place-items: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 var(--s1);
-  border-radius: var(--r-sm);
-  color: var(--accent-text);
-  background: var(--accent-soft);
-  font: 500 var(--t-micro)/1 var(--mono);
-}
-
 .page-content { max-width: 1600px; padding: var(--s5); margin: 0 auto; }
 .page { display: block; }
 
@@ -1839,56 +1814,16 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .torrent-history-member { padding-left: var(--s7); }
 .torrent-history-member:last-child { border-bottom: 0; }
 
-.drawer-backdrop { position: fixed; z-index: 40; inset: 0; background: rgba(3, 3, 4, .6); }
-.jobs-drawer {
-  position: absolute;
-  inset: 0 0 0 auto;
-  display: flex;
-  width: 390px;
-  max-width: 100%;
-  flex-direction: column;
-  border-left: 1px solid var(--line-strong);
-  background: var(--surface);
-  box-shadow: -20px 0 60px rgba(0, 0, 0, .45);
-  animation: drawer-in .16s ease-out;
-}
-@keyframes drawer-in { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
-.drawer-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--s3);
-  padding: var(--s4);
-  border-bottom: 1px solid var(--line);
-}
-.drawer-header h2 { margin-top: 2px; font: 600 var(--t-xl)/1.25 var(--sans); }
-.drawer-note { margin: var(--s4) var(--s4) 0; }
-.job-list { flex: 1; padding: 0 var(--s4); overflow: auto; }
-.drawer-footer { padding: var(--s4); border-top: 1px solid var(--line); }
-.drawer-footer .button { width: 100%; justify-content: flex-start; }
-.job-item { padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
-.job-item:last-child { border-bottom: 0; }
-.job-item-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
-.job-state { display: inline-flex; align-items: center; gap: var(--s1); color: var(--muted); font: 500 var(--t-micro) var(--mono); text-transform: uppercase; }
-.job-state > span { width: 6px; height: 6px; border-radius: var(--r-full); background: var(--faint); }
-.job-running { color: var(--accent-text); }
-.job-running > span { background: var(--accent); }
-.job-queued { color: var(--warn); }
-.job-queued > span { background: var(--warn); }
-/* Every terminal state used to fall through to the neutral dot, so a failed job
-   was indistinguishable from a successful one at a glance. */
-.job-completed { color: var(--ok); }
-.job-completed > span { background: var(--ok); }
-.job-failed { color: var(--err); }
-.job-failed > span { background: var(--err); }
-.job-cancelled, .job-interrupted { color: var(--muted); }
-.job-cancelled > span, .job-interrupted > span { background: var(--muted); }
-.job-item strong { display: block; margin-bottom: 2px; color: var(--text); font-size: var(--t-sm); font-weight: 500; }
-.job-detail { display: block; color: var(--muted); font: var(--t-micro) var(--mono); }
+.tasks-table-wrap { overflow-x: auto; }
+.tasks-panel + .tasks-panel { margin-top: var(--s5); }
+.tasks-panel .data-table td strong { color: var(--text); font-weight: 500; }
+.task-duration { font-family: var(--mono); white-space: nowrap; }
+.task-progress { display: flex; min-width: 120px; align-items: center; gap: var(--s2); }
+.task-progress .progress { flex: 1; }
+.task-progress > span { color: var(--muted); font: var(--t-micro) var(--mono); }
 .job-progress-line { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
 .job-progress-line .progress { flex: 1; }
 .job-progress-line > span { color: var(--muted); font: var(--t-micro) var(--mono); }
-.job-actions { display: flex; justify-content: flex-end; margin-top: var(--s2); }
 
 .context-dismiss-layer { position: fixed; z-index: 89; inset: 0; background: transparent; }
 .bulk-context-menu {

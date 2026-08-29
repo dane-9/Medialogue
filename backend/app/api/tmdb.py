@@ -17,6 +17,7 @@ from app.schemas.tmdb import (
 )
 from app.services.integration_state import ConfiguredTMDB, get_configured_tmdb
 from app.services.tmdb import get_tmdb_configuration, refresh_tmdb_health, test_tmdb_connection
+from app.services.scheduler import request_health_sweep
 
 router = APIRouter(tags=["tmdb"])
 
@@ -78,6 +79,7 @@ async def save_configuration(
     configuration.last_error = None
     configuration.last_checked_at = None
     configuration.latency_ms = None
+    await request_health_sweep(db)
     await db.commit()
     return _response(configuration)
 

@@ -48,6 +48,7 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
             show_columns = {column["name"] for column in inspector.get_columns("shows")}
             storage_root_columns = {column["name"] for column in inspector.get_columns("storage_roots")}
             discovery_columns = {column["name"] for column in inspector.get_columns("media_discoveries")}
+            schedule_columns = {column["name"] for column in inspector.get_columns("schedules")}
         finally:
             engine.dispose()
     finally:
@@ -79,6 +80,7 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
     assert "poster_ref" in show_columns
     assert "edition_override_active" in movie_release_columns
     assert {"edition_override_active", "manual_edition_override"} <= discovery_columns
+    assert {"last_started_at", "last_finished_at", "next_run_at", "last_status", "last_duration_ms"} <= schedule_columns
 
 
 def test_upgrade_head_offline_sql_generation_succeeds() -> None:
@@ -112,6 +114,7 @@ def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> 
         "0005_movie_edition_overrides.py",
         "0006_review_movie_editions.py",
         "0007_review_quality_profiles.py",
+        "0008_schedule_runtime.py",
     ]
 
     previous = None

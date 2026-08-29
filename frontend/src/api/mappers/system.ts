@@ -17,6 +17,7 @@ export function mapJob(item: JobDto): Job {
       torrent_restore: 'Torrent restore',
       reconciliation: 'Library file check',
       confirmed_show_reconciliation: 'Show file matching',
+      integration_health_sweep: 'Check Integration Health',
   }
   const progress = item.progress
   const summary = item.summary
@@ -30,6 +31,8 @@ export function mapJob(item: JobDto): Job {
     stage: typeof progress.stage === 'string' ? progress.stage : undefined,
     state: item.status,
     updated: new Date(item.updated_at).toLocaleString(),
+    startedAt: item.started_at ?? undefined,
+    finishedAt: item.finished_at ?? undefined,
     cancellable: item.cancellable,
     error: error && typeof error.message === 'string' ? error.message : undefined,
     summary: item.summary,

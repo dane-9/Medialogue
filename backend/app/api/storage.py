@@ -30,6 +30,7 @@ from app.schemas.storage import (
 )
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
+from app.services.scheduler import request_health_sweep
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
 from app.services.reconciliation import mark_root_available, mark_root_unavailable
 from app.services.tmdb import get_tmdb_configuration
@@ -265,6 +266,7 @@ async def create_storage_root(
         sort_order=int(await db.scalar(select(func.max(StorageRoot.sort_order))) or 0) + 1,
     )
     db.add(root)
+    await request_health_sweep(db)
     try:
         await db.commit()
     except IntegrityError as exc:
@@ -347,6 +349,7 @@ async def update_storage_root(
         setattr(root, key, value)
     if scan_identity_changed:
         root.last_scan_at = None
+    await request_health_sweep(db)
     try:
         await db.commit()
     except IntegrityError as exc:

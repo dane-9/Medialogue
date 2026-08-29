@@ -865,6 +865,11 @@ class Schedule(TimestampMixin, Base):
     expression: Mapped[str] = mapped_column(String(128), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     settings: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_status: Mapped[str | None] = mapped_column(String(32))
+    last_duration_ms: Mapped[int | None] = mapped_column(Integer)
 
 
 class TMDBConfiguration(TimestampMixin, Base):

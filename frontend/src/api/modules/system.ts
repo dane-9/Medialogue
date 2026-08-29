@@ -1,8 +1,26 @@
-import type { EventHistoryItem, HealthIndicator, Job, RecoveryCapabilities } from '../../types'
+import type { EventHistoryItem, HealthIndicator, Job, RecoveryCapabilities, ScheduledTask } from '../../types'
 import { mapJob } from '../mappers/system'
 import { openApiClient, openApiData } from '../transport'
 
 export const systemApi = {
+  scheduledTasks: async (): Promise<ScheduledTask[]> => {
+    const rows = await openApiData(openApiClient.GET('/api/v1/tasks'))
+    return rows.map((item) => ({
+      id: item.id,
+      name: item.name,
+      jobType: item.job_type,
+      intervalSeconds: item.interval_seconds,
+      enabled: item.enabled,
+      lastStartedAt: item.last_started_at ?? undefined,
+      lastFinishedAt: item.last_finished_at ?? undefined,
+      nextRunAt: item.next_run_at ?? undefined,
+      lastStatus: item.last_status ?? undefined,
+      lastDurationMs: item.last_duration_ms ?? undefined,
+      activeJobId: item.active_job_id ?? undefined,
+      activeJobStatus: item.active_job_status ?? undefined,
+    }))
+  },
+  runScheduledTask: (taskId: string) => openApiData(openApiClient.POST('/api/v1/tasks/{task_id}/run', { params: { path: { task_id: taskId } } })),
   health: async () => {
     const payload = await openApiData(openApiClient.GET('/api/v1/integrations/health'))
     const { plex, qbittorrent, indexers, storage_roots: storageRoots } = payload

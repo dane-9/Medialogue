@@ -8,7 +8,7 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tmdb, torrent_archive
+from app.api import auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tasks, tmdb, torrent_archive
 from app.core.config import Settings, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.integration_config import get_integration_config_store
@@ -29,6 +29,7 @@ from app.services.integration_state import ensure_configured_integration_states
 from app.services.qbittorrent import poll_due_download_clients
 from app.services.recovery import cleanup_expired_recovery_exports
 from app.services.runtime_jobs import cancel_all_runtime_jobs
+from app.services.scheduler import ensure_default_schedules, run_scheduler_loop
 
 
 async def _qbittorrent_poll_loop(stop_event: asyncio.Event) -> None:
@@ -75,12 +76,14 @@ async def lifespan(_: FastAPI):
             await ensure_default_quality_profile(db)
             await mark_running_jobs_interrupted(db)
             await ensure_configured_integration_states(db)
+            await ensure_default_schedules(db)
             await db.commit()
     except Exception:
         logger.warning("database bootstrap skipped", exc_info=True)
     cleanup_expired_recovery_exports(settings)
     stop_event = asyncio.Event()
     poll_task = asyncio.create_task(_qbittorrent_poll_loop(stop_event))
+    scheduler_task = asyncio.create_task(run_scheduler_loop(stop_event))
     try:
         yield
     finally:
@@ -94,6 +97,10 @@ async def lifespan(_: FastAPI):
             await asyncio.wait_for(poll_task, timeout=5.0)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             logger.warning("qBittorrent poll loop did not stop in time; cancelled")
+        try:
+            await asyncio.wait_for(scheduler_task, timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("scheduled task loop did not stop in time; cancelled")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -118,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(setup.router, prefix="/api/v1")
     app.include_router(storage.router, prefix="/api/v1")
     app.include_router(jobs.router, prefix="/api/v1")
+    app.include_router(tasks.router, prefix="/api/v1")
     app.include_router(problems.router, prefix="/api/v1")
     app.include_router(discoveries.router, prefix="/api/v1")
     app.include_router(duplicates.router, prefix="/api/v1")

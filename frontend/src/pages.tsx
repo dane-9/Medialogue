@@ -27,7 +27,7 @@ import { ApiError, api } from './api/client'
 import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, Tag } from './types'
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, ScheduledTask, Tag } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
 import jackettIcon from './assets/jackett.svg'
@@ -180,14 +180,14 @@ export function MoviesPage() {
       const result = await api.bulkMovies({ movie_ids: ids, action, quality_profile_id: options.profileId, tag_ids: options.tagIds })
       const label = action.replaceAll('_', ' ')
       if ('job_id' in result) {
-        setMessage(`${label} queued as job ${result.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+        setMessage(`${label} queued as job ${result.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
         const [job] = await api.waitForJobs([result.job_id])
         const summary = job?.summary ?? {}
         const requested = Number(summary.requested ?? ids.length)
         const updated = Number(summary.updated ?? 0)
-        if (job?.state === 'completed') setMessage(`${label}: ${updated} of ${requested} selected movie${requested === 1 ? '' : 's'} processed. Check Jobs for any per-title failures.`)
+        if (job?.state === 'completed') setMessage(`${label}: ${updated} of ${requested} selected movie${requested === 1 ? '' : 's'} processed. Check Tasks for any per-title failures.`)
         else if (job?.state === 'cancelled') setMessage(`${label} cancelled after processing ${updated} of ${requested} selected movies.`)
-        else setMessage(`${label} failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+        else setMessage(`${label} failed${job?.error ? `: ${job.error}` : '.'} Check Tasks for details.`)
       } else setMessage(`${label}: ${result.updated} of ${result.requested} selected movie${result.requested === 1 ? '' : 's'} updated.`)
       await loadMovies()
       setContext(null)
@@ -495,14 +495,14 @@ export function MovieDetailPage({ id }: { id: string }) {
     setBusy(true); setMessage('Starting Plex recheck…')
     try {
       const accepted = await api.recheckMoviePlex(id)
-      setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+      setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
       const [job] = await api.waitForJobs([accepted.job_id])
       await load()
       const summary = job?.summary ?? {}
       const count = (key: string) => Number(summary[key] ?? 0)
       if (job?.state === 'completed') setMessage(`Plex recheck complete: ${count('matched_releases')} matched, ${count('not_found_releases')} not in Plex, ${count('multiple_version_releases')} multiple-version matches, ${count('conflict_releases')} conflicts.`)
       else if (job?.state === 'cancelled') setMessage('Plex recheck cancelled. No further Plex verification was performed.')
-      else setMessage(`Plex recheck failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+      else setMessage(`Plex recheck failed${job?.error ? `: ${job.error}` : '.'} Check Tasks for details.`)
     }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start Plex recheck.') }
     finally { setBusy(false) }
@@ -515,7 +515,7 @@ export function MovieDetailPage({ id }: { id: string }) {
       const jobs = jobIds.length ? await api.waitForJobs(jobIds) : []
       await load()
       const failures = jobs.filter((job) => job.state !== 'completed')
-      if (failures.length) setMessage(`File check finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Jobs for details.`)
+      if (failures.length) setMessage(`File check finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Tasks for details.`)
       else if (refresh.uninitialized_root_ids?.length) setMessage(`File check complete. ${refresh.uninitialized_root_ids.length} media folder${refresh.uninitialized_root_ids.length === 1 ? ' was' : 's were'} skipped; scan ${refresh.uninitialized_root_ids.length === 1 ? 'it' : 'them'} once first.`)
       else if (!jobs.length) setMessage('Nothing needed rechecking. No files were changed.')
       else setMessage('Recheck complete. No files were changed.')
@@ -621,14 +621,14 @@ export function ShowDetailPage({ id }: { id: string }) {
     setBusy(true); setMessage('Starting TMDB metadata refresh…')
     try {
       const accepted = await api.refreshShowMetadata(id)
-      setMessage(`TMDB metadata refresh queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+      setMessage(`TMDB metadata refresh queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
       const [job] = await api.waitForJobs([accepted.job_id])
       await load()
       if (job?.state === 'completed') {
         const summary = job.summary ?? {}
         setMessage(`TMDB metadata refreshed: ${Number(summary.seasons ?? 0)} season${Number(summary.seasons ?? 0) === 1 ? '' : 's'} and ${Number(summary.episodes ?? 0)} episode${Number(summary.episodes ?? 0) === 1 ? '' : 's'} updated. Existing media mappings were preserved.`)
       } else if (job?.state === 'cancelled') setMessage('TMDB metadata refresh cancelled.')
-      else setMessage(`TMDB metadata refresh failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+      else setMessage(`TMDB metadata refresh failed${job?.error ? `: ${job.error}` : '.'} Check Tasks for details.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Metadata refresh failed.') }
     finally { setBusy(false) }
   }
@@ -636,14 +636,14 @@ export function ShowDetailPage({ id }: { id: string }) {
     setBusy(true); setMessage('Starting Plex recheck…')
     try {
       const accepted = await api.recheckShowPlex(id)
-      setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Jobs.`)
+      setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
       const [job] = await api.waitForJobs([accepted.job_id])
       await load()
       const summary = job?.summary ?? {}
       const count = (key: string) => Number(summary[key] ?? 0)
       if (job?.state === 'completed') setMessage(`Plex recheck complete: ${count('matched_releases')} matched, ${count('not_found_releases')} not in Plex, ${count('conflict_releases')} conflicts.`)
       else if (job?.state === 'cancelled') setMessage('Plex recheck cancelled. No further Plex verification was performed.')
-      else setMessage(`Plex recheck failed${job?.error ? `: ${job.error}` : '.'} Check Jobs for details.`)
+      else setMessage(`Plex recheck failed${job?.error ? `: ${job.error}` : '.'} Check Tasks for details.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Plex recheck failed.') }
     finally { setBusy(false) }
   }
@@ -754,6 +754,101 @@ export function DownloadsPage() {
     {error && <EmptyState icon="download" title="Could not load downloads" detail={error} action={<Button variant="ghost" icon="refresh" onClick={() => void load()}>Try again</Button>} />}
     {!error && !loading && !filtered.length && <EmptyState icon="download" title={items.length ? 'No downloads match this filter' : 'No downloads observed'} detail={items.length ? 'Try another state filter or refresh qBittorrent.' : 'Configure an enabled qBittorrent client to begin read-only polling.'} />}
     {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>{sortLabel('client', 'Client')}</th><th>{sortLabel('kind', 'Scope')}</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('size', 'Size')}</th><th>{sortLabel('eta', 'ETA')}</th><th>{sortLabel('path', 'Save path')}</th><th>Media evidence</th><th /></tr></thead><tbody>{loading ? <tr><td colSpan={9} className="table-loading">Reading qBittorrent observations…</td></tr> : filtered.map((download) => <tr key={download.id}><td><div className="release-cell"><span className={`state-icon state-${download.state.toLowerCase()}`}><Icon name={download.state === 'Downloading' ? 'download' : download.state === 'Checking' ? 'refresh' : download.state === 'Seeding' ? 'activity' : download.state === 'Error' ? 'alert' : 'check'} size={14} /></span><strong>{download.name}</strong>{(download.quality || download.edition) && <small>{[download.quality, download.edition].filter(Boolean).join(' · ')}</small>}</div></td><td><span className="client-name"><span className="client-dot" />{download.client}</span></td><td><Badge tone="neutral">{download.kind}</Badge></td><td><div className="download-progress"><Progress value={download.progress} tone={download.state === 'Seeding' || download.state === 'Completed' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span>{Math.round(download.progress)}%</span></div></td><td>{download.size}</td><td className="muted">{download.eta}</td><td className="path-cell">{download.path}</td><td>{download.reconciliationState || download.mediaState ? <Badge tone={download.reconciliationState?.toLowerCase().includes('disagree') || download.mediaState?.toLowerCase().includes('missing') || download.mediaState?.toLowerCase().includes('conflict') ? 'red' : 'neutral'}>{download.reconciliationState || download.mediaState}</Badge> : <span className="muted">Observed only</span>}</td><td>{download.movieId && <Link className="icon-button" to={`/movies/${download.movieId}`} aria-label={`Open ${download.name}`}><Icon name="chevron" size={15} /></Link>}</td></tr>)}</tbody></table></Panel>}
+  </Page>
+}
+
+function taskInterval(seconds: number) {
+  if (seconds < 60) return `${seconds} seconds`
+  if (seconds % 3600 === 0) { const hours = seconds / 3600; return `${hours} hour${hours === 1 ? '' : 's'}` }
+  const minutes = Math.round(seconds / 60)
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`
+}
+
+function taskTime(value?: string, future = false) {
+  if (!value) return '—'
+  if (!future) return formatAge(value)
+  const remaining = Date.parse(value) - Date.now()
+  if (!Number.isFinite(remaining) || remaining <= 0) return 'now'
+  const seconds = Math.ceil(remaining / 1000)
+  if (seconds < 60) return `in ${seconds} seconds`
+  const minutes = Math.ceil(seconds / 60)
+  return `in ${minutes} minute${minutes === 1 ? '' : 's'}`
+}
+
+function taskDuration(milliseconds?: number) {
+  if (milliseconds === undefined) return '—'
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
+}
+
+function jobDuration(job: Job) {
+  if (!job.startedAt) return '—'
+  const started = Date.parse(job.startedAt)
+  const finished = job.finishedAt ? Date.parse(job.finishedAt) : Date.now()
+  return Number.isFinite(started) && Number.isFinite(finished) ? taskDuration(finished - started) : '—'
+}
+
+export function TasksPage() {
+  const [tasks, setTasks] = useState<ScheduledTask[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
+  const [runningId, setRunningId] = useState('')
+  const [cancellingId, setCancellingId] = useState('')
+  const [error, setError] = useState('')
+
+  const load = async (foreground = false) => {
+    if (foreground) setLoading(true)
+    try {
+      const [scheduled, recent] = await Promise.all([api.scheduledTasks(), api.jobs()])
+      setTasks(scheduled)
+      setJobs(recent.slice(0, 30))
+      setError('')
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load scheduled tasks.') }
+    finally { if (foreground) setLoading(false) }
+  }
+
+  useEffect(() => {
+    void load(true)
+    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const changed = () => void load()
+    stream.addEventListener('job.status', changed)
+    const timer = window.setInterval(changed, 10_000)
+    return () => { stream.close(); window.clearInterval(timer) }
+  }, [])
+
+  const run = async (task: ScheduledTask) => {
+    setRunningId(task.id); setError('')
+    try { await api.runScheduledTask(task.id); await load() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : `Could not run ${task.name}.`) }
+    finally { setRunningId('') }
+  }
+
+  const cancel = async (job: Job) => {
+    setCancellingId(job.id); setError('')
+    try { await api.cancelJob(job.id); await load() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : `Could not cancel ${job.title}.`) }
+    finally { setCancellingId('') }
+  }
+
+  return <Page title="Tasks" subtitle="Scheduled tasks, active background work, and recent executions in one place." action={<Button variant="ghost" icon="refresh" onClick={() => void load(true)} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
+    {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
+    <Panel className="table-panel tasks-panel" title="Scheduled" eyebrow={`${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`}>
+      <div className="tasks-table-wrap"><table className="data-table tasks-table"><thead><tr><th>Name</th><th>Interval</th><th>Last execution</th><th>Last duration</th><th>Next execution</th><th /></tr></thead><tbody>{tasks.map((task) => {
+          const active = Boolean(task.activeJobId)
+          return <tr key={task.id}><td><strong>{task.name}</strong>{task.lastStatus && <span className="table-sub">{task.lastStatus.replaceAll('_', ' ')}</span>}</td><td>{task.enabled ? taskInterval(task.intervalSeconds) : 'Disabled'}</td><td>{taskTime(task.lastFinishedAt)}</td><td className="task-duration">{taskDuration(task.lastDurationMs)}</td><td>{active ? <Badge tone="blue">{task.activeJobStatus ?? 'queued'}</Badge> : task.enabled ? taskTime(task.nextRunAt, true) : '—'}</td><td><Tooltip asChild content={active ? 'Task is already running' : `Run ${task.name} now`}><button className="icon-button" aria-label={`Run ${task.name} now`} disabled={active || runningId === task.id || !task.enabled} onClick={() => void run(task)}><Icon name={active ? 'activity' : 'refresh'} size={15} /></button></Tooltip></td></tr>
+        })}</tbody></table></div>
+      {!loading && !tasks.length && <EmptyState icon="activity" title="No scheduled tasks" detail="No recurring backend work is registered." />}
+    </Panel>
+    <Panel className="table-panel tasks-panel" title="Queue" eyebrow={`${jobs.length} RECENT EXECUTION${jobs.length === 1 ? '' : 'S'}`}>
+      <div className="tasks-table-wrap"><table className="data-table tasks-table tasks-queue-table"><thead><tr><th>Name</th><th>Status</th><th>Started</th><th>Ended</th><th>Duration</th><th>Progress</th><th>Detail</th><th /></tr></thead><tbody>{jobs.map((job) => {
+          const canCancel = job.cancellable && (job.state === 'running' || job.state === 'queued')
+          return <tr key={job.id}><td><strong>{job.title}</strong></td><td><Badge tone={job.state === 'completed' ? 'green' : job.state === 'failed' || job.state === 'interrupted' ? 'red' : job.state === 'cancelled' ? 'neutral' : 'blue'}>{job.state}</Badge></td><td>{taskTime(job.startedAt)}</td><td>{taskTime(job.finishedAt)}</td><td className="task-duration">{jobDuration(job)}</td><td>{job.progress !== undefined ? <div className="task-progress"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div> : '—'}</td><td className="path-cell">{job.error || job.detail || '—'}</td><td>{canCancel && <Button variant="ghost" onClick={() => void cancel(job)} disabled={cancellingId === job.id}>{cancellingId === job.id ? 'Cancelling…' : 'Cancel'}</Button>}</td></tr>
+        })}</tbody></table></div>
+      {!loading && !jobs.length && <EmptyState icon="activity" title="No background work yet" detail="Scheduled and manually started executions will appear here." />}
+    </Panel>
   </Page>
 }
 
@@ -1400,7 +1495,7 @@ export function ProblemsPage() {
       removeSolvedProblem(current)
       await load(page, true)
       const followup = typeof resolved.resolution?.followup_job_id === 'string'
-      setMessage(`Matched to ${selectedTmdb.title}${selectedTmdb.year ? ` (${selectedTmdb.year})` : ''}.${followup ? ' Metadata import and file matching are still running, see Jobs.' : ''}`)
+      setMessage(`Matched to ${selectedTmdb.title}${selectedTmdb.year ? ` (${selectedTmdb.year})` : ''}.${followup ? ' Metadata import and file matching are still running, see Tasks.' : ''}`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not apply the selected identity.') }
     finally { setLoading(false) }
   }
@@ -1941,7 +2036,7 @@ export function TorrentArchivePage() {
       const result = await api.restoreTorrentArchive(restoreItem.id, { download_client_id: restoreClientId, save_path: restorePath.trim() })
       const [job] = await api.waitForJobs([result.job_id])
       if (!job || job.state !== 'completed') {
-        setMessage(`Restore ${job?.state ?? 'failed'}. Review Jobs for details.`)
+        setMessage(`Restore ${job?.state ?? 'failed'}. Review Tasks for details.`)
       } else {
         setMessage(`Submitted ${restoreItem.torrentName} to qBittorrent. It will be observed on the next poll.`)
       }
@@ -1955,7 +2050,7 @@ export function TorrentArchivePage() {
     try {
       const accepted = await api.retryTorrentArchive(item.id)
       const [job] = await api.waitForJobs([accepted.job_id])
-      if (!job || job.state !== 'completed') setMessage(`Archive retry ${job?.state ?? 'failed'}. Review Jobs for details.`)
+      if (!job || job.state !== 'completed') setMessage(`Archive retry ${job?.state ?? 'failed'}. Review Tasks for details.`)
       else setMessage(`Recovery archive completed for ${item.torrentName}.`)
       await load()
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Archive retry failed.') }
@@ -2608,15 +2703,6 @@ function PlexSettings() {
     } catch (reason) { setMessage(failed(reason, 'Could not save Plex settings.')) }
     finally { setWorking(false) }
   }
-  const refreshHealth = async () => {
-    setWorking(true); setMessage(pending('Refreshing Plex health…'))
-    try {
-      const result = await api.refreshPlexHealth()
-      setConfiguration((value) => value ? { ...value, health: result.status, machine_identifier: result.machine_identifier, latency_ms: result.latency_ms, last_error: result.message } : value)
-      setMessage(result.status === 'healthy' ? ok('Plex health is healthy.') : { tone: 'error', text: result.message ?? `Plex status: ${result.status}.` })
-    } catch (reason) { setMessage(failed(reason, 'Could not refresh Plex health.')) }
-    finally { setWorking(false) }
-  }
   const syncLibrary = async () => {
     setWorking(true); setMessage(pending('Starting Plex library verification…'))
     try {
@@ -2645,7 +2731,7 @@ function PlexSettings() {
     {configuration?.last_error && <Note message={{ tone: 'error', text: configuration.last_error }} />}
     <Note message={message} />
     <SaveFooter dirty={dirty} saving={working} onSave={() => void save()}>
-      {live && <Button variant="ghost" onClick={() => void refreshHealth()} disabled={working}>Refresh health</Button>}
+      {live && <span className="muted">Health is checked automatically every minute.</span>}
       {live && <Button variant="secondary" onClick={() => void syncLibrary()} disabled={working}>Sync library verification</Button>}
     </SaveFooter>
   </>

@@ -9,6 +9,7 @@ def test_uuid_primary_keys_and_required_tables() -> None:
     assert any("info_hash" in constraint.columns for constraint in Torrent.__table__.constraints if constraint.__class__.__name__ == "UniqueConstraint")
     assert "movies" in Base.metadata.tables
     assert "jobs" in Base.metadata.tables
+    assert {"next_run_at", "last_status", "last_duration_ms"} <= set(Base.metadata.tables["schedules"].c.keys())
 
 
 def test_model_defaults_are_callable() -> None:

@@ -23,6 +23,7 @@ from app.schemas.indexers import (
     IndexerUpdate,
 )
 from app.services.indexers import refresh_indexer_health, test_indexer_connection
+from app.services.scheduler import request_health_sweep
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
 
 def _clean_languages(values: list[str] | None) -> list[str]:
@@ -141,6 +142,7 @@ async def create_indexer(
     )
     state = Indexer(id=config.id)
     db.add(state)
+    await request_health_sweep(db)
     await db.commit()
     indexer = await get_configured_indexer(db, config.id)
     assert indexer is not None
@@ -199,6 +201,7 @@ async def update_indexer(
     indexer.health = "unknown"
     indexer.last_error = None
     indexer.latency_ms = None
+    await request_health_sweep(db)
     await db.commit()
     refreshed = await get_configured_indexer(db, indexer_id)
     assert refreshed is not None

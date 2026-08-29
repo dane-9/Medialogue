@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ from app.models.domain import (
     Severity,
     ReleaseState,
     StorageRoot,
+    Schedule,
     Torrent,
 )
 from app.services.events import create_event, subscribe, unsubscribe
@@ -100,6 +102,93 @@ def login_headers(client: TestClient) -> dict[str, str]:
     login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
     assert login.status_code == 200
     return {"X-CSRF-Token": login.json()["csrf_token"]}
+
+
+def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> None:
+    headers = login_headers(client)
+    response = client.get("/api/v1/tasks", headers=headers)
+    assert response.status_code == 200, response.text
+    task = next(item for item in response.json() if item["job_type"] == "integration_health_sweep")
+    assert task["name"] == "Check Integration Health"
+    assert task["interval_seconds"] == 60
+    assert task["next_run_at"] is not None
+    assert task["next_run_at"].endswith(("Z", "+00:00"))
+
+    started = client.post(f"/api/v1/tasks/{task['id']}/run", headers=headers)
+    assert started.status_code == 200, started.text
+    job_id = started.json()["job_id"]
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        job = client.get(f"/api/v1/jobs/{job_id}", headers=headers).json()
+        if job["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "completed", job
+    assert job["summary"]["trigger"] == "manual"
+    assert job["started_at"].endswith(("Z", "+00:00"))
+    assert job["finished_at"].endswith(("Z", "+00:00"))
+
+    refreshed = client.get("/api/v1/tasks", headers=headers).json()
+    task = next(item for item in refreshed if item["id"] == task["id"])
+    assert task["last_status"] == "completed"
+    assert task["last_duration_ms"] is not None
+
+
+def test_scheduled_health_task_restores_plex_without_manual_plex_refresh(client: TestClient, monkeypatch) -> None:
+    import app.services.health_sweep as health_sweep
+
+    headers = login_headers(client)
+    configured = client.put(
+        "/api/v1/integrations/plex",
+        headers=headers,
+        json={"url": "http://plex.test:32400", "token": "plex-token", "enabled": True},
+    )
+    assert configured.status_code == 200, configured.text
+
+    async def mark_healthy(db, configuration):
+        configuration.health = "healthy"
+        configuration.last_success_at = health_sweep.utcnow() if hasattr(health_sweep, "utcnow") else None
+        configuration.last_error = None
+        return {"status": "healthy", "latency_ms": 1}
+
+    monkeypatch.setattr(health_sweep, "refresh_plex_health", mark_healthy)
+    task = next(item for item in client.get("/api/v1/tasks", headers=headers).json() if item["job_type"] == "integration_health_sweep")
+    started = client.post(f"/api/v1/tasks/{task['id']}/run", headers=headers)
+    assert started.status_code == 200, started.text
+    job_id = started.json()["job_id"]
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        job = client.get(f"/api/v1/jobs/{job_id}", headers=headers).json()
+        if job["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "completed", job
+    health = client.get("/api/v1/integrations/health", headers=headers).json()
+    assert health["plex"]["status"] == "healthy"
+
+
+def test_due_health_task_runs_without_an_open_browser(client: TestClient) -> None:
+    headers = login_headers(client)
+
+    async def make_due():
+        async with db_session.async_session_factory() as db:
+            schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "integration_health_sweep"))
+            assert schedule is not None
+            schedule.next_run_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            await db.commit()
+
+    asyncio.run(make_due())
+    deadline = time.monotonic() + 8
+    scheduled_job = None
+    while time.monotonic() < deadline:
+        jobs = client.get("/api/v1/jobs?job_type=integration_health_sweep", headers=headers).json()["items"]
+        scheduled_job = next((job for job in jobs if job["summary"].get("trigger") == "scheduled"), None)
+        if scheduled_job and scheduled_job["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.1)
+
+    assert scheduled_job is not None
+    assert scheduled_job["status"] == "completed", scheduled_job
 
 
 def test_job_status_is_persisted_and_published_live(client: TestClient) -> None:

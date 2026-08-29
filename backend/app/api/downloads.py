@@ -38,6 +38,7 @@ from app.services.qbittorrent import (
 )
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
+from app.services.scheduler import request_health_sweep
 
 
 router = APIRouter(tags=["downloads"])
@@ -224,6 +225,7 @@ async def create_download_client(
         )
     )
     db.add(DownloadClient(id=config.id))
+    await request_health_sweep(db)
     await db.commit()
     client = await get_configured_download_client(db, config.id)
     assert client is not None
@@ -316,6 +318,7 @@ async def update_download_client(
     client.last_success_at = None
     client.latency_ms = None
     client.last_error = None
+    await request_health_sweep(db)
     await db.commit()
     refreshed = await get_configured_download_client(db, client_id)
     assert refreshed is not None

@@ -518,10 +518,27 @@ export interface Job {
   progress?: number
   state: JobStatus
   updated: string
+  startedAt?: string
+  finishedAt?: string
   cancellable: boolean
   error?: string
   summary?: Record<string, unknown>
   stage?: string
+}
+
+export interface ScheduledTask {
+  id: string
+  name: string
+  jobType: string
+  intervalSeconds: number
+  enabled: boolean
+  lastStartedAt?: string
+  lastFinishedAt?: string
+  nextRunAt?: string
+  lastStatus?: string
+  lastDurationMs?: number
+  activeJobId?: string
+  activeJobStatus?: JobStatus
 }
 
 export interface RecoveryCapabilities {
