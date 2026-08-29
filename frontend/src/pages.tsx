@@ -859,9 +859,15 @@ export function TasksPage() {
       {!loading && !tasks.length && <EmptyState icon="activity" title="No available tasks" detail="No background tasks are registered." />}
     </Panel>
     <Panel className="table-panel tasks-panel" title="Queue" eyebrow={`${jobs.length} RECENT EXECUTION${jobs.length === 1 ? '' : 'S'}`}>
-      <div className="tasks-table-wrap"><table className="data-table tasks-table tasks-queue-table"><thead><tr><th>Name</th><th>Status</th><th>Started</th><th>Ended</th><th>Duration</th><th>Progress</th><th>Detail</th><th /></tr></thead><tbody>{jobs.map((job) => {
+      <div className="tasks-table-wrap"><table className="data-table tasks-table tasks-queue-table"><thead><tr><th>Name</th><th>Started</th><th>Ended</th><th>Duration</th><th>Progress</th><th>Detail</th><th /></tr></thead><tbody>{jobs.map((job) => {
           const canCancel = job.cancellable && (job.state === 'running' || job.state === 'queued')
-          return <tr key={job.id}><td><strong>{job.title}</strong></td><td><Badge tone={job.state === 'completed' ? 'green' : job.state === 'failed' || job.state === 'interrupted' ? 'red' : job.state === 'cancelled' ? 'neutral' : 'blue'}>{job.state}</Badge></td><td>{taskTime(job.startedAt)}</td><td>{taskTime(job.finishedAt)}</td><td className="task-duration">{jobDuration(job)}</td><td>{job.progress !== undefined ? <div className="task-progress"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div> : '—'}</td><td className="path-cell">{job.error || job.detail || '—'}</td><td>{canCancel && <Button variant="ghost" onClick={() => void cancel(job)} disabled={cancellingId === job.id}>{cancellingId === job.id ? 'Cancelling…' : 'Cancel'}</Button>}</td></tr>
+          const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(job.state)
+          const progress = terminal
+            ? <Badge tone={job.state === 'completed' ? 'green' : job.state === 'failed' || job.state === 'interrupted' ? 'red' : 'neutral'}>{job.state}</Badge>
+            : job.progress !== undefined
+              ? <div className="task-progress"><Progress value={job.progress} tone="blue" /><span>{job.progress}%</span></div>
+              : <Badge tone="blue">{job.state}</Badge>
+          return <tr key={job.id}><td><strong>{job.title}</strong></td><td>{taskTime(job.startedAt)}</td><td>{taskTime(job.finishedAt)}</td><td className="task-duration">{jobDuration(job)}</td><td>{progress}</td><td className="path-cell">{job.error || job.detail || '—'}</td><td>{canCancel && <Button variant="ghost" onClick={() => void cancel(job)} disabled={cancellingId === job.id}>{cancellingId === job.id ? 'Cancelling…' : 'Cancel'}</Button>}</td></tr>
         })}</tbody></table></div>
       {!loading && !jobs.length && <EmptyState icon="activity" title="No background work yet" detail="Scheduled and manually started executions will appear here." />}
     </Panel>
