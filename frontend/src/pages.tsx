@@ -96,6 +96,24 @@ function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollInterval
   }, [pollIntervalMs, watchScanJobs])
 }
 
+/** Library filter as a single select.
+ *
+ * Five chips took half the toolbar to express one choice, and their fully
+ * rounded shape matched nothing else in the theme. "Showing" names what the
+ * value does, so the current filter reads as a sentence in the trigger.
+ */
+function LibraryFilter({ value, options, onChange, ariaLabel }: { value: string; options: string[]; onChange: (value: string) => void; ariaLabel: string }) {
+  // Without a width class the trigger is width: 100%, which fills the toolbar
+  // and pushes everything after it onto its own row.
+  return <Dropdown
+    className="select"
+    ariaLabel={ariaLabel}
+    value={value}
+    options={options.map((option) => ({ value: option, label: option === 'All' ? 'Showing: All' : `Showing: ${option}` }))}
+    onChange={onChange}
+  />
+}
+
 function FilterChips({ value, options, onChange, className = '' }: { value: string; options: string[]; onChange: (value: string) => void; className?: string }) {
   return <div className={`media-filter-row ${className}`} role="group" aria-label="Filter library">{options.map((option) => <button type="button" className={`filter-chip ${value === option ? 'active' : ''}`} key={option} onClick={() => onChange(option)}>{option}</button>)}</div>
 }
@@ -224,11 +242,8 @@ export function MoviesPage() {
     const matchesFilter = filter === 'All' || (filter === 'Problems' ? needsReview(movie) : filter === 'Unmonitored' ? movie.monitored === false : movie.status === filter)
     return matchesFilter && movie.title.toLowerCase().includes(query.toLowerCase())
   }), [movies, filter, query])
-  const missing = movies.filter((movie) => movie.status === 'Missing').length
-  const review = movies.filter(needsReview).length
   return <Page title="Movies" subtitle="Your library, exactly where it was downloaded.">
-    <div className="stats-row stats-row-three media-stats-row"><Stat label="Movies" value={String(movies.length)} tone="blue" /><Stat label="Missing" value={String(missing)} tone="amber" /><Stat label="Problems" value={String(review)} tone="red" /></div>
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search movies…" /></div><Select aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><FilterChips value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} className="toolbar-filter-row" />{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void loadMovies()}>Refresh</Button></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><Select aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} />{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
@@ -585,13 +600,11 @@ export function ShowsPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not change Specials counting.') }
     finally { setSpecialsBusy(false) }
   }
-  const missingEpisodes = items.reduce((sum, show) => sum + (show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)), 0)
   const totalEpisodes = items.reduce((sum, show) => sum + show.episodesTotal, 0)
   const needsReview = (show: Show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0
   const filtered = useMemo(() => items.filter((show) => filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter)), [items, filter])
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files.">
-    <div className="stats-row media-stats-row"><Stat label="Shows" value={String(items.length)} tone="blue" /><Stat label="Episodes" value={String(totalEpisodes)} tone="green" /><Stat label="Missing" value={String(missingEpisodes)} tone="amber" /><Stat label="Problems" value={String(items.filter(needsReview).length)} tone="red" /></div>
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search shows…" /></div><Select aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><FilterChips value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} className="toolbar-filter-row" onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals on every show' : 'Specials are excluded from episode totals. Monitoring is unaffected.'}><div className="specials-toggle"><span className="specials-toggle-label">Count specials</span><button type="button" className="toggle" aria-pressed={countSpecials} aria-label="Count Specials toward episode totals on every show" disabled={specialsBusy} onClick={() => void toggleSpecials()}><span /></button><span className="toggle-label">{specialsBusy ? 'Applying…' : countSpecials ? 'Yes' : 'No'}</span></div></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Select aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`specials-chip ${countSpecials ? 'on' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
     {!error && !loading && !filtered.length && <EmptyState title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
@@ -601,7 +614,15 @@ export function ShowsPage() {
 function ShowCard({ show }: { show: Show }) {
   const plexAvailable = usePlexAvailable()
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
-  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-mark">{show.seasons === 1 ? '1 SEASON' : `${show.seasons} SEASONS`}</span></div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div><div className="media-card-meta">{needsAttention(show.status) && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="episode-progress"><div><span>Episodes</span><strong>{show.episodesPresent} / {show.episodesTotal}</strong></div><Progress value={percent} tone={percent === 100 ? 'green' : 'amber'} /></div><div className="media-card-path"><Icon name="tv-screen" size={13} />{(show.problemCount ?? 0) === 1 ? '1 problem' : `${show.problemCount ?? 0} problems`}</div></div></Link></article>
+  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
+                  pill fills to the proportion present and is coloured by whether any
+                  are missing. A separate bar repeated what the numbers already said. */}
+              <div className={`episode-progress ${percent === 100 ? 'complete' : 'incomplete'}`} title={`${show.episodesPresent} of ${show.episodesTotal} episodes present`}>
+                <span className="episode-progress-fill" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
+                <span className="episode-progress-label">Episodes</span>
+                <strong>{show.episodesPresent} / {show.episodesTotal}</strong>
+              </div>
+              <div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div></div></Link></article>
 }
 
 export function ShowDetailPage({ id }: { id: string }) {
@@ -848,7 +869,7 @@ export function TasksPage() {
     finally { setCancellingId('') }
   }
 
-  return <Page title="Tasks" subtitle="Available tasks, active background work, and recent executions in one place." action={<Button variant="ghost" icon="refresh" onClick={() => void load(true)} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
+  return <Page title="Tasks" subtitle="Available tasks, active background work, and recent executions in one place.">
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     <Panel className="table-panel tasks-panel" title="Available Tasks" eyebrow={`${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`}>
       <div className="tasks-table-wrap"><table className="data-table tasks-table"><thead><tr><th>Name</th><th>Interval</th><th>Last execution</th><th>Last duration</th><th>Next execution</th><th /></tr></thead><tbody>{tasks.map((task) => {
@@ -864,9 +885,7 @@ export function TasksPage() {
           const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(job.state)
           const progress = terminal
             ? <Badge tone={job.state === 'completed' ? 'green' : job.state === 'failed' || job.state === 'interrupted' ? 'red' : 'neutral'}>{job.state}</Badge>
-            : job.progress !== undefined
-              ? <div className="task-progress"><Progress value={job.progress} tone="blue" /><span>{job.progress}%</span></div>
-              : <Badge tone="blue">{job.state}</Badge>
+            : <Badge tone="blue">{job.state}{job.progress !== undefined ? ` · ${job.progress}%` : ''}</Badge>
           return <tr key={job.id}><td><strong>{job.title}</strong></td><td>{taskTime(job.startedAt)}</td><td>{taskTime(job.finishedAt)}</td><td className="task-duration">{jobDuration(job)}</td><td>{progress}</td><td className="path-cell">{job.error || job.detail || '—'}</td><td>{canCancel && <Button variant="ghost" onClick={() => void cancel(job)} disabled={cancellingId === job.id}>{cancellingId === job.id ? 'Cancelling…' : 'Cancel'}</Button>}</td></tr>
         })}</tbody></table></div>
       {!loading && !jobs.length && <EmptyState icon="activity" title="No background work yet" detail="Scheduled and manually started executions will appear here." />}
@@ -2219,7 +2238,6 @@ function StorageSettings() {
   const [path, setPath] = useState('/media/movies')
   const [mediaType, setMediaType] = useState<'movies' | 'shows'>('movies')
   const [accessMode, setAccessMode] = useState<'read_only' | 'read_write'>('read_only')
-  const [rootEnabled, setRootEnabled] = useState(true)
   const [reviewNewMedia, setReviewNewMedia] = useState(false)
   const [missingGraceChecks, setMissingGraceChecks] = useState(2)
   const [mappingName, setMappingName] = useState('qBittorrent path')
@@ -2273,13 +2291,13 @@ function StorageSettings() {
   }
 
   const beginAddRoot = () => {
-    setMessage(null); setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setRootEnabled(true); setReviewNewMedia(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', enabled: true, reviewNewMedia: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage(null)
+    setMessage(null); setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setReviewNewMedia(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', reviewNewMedia: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage(null)
   }
   const editRoot = (root: StorageRoot) => {
-    setMessage(null); setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setRootEnabled(root.enabled); setReviewNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, enabled: root.enabled, reviewNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage(null)
+    setMessage(null); setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setReviewNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, reviewNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage(null)
   }
   const rootDirty = rootDraftChanged(
-    { name, path, mediaType, accessMode, enabled: rootEnabled, reviewNewMedia, missingGraceChecks },
+    { name, path, mediaType, accessMode, reviewNewMedia, missingGraceChecks },
     rootBaseline,
   )
   const closeRootModal = async () => {
@@ -2310,8 +2328,8 @@ function StorageSettings() {
     try {
       const requestedDiscoveryMode = reviewNewMedia ? 'review' : 'automatic'
       const saved = selectedRoot
-        ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
-        : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: rootEnabled, missing_grace_checks: missingGraceChecks })
+        ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, missing_grace_checks: missingGraceChecks })
+        : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: true, missing_grace_checks: missingGraceChecks })
       // A Vite page can outlive its backend process during development. Older
       // servers ignore unknown request fields, which previously closed the
       // modal as if Review had been persisted when it had not.
@@ -2329,9 +2347,7 @@ function StorageSettings() {
         // Scan straight away: a root that has never been scanned does nothing,
         // and leaving that as a second step people had to discover was the
         // main reason adding one felt like it had not worked.
-        if (!rootEnabled) {
-          setMessage(ok(`${saved.name} added. It is off, so nothing will be scanned until you turn it on.`))
-        } else if (!tmdbReady) {
+        if (!tmdbReady) {
           setMessage(ok(`${saved.name} added. Configure TMDB, then scan it.`))
         } else {
           try {
@@ -2511,7 +2527,6 @@ function StorageSettings() {
     {!roots.length && <p className="provider-empty-copy">No media folders yet. Add the folder where your media already lives, as Medialogue sees it, which inside a container is the container’s path.</p>}
 
     {rootModalOpen && <Modal wide className="modal-tall" icon="folder" title={selectedRoot ? selectedRoot.name : 'Add media folder'} onClose={closeRootModal}
-      titleAction={<EnabledButton enabled={rootEnabled} onChange={setRootEnabled} />}
       footer={<>
       {selectedRoot && <Button variant="danger" onClick={() => beginRemoveRoot(selectedRoot)} disabled={rootBusy}>Remove</Button>}
       {liveSelectedRoot && <Button variant="ghost" icon="refresh" onClick={() => void scanRoot(liveSelectedRoot)} disabled={rootBusy || rootDirty || !liveSelectedRoot.enabled || liveSelectedRoot.scanning || !tmdbReady}>{liveSelectedRoot.scanning ? 'Scanning…' : 'Scan now'}</Button>}

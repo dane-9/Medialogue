@@ -52,7 +52,6 @@ export function PageTopbar({ title, subtitle, action, back, onBack }: { title: s
 
 export function AppShell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
   const [searchOpen, setSearchOpen] = useState(false)
-  const [activeTaskCount, setActiveTaskCount] = useState(0)
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [plexAvailable, setPlexAvailable] = useState(false)
   const [problemCount, setProblemCount] = useState(0)
@@ -84,17 +83,13 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     const refreshPlexAvailability = () => api.plexConfiguration().then((configuration) => {
       if (alive) setPlexAvailable(configuration.configured && configuration.enabled && configuration.token_configured)
     }).catch(() => undefined)
-    const refreshActiveTaskCount = () => api.jobs().then((payload) => {
-      if (alive) setActiveTaskCount(payload.filter((job) => job.state === 'running' || job.state === 'queued').length)
-    }).catch(() => undefined)
     void refreshHealth()
     void refreshPlexAvailability()
-    void refreshActiveTaskCount()
     void refreshProblemCount()
     void refreshReviewCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const jobListener = () => { void refreshActiveTaskCount(); void refreshReviewCount() }
+    const jobListener = () => void refreshReviewCount()
     // Problem SSE events are invalidation signals only. SQLite remains the
     // authoritative count, so reconnects, rollbacks and duplicate-resolution
     // events can never leave the badge drifting from the queue.
@@ -117,7 +112,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     window.addEventListener('medialogue-review-changed', reviewChangedListener)
     window.addEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
     const reviewTimer = window.setInterval(() => void refreshReviewCount(), 60000)
-    const taskTimer = window.setInterval(refreshActiveTaskCount, 30000)
     const healthTimer = window.setInterval(() => { void refreshHealth(); void refreshPlexAvailability() }, 60000)
     return () => {
       alive = false
@@ -126,7 +120,6 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       window.clearInterval(reviewTimer)
       window.removeEventListener('medialogue-review-changed', reviewChangedListener)
       window.removeEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
-      window.clearInterval(taskTimer)
       window.clearInterval(healthTimer)
       reviewCountGeneration.current += 1
     }
@@ -145,7 +138,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       <div className="sidebar-scroll">
         <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item.to === '/review' ? { ...item, count: reviewCount } : item)} />
         <NavSection items={tools} />
-        <NavSection items={system.map((item) => item.to === '/tasks' ? { ...item, count: activeTaskCount } : item)} />
+        <NavSection items={system} />
       </div>
       <div className="sidebar-footer">
         <button className="user-row" onClick={onLogout}><span className="avatar">A</span><span className="user-copy"><strong>admin</strong><span>Administrator</span></span><Icon name="logout" size={15} /></button>
@@ -165,7 +158,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
 }
 
 function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number }> }) {
-  return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count && <span className="nav-count">{item.count}</span>}</NavLink>)}</div>
+  return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}</NavLink>)}</div>
 }
 
 function HealthPill({ item }: { item: HealthIndicator }) {

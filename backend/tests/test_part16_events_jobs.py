@@ -117,6 +117,7 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
         "integration_health_sweep",
         "verify_known_media_files",
         "full_media_folder_scan",
+        "plex_library_sync",
         "scheduled_housekeeping",
     }
     task = next(item for item in listed if item["job_type"] == "integration_health_sweep")
@@ -126,6 +127,13 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     assert 300 in task["interval_options"]
     assert task["next_run_at"] is not None
     assert task["next_run_at"].endswith(("Z", "+00:00"))
+
+    plex_sync = next(item for item in listed if item["job_type"] == "plex_library_sync")
+    assert plex_sync["name"] == "Sync Plex Library"
+    assert plex_sync["configurable"] is True
+    assert plex_sync["enabled"] is False
+    assert plex_sync["next_run_at"] is None
+    assert 86400 in plex_sync["interval_options"]
 
     started = client.post(f"/api/v1/tasks/{task['id']}/run", headers=headers)
     assert started.status_code == 200, started.text
@@ -145,6 +153,29 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     task = next(item for item in refreshed if item["id"] == task["id"])
     assert task["last_status"] == "completed"
     assert task["last_duration_ms"] is not None
+
+
+def test_plex_library_sync_is_available_as_a_dedicated_task(client: TestClient) -> None:
+    headers = login_headers(client)
+    task = next(
+        item
+        for item in client.get("/api/v1/tasks", headers=headers).json()
+        if item["job_type"] == "plex_library_sync"
+    )
+
+    started = client.post(f"/api/v1/tasks/{task['id']}/run", headers=headers)
+    assert started.status_code == 200, started.text
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        job = client.get(f"/api/v1/jobs/{started.json()['job_id']}", headers=headers).json()
+        if job["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+
+    assert job["job_type"] == "plex_library_sync"
+    assert job["status"] == "failed"
+    assert job["error"]["code"] == "PLEX_NOT_CONFIGURED"
+    assert job["summary"]["trigger"] == "manual"
 
 
 def test_task_interval_can_be_changed_or_made_manual_only(client: TestClient) -> None:

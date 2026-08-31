@@ -175,6 +175,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if assets.is_dir():
             app.mount("/assets", StaticFiles(directory=assets), name="frontend-assets")
 
+        frontend_public = Path(__file__).resolve().parents[2] / "frontend" / "public"
+        background = frontend_public / "bg.webp"
+        if background.is_file():
+            @app.get("/bg.webp", include_in_schema=False)
+            async def frontend_background() -> FileResponse:
+                return FileResponse(
+                    background,
+                    media_type="image/webp",
+                    headers={"Cache-Control": "no-store"},
+                )
+
         @app.get("/{path:path}", include_in_schema=False)
         async def frontend_fallback(path: str) -> FileResponse:
             requested = (frontend_dist / path).resolve()

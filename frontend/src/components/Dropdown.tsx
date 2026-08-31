@@ -67,7 +67,10 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
 
   const openMenu = () => {
     if (disabled) return
-    setActive(selected >= 0 ? selected : 0)
+    // Nothing is highlighted until the user actually points or types: seeding
+    // this with the selected index made the current value look permanently
+    // hovered the instant the menu opened. Arrow keys still start from it.
+    setActive(-1)
     setOpen(true)
   }
 
@@ -99,9 +102,9 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
     }
     if (event.key === 'Escape') { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); return }
     if (event.key === 'Tab') { setOpen(false); return }
-    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); commit(active); return }
-    if (event.key === 'ArrowDown') { event.preventDefault(); setActive((index) => step(index, 1)); return }
-    if (event.key === 'ArrowUp') { event.preventDefault(); setActive((index) => step(index, -1)); return }
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); commit(active === -1 ? selected : active); return }
+    if (event.key === 'ArrowDown') { event.preventDefault(); setActive((index) => step(index === -1 ? selected : index, 1)); return }
+    if (event.key === 'ArrowUp') { event.preventDefault(); setActive((index) => step(index === -1 ? selected : index, -1)); return }
     if (event.key === 'Home') { event.preventDefault(); setActive(step(-1, 1)); return }
     if (event.key === 'End') { event.preventDefault(); setActive(step(0, -1)); return }
 

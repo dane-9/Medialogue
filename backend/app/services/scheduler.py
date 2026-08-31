@@ -13,6 +13,7 @@ from app.db import session as db_session
 from app.models.domain import Job, JobStatus, Schedule
 from app.services.health_sweep import run_integration_health_sweep
 from app.services.housekeeping import run_scheduled_housekeeping
+from app.services.plex_sync import run_plex_library_sync
 from app.services.scheduled_media import run_full_media_folder_scan, run_known_media_verification
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
@@ -42,6 +43,14 @@ DEFAULT_SCHEDULES = {
         "description": "Recursively scans initialized media folders and reconciles newly discovered or changed media.",
         "interval_seconds": 86400,
         "interval_options": [86400, 259200, 604800, 1209600, 2592000],
+        "configurable": True,
+        "enabled": False,
+    },
+    "plex_library_sync": {
+        "name": "Sync Plex Library",
+        "description": "Reads Plex's existing library and refreshes verification for all local media; it does not trigger a Plex scan.",
+        "interval_seconds": 86400,
+        "interval_options": [21600, 43200, 86400, 259200, 604800],
         "configurable": True,
         "enabled": False,
     },
@@ -138,6 +147,8 @@ async def _run_schedule(schedule_id: UUID, job_id: UUID) -> None:
             await run_known_media_verification(job_id)
         elif job_type == "full_media_folder_scan":
             await run_full_media_folder_scan(job_id)
+        elif job_type == "plex_library_sync":
+            await run_plex_library_sync(job_id)
     finally:
         await _finish_schedule(schedule_id, job_id)
 

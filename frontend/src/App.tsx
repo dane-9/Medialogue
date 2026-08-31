@@ -87,7 +87,18 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
       else setError('Unable to reach the server. Wait for the API to become ready and try again.')
     } finally { setLoading(false) }
   }
-  return <div className="login-screen"><div className="login-glow login-glow-one" /><div className="login-glow login-glow-two" /><div className="login-panel"><div className="login-brand"><img className="login-brand-banner" src={medialogueBanner} alt="Medialogue" /></div><div className="login-copy"><div className="eyebrow">ADMIN CONSOLE</div><h1>Welcome back.</h1><p>Manage your library while it stays exactly where you left it.</p></div><form onSubmit={submit} className="login-form"><label><span className="field-label">Username</span><Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label><label><span className="field-label">Password</span><Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" autoFocus /></label>{error && <div className="login-error">{error}</div>}<Button type="submit" variant="primary" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}<span className="button-arrow">→</span></Button></form><div className="login-footer"><span><span className="health-dot green" />Local session security enabled</span><span>v0.1.0</span></div></div><div className="login-rail"><div className="rail-quote">“The filesystem is the source of truth.”</div><div className="rail-lines"><span /><span /><span /></div><div className="rail-caption"><span className="health-dot green" />All media remains in place</div></div></div>
+  return <div className="login-screen">
+    <div className="login-panel">
+      <img className="login-brand-banner" src={medialogueBanner} alt="Medialogue" />
+      <form onSubmit={submit} className="login-form">
+        <label><span className="field-label">Username</span><Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label>
+        <label><span className="field-label">Password</span><Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" autoFocus /></label>
+        {error && <div className="login-error">{error}</div>}
+        <Button type="submit" variant="primary" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</Button>
+      </form>
+    </div>
+    <div className="login-footer">v0.1.0</div>
+  </div>
 }
 
 export default App
