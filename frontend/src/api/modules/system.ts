@@ -47,7 +47,36 @@ export const systemApi = {
   health: async () => {
     const payload = await openApiData(openApiClient.GET('/api/v1/integrations/health'))
     const { plex, qbittorrent, indexers, storage_roots: storageRoots } = payload
-    const storageHealthy = storageRoots.every((root) => root.status === 'available')
+    const serviceState = (status: string, enabled = true): HealthIndicator['state'] => !enabled
+      ? 'unknown'
+      : status === 'healthy' || status === 'available'
+        ? 'healthy'
+        : status === 'unavailable'
+          ? 'offline'
+          : status === 'degraded'
+            ? 'degraded'
+            : 'unknown'
+    const latency = (value: number | null | undefined) => value != null ? ` · ${value} ms` : ''
+    const latencyFact = (value: number | null | undefined) => value != null
+      ? [{ value: `${value} ms`, help: 'How long the latest health check took to receive a response.' }]
+      : []
+    const scopeFact = (scope: string) => ({
+      value: scope === 'both' ? 'Both' : scope === 'movies' ? 'Movies' : scope === 'shows' ? 'Shows' : scope,
+      help: scope === 'both'
+        ? 'This integration can be used for both movies and shows.'
+        : `This integration is used for ${scope} only.`,
+    })
+    const availableRoots = storageRoots.filter((root) => root.status === 'available').length
+    const unavailableRoots = storageRoots.filter((root) => root.status === 'unavailable').length
+    const storageState: HealthIndicator['state'] = !storageRoots.length
+      ? 'unknown'
+      : availableRoots === storageRoots.length
+        ? 'healthy'
+        : availableRoots
+          ? 'degraded'
+          : unavailableRoots
+            ? 'offline'
+            : 'unknown'
     const plexState = plex.configured ? plex.status : 'unknown'
     const plexDetail = !plex.configured
       ? 'Not configured'
@@ -62,10 +91,56 @@ export const systemApi = {
         : qbittorrentState
     return {
       indicators: [
-        { name: 'Plex', state: plexState === 'healthy' ? 'healthy' as const : plexState === 'unavailable' ? 'offline' as const : 'unknown' as const, detail: plexDetail },
-        { name: 'qBittorrent', state: qbittorrentState === 'healthy' ? 'healthy' as const : qbittorrentState === 'unavailable' ? 'offline' as const : qbittorrentState === 'degraded' ? 'degraded' as const : 'unknown' as const, detail: qbittorrentDetail },
-        { name: 'Storage', state: (storageRoots.length && storageHealthy ? 'healthy' : 'unknown') as HealthIndicator['state'], detail: storageRoots.length ? `${storageRoots.length} roots configured` : 'No roots configured' },
-        { name: 'Indexers', state: indexers.status === 'healthy' ? 'healthy' as const : indexers.status === 'unavailable' ? 'offline' as const : indexers.status === 'degraded' ? 'degraded' as const : 'unknown' as const, detail: indexers.configured ? `${indexers.healthy}/${indexers.enabled} enabled healthy` : 'Not configured' },
+        {
+          name: 'Plex', settingsTab: 'Plex', state: serviceState(plexState), detail: plexDetail,
+          items: plex.configured ? [{
+            id: 'plex', name: 'Plex server', state: serviceState(plexState), detail: `${plexState}${latency(plex.latency_ms)}`,
+            facts: [
+              { value: plexState, help: plexState === 'healthy' ? 'Medialogue connected to and authenticated with this Plex server.' : 'Medialogue could not verify this Plex server.' },
+              ...latencyFact(plex.latency_ms),
+            ],
+          }] : [],
+        },
+        {
+          name: 'qBittorrent', settingsTab: 'qBittorrent', state: serviceState(qbittorrentState), detail: qbittorrentDetail,
+          items: qbittorrent.clients.map((client) => ({
+            id: client.id,
+            name: client.name,
+            state: serviceState(client.health, client.enabled),
+            detail: client.enabled ? `${client.scope} · ${client.health}${latency(client.latency_ms)}` : `${client.scope} · Disabled`,
+            facts: [
+              scopeFact(client.scope),
+              { value: client.enabled ? client.health : 'Disabled', help: !client.enabled ? 'This client is configured but is not currently in use.' : client.health === 'healthy' ? 'Medialogue connected to and authenticated with this qBittorrent client.' : 'Medialogue could not connect to or authenticate with this qBittorrent client.' },
+              ...(client.enabled ? latencyFact(client.latency_ms) : []),
+            ],
+          })),
+        },
+        {
+          name: 'Storage', settingsTab: 'Media', state: storageState,
+          detail: storageRoots.length ? `${availableRoots}/${storageRoots.length} folders available` : 'No media folders configured',
+          items: storageRoots.map((root) => ({
+            id: root.id, name: root.name, state: serviceState(root.status), detail: root.status,
+            facts: [{
+              value: root.status,
+              help: root.status === 'available' ? 'Medialogue can currently access this media folder.' : root.status === 'unavailable' ? 'Medialogue cannot currently access this media folder.' : 'This media folder has not been checked yet.',
+            }],
+          })),
+        },
+        {
+          name: 'Indexers', settingsTab: 'Indexers', state: serviceState(indexers.status),
+          detail: indexers.configured ? `${indexers.healthy}/${indexers.enabled} enabled healthy` : 'Not configured',
+          items: indexers.items.map((indexer) => ({
+            id: indexer.id,
+            name: indexer.name,
+            state: serviceState(indexer.health, indexer.enabled),
+            detail: indexer.enabled ? `${indexer.scope} · ${indexer.health}${latency(indexer.latency_ms)}` : `${indexer.scope} · Disabled`,
+            facts: [
+              scopeFact(indexer.scope),
+              { value: indexer.enabled ? indexer.health : 'Disabled', help: !indexer.enabled ? 'This indexer is configured but is not currently searched.' : indexer.health === 'healthy' ? 'The indexer responded successfully to the latest health check.' : 'The indexer did not respond successfully to the latest health check.' },
+              ...(indexer.enabled ? latencyFact(indexer.latency_ms) : []),
+            ],
+          })),
+        },
       ] satisfies HealthIndicator[],
     }
   },

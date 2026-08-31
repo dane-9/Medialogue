@@ -99,7 +99,7 @@ function formatJsonDownload(name: string, payload: Record<string, unknown>) {
 }
 
 function evidenceText(value: unknown): string {
-  if (value === undefined || value === null || value === '') return '—'
+  if (value === undefined || value === null || value === '') return '-'
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   try { return JSON.stringify(value) } catch { return String(value) }
@@ -534,7 +534,7 @@ export default function CustomFormatsPageView() {
             <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="ghost" onClick={() => void testAll()} disabled={testing || !releaseName.trim()}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
             {!testResult && !testAllResult && <div className="cf-test-placeholder"><Icon name="activity" size={18} /><strong>Ready to test</strong><span>Run the title above to see every rule’s evidence and result.</span></div>}
             {testResult?.evaluation && <EvaluationRows evaluation={testResult.evaluation} />}
-            {testAllResult && <div className="cf-test-all"><div className="cf-test-all-head"><span>Every format evaluated{testAllResult.qualityProfileName ? ` against ${testAllResult.qualityProfileName}` : ''}</span><span>{testAllResult.matchedCount} MATCHED{testAllResult.totalScore !== undefined ? ` · ${testAllResult.totalScore > 0 ? '+' : ''}${testAllResult.totalScore}` : ''}</span></div>{testAllResult.formats.map((evaluation) => <div className="cf-test-all-row" key={evaluation.customFormatId}><Icon name={evaluation.matched ? 'check' : 'close'} size={14} /><span>{evaluation.customFormatName}</span><small>{evaluation.contribution === undefined ? '—' : `${evaluation.contribution > 0 ? '+' : ''}${evaluation.contribution}`}</small></div>)}</div>}
+            {testAllResult && <div className="cf-test-all"><div className="cf-test-all-head"><span>Every format evaluated{testAllResult.qualityProfileName ? ` against ${testAllResult.qualityProfileName}` : ''}</span><span>{testAllResult.matchedCount} MATCHED{testAllResult.totalScore !== undefined ? ` · ${testAllResult.totalScore > 0 ? '+' : ''}${testAllResult.totalScore}` : ''}</span></div>{testAllResult.formats.map((evaluation) => <div className="cf-test-all-row" key={evaluation.customFormatId}><Icon name={evaluation.matched ? 'check' : 'close'} size={14} /><span>{evaluation.customFormatName}</span><small>{evaluation.contribution === undefined ? '-' : `${evaluation.contribution > 0 ? '+' : ''}${evaluation.contribution}`}</small></div>)}</div>}
             {testResult?.parsed && <details className="cf-parser-details"><summary>View parser output</summary><pre>{JSON.stringify(testResult.parsed, null, 2)}</pre></details>}
             <div className="cf-editor-next"><Button variant="secondary" onClick={() => setEditorView('conditions')}>Back to rules</Button></div>
           </section>}

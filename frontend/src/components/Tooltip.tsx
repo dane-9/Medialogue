@@ -2,7 +2,7 @@ import { cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, 
 import { createPortal } from 'react-dom'
 import type { ReactElement, ReactNode, Ref } from 'react'
 
-type Position = { left: number; top: number; below: boolean }
+type Position = { left: number; top: number; below: boolean; right: boolean }
 
 function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   return (node: T) => {
@@ -15,7 +15,7 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
 
 export const TOOLTIP_DELAY = 1000
 
-export function Tooltip({ content, children, className, focusable = false, asChild = false, delay = TOOLTIP_DELAY }: {
+export function Tooltip({ content, children, className, focusable = false, asChild = false, delay = TOOLTIP_DELAY, placement = 'auto', interactive = false }: {
   content: ReactNode
   children: ReactNode
   className?: string
@@ -25,12 +25,17 @@ export function Tooltip({ content, children, className, focusable = false, asChi
   focusable?: boolean
 
   asChild?: boolean
+
+  placement?: 'auto' | 'right'
+
+  interactive?: boolean
 }) {
   const triggerRef = useRef<HTMLElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const timer = useRef<number>()
-  const [position, setPosition] = useState<Position>({ left: 0, top: 0, below: false })
+  const closeTimer = useRef<number>()
+  const [position, setPosition] = useState<Position>({ left: 0, top: 0, below: false, right: false })
 
   const place = useCallback(() => {
     const trigger = triggerRef.current
@@ -40,14 +45,21 @@ export function Tooltip({ content, children, className, focusable = false, asChi
     const bubbleRect = bubble.getBoundingClientRect()
     const gap = 8
 
+    if (placement === 'right') {
+      const halfHeight = bubbleRect.height / 2
+      const centre = Math.min(Math.max(rect.top + rect.height / 2, halfHeight + gap), window.innerHeight - halfHeight - gap)
+      setPosition({ left: rect.right + gap, top: centre, below: false, right: true })
+      return
+    }
+
     const below = rect.top < bubbleRect.height + gap
     const top = below ? rect.bottom + gap : rect.top - gap - bubbleRect.height
 
     const half = bubbleRect.width / 2
     const centre = rect.left + rect.width / 2
     const left = Math.min(Math.max(centre, half + gap), window.innerWidth - half - gap)
-    setPosition({ left, top, below })
-  }, [])
+    setPosition({ left, top, below, right: false })
+  }, [placement])
 
   useLayoutEffect(() => { if (open) place() }, [open, place])
 
@@ -65,25 +77,38 @@ export function Tooltip({ content, children, className, focusable = false, asChi
   const cancel = () => {
     if (timer.current) { window.clearTimeout(timer.current); timer.current = undefined }
   }
-  // Opening on hover is delayed but closing never is: a tooltip that lingers
-  // after the cursor leaves is worse than one that is slow to appear.
+  const cancelClose = () => {
+    if (closeTimer.current) { window.clearTimeout(closeTimer.current); closeTimer.current = undefined }
+  }
   const show = () => {
     cancel()
+    cancelClose()
     if (!delay) { setOpen(true); return }
     timer.current = window.setTimeout(() => setOpen(true), delay)
   }
-  const hide = () => { cancel(); setOpen(false) }
+  const hide = () => { cancel(); cancelClose(); setOpen(false) }
+  const leave = () => {
+    cancel()
+    if (!interactive) { hide(); return }
+    cancelClose()
+    closeTimer.current = window.setTimeout(() => setOpen(false), 140)
+  }
 
-  const showNow = () => { cancel(); setOpen(true) }
+  const showNow = () => { cancel(); cancelClose(); setOpen(true) }
 
-  useEffect(() => cancel, [])
+  useEffect(() => () => { cancel(); cancelClose() }, [])
 
   const bubble = open ? createPortal(
     <div
       ref={bubbleRef}
-      className={`tooltip ${position.below ? 'tooltip-below' : ''}`}
-      role="tooltip"
+      className={`tooltip ${position.below ? 'tooltip-below' : ''} ${position.right ? 'tooltip-right' : ''} ${interactive ? 'tooltip-interactive' : ''}`}
+      role={interactive ? 'dialog' : 'tooltip'}
       style={{ left: position.left, top: position.top }}
+      onMouseEnter={interactive ? cancelClose : undefined}
+      onMouseLeave={interactive ? leave : undefined}
+      onFocusCapture={interactive ? cancelClose : undefined}
+      onBlurCapture={interactive ? leave : undefined}
+      onClick={interactive ? hide : undefined}
     >{content}</div>,
     document.body,
   ) : null
@@ -94,9 +119,9 @@ export function Tooltip({ content, children, className, focusable = false, asChi
       {cloneElement(child, {
         ref: mergeRefs(triggerRef, child.ref),
         onMouseEnter: (event: never) => { (child.props.onMouseEnter as ((e: never) => void) | undefined)?.(event); show() },
-        onMouseLeave: (event: never) => { (child.props.onMouseLeave as ((e: never) => void) | undefined)?.(event); hide() },
+        onMouseLeave: (event: never) => { (child.props.onMouseLeave as ((e: never) => void) | undefined)?.(event); leave() },
         onFocus: (event: never) => { (child.props.onFocus as ((e: never) => void) | undefined)?.(event); showNow() },
-        onBlur: (event: never) => { (child.props.onBlur as ((e: never) => void) | undefined)?.(event); hide() },
+        onBlur: (event: never) => { (child.props.onBlur as ((e: never) => void) | undefined)?.(event); leave() },
       })}
       {bubble}
     </>
@@ -107,9 +132,9 @@ export function Tooltip({ content, children, className, focusable = false, asChi
       ref={triggerRef as Ref<HTMLSpanElement>}
       className={className}
       onMouseEnter={show}
-      onMouseLeave={hide}
+      onMouseLeave={leave}
       onFocus={showNow}
-      onBlur={hide}
+      onBlur={leave}
       tabIndex={focusable ? 0 : undefined}
     >{children}</span>
     {bubble}

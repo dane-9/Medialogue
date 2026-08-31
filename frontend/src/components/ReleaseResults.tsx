@@ -11,7 +11,7 @@ import { badgeColor } from '../lib/badgeColor'
 import { DEFAULT_DESC, DEFAULT_SORT, sortReleases, type SortKey } from '../lib/releaseSort'
 
 export function formatBytes(bytes?: number) {
-  if (!bytes) return '—'
+  if (!bytes) return '-'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let value = bytes
   let unit = 0

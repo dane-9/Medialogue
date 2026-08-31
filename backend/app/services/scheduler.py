@@ -41,10 +41,10 @@ DEFAULT_SCHEDULES = {
     "full_media_folder_scan": {
         "name": "Full Media Folder Scan",
         "description": "Recursively scans initialized media folders and reconciles newly discovered or changed media.",
-        "interval_seconds": 86400,
-        "interval_options": [86400, 259200, 604800, 1209600, 2592000],
+        "interval_seconds": 21600,
+        "interval_options": [3600, 7200, 14400, 21600, 86400, 259200, 604800, 1209600, 2592000],
         "configurable": True,
-        "enabled": False,
+        "enabled": True,
     },
     "plex_library_sync": {
         "name": "Sync Plex Library",

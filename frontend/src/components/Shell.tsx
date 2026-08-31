@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import medialogueBanner from '../assets/medialogue-banner.png'
 import type { HealthIndicator } from '../types'
@@ -27,10 +27,10 @@ const system = [
 ]
 
 const fallbackHealth: HealthIndicator[] = [
-  { name: 'Plex', state: 'unknown', detail: 'Not configured' },
-  { name: 'qBittorrent', state: 'unknown', detail: 'Not configured' },
-  { name: 'Storage', state: 'unknown', detail: 'No roots configured' },
-  { name: 'Indexers', state: 'unknown', detail: 'Not configured' },
+  { name: 'Plex', state: 'unknown', detail: 'Not configured', settingsTab: 'Plex', items: [] },
+  { name: 'qBittorrent', state: 'unknown', detail: 'Not configured', settingsTab: 'qBittorrent', items: [] },
+  { name: 'Storage', state: 'unknown', detail: 'No media folders configured', settingsTab: 'Media', items: [] },
+  { name: 'Indexers', state: 'unknown', detail: 'Not configured', settingsTab: 'Indexers', items: [] },
 ]
 
 const PageTopbarHostContext = createContext<HTMLElement | null>(null)
@@ -141,15 +141,15 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <NavSection items={system} />
       </div>
       <div className="sidebar-footer">
+        <div className="sidebar-health" aria-label="Integration status">
+          {health.filter((item) => item.name !== 'Plex' || plexAvailable).map((item) => <HealthLink key={item.name} item={item} />)}
+        </div>
         <button className="user-row" onClick={onLogout}><span className="avatar">A</span><span className="user-copy"><strong>admin</strong><span>Administrator</span></span><Icon name="logout" size={15} /></button>
       </div>
     </aside>
     <main className="main-area">
       <header className="topbar">
         <div className="topbar-page-host" ref={setPageTopbarHost}>{!pageTopbarHost && <strong>{currentTitle}</strong>}</div>
-        <div className="topbar-actions">
-          <div className="health-strip">{health.filter((item) => item.name !== 'Plex' || plexAvailable).map((item) => <HealthPill key={item.name} item={item} />)}</div>
-        </div>
       </header>
       <div className="page-content">{children}</div>
     </main>
@@ -161,7 +161,27 @@ function NavSection({ items }: { items: Array<{ to: string; label: string; icon:
   return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count ? <span className={`nav-count ${item.alert ? 'nav-count-alert' : ''}`}>{item.count}</span> : null}</NavLink>)}</div>
 }
 
-function HealthPill({ item }: { item: HealthIndicator }) {
+function HealthLink({ item }: { item: HealthIndicator }) {
   const tone = item.state === 'healthy' ? 'green' : item.state === 'offline' ? 'red' : item.state === 'degraded' ? 'amber' : 'neutral'
-  return <Tooltip asChild content={item.detail}><div className="health-pill"><span className={`health-dot ${tone}`} />{item.name}</div></Tooltip>
+  const content = <div className="integration-tooltip">
+    {item.items.length
+      ? <div className="integration-tooltip-list">{item.items.map((entry) => {
+        const entryTone = entry.state === 'healthy' ? 'green' : entry.state === 'offline' ? 'red' : entry.state === 'degraded' ? 'amber' : 'neutral'
+        return <div className="integration-tooltip-row" key={entry.id}>
+          <span className={`health-dot ${entryTone}`} />
+          <span><strong>{entry.name}</strong>{entry.facts?.length
+            ? <small className="integration-tooltip-facts">{entry.facts.map((fact, index) => <Tooltip key={`${fact.value}-${index}`} content={fact.help} delay={250}><span className="integration-tooltip-fact">{fact.value}</span></Tooltip>)}</small>
+            : entry.detail && <small>{entry.detail}</small>}</span>
+        </div>
+      })}</div>
+      : <div className="integration-tooltip-empty">Nothing configured</div>}
+    <Link className="integration-tooltip-hint" to={`/settings?tab=${encodeURIComponent(item.settingsTab)}`}>Open {item.settingsTab} settings</Link>
+  </div>
+  return <Tooltip asChild interactive placement="right" delay={250} content={content}>
+    <Link className="sidebar-health-link" to={`/settings?tab=${encodeURIComponent(item.settingsTab)}`} aria-label={`${item.name}: ${item.detail}. Open settings.`}>
+      <span className={`health-dot ${tone}`} />
+      <span>{item.name}</span>
+      <Icon name="chevron" size={13} />
+    </Link>
+  </Tooltip>
 }

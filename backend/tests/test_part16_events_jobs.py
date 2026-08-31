@@ -128,6 +128,12 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     assert task["next_run_at"] is not None
     assert task["next_run_at"].endswith(("Z", "+00:00"))
 
+    full_scan = next(item for item in listed if item["job_type"] == "full_media_folder_scan")
+    assert full_scan["interval_seconds"] == 21600
+    assert full_scan["enabled"] is True
+    assert full_scan["next_run_at"] is not None
+    assert {3600, 7200, 14400, 21600} <= set(full_scan["interval_options"])
+
     plex_sync = next(item for item in listed if item["job_type"] == "plex_library_sync")
     assert plex_sync["name"] == "Sync Plex Library"
     assert plex_sync["configurable"] is True

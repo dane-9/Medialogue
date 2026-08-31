@@ -1,4 +1,5 @@
 import os
+import re
 import string
 from pathlib import Path
 from uuid import UUID
@@ -40,6 +41,65 @@ router = APIRouter(tags=["storage"])
 
 def _resolved_path(path: str) -> str:
     return str(Path(path).expanduser().resolve(strict=False))
+
+
+def _normalized_mapping_prefix(value: str) -> str:
+    """Store mapping prefixes in the same separator form used by qBit matching."""
+
+    normalized = value.strip().replace("\\", "/")
+    while "//" in normalized:
+        normalized = normalized.replace("//", "/")
+    if len(normalized) > 1:
+        normalized = normalized.rstrip("/")
+    return normalized
+
+
+def _remote_prefix_is_absolute(value: str) -> bool:
+    return value.startswith("/") or re.match(r"^[A-Za-z]:/", value) is not None
+
+
+def _validated_local_prefix(value: str) -> tuple[str, Path]:
+    raw = value.strip()
+    local = Path(raw).expanduser()
+    if not local.is_absolute():
+        raise AppError(
+            "PATH_MAPPING_LOCAL_NOT_ABSOLUTE",
+            "The Medialogue prefix must be an absolute path.",
+            status_code=422,
+        )
+    resolved = local.resolve(strict=False)
+    if not resolved.is_dir():
+        raise AppError(
+            "PATH_MAPPING_LOCAL_NOT_FOUND",
+            f"The Medialogue prefix does not exist or is not a directory: {resolved}.",
+            status_code=422,
+        )
+    return str(resolved), resolved
+
+
+async def _reject_duplicate_mapping(
+    db: AsyncSession,
+    *,
+    integration_type: object,
+    integration_id: UUID | None,
+    remote_prefix: str,
+    exclude_id: UUID | None = None,
+) -> None:
+    query = select(RemotePathMapping).where(RemotePathMapping.integration_type == integration_type)
+    query = query.where(
+        RemotePathMapping.integration_id.is_(None)
+        if integration_id is None
+        else RemotePathMapping.integration_id == integration_id
+    )
+    if exclude_id is not None:
+        query = query.where(RemotePathMapping.id != exclude_id)
+    existing = (await db.scalars(query)).all()
+    if any(_normalized_mapping_prefix(item.remote_prefix).casefold() == remote_prefix.casefold() for item in existing):
+        raise AppError(
+            "REMOTE_PATH_MAPPING_DUPLICATE",
+            "A mapping for this client scope and remote prefix already exists.",
+            status_code=409,
+        )
 
 
 async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResponse:
@@ -557,24 +617,38 @@ async def list_mappings(
 @router.post("/remote-path-mappings", response_model=RemotePathMappingResponse, status_code=status.HTTP_201_CREATED)
 async def create_mapping(payload: RemotePathMappingCreate, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> RemotePathMappingResponse:
     values = payload.model_dump()
+    remote_prefix = _normalized_mapping_prefix(payload.remote_prefix)
+    if not _remote_prefix_is_absolute(remote_prefix):
+        raise AppError(
+            "PATH_MAPPING_REMOTE_NOT_ABSOLUTE",
+            "The remote prefix must be an absolute POSIX, Windows, or UNC path.",
+            status_code=422,
+        )
+    values["remote_prefix"] = remote_prefix
+    local_prefix, local_path = _validated_local_prefix(payload.local_prefix)
+    values["local_prefix"] = local_prefix
     if payload.storage_root_id is not None:
         root = await db.get(StorageRoot, payload.storage_root_id)
         if root is None:
             raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected media folder was not found.", status_code=404)
-        local_prefix = Path(payload.local_prefix).expanduser().resolve(strict=False)
         root_path = Path(root.resolved_root_path).expanduser().resolve(strict=False)
         try:
-            local_prefix.relative_to(root_path)
+            local_path.relative_to(root_path)
         except ValueError as exc:
             raise AppError(
                 "PATH_MAPPING_OUTSIDE_ROOT",
                 (
                     "A mapping assigned to a media folder must translate into that folder. "
-                    f"Local prefix {local_prefix} is outside {root_path}."
+                    f"Local prefix {local_path} is outside {root_path}."
                 ),
                 status_code=422,
             ) from exc
-        values["local_prefix"] = str(local_prefix)
+    await _reject_duplicate_mapping(
+        db,
+        integration_type=payload.integration_type,
+        integration_id=payload.integration_id,
+        remote_prefix=remote_prefix,
+    )
     mapping = RemotePathMapping(**values)
     db.add(mapping)
     await db.commit()
@@ -592,23 +666,38 @@ async def update_mapping(
     if mapping is None:
         raise AppError("NOT_FOUND", "Remote path mapping was not found.", status_code=404)
     values = payload.model_dump(exclude_unset=True)
+    target_remote_prefix = _normalized_mapping_prefix(values.get("remote_prefix", mapping.remote_prefix))
+    if not _remote_prefix_is_absolute(target_remote_prefix):
+        raise AppError(
+            "PATH_MAPPING_REMOTE_NOT_ABSOLUTE",
+            "The remote prefix must be an absolute POSIX, Windows, or UNC path.",
+            status_code=422,
+        )
+    values["remote_prefix"] = target_remote_prefix
     target_root_id = values.get("storage_root_id", mapping.storage_root_id)
     target_local_prefix = values.get("local_prefix", mapping.local_prefix)
+    local_prefix, local_path = _validated_local_prefix(target_local_prefix)
+    values["local_prefix"] = local_prefix
     if target_root_id is not None:
         root = await db.get(StorageRoot, target_root_id)
         if root is None:
             raise AppError("STORAGE_ROOT_NOT_FOUND", "The selected media folder was not found.", status_code=404)
-        local_prefix = Path(target_local_prefix).expanduser().resolve(strict=False)
         root_path = Path(root.resolved_root_path).expanduser().resolve(strict=False)
         try:
-            local_prefix.relative_to(root_path)
+            local_path.relative_to(root_path)
         except ValueError as exc:
             raise AppError(
                 "PATH_MAPPING_OUTSIDE_ROOT",
-                f"A mapping assigned to a media folder must translate into that folder. Local prefix {local_prefix} is outside {root_path}.",
+                f"A mapping assigned to a media folder must translate into that folder. Local prefix {local_path} is outside {root_path}.",
                 status_code=422,
             ) from exc
-        values["local_prefix"] = str(local_prefix)
+    await _reject_duplicate_mapping(
+        db,
+        integration_type=values.get("integration_type", mapping.integration_type),
+        integration_id=values.get("integration_id", mapping.integration_id),
+        remote_prefix=target_remote_prefix,
+        exclude_id=mapping.id,
+    )
     for key, value in values.items():
         setattr(mapping, key, value)
     await db.commit()

@@ -1,5 +1,16 @@
 export type HealthState = 'healthy' | 'degraded' | 'offline' | 'unknown'
 
+export interface HealthIndicatorItem {
+  id: string
+  name: string
+  state: HealthState
+  detail?: string
+  facts?: Array<{
+    value: string
+    help: string
+  }>
+}
+
 export interface Tag {
   id: string
   name: string
@@ -10,6 +21,8 @@ export interface HealthIndicator {
   name: string
   state: HealthState
   detail: string
+  settingsTab: 'Media' | 'qBittorrent' | 'Plex' | 'Indexers'
+  items: HealthIndicatorItem[]
 }
 
 export type PlexHealthState = 'healthy' | 'unavailable' | 'unknown'

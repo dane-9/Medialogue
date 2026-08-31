@@ -784,10 +784,10 @@ function taskInterval(seconds: number) {
   return `${minutes} minute${minutes === 1 ? '' : 's'}`
 }
 
-function taskTime(value?: string, future = false) {
-  if (!value) return '—'
+function taskTime(value?: string, future = false, now = Date.now()) {
+  if (!value) return '-'
   if (!future) return formatAge(value)
-  const remaining = Date.parse(value) - Date.now()
+  const remaining = Date.parse(value) - now
   if (!Number.isFinite(remaining) || remaining <= 0) return 'now'
   const seconds = Math.ceil(remaining / 1000)
   if (seconds < 60) return `in ${seconds} seconds`
@@ -798,7 +798,7 @@ function taskTime(value?: string, future = false) {
 }
 
 function taskDuration(milliseconds?: number) {
-  if (milliseconds === undefined) return '—'
+  if (milliseconds === undefined) return '-'
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
@@ -806,11 +806,11 @@ function taskDuration(milliseconds?: number) {
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
 }
 
-function jobDuration(job: Job) {
-  if (!job.startedAt) return '—'
+function jobDuration(job: Job, now = Date.now()) {
+  if (!job.startedAt) return '-'
   const started = Date.parse(job.startedAt)
-  const finished = job.finishedAt ? Date.parse(job.finishedAt) : Date.now()
-  return Number.isFinite(started) && Number.isFinite(finished) ? taskDuration(finished - started) : '—'
+  const finished = job.finishedAt ? Date.parse(job.finishedAt) : now
+  return Number.isFinite(started) && Number.isFinite(finished) ? taskDuration(finished - started) : '-'
 }
 
 export function TasksPage() {
@@ -821,6 +821,7 @@ export function TasksPage() {
   const [updatingId, setUpdatingId] = useState('')
   const [cancellingId, setCancellingId] = useState('')
   const [error, setError] = useState('')
+  const [clock, setClock] = useState(() => Date.now())
 
   const load = async (foreground = false) => {
     if (foreground) setLoading(true)
@@ -840,6 +841,13 @@ export function TasksPage() {
     stream.addEventListener('job.status', changed)
     const timer = window.setInterval(changed, 10_000)
     return () => { stream.close(); window.clearInterval(timer) }
+  }, [])
+
+  // The server data only needs its normal ten-second refresh. A local clock
+  // keeps countdowns and running durations accurate without extra API calls.
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const run = async (task: ScheduledTask) => {
@@ -870,8 +878,8 @@ export function TasksPage() {
     <Panel className="table-panel tasks-panel" title="Scheduled" note={`${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`}>
       <div className="tasks-table-wrap"><table className="data-table tasks-table"><thead><tr><th>Name</th><th>Interval</th><th>Last execution</th><th>Last duration</th><th>Next execution</th><th /></tr></thead><tbody>{tasks.map((task) => {
           const active = Boolean(task.activeJobId)
-          const overdue = task.enabled && !active && isTaskOverdue(task.nextRunAt, task.intervalSeconds)
-          return <tr key={task.id}><td><strong>{task.name}</strong><span className="table-sub">{task.description}</span></td><td>{task.configurable ? <Select aria-label={`Interval for ${task.name}`} value={task.enabled ? String(task.intervalSeconds) : 'manual'} disabled={updatingId === task.id} onChange={(event) => void updateInterval(task, event.target.value)}><option value="manual">Manual only</option>{task.intervalOptions.map((seconds) => <option value={seconds} key={seconds}>{taskInterval(seconds)}</option>)}</Select> : taskInterval(task.intervalSeconds)}</td><td>{taskTime(task.lastFinishedAt)}</td><td className="task-duration">{taskDuration(task.lastDurationMs)}</td><td>{active ? <Badge tone="blue">{task.activeJobStatus ?? 'queued'}</Badge> : overdue ? <Tooltip asChild content="The scheduler has not started this task within its expected grace period"><span><Badge tone="red">Overdue</Badge></span></Tooltip> : task.enabled ? taskTime(task.nextRunAt, true) : 'Manual only'}</td><td><Tooltip asChild content={active ? 'Task is already running' : `Run ${task.name} now`}><button className="icon-button" aria-label={`Run ${task.name} now`} disabled={active || runningId === task.id} onClick={() => void run(task)}><Icon name={active ? 'activity' : 'refresh'} size={15} /></button></Tooltip></td></tr>
+          const overdue = task.enabled && !active && isTaskOverdue(task.nextRunAt, task.intervalSeconds, clock)
+          return <tr key={task.id}><td><strong>{task.name}</strong><span className="table-sub">{task.description}</span></td><td>{task.configurable ? <Select aria-label={`Interval for ${task.name}`} value={task.enabled ? String(task.intervalSeconds) : 'manual'} disabled={updatingId === task.id} onChange={(event) => void updateInterval(task, event.target.value)}><option value="manual">Manual only</option>{task.intervalOptions.map((seconds) => <option value={seconds} key={seconds}>{taskInterval(seconds)}</option>)}</Select> : taskInterval(task.intervalSeconds)}</td><td>{taskTime(task.lastFinishedAt)}</td><td className="task-duration">{taskDuration(task.lastDurationMs)}</td><td>{active ? <Badge tone="blue">{task.activeJobStatus ?? 'queued'}</Badge> : overdue ? <Tooltip asChild content="The scheduler has not started this task within its expected grace period"><span><Badge tone="red">Overdue</Badge></span></Tooltip> : task.enabled ? taskTime(task.nextRunAt, true, clock) : 'Manual only'}</td><td><Tooltip asChild content={active ? 'Task is already running' : `Run ${task.name} now`}><button className="icon-button" aria-label={`Run ${task.name} now`} disabled={active || runningId === task.id} onClick={() => void run(task)}><Icon name={active ? 'activity' : 'refresh'} size={15} /></button></Tooltip></td></tr>
         })}</tbody></table></div>
       {!loading && !tasks.length && <EmptyState icon="activity" title="No available tasks" detail="No background tasks are registered." />}
     </Panel>
@@ -882,7 +890,7 @@ export function TasksPage() {
           const progress = terminal
             ? <Badge tone={job.state === 'completed' ? 'green' : job.state === 'failed' || job.state === 'interrupted' ? 'red' : 'neutral'}>{job.state}</Badge>
             : <Badge tone="blue">{job.state}{job.progress !== undefined ? ` · ${job.progress}%` : ''}</Badge>
-          return <tr key={job.id}><td><strong>{job.title}</strong></td><td>{taskTime(job.startedAt)}</td><td>{taskTime(job.finishedAt)}</td><td className="task-duration">{jobDuration(job)}</td><td>{progress}</td><td className="path-cell">{job.error || job.detail || '—'}</td><td>{canCancel && <Button variant="ghost" onClick={() => void cancel(job)} disabled={cancellingId === job.id}>{cancellingId === job.id ? 'Cancelling…' : 'Cancel'}</Button>}</td></tr>
+          return <tr key={job.id}><td><strong>{job.title}</strong></td><td>{taskTime(job.startedAt)}</td><td>{taskTime(job.finishedAt)}</td><td className="task-duration">{jobDuration(job, clock)}</td><td>{progress}</td><td className="path-cell">{job.error || job.detail || '-'}</td><td>{canCancel && <Button variant="ghost" onClick={() => void cancel(job)} disabled={cancellingId === job.id}>{cancellingId === job.id ? 'Cancelling…' : 'Cancel'}</Button>}</td></tr>
         })}</tbody></table></div>
       {!loading && !jobs.length && <EmptyState icon="activity" title="No background work yet" detail="Scheduled and manually started executions will appear here." />}
     </Panel>
@@ -1069,7 +1077,7 @@ function parserIdentity(details: Record<string, unknown>): { title?: string; yea
 }
 
 function readableEvidenceValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—'
+  if (value === null || value === undefined || value === '') return '-'
   if (Array.isArray(value)) return value.map(readableEvidenceValue).join(', ')
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
@@ -1880,7 +1888,7 @@ export function NewMediaPage() {
                     <strong>{match?.title ?? item.parsedTitle ?? 'Nothing found'}</strong>
 
                     <span className="new-media-match-sub">
-                      <small>{match?.year ?? item.parsedYear ?? '—'}</small>
+                      <small>{match?.year ?? item.parsedYear ?? '-'}</small>
                       {item.mediaType === 'movies' && <span
                         className={`new-media-edition-cell ${editionConflict ? 'clash' : item.parsedEdition || item.manualEditionOverride || sharedMovieIds.has(item.id) ? '' : 'optional'}`}
                         title={editionConflict ? (item.libraryEditionConflict ? 'Already in your library with this edition' : 'Another copy in this queue has the same movie and edition') : undefined}
@@ -1906,7 +1914,7 @@ export function NewMediaPage() {
         {/* Sits with the add action because it describes what is about to be
             added, and it is one write for the whole visible selection. */}
         <span className="new-media-add-profile">
-          <span className="new-media-add-profile-label">Quality Profile</span>
+          <span className="field-label">Quality Profile</span>
           {/* A value, not a command: it shows what the included folders are set
               to and changing it sets them. The old placeholder option was an
               action sitting in a list of values, and read as one more choice. */}
@@ -2096,7 +2104,7 @@ export function TorrentArchivePage() {
   const eligibleClients = restoreItem ? clients.filter((client) => !restoreItem.mediaType || client.scope === restoreItem.mediaType) : []
   const archiveTone = health.status === 'healthy' ? 'green' : health.status === 'unavailable' ? 'red' : 'amber'
   const formatSize = (bytes?: number) => {
-    if (!bytes) return '—'
+    if (!bytes) return '-'
     const units = ['B', 'KB', 'MB', 'GB', 'TB']; let value = bytes; let unit = 0
     while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
     return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
@@ -2179,7 +2187,7 @@ function SecuritySettings() {
   const tooShort = newPassword.length > 0 && newPassword.length < 12
   const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword
   return <>
-    <SectionHead title="Administrator security"
+    <SectionHead title="Administrator Security"
       description="Medialogue uses a single local administrator account and secure session cookies. There is no self-service recovery, a lost password is reset from the server."
       status={security?.default_password_warning ? 'Default password active' : 'Password changed'}
       statusTone={security?.default_password_warning ? 'amber' : 'green'}
@@ -2620,23 +2628,33 @@ function StorageSettings() {
       </div>
     </Modal>}
 
-    <SectionHead title="Remote path mappings" divided
+    <SectionHead title="Remote Path Mappings" divided
       description="Only needed when qBittorrent reports a path that does not exist from Medialogue's point of view, typically a different container, or a different host entirely."
       action={<Button variant="primary" icon="plus" onClick={beginAddMapping}>Add mapping</Button>} />
-    <div className="provider-card-grid remote-mapping-grid">{mappings.map((mapping) => {
-      const client = clients.find((item) => item.id === mapping.integration_id)
-      const root = roots.find((item) => item.id === mapping.storage_root_id)
-      return <button type="button" className={`provider-card ${mapping.enabled ? '' : 'provider-card-disabled'}`} key={mapping.id} onClick={() => editMapping(mapping)}>
-        <div className="provider-card-head"><div className="provider-card-icon"><Icon name="arrow" size={20} /></div><Badge tone={mapping.enabled ? 'green' : 'neutral'}>{mapping.enabled ? 'On' : 'Off'}</Badge></div>
-        <strong>{mapping.name}</strong><span className="remote-mapping-route"><b>{mapping.remote_prefix}</b><Icon name="arrow" size={13} /><b>{mapping.local_prefix}</b></span>
-        <div className="provider-card-meta"><span>{client?.name ?? 'All qBittorrent clients'}</span><span>{root?.name ?? 'Any matching media folder'}</span></div>
-      </button>
-    })}
-      <button type="button" className="provider-card provider-add-card" onClick={beginAddMapping}><Icon name="plus" size={28} /><strong>Add remote path mapping</strong></button>
+    {/* Same row shape as Media Folders: these are two lists of paths in one
+        section, and rendering one as cards and the other as rows made them look
+        like unrelated features. */}
+    <div className="root-list">
+      {mappings.map((mapping) => {
+        const client = clients.find((item) => item.id === mapping.integration_id)
+        const root = roots.find((item) => item.id === mapping.storage_root_id)
+        return <button type="button" className={`root-row root-row-static ${mapping.enabled ? '' : 'root-row-disabled'}`} key={mapping.id} onClick={() => editMapping(mapping)}>
+          <span className="root-row-icon"><Icon name="arrow" size={18} /></span>
+          <span className="root-row-copy">
+            <span className="root-row-title"><strong>{mapping.name}</strong></span>
+            <code>{mapping.remote_prefix} → {mapping.local_prefix}</code>
+          </span>
+          <span className="root-row-end">
+            <span className="root-row-scope">{client?.name ?? 'All qBittorrent clients'} · {root?.name ?? 'Any media folder'}</span>
+            <span className={`root-row-state tone-${mapping.enabled ? 'green' : 'neutral'}`}><i /><span>{mapping.enabled ? 'On' : 'Off'}</span></span>
+            <span className="root-row-go"><Icon name="chevron" size={16} /></span>
+          </span>
+        </button>
+      })}
     </div>
     {!mappings.length && <p className="provider-empty-copy">No mappings configured. Only add one when qBittorrent reports a path that differs from the path visible inside Medialogue.</p>}
 
-    {addingMapping && <Modal wide title={selectedMapping ? selectedMapping.name : 'Add remote path mapping'} eyebrow={selectedMapping ? 'EDIT REMOTE PATH MAPPING' : 'NEW REMOTE PATH MAPPING'} onClose={closeMapping} footer={<>
+    {addingMapping && <Modal wide title={selectedMapping ? selectedMapping.name : 'Add remote path mapping'} eyebrow={selectedMapping ? 'EDIT REMOTE PATH MAPPING' : undefined} onClose={closeMapping} footer={<>
       <EnabledButton enabled={mappingEnabled} onChange={(next) => updateMappingDraft(() => setMappingEnabled(next))} />
       {selectedMapping && <Button variant="danger" onClick={() => void removeMapping(selectedMapping)} disabled={mappingBusy}>Delete</Button>}
       {(mappingDirty || !selectedMapping) && <span className="footer-state">{mappingDirty ? 'Unsaved changes' : 'Ready to add'}</span>}
@@ -2644,7 +2662,7 @@ function StorageSettings() {
       <Button variant="primary" onClick={() => void saveMapping()} disabled={mappingBusy || Boolean(selectedMapping && !mappingDirty)}>{mappingBusy ? 'Saving…' : selectedMapping ? 'Save mapping' : 'Add mapping'}</Button>
     </>}>
       <div className="provider-modal-editor">
-        <SectionHead title={selectedMapping ? selectedMapping.name : 'Map a reported path'} description="Translate the path reported by qBittorrent into the equivalent path visible to Medialogue." status={selectedMapping ? mappingEnabled ? 'On' : 'Off' : 'New mapping'} statusTone={mappingEnabled ? 'green' : 'neutral'} />
+        <SectionHead title={selectedMapping ? selectedMapping.name : 'Map a Reported Path'} description="Translate the path reported by qBittorrent into the equivalent path visible to Medialogue." status={selectedMapping ? mappingEnabled ? 'On' : 'Off' : 'New mapping'} statusTone={mappingEnabled ? 'green' : 'neutral'} />
         <div className="settings-form">
           <Field label="Name" help="Shown in Medialogue only.">
             <Input value={mappingName} onChange={(event) => updateMappingDraft(() => setMappingName(event.target.value))} />
@@ -2667,7 +2685,6 @@ function StorageSettings() {
     </Modal>}
 
     {!rootModalOpen && !addingMapping && !removing && <Note message={message} />}
-    <div className="settings-note"><Icon name="info" size={15} /><span>Scans and path mappings never move or rename media. Removing a media folder never touches its files; only Medialogue's index of that folder is cleared.</span></div>
 
   </>
 }
@@ -2957,7 +2974,7 @@ function QBittorrentSettings() {
     setEditorOpen(false); setMessage(''); setError('')
   }
   return <div className="provider-settings">
-    <SectionHead title="Download clients" description="qBittorrent instances Medialogue observes and uses for explicit grabs." action={<div className="button-row"><Button variant="secondary" icon="refresh" onClick={() => void refreshAll()} disabled={busy || !clients.length}>{busy ? 'Refreshing…' : 'Refresh health'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add client</Button></div>} />
+    <SectionHead title="Download Clients" description="qBittorrent instances Medialogue observes and uses for explicit grabs." action={<div className="button-row"><Button variant="secondary" icon="refresh" onClick={() => void refreshAll()} disabled={busy || !clients.length}>{busy ? 'Refreshing…' : 'Refresh health'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add client</Button></div>} />
     {error && !editorOpen && <Note message={{ tone: 'error', text: error }} />}
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
     {clients.length > 0 && <div className="provider-card-grid">

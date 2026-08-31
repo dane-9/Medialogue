@@ -438,7 +438,7 @@ export default function QualityProfilesPage() {
                     <label className="qp-format-check"><input type="checkbox" checked={included} onChange={() => toggleFormat(format.id)} /><span /></label>
                     <div className="qp-format-copy"><div><strong>{format.name}</strong>{format.builtin && <Badge tone="blue">Built-in</Badge>}{!format.enabled && <Badge tone="neutral">Off</Badge>}{configuredOffsets.length > 0 && <Badge tone="neutral">Offset {scoreLabel(Math.max(...configuredOffsets))}</Badge>}</div></div>
                     <label className="qp-format-score"><span>Score</span><Input type="number" value={String(score)} onChange={(event) => setScores((current) => ({ ...current, [format.id]: Number(event.target.value) || 0 }))} /></label>
-                    <strong className={score < 0 ? 'score-negative' : score > 0 ? 'score-positive' : 'muted'}>{included ? scoreLabel(score) : '—'}</strong>
+                    <strong className={score < 0 ? 'score-negative' : score > 0 ? 'score-positive' : 'muted'}>{included ? scoreLabel(score) : '-'}</strong>
                   </div>
                 })}</div>
               </section>)}

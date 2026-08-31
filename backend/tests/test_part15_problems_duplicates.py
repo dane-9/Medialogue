@@ -712,13 +712,15 @@ def test_existing_show_identity_can_be_manually_confirmed(client: TestClient) ->
     assert status == ProblemStatus.RESOLVED
 
 
-def test_remote_path_mapping_can_be_managed_through_api(client: TestClient) -> None:
+def test_remote_path_mapping_can_be_managed_through_api(client: TestClient, tmp_path: Path) -> None:
     headers = login(client)
+    local_root = tmp_path / "movies"
+    local_root.mkdir()
 
     async def seed(db):
         root = StorageRoot(
             name="Movies mapping root",
-            resolved_root_path="/media/movies",
+            resolved_root_path=str(local_root),
             media_type=MediaType.MOVIES,
             access_mode=AccessMode.READ_ONLY,
             enabled=True,
@@ -747,8 +749,8 @@ def test_remote_path_mapping_can_be_managed_through_api(client: TestClient) -> N
             "name": "qBit Movies",
             "integration_type": "qbittorrent",
             "integration_id": str(client_id),
-            "remote_prefix": "/downloads/movies",
-            "local_prefix": "/media/movies",
+            "remote_prefix": " /downloads/movies/ ",
+            "local_prefix": str(local_root),
             "storage_root_id": str(root_id),
             "enabled": True,
         },
@@ -760,7 +762,7 @@ def test_remote_path_mapping_can_be_managed_through_api(client: TestClient) -> N
     assert listed.status_code == 200, listed.text
     mapping = next(item for item in listed.json()["items"] if item["id"] == mapping_id)
     assert mapping["remote_prefix"] == "/downloads/movies"
-    assert mapping["local_prefix"] == str(Path("/media/movies").resolve())
+    assert mapping["local_prefix"] == str(local_root.resolve())
     assert mapping["integration_id"] == str(client_id)
 
     updated = client.patch(
@@ -787,13 +789,78 @@ def test_remote_path_mapping_can_be_managed_through_api(client: TestClient) -> N
     assert all(item["id"] != mapping_id for item in client.get("/api/v1/remote-path-mappings").json()["items"])
 
 
-def test_root_scoped_remote_mapping_cannot_translate_outside_selected_root(client: TestClient) -> None:
+def test_remote_path_mapping_rejects_invalid_and_duplicate_prefixes(client: TestClient, tmp_path: Path) -> None:
     headers = login(client)
+    local_root = tmp_path / "media"
+    local_root.mkdir()
+    base = {
+        "name": "Movies",
+        "integration_type": "qbittorrent",
+        "remote_prefix": "/downloads/movies",
+        "local_prefix": str(local_root),
+        "enabled": True,
+    }
+
+    relative = client.post(
+        "/api/v1/remote-path-mappings",
+        headers=headers,
+        json={**base, "local_prefix": "relative/media"},
+    )
+    assert relative.status_code == 422, relative.text
+    assert relative.json()["error"]["code"] == "PATH_MAPPING_LOCAL_NOT_ABSOLUTE"
+
+    remote_relative = client.post(
+        "/api/v1/remote-path-mappings",
+        headers=headers,
+        json={**base, "remote_prefix": "downloads/movies"},
+    )
+    assert remote_relative.status_code == 422, remote_relative.text
+    assert remote_relative.json()["error"]["code"] == "PATH_MAPPING_REMOTE_NOT_ABSOLUTE"
+
+    missing = client.post(
+        "/api/v1/remote-path-mappings",
+        headers=headers,
+        json={**base, "local_prefix": str(tmp_path / "missing")},
+    )
+    assert missing.status_code == 422, missing.text
+    assert missing.json()["error"]["code"] == "PATH_MAPPING_LOCAL_NOT_FOUND"
+
+    first = client.post("/api/v1/remote-path-mappings", headers=headers, json=base)
+    assert first.status_code == 201, first.text
+    duplicate = client.post(
+        "/api/v1/remote-path-mappings",
+        headers=headers,
+        json={**base, "name": "Duplicate", "remote_prefix": "/DOWNLOADS/MOVIES/"},
+    )
+    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.json()["error"]["code"] == "REMOTE_PATH_MAPPING_DUPLICATE"
+
+    nested = client.post(
+        "/api/v1/remote-path-mappings",
+        headers=headers,
+        json={**base, "name": "Nested", "remote_prefix": "/downloads/movies/uhd"},
+    )
+    assert nested.status_code == 201, nested.text
+
+    collision = client.patch(
+        f"/api/v1/remote-path-mappings/{nested.json()['id']}",
+        headers=headers,
+        json={"remote_prefix": "/downloads/movies/"},
+    )
+    assert collision.status_code == 409, collision.text
+    assert collision.json()["error"]["code"] == "REMOTE_PATH_MAPPING_DUPLICATE"
+
+
+def test_root_scoped_remote_mapping_cannot_translate_outside_selected_root(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    local_prefix = tmp_path / "movies"
+    selected_root = local_prefix / "Cartoons"
+    selected_root.mkdir(parents=True)
 
     async def seed(db):
         root = StorageRoot(
             name="Cartoons mapping root",
-            resolved_root_path="/media/movies/Cartoons",
+            resolved_root_path=str(selected_root),
             media_type=MediaType.MOVIES,
             access_mode=AccessMode.READ_ONLY,
             enabled=True,
@@ -823,7 +890,7 @@ def test_root_scoped_remote_mapping_cannot_translate_outside_selected_root(clien
             "integration_type": "qbittorrent",
             "integration_id": str(client_id),
             "remote_prefix": "/Movies",
-            "local_prefix": "/media/movies",
+            "local_prefix": str(local_prefix),
             "storage_root_id": str(root_id),
             "enabled": True,
         },
