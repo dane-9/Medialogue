@@ -74,6 +74,7 @@ class EffectiveProfile:
     minimum_custom_format_score: int | None
     profile_minimum_custom_format_score: int | None
     minimum_custom_format_score_overridden: bool
+    season_pack_upgrades: bool
     quality_order: tuple[str, ...]
     profile_scores: dict[str, int]
     overrides: dict[str, int]
@@ -102,6 +103,7 @@ class EffectiveProfile:
             "minimum_custom_format_score": self.minimum_custom_format_score,
             "profile_minimum_custom_format_score": self.profile_minimum_custom_format_score,
             "minimum_custom_format_score_overridden": self.minimum_custom_format_score_overridden,
+            "season_pack_upgrades": self.season_pack_upgrades,
             "quality_order": list(self.quality_order),
             "profile_scores": dict(self.profile_scores),
             "score_overrides": dict(self.overrides),
@@ -250,6 +252,7 @@ async def load_effective_profile(
         ),
         profile_minimum_custom_format_score=profile_minimum_custom_format_score,
         minimum_custom_format_score_overridden=override_minimum_custom_format_score is not None,
+        season_pack_upgrades=bool((profile.settings or {}).get("season_pack_upgrades", True)) if profile else True,
         quality_order=quality_order,
         profile_scores=profile_scores,
         overrides=overrides,
@@ -336,6 +339,7 @@ async def load_quality_profile_for_search(
         minimum_custom_format_score=minimum_custom_format_score,
         profile_minimum_custom_format_score=minimum_custom_format_score,
         minimum_custom_format_score_overridden=False,
+        season_pack_upgrades=bool((profile.settings or {}).get("season_pack_upgrades", True)),
         quality_order=quality_order,
         profile_scores=profile_scores,
         overrides={},

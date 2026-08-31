@@ -118,6 +118,7 @@ export function mapQualityProfile(value: QualityProfileDto): QualityProfile {
       ? mapQualityDefinition(value.minimum_quality_definition)
       : undefined,
     minimumCustomFormatScore: value.minimum_custom_format_score ?? undefined,
+    seasonPackUpgrades: value.season_pack_upgrades ?? true,
     qualities: value.qualities.map(mapQualityDefinition),
     customFormatScores: value.custom_format_scores.map((score) => ({
       customFormatId: score.custom_format_id,

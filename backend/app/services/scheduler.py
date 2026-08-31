@@ -15,6 +15,7 @@ from app.services.health_sweep import run_integration_health_sweep
 from app.services.housekeeping import run_scheduled_housekeeping
 from app.services.plex_sync import run_plex_library_sync
 from app.services.scheduled_media import run_full_media_folder_scan, run_known_media_verification
+from app.services.upgrade_candidates import run_upgrade_search_job
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 
@@ -53,6 +54,14 @@ DEFAULT_SCHEDULES = {
         "interval_options": [21600, 43200, 86400, 259200, 604800],
         "configurable": True,
         "enabled": False,
+    },
+    "search_media_upgrades": {
+        "name": "Search for Media Upgrades",
+        "description": "Searches monitored media for better releases and records only the best review candidate. It never downloads automatically.",
+        "interval_seconds": 86400,
+        "interval_options": [21600, 43200, 86400, 259200, 604800],
+        "configurable": True,
+        "enabled": True,
     },
     "scheduled_housekeeping": {
         "name": "Housekeeping",
@@ -149,6 +158,8 @@ async def _run_schedule(schedule_id: UUID, job_id: UUID) -> None:
             await run_full_media_folder_scan(job_id)
         elif job_type == "plex_library_sync":
             await run_plex_library_sync(job_id)
+        elif job_type == "search_media_upgrades":
+            await run_upgrade_search_job(job_id)
     finally:
         await _finish_schedule(schedule_id, job_id)
 

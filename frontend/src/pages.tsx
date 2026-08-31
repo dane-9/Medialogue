@@ -28,7 +28,7 @@ import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import { isTaskOverdue } from './lib/taskTiming'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, ScheduledTask, Tag } from './types'
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeType } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
 import jackettIcon from './assets/jackett.svg'
@@ -53,6 +53,7 @@ const libraryInvalidationEvents = [
   'show.metadata_refreshed', 'movie.monitoring_updated', 'movie.tags_updated',
   'download.progress', 'download.completed', 'torrent.detected', 'torrent.removed',
   'torrent.archived', 'torrent.archive_failed', 'torrent.tracker_unregistered', 'torrent.tracker_recovered',
+  'upgrade.execution',
 ] as const
 
 function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000, watchScanJobs = false) {
@@ -3507,8 +3508,13 @@ function IndexerSettings() {
 function BackupRecoverySettings() {
   const [capabilities, setCapabilities] = useState<RecoveryCapabilities | null>(null)
   const [job, setJob] = useState<Job | null>(null)
+  const [reimportPlan, setReimportPlan] = useState<RecoveryReimportPlan | null>(null)
+  const [reimportJob, setReimportJob] = useState<Job | null>(null)
+  const [selectedRecoveryIds, setSelectedRecoveryIds] = useState<Set<string>>(new Set())
+  const [confirmReimport, setConfirmReimport] = useState(false)
   const [message, setMessage] = useState<Message>(null)
   const [busy, setBusy] = useState(false)
+  const [reimportBusy, setReimportBusy] = useState(false)
 
   const loadCapabilities = async () => {
     try { setCapabilities(await api.recoveryCapabilities()); setMessage(null) }
@@ -3524,6 +3530,15 @@ function BackupRecoverySettings() {
     const timer = window.setInterval(() => void refresh(), 1500)
     return () => { alive = false; window.clearInterval(timer) }
   }, [job?.id, job?.state])
+  useEffect(() => {
+    if (!reimportJob || !['queued', 'running'].includes(reimportJob.state)) return
+    let alive = true
+    const refresh = async () => {
+      try { const value = await api.job(reimportJob.id); if (alive) setReimportJob(value) } catch {}
+    }
+    const timer = window.setInterval(() => void refresh(), 1500)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [reimportJob?.id, reimportJob?.state])
 
   const start = async () => {
     setBusy(true); setMessage(null)
@@ -3534,6 +3549,30 @@ function BackupRecoverySettings() {
       setMessage(accepted.warning ? { tone: 'error', text: accepted.warning } : null)
     } catch (reason) { setMessage(failed(reason, 'Could not start Recovery Bundle export.')) }
     finally { setBusy(false) }
+  }
+  const inspectReimport = async () => {
+    setReimportBusy(true); setMessage(null)
+    try {
+      const plan = await api.recoveryReimportPlan()
+      setReimportPlan(plan)
+      setSelectedRecoveryIds(new Set(plan.items.filter((item) => item.status === 'ready').map((item) => item.torrentId)))
+    } catch (reason) { setMessage(failed(reason, 'Could not inspect the bulk recovery plan.')) }
+    finally { setReimportBusy(false) }
+  }
+  const submitReimport = async () => {
+    if (!reimportPlan || !selectedRecoveryIds.size) return
+    setReimportBusy(true); setMessage(null)
+    try {
+      const accepted = await api.startRecoveryReimport(reimportPlan.confirmationToken, [...selectedRecoveryIds])
+      const value = await api.job(accepted.job_id)
+      setReimportJob(value)
+      setConfirmReimport(false)
+      setReimportPlan(null)
+      setSelectedRecoveryIds(new Set())
+    } catch (reason) {
+      setConfirmReimport(false)
+      setMessage(failed(reason, 'Could not start bulk recovery re-import. Re-inspect the plan before trying again.'))
+    } finally { setReimportBusy(false) }
   }
   const formatSize = (value: unknown) => {
     const bytes = typeof value === 'number' ? value : Number(value)
@@ -3547,6 +3586,9 @@ function BackupRecoverySettings() {
   const sha = typeof summary.bundle_sha256 === 'string' ? summary.bundle_sha256 : undefined
   const expiresAt = typeof summary.expires_at === 'string' ? new Date(summary.expires_at).toLocaleString() : undefined
   const stateTone = job?.state === 'completed' ? 'green' : job?.state === 'failed' ? 'red' : job ? 'amber' : 'neutral'
+  const reimportSummary = reimportJob?.summary ?? {}
+  const reimportTone = reimportJob?.state === 'completed' ? 'green' : reimportJob?.state === 'failed' ? 'red' : reimportJob ? 'amber' : 'neutral'
+  const readyIds = reimportPlan?.items.filter((item) => item.status === 'ready').map((item) => item.torrentId) ?? []
 
   return <div className="recovery-settings">
     <SectionHead title="Recovery Bundle"
@@ -3555,7 +3597,7 @@ function BackupRecoverySettings() {
       statusTone={capabilities?.supported ? 'green' : capabilities ? 'red' : 'neutral'} />
 
     <div className="settings-section">
-      <div><h3>What the bundle contains</h3><p>Enough to rebuild this installation on a new host. Your media is <strong>not</strong> included, the bundle describes your library, it does not copy it. Intended for disaster recovery and manual verification, not automatic mass redownload.</p></div>
+      <div><h3>What the bundle contains</h3><p>Enough to rebuild this installation on a new host. Your media is <strong>not</strong> included; the bundle describes the library and preserves the torrent material needed to recover it. Restoring the database/configuration does not submit torrents until you explicitly confirm a bulk recovery plan.</p></div>
       <div className="recovery-content-list"><span>database/medialogue.db</span><span>torrent-archive/</span><span>manifests/</span><span>config/application-config-export.json</span><span>inventory/library-inventory.json</span><span>inventory/torrent-archive-inventory.json</span><span>backup-metadata.json</span></div>
     </div>
 
@@ -3583,9 +3625,314 @@ function BackupRecoverySettings() {
         {job.state === 'completed' && <Button variant="primary" icon="download" onClick={() => { window.location.href = api.recoveryDownloadUrl(job.id) }}>Download Recovery Bundle</Button>}
       </div>
     </div>}
+
+    <div className="settings-section">
+      <div><h3>Bulk torrent re-import</h3><p>After restoring Medialogue's database, configuration, and torrent archive, inspect what can be resubmitted. The preview checks the original qBittorrent client, client scope, saved path, enabled media folders, current qBittorrent contents, category, tags, and captured file selection. Medialogue never moves recovered media; qBittorrent still owns download placement.</p></div>
+      <div className="button-row">
+        <Button variant="ghost" icon="refresh" disabled={reimportBusy || reimportJob?.state === 'running' || reimportJob?.state === 'queued'} onClick={() => void inspectReimport()}>{reimportBusy ? 'Inspecting…' : 'Inspect recovery plan'}</Button>
+        {reimportPlan && <><Badge tone="green">{reimportPlan.ready} ready</Badge><Badge tone="neutral">{reimportPlan.alreadyPresent} already present</Badge><Badge tone={reimportPlan.blocked ? 'red' : 'neutral'}>{reimportPlan.blocked} blocked</Badge></>}
+      </div>
+    </div>
+
+    {reimportPlan && <div className="settings-section">
+      <div><h3>Recovery preview</h3><p>This preview expires at {new Date(reimportPlan.expiresAt).toLocaleString()}. Blocked rows are never selectable. If clients, paths, storage roots, or qBittorrent contents change, Medialogue rejects the signed preview and requires a fresh inspection.</p></div>
+      <div className="button-row">
+        <Button variant="ghost" onClick={() => setSelectedRecoveryIds(new Set(readyIds))}>Select all ready</Button>
+        <Button variant="ghost" onClick={() => setSelectedRecoveryIds(new Set())}>Clear selection</Button>
+        <Badge tone="blue">{selectedRecoveryIds.size} selected</Badge>
+      </div>
+      <div className="table-scroll"><table className="data-table"><thead><tr><th></th><th>Release</th><th>Status</th><th>qBittorrent</th><th>Destination</th><th>Recovery context</th></tr></thead><tbody>{reimportPlan.items.map((item) => {
+        const selected = selectedRecoveryIds.has(item.torrentId)
+        const selectable = item.status === 'ready'
+        return <tr key={item.torrentId}>
+          <td><input type="checkbox" aria-label={`Recover ${item.releaseName ?? item.torrentName}`} checked={selected} disabled={!selectable} onChange={() => setSelectedRecoveryIds((current) => { const next = new Set(current); if (next.has(item.torrentId)) next.delete(item.torrentId); else next.add(item.torrentId); return next })} /></td>
+          <td><strong>{item.releaseName ?? item.torrentName}</strong><span className="table-sub">{item.mediaTitle ?? item.mediaType ?? 'Unknown media'} · {item.infoHash.slice(0, 12)}</span>{item.warnings.map((warning) => <span key={warning} className="table-sub">{warning}</span>)}</td>
+          <td><Badge tone={item.status === 'ready' ? 'green' : item.status === 'already_present' ? 'neutral' : 'red'}>{item.status.replaceAll('_', ' ')}</Badge>{item.reasons.map((reason) => <span key={reason} className="table-sub">{reason}</span>)}</td>
+          <td>{item.downloadClientName ?? 'Unavailable'}{item.category !== undefined && <span className="table-sub">Category: {item.category || 'none'}</span>}{item.tags.length ? <span className="table-sub">Tags: {item.tags.join(', ')}</span> : null}</td>
+          <td><code>{item.savePath ?? 'Missing'}</code>{item.resolvedSavePath && item.resolvedSavePath !== item.savePath && <span className="table-sub">Resolves to {item.resolvedSavePath}</span>}</td>
+          <td>{item.fileSelectionCaptured ? <><span>{item.selectedFileCount}/{item.totalFileCount} files selected</span><span className="table-sub">{item.skippedFileCount} skipped file{item.skippedFileCount === 1 ? '' : 's'} will remain skipped</span></> : <span>Default qBittorrent file selection</span>}</td>
+        </tr>
+      })}</tbody></table></div>
+      <div className="settings-footer"><Button variant="primary" icon="download" disabled={!selectedRecoveryIds.size || reimportBusy} onClick={() => setConfirmReimport(true)}>Review and submit {selectedRecoveryIds.size || ''}</Button></div>
+    </div>}
+
+    {reimportJob && <div className="settings-section">
+      <div><h3>Latest bulk re-import</h3><p>{reimportJob.error || (typeof reimportSummary.message === 'string' ? reimportSummary.message : reimportJob.detail) || 'Submitting archived torrents to qBittorrent.'}</p></div>
+      <div className="recovery-job">
+        <div className="button-row"><Badge tone={reimportTone}>{reimportJob.state}</Badge>{reimportJob.stage && <Badge tone="neutral">{reimportJob.stage.replaceAll('_', ' ')}</Badge>}</div>
+        {reimportJob.progress !== undefined && <div className="job-progress-line"><Progress value={reimportJob.progress} tone={reimportJob.state === 'completed' ? 'green' : 'blue'} /><span>{reimportJob.progress}%</span></div>}
+        {typeof reimportSummary.submitted === 'number' && <span className="muted">Submitted: {reimportSummary.submitted} · Already present: {Number(reimportSummary.skipped ?? 0)} · Failed: {Number(reimportSummary.failed ?? 0)}</span>}
+        {!['queued', 'running'].includes(reimportJob.state) && <Button variant="ghost" icon="refresh" onClick={() => void inspectReimport()}>Inspect remaining recovery</Button>}
+      </div>
+    </div>}
+
     <Note message={message} />
     <div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={() => void loadCapabilities()}>Recheck</Button><Button variant="primary" icon="download" disabled={busy || !capabilities?.supported || job?.state === 'running' || job?.state === 'queued'} onClick={() => void start()}>{busy ? 'Starting…' : 'Export Recovery Bundle'}</Button></div>
+
+    {confirmReimport && reimportPlan && <Modal
+      title="Confirm bulk recovery"
+      eyebrow="DISASTER RECOVERY"
+      icon="download"
+      onClose={() => setConfirmReimport(false)}
+      footer={<><Button variant="ghost" onClick={() => setConfirmReimport(false)}>Cancel</Button><Button variant="primary" icon="download" disabled={reimportBusy || !selectedRecoveryIds.size} onClick={() => void submitReimport()}>{reimportBusy ? 'Submitting…' : `Submit ${selectedRecoveryIds.size} torrent${selectedRecoveryIds.size === 1 ? '' : 's'}`}</Button></>}
+    >
+      <div className="settings-section"><div><h3>qBittorrent will start these downloads</h3><p>Medialogue will submit only the {selectedRecoveryIds.size} selected archived torrent{selectedRecoveryIds.size === 1 ? '' : 's'}. Each destination is revalidated immediately before submission. Existing torrents are skipped if they appear after this preview. Saved category, tags, qBittorrent save path, and captured file priorities are restored where available.</p></div></div>
+      <Note message={{ tone: 'error', text: 'This can start substantial network and disk activity. It does not delete existing media and it does not move files after qBittorrent receives them.' }} />
+    </Modal>}
   </div>
+}
+
+
+function upgradeTypeLabel(value: UpgradeType) {
+  if (value === 'custom_format') return 'Custom Format'
+  if (value === 'season_pack') return 'Season Pack'
+  if (value === 'repack') return 'REPACK'
+  if (value === 'proper') return 'PROPER'
+  if (value === 'revision') return 'Revision'
+  return 'Quality'
+}
+
+function upgradeStateLabel(item: UpgradeCandidate) {
+  switch (item.executionState) {
+    case 'submitted': return 'Submitted'
+    case 'downloading': return 'Downloading'
+    case 'validating': return 'Validating'
+    case 'handoff_attention': return 'Needs attention'
+    case 'cleanup_required': return 'Cleanup required'
+    case 'completed': return 'Completed'
+    case 'failed': return 'Failed'
+    default: return 'Ready'
+  }
+}
+
+function upgradeStateTone(item: UpgradeCandidate): 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple' {
+  if (item.executionState === 'completed') return 'green'
+  if (item.executionState === 'handoff_attention' || item.executionState === 'failed') return 'red'
+  if (item.executionState === 'cleanup_required') return 'amber'
+  if (item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') return 'blue'
+  return item.executionEligible ? 'green' : 'neutral'
+}
+
+function formatUpgradeBytes(bytes?: number) {
+  if (bytes === undefined || bytes === null || !Number.isFinite(bytes)) return '—'
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = Math.max(0, bytes)
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
+}
+
+export function UpgradeMediaPage() {
+  const [items, setItems] = useState<UpgradeCandidate[]>([])
+  const [clients, setClients] = useState<DownloadClient[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
+  const [busyId, setBusyId] = useState('')
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [upgradeTarget, setUpgradeTarget] = useState<UpgradeCandidate | null>(null)
+  const [clientId, setClientId] = useState('')
+  const [category, setCategory] = useState('')
+  const [categories, setCategories] = useState<Array<{ name: string; resolvedSavePath: string; isDefault: boolean }>>([])
+  const [categoryLoading, setCategoryLoading] = useState(false)
+  const [cleanupTarget, setCleanupTarget] = useState<UpgradeCandidate | null>(null)
+  const [cleanup, setCleanup] = useState<UpgradeCleanupPreview | null>(null)
+  const [cleanupLoading, setCleanupLoading] = useState(false)
+
+  const load = async (quiet = false) => {
+    if (!quiet) setLoading(true)
+    try {
+      const [nextItems, nextClients] = await Promise.all([api.upgradeCandidates(), api.downloadClients()])
+      setItems(nextItems)
+      setClients(nextClients)
+      setError('')
+    } catch (reason) {
+      if (!quiet) setError(reason instanceof Error ? reason.message : 'Could not load upgrade candidates.')
+    } finally {
+      if (!quiet) setLoading(false)
+    }
+  }
+
+  useEffect(() => { void load() }, [])
+  useLiveLibraryRefresh(() => load(true), 5000)
+
+  const openUpgrade = (item: UpgradeCandidate) => {
+    const eligibleClients = clients.filter((client) => client.enabled && client.scope === item.mediaType)
+    const preferred = eligibleClients.find((client) => client.id === item.selectedDownloadClientId) ?? eligibleClients[0]
+    setUpgradeTarget(item)
+    setClientId(preferred?.id ?? '')
+    setCategory('')
+    setCategories([])
+    setError('')
+  }
+
+  useEffect(() => {
+    if (!upgradeTarget || !clientId) { setCategories([]); setCategory(''); return }
+    let alive = true
+    setCategoryLoading(true)
+    api.downloadClientCategories(clientId)
+      .then((rows) => {
+        if (!alive) return
+        setCategories(rows)
+        const client = clients.find((entry) => entry.id === clientId)
+        const preferred = rows.find((row) => row.name === client?.category) ?? rows.find((row) => row.isDefault) ?? rows[0]
+        setCategory(preferred?.name ?? '')
+      })
+      .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not read qBittorrent categories.') })
+      .finally(() => { if (alive) setCategoryLoading(false) })
+    return () => { alive = false }
+  }, [upgradeTarget, clientId, clients])
+
+  const search = async () => {
+    setSearching(true); setError(''); setMessage('')
+    try {
+      await api.searchUpgrades()
+      setMessage('Upgrade search queued. This page will refresh as candidates are evaluated.')
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not start upgrade search.') }
+    finally { setSearching(false) }
+  }
+
+  const execute = async () => {
+    if (!upgradeTarget || !clientId || !category) return
+    setBusyId(upgradeTarget.id); setError(''); setMessage('')
+    try {
+      const updated = await api.executeUpgrade(upgradeTarget.id, clientId, category)
+      setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setUpgradeTarget(null)
+      setMessage(`Submitted ${updated.title} to ${updated.selectedDownloadClientName ?? 'qBittorrent'}. The current release remains authoritative until validation completes.`)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not submit the upgrade.') }
+    finally { setBusyId('') }
+  }
+
+  const retryHandoff = async (item: UpgradeCandidate) => {
+    setBusyId(item.id); setError(''); setMessage('')
+    try {
+      const updated = await api.retryUpgradeHandoff(item.id)
+      setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
+      setMessage('Replacement handoff was checked again.')
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not retry the replacement handoff.') }
+    finally { setBusyId('') }
+  }
+
+  const reviewCleanup = async (item: UpgradeCandidate) => {
+    setCleanupTarget(item); setCleanup(null); setCleanupLoading(true); setError('')
+    try { setCleanup(await api.upgradeCleanupPreview(item.id)) }
+    catch (reason) { setCleanupTarget(null); setError(reason instanceof Error ? reason.message : 'Could not build the old-media cleanup preview.') }
+    finally { setCleanupLoading(false) }
+  }
+
+  const commitCleanup = async () => {
+    if (!cleanupTarget || !cleanup?.eligible) return
+    setBusyId(cleanupTarget.id); setError(''); setMessage('')
+    try {
+      const result = await api.cleanupUpgrade(cleanupTarget.id, cleanup.confirmationToken)
+      setCleanupTarget(null); setCleanup(null)
+      setMessage(`Upgrade complete. Deleted ${result.deletedPaths.length} reviewed old-media ${result.deletedPaths.length === 1 ? 'target' : 'targets'}.`)
+      await load(true)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the reviewed old media.') }
+    finally { setBusyId('') }
+  }
+
+  const ready = items.filter((item) => !item.executionState).length
+  const active = items.filter((item) => item.executionState && item.executionState !== 'completed').length
+
+  return <Page
+    title="Upgrade Media"
+    subtitle="Review the best known replacement for each release. Downloads and destructive cleanup always require explicit actions."
+    action={<Button variant="primary" icon="refresh" disabled={searching} onClick={() => void search()}>{searching ? 'Starting…' : 'Search for upgrades'}</Button>}
+  >
+    {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
+    {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
+
+    {!loading && items.length > 0 && <div className="upgrade-media-summary">
+      <Stat label="Candidates" value={String(items.length)} />
+      <Stat label="Ready" value={String(ready)} />
+      <Stat label="In workflow" value={String(active)} />
+    </div>}
+
+    {loading ? <div className="upgrade-media-loading">Loading upgrade candidates…</div> : !items.length ? <EmptyState
+      icon="refresh"
+      title="No upgrades found"
+      detail="Run an upgrade search to compare current releases with the configured indexers. Nothing is downloaded automatically."
+      action={<Button variant="primary" icon="refresh" disabled={searching} onClick={() => void search()}>Search for upgrades</Button>}
+    /> : <div className="upgrade-media-list">
+      <div className="upgrade-media-head">
+        <span>Media / folder</span><span>Current release</span><span>Best candidate</span><span>Improvement</span><span>Action</span>
+      </div>
+      {items.map((item) => {
+        const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
+        const mediaHref = item.movieId ? `/movies/${item.movieId}` : item.seasonId ? undefined : undefined
+        return <div className={`upgrade-media-row ${item.executionState ? `state-${item.executionState}` : ''}`} key={item.id}>
+          <div className="upgrade-media-cell upgrade-media-target">
+            <div className="upgrade-media-title-line"><span className={`kind-box kind-${item.mediaType === 'movies' ? 'movie' : 'show'}`}><Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={13} /></span>{mediaHref ? <Link to={mediaHref}><strong>{item.mediaTitle}</strong></Link> : <strong>{item.mediaTitle}</strong>}<span className="muted">{item.mediaYear}{item.seasonNumber !== undefined ? ` · S${String(item.seasonNumber).padStart(2, '0')}` : ''}</span></div>
+            {item.currentPaths.length ? item.currentPaths.map((path) => <span className="upgrade-media-path" key={path}><Icon name="folder" size={13} />{path}</span>) : <span className="muted">Current path unavailable</span>}
+          </div>
+          <div className="upgrade-media-cell upgrade-release-card current">
+            <strong>{item.currentReleaseName}</strong>
+            <div className="upgrade-release-meta"><Badge tone="neutral">{item.currentQuality ?? 'Unknown quality'}</Badge><span>CF score <b>{item.currentCustomFormatScore}</b></span></div>
+          </div>
+          <div className="upgrade-media-cell upgrade-release-card candidate">
+            <strong>{item.title}</strong>
+            <div className="upgrade-release-meta"><Badge tone="blue">{item.quality ?? 'Unknown quality'}</Badge><span>CF score <b>{item.customFormatScore}</b></span></div>
+            <small>{item.indexerName}{item.size !== undefined ? ` · ${formatUpgradeBytes(item.size)}` : ''}{item.seeders !== undefined ? ` · ${item.seeders} seeds` : ''}</small>
+          </div>
+          <div className="upgrade-media-cell upgrade-improvement">
+            <div className="upgrade-type-list">{item.upgradeTypes.map((type) => <Badge key={type} tone={type === 'quality' ? 'purple' : type === 'custom_format' ? 'blue' : 'amber'}>{upgradeTypeLabel(type)}</Badge>)}</div>
+            <strong className={item.scoreDelta > 0 ? 'score-positive' : ''}>{item.scoreDelta >= 0 ? '+' : ''}{item.scoreDelta} CF score</strong>
+            {item.addedCustomFormats.length > 0 && <div className="upgrade-format-list">{item.addedCustomFormats.map((format) => <span key={format.id || format.name}>{format.name} <b>+{format.delta}</b></span>)}</div>}
+          </div>
+          <div className="upgrade-media-cell upgrade-action-cell">
+            <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>
+            {(item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && <div className="upgrade-progress-wrap">
+              {progress !== undefined && <><Progress value={progress} tone="blue" /><span>{progress}%</span></>}
+              <small>{item.downloadState ?? item.executionState}{item.selectedDownloadClientName ? ` · ${item.selectedDownloadClientName}` : ''}</small>
+            </div>}
+            {item.executionError && <small className="upgrade-action-error">{item.executionError}</small>}
+            {!item.executionState && <Button variant="primary" icon="download" disabled={!item.executionEligible || busyId === item.id} onClick={() => openUpgrade(item)}>Upgrade</Button>}
+            {!item.executionState && !item.executionEligible && <small>{item.executionBlockReason ?? 'This candidate cannot be executed.'}</small>}
+            {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}
+            {item.executionState === 'cleanup_required' && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={() => void reviewCleanup(item)}>Review cleanup</Button>}
+          </div>
+        </div>
+      })}
+    </div>}
+
+    {upgradeTarget && <Modal
+      title="Start upgrade"
+      eyebrow={`${upgradeTarget.mediaTitle}${upgradeTarget.seasonNumber !== undefined ? ` · Season ${upgradeTarget.seasonNumber}` : ''}`}
+      icon="download"
+      onClose={() => { if (!busyId) setUpgradeTarget(null) }}
+      footer={<><Button variant="ghost" disabled={Boolean(busyId)} onClick={() => setUpgradeTarget(null)}>Cancel</Button><Button variant="primary" icon="download" disabled={Boolean(busyId) || !clientId || !category || categoryLoading} onClick={() => void execute()}>{busyId ? 'Submitting…' : 'Start upgrade'}</Button></>}
+    >
+      <div className="upgrade-modal-copy">
+        <p><strong>{upgradeTarget.currentReleaseName}</strong> stays untouched and authoritative while the replacement downloads and validates.</p>
+        <div className="upgrade-modal-arrow"><span>{upgradeTarget.currentQuality ?? 'Current'}</span><Icon name="arrow" size={18} /><span>{upgradeTarget.quality ?? 'Candidate'}</span></div>
+      </div>
+      <div className="settings-form upgrade-destination-form">
+        <label><span className="field-label">qBittorrent client</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)}>{clients.filter((client) => client.enabled && client.scope === upgradeTarget.mediaType).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></label>
+        <label><span className="field-label">Category</span><Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select></label>
+        <div className="wizard-destination-path"><span>qBittorrent placement</span><strong>{categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
+      </div>
+    </Modal>}
+
+    {cleanupTarget && <Modal
+      title="Review old media cleanup"
+      eyebrow={cleanupTarget.mediaTitle}
+      icon="alert"
+      wide
+      onClose={() => { if (!busyId) { setCleanupTarget(null); setCleanup(null) } }}
+      footer={<><Button variant="ghost" disabled={Boolean(busyId)} onClick={() => { setCleanupTarget(null); setCleanup(null) }}>Keep old media</Button><Button variant="danger" icon="alert" disabled={Boolean(busyId) || cleanupLoading || !cleanup?.eligible} onClick={() => void commitCleanup()}>{busyId ? 'Deleting…' : 'Delete reviewed old media'}</Button></>}
+    >
+      {cleanupLoading ? <div className="table-loading">Building a fresh filesystem preview…</div> : cleanup && <div className="upgrade-cleanup-review">
+        <div className="settings-note"><Icon name="info" size={16} /><span>The replacement is already authoritative and the old torrent has been removed from qBittorrent without deleting files. Only the paths below will be deleted.</span></div>
+        {cleanup.warnings.map((warning) => <div className="settings-note" key={warning}><Icon name="alert" size={16} /><span>{warning}</span></div>)}
+        {cleanup.blocked.map((reason) => <div className="settings-note error-note" key={reason}><Icon name="lock" size={16} /><span>{reason}</span></div>)}
+        <div className="upgrade-cleanup-total"><span>Deletion total</span><strong>{formatUpgradeBytes(cleanup.totalBytes)}</strong><small>{cleanup.targets.length} target{cleanup.targets.length === 1 ? '' : 's'} · preview expires {new Date(cleanup.expiresAt).toLocaleTimeString()}</small></div>
+        <div className="upgrade-cleanup-targets">{cleanup.targets.map((target) => <div className="upgrade-cleanup-target" key={target.path}><span className="kind-box"><Icon name={target.kind === 'directory' ? 'folder' : 'clapper'} size={13} /></span><div><strong>{target.path}</strong><small>{target.kind} · {target.inventory.length} inventoried item{target.inventory.length === 1 ? '' : 's'}</small></div></div>)}</div>
+      </div>}
+    </Modal>}
+  </Page>
 }
 
 // Back returns to wherever you actually came from, a Problem, a search result,

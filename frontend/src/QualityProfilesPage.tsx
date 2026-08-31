@@ -36,6 +36,7 @@ export default function QualityProfilesPage() {
   const [name, setName] = useState('')
   const [minimumId, setMinimumId] = useState('')
   const [minimumScore, setMinimumScore] = useState('')
+  const [seasonPackUpgrades, setSeasonPackUpgrades] = useState(true)
   const [qualityIds, setQualityIds] = useState<string[]>([])
   const [qualityOrderIds, setQualityOrderIds] = useState<string[]>([])
   const [scores, setScores] = useState<Record<string, number>>({})
@@ -71,6 +72,7 @@ export default function QualityProfilesPage() {
     setName(current.name)
     setMinimumId(current.minimumQuality?.id ?? '')
     setMinimumScore(current.minimumCustomFormatScore === undefined ? '' : String(current.minimumCustomFormatScore))
+    setSeasonPackUpgrades(current.seasonPackUpgrades)
     const selectedQualityIds = current.qualities.map((quality) => quality.id)
     setQualityIds(selectedQualityIds)
     setQualityOrderIds([...selectedQualityIds, ...qualities.map((quality) => quality.id).filter((id) => !selectedQualityIds.includes(id))])
@@ -80,16 +82,17 @@ export default function QualityProfilesPage() {
   }, [selectedId, profiles, qualities, creating])
 
   const dirty = useMemo(() => {
-    if (creating) return Boolean(name.trim()) || Boolean(minimumId) || minimumScore !== '' || Object.keys(scores).length > 0
+    if (creating) return Boolean(name.trim()) || Boolean(minimumId) || minimumScore !== '' || seasonPackUpgrades !== true || Object.keys(scores).length > 0
     if (!selected) return false
     const original = Object.fromEntries(selected.customFormatScores.map((item) => [item.customFormatId, item.score]))
     const originalQualities = selected.qualities.map((quality) => quality.id)
     return name !== selected.name
       || minimumId !== (selected.minimumQuality?.id ?? '')
       || minimumScore !== (selected.minimumCustomFormatScore === undefined ? '' : String(selected.minimumCustomFormatScore))
+      || seasonPackUpgrades !== selected.seasonPackUpgrades
       || JSON.stringify(qualityIds) !== JSON.stringify(originalQualities)
       || JSON.stringify(original) !== JSON.stringify(scores)
-  }, [creating, name, minimumId, minimumScore, qualityIds, scores, selected])
+  }, [creating, name, minimumId, minimumScore, seasonPackUpgrades, qualityIds, scores, selected])
 
   const openProfile = (profile: QualityProfile) => {
     setCreating(false)
@@ -97,6 +100,7 @@ export default function QualityProfilesPage() {
     setName(profile.name)
     setMinimumId(profile.minimumQuality?.id ?? '')
     setMinimumScore(profile.minimumCustomFormatScore === undefined ? '' : String(profile.minimumCustomFormatScore))
+    setSeasonPackUpgrades(profile.seasonPackUpgrades)
     const selectedQualityIds = profile.qualities.map((quality) => quality.id)
     setQualityIds(selectedQualityIds)
     setQualityOrderIds([...selectedQualityIds, ...qualities.map((quality) => quality.id).filter((id) => !selectedQualityIds.includes(id))])
@@ -107,7 +111,7 @@ export default function QualityProfilesPage() {
   }
   const beginNew = () => {
     const allQualityIds = qualities.map((quality) => quality.id)
-    setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setMinimumScore(''); setQualityIds(allQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
+    setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setMinimumScore(''); setSeasonPackUpgrades(true); setQualityIds(allQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
     setEditorView('details'); setFormatFilter(''); setQualityFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
   }
 
@@ -118,6 +122,7 @@ export default function QualityProfilesPage() {
         name: copyName(source.name, profiles.map((item) => item.name)),
         minimum_quality_definition_id: source.minimumQuality?.id ?? null,
         minimum_custom_format_score: source.minimumCustomFormatScore ?? null,
+        season_pack_upgrades: source.seasonPackUpgrades,
         quality_definition_ids: source.qualities.map((quality) => quality.id),
         custom_format_scores: source.customFormatScores.map((item) => ({ custom_format_id: item.customFormatId, score: item.score })),
       })
@@ -137,11 +142,11 @@ export default function QualityProfilesPage() {
     const custom_format_scores = Object.entries(scores).map(([custom_format_id, score]) => ({ custom_format_id, score }))
     try {
       if (creating) {
-        const created = await api.createQualityProfile({ name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), quality_definition_ids: qualityIds, custom_format_scores })
+        const created = await api.createQualityProfile({ name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), season_pack_upgrades: seasonPackUpgrades, quality_definition_ids: qualityIds, custom_format_scores })
         setProfiles((items) => [...items, created].sort((a, b) => a.name.localeCompare(b.name)))
         setCreating(false); setSelectedId(created.id); setEditorOpen(false); setMessage('Quality Profile created.')
       } else if (selected) {
-        const updated = await api.updateQualityProfile(selected.id, { name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), quality_definition_ids: qualityIds, custom_format_scores, expected_revision: selected.revision })
+        const updated = await api.updateQualityProfile(selected.id, { name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), season_pack_upgrades: seasonPackUpgrades, quality_definition_ids: qualityIds, custom_format_scores, expected_revision: selected.revision })
         setProfiles((items) => items.map((item) => item.id === updated.id ? updated : item).sort((a, b) => a.name.localeCompare(b.name)))
         setEditorOpen(false); setMessage('Quality Profile saved. Assigned release scores were re-evaluated.')
       }
@@ -379,6 +384,9 @@ export default function QualityProfilesPage() {
               </Field>
               <Field label="Minimum acceptable Custom Format score" help="Releases below this total remain visible but are rejected for automatic selection. Manual download remains available.">
                 <Input type="number" value={minimumScore} onChange={(event) => setMinimumScore(event.target.value)} placeholder="No minimum score" />
+              </Field>
+              <Field label="Season pack upgrades" help="When enabled, a completed season can qualify for consolidation into one season pack. The pack must still meet the highest quality already present in that season.">
+                <label className="inline-check"><input type="checkbox" checked={seasonPackUpgrades} onChange={(event) => setSeasonPackUpgrades(event.target.checked)} /><span><strong>Count season-pack consolidation as an upgrade</strong><small>Discovery only. Medialogue will not download an upgrade automatically.</small></span></label>
               </Field>
             </div>
             <div className="cf-editor-next"><Button variant="primary" onClick={() => setEditorView('qualities')} disabled={!name.trim()}>Continue to qualities</Button></div>

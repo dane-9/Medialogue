@@ -1,4 +1,4 @@
-import type { EventHistoryItem, HealthIndicator, Job, RecoveryCapabilities, ScheduledTask } from '../../types'
+import type { EventHistoryItem, HealthIndicator, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask } from '../../types'
 import { mapJob } from '../mappers/system'
 import { openApiClient, openApiData } from '../transport'
 
@@ -155,6 +155,40 @@ export const systemApi = {
   },
   startRecoveryExport: () => openApiData(openApiClient.POST('/api/v1/recovery/export')),
   recoveryDownloadUrl: (jobId: string) => `/api/v1/recovery/exports/${encodeURIComponent(jobId)}/download`,
+  recoveryReimportPlan: async (): Promise<RecoveryReimportPlan> => {
+    const payload = await openApiData(openApiClient.GET('/api/v1/recovery/reimport/plan'))
+    return {
+      generatedAt: payload.generated_at,
+      expiresAt: payload.expires_at,
+      confirmationToken: payload.confirmation_token,
+      total: payload.total,
+      ready: payload.ready,
+      alreadyPresent: payload.already_present,
+      blocked: payload.blocked,
+      items: (payload.items ?? []).map((item) => ({
+        torrentId: item.torrent_id,
+        infoHash: item.info_hash,
+        torrentName: item.torrent_name,
+        mediaType: item.media_type ?? undefined,
+        mediaTitle: item.media_title ?? undefined,
+        releaseName: item.release_name ?? undefined,
+        status: item.status,
+        reasons: item.reasons ?? [],
+        warnings: item.warnings ?? [],
+        downloadClientId: item.download_client_id ?? undefined,
+        downloadClientName: item.download_client_name ?? undefined,
+        savePath: item.save_path ?? undefined,
+        resolvedSavePath: item.resolved_save_path ?? undefined,
+        category: item.category ?? undefined,
+        tags: item.tags ?? [],
+        fileSelectionCaptured: item.file_selection_captured,
+        totalFileCount: item.total_file_count,
+        selectedFileCount: item.selected_file_count,
+        skippedFileCount: item.skipped_file_count,
+      })),
+    }
+  },
+  startRecoveryReimport: (confirmationToken: string, torrentIds: string[]) => openApiData(openApiClient.POST('/api/v1/recovery/reimport', { body: { confirmation_token: confirmationToken, torrent_ids: torrentIds } })),
   cancelJob: async (jobId: string) => mapJob(await openApiData(openApiClient.POST('/api/v1/jobs/{job_id}/cancel', { params: { path: { job_id: jobId } } }))),
   events: async (filters: { eventType?: string; severity?: string; entityType?: string; sort?: string; page?: number; pageSize?: number } = {}) => {
     const payload = await openApiData(openApiClient.GET('/api/v1/events', { params: { query: {

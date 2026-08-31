@@ -114,6 +114,7 @@ async def _profile_response(db: AsyncSession, row: QualityProfile, default_id: U
             if (loaded.settings or {}).get("minimum_custom_format_score") is not None
             else None
         ),
+        season_pack_upgrades=bool((loaded.settings or {}).get("season_pack_upgrades", True)),
         qualities=[_quality_response(item) for item in await _profile_qualities(db, loaded) if item is not None],
         custom_format_scores=scores,
         assigned_titles=assigned_movies + assigned_shows,
@@ -200,6 +201,7 @@ async def create_quality_profile(
         settings={
             "quality_definition_ids": [str(item) for item in quality_definition_ids],
             "minimum_custom_format_score": payload.minimum_custom_format_score,
+            "season_pack_upgrades": payload.season_pack_upgrades,
         },
         revision=1,
     )
@@ -281,6 +283,11 @@ async def update_quality_profile(
         row.settings = {
             **dict(row.settings or {}),
             "minimum_custom_format_score": payload.minimum_custom_format_score,
+        }
+    if "season_pack_upgrades" in payload.model_fields_set and payload.season_pack_upgrades is not None:
+        row.settings = {
+            **dict(row.settings or {}),
+            "season_pack_upgrades": bool(payload.season_pack_upgrades),
         }
     if payload.custom_format_scores is not None:
         if len({item.custom_format_id for item in payload.custom_format_scores}) != len(payload.custom_format_scores):

@@ -391,6 +391,87 @@ export interface Download {
   trackerState: 'healthy' | 'degraded' | 'unavailable' | 'unregistered' | 'unknown'
 }
 
+export type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision'
+export type UpgradeExecutionState = 'submitted' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
+
+export interface UpgradeCustomFormatImprovement {
+  id: string
+  name: string
+  contribution: number
+  previousContribution?: number
+  delta: number
+  isNew: boolean
+}
+
+export interface UpgradeCandidate {
+  id: string
+  mediaType: 'movies' | 'shows'
+  movieId?: string
+  seasonId?: string
+  mediaTitle: string
+  mediaYear?: number
+  seasonNumber?: number
+  currentPaths: string[]
+  currentReleaseIds: string[]
+  currentReleaseName: string
+  currentQuality?: string
+  currentCustomFormatScore: number
+  indexerId?: string
+  indexerName: string
+  title: string
+  quality?: string
+  customFormatScore: number
+  scoreDelta: number
+  size?: number
+  seeders?: number
+  leechers?: number
+  publishedAt?: string
+  upgradeTypes: UpgradeType[]
+  addedCustomFormats: UpgradeCustomFormatImprovement[]
+  executionEligible: boolean
+  executionBlockReason?: string
+  comparisonSnapshot: Record<string, unknown>
+  executionState?: UpgradeExecutionState
+  selectedDownloadClientId?: string
+  selectedDownloadClientName?: string
+  selectedCategory?: string
+  torrentId?: string
+  downloadProgress?: number
+  downloadState?: string
+  executionError?: string
+  submittedAt?: string
+  validatedAt?: string
+  oldTorrentsRemovedAt?: string
+  cleanupCompletedAt?: string
+  lastSearchedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpgradeCleanupTarget {
+  path: string
+  kind: 'directory' | 'file'
+  inventory: Record<string, unknown>[]
+}
+
+export interface UpgradeCleanupPreview {
+  candidateId: string
+  mediaType: 'movies' | 'shows'
+  eligible: boolean
+  blocked: string[]
+  targets: UpgradeCleanupTarget[]
+  totalBytes: number
+  confirmationToken: string
+  expiresAt: string
+  warnings: string[]
+}
+
+export interface UpgradeCleanupResult {
+  candidateId: string
+  state: 'completed'
+  deletedPaths: string[]
+}
+
 export type DownloadClientScope = 'movies' | 'shows'
 
 export interface DownloadClient {
@@ -600,6 +681,41 @@ export interface RecoveryCapabilities {
   reasons: string[]
 }
 
+export type RecoveryReimportStatus = 'ready' | 'already_present' | 'blocked'
+
+export interface RecoveryReimportItem {
+  torrentId: string
+  infoHash: string
+  torrentName: string
+  mediaType?: 'movies' | 'shows'
+  mediaTitle?: string
+  releaseName?: string
+  status: RecoveryReimportStatus
+  reasons: string[]
+  warnings: string[]
+  downloadClientId?: string
+  downloadClientName?: string
+  savePath?: string
+  resolvedSavePath?: string
+  category?: string
+  tags: string[]
+  fileSelectionCaptured: boolean
+  totalFileCount: number
+  selectedFileCount: number
+  skippedFileCount: number
+}
+
+export interface RecoveryReimportPlan {
+  generatedAt: string
+  expiresAt: string
+  confirmationToken: string
+  total: number
+  ready: number
+  alreadyPresent: number
+  blocked: number
+  items: RecoveryReimportItem[]
+}
+
 export interface EventHistoryItem {
   id: string
   eventType: string
@@ -760,6 +876,7 @@ export interface QualityProfile {
   name: string
   minimumQuality?: QualityDefinition
   minimumCustomFormatScore?: number
+  seasonPackUpgrades: boolean
   qualities: QualityDefinition[]
   customFormatScores: QualityProfileScore[]
   assignedTitles: number

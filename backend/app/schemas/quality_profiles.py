@@ -28,6 +28,7 @@ class QualityProfileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     minimum_quality_definition_id: UUID | None = None
     minimum_custom_format_score: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
+    season_pack_upgrades: bool = True
     quality_definition_ids: list[UUID] | None = Field(default=None, max_length=1000)
     custom_format_scores: list[QualityProfileScoreInput] = Field(default_factory=list, max_length=1000)
 
@@ -41,6 +42,7 @@ class QualityProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     minimum_quality_definition_id: UUID | None = None
     minimum_custom_format_score: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
+    season_pack_upgrades: bool | None = None
     quality_definition_ids: list[UUID] | None = Field(default=None, max_length=1000)
     custom_format_scores: list[QualityProfileScoreInput] | None = Field(default=None, max_length=1000)
     expected_revision: int | None = Field(default=None, ge=1)
@@ -63,6 +65,7 @@ class QualityProfileResponse(BaseModel):
     name: str
     minimum_quality_definition: QualityDefinitionResponse | None
     minimum_custom_format_score: int | None
+    season_pack_upgrades: bool
     qualities: list[QualityDefinitionResponse]
     custom_format_scores: list[QualityProfileScoreResponse]
     assigned_titles: int

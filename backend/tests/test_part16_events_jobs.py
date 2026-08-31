@@ -118,6 +118,7 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
         "verify_known_media_files",
         "full_media_folder_scan",
         "plex_library_sync",
+        "search_media_upgrades",
         "scheduled_housekeeping",
     }
     task = next(item for item in listed if item["job_type"] == "integration_health_sweep")
@@ -140,6 +141,13 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     assert plex_sync["enabled"] is False
     assert plex_sync["next_run_at"] is None
     assert 86400 in plex_sync["interval_options"]
+
+    upgrade_search = next(item for item in listed if item["job_type"] == "search_media_upgrades")
+    assert upgrade_search["name"] == "Search for Media Upgrades"
+    assert upgrade_search["interval_seconds"] == 86400
+    assert upgrade_search["enabled"] is True
+    assert upgrade_search["configurable"] is True
+    assert {21600, 43200, 86400, 259200, 604800} <= set(upgrade_search["interval_options"])
 
     started = client.post(f"/api/v1/tasks/{task['id']}/run", headers=headers)
     assert started.status_code == 200, started.text

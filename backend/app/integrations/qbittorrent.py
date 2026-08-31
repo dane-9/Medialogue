@@ -90,6 +90,18 @@ def _magnet_info_hash(url: str) -> str | None:
     return None
 
 
+def torrent_payload_info_hash(payload: bytes) -> str | None:
+    """Return the v1 info hash encoded by a .torrent payload when available."""
+
+    return _torrent_info_hash(payload)
+
+
+def magnet_info_hash(url: str) -> str | None:
+    """Return a normalized v1 BTIH from a magnet URI when available."""
+
+    return _magnet_info_hash(url)
+
+
 class QBittorrentError(RuntimeError):
     pass
 
@@ -585,6 +597,52 @@ class QBittorrentClient:
             "/api/v2/torrents/delete",
             data={"hashes": info_hash.lower(), "deleteFiles": str(delete_files).lower()},
         )
+
+    async def set_file_priorities(self, info_hash: str, priorities: dict[int, int]) -> None:
+        """Restore qBittorrent's per-file selection/priority state.
+
+        qBittorrent exposes file selection through the same priority field as
+        normal file priority.  The portable recovery manifest stores the
+        values returned by ``/api/v2/torrents/files``; priority ``0`` is the
+        important disaster-recovery case because it means "do not download".
+        """
+
+        if not priorities:
+            return
+
+        # A newly added torrent can take a short moment to become visible to
+        # the files endpoint.  Do not silently lose the saved selection state
+        # merely because qBittorrent acknowledged the add before registering
+        # the torrent internally.
+        visible = False
+        for attempt in range(12):
+            if await self.get_torrent(info_hash) is not None:
+                visible = True
+                break
+            if attempt < 11:
+                await asyncio.sleep(0.25)
+        if not visible:
+            raise QBittorrentError("qBittorrent did not expose the restored torrent in time to restore file priorities")
+
+        grouped: dict[int, list[int]] = {}
+        for file_id, priority in priorities.items():
+            # qBittorrent's public API uses 0 (skip), 1 (normal), 6 (high),
+            # and 7 (maximal).  Ignore malformed/future values rather than
+            # sending an invalid restore request to the client.
+            if priority not in {0, 1, 6, 7}:
+                continue
+            grouped.setdefault(priority, []).append(int(file_id))
+
+        for priority, file_ids in grouped.items():
+            await self._request(
+                "POST",
+                "/api/v2/torrents/filePrio",
+                data={
+                    "hash": info_hash.lower(),
+                    "id": "|".join(str(file_id) for file_id in sorted(file_ids)),
+                    "priority": str(priority),
+                },
+            )
 
     async def _request_once_with_safe_retry(
         self, method: str, path: str, **kwargs: Any

@@ -353,6 +353,7 @@ async def _poll_download_client(
 
     current_hashes: set[str] = set()
     relevant_count = added = completed = ignored = removed = processing_errors = 0
+    completed_upgrade_torrent_ids: set[UUID] = set()
     detail_adapter = None
     for observed in observations:
         info_hash = observed.info_hash.lower()
@@ -654,14 +655,16 @@ async def _poll_download_client(
                 # authoritative, but attachment additionally requires shared path,
                 # directory, filename, and TMDB/manual identity verification. Plex
                 # remains read-only presence/path evidence and never overrides identity.
-                await associate_incoming_torrent(
+                association = await associate_incoming_torrent(
                     db,
                     torrent,
                     resolved_path=resolved_content,
                     scope=MediaType(client.scope.value),
                     complete=observed.complete,
+                    download_client_id=client.id,
                 )
-                if observed.complete and client.completed_download_handling:
+                upgrade_execution = bool(association and association.get("upgrade_execution_id"))
+                if observed.complete and (client.completed_download_handling or upgrade_execution):
                     await finalize_completed_torrent(
                         db,
                         torrent,
@@ -680,6 +683,13 @@ async def _poll_download_client(
                 else:
                     await refresh_torrent_manifest(db, torrent, recovery_snapshot=recovery_snapshot)
 
+                if observed.complete and upgrade_execution:
+                    # Remove the old qBittorrent torrent only after the entire
+                    # poll snapshot has been processed. Otherwise an old torrent
+                    # that appeared later in this same qBittorrent snapshot could
+                    # be marked present again after the replacement removed it.
+                    completed_upgrade_torrent_ids.add(torrent.id)
+
                 await reconcile_torrent_disagreements(db, torrent, qbit_present=True)
         except Exception as exc:
             # Python-side counters are not part of the database SAVEPOINT.
@@ -697,6 +707,30 @@ async def _poll_download_client(
                 },
             )
             continue
+
+    if completed_upgrade_torrent_ids:
+        from app.services.upgrade_execution import advance_upgrade_handoff
+
+        for torrent_id in completed_upgrade_torrent_ids:
+            try:
+                async with db.begin_nested():
+                    upgrade_torrent = await db.get(Torrent, torrent_id)
+                    if upgrade_torrent is not None:
+                        await advance_upgrade_handoff(
+                            db,
+                            upgrade_torrent,
+                            qbittorrent_client_factory=client_factory,
+                        )
+            except Exception:
+                processing_errors += 1
+                logger.exception(
+                    "Upgrade replacement handoff failed after qBittorrent snapshot processing",
+                    extra={
+                        "entity_type": "download_client",
+                        "entity_id": str(client.id),
+                        "torrent_id": str(torrent_id),
+                    },
+                )
 
     for row in prior_rows:
         info_hash = prior_hash_by_torrent.get(row.torrent_id)

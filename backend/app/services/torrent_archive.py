@@ -582,6 +582,26 @@ def read_manifest(torrent: Torrent) -> dict[str, Any]:
     return _load_existing_manifest(path)
 
 
+def recovery_file_priorities(manifest: dict[str, Any]) -> dict[int, int]:
+    """Extract the portable qBittorrent file-selection state from a manifest."""
+
+    recovery = manifest.get("recovery") if isinstance(manifest.get("recovery"), dict) else {}
+    files = recovery.get("files") if isinstance(recovery.get("files"), list) else []
+    priorities: dict[int, int] = {}
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        try:
+            file_id = int(item["index"])
+            priority = int(item["priority"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if file_id < 0 or priority not in {0, 1, 6, 7}:
+            continue
+        priorities[file_id] = priority
+    return priorities
+
+
 def archive_mount_health(archive_root: str | Path | None = None) -> dict[str, Any]:
     root = Path(archive_root or get_settings().torrent_archive_dir)
     if not root.exists():
@@ -733,7 +753,15 @@ async def restore_torrent_archive(
         original_tags = original.get("tags")
         restored_tags = original_tags if isinstance(original_tags, list) else list(client.tags or [])
     adapter = client_factory(client.url, client.username or "", client.password or "")
+    added = False
     try:
+        existing = await adapter.get_torrent(torrent.info_hash)
+        if existing is not None:
+            raise AppError(
+                "TORRENT_ALREADY_PRESENT",
+                "This torrent is already present in the selected qBittorrent client.",
+                status_code=409,
+            )
         await adapter.add_torrent(
             archive_path.read_bytes(),
             filename=f"{torrent.info_hash}.torrent",
@@ -744,6 +772,25 @@ async def restore_torrent_archive(
             sequential_order=settings.get("sequential_download") is True,
             first_last_first=settings.get("first_last_piece_priority") is True,
         )
+        added = True
+        priorities = recovery_file_priorities(manifest)
+        if priorities:
+            try:
+                await adapter.set_file_priorities(torrent.info_hash, priorities)
+            except Exception:
+                # Do not leave a partially restored torrent running with the
+                # wrong file selection.  Removing the qBittorrent entry without
+                # deleting data is the least-destructive rollback; a later
+                # recovery attempt can safely retry after the underlying issue
+                # is corrected.
+                if added:
+                    try:
+                        await adapter.remove_torrent(torrent.info_hash, delete_files=False)
+                    except Exception:
+                        pass
+                raise
+    except AppError:
+        raise
     except Exception as exc:
         raise AppError("QBITTORRENT_RESTORE_FAILED", f"qBittorrent rejected the archived torrent: {exc}", status_code=503) from exc
     finally:

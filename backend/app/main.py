@@ -8,7 +8,7 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tasks, tmdb, torrent_archive
+from app.api import auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tasks, tmdb, torrent_archive, upgrades
 from app.core.config import Settings, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.integration_config import get_integration_config_store
@@ -143,6 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(search.router, prefix="/api/v1")
     app.include_router(reconciliation.router, prefix="/api/v1")
     app.include_router(torrent_archive.router, prefix="/api/v1")
+    app.include_router(upgrades.router, prefix="/api/v1")
     app.include_router(recovery.router, prefix="/api/v1")
 
     @app.get("/api/openapi.json", include_in_schema=False)

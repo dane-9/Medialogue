@@ -9,6 +9,7 @@ import { settingsApi } from './modules/settings'
 import { showsApi } from './modules/shows'
 import { storageApi } from './modules/storage'
 import { systemApi } from './modules/system'
+import { upgradesApi } from './modules/upgrades'
 
 export { ApiError } from './transport'
 
@@ -24,4 +25,5 @@ export const api = {
   ...downloadsApi,
   ...discoveryApi,
   ...problemsApi,
+  ...upgradesApi,
 } as const

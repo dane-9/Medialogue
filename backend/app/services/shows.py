@@ -263,7 +263,11 @@ async def _prepare_show_release(
         release.show_id = show.id
         release.season_id = season.id
         release.release_scope = scope
-        release.release_state = ReleaseState.CURRENT
+        preserve_historical_state = release.release_state in {ReleaseState.REPLACED, ReleaseState.REMOVED} and not bool(
+            (release.parse_snapshot or {}).get("incoming")
+        )
+        if not preserve_historical_state:
+            release.release_state = ReleaseState.CURRENT
         release.quality_definition_id = quality.id if quality else release.quality_definition_id
         release.release_group = parsed.release_group or release.release_group
         release.parse_snapshot = {
@@ -934,7 +938,8 @@ async def reconcile_show_directory(
             )
             or 0
         )
-        release.release_state = ReleaseState.CURRENT if existing else ReleaseState.MISSING
+        if release.release_state not in {ReleaseState.REPLACED, ReleaseState.REMOVED}:
+            release.release_state = ReleaseState.CURRENT if existing else ReleaseState.MISSING
 
     for episode_id in touched_episode_ids:
         episode = await db.get(Episode, episode_id)

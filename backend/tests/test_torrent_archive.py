@@ -96,6 +96,10 @@ class ArchiveQBitBehavior:
     torrents: list[TorrentObservation] = field(default_factory=list)
     torrent_bytes: bytes = b"d4:infod4:name7:exampleee"
     added: list[dict] = field(default_factory=list)
+    file_priorities: list[dict] = field(default_factory=list)
+    recovery_snapshots: dict[str, dict] = field(default_factory=dict)
+    removed: list[dict] = field(default_factory=list)
+    fail_file_priorities: bool = False
 
     def factory(self, url: str, username: str, password: str):
         return ArchiveQBitClient(self, url, username, password)
@@ -112,8 +116,22 @@ class ArchiveQBitClient:
     async def export_torrent(self, info_hash: str) -> bytes:
         return self.behavior.torrent_bytes
 
+    async def get_torrent_recovery_snapshot(self, info_hash: str):
+        return self.behavior.recovery_snapshots.get(info_hash.lower())
+
     async def add_torrent(self, torrent: bytes, **kwargs):
         self.behavior.added.append({"torrent": torrent, **kwargs})
+
+    async def get_torrent(self, info_hash: str):
+        return next((item for item in self.behavior.torrents if item.info_hash.lower() == info_hash.lower()), None)
+
+    async def set_file_priorities(self, info_hash: str, priorities: dict[int, int]):
+        if self.behavior.fail_file_priorities:
+            raise RuntimeError("file priority restore failed")
+        self.behavior.file_priorities.append({"info_hash": info_hash, "priorities": dict(priorities)})
+
+    async def remove_torrent(self, info_hash: str, *, delete_files: bool = False):
+        self.behavior.removed.append({"info_hash": info_hash, "delete_files": delete_files})
 
     async def health(self):
         return {"status": "healthy", "version": "test"}
@@ -162,10 +180,12 @@ def test_archive_verification_rejects_tampered_torrent_bytes(tmp_path: Path) -> 
 
 def _install_fake(client: TestClient, behavior: ArchiveQBitBehavior) -> None:
     from app.api import downloads as downloads_api
+    from app.api import recovery as recovery_api
     from app.api import torrent_archive as archive_api
 
     client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
     client.app.dependency_overrides[archive_api.get_torrent_archive_qbit_factory] = lambda: behavior.factory
+    client.app.dependency_overrides[recovery_api.get_recovery_qbit_factory] = lambda: behavior.factory
 
 
 def _wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
@@ -435,5 +455,174 @@ def test_failed_archive_is_visible_and_manual_retry_can_recover(archive_client) 
         assert retried_job["status"] == "completed", retried_job
         assert retried_job["summary"]["archive_state"] == "archived"
         assert Path(retried_job["summary"]["archive_path"]).read_bytes() == behavior.torrent_bytes
+    finally:
+        client.app.dependency_overrides.clear()
+
+
+def test_bulk_recovery_plan_requires_preview_and_restores_saved_file_selection(archive_client) -> None:
+    client, base, archive_dir = archive_client
+    headers = _login(client)
+    media_root = base / "movies"
+    media_root.mkdir()
+    root_response = client.post(
+        "/api/v1/storage-roots",
+        headers=headers,
+        json={"name": "Movies", "path": str(media_root), "media_type": "movies"},
+    )
+    assert root_response.status_code == 201, root_response.text
+    configured = client.post(
+        "/api/v1/download-clients",
+        headers=headers,
+        json={
+            "name": "qbit-recovery",
+            "url": "http://qbit.test:8080",
+            "username": "media",
+            "password": "secret",
+            "scope": "movies",
+            "category": "movies-default",
+            "tags": ["client-default"],
+            "enabled": True,
+        },
+    ).json()
+
+    ready_hash = "d" * 40
+    present_hash = "e" * 40
+    blocked_hash = "f" * 40
+    payload = b"d4:infod4:name7:exampleee"
+
+    async def seed_archives() -> None:
+        async with db_session.async_session_factory() as db:
+            for info_hash, name, save_path in (
+                (ready_hash, "Ready Movie 2026 1080p WEB-DL-GRP", str(media_root)),
+                (present_hash, "Present Movie 2026 1080p WEB-DL-GRP", str(media_root)),
+                (blocked_hash, "Blocked Movie 2026 1080p WEB-DL-GRP", str(base / "outside")),
+            ):
+                torrent_path = archive_dir / "torrents" / info_hash[:2] / f"{info_hash}.torrent"
+                manifest_path = archive_dir / "manifests" / info_hash[:2] / f"{info_hash}.json"
+                torrent_path.parent.mkdir(parents=True, exist_ok=True)
+                manifest_path.parent.mkdir(parents=True, exist_ok=True)
+                torrent_path.write_bytes(payload)
+                manifest_path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 2,
+                            "torrent_info_hash": info_hash,
+                            "torrent_name": name,
+                            "media_type": "movies",
+                            "media_title": name.split(" 2026", 1)[0],
+                            "release_name": name,
+                            "download_client_observations": [
+                                {
+                                    "download_client_id": configured["id"],
+                                    "download_client_name": "qbit-recovery",
+                                    "scope": "movies",
+                                    "reported_save_path": save_path,
+                                    "resolved_save_path": save_path,
+                                    "category": "movies-recovery",
+                                    "tags": ["restore-me", "private"],
+                                }
+                            ],
+                            "recovery": {
+                                "properties": {"save_path": save_path},
+                                "files": [
+                                    {"index": 0, "name": "sample.mkv", "size": 100, "priority": 0},
+                                    {"index": 1, "name": "movie.mkv", "size": 1000, "priority": 7},
+                                ],
+                                "trackers": [],
+                                "settings": {},
+                            },
+                            "archive": {"torrent_sha256": hashlib.sha256(payload).hexdigest()},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                db.add(
+                    Torrent(
+                        info_hash=info_hash,
+                        name=name,
+                        archive_state=TorrentArchiveState.ARCHIVED,
+                        archive_path=str(torrent_path),
+                        manifest_path=str(manifest_path),
+                        manifest_schema_version=2,
+                    )
+                )
+            await db.commit()
+
+    asyncio.run(seed_archives())
+
+    behavior = ArchiveQBitBehavior(
+        torrents=[
+            TorrentObservation(
+                info_hash=present_hash,
+                name="Present Movie 2026 1080p WEB-DL-GRP",
+                progress=1.0,
+                state="uploading",
+                save_path=str(media_root),
+                content_path=str(media_root / "Present Movie 2026 1080p WEB-DL-GRP"),
+                category="movies-recovery",
+                tags=("restore-me", "private"),
+                tracker=None,
+                total_size=1000,
+                added_at=None,
+                completed_at=None,
+            )
+        ],
+        torrent_bytes=payload,
+    )
+    _install_fake(client, behavior)
+    try:
+        plan_response = client.get("/api/v1/recovery/reimport/plan")
+        assert plan_response.status_code == 200, plan_response.text
+        plan = plan_response.json()
+        assert plan["total"] == 3
+        assert plan["ready"] == 1
+        assert plan["already_present"] == 1
+        assert plan["blocked"] == 1
+
+        by_hash = {item["info_hash"]: item for item in plan["items"]}
+        ready = by_hash[ready_hash]
+        assert ready["status"] == "ready"
+        assert ready["download_client_id"] == configured["id"]
+        assert ready["save_path"] == str(media_root)
+        assert ready["resolved_save_path"] == str(media_root)
+        assert ready["category"] == "movies-recovery"
+        assert ready["tags"] == ["restore-me", "private"]
+        assert ready["file_selection_captured"] is True
+        assert ready["selected_file_count"] == 1
+        assert ready["skipped_file_count"] == 1
+        assert by_hash[present_hash]["status"] == "already_present"
+        assert by_hash[blocked_hash]["status"] == "blocked"
+        assert "enabled media folder" in " ".join(by_hash[blocked_hash]["reasons"])
+
+        invalid = client.post(
+            "/api/v1/recovery/reimport",
+            headers=headers,
+            json={"confirmation_token": "not-a-plan", "torrent_ids": [ready["torrent_id"]]},
+        )
+        assert invalid.status_code == 409
+        assert invalid.json()["error"]["code"] == "INVALID_CONFIRMATION"
+        assert behavior.added == []
+
+        started = client.post(
+            "/api/v1/recovery/reimport",
+            headers=headers,
+            json={"confirmation_token": plan["confirmation_token"], "torrent_ids": [ready["torrent_id"]]},
+        )
+        assert started.status_code == 202, started.text
+        job = _wait_job(client, started.json()["job_id"])
+        assert job["status"] == "completed", job
+        assert job["summary"]["submitted"] == 1
+        assert job["summary"]["failed"] == 0
+        assert behavior.added[-1]["save_path"] == str(media_root)
+        assert behavior.added[-1]["category"] == "movies-recovery"
+        assert behavior.added[-1]["tags"] == ("restore-me", "private")
+        assert behavior.file_priorities[-1] == {
+            "info_hash": ready_hash,
+            "priorities": {0: 0, 1: 7},
+        }
+
+        events = client.get("/api/v1/events?event_type=recovery.reimport_completed")
+        assert events.status_code == 200
+        assert events.json()["total"] == 1
     finally:
         client.app.dependency_overrides.clear()

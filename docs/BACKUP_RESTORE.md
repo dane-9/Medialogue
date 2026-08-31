@@ -37,5 +37,18 @@ The bundle contains credentials and database contents. Store it as sensitive bac
 6. Recreate deployment paths/media mounts and remote path mappings for the new host.
 7. Start Medialogue.
 8. Verify storage/integration health; newly added roots still require one explicit initialization scan.
+9. Open **Settings → Backup / Recovery → Bulk torrent re-import** and choose **Inspect recovery plan**.
+10. Review every row before selecting anything. Medialogue classifies archived torrents as:
+   - **Ready** — archive bytes exist, the original qBittorrent client (or a unique name/scope replacement) is available, the saved qBittorrent path still resolves inside an enabled media folder, and the torrent is not already present;
+   - **Already present** — the target qBittorrent client already reports that info hash, so Medialogue will not submit it again;
+   - **Blocked** — required archive/client/path context is missing or unsafe. Correct the configuration and inspect again.
+11. Select the Ready rows to recover and use **Review and submit**. The signed preview is short-lived and is revalidated before the job starts; if clients, paths, media folders, archive data, or qBittorrent contents changed, Medialogue requires a new preview.
+12. Confirm the bulk submission. Each torrent is validated again immediately before it is sent to qBittorrent.
+
+Bulk recovery restores the preserved qBittorrent save path, category, tags, applicable torrent settings, and captured per-file priorities. A file whose archived qBittorrent priority was `0` remains unselected. If old recovery evidence predates file-selection capture, the preview calls that out and qBittorrent's default file selection is used.
+
+Medialogue does not create or move recovered media directories. The saved path is sent to qBittorrent only after it resolves through any configured qBittorrent remote-path mapping into the appropriate enabled Movies or Shows media folder. qBittorrent remains responsible for downloading and placement.
+
+Bulk recovery is never automatic. Inspecting a plan is read-only, and a signed preview plus an explicit confirmation is required before any torrent is submitted.
 
 Medialogue deliberately does not offer a one-click in-place database restore in the web UI.

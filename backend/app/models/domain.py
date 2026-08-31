@@ -869,6 +869,63 @@ class Indexer(TimestampMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
 
+class UpgradeCandidate(TimestampMixin, Base):
+    """Best currently known manual upgrade candidate for one library target.
+
+    Movie targets are release-level. Show targets are season-level because the
+    upgrade policy intentionally prefers one season pack over episode or
+    multi-season replacements. The candidate keeps the private download URL for
+    the later explicit Upgrade action, but API responses must never expose it.
+    """
+
+    __tablename__ = "upgrade_candidates"
+    __table_args__ = (
+        UniqueConstraint("target_key", name="uq_upgrade_candidates_target_key"),
+        Index("ix_upgrade_candidates_media_type", "media_type"),
+        Index("ix_upgrade_candidates_execution", "execution_eligible", "updated_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    target_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
+    movie_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("movies.id", ondelete="CASCADE"))
+    season_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("seasons.id", ondelete="CASCADE"))
+    current_release_ids: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
+    current_release_name: Mapped[str] = mapped_column(Text, nullable=False)
+    current_quality: Mapped[str | None] = mapped_column(String(256))
+    current_custom_format_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    indexer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("indexers.id", ondelete="SET NULL"))
+    indexer_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    guid: Mapped[str] = mapped_column(Text, nullable=False)
+    download_url: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    quality: Mapped[str | None] = mapped_column(String(256))
+    custom_format_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    score_delta: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    size: Mapped[int | None] = mapped_column(BigInteger)
+    seeders: Mapped[int | None] = mapped_column(Integer)
+    leechers: Mapped[int | None] = mapped_column(Integer)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    upgrade_types: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
+    added_custom_formats: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
+    execution_eligible: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    execution_block_reason: Mapped[str | None] = mapped_column(Text)
+    comparison_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    execution_state: Mapped[str | None] = mapped_column(String(40))
+    submitted_info_hash: Mapped[str | None] = mapped_column(String(64))
+    selected_download_client_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    selected_download_client_name: Mapped[str | None] = mapped_column(String(256))
+    selected_category: Mapped[str | None] = mapped_column(String(256))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    torrent_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    incoming_release_ids: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    old_torrents_removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cleanup_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    execution_error: Mapped[str | None] = mapped_column(Text)
+    last_searched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class InteractiveSearchResult(Base):
     """Temporary Prowlarr/Torznab search result with durable selection evidence.
 

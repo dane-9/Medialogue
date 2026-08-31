@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+from app.models.domain import MediaType
+
+
+UpgradeExecutionState = Literal[
+    "submitted",
+    "downloading",
+    "validating",
+    "handoff_attention",
+    "cleanup_required",
+    "completed",
+    "failed",
+]
+
+
+class UpgradeCandidateResponse(BaseModel):
+    id: UUID
+    media_type: MediaType
+    movie_id: UUID | None = None
+    season_id: UUID | None = None
+    media_title: str
+    media_year: int | None = None
+    season_number: int | None = None
+    current_paths: list[str] = Field(default_factory=list)
+    current_release_ids: list[UUID]
+    current_release_name: str
+    current_quality: str | None = None
+    current_custom_format_score: int
+    indexer_id: UUID | None = None
+    indexer_name: str
+    title: str
+    quality: str | None = None
+    custom_format_score: int
+    score_delta: int
+    size: int | None = None
+    seeders: int | None = None
+    leechers: int | None = None
+    published_at: datetime | None = None
+    upgrade_types: list[Literal["quality", "custom_format", "season_pack", "repack", "proper", "revision"]]
+    added_custom_formats: list[dict[str, Any]]
+    execution_eligible: bool
+    execution_block_reason: str | None = None
+    comparison_snapshot: dict[str, Any]
+    execution_state: UpgradeExecutionState | None = None
+    selected_download_client_id: UUID | None = None
+    selected_download_client_name: str | None = None
+    selected_category: str | None = None
+    torrent_id: UUID | None = None
+    download_progress: float | None = None
+    download_state: str | None = None
+    execution_error: str | None = None
+    submitted_at: datetime | None = None
+    validated_at: datetime | None = None
+    old_torrents_removed_at: datetime | None = None
+    cleanup_completed_at: datetime | None = None
+    last_searched_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class UpgradeSearchResponse(BaseModel):
+    job_id: UUID
+
+
+class UpgradeExecuteRequest(BaseModel):
+    download_client_id: UUID
+    category: str | None = Field(default=None, max_length=256)
+
+
+class UpgradeCleanupCommitRequest(BaseModel):
+    confirmation_token: str = Field(min_length=16, max_length=16384)
+
+
+class UpgradeCleanupTarget(BaseModel):
+    path: str
+    kind: Literal["directory", "file"]
+    inventory: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class UpgradeCleanupPreviewResponse(BaseModel):
+    candidate_id: UUID
+    media_type: MediaType
+    eligible: bool
+    blocked: list[str]
+    targets: list[UpgradeCleanupTarget]
+    total_bytes: int
+    confirmation_token: str
+    expires_at: datetime
+    warnings: list[str]
+
+
+class UpgradeCleanupResult(BaseModel):
+    candidate_id: UUID
+    state: Literal["completed"]
+    deleted_paths: list[str]

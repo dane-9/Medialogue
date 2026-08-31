@@ -934,7 +934,7 @@
           },
           "custom_formats": {
             "items": {
-              "$ref": "#/components/schemas/CustomFormatExportItem-Output"
+              "$ref": "#/components/schemas/CustomFormatExportItem"
             },
             "title": "Custom Formats",
             "type": "array"
@@ -951,53 +951,7 @@
         "title": "CustomFormatExportBundle",
         "type": "object"
       },
-      "CustomFormatExportItem-Input": {
-        "properties": {
-          "conditions": {
-            "items": {
-              "$ref": "#/components/schemas/CustomFormatConditionInput"
-            },
-            "title": "Conditions",
-            "type": "array"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "enabled": {
-            "default": true,
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "media_scope": {
-            "$ref": "#/components/schemas/CustomFormatScope",
-            "default": "both"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "schema_version": {
-            "default": 1,
-            "title": "Schema Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "name",
-          "conditions"
-        ],
-        "title": "CustomFormatExportItem",
-        "type": "object"
-      },
-      "CustomFormatExportItem-Output": {
+      "CustomFormatExportItem": {
         "properties": {
           "conditions": {
             "items": {
@@ -1051,7 +1005,7 @@
           },
           "custom_formats": {
             "items": {
-              "$ref": "#/components/schemas/CustomFormatExportItem-Input"
+              "$ref": "#/components/schemas/CustomFormatExportItem"
             },
             "maxItems": 500,
             "minItems": 1,
@@ -7540,6 +7494,11 @@
               }
             ],
             "title": "Quality Definition Ids"
+          },
+          "season_pack_upgrades": {
+            "default": true,
+            "title": "Season Pack Upgrades",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7622,6 +7581,10 @@
             "title": "Revision",
             "type": "integer"
           },
+          "season_pack_upgrades": {
+            "title": "Season Pack Upgrades",
+            "type": "boolean"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -7633,6 +7596,7 @@
           "name",
           "minimum_quality_definition",
           "minimum_custom_format_score",
+          "season_pack_upgrades",
           "qualities",
           "custom_format_scores",
           "assigned_titles",
@@ -7775,6 +7739,17 @@
               }
             ],
             "title": "Quality Definition Ids"
+          },
+          "season_pack_upgrades": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Pack Upgrades"
           }
         },
         "title": "QualityProfileUpdate",
@@ -8082,6 +8057,248 @@
           "job_id"
         ],
         "title": "RecoveryExportAcceptedResponse",
+        "type": "object"
+      },
+      "RecoveryReimportItem": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "download_client_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Client Id"
+          },
+          "download_client_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Client Name"
+          },
+          "file_selection_captured": {
+            "default": false,
+            "title": "File Selection Captured",
+            "type": "boolean"
+          },
+          "info_hash": {
+            "title": "Info Hash",
+            "type": "string"
+          },
+          "media_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Title"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "movies",
+                  "shows"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "release_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Name"
+          },
+          "resolved_save_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Save Path"
+          },
+          "save_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Path"
+          },
+          "selected_file_count": {
+            "default": 0,
+            "title": "Selected File Count",
+            "type": "integer"
+          },
+          "skipped_file_count": {
+            "default": 0,
+            "title": "Skipped File Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "already_present",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "torrent_id": {
+            "format": "uuid",
+            "title": "Torrent Id",
+            "type": "string"
+          },
+          "torrent_name": {
+            "title": "Torrent Name",
+            "type": "string"
+          },
+          "total_file_count": {
+            "default": 0,
+            "title": "Total File Count",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "torrent_id",
+          "info_hash",
+          "torrent_name",
+          "status"
+        ],
+        "title": "RecoveryReimportItem",
+        "type": "object"
+      },
+      "RecoveryReimportPlanResponse": {
+        "properties": {
+          "already_present": {
+            "title": "Already Present",
+            "type": "integer"
+          },
+          "blocked": {
+            "title": "Blocked",
+            "type": "integer"
+          },
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecoveryReimportItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "expires_at",
+          "confirmation_token",
+          "total",
+          "ready",
+          "already_present",
+          "blocked"
+        ],
+        "title": "RecoveryReimportPlanResponse",
+        "type": "object"
+      },
+      "RecoveryReimportRequest": {
+        "properties": {
+          "confirmation_token": {
+            "minLength": 1,
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "torrent_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Torrent Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confirmation_token",
+          "torrent_ids"
+        ],
+        "title": "RecoveryReimportRequest",
         "type": "object"
       },
       "ReleaseScope": {
@@ -11713,6 +11930,588 @@
           "save_path"
         ],
         "title": "TorrentRestoreRequest",
+        "type": "object"
+      },
+      "UpgradeCandidateResponse": {
+        "properties": {
+          "added_custom_formats": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Added Custom Formats",
+            "type": "array"
+          },
+          "cleanup_completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup Completed At"
+          },
+          "comparison_snapshot": {
+            "additionalProperties": true,
+            "title": "Comparison Snapshot",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_custom_format_score": {
+            "title": "Current Custom Format Score",
+            "type": "integer"
+          },
+          "current_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current Paths",
+            "type": "array"
+          },
+          "current_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Quality"
+          },
+          "current_release_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Current Release Ids",
+            "type": "array"
+          },
+          "current_release_name": {
+            "title": "Current Release Name",
+            "type": "string"
+          },
+          "custom_format_score": {
+            "title": "Custom Format Score",
+            "type": "integer"
+          },
+          "download_progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Progress"
+          },
+          "download_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download State"
+          },
+          "execution_block_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Block Reason"
+          },
+          "execution_eligible": {
+            "title": "Execution Eligible",
+            "type": "boolean"
+          },
+          "execution_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Error"
+          },
+          "execution_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "submitted",
+                  "downloading",
+                  "validating",
+                  "handoff_attention",
+                  "cleanup_required",
+                  "completed",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution State"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "indexer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexer Id"
+          },
+          "indexer_name": {
+            "title": "Indexer Name",
+            "type": "string"
+          },
+          "last_searched_at": {
+            "format": "date-time",
+            "title": "Last Searched At",
+            "type": "string"
+          },
+          "leechers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leechers"
+          },
+          "media_title": {
+            "title": "Media Title",
+            "type": "string"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "media_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Year"
+          },
+          "movie_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movie Id"
+          },
+          "old_torrents_removed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Torrents Removed At"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "score_delta": {
+            "title": "Score Delta",
+            "type": "integer"
+          },
+          "season_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Id"
+          },
+          "season_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Number"
+          },
+          "seeders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seeders"
+          },
+          "selected_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Category"
+          },
+          "selected_download_client_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Download Client Id"
+          },
+          "selected_download_client_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Download Client Name"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "torrent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Torrent Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "upgrade_types": {
+            "items": {
+              "enum": [
+                "quality",
+                "custom_format",
+                "season_pack",
+                "repack",
+                "proper",
+                "revision"
+              ],
+              "type": "string"
+            },
+            "title": "Upgrade Types",
+            "type": "array"
+          },
+          "validated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated At"
+          }
+        },
+        "required": [
+          "id",
+          "media_type",
+          "media_title",
+          "current_release_ids",
+          "current_release_name",
+          "current_custom_format_score",
+          "indexer_name",
+          "title",
+          "custom_format_score",
+          "score_delta",
+          "upgrade_types",
+          "added_custom_formats",
+          "execution_eligible",
+          "comparison_snapshot",
+          "last_searched_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "UpgradeCandidateResponse",
+        "type": "object"
+      },
+      "UpgradeCleanupCommitRequest": {
+        "properties": {
+          "confirmation_token": {
+            "maxLength": 16384,
+            "minLength": 16,
+            "title": "Confirmation Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation_token"
+        ],
+        "title": "UpgradeCleanupCommitRequest",
+        "type": "object"
+      },
+      "UpgradeCleanupPreviewResponse": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked",
+            "type": "array"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeCleanupTarget"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "media_type",
+          "eligible",
+          "blocked",
+          "targets",
+          "total_bytes",
+          "confirmation_token",
+          "expires_at",
+          "warnings"
+        ],
+        "title": "UpgradeCleanupPreviewResponse",
+        "type": "object"
+      },
+      "UpgradeCleanupResult": {
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "deleted_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Deleted Paths",
+            "type": "array"
+          },
+          "state": {
+            "const": "completed",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "state",
+          "deleted_paths"
+        ],
+        "title": "UpgradeCleanupResult",
+        "type": "object"
+      },
+      "UpgradeCleanupTarget": {
+        "properties": {
+          "inventory": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Inventory",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "directory",
+              "file"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "kind"
+        ],
+        "title": "UpgradeCleanupTarget",
+        "type": "object"
+      },
+      "UpgradeExecuteRequest": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "download_client_id": {
+            "format": "uuid",
+            "title": "Download Client Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "download_client_id"
+        ],
+        "title": "UpgradeExecuteRequest",
+        "type": "object"
+      },
+      "UpgradeSearchResponse": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "UpgradeSearchResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -16874,6 +17673,68 @@
         ]
       }
     },
+    "/api/v1/recovery/reimport": {
+      "post": {
+        "operationId": "start_recovery_reimport_api_v1_recovery_reimport_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryReimportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Recovery Reimport",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
+    "/api/v1/recovery/reimport/plan": {
+      "get": {
+        "operationId": "recovery_reimport_plan_api_v1_recovery_reimport_plan_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryReimportPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Recovery Reimport Plan",
+        "tags": [
+          "recovery"
+        ]
+      }
+    },
     "/api/v1/remote-path-mappings": {
       "get": {
         "operationId": "list_mappings_api_v1_remote_path_mappings_get",
@@ -18884,6 +19745,272 @@
         "summary": "Retry Torrent Archive",
         "tags": [
           "torrent-archive"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates": {
+      "get": {
+        "operationId": "list_upgrade_candidates_api_v1_upgrade_candidates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "media_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MediaType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UpgradeCandidateResponse"
+                  },
+                  "title": "Response List Upgrade Candidates Api V1 Upgrade Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Upgrade Candidates",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/search": {
+      "post": {
+        "operationId": "search_upgrade_candidates_api_v1_upgrade_candidates_search_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Search Upgrade Candidates",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/cleanup": {
+      "post": {
+        "operationId": "execute_cleanup_api_v1_upgrade_candidates__candidate_id__cleanup_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeCleanupCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeCleanupResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Cleanup",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/cleanup-preview": {
+      "get": {
+        "operationId": "preview_cleanup_api_v1_upgrade_candidates__candidate_id__cleanup_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeCleanupPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Cleanup",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/retry-handoff": {
+      "post": {
+        "operationId": "retry_handoff_api_v1_upgrade_candidates__candidate_id__retry_handoff_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeCandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Handoff",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/upgrade": {
+      "post": {
+        "operationId": "execute_upgrade_api_v1_upgrade_candidates__candidate_id__upgrade_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeCandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Upgrade",
+        "tags": [
+          "upgrade candidates"
         ]
       }
     },

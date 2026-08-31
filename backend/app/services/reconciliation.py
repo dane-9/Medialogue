@@ -999,8 +999,22 @@ async def associate_incoming_torrent(
     resolved_path: str | None,
     scope: MediaType,
     complete: bool,
+    download_client_id: UUID | None = None,
 ) -> dict[str, Any] | None:
     """Associate a confidently parsed in-scope torrent before completion."""
+
+    if download_client_id is not None:
+        from app.services.upgrade_execution import associate_upgrade_torrent
+
+        upgrade = await associate_upgrade_torrent(
+            db,
+            torrent,
+            download_client_id=download_client_id,
+            scope=scope,
+            complete=complete,
+        )
+        if upgrade is not None:
+            return upgrade
 
     parsed = parse_release(torrent.name)
 
@@ -1542,6 +1556,11 @@ async def cancel_incoming_torrent(
         if release is not None and not has_media:
             release.release_state = ReleaseState.REMOVED
         cancelled += 1
+
+    if cancelled:
+        from app.services.upgrade_execution import mark_upgrade_torrent_removed
+
+        await mark_upgrade_torrent_removed(db, torrent)
 
     if cancelled and emit_event:
         await create_event(

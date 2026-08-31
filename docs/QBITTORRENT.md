@@ -36,3 +36,11 @@ Unrelated torrents outside configured/accessible media roots are ignored.
 ## Removal
 
 When Medialogue removes an associated torrent as part of an explicitly confirmed workflow, qBittorrent is called without deleting data. Filesystem deletion, if selected, is separately previewed and committed by Medialogue.
+
+## Disaster recovery re-import
+
+The torrent archive preserves qBittorrent recovery context independently of live client presence. After restoring a Medialogue Recovery Bundle, **Settings → Backup / Recovery** can build a read-only bulk re-import plan before anything is submitted.
+
+For each archived torrent, the plan verifies the target qBittorrent client and media scope, original qBittorrent save path, remote-path resolution, enabled media folder containment, category, tags, current qBittorrent presence, and captured per-file selection. Only explicitly selected Ready rows are submitted after a second confirmation.
+
+qBittorrent still controls download placement. Medialogue supplies the preserved save path/category/tags and restores captured per-file priorities after adding the archived `.torrent`; it does not import, move, or rename recovered media.

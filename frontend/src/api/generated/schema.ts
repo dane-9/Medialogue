@@ -1669,6 +1669,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recovery/reimport": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Recovery Reimport */
+        post: operations["start_recovery_reimport_api_v1_recovery_reimport_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recovery/reimport/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recovery Reimport Plan */
+        get: operations["recovery_reimport_plan_api_v1_recovery_reimport_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remote-path-mappings": {
         parameters: {
             query?: never;
@@ -2252,6 +2286,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/upgrade-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Upgrade Candidates */
+        get: operations["list_upgrade_candidates_api_v1_upgrade_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Upgrade Candidates */
+        post: operations["search_upgrade_candidates_api_v1_upgrade_candidates_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/{candidate_id}/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Cleanup */
+        post: operations["execute_cleanup_api_v1_upgrade_candidates__candidate_id__cleanup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/{candidate_id}/cleanup-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Cleanup */
+        get: operations["preview_cleanup_api_v1_upgrade_candidates__candidate_id__cleanup_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/{candidate_id}/retry-handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Handoff */
+        post: operations["retry_handoff_api_v1_upgrade_candidates__candidate_id__retry_handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/{candidate_id}/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Upgrade */
+        post: operations["execute_upgrade_api_v1_upgrade_candidates__candidate_id__upgrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -2709,7 +2845,7 @@ export interface components {
              */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem-Output"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem"][];
             /**
              * Schema Version
              * @default 1
@@ -2717,28 +2853,7 @@ export interface components {
             schema_version: number;
         };
         /** CustomFormatExportItem */
-        "CustomFormatExportItem-Input": {
-            /** Conditions */
-            conditions: components["schemas"]["CustomFormatConditionInput"][];
-            /** Description */
-            description?: string | null;
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled: boolean;
-            /** @default both */
-            media_scope: components["schemas"]["CustomFormatScope"];
-            /** Name */
-            name: string;
-            /**
-             * Schema Version
-             * @default 1
-             */
-            schema_version: number;
-        };
-        /** CustomFormatExportItem */
-        "CustomFormatExportItem-Output": {
+        CustomFormatExportItem: {
             /** Conditions */
             conditions: components["schemas"]["CustomFormatConditionInput"][];
             /** Description */
@@ -2763,7 +2878,7 @@ export interface components {
             /** Application */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem-Input"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem"][];
             /** Schema Version */
             schema_version: number;
         };
@@ -5016,6 +5131,11 @@ export interface components {
             name: string;
             /** Quality Definition Ids */
             quality_definition_ids?: string[] | null;
+            /**
+             * Season Pack Upgrades
+             * @default true
+             */
+            season_pack_upgrades: boolean;
         };
         /** QualityProfileResponse */
         QualityProfileResponse: {
@@ -5057,6 +5177,8 @@ export interface components {
             qualities: components["schemas"]["QualityDefinitionResponse"][];
             /** Revision */
             revision: number;
+            /** Season Pack Upgrades */
+            season_pack_upgrades: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -5101,6 +5223,8 @@ export interface components {
             name?: string | null;
             /** Quality Definition Ids */
             quality_definition_ids?: string[] | null;
+            /** Season Pack Upgrades */
+            season_pack_upgrades?: boolean | null;
         };
         /** ReadinessResponse */
         ReadinessResponse: {
@@ -5223,6 +5347,91 @@ export interface components {
              * @default Recovery Bundles contain a complete database backup and sensitive integration credentials. Store the downloaded ZIP securely.
              */
             warning: string;
+        };
+        /** RecoveryReimportItem */
+        RecoveryReimportItem: {
+            /** Category */
+            category?: string | null;
+            /** Download Client Id */
+            download_client_id?: string | null;
+            /** Download Client Name */
+            download_client_name?: string | null;
+            /**
+             * File Selection Captured
+             * @default false
+             */
+            file_selection_captured: boolean;
+            /** Info Hash */
+            info_hash: string;
+            /** Media Title */
+            media_title?: string | null;
+            /** Media Type */
+            media_type?: ("movies" | "shows") | null;
+            /** Reasons */
+            reasons?: string[];
+            /** Release Name */
+            release_name?: string | null;
+            /** Resolved Save Path */
+            resolved_save_path?: string | null;
+            /** Save Path */
+            save_path?: string | null;
+            /**
+             * Selected File Count
+             * @default 0
+             */
+            selected_file_count: number;
+            /**
+             * Skipped File Count
+             * @default 0
+             */
+            skipped_file_count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "already_present" | "blocked";
+            /** Tags */
+            tags?: string[];
+            /**
+             * Torrent Id
+             * Format: uuid
+             */
+            torrent_id: string;
+            /** Torrent Name */
+            torrent_name: string;
+            /**
+             * Total File Count
+             * @default 0
+             */
+            total_file_count: number;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** RecoveryReimportPlanResponse */
+        RecoveryReimportPlanResponse: {
+            /** Already Present */
+            already_present: number;
+            /** Blocked */
+            blocked: number;
+            /** Confirmation Token */
+            confirmation_token: string;
+            /** Expires At */
+            expires_at: string;
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items?: components["schemas"]["RecoveryReimportItem"][];
+            /** Ready */
+            ready: number;
+            /** Total */
+            total: number;
+        };
+        /** RecoveryReimportRequest */
+        RecoveryReimportRequest: {
+            /** Confirmation Token */
+            confirmation_token: string;
+            /** Torrent Ids */
+            torrent_ids: string[];
         };
         /**
          * ReleaseScope
@@ -6406,6 +6615,186 @@ export interface components {
             save_path: string;
             /** Tags */
             tags?: string[] | null;
+        };
+        /** UpgradeCandidateResponse */
+        UpgradeCandidateResponse: {
+            /** Added Custom Formats */
+            added_custom_formats: {
+                [key: string]: unknown;
+            }[];
+            /** Cleanup Completed At */
+            cleanup_completed_at?: string | null;
+            /** Comparison Snapshot */
+            comparison_snapshot: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Custom Format Score */
+            current_custom_format_score: number;
+            /** Current Paths */
+            current_paths?: string[];
+            /** Current Quality */
+            current_quality?: string | null;
+            /** Current Release Ids */
+            current_release_ids: string[];
+            /** Current Release Name */
+            current_release_name: string;
+            /** Custom Format Score */
+            custom_format_score: number;
+            /** Download Progress */
+            download_progress?: number | null;
+            /** Download State */
+            download_state?: string | null;
+            /** Execution Block Reason */
+            execution_block_reason?: string | null;
+            /** Execution Eligible */
+            execution_eligible: boolean;
+            /** Execution Error */
+            execution_error?: string | null;
+            /** Execution State */
+            execution_state?: ("submitted" | "downloading" | "validating" | "handoff_attention" | "cleanup_required" | "completed" | "failed") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Indexer Id */
+            indexer_id?: string | null;
+            /** Indexer Name */
+            indexer_name: string;
+            /**
+             * Last Searched At
+             * Format: date-time
+             */
+            last_searched_at: string;
+            /** Leechers */
+            leechers?: number | null;
+            /** Media Title */
+            media_title: string;
+            media_type: components["schemas"]["MediaType"];
+            /** Media Year */
+            media_year?: number | null;
+            /** Movie Id */
+            movie_id?: string | null;
+            /** Old Torrents Removed At */
+            old_torrents_removed_at?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Quality */
+            quality?: string | null;
+            /** Score Delta */
+            score_delta: number;
+            /** Season Id */
+            season_id?: string | null;
+            /** Season Number */
+            season_number?: number | null;
+            /** Seeders */
+            seeders?: number | null;
+            /** Selected Category */
+            selected_category?: string | null;
+            /** Selected Download Client Id */
+            selected_download_client_id?: string | null;
+            /** Selected Download Client Name */
+            selected_download_client_name?: string | null;
+            /** Size */
+            size?: number | null;
+            /** Submitted At */
+            submitted_at?: string | null;
+            /** Title */
+            title: string;
+            /** Torrent Id */
+            torrent_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Upgrade Types */
+            upgrade_types: ("quality" | "custom_format" | "season_pack" | "repack" | "proper" | "revision")[];
+            /** Validated At */
+            validated_at?: string | null;
+        };
+        /** UpgradeCleanupCommitRequest */
+        UpgradeCleanupCommitRequest: {
+            /** Confirmation Token */
+            confirmation_token: string;
+        };
+        /** UpgradeCleanupPreviewResponse */
+        UpgradeCleanupPreviewResponse: {
+            /** Blocked */
+            blocked: string[];
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Confirmation Token */
+            confirmation_token: string;
+            /** Eligible */
+            eligible: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            media_type: components["schemas"]["MediaType"];
+            /** Targets */
+            targets: components["schemas"]["UpgradeCleanupTarget"][];
+            /** Total Bytes */
+            total_bytes: number;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** UpgradeCleanupResult */
+        UpgradeCleanupResult: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Deleted Paths */
+            deleted_paths: string[];
+            /**
+             * State
+             * @constant
+             */
+            state: "completed";
+        };
+        /** UpgradeCleanupTarget */
+        UpgradeCleanupTarget: {
+            /** Inventory */
+            inventory?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "directory" | "file";
+            /** Path */
+            path: string;
+        };
+        /** UpgradeExecuteRequest */
+        UpgradeExecuteRequest: {
+            /** Category */
+            category?: string | null;
+            /**
+             * Download Client Id
+             * Format: uuid
+             */
+            download_client_id: string;
+        };
+        /** UpgradeSearchResponse */
+        UpgradeSearchResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -9826,6 +10215,59 @@ export interface operations {
             };
         };
     };
+    start_recovery_reimport_api_v1_recovery_reimport_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryReimportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_reimport_plan_api_v1_recovery_reimport_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryReimportPlanResponse"];
+                };
+            };
+        };
+    };
     list_mappings_api_v1_remote_path_mappings_get: {
         parameters: {
             query?: {
@@ -11179,6 +11621,189 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_upgrade_candidates_api_v1_upgrade_candidates_get: {
+        parameters: {
+            query?: {
+                media_type?: components["schemas"]["MediaType"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_upgrade_candidates_api_v1_upgrade_candidates_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeSearchResponse"];
+                };
+            };
+        };
+    };
+    execute_cleanup_api_v1_upgrade_candidates__candidate_id__cleanup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeCleanupCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCleanupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_cleanup_api_v1_upgrade_candidates__candidate_id__cleanup_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCleanupPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_handoff_api_v1_upgrade_candidates__candidate_id__retry_handoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_upgrade_api_v1_upgrade_candidates__candidate_id__upgrade_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCandidateResponse"];
                 };
             };
             /** @description Validation Error */

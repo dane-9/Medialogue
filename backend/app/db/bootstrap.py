@@ -128,6 +128,7 @@ async def ensure_default_quality_profile(session: AsyncSession) -> None:
                 if item.name not in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
             ],
             "system_profile": DEFAULT_QUALITY_PROFILE_MARKER,
+            "season_pack_upgrades": True,
         },
         revision=1,
     )
