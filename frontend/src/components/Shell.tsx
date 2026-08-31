@@ -11,7 +11,7 @@ import { Tooltip } from './Tooltip'
 const primary = [
   { to: '/movies', label: 'Movies', icon: 'clapper' as const },
   { to: '/shows', label: 'Shows', icon: 'tv-screen' as const },
-  { to: '/review', label: 'Review', icon: 'review' as const },
+  { to: '/new-media', label: 'New Media', icon: 'new-media' as const },
   { to: '/downloads', label: 'Downloads', icon: 'download' as const },
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
 ]
@@ -55,26 +55,26 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [plexAvailable, setPlexAvailable] = useState(false)
   const [problemCount, setProblemCount] = useState(0)
-  const [reviewCount, setReviewCount] = useState(0)
-  const reviewCountGeneration = useRef(0)
+  const [newMediaCount, setNewMediaCount] = useState(0)
+  const newMediaCountGeneration = useRef(0)
   const [pageTopbarHost, setPageTopbarHost] = useState<HTMLDivElement | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
 
-  // Job events, explicit Review changes, route changes and the fallback poll
+  // Job events, explicit New Media changes, route changes and the fallback poll
   // can overlap. Only the newest request may update the badge, otherwise a
-  // slower pre-import response can restore a stale non-zero count.
-  const refreshReviewCount = useCallback(async () => {
-    const generation = ++reviewCountGeneration.current
+  // slower pre-add response can restore a stale non-zero count.
+  const refreshNewMediaCount = useCallback(async () => {
+    const generation = ++newMediaCountGeneration.current
     try {
       const count = await api.discoveryCount()
-      if (generation === reviewCountGeneration.current) setReviewCount(count)
+      if (generation === newMediaCountGeneration.current) setNewMediaCount(count)
     } catch {}
   }, [])
 
   useEffect(() => {
-    void refreshReviewCount()
-  }, [location.pathname, refreshReviewCount])
+    void refreshNewMediaCount()
+  }, [location.pathname, refreshNewMediaCount])
 
   useEffect(() => {
     let alive = true
@@ -86,10 +86,10 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     void refreshHealth()
     void refreshPlexAvailability()
     void refreshProblemCount()
-    void refreshReviewCount()
+    void refreshNewMediaCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const jobListener = () => void refreshReviewCount()
+    const jobListener = () => void refreshNewMediaCount()
     // Problem SSE events are invalidation signals only. SQLite remains the
     // authoritative count, so reconnects, rollbacks and duplicate-resolution
     // events can never leave the badge drifting from the queue.
@@ -107,25 +107,25 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     stream.addEventListener('qbittorrent.health', healthListener)
 
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
-    const reviewChangedListener = () => void refreshReviewCount()
+    const newMediaChangedListener = () => void refreshNewMediaCount()
     const plexConfigurationChangedListener = () => { void refreshPlexAvailability(); void refreshHealth() }
-    window.addEventListener('medialogue-review-changed', reviewChangedListener)
+    window.addEventListener('medialogue-new-media-changed', newMediaChangedListener)
     window.addEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
-    const reviewTimer = window.setInterval(() => void refreshReviewCount(), 60000)
+    const newMediaTimer = window.setInterval(() => void refreshNewMediaCount(), 60000)
     const healthTimer = window.setInterval(() => { void refreshHealth(); void refreshPlexAvailability() }, 60000)
     return () => {
       alive = false
       stream.close()
       window.clearInterval(problemTimer)
-      window.clearInterval(reviewTimer)
-      window.removeEventListener('medialogue-review-changed', reviewChangedListener)
+      window.clearInterval(newMediaTimer)
+      window.removeEventListener('medialogue-new-media-changed', newMediaChangedListener)
       window.removeEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
       window.clearInterval(healthTimer)
-      reviewCountGeneration.current += 1
+      newMediaCountGeneration.current += 1
     }
-  }, [refreshReviewCount])
+  }, [refreshNewMediaCount])
 
-  const currentTitle = location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/review') ? 'Review' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/tasks') ? 'Tasks' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
+  const currentTitle = location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/new-media') ? 'New Media' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/tasks') ? 'Tasks' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
 
   return <PlexAvailableContext.Provider value={plexAvailable}><PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
     <aside className="sidebar">
@@ -136,7 +136,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <GlobalSearchButton onOpen={() => setSearchOpen(true)} />
       </div>
       <div className="sidebar-scroll">
-        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount } : item.to === '/review' ? { ...item, count: reviewCount } : item)} />
+        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount, alert: true } : item.to === '/new-media' ? { ...item, count: newMediaCount } : item)} />
         <NavSection items={tools} />
         <NavSection items={system} />
       </div>
@@ -157,8 +157,8 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   </div></PageTopbarHostContext.Provider></PlexAvailableContext.Provider>
 }
 
-function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number }> }) {
-  return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count ? <span className="nav-count">{item.count}</span> : null}</NavLink>)}</div>
+function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number; alert?: boolean }> }) {
+  return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count ? <span className={`nav-count ${item.alert ? 'nav-count-alert' : ''}`}>{item.count}</span> : null}</NavLink>)}</div>
 }
 
 function HealthPill({ item }: { item: HealthIndicator }) {

@@ -256,14 +256,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Bulk Review
-         * @description Approve or ignore many reviewed directories in one request.
+         * Bulk New Media
+         * @description Approve or ignore many New Media directories in one request.
          *
          *     Each item is committed on its own and a failure does not stop the rest: one
          *     title whose metadata fetch times out must not discard the twenty-nine that
          *     already succeeded, and the caller is told exactly which ones failed and why.
          */
-        post: operations["bulk_review_api_v1_discoveries_bulk_post"];
+        post: operations["bulk_new_media_api_v1_discoveries_bulk_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -298,7 +298,7 @@ export interface paths {
         put?: never;
         /**
          * Set Discoveries Quality Profile
-         * @description Apply one Quality Profile across a reviewed batch.
+         * @description Apply one Quality Profile across a New Media batch.
          *
          *     Validated once rather than per item: a profile that does not exist is a bad
          *     request for the whole call, not five hundred identical per-item failures.
@@ -376,7 +376,7 @@ export interface paths {
         head?: never;
         /**
          * Set Discovery Quality Profile
-         * @description Choose the Quality Profile the imported title will be created with.
+         * @description Choose the Quality Profile the added title will be created with.
          */
         patch: operations["set_discovery_quality_profile_api_v1_discoveries__discovery_id__quality_profile_patch"];
         trace?: never;
@@ -2947,11 +2947,6 @@ export interface components {
          * @enum {string}
          */
         DiscoveryMode: "automatic" | "review";
-        /**
-         * DiscoveryReviewState
-         * @enum {string}
-         */
-        DiscoveryReviewState: "pending" | "approved" | "ignored";
         /** DownloadClientCategoryResponse */
         DownloadClientCategoryResponse: {
             /**
@@ -3981,7 +3976,7 @@ export interface components {
         };
         /**
          * MediaDiscoveryBulk
-         * @description Approve or ignore a batch of reviewed directories.
+         * @description Approve or ignore a batch of New Media directories.
          */
         MediaDiscoveryBulk: {
             /**
@@ -4060,7 +4055,7 @@ export interface components {
          * MediaDiscoveryQualityProfile
          * @description The Quality Profile to give the titles these directories become.
          *
-         *     Null clears it, which is not the same as leaving it unset: the reviewer is
+         *     Null clears it, which is not the same as leaving it unset: the user is
          *     saying "add these with no profile" rather than "I have not decided".
          */
         MediaDiscoveryQualityProfile: {
@@ -4069,7 +4064,7 @@ export interface components {
         };
         /**
          * MediaDiscoveryQualityProfileBulk
-         * @description One profile applied across a reviewed batch.
+         * @description One profile applied across a New Media batch.
          */
         MediaDiscoveryQualityProfileBulk: {
             /** Ids */
@@ -4138,7 +4133,7 @@ export interface components {
             quality_profile_id?: string | null;
             /** Quality Profile Name */
             quality_profile_name?: string | null;
-            review_state: components["schemas"]["DiscoveryReviewState"];
+            review_state: components["schemas"]["NewMediaState"];
             /** Root Name */
             root_name: string;
             selected?: components["schemas"]["MediaDiscoveryCandidate"] | null;
@@ -4166,7 +4161,7 @@ export interface components {
          * MediaDiscoverySelection
          * @description The identity chosen for a discovered folder.
          *
-         *     The optional fields carry what the reviewer was already looking at when they
+         *     The optional fields carry what the user was already looking at when they
          *     clicked. Supplying them lets the server record the choice without a TMDB
          *     round trip for a title it has just been told about. They are display values
          *     only: approving fetches real metadata, so a wrong one cannot enter the
@@ -4674,6 +4669,11 @@ export interface components {
             /** Tracker */
             tracker?: string | null;
         };
+        /**
+         * NewMediaState
+         * @enum {string}
+         */
+        NewMediaState: "pending" | "approved" | "ignored";
         /** ParserTestRequest */
         ParserTestRequest: {
             /** Name */
@@ -6864,7 +6864,7 @@ export interface operations {
             };
         };
     };
-    bulk_review_api_v1_discoveries_bulk_post: {
+    bulk_new_media_api_v1_discoveries_bulk_post: {
         parameters: {
             query?: never;
             header?: never;

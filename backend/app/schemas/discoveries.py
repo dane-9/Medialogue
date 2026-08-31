@@ -3,7 +3,7 @@ from uuid import UUID
 
 from typing import Literal
 
-from app.models.domain import DiscoveryReviewState, MediaRole, MediaType
+from app.models.domain import MediaRole, MediaType, NewMediaState
 from pydantic import BaseModel, Field
 
 
@@ -30,7 +30,7 @@ class MediaDiscoveryResponse(BaseModel):
     path: str
     root_name: str
     exists: bool
-    review_state: DiscoveryReviewState
+    review_state: NewMediaState
     parsed_title: str | None = None
     parsed_year: int | None = None
     confidence: float | None = None
@@ -58,7 +58,7 @@ class MediaDiscoveryResponse(BaseModel):
 class MediaDiscoverySelection(BaseModel):
     """The identity chosen for a discovered folder.
 
-    The optional fields carry what the reviewer was already looking at when they
+    The optional fields carry what the user was already looking at when they
     clicked. Supplying them lets the server record the choice without a TMDB
     round trip for a title it has just been told about. They are display values
     only: approving fetches real metadata, so a wrong one cannot enter the
@@ -88,7 +88,7 @@ class MediaDiscoveryCount(BaseModel):
 
 
 class MediaDiscoveryBulk(BaseModel):
-    """Approve or ignore a batch of reviewed directories."""
+    """Approve or ignore a batch of New Media directories."""
 
     ids: list[UUID] = Field(min_length=1, max_length=500)
     action: Literal["approve", "ignore"]
@@ -97,7 +97,7 @@ class MediaDiscoveryBulk(BaseModel):
 class MediaDiscoveryQualityProfile(BaseModel):
     """The Quality Profile to give the titles these directories become.
 
-    Null clears it, which is not the same as leaving it unset: the reviewer is
+    Null clears it, which is not the same as leaving it unset: the user is
     saying "add these with no profile" rather than "I have not decided".
     """
 
@@ -105,7 +105,7 @@ class MediaDiscoveryQualityProfile(BaseModel):
 
 
 class MediaDiscoveryQualityProfileBulk(MediaDiscoveryQualityProfile):
-    """One profile applied across a reviewed batch."""
+    """One profile applied across a New Media batch."""
 
     ids: list[UUID] = Field(min_length=1, max_length=500)
 

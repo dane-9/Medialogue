@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { CONFIDENT, filterDiscoveries, laneFor, nextFocusId, reviewRoots, triage } from './reviewTriage'
+import { CONFIDENT, filterDiscoveries, laneFor, newMediaRoots, nextFocusId, triage } from './newMediaTriage'
 import type { MediaDiscovery } from '../types'
 
 const candidate = { tmdbId: 1, title: 'Dune', year: 2021 }
 
 const item = (over: Partial<MediaDiscovery> = {}): MediaDiscovery => ({
   id: 'a', directoryId: 'd', path: '/movies/Dune 2021', rootName: 'Movies',
-  exists: true, mediaType: 'movies', reviewState: 'pending', hdr: [], candidates: [],
+  exists: true, mediaType: 'movies', newMediaState: 'pending', hdr: [], candidates: [],
   selected: candidate, confidence: 0.97, ...over,
 } as MediaDiscovery)
 
@@ -86,25 +86,25 @@ describe('filterDiscoveries', () => {
   })
 })
 
-describe('reviewRoots', () => {
+describe('newMediaRoots', () => {
   it('lists each root once, sorted, with its pending count', () => {
     const items = [
       item({ rootName: 'Shows', mediaType: 'shows' }),
       item({ rootName: 'Movies' }),
       item({ rootName: 'Shows', mediaType: 'shows' }),
     ]
-    expect(reviewRoots(items)).toEqual([
+    expect(newMediaRoots(items)).toEqual([
       { name: 'Movies', mediaType: 'movies', count: 1 },
       { name: 'Shows', mediaType: 'shows', count: 2 },
     ])
   })
 
   it('ignores an item with no root', () => {
-    expect(reviewRoots([item({ rootName: '' })])).toEqual([])
+    expect(newMediaRoots([item({ rootName: '' })])).toEqual([])
   })
 
   it('has nothing to show for an empty queue', () => {
-    expect(reviewRoots([])).toEqual([])
+    expect(newMediaRoots([])).toEqual([])
   })
 })
 

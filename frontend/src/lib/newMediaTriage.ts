@@ -2,16 +2,16 @@ import type { MediaDiscovery } from '../types'
 
 export const CONFIDENT = 0.85
 
-export type ReviewLane = 'ready' | 'attention'
+export type NewMediaLane = 'ready' | 'attention'
 
-export function laneFor(item: MediaDiscovery): ReviewLane {
+export function laneFor(item: MediaDiscovery): NewMediaLane {
   if (!item.exists) return 'attention'
   if (!item.selected) return 'attention'
   if (item.confidence !== undefined && item.confidence < CONFIDENT) return 'attention'
   return 'ready'
 }
 
-export interface ReviewFilters {
+export interface NewMediaFilters {
   mediaType?: 'movies' | 'shows'
   rootName?: string
   query?: string
@@ -24,7 +24,7 @@ function matchesQuery(item: MediaDiscovery, query: string): boolean {
   return haystacks.some((value) => (value ?? '').toLowerCase().includes(needle))
 }
 
-export function filterDiscoveries(items: readonly MediaDiscovery[], filters: ReviewFilters): MediaDiscovery[] {
+export function filterDiscoveries(items: readonly MediaDiscovery[], filters: NewMediaFilters): MediaDiscovery[] {
   return items.filter((item) => {
     if (filters.mediaType && item.mediaType !== filters.mediaType) return false
     if (filters.rootName && item.rootName !== filters.rootName) return false
@@ -43,14 +43,14 @@ export function triage(items: readonly MediaDiscovery[]): Triage {
   return result
 }
 
-export interface ReviewRoot {
+export interface NewMediaRoot {
   name: string
   mediaType: 'movies' | 'shows'
   count: number
 }
 
-export function reviewRoots(items: readonly MediaDiscovery[]): ReviewRoot[] {
-  const roots = new Map<string, ReviewRoot>()
+export function newMediaRoots(items: readonly MediaDiscovery[]): NewMediaRoot[] {
+  const roots = new Map<string, NewMediaRoot>()
   for (const item of items) {
     if (!item.rootName) continue
     const existing = roots.get(item.rootName)

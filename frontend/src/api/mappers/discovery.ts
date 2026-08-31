@@ -24,7 +24,7 @@ export function mapMediaDiscovery(value: MediaDiscoveryDto): MediaDiscovery {
     rootName: value.root_name,
     exists: value.exists,
     mediaType: value.media_type,
-    reviewState: value.review_state,
+    newMediaState: value.review_state,
     parsedTitle: value.parsed_title ?? undefined,
     parsedYear: value.parsed_year ?? undefined,
     confidence: value.confidence ?? undefined,

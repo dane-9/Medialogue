@@ -412,13 +412,12 @@ export default function CustomFormatsPageView() {
     {message && <div className="cf-banner cf-banner-success"><Icon name="check" size={15} /><span>{message}</span></div>}
 
     <div className="toolbar">
-      <div className="search-field"><Icon name="search" size={16} /><Input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter formats and conditions…" /></div>
+      <div className="search-field"><Icon name="search" size={16} /><Input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={`Search ${formats.length} Custom Format${formats.length === 1 ? '' : 's'}…`} /></div>
       <Button variant="primary" icon="plus" onClick={newFormat}>New custom format</Button>
       <div className="toolbar-spacer" />
       <Button variant="ghost" icon="sliders" onClick={openOrganizer}>Organize sections</Button>
       <Button variant="ghost" icon="archive" onClick={() => importInput.current?.click()}>Import</Button>
       <Button variant="ghost" icon="download" onClick={() => void exportAll()} disabled={!formats.length}>Export all</Button>
-      <span className="selection-count">{formats.length} format{formats.length === 1 ? '' : 's'}</span>
     </div>
 
     {loading ? <div className="cf-list-state">Loading Custom Formats…</div>
@@ -470,7 +469,7 @@ export default function CustomFormatsPageView() {
         <span className="modal-foot-spacer" />
         {dirty && <span className="footer-state">Unsaved changes</span>}
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty || !draft.name.trim() || !draft.conditions.length}>{saving ? 'Saving…' : draft.builtin ? 'Save enabled state' : 'Save format'}</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty || !draft.name.trim() || !draft.conditions.length}>{saving ? 'Saving…' : 'Save format'}</Button>
       </>}
     >
       <div className="cf-editor-shell">
@@ -551,7 +550,7 @@ function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { forma
       <strong title={format.name}>{format.name}</strong>
       <span className="cf-card-badges">
         {format.builtin && <Badge tone="blue">Built-in</Badge>}
-        <button type="button" className={`badge cf-card-toggle ${format.enabled ? 'badge-green' : ''}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}><span className="badge-dot" />{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>
+        <button type="button" className={`enabled-button cf-card-toggle ${format.enabled ? 'on' : 'off'}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}>{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>
         <Tooltip asChild content="Create a copy of this format"><button
           type="button"
           className="badge cf-card-duplicate"
@@ -561,11 +560,11 @@ function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { forma
       </span>
     </div>
     <p className="cf-card-description">{format.description || 'No description provided.'}</p>
-    <div className="cf-card-conditions">
-      {format.conditions.slice(0, 4).map((condition) => <span className="cf-condition-chip" key={condition.id}>
+    <div className="cf-card-conditions cf-card-rules">
+      {format.conditions.slice(0, 6).map((condition) => <span className="cf-condition-chip" key={condition.id}>
         {condition.name || typeLabel(condition.type)}
       </span>)}
-      {format.conditions.length > 4 && <span className="cf-condition-chip cf-condition-more">+{format.conditions.length - 4} more</span>}
+      {format.conditions.length > 6 && <span className="cf-condition-chip cf-condition-more">+{format.conditions.length - 6} more</span>}
     </div>
   </article>
 }

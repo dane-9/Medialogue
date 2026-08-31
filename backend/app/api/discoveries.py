@@ -17,7 +17,6 @@ from app.db.session import get_db
 from app.integrations.filesystem import DirectoryObservation
 from app.models.auth import AdminUser
 from app.models.domain import (
-    DiscoveryReviewState,
     MediaDirectory,
     MediaDiscovery,
     MediaRole,
@@ -25,6 +24,7 @@ from app.models.domain import (
     MediaProfileOverride,
     Movie,
     MovieRelease,
+    NewMediaState,
     QualityProfile,
     ReleaseState,
     Show,
@@ -133,7 +133,7 @@ def _response(
     present = [file for file in directory.files if file.exists]
     videos = {MediaRole.MOVIE_VIDEO, MediaRole.EPISODE_VIDEO, MediaRole.MULTI_EPISODE_VIDEO}
     # Video first, then everything else, each alphabetical: the media is what a
-    # reviewer looks for, and subtitles should never push it off the list.
+    # user looks for, and subtitles should never push it off the list.
     ordered = sorted(present, key=lambda file: (file.media_role not in videos, file.relative_path.casefold()))
     return MediaDiscoveryResponse(
         id=discovery.id,
@@ -178,7 +178,7 @@ def _query():
 async def _get_discovery(db: AsyncSession, discovery_id: UUID) -> MediaDiscovery:
     discovery = await db.scalar(_query().where(MediaDiscovery.id == discovery_id))
     if discovery is None:
-        raise AppError("DISCOVERY_NOT_FOUND", "That review item no longer exists.", status_code=404)
+        raise AppError("DISCOVERY_NOT_FOUND", "That New Media item no longer exists.", status_code=404)
     refresh_discovery_parse(discovery)
     return discovery
 
@@ -230,7 +230,7 @@ async def count_discoveries(
             .select_from(MediaDiscovery)
             .join(MediaDirectory, MediaDirectory.id == MediaDiscovery.media_directory_id)
             .where(
-                MediaDiscovery.review_state == DiscoveryReviewState.PENDING,
+                MediaDiscovery.review_state == NewMediaState.PENDING,
                 MediaDirectory.exists.is_(True),
             )
         )
@@ -249,12 +249,12 @@ async def list_discoveries(
     db: AsyncSession = Depends(get_db),
 ) -> Collection[MediaDiscoveryResponse]:
     try:
-        review_state = DiscoveryReviewState(state)
+        new_media_state = NewMediaState(state)
     except ValueError as exc:
-        raise AppError("INVALID_DISCOVERY_STATE", "Unknown review state.", status_code=422) from exc
-    statement = _query().where(MediaDiscovery.review_state == review_state)
-    if review_state == DiscoveryReviewState.PENDING:
-        # A confirmed-missing folder is not actionable Review work. Legacy
+        raise AppError("INVALID_DISCOVERY_STATE", "Unknown New Media state.", status_code=422) from exc
+    statement = _query().where(MediaDiscovery.review_state == new_media_state)
+    if new_media_state == NewMediaState.PENDING:
+        # A confirmed-missing folder is not actionable New Media work. Legacy
         # rows are retired by the next scan, but must disappear from the queue
         # and its badge as soon as the inventory says the path is gone.
         statement = statement.join(
@@ -294,8 +294,8 @@ async def select_discovery(
     client_factory=Depends(get_tmdb_client_factory),
 ) -> MediaDiscoveryResponse:
     discovery = await _get_discovery(db, discovery_id)
-    if discovery.review_state != DiscoveryReviewState.PENDING:
-        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+    if discovery.review_state != NewMediaState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That New Media item is no longer pending.", status_code=409)
     known = next(
         (item for item in discovery.candidates if isinstance(item, dict) and item.get("tmdb_id") == payload.tmdb_id),
         None,
@@ -350,8 +350,8 @@ async def set_discovery_edition(
     db: AsyncSession = Depends(get_db),
 ) -> MediaDiscoveryResponse:
     discovery = await _get_discovery(db, discovery_id)
-    if discovery.review_state != DiscoveryReviewState.PENDING or discovery.media_type != MediaType.MOVIES:
-        raise AppError("DISCOVERY_EDITION_NOT_ALLOWED", "Only pending movie review items have editions.", status_code=409)
+    if discovery.review_state != NewMediaState.PENDING or discovery.media_type != MediaType.MOVIES:
+        raise AppError("DISCOVERY_EDITION_NOT_ALLOWED", "Only pending New Media movies have editions.", status_code=409)
     if payload.mode == "automatic":
         discovery.edition_override_active = False
         discovery.manual_edition_override = None
@@ -384,12 +384,12 @@ def _directory_observation(directory: MediaDirectory) -> DirectoryObservation:
     )
 
 
-async def _apply_review_profile(db: AsyncSession, movie: Movie, quality_profile_id: UUID | None) -> None:
-    """Give a newly created movie the profile chosen during review.
+async def _apply_new_media_profile(db: AsyncSession, movie: Movie, quality_profile_id: UUID | None) -> None:
+    """Give a newly created movie the profile chosen in New Media.
 
     Only for movies this import just created: adding a second edition of a title
     you already own must not silently rewrite the scoring you set up for it.
-    A profile deleted between the choice and the import is skipped rather than
+    A profile deleted between the choice and adding is skipped rather than
     written as a dangling id.
     """
 
@@ -409,14 +409,14 @@ async def _apply_review_profile(db: AsyncSession, movie: Movie, quality_profile_
 
 
 async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_factory) -> MediaDiscovery:
-    """Add one reviewed directory to the library.
+    """Add one approved New Media directory to the library.
 
     Extracted from the single-item route so bulk approval runs exactly the same
     checks. A queue of thirty confident matches should not be a different code
     path from approving one of them, or the two drift.
     """
-    if discovery.review_state != DiscoveryReviewState.PENDING:
-        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+    if discovery.review_state != NewMediaState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That New Media item is no longer pending.", status_code=409)
     directory = discovery.media_directory
     root = directory.storage_root
     if root is None:
@@ -450,7 +450,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
             except Exception as exc:
                 await db.rollback()
                 raise AppError("TMDB_MOVIE_METADATA_FAILED", f"Could not add the selected movie: {exc}", status_code=503) from exc
-            await _apply_review_profile(db, media, discovery.quality_profile_id)
+            await _apply_new_media_profile(db, media, discovery.quality_profile_id)
         await reconcile_movie_directory(
             db,
             root,
@@ -475,7 +475,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
                 raise AppError("TMDB_SHOW_METADATA_FAILED", f"Could not add the selected show: {exc}", status_code=503) from exc
         await reconcile_show_directory(db, root, observation, show_hint=media)
 
-    discovery.review_state = DiscoveryReviewState.APPROVED
+    discovery.review_state = NewMediaState.APPROVED
     discovery.approved_media_id = media.id
     discovery.reviewed_at = utcnow()
     await db.commit()
@@ -484,9 +484,9 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
 
 
 async def _ignore_one(db: AsyncSession, discovery: MediaDiscovery) -> MediaDiscovery:
-    if discovery.review_state != DiscoveryReviewState.PENDING:
-        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
-    discovery.review_state = DiscoveryReviewState.IGNORED
+    if discovery.review_state != NewMediaState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That New Media item is no longer pending.", status_code=409)
+    discovery.review_state = NewMediaState.IGNORED
     discovery.reviewed_at = utcnow()
     await db.commit()
     await db.refresh(discovery)
@@ -510,10 +510,10 @@ async def set_discovery_quality_profile(
     __: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> MediaDiscoveryResponse:
-    """Choose the Quality Profile the imported title will be created with."""
+    """Choose the Quality Profile the added title will be created with."""
     discovery = await _get_discovery(db, discovery_id)
-    if discovery.review_state != DiscoveryReviewState.PENDING:
-        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+    if discovery.review_state != NewMediaState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That New Media item is no longer pending.", status_code=409)
     discovery.quality_profile_id = await _validated_profile_id(db, payload.quality_profile_id)
     await db.commit()
     await db.refresh(discovery)
@@ -527,7 +527,7 @@ async def set_discoveries_quality_profile(
     __: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> MediaDiscoveryBulkResult:
-    """Apply one Quality Profile across a reviewed batch.
+    """Apply one Quality Profile across a New Media batch.
 
     Validated once rather than per item: a profile that does not exist is a bad
     request for the whole call, not five hundred identical per-item failures.
@@ -538,8 +538,8 @@ async def set_discoveries_quality_profile(
     for discovery_id in payload.ids:
         try:
             discovery = await _get_discovery(db, discovery_id)
-            if discovery.review_state != DiscoveryReviewState.PENDING:
-                raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+            if discovery.review_state != NewMediaState.PENDING:
+                raise AppError("DISCOVERY_CLOSED", "That New Media item is no longer pending.", status_code=409)
         except AppError as exc:
             failures.append(MediaDiscoveryBulkFailure(id=discovery_id, code=exc.code, message=exc.message))
             continue
@@ -567,8 +567,8 @@ async def search_discovery_candidates(
     opening a row otherwise offered the one answer you already had.
     """
     discovery = await _get_discovery(db, discovery_id)
-    if discovery.review_state != DiscoveryReviewState.PENDING:
-        raise AppError("DISCOVERY_CLOSED", "That review item is no longer pending.", status_code=409)
+    if discovery.review_state != NewMediaState.PENDING:
+        raise AppError("DISCOVERY_CLOSED", "That New Media item is no longer pending.", status_code=409)
 
     query = (payload.query or discovery.parsed_title or "").strip()
     if not query:
@@ -600,7 +600,7 @@ async def search_discovery_candidates(
             candidates.insert(0, dict(kept))
     discovery.candidates = candidates[:DISCOVERY_CANDIDATE_LIMIT]
     # A search that returns something always leaves a row with a match to judge,
-    # never an empty one the reviewer has to fill in themselves.
+    # never an empty one the user has to fill in themselves.
     if discovery.selected_tmdb_id is None and discovery.candidates:
         discovery.selected_tmdb_id = int(discovery.candidates[0]["tmdb_id"])
     await db.commit()
@@ -621,14 +621,14 @@ async def approve_discovery(
 
 
 @router.post("/bulk", response_model=MediaDiscoveryBulkResult)
-async def bulk_review(
+async def bulk_new_media(
     payload: MediaDiscoveryBulk,
     _: object = Depends(require_csrf),
     __: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_tmdb_client_factory),
 ) -> MediaDiscoveryBulkResult:
-    """Approve or ignore many reviewed directories in one request.
+    """Approve or ignore many New Media directories in one request.
 
     Each item is committed on its own and a failure does not stop the rest: one
     title whose metadata fetch times out must not discard the twenty-nine that
@@ -689,9 +689,9 @@ async def restore_discovery(
 ) -> MediaDiscoveryResponse:
     """Put an ignored item back in the queue, so a mis-click is recoverable."""
     discovery = await _get_discovery(db, discovery_id)
-    if discovery.review_state != DiscoveryReviewState.IGNORED:
+    if discovery.review_state != NewMediaState.IGNORED:
         raise AppError("DISCOVERY_NOT_IGNORED", "Only an ignored item can be restored.", status_code=409)
-    discovery.review_state = DiscoveryReviewState.PENDING
+    discovery.review_state = NewMediaState.PENDING
     discovery.reviewed_at = None
     await db.commit()
     await db.refresh(discovery)

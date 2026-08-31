@@ -4,7 +4,7 @@ export interface RootDraft {
   path: string
   mediaType: 'movies' | 'shows'
   accessMode: 'read_only' | 'read_write'
-  reviewNewMedia: boolean
+  approveNewMedia: boolean
   missingGraceChecks: number
 }
 
@@ -14,7 +14,7 @@ export function rootDraftChanged(draft: RootDraft, baseline: RootDraft | null): 
     || draft.path.trim() !== baseline.path.trim()
     || draft.mediaType !== baseline.mediaType
     || draft.accessMode !== baseline.accessMode
-    || draft.reviewNewMedia !== baseline.reviewNewMedia
+    || draft.approveNewMedia !== baseline.approveNewMedia
     || draft.missingGraceChecks !== baseline.missingGraceChecks
 }
 

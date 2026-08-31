@@ -8,7 +8,7 @@ import { ConfirmProvider } from './components/Confirm'
 import { ApiError, api } from './api/client'
 import { AppShell } from './components/Shell'
 import { Button, Input } from './components/ui'
-import { CustomFormatsPage, DownloadsPage, EventHistoryPage, MovieDetailPage, MoviesPage, ProblemsPage, ReviewPage, SettingsPage, ShowDetailPage, ShowsPage, TasksPage, TorrentArchivePage } from './pages'
+import { CustomFormatsPage, DownloadsPage, EventHistoryPage, MovieDetailPage, MoviesPage, NewMediaPage, ProblemsPage, SettingsPage, ShowDetailPage, ShowsPage, TasksPage, TorrentArchivePage } from './pages'
 import QualityProfilesPage from './QualityProfilesPage'
 
 function App() {
@@ -39,7 +39,8 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/shows" element={<ShowsPage />} />
     <Route path="/shows/:id" element={<ShowDetailRoute />} />
     <Route path="/downloads" element={<DownloadsPage />} />
-    <Route path="/review" element={<ReviewPage />} />
+    <Route path="/new-media" element={<NewMediaPage />} />
+    <Route path="/review" element={<Navigate to="/new-media" replace />} />
     <Route path="/problems" element={<ProblemsPage />} />
     <Route path="/torrent-archive" element={<TorrentArchivePage />} />
     <Route path="/custom-formats" element={<CustomFormatsPage />} />

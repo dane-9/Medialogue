@@ -52,7 +52,7 @@ class DiscoveryMode(StrEnum):
     REVIEW = "review"
 
 
-class DiscoveryReviewState(StrEnum):
+class NewMediaState(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
     IGNORED = "ignored"
@@ -364,7 +364,7 @@ class StorageRoot(TimestampMixin, Base):
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
     access_mode: Mapped[AccessMode] = mapped_column(SAEnum(AccessMode, native_enum=False), default=AccessMode.READ_ONLY, nullable=False)
     #: What a scan does with media it has never seen. The API defaults to adding
-    #: it, which is what a caller that says nothing means; the UI offers review
+    #: it, which is what a caller that says nothing means; the UI offers New Media
     #: as its default instead, and says so explicitly on every request.
     discovery_mode: Mapped[DiscoveryMode] = mapped_column(SAEnum(DiscoveryMode, native_enum=False), default=DiscoveryMode.AUTOMATIC, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -394,7 +394,9 @@ class MediaDiscovery(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     media_directory_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("media_directories.id", ondelete="CASCADE"), nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
-    review_state: Mapped[DiscoveryReviewState] = mapped_column(SAEnum(DiscoveryReviewState, native_enum=False), default=DiscoveryReviewState.PENDING, nullable=False)
+    # The attribute and column retain their historical name for database and API
+    # compatibility; application code presents this state as New Media.
+    review_state: Mapped[NewMediaState] = mapped_column(SAEnum(NewMediaState, native_enum=False), default=NewMediaState.PENDING, nullable=False)
     parsed_title: Mapped[str | None] = mapped_column(String(512))
     parsed_year: Mapped[int | None] = mapped_column(Integer)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
@@ -403,8 +405,8 @@ class MediaDiscovery(TimestampMixin, Base):
     manual_edition_override: Mapped[str | None] = mapped_column(String(128))
     edition_override_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: Quality Profile to give the title this directory becomes. Unconstrained on
-    #: purpose: a profile deleted between review and import must not make the
-    #: directory unimportable, so an unknown id reads back as "no profile".
+    #: purpose: a profile deleted between approval and adding must not prevent
+    #: the directory from being added, so an unknown id reads back as "no profile".
     quality_profile_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)

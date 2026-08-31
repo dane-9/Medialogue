@@ -23,7 +23,7 @@ from sqlalchemy.orm import selectinload
 from app.core.identity import identity_titles_equivalent
 from app.integrations.filesystem import DirectoryObservation, FilesystemObserver
 from app.integrations.plex import PlexClient, PlexMediaMatch
-from app.models.domain import AssociationType, DiscoveryMode, DiscoveryReviewState, IdentityState, InteractiveSearchResult, MediaDirectory, MediaDiscovery, MediaFile, EpisodeMediaMap, MediaType, Movie, MovieRelease, MovieReleaseTorrent, Show, Season, ShowRelease, ShowReleaseTorrent, ParseEvidence, PlexMatchMethod, PlexMatchState, PlexObservation, Problem, ProblemStatus, QualityDefinition, ReleaseScope, ReleaseState, Severity, SourceType, StorageRoot, Torrent, classify_problem_workflow
+from app.models.domain import AssociationType, DiscoveryMode, IdentityState, InteractiveSearchResult, MediaDirectory, MediaDiscovery, MediaFile, EpisodeMediaMap, MediaType, Movie, MovieRelease, MovieReleaseTorrent, NewMediaState, Show, Season, ShowRelease, ShowReleaseTorrent, ParseEvidence, PlexMatchMethod, PlexMatchState, PlexObservation, Problem, ProblemStatus, QualityDefinition, ReleaseScope, ReleaseState, Severity, SourceType, StorageRoot, Torrent, classify_problem_workflow
 from app.parser import ReleaseParseResult, parse_release
 from app.reconciliation.engine import ReconciliationEngine
 from app.reconciliation.types import (
@@ -35,7 +35,7 @@ from app.reconciliation.types import (
 from app.services.events import create_event, publish_live_event, queue_live_event
 from app.services.integration_state import get_configured_plex
 from app.services.tmdb import TMDBUnavailable, resolve_movie_identity_detailed
-from app.services.discoveries import retire_missing_review_discovery, stage_media_discovery
+from app.services.discoveries import retire_missing_new_media_discovery, stage_media_discovery
 from app.services.quality_profiles import evaluate_current_release_score
 
 
@@ -348,14 +348,14 @@ async def mark_absent_known_directories(
                 )
             continue
         if not directory.exists:
-            await retire_missing_review_discovery(db, directory.id)
+            await retire_missing_new_media_discovery(db, directory.id)
             continue
-        # Review work goes as soon as the folder does, without waiting out the
+        # New Media work goes as soon as the folder does, without waiting out the
         # grace window. The window exists so a briefly unreachable share does
         # not mark real library media missing; a pending discovery has never
         # entered the library, so all the delay achieves is a queue row offering
         # an import that cannot succeed.
-        await retire_missing_review_discovery(db, directory.id)
+        await retire_missing_new_media_discovery(db, directory.id)
         if directory.missing_since is None:
             directory.missing_since = now
             directory.missing_check_count = 1
@@ -366,7 +366,7 @@ async def mark_absent_known_directories(
             continue
         directory.exists = False
         committed += 1
-        await retire_missing_review_discovery(db, directory.id)
+        await retire_missing_new_media_discovery(db, directory.id)
         release = directory.movie_release
         if release and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}:
             release.release_state = ReleaseState.MISSING
@@ -596,7 +596,7 @@ async def reconcile_movie_directory(
     manual_identity: bool = False,
     edition_override_active: bool = False,
     manual_edition_override: str | None = None,
-    force_review: bool = False,
+    force_new_media: bool = False,
 ) -> str:
     """Reconcile one filesystem directory; used by scans and qBit completion."""
 
@@ -725,7 +725,7 @@ async def reconcile_movie_directory(
     if (
         root.media_type == MediaType.MOVIES
         and not manual_identity
-        and (force_review or (root.discovery_mode == DiscoveryMode.REVIEW and movie is None))
+        and (force_new_media or (root.discovery_mode == DiscoveryMode.REVIEW and movie is None))
     ):
         discovery = await stage_media_discovery(
             db, directory, folder_parse, media_type=MediaType.MOVIES, title=title, year=year, confidence=confidence
@@ -848,7 +848,7 @@ async def reconcile_movie_directory(
                 reason=decision.reason_code,
                 entity_type="movie",
                 entity_id=movie.id,
-                message="Automatic attachment needs review before the new release can become current.",
+                message="Automatic attachment needs approval before the new release can become current.",
                 details={**decision.details, "path": observation.path},
             )
             return "review"
@@ -922,8 +922,8 @@ async def reconcile_movie_directory(
         discovery = await db.scalar(
             select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
         )
-        if discovery is not None and discovery.review_state != DiscoveryReviewState.APPROVED:
-            discovery.review_state = DiscoveryReviewState.APPROVED
+        if discovery is not None and discovery.review_state != NewMediaState.APPROVED:
+            discovery.review_state = NewMediaState.APPROVED
             discovery.selected_tmdb_id = movie.tmdb_id
             discovery.approved_media_id = movie.id
             discovery.reviewed_at = utcnow()
@@ -1287,7 +1287,7 @@ async def finalize_completed_torrent(
         torrent=torrent,
         movie_hint=movie,
         incoming_release=incoming_release,
-        force_review=confidence < 0.90,
+        force_new_media=confidence < 0.90,
     )
     if result in {"matched", "duplicates", "conflicts"}:
         await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)

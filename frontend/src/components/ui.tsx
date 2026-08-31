@@ -9,7 +9,7 @@ export function Button({ children, variant = 'secondary', icon, ...props }: Prop
 }
 
 export function Badge({ children, tone = 'neutral', className = '' }: PropsWithChildren<{ tone?: 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple'; className?: string }>) {
-  return <span className={`badge badge-${tone} ${className}`}><span className="badge-dot" />{children}</span>
+  return <span className={`badge badge-${tone} ${className}`}>{children}</span>
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) { return <input className="input" {...props} /> }
@@ -75,10 +75,10 @@ export function EnabledButton({ enabled, onChange, disabled, labels }: {
     aria-pressed={enabled}
     disabled={disabled}
     onClick={() => onChange(!enabled)}
-  ><span className="badge-dot" />{enabled ? on : off}</button>
+  >{enabled ? on : off}</button>
 }
 
-export function Select({ children, value, onChange, disabled, className = '', ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ children, value, onChange, disabled, selectedPrefix, className = '', ...rest }: SelectHTMLAttributes<HTMLSelectElement> & { selectedPrefix?: string }) {
   const options: DropdownOption[] = []
   const collect = (nodes: ReactNode, group?: string) => {
     Children.forEach(nodes, (node) => {
@@ -106,13 +106,16 @@ export function Select({ children, value, onChange, disabled, className = '', ..
     options={options}
     disabled={disabled}
     ariaLabel={rest['aria-label']}
+    selectedPrefix={selectedPrefix}
     onChange={(next) => onChange?.({ target: { value: next } } as ChangeEvent<HTMLSelectElement>)}
   />
 }
 
-export function Panel({ title, eyebrow, action, children, className = '' }: PropsWithChildren<{ title?: string; eyebrow?: string; action?: React.ReactNode; className?: string }>) {
+export function Panel({ title, eyebrow, note, action, children, className = '' }: PropsWithChildren<{ title?: string; eyebrow?: string; note?: string; action?: React.ReactNode; className?: string }>) {
   return <section className={`panel ${className}`}>
-    {(title || eyebrow || action) && <div className="panel-header"><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}{title && <h2>{title}</h2>}</div>{action}</div>}
+    {/* note sits beside the title rather than above it, for counts that qualify
+        the heading instead of categorising it the way an eyebrow does. */}
+    {(title || eyebrow || note || action) && <div className="panel-header"><div className="panel-heading">{eyebrow && <div className="eyebrow">{eyebrow}</div>}{title && <h2>{title}</h2>}{note && <span className="panel-note">{note}</span>}</div>{action}</div>}
     {children}
   </section>
 }

@@ -13,7 +13,7 @@ export const discoveryApi = {
     }
     return items.map(mapMediaDiscovery)
   },
-  bulkReviewDiscoveries: async (ids: string[], action: 'approve' | 'ignore') => {
+  bulkNewMediaDiscoveries: async (ids: string[], action: 'approve' | 'ignore') => {
     const payload = await openApiData(openApiClient.POST('/api/v1/discoveries/bulk', { body: { ids, action } }))
     return { succeeded: payload.succeeded ?? [], failed: payload.failed ?? [] }
   },

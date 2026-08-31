@@ -321,10 +321,9 @@ export default function QualityProfilesPage() {
     {message && <div className="settings-note"><Icon name="activity" size={15} /><span>{message}</span></div>}
 
     <div className="toolbar">
-      <div className="search-field"><Icon name="search" size={16} /><Input value={profileFilter} onChange={(event) => setProfileFilter(event.target.value)} placeholder="Filter profiles, qualities and formats…" /></div>
+      <div className="search-field"><Icon name="search" size={16} /><Input value={profileFilter} onChange={(event) => setProfileFilter(event.target.value)} placeholder={`Search ${profiles.length} Quality Profile${profiles.length === 1 ? '' : 's'}…`} /></div>
       <Button variant="primary" icon="plus" onClick={beginNew}>New profile</Button>
       <div className="toolbar-spacer" />
-      <span className="selection-count">{profiles.length} profile{profiles.length === 1 ? '' : 's'}</span>
     </div>
 
     {loading

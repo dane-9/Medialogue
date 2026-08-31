@@ -1588,15 +1588,6 @@
         "title": "DiscoveryMode",
         "type": "string"
       },
-      "DiscoveryReviewState": {
-        "enum": [
-          "pending",
-          "approved",
-          "ignored"
-        ],
-        "title": "DiscoveryReviewState",
-        "type": "string"
-      },
       "DownloadClientCategoryResponse": {
         "properties": {
           "is_default": {
@@ -4573,7 +4564,7 @@
         "type": "object"
       },
       "MediaDiscoveryBulk": {
-        "description": "Approve or ignore a batch of reviewed directories.",
+        "description": "Approve or ignore a batch of New Media directories.",
         "properties": {
           "action": {
             "enum": [
@@ -4771,7 +4762,7 @@
         "type": "object"
       },
       "MediaDiscoveryQualityProfile": {
-        "description": "The Quality Profile to give the titles these directories become.\n\nNull clears it, which is not the same as leaving it unset: the reviewer is\nsaying \"add these with no profile\" rather than \"I have not decided\".",
+        "description": "The Quality Profile to give the titles these directories become.\n\nNull clears it, which is not the same as leaving it unset: the user is\nsaying \"add these with no profile\" rather than \"I have not decided\".",
         "properties": {
           "quality_profile_id": {
             "anyOf": [
@@ -4790,7 +4781,7 @@
         "type": "object"
       },
       "MediaDiscoveryQualityProfileBulk": {
-        "description": "One profile applied across a reviewed batch.",
+        "description": "One profile applied across a New Media batch.",
         "properties": {
           "ids": {
             "items": {
@@ -4986,7 +4977,7 @@
             "title": "Quality Profile Name"
           },
           "review_state": {
-            "$ref": "#/components/schemas/DiscoveryReviewState"
+            "$ref": "#/components/schemas/NewMediaState"
           },
           "root_name": {
             "title": "Root Name",
@@ -5057,7 +5048,7 @@
         "type": "object"
       },
       "MediaDiscoverySelection": {
-        "description": "The identity chosen for a discovered folder.\n\nThe optional fields carry what the reviewer was already looking at when they\nclicked. Supplying them lets the server record the choice without a TMDB\nround trip for a title it has just been told about. They are display values\nonly: approving fetches real metadata, so a wrong one cannot enter the\nlibrary.",
+        "description": "The identity chosen for a discovered folder.\n\nThe optional fields carry what the user was already looking at when they\nclicked. Supplying them lets the server record the choice without a TMDB\nround trip for a title it has just been told about. They are display values\nonly: approving fetches real metadata, so a wrong one cannot enter the\nlibrary.",
         "properties": {
           "original_title": {
             "anyOf": [
@@ -6578,6 +6569,15 @@
         ],
         "title": "MovieTorrentHistoryResponse",
         "type": "object"
+      },
+      "NewMediaState": {
+        "enum": [
+          "pending",
+          "approved",
+          "ignored"
+        ],
+        "title": "NewMediaState",
+        "type": "string"
       },
       "ParserTestRequest": {
         "properties": {
@@ -12253,8 +12253,8 @@
     },
     "/api/v1/discoveries/bulk": {
       "post": {
-        "description": "Approve or ignore many reviewed directories in one request.\n\nEach item is committed on its own and a failure does not stop the rest: one\ntitle whose metadata fetch times out must not discard the twenty-nine that\nalready succeeded, and the caller is told exactly which ones failed and why.",
-        "operationId": "bulk_review_api_v1_discoveries_bulk_post",
+        "description": "Approve or ignore many New Media directories in one request.\n\nEach item is committed on its own and a failure does not stop the rest: one\ntitle whose metadata fetch times out must not discard the twenty-nine that\nalready succeeded, and the caller is told exactly which ones failed and why.",
+        "operationId": "bulk_new_media_api_v1_discoveries_bulk_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -12287,7 +12287,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Bulk Review",
+        "summary": "Bulk New Media",
         "tags": [
           "discoveries"
         ]
@@ -12316,7 +12316,7 @@
     },
     "/api/v1/discoveries/quality-profile": {
       "post": {
-        "description": "Apply one Quality Profile across a reviewed batch.\n\nValidated once rather than per item: a profile that does not exist is a bad\nrequest for the whole call, not five hundred identical per-item failures.",
+        "description": "Apply one Quality Profile across a New Media batch.\n\nValidated once rather than per item: a profile that does not exist is a bad\nrequest for the whole call, not five hundred identical per-item failures.",
         "operationId": "set_discoveries_quality_profile_api_v1_discoveries_quality_profile_post",
         "requestBody": {
           "content": {
@@ -12497,7 +12497,7 @@
     },
     "/api/v1/discoveries/{discovery_id}/quality-profile": {
       "patch": {
-        "description": "Choose the Quality Profile the imported title will be created with.",
+        "description": "Choose the Quality Profile the added title will be created with.",
         "operationId": "set_discovery_quality_profile_api_v1_discoveries__discovery_id__quality_profile_patch",
         "parameters": [
           {

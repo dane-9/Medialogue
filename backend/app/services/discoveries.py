@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.domain import DiscoveryReviewState, MediaDirectory, MediaDiscovery, MediaType
+from app.models.domain import MediaDirectory, MediaDiscovery, MediaType, NewMediaState
 from app.parser import PARSER_VERSION, ReleaseParseResult, parse_release
 from app.services.tmdb import (
     TMDBMovieIdentityResolution,
@@ -20,8 +20,8 @@ from app.services.tmdb import (
 DISCOVERY_CANDIDATE_LIMIT = 20
 
 
-async def retire_missing_review_discovery(db: AsyncSession, directory_id: UUID) -> bool:
-    """Delete pending Review work whose directory is confirmed absent.
+async def retire_missing_new_media_discovery(db: AsyncSession, directory_id: UUID) -> bool:
+    """Delete pending New Media work whose directory is confirmed absent.
 
     Approved media follows the normal missing-media lifecycle. A pending
     discovery has never entered the library, so retaining it after the grace
@@ -32,7 +32,7 @@ async def retire_missing_review_discovery(db: AsyncSession, directory_id: UUID) 
     discovery = await db.scalar(
         select(MediaDiscovery).where(
             MediaDiscovery.media_directory_id == directory_id,
-            MediaDiscovery.review_state == DiscoveryReviewState.PENDING,
+            MediaDiscovery.review_state == NewMediaState.PENDING,
         )
     )
     if discovery is None:
@@ -42,9 +42,9 @@ async def retire_missing_review_discovery(db: AsyncSession, directory_id: UUID) 
 
 
 def refresh_discovery_parse(discovery: MediaDiscovery) -> bool:
-    """Reparse queued review evidence after the parser grammar changes.
+    """Reparse queued New Media evidence after the parser grammar changes.
 
-    Review rows intentionally survive reloads, which also means their parsed
+    New Media rows intentionally survive reloads, which also means their parsed
     title and TMDB candidates can outlive the parser version that created them.
     Refreshing lazily keeps existing queues correct without a one-off database
     migration for every parser improvement.
@@ -136,7 +136,7 @@ async def stage_media_discovery(
         discovery = MediaDiscovery(
             media_directory_id=directory.id,
             media_type=media_type,
-            review_state=DiscoveryReviewState.PENDING,
+            review_state=NewMediaState.PENDING,
         )
         db.add(discovery)
         await db.flush()

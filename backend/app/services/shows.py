@@ -14,7 +14,6 @@ from app.core.identity import identity_titles_equivalent
 from app.integrations.filesystem import DirectoryObservation
 from app.models.domain import (
     DiscoveryMode,
-    DiscoveryReviewState,
     Episode,
     EpisodeMediaMap,
     IdentityState,
@@ -25,6 +24,7 @@ from app.models.domain import (
     MediaFile,
     MediaRole,
     MediaType,
+    NewMediaState,
     ParseEvidence,
     PlexMatchState,
     PlexObservation,
@@ -44,7 +44,7 @@ from app.models.domain import (
     StorageRoot,
 )
 from app.parser import extract_episode_numbers, parse_release, parse_season_folder
-from app.services.discoveries import retire_missing_review_discovery, stage_media_discovery
+from app.services.discoveries import retire_missing_new_media_discovery, stage_media_discovery
 from app.services.events import create_event
 from app.services.quality_profiles import evaluate_current_release_score
 from app.services.reconciliation import open_problem, resolve_problem
@@ -515,7 +515,7 @@ async def reconcile_show_directory(
             year=year,
         )
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
-        return "review" if discovery.review_state == DiscoveryReviewState.PENDING else "matched"
+        return "review" if discovery.review_state == NewMediaState.PENDING else "matched"
 
     if show is None:
         tmdb_resolution = await resolve_show_identity_detailed(db, title, year)
@@ -965,8 +965,8 @@ async def reconcile_show_directory(
     discovery = await db.scalar(
         select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
     )
-    if discovery is not None and discovery.review_state != DiscoveryReviewState.APPROVED:
-        discovery.review_state = DiscoveryReviewState.APPROVED
+    if discovery is not None and discovery.review_state != NewMediaState.APPROVED:
+        discovery.review_state = NewMediaState.APPROVED
         discovery.selected_tmdb_id = show.tmdb_id
         discovery.approved_media_id = show.id
         discovery.reviewed_at = utcnow()
@@ -1113,9 +1113,9 @@ async def mark_absent_show_directories(
             directory.missing_check_count = 0
             continue
         if not directory.exists:
-            await retire_missing_review_discovery(db, directory.id)
+            await retire_missing_new_media_discovery(db, directory.id)
             continue
-        await retire_missing_review_discovery(db, directory.id)
+        await retire_missing_new_media_discovery(db, directory.id)
         if directory.missing_since is None:
             directory.missing_since = now
             directory.missing_check_count = 1
@@ -1126,7 +1126,7 @@ async def mark_absent_show_directories(
             continue
         directory.exists = False
         missing += 1
-        await retire_missing_review_discovery(db, directory.id)
+        await retire_missing_new_media_discovery(db, directory.id)
         affected: set[UUID] = set()
         for media_file in directory.files:
             media_file.exists = False

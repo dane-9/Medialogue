@@ -5,7 +5,7 @@ import { eventLabel, eventStamp } from './lib/eventLabel'
 import { formatAge } from './lib/age'
 import { isGeneratedRootName, nextRootName } from './lib/rootName'
 import { moveItem } from './lib/reorder'
-import { CONFIDENT, reviewRoots } from './lib/reviewTriage'
+import { CONFIDENT, newMediaRoots } from './lib/newMediaTriage'
 import { rootBrowseStart, rootDraftChanged, rootPathAfterBrowse } from './lib/rootDraft'
 import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
@@ -96,20 +96,16 @@ function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollInterval
   }, [pollIntervalMs, watchScanJobs])
 }
 
-/** Library filter as a single select.
- *
- * Five chips took half the toolbar to express one choice, and their fully
- * rounded shape matched nothing else in the theme. "Showing" names what the
- * value does, so the current filter reads as a sentence in the trigger.
- */
+/** Library filter as a single select. */
 function LibraryFilter({ value, options, onChange, ariaLabel }: { value: string; options: string[]; onChange: (value: string) => void; ariaLabel: string }) {
   // Without a width class the trigger is width: 100%, which fills the toolbar
   // and pushes everything after it onto its own row.
   return <Dropdown
-    className="select"
+    className="select library-control"
     ariaLabel={ariaLabel}
+    selectedPrefix="FILTER"
     value={value}
-    options={options.map((option) => ({ value: option, label: option === 'All' ? 'Showing: All' : `Showing: ${option}` }))}
+    options={options.map((option) => ({ value: option, label: option }))}
     onChange={onChange}
   />
 }
@@ -243,7 +239,7 @@ export function MoviesPage() {
     return matchesFilter && movie.title.toLowerCase().includes(query.toLowerCase())
   }), [movies, filter, query])
   return <Page title="Movies" subtitle="Your library, exactly where it was downloaded.">
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><Select aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} />{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} />{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
@@ -604,7 +600,7 @@ export function ShowsPage() {
   const needsReview = (show: Show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0
   const filtered = useMemo(() => items.filter((show) => filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter)), [items, filter])
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files.">
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Select aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`specials-chip ${countSpecials ? 'on' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
     {!error && !loading && !filtered.length && <EmptyState title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
@@ -770,7 +766,7 @@ export function DownloadsPage() {
   const completed = items.filter((item) => item.state === 'Completed')
   const clientCount = new Set(items.map((item) => item.client)).size
   const disagreements = items.filter((item) => item.reconciliationState?.toLowerCase().includes('disagree') || item.mediaState?.toLowerCase().includes('missing') || item.mediaState?.toLowerCase().includes('conflict')).length
-  return <Page title="Downloads" subtitle="Observe qBittorrent activity without importing or moving media." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
+  return <Page title="Downloads" subtitle="Observe qBittorrent activity without adding or moving media." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
     <div className="stats-row"><Stat label="Downloading" value={String(downloading.length)} detail="Live progress" tone="blue" /><Stat label="Checking" value={String(checking.length)} detail="Verifying data" tone="blue" /><Stat label="Seeding" value={String(seeding.length)} detail="Active torrents" tone="green" /><Stat label="Completed" value={String(completed.length)} detail="Observed torrents" /><Stat label="Tracked clients" value={String(clientCount)} detail={clientCount ? 'Reporting activity' : 'No activity'} />{disagreements > 0 && <Stat label="Evidence mismatch" value={String(disagreements)} detail="qBit / media review" tone="red" />}</div>
     <div className="toolbar"><div className="filter-tabs">{(['Downloading', 'Checking', 'Seeding', 'Completed', 'Paused', 'Error', 'All'] as const).map((item) => <button key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>{item}</button>)}</div><div className="toolbar-spacer" /><Link className="button button-ghost" to="/settings"><Icon name="settings" size={16} />Client settings</Link></div>
     {error && <EmptyState icon="download" title="Could not load downloads" detail={error} action={<Button variant="ghost" icon="refresh" onClick={() => void load()}>Try again</Button>} />}
@@ -871,7 +867,7 @@ export function TasksPage() {
 
   return <Page title="Tasks" subtitle="Available tasks, active background work, and recent executions in one place.">
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
-    <Panel className="table-panel tasks-panel" title="Available Tasks" eyebrow={`${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`}>
+    <Panel className="table-panel tasks-panel" title="Scheduled" note={`${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`}>
       <div className="tasks-table-wrap"><table className="data-table tasks-table"><thead><tr><th>Name</th><th>Interval</th><th>Last execution</th><th>Last duration</th><th>Next execution</th><th /></tr></thead><tbody>{tasks.map((task) => {
           const active = Boolean(task.activeJobId)
           const overdue = task.enabled && !active && isTaskOverdue(task.nextRunAt, task.intervalSeconds)
@@ -879,7 +875,7 @@ export function TasksPage() {
         })}</tbody></table></div>
       {!loading && !tasks.length && <EmptyState icon="activity" title="No available tasks" detail="No background tasks are registered." />}
     </Panel>
-    <Panel className="table-panel tasks-panel" title="Queue" eyebrow={`${jobs.length} RECENT EXECUTION${jobs.length === 1 ? '' : 'S'}`}>
+    <Panel className="table-panel tasks-panel" title="History" note={`${jobs.length} MOST RECENT`}>
       <div className="tasks-table-wrap"><table className="data-table tasks-table tasks-queue-table"><thead><tr><th>Name</th><th>Started</th><th>Ended</th><th>Duration</th><th>Progress</th><th>Detail</th><th /></tr></thead><tbody>{jobs.map((job) => {
           const canCancel = job.cancellable && (job.state === 'running' || job.state === 'queued')
           const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(job.state)
@@ -981,13 +977,13 @@ export function EventHistoryPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not clear events.') }
   }
 
-  return <Page title="Events" subtitle="Every change worth keeping. Live progress is not recorded here." action={<div className="page-actions"><Button variant="ghost" icon="refresh" onClick={() => void load()}>Refresh</Button><Button variant="danger" onClick={() => void clearHistory()}>Clear events</Button></div>}>
+  return <Page title="Events" subtitle="Every change worth keeping. Live progress is not recorded here." >
     <div className="toolbar event-toolbar">
+      <div className="search-field event-search"><Icon name="search" size={16} /><Input value={eventType} onChange={(event) => setEventType(event.target.value)} placeholder={`Search ${total} event${total === 1 ? '' : 's'}, e.g. release.replaced…`} /></div>
       <Select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">All severities</option><option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option></Select>
       <Select value={entityType} onChange={(event) => setEntityType(event.target.value)}><option value="">All entities</option><option value="movie">Movies</option><option value="show">Shows</option><option value="episode">Episodes</option><option value="movie_release">Movie releases</option><option value="show_release">Show releases</option><option value="torrent">Torrents</option><option value="storage_root">Media folders</option><option value="download_client">Download clients</option><option value="tag">Tags</option><option value="bulk_operation">Bulk operations</option></Select>
-      <Input value={eventType} onChange={(event) => setEventType(event.target.value)} placeholder="Exact event type, e.g. release.replaced" />
       <Select aria-label="Events per page" value={String(pageSize)} onChange={(event) => setPageSize(Number(event.target.value))}>{[50, 100, 150, 200, 250, 500, 1000].map((size) => <option key={size} value={size}>{size} per page</option>)}</Select>
-      <span className="muted event-count">{total} events · page {pages ? page : 0} of {pages}</span>
+      <Button variant="danger" onClick={() => void clearHistory()}>Clear events</Button>
     </div>
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {!loading && <Panel className="event-history-panel">
@@ -1635,7 +1631,7 @@ export function ProblemsPage() {
   </Page>
 }
 
-function reviewFolderName(path: string) {
+function newMediaFolderName(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path
 }
 
@@ -1643,10 +1639,10 @@ function capitalise(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-export function ReviewPage() {
+export function NewMediaPage() {
   const [items, setItems] = useState<MediaDiscovery[]>([])
   const [loading, setLoading] = useState(true)
-  const [importing, setImporting] = useState(false)
+  const [adding, setAdding] = useState(false)
   const [rootName, setRootName] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
@@ -1659,7 +1655,7 @@ export function ReviewPage() {
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
     try { setItems(await api.discoveries()); setError('') }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load Review.') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load New Media.') }
     finally { if (!quiet) setLoading(false) }
   }
   useEffect(() => {
@@ -1669,7 +1665,7 @@ export function ReviewPage() {
   }, [])
   useLiveLibraryRefresh(() => load(true))
 
-  // Confirmed-missing directories are not actionable review work. The API
+  // Confirmed-missing directories are not actionable New Media work. The API
   // excludes them too; this guard also prevents an already-loaded stale row
   // from lingering until the next refresh.
   const actionableItems = useMemo(() => items.filter((item) => item.exists), [items])
@@ -1678,14 +1674,14 @@ export function ReviewPage() {
     if (!selectedId) return
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null
-      if (target?.closest('.review-match-cell, .review-folder-cell, .review-alt-pane, .dropdown-menu')) return
+      if (target?.closest('.new-media-match-cell, .new-media-folder-cell, .new-media-alt-pane, .dropdown-menu')) return
       setSelectedId('')
     }
     document.addEventListener('mousedown', onPointerDown)
     return () => document.removeEventListener('mousedown', onPointerDown)
   }, [selectedId])
 
-  const roots = useMemo(() => reviewRoots(actionableItems), [actionableItems])
+  const roots = useMemo(() => newMediaRoots(actionableItems), [actionableItems])
   useEffect(() => {
     if (!roots.length) { setRootName(''); return }
     if (!roots.some((root) => root.name === rootName)) setRootName(roots[0].name)
@@ -1694,15 +1690,15 @@ export function ReviewPage() {
   const root = roots.find((entry) => entry.name === rootName)
   const rows = useMemo(() => actionableItems.filter((item) => item.rootName === rootName), [actionableItems, rootName])
   const selected = rows.find((item) => item.id === selectedId)
-  const importable = rows.filter((item) => !excluded.has(item.id) && item.selected && item.exists)
+  const addable = rows.filter((item) => !excluded.has(item.id) && item.selected && item.exists)
   const duplicateEditionIds = useMemo(() => {
     const groups = new Map<string, string[]>()
-    importable.filter((item) => item.mediaType === 'movies' && item.selected).forEach((item) => {
+    addable.filter((item) => item.mediaType === 'movies' && item.selected).forEach((item) => {
       const key = `${item.selected!.tmdbId}:${movieEditionSlot(item.edition)}`
       groups.set(key, [...(groups.get(key) ?? []), item.id])
     })
     return new Set([...groups.values()].filter((ids) => ids.length > 1).flat())
-  }, [importable])
+  }, [addable])
 
   const sharedMovieIds = useMemo(() => {
     const groups = new Map<number, string[]>()
@@ -1712,7 +1708,7 @@ export function ReviewPage() {
     })
     return new Set([...groups.values()].filter((ids) => ids.length > 1).flat())
   }, [rows])
-  const conflictingIds = new Set(importable.filter((item) => item.libraryEditionConflict).map((item) => item.id))
+  const conflictingIds = new Set(addable.filter((item) => item.libraryEditionConflict).map((item) => item.id))
   duplicateEditionIds.forEach((id) => conflictingIds.add(id))
   const hasEditionConflicts = conflictingIds.size > 0
   const noun = root?.mediaType === 'shows' ? 'show' : 'movie'
@@ -1743,7 +1739,7 @@ export function ReviewPage() {
   }, [rows, excluded])
 
   // Applies to the folders currently listed and still included, not to the whole
-  // queue: the visible selection is what the reviewer believes they are changing.
+  // queue: the visible selection is what the user believes they are changing.
   const setAllProfiles = async (profileId: string | null) => {
     const targets = rows.filter((item) => !excluded.has(item.id))
     if (!targets.length) return
@@ -1758,21 +1754,21 @@ export function ReviewPage() {
     finally { setProfileBusy(false) }
   }
 
-  const runImport = async () => {
-    const ids = importable.map((item) => item.id)
+  const runAdd = async () => {
+    const ids = addable.map((item) => item.id)
     if (!ids.length || hasEditionConflicts) return
-    setImporting(true); setError(''); setMessage('')
+    setAdding(true); setError(''); setMessage('')
     try {
-      const result = await api.bulkReviewDiscoveries(ids, 'approve')
+      const result = await api.bulkNewMediaDiscoveries(ids, 'approve')
       setItems((current) => current.filter((item) => !result.succeeded.includes(item.id)))
-      window.dispatchEvent(new Event('medialogue-review-changed'))
-      setMessage(`${result.succeeded.length} ${result.succeeded.length === 1 ? noun : `${noun}s`} imported.`)
+      window.dispatchEvent(new Event('medialogue-new-media-changed'))
+      setMessage(`${result.succeeded.length} ${result.succeeded.length === 1 ? noun : `${noun}s`} added to the library.`)
       if (result.failed.length) {
-        setError(`${result.failed.length} could not be imported: ${result.failed.map((failure) => failure.message).join(' ')}`)
+        setError(`${result.failed.length} could not be added: ${result.failed.map((failure) => failure.message).join(' ')}`)
         await load()
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import those.') }
-    finally { setImporting(false) }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not add those.') }
+    finally { setAdding(false) }
   }
 
   const choose = async (item: MediaDiscovery, candidate: TMDBCandidate) => {
@@ -1790,27 +1786,27 @@ export function ReviewPage() {
     }
   }
 
-  if (loading) return <Page title="Review" subtitle="Check what a scan found, then import it in one go.">
-    <div className="review-loading">Loading detected media…</div>
+  if (loading) return <Page title="New Media" subtitle="Confirm media found during scans before adding it to your library.">
+    <div className="new-media-loading">Loading detected media…</div>
   </Page>
 
-  if (!actionableItems.length) return <Page title="Review" subtitle="Check what a scan found, then import it in one go.">
-    <EmptyState icon="review" title="Nothing to review" detail="New media from review-enabled media folders will appear here after a scan." />
+  if (!actionableItems.length) return <Page title="New Media" subtitle="Confirm media found during scans before adding it to your library.">
+    <EmptyState icon="new-media" title="No new media" detail="Media awaiting approval will appear here after a scan." />
   </Page>
 
-  return <Page title="Review" subtitle="Check what a scan found, then import it in one go.">
+  return <Page title="New Media" subtitle="Confirm media found during scans before adding it to your library.">
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
 
-    <div className="review-roots-label">Media folders</div>
-    <div className="review-roots">
+    <div className="new-media-roots-label">Media folders</div>
+    <div className="new-media-roots">
       {roots.map((entry) => <button
         type="button"
         key={entry.name}
-        className={`review-root ${entry.name === rootName ? 'active' : ''}`}
+        className={`new-media-root ${entry.name === rootName ? 'active' : ''}`}
         onClick={() => { setRootName(entry.name); setSelectedId('') }}
       >
-        <span className="review-root-name">
+        <span className="new-media-root-name">
           <span className={`kind-box kind-${entry.mediaType === 'movies' ? 'movie' : 'show'}`} aria-label={entry.mediaType === 'movies' ? 'Movies folder' : 'Shows folder'}>
             <Icon name={entry.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={13} />
           </span>
@@ -1820,11 +1816,11 @@ export function ReviewPage() {
       </button>)}
     </div>
 
-    <div className="review-workspace">
+    <div className="new-media-workspace">
 
-      <div className="review-scroll">
-        <span className="review-col-head">{noun === 'show' ? 'Show' : 'Movie'} folder</span>
-        <span className="review-col-head">Detected {noun}</span>
+      <div className="new-media-scroll">
+        <span className="new-media-col-head">{noun === 'show' ? 'Show' : 'Movie'} folder</span>
+        <span className="new-media-col-head">Detected {noun}</span>
         {rows.map((item) => {
             const match = item.selected
             const active = item.id === selectedId
@@ -1836,32 +1832,32 @@ export function ReviewPage() {
               : null
             // A display:contents wrapper, so both cells stay direct grid items
             // while still sharing one hover target across the whole row.
-            return <div className="review-row" key={item.id}>
+            return <div className="new-media-row" key={item.id}>
               <div
-                className={`review-folder-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
+                className={`new-media-folder-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
                 onClick={() => setSelectedId(active ? '' : item.id)}
               >
                 <button
                   type="button"
                   role="checkbox"
                   aria-checked={included && !blocked}
-                  aria-label={`Import ${reviewFolderName(item.path)}`}
-                  className={`review-check ${included && !blocked ? 'on' : ''}`}
+                  aria-label={`Add ${newMediaFolderName(item.path)} to the library`}
+                  className={`new-media-check ${included && !blocked ? 'on' : ''}`}
                   // Including or leaving out a folder is not the same intent as
                   // opening it, so the checkbox must not also select the row.
                   onClick={(event) => { event.stopPropagation(); toggle(item.id) }}
                   disabled={blocked}
                 >{included && !blocked && <Icon name="check" size={11} />}</button>
-                <div className="review-folder-copy">
-                  <Tooltip content={item.path}><code>{reviewFolderName(item.path)}</code></Tooltip>
+                <div className="new-media-folder-copy">
+                  <Tooltip content={item.path}><code>{newMediaFolderName(item.path)}</code></Tooltip>
                   {/* Reveals on row hover like the edition control, but keeps its
                       space so the row does not resize under the pointer. */}
                   <span
-                    className={`review-profile-cell ${item.qualityProfileId ? '' : 'optional'}`}
+                    className={`new-media-profile-cell ${item.qualityProfileId ? '' : 'optional'}`}
                     onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
                   >
                     <Dropdown
-                      ariaLabel={`Quality Profile for ${reviewFolderName(item.path)}`}
+                      ariaLabel={`Quality Profile for ${newMediaFolderName(item.path)}`}
                       value={item.qualityProfileId ?? ''}
                       disabled={profileBusy}
                       options={[{ value: '', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
@@ -1869,28 +1865,28 @@ export function ReviewPage() {
                     />
                   </span>
                 </div>
-                {state && <span className={`review-state ${state.tone}`}>{state.text}</span>}
+                {state && <span className={`new-media-state ${state.tone}`}>{state.text}</span>}
               </div>
 
               <div
-                className={`review-match-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
+                className={`new-media-match-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
                 onClick={() => setSelectedId(active ? '' : item.id)}
               >
-                <button type="button" className="review-match-main">
-                  <span className="review-poster">{match?.posterRef
+                <button type="button" className="new-media-match-main">
+                  <span className="new-media-poster">{match?.posterRef
                     ? <img src={tmdbPosterUrl(match.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />
                     : <Icon name={item.mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
-                  <span className="review-match-copy">
+                  <span className="new-media-match-copy">
                     <strong>{match?.title ?? item.parsedTitle ?? 'Nothing found'}</strong>
 
-                    <span className="review-match-sub">
+                    <span className="new-media-match-sub">
                       <small>{match?.year ?? item.parsedYear ?? '—'}</small>
                       {item.mediaType === 'movies' && <span
-                        className={`review-edition-cell ${editionConflict ? 'clash' : item.parsedEdition || item.manualEditionOverride || sharedMovieIds.has(item.id) ? '' : 'optional'}`}
+                        className={`new-media-edition-cell ${editionConflict ? 'clash' : item.parsedEdition || item.manualEditionOverride || sharedMovieIds.has(item.id) ? '' : 'optional'}`}
                         title={editionConflict ? (item.libraryEditionConflict ? 'Already in your library with this edition' : 'Another copy in this queue has the same movie and edition') : undefined}
                         onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
                       >
-                        <ReviewDiscoveryEdition
+                        <NewMediaDiscoveryEdition
                           key={`${item.id}:${item.editionOverrideActive}:${item.manualEditionOverride ?? ''}`}
                           item={item}
                           options={editionOptions}
@@ -1906,11 +1902,11 @@ export function ReviewPage() {
         })}
       </div>
 
-      <div className="review-import">
-        {/* Sits with the import action because it describes what is about to be
-            imported, and it is one write for the whole visible selection. */}
-        <span className="review-import-profile">
-          <span className="review-import-profile-label">Quality Profile</span>
+      <div className="new-media-add">
+        {/* Sits with the add action because it describes what is about to be
+            added, and it is one write for the whole visible selection. */}
+        <span className="new-media-add-profile">
+          <span className="new-media-add-profile-label">Quality Profile</span>
           {/* A value, not a command: it shows what the included folders are set
               to and changing it sets them. The old placeholder option was an
               action sitting in a list of values, and read as one more choice. */}
@@ -1927,17 +1923,17 @@ export function ReviewPage() {
           />
         </span>
         <div className="toolbar-spacer" />
-        {hasEditionConflicts && <span className="review-import-warning">Resolve same-edition copies or leave one out before importing.</span>}
-        <Button variant="primary" icon="check" onClick={() => void runImport()} disabled={importing || !importable.length || hasEditionConflicts}>
-          {importing ? 'Adding…' : `Add ${importable.length} ${importable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
+        {hasEditionConflicts && <span className="new-media-add-warning">Resolve same-edition copies or leave one out before adding.</span>}
+        <Button variant="primary" icon="check" onClick={() => void runAdd()} disabled={adding || !addable.length || hasEditionConflicts}>
+          {adding ? 'Adding…' : `Add ${addable.length} ${addable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
         </Button>
       </div>
 
       {selected
-        ? <ReviewAlternatives key={selected.id} item={selected} onChoose={(candidate) => void choose(selected, candidate)} onSearched={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} onError={setError} />
-        : <aside className="review-alt-pane review-alt-idle">
-          <div className="review-col-head review-alt-title">Possible matches</div>
-          <div className="review-alt-empty">
+        ? <NewMediaAlternatives key={selected.id} item={selected} onChoose={(candidate) => void choose(selected, candidate)} onSearched={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} onError={setError} />
+        : <aside className="new-media-alt-pane new-media-alt-idle">
+          <div className="new-media-col-head new-media-alt-title">Possible matches</div>
+          <div className="new-media-alt-empty">
             <Icon name="search" size={28} />
             <p>Select a detected {noun} to see the alternatives.</p>
           </div>
@@ -1946,7 +1942,7 @@ export function ReviewPage() {
   </Page>
 }
 
-function ReviewAlternatives({ item, onChoose, onSearched, onError }: {
+function NewMediaAlternatives({ item, onChoose, onSearched, onError }: {
   item: MediaDiscovery
   onChoose: (candidate: TMDBCandidate) => void
   onSearched: (item: MediaDiscovery) => void
@@ -1963,9 +1959,9 @@ function ReviewAlternatives({ item, onChoose, onSearched, onError }: {
     finally { setSearching(false) }
   }
 
-  return <aside className="review-alt-pane">
-    <div className="review-col-head review-alt-title">Possible matches</div>
-    <div className="review-alt-head">
+  return <aside className="new-media-alt-pane">
+    <div className="new-media-col-head new-media-alt-title">Possible matches</div>
+    <div className="new-media-alt-head">
       <div className="search-field">
         <Icon name="search" size={14} />
         <Input
@@ -1977,23 +1973,23 @@ function ReviewAlternatives({ item, onChoose, onSearched, onError }: {
         />
       </div>
     </div>
-    <div className="review-alt-list">
-      {searching && <p className="review-alt-note">Searching…</p>}
-      {!searching && !matches.length && <p className="review-alt-note">No candidates. Search above.</p>}
+    <div className="new-media-alt-list">
+      {searching && <p className="new-media-alt-note">Searching…</p>}
+      {!searching && !matches.length && <p className="new-media-alt-note">No candidates. Search above.</p>}
       {matches.map((candidate) => {
         const chosen = item.selected?.tmdbId === candidate.tmdbId
         const yearMatches = item.parsedYear !== undefined && candidate.year === item.parsedYear
         return <button
           type="button"
           key={candidate.tmdbId}
-          className={`review-candidate ${chosen ? 'chosen' : ''}`}
+          className={`new-media-candidate ${chosen ? 'chosen' : ''}`}
           disabled={chosen}
           onClick={() => onChoose(candidate)}
         >
-          <span className="review-poster">{candidate.posterRef
+          <span className="new-media-poster">{candidate.posterRef
             ? <img src={tmdbPosterUrl(candidate.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />
             : <Icon name={item.mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
-          <span className="review-candidate-copy">
+          <span className="new-media-candidate-copy">
             <strong>{candidate.title}</strong>
             <small>{candidate.year ?? 'Year unknown'}{yearMatches ? ' · matches folder' : ''}</small>
           </span>
@@ -2010,7 +2006,7 @@ function initialDiscoveryEdition(item: MediaDiscovery, options: string[]): Editi
   return { selection: CUSTOM_EDITION, custom: edition }
 }
 
-function ReviewDiscoveryEdition({ item, options, onChanged, onError }: { item: MediaDiscovery; options: string[]; onChanged: (item: MediaDiscovery) => void; onError: (message: string) => void }) {
+function NewMediaDiscoveryEdition({ item, options, onChanged, onError }: { item: MediaDiscovery; options: string[]; onChanged: (item: MediaDiscovery) => void; onError: (message: string) => void }) {
   const [draft, setDraft] = useState<EditionDraft>(() => initialDiscoveryEdition(item, options))
   const [saving, setSaving] = useState(false)
   const persist = async (next: EditionDraft) => {
@@ -2021,7 +2017,7 @@ function ReviewDiscoveryEdition({ item, options, onChanged, onError }: { item: M
     catch (reason) { onError(reason instanceof Error ? reason.message : 'Could not save the edition.') }
     finally { setSaving(false) }
   }
-  return <div className="review-edition-picker">
+  return <div className="new-media-edition-picker">
     <Dropdown
       ariaLabel="Edition"
       value={draft.selection}
@@ -2238,7 +2234,7 @@ function StorageSettings() {
   const [path, setPath] = useState('/media/movies')
   const [mediaType, setMediaType] = useState<'movies' | 'shows'>('movies')
   const [accessMode, setAccessMode] = useState<'read_only' | 'read_write'>('read_only')
-  const [reviewNewMedia, setReviewNewMedia] = useState(false)
+  const [approveNewMedia, setApproveNewMedia] = useState(false)
   const [missingGraceChecks, setMissingGraceChecks] = useState(2)
   const [mappingName, setMappingName] = useState('qBittorrent path')
   const [mappingClientId, setMappingClientId] = useState('')
@@ -2291,13 +2287,13 @@ function StorageSettings() {
   }
 
   const beginAddRoot = () => {
-    setMessage(null); setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setReviewNewMedia(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', reviewNewMedia: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage(null)
+    setMessage(null); setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setApproveNewMedia(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', approveNewMedia: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage(null)
   }
   const editRoot = (root: StorageRoot) => {
-    setMessage(null); setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setReviewNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, reviewNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage(null)
+    setMessage(null); setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setApproveNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, approveNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage(null)
   }
   const rootDirty = rootDraftChanged(
-    { name, path, mediaType, accessMode, reviewNewMedia, missingGraceChecks },
+    { name, path, mediaType, accessMode, approveNewMedia, missingGraceChecks },
     rootBaseline,
   )
   const closeRootModal = async () => {
@@ -2326,15 +2322,15 @@ function StorageSettings() {
     if (!name.trim() || !path.trim()) { setMessage({ tone: 'error', text: 'A folder path and a name are required.' }); return }
     setRootBusy(true)
     try {
-      const requestedDiscoveryMode = reviewNewMedia ? 'review' : 'automatic'
+      const requestedDiscoveryMode = approveNewMedia ? 'review' : 'automatic'
       const saved = selectedRoot
         ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, missing_grace_checks: missingGraceChecks })
         : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: true, missing_grace_checks: missingGraceChecks })
       // A Vite page can outlive its backend process during development. Older
       // servers ignore unknown request fields, which previously closed the
-      // modal as if Review had been persisted when it had not.
+      // modal as if New Media approval had been persisted when it had not.
       if (saved.discovery_mode !== requestedDiscoveryMode) {
-        throw new Error('The backend did not save the new-media setting. Restart the backend and try again.')
+        throw new Error('The backend did not save the New Media setting. Restart the backend and try again.')
       }
       setRoots((items) => selectedRoot ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved])
       setMappingRootId((value) => value || saved.id); setRootBaseline(null); setRootModalOpen(false)
@@ -2390,7 +2386,7 @@ function StorageSettings() {
     setRootBusy(true)
       try {
         await api.deleteStorageRoot(root.id, removeEntries)
-        if (removeEntries) window.dispatchEvent(new Event('medialogue-review-changed'))
+        if (removeEntries) window.dispatchEvent(new Event('medialogue-new-media-changed'))
         setRoots((items) => items.filter((item) => item.id !== root.id))
       setRemoving(null)
       setRootModalOpen(false)
@@ -2573,14 +2569,14 @@ function StorageSettings() {
             />
           </Field>
 
-          <Field label="New media" help={reviewNewMedia
-            ? 'Newly detected titles wait in Review until you approve them.'
+          <Field label="New media" help={approveNewMedia
+            ? 'Newly detected titles wait in New Media until you approve them.'
             : 'Newly detected titles are added to your library as soon as a scan finds them.'}>
             <Segmented
               ariaLabel="New media"
-              value={reviewNewMedia ? 'review' : 'auto'}
-              onChange={(mode) => setReviewNewMedia(mode === 'review')}
-              options={[{ value: 'review', label: 'Review before adding' }, { value: 'auto', label: 'Add automatically' }]}
+              value={approveNewMedia ? 'review' : 'auto'}
+              onChange={(mode) => setApproveNewMedia(mode === 'review')}
+              options={[{ value: 'review', label: 'Approve before adding' }, { value: 'auto', label: 'Add automatically' }]}
             />
           </Field>
           <Field label="Missing grace checks" help="How many scans in a row must miss a file before it counts as missing.">
@@ -2966,7 +2962,7 @@ function QBittorrentSettings() {
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
     {clients.length > 0 && <div className="provider-card-grid">
       {clients.map((client) => <article className={`provider-card ${client.enabled ? '' : 'provider-card-disabled'}`} role="button" tabIndex={0} key={client.id} onClick={() => selectClient(client.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectClient(client.id) } }}>
-        <div className="provider-card-head"><div className={`provider-card-icon ${client.scope === 'movies' ? 'kind-movie' : 'kind-show'}`}><Icon name={client.scope === 'movies' ? 'clapper' : 'tv-screen'} size={20} /></div><button type="button" className={`badge cf-card-toggle ${client.enabled ? 'badge-green' : ''}`} aria-pressed={client.enabled} aria-label={`Turn ${client.name} ${client.enabled ? 'off' : 'on'}`} disabled={togglingId === client.id} onClick={(event) => { event.stopPropagation(); void toggleClient(client) }}><span className="badge-dot" />{togglingId === client.id ? 'Saving…' : client.enabled ? 'On' : 'Off'}</button></div>
+        <div className="provider-card-head"><div className={`provider-card-icon ${client.scope === 'movies' ? 'kind-movie' : 'kind-show'}`}><Icon name={client.scope === 'movies' ? 'clapper' : 'tv-screen'} size={20} /></div><button type="button" className={`enabled-button cf-card-toggle ${client.enabled ? 'on' : 'off'}`} aria-pressed={client.enabled} aria-label={`Turn ${client.name} ${client.enabled ? 'off' : 'on'}`} disabled={togglingId === client.id} onClick={(event) => { event.stopPropagation(); void toggleClient(client) }}>{togglingId === client.id ? 'Saving…' : client.enabled ? 'On' : 'Off'}</button></div>
         <strong>{client.name}</strong><span>{client.url}</span>
         <div className="provider-card-meta"><span className={`provider-health ${client.health === 'healthy' ? 'healthy' : client.health === 'unavailable' ? 'error' : ''}`}><i />{client.health}</span></div>
       </article>)}
@@ -3326,7 +3322,7 @@ function IndexerSettings() {
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
     {indexers.length > 0 && <div className="provider-card-grid">
       {indexers.map((indexer) => { const source = presetFromUrl(indexer.torznabUrl); return <article className={`provider-card ${indexer.enabled ? '' : 'provider-card-disabled'}`} role="button" tabIndex={0} key={indexer.id} onClick={() => selectIndexer(indexer.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectIndexer(indexer.id) } }}>
-        <div className="provider-card-head"><div className={`provider-card-icon indexer-source-icon indexer-source-${source}`} style={indexerBadgePreview(indexer.color ?? '')}><img src={indexerPresets[source].icon} alt={`${indexerPresets[source].name} icon`} /></div><button type="button" className={`badge cf-card-toggle ${indexer.enabled ? 'badge-green' : ''}`} aria-pressed={indexer.enabled} aria-label={`Turn ${indexer.name} ${indexer.enabled ? 'off' : 'on'}`} disabled={togglingId === indexer.id} onClick={(event) => { event.stopPropagation(); void toggleIndexer(indexer) }}><span className="badge-dot" />{togglingId === indexer.id ? 'Saving…' : indexer.enabled ? 'On' : 'Off'}</button></div>
+        <div className="provider-card-head"><div className={`provider-card-icon indexer-source-icon indexer-source-${source}`} style={indexerBadgePreview(indexer.color ?? '')}><img src={indexerPresets[source].icon} alt={`${indexerPresets[source].name} icon`} /></div><button type="button" className={`enabled-button cf-card-toggle ${indexer.enabled ? 'on' : 'off'}`} aria-pressed={indexer.enabled} aria-label={`Turn ${indexer.name} ${indexer.enabled ? 'off' : 'on'}`} disabled={togglingId === indexer.id} onClick={(event) => { event.stopPropagation(); void toggleIndexer(indexer) }}>{togglingId === indexer.id ? 'Saving…' : indexer.enabled ? 'On' : 'Off'}</button></div>
         <strong>{indexer.name}</strong><span>{indexer.torznabUrl}</span>
         <div className="provider-card-meta"><span className={`provider-health ${indexer.health === 'healthy' ? 'healthy' : indexer.health === 'unavailable' ? 'error' : ''}`}><i />{indexer.health}</span></div>
       </article>})}

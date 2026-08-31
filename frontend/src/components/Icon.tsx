@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'review' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers'
 
 const paths: Record<IconName, JSX.Element> = {
   download: <path
@@ -90,7 +90,7 @@ const paths: Record<IconName, JSX.Element> = {
   play: <path d="m8 5 11 7-11 7V5Z" />,
   pause: <><path d="M8 5v14M16 5v14" /></>,
   check: <path d="m5 12 4 4L19 6" />,
-  review: <path
+  'new-media': <path
     fill="currentColor"
     stroke="none"
     fillRule="evenodd"
@@ -198,7 +198,7 @@ const VIEW_BOXES: Partial<Record<IconName, string>> = {
   play: '3.84 2.34 19.31 19.31',
   pause: '2.34 2.34 19.31 19.31',
   check: '2.34 1.34 19.31 19.31',
-  review: '-1.46 -2.21 18.92 18.92',
+  'new-media': '-1.46 -2.21 18.92 18.92',
   plus: '5.1 5.1 13.79 13.79',
   refresh: '-25.08 -25.08 562.16 562.16',
   logout: '-0.41 -0.41 24.83 24.83',

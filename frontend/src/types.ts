@@ -820,7 +820,7 @@ export interface MediaDiscovery {
   rootName: string
   exists: boolean
   mediaType: 'movies' | 'shows'
-  reviewState: 'pending' | 'approved' | 'ignored'
+  newMediaState: 'pending' | 'approved' | 'ignored'
   parsedTitle?: string
   parsedYear?: number
   confidence?: number

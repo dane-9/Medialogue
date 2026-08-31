@@ -11,12 +11,13 @@ export interface DropdownOption {
   group?: string
 }
 
-export function Dropdown({ value, options, onChange, disabled, ariaLabel, className = '' }: {
+export function Dropdown({ value, options, onChange, disabled, ariaLabel, selectedPrefix, className = '' }: {
   value: string
   options: DropdownOption[]
   onChange: (value: string) => void
   disabled?: boolean
   ariaLabel?: string
+  selectedPrefix?: string
   className?: string
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -134,7 +135,10 @@ export function Dropdown({ value, options, onChange, disabled, ariaLabel, classN
       onClick={() => (open ? setOpen(false) : openMenu())}
       onKeyDown={onKeyDown}
     >
-      <span>{current?.label ?? ''}</span>
+      <span className="dropdown-value">
+        {selectedPrefix && <small>{selectedPrefix}</small>}
+        <span>{current?.label ?? ''}</span>
+      </span>
       <Icon name="caret" size={14} />
     </button>
     {open && createPortal(
