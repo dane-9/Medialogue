@@ -117,6 +117,88 @@ class _TorrentPayload(BaseModel):
     total_size: int | None = None
     added_on: int | None = None
     completion_on: int | None = None
+    amount_left: int | None = None
+    auto_tmm: bool | None = None
+    dl_limit: int | None = None
+    up_limit: int | None = None
+    downloaded: int | None = None
+    uploaded: int | None = None
+    force_start: bool | None = None
+    f_l_piece_prio: bool | None = None
+    seq_dl: bool | None = None
+    super_seeding: bool | None = None
+    priority: int | None = None
+    ratio: float | None = None
+    ratio_limit: float | None = None
+    seeding_time: int | None = None
+    seeding_time_limit: int | None = None
+    inactive_seeding_time_limit: int | None = None
+    num_complete: int | None = None
+    num_incomplete: int | None = None
+    num_seeds: int | None = None
+    num_leechs: int | None = None
+    dlspeed: int | None = None
+    upspeed: int | None = None
+    eta: int | None = None
+    availability: float | None = None
+
+
+class _TorrentTrackerPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    url: str
+    status: int = 0
+    tier: int = 0
+    num_peers: int | None = None
+    num_seeds: int | None = None
+    num_leeches: int | None = None
+    num_downloaded: int | None = None
+    msg: str | None = None
+
+
+class _TorrentFilePayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    index: int
+    name: str
+    size: int = 0
+    progress: float = 0
+    priority: int = 0
+    is_seed: bool | None = None
+    availability: float | None = None
+    piece_range: list[int] | None = None
+
+
+class _TorrentPropertiesPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    save_path: str | None = None
+    creation_date: int | None = None
+    piece_size: int | None = None
+    comment: str | None = None
+    total_wasted: int | None = None
+    total_uploaded: int | None = None
+    total_uploaded_session: int | None = None
+    total_downloaded: int | None = None
+    total_downloaded_session: int | None = None
+    up_limit: int | None = None
+    dl_limit: int | None = None
+    time_elapsed: int | None = None
+    seeding_time: int | None = None
+    nb_connections: int | None = None
+    nb_connections_limit: int | None = None
+    share_ratio: float | None = None
+    addition_date: int | None = None
+    completion_date: int | None = None
+    created_by: str | None = None
+    last_seen: int | None = None
+    peers: int | None = None
+    peers_total: int | None = None
+    seeds: int | None = None
+    seeds_total: int | None = None
+    total_size: int | None = None
+    pieces_num: int | None = None
+    pieces_have: int | None = None
 
 
 class _CategoryPayload(BaseModel):
@@ -134,6 +216,8 @@ class _PreferencesPayload(BaseModel):
 
 
 _TORRENT_LIST = TypeAdapter(list[_TorrentPayload])
+_TORRENT_TRACKER_LIST = TypeAdapter(list[_TorrentTrackerPayload])
+_TORRENT_FILE_LIST = TypeAdapter(list[_TorrentFilePayload])
 _CATEGORY_MAP = TypeAdapter(dict[str, _CategoryPayload])
 
 
@@ -158,6 +242,28 @@ class TorrentObservation:
     total_size: int | None
     added_at: int | None
     completed_at: int | None
+    amount_left: int | None = None
+    auto_tmm: bool | None = None
+    download_limit: int | None = None
+    upload_limit: int | None = None
+    downloaded: int | None = None
+    uploaded: int | None = None
+    force_start: bool | None = None
+    first_last_piece_priority: bool | None = None
+    sequential_download: bool | None = None
+    super_seeding: bool | None = None
+    priority: int | None = None
+    ratio: float | None = None
+    ratio_limit: float | None = None
+    seeding_time: int | None = None
+    seeding_time_limit: int | None = None
+    inactive_seeding_time_limit: int | None = None
+    seeds: int | None = None
+    leeches: int | None = None
+    download_speed: int | None = None
+    upload_speed: int | None = None
+    eta: int | None = None
+    availability: float | None = None
 
     @property
     def checking(self) -> bool:
@@ -175,6 +281,30 @@ class TorrentCategory:
     name: str
     save_path: str
     resolved_save_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class TorrentTrackerSnapshot:
+    url: str
+    status: int
+    tier: int
+    peers: int | None
+    seeds: int | None
+    leeches: int | None
+    downloaded: int | None
+    message: str | None
+
+    def as_manifest(self) -> dict[str, Any]:
+        return {
+            "url": self.url,
+            "status": self.status,
+            "tier": self.tier,
+            "peers": self.peers,
+            "seeds": self.seeds,
+            "leeches": self.leeches,
+            "downloaded": self.downloaded,
+            "message": self.message,
+        }
 
 
 class QBittorrentClient:
@@ -303,6 +433,49 @@ class QBittorrentClient:
         )
         values = _validated_json(response, _TORRENT_LIST, "torrent details")
         return self._observation(values[0]) if values else None
+
+    async def get_torrent_trackers(self, info_hash: str) -> tuple[TorrentTrackerSnapshot, ...]:
+        response = await self._request(
+            "GET", "/api/v2/torrents/trackers", params={"hash": info_hash.lower()}
+        )
+        values = _validated_json(response, _TORRENT_TRACKER_LIST, "torrent tracker list")
+        return tuple(
+            TorrentTrackerSnapshot(
+                url=item.url,
+                status=item.status,
+                tier=item.tier,
+                peers=item.num_peers,
+                seeds=item.num_seeds,
+                leeches=item.num_leeches,
+                downloaded=item.num_downloaded,
+                message=item.msg,
+            )
+            for item in values
+        )
+
+    async def get_torrent_recovery_snapshot(self, info_hash: str) -> dict[str, Any]:
+        """Return portable qBittorrent state needed to recreate a torrent.
+
+        qBittorrent's private fast-resume files are intentionally excluded.
+        The exported .torrent plus these public Web API fields are the durable,
+        cross-version recovery contract.
+        """
+
+        properties_response, files_response, trackers = await asyncio.gather(
+            self._request("GET", "/api/v2/torrents/properties", params={"hash": info_hash.lower()}),
+            self._request("GET", "/api/v2/torrents/files", params={"hash": info_hash.lower()}),
+            self.get_torrent_trackers(info_hash),
+        )
+        try:
+            properties = _TorrentPropertiesPayload.model_validate(properties_response.json())
+        except (ValueError, ValidationError) as exc:
+            raise QBittorrentError("qBittorrent returned malformed torrent properties") from exc
+        files = _validated_json(files_response, _TORRENT_FILE_LIST, "torrent file list")
+        return {
+            "properties": properties.model_dump(exclude_none=True),
+            "files": [item.model_dump(exclude_none=True) for item in files],
+            "trackers": [item.as_manifest() for item in trackers],
+        }
 
     async def export_torrent(self, info_hash: str) -> bytes:
         """Export the current .torrent metadata from qBittorrent.
@@ -463,4 +636,26 @@ class QBittorrentClient:
             total_size=item.total_size,
             added_at=item.added_on,
             completed_at=item.completion_on,
+            amount_left=item.amount_left,
+            auto_tmm=item.auto_tmm,
+            download_limit=item.dl_limit,
+            upload_limit=item.up_limit,
+            downloaded=item.downloaded,
+            uploaded=item.uploaded,
+            force_start=item.force_start,
+            first_last_piece_priority=item.f_l_piece_prio,
+            sequential_download=item.seq_dl,
+            super_seeding=item.super_seeding,
+            priority=item.priority,
+            ratio=item.ratio,
+            ratio_limit=item.ratio_limit,
+            seeding_time=item.seeding_time,
+            seeding_time_limit=item.seeding_time_limit,
+            inactive_seeding_time_limit=item.inactive_seeding_time_limit,
+            seeds=item.num_seeds if item.num_seeds is not None else item.num_complete,
+            leeches=item.num_leechs if item.num_leechs is not None else item.num_incomplete,
+            download_speed=item.dlspeed,
+            upload_speed=item.upspeed,
+            eta=item.eta,
+            availability=item.availability,
         )

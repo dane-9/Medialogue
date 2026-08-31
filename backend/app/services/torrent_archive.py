@@ -49,7 +49,7 @@ from app.services.integration_state import ConfiguredDownloadClient
 from app.services.jobs import JobFailure, checkpoint_job, run_job
 
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 _HASH_RE = re.compile(r"^[0-9A-Za-z_-]{1,128}$")
 QBittorrentClientFactory = Callable[[str, str, str], QBittorrentClient]
 
@@ -118,23 +118,49 @@ def _valid_torrent_payload(payload: bytes) -> bool:
     return len(payload) >= 8 and payload.startswith(b"d") and b"4:info" in payload
 
 
-def torrent_archive_complete(torrent: Torrent) -> bool:
-    """Return true only when the database state and both archive files agree."""
+def verify_torrent_archive(torrent: Torrent) -> tuple[bool, str | None]:
+    """Cryptographically bind valid torrent bytes to a schema-v2 manifest."""
 
     if torrent.archive_state != TorrentArchiveState.ARCHIVED:
-        return False
+        return False, "database archive state is not archived"
     default_torrent, default_manifest = archive_paths(torrent.info_hash)
     torrent_path = Path(torrent.archive_path) if torrent.archive_path else default_torrent
     manifest_path = Path(torrent.manifest_path) if torrent.manifest_path else default_manifest
     try:
-        return (
-            torrent_path.is_file()
-            and torrent_path.stat().st_size > 0
-            and manifest_path.is_file()
-            and manifest_path.stat().st_size > 0
-        )
-    except OSError:
-        return False
+        payload = torrent_path.read_bytes()
+        if not _valid_torrent_payload(payload):
+            return False, "torrent export is missing or invalid"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            return False, "manifest root is invalid"
+        if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+            return False, "manifest schema is outdated"
+        if str(manifest.get("torrent_info_hash") or "").casefold() != torrent.info_hash.casefold():
+            return False, "manifest info hash does not match the torrent"
+        archive = manifest.get("archive")
+        if not isinstance(archive, dict):
+            return False, "manifest archive section is missing"
+        expected_sha256 = archive.get("torrent_sha256")
+        if not isinstance(expected_sha256, str) or expected_sha256 != hashlib.sha256(payload).hexdigest():
+            return False, "torrent export checksum does not match the manifest"
+        recovery = manifest.get("recovery")
+        if not isinstance(recovery, dict):
+            return False, "manifest recovery section is missing"
+        if not isinstance(recovery.get("properties"), dict):
+            return False, "recovery properties are invalid"
+        if not isinstance(recovery.get("files"), list):
+            return False, "recovery file manifest is invalid"
+        if not isinstance(recovery.get("trackers"), list):
+            return False, "recovery tracker manifest is invalid"
+        return True, None
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return False, str(exc)
+
+
+def torrent_archive_complete(torrent: Torrent) -> bool:
+    """Return true only when database state, bytes, checksum and manifest agree."""
+
+    return verify_torrent_archive(torrent)[0]
 
 
 async def _movie_associations(db: AsyncSession, torrent: Torrent) -> list[dict[str, Any]]:
@@ -278,6 +304,7 @@ async def build_recovery_manifest(
     manifest_path: Path | None = None,
     torrent_sha256: str | None = None,
     archive_error: str | None = None,
+    recovery_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a manifest without erasing evidence already persisted on disk.
 
@@ -308,6 +335,33 @@ async def build_recovery_manifest(
     original_client = observations[0] if observations else {}
     metadata = torrent.metadata_json or {}
     archive_info = existing.get("archive") if isinstance(existing.get("archive"), dict) else {}
+    existing_recovery = existing.get("recovery") if isinstance(existing.get("recovery"), dict) else {}
+    supplied_recovery = recovery_snapshot if isinstance(recovery_snapshot, dict) else {}
+    def recovered_value(key: str, fallback: Any) -> Any:
+        if key in supplied_recovery:
+            return supplied_recovery[key]
+        return existing_recovery.get(key, fallback)
+
+    recovery = {
+        "captured_at": _first_nonempty(
+            supplied_recovery.get("captured_at"),
+            _iso(utcnow()) if recovery_snapshot is not None else None,
+            existing_recovery.get("captured_at"),
+        ),
+        "properties": recovered_value("properties", {}),
+        "files": recovered_value("files", []),
+        "trackers": recovered_value("trackers", []),
+        "settings": {
+            key: metadata.get(key)
+            for key in (
+                "auto_tmm", "download_limit", "upload_limit", "force_start",
+                "first_last_piece_priority", "sequential_download", "super_seeding",
+                "priority", "ratio_limit", "seeding_time_limit",
+                "inactive_seeding_time_limit", "content_path", "scope",
+            )
+            if metadata.get(key) is not None
+        },
+    }
 
     manifest: dict[str, Any] = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -353,6 +407,7 @@ async def build_recovery_manifest(
         ),
         "media_associations": associations,
         "download_client_observations": observations,
+        "recovery": recovery,
         "archive": {
             "torrent_path": str(archive_path),
             "manifest_path": str(manifest_path),
@@ -372,6 +427,7 @@ async def write_recovery_manifest(
     *,
     torrent_sha256: str | None = None,
     archive_error: str | None = None,
+    recovery_snapshot: dict[str, Any] | None = None,
 ) -> Path:
     archive_path, manifest_path = archive_paths(torrent.info_hash)
     manifest = await build_recovery_manifest(
@@ -381,6 +437,7 @@ async def write_recovery_manifest(
         manifest_path=manifest_path,
         torrent_sha256=torrent_sha256,
         archive_error=archive_error,
+        recovery_snapshot=recovery_snapshot,
     )
     payload = json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False).encode("utf-8") + b"\n"
     _atomic_write(manifest_path, payload)
@@ -395,6 +452,7 @@ async def ensure_torrent_archived(
     download_client: ConfiguredDownloadClient,
     *,
     client_factory: QBittorrentClientFactory = QBittorrentClient,
+    recovery_snapshot: dict[str, Any] | None = None,
 ) -> bool:
     """Archive .torrent bytes and refresh its recovery manifest.
 
@@ -411,6 +469,7 @@ async def ensure_torrent_archived(
     torrent_sha256: str | None = None
     error: str | None = None
 
+    adapter: QBittorrentClient | None = None
     try:
         if archive_path.is_file() and archive_path.stat().st_size > 0:
             candidate = archive_path.read_bytes()
@@ -418,13 +477,10 @@ async def ensure_torrent_archived(
                 torrent_bytes = candidate
         if torrent_bytes is None:
             adapter = client_factory(download_client.url, download_client.username or "", download_client.password or "")
-            try:
-                export = getattr(adapter, "export_torrent", None)
-                if export is None:
-                    raise RuntimeError("qBittorrent adapter does not support torrent export.")
-                torrent_bytes = await export(torrent.info_hash)
-            finally:
-                await adapter.close()
+            export = getattr(adapter, "export_torrent", None)
+            if export is None:
+                raise RuntimeError("qBittorrent adapter does not support torrent export.")
+            torrent_bytes = await export(torrent.info_hash)
             if not _valid_torrent_payload(torrent_bytes):
                 raise RuntimeError("qBittorrent returned an empty or invalid torrent export.")
             _atomic_write(archive_path, torrent_bytes)
@@ -433,14 +489,36 @@ async def ensure_torrent_archived(
     except Exception as exc:
         error = str(exc)
 
+    if recovery_snapshot is None:
+        try:
+            if adapter is None:
+                adapter = client_factory(download_client.url, download_client.username or "", download_client.password or "")
+            snapshot_method = getattr(adapter, "get_torrent_recovery_snapshot", None)
+            if snapshot_method is not None:
+                recovery_snapshot = await snapshot_method(torrent.info_hash)
+        except Exception as exc:
+            snapshot_error = f"recovery snapshot: {exc}"
+            error = f"{error}; {snapshot_error}" if error else snapshot_error
+    if adapter is not None:
+        await adapter.close()
+
     try:
-        await write_recovery_manifest(db, torrent, torrent_sha256=torrent_sha256, archive_error=error)
+        await write_recovery_manifest(
+            db,
+            torrent,
+            torrent_sha256=torrent_sha256,
+            archive_error=error,
+            recovery_snapshot=recovery_snapshot,
+        )
     except Exception as exc:
         manifest_error = str(exc)
         error = f"{error}; manifest: {manifest_error}" if error else f"manifest: {manifest_error}"
 
-    success = error is None and archive_path.is_file() and manifest_path.is_file()
-    torrent.archive_state = TorrentArchiveState.ARCHIVED if success else TorrentArchiveState.FAILED
+    torrent.archive_state = TorrentArchiveState.ARCHIVED if error is None else TorrentArchiveState.FAILED
+    success, verification_error = verify_torrent_archive(torrent)
+    if not success and error is None:
+        error = f"archive verification: {verification_error}"
+        torrent.archive_state = TorrentArchiveState.FAILED
     torrent.metadata_json = {
         **(torrent.metadata_json or {}),
         "archive_error": error,
@@ -474,7 +552,12 @@ async def ensure_torrent_archived(
     return success
 
 
-async def refresh_torrent_manifest(db: AsyncSession, torrent: Torrent) -> bool:
+async def refresh_torrent_manifest(
+    db: AsyncSession,
+    torrent: Torrent,
+    *,
+    recovery_snapshot: dict[str, Any] | None = None,
+) -> bool:
     """Refresh historical identity/path evidence without re-exporting bytes."""
 
     try:
@@ -487,6 +570,7 @@ async def refresh_torrent_manifest(db: AsyncSession, torrent: Torrent) -> bool:
             torrent,
             torrent_sha256=sha256,
             archive_error=(torrent.metadata_json or {}).get("archive_error"),
+            recovery_snapshot=recovery_snapshot,
         )
         return True
     except Exception:
@@ -628,14 +712,37 @@ async def restore_torrent_archive(
     client = prepared["client"]
     archive_path = prepared["archive_path"]
     resolved_save_path = prepared["resolved_save_path"]
+    manifest = read_manifest(torrent)
+    observations = manifest.get("download_client_observations")
+    observation_rows = [item for item in observations if isinstance(item, dict)] if isinstance(observations, list) else []
+    original = next(
+        (
+            item
+            for item in reversed(observation_rows)
+            if str(item.get("download_client_id") or "") == str(client.id)
+        ),
+        observation_rows[0] if observation_rows else {},
+    )
+    recovery = manifest.get("recovery") if isinstance(manifest.get("recovery"), dict) else {}
+    settings = recovery.get("settings") if isinstance(recovery.get("settings"), dict) else {}
+    restored_category = category
+    if restored_category is None:
+        restored_category = original.get("category") if "category" in original else client.category
+    restored_tags = tags
+    if restored_tags is None:
+        original_tags = original.get("tags")
+        restored_tags = original_tags if isinstance(original_tags, list) else list(client.tags or [])
     adapter = client_factory(client.url, client.username or "", client.password or "")
     try:
         await adapter.add_torrent(
             archive_path.read_bytes(),
             filename=f"{torrent.info_hash}.torrent",
             save_path=save_path,
-            category=category if category is not None else client.category,
-            tags=tuple(tags if tags is not None else (client.tags or [])),
+            category=restored_category,
+            tags=tuple(str(item) for item in restored_tags),
+            auto_tmm=settings.get("auto_tmm") if isinstance(settings.get("auto_tmm"), bool) else None,
+            sequential_order=settings.get("sequential_download") is True,
+            first_last_first=settings.get("first_last_piece_priority") is True,
         )
     except Exception as exc:
         raise AppError("QBITTORRENT_RESTORE_FAILED", f"qBittorrent rejected the archived torrent: {exc}", status_code=503) from exc

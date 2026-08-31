@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.domain import IdentityState, MediaRole, PresenceState, ReleaseScope, Severity
+from app.schemas.torrent_status import MediaTorrentStatusResponse
 
 ShowCollectionState = Literal["Present", "Missing", "Conflict"]
 ShowPlexState = Literal[
@@ -69,6 +70,7 @@ class EpisodeMediaResponse(BaseModel):
     release_scope: ReleaseScope | None = None
     mapped_episode_numbers: list[int] = Field(default_factory=list)
     manual_mapping: bool = False
+    torrent_status: MediaTorrentStatusResponse = Field(default_factory=MediaTorrentStatusResponse)
 
 
 class EpisodeMappingUpdate(BaseModel):
@@ -157,6 +159,7 @@ class ShowSummaryResponse(BaseModel):
     poster_ref: str | None = None
     revision: int
     last_observed_at: datetime | None = None
+    torrent_status: MediaTorrentStatusResponse = Field(default_factory=MediaTorrentStatusResponse)
 
 
 class ShowDetailResponse(ShowSummaryResponse):

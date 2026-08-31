@@ -1,7 +1,7 @@
 import type { IncomingDownload, Movie, MovieDirectory, MovieRelease, ReconciliationAggregate, Tag } from '../../types'
 import type { components } from '../generated/schema'
 import { percentValue } from './shared'
-import { mapEvidence, mapEvent, mapPlexState } from './mediaCommon'
+import { mapEvidence, mapEvent, mapPlexState, mapTorrentStatus } from './mediaCommon'
 import { mapTorrentArchiveItem } from './torrentArchive'
 
 type MediaDirectoryDto = components['schemas']['MediaDirectoryResponse']
@@ -42,6 +42,7 @@ export function mapRelease(value: MovieReleaseDto): MovieRelease {
     currentCustomFormatScore: value.current_custom_format_score ?? undefined,
     selectionSnapshot: value.selection_snapshot ?? undefined,
     parser: value.parse_snapshot,
+    torrentStatus: mapTorrentStatus(value.torrent_status),
   }
 }
 
@@ -113,5 +114,6 @@ export function mapMovie(value: MovieSummaryDto | MovieDetailDto): Movie {
     recentEvents: (detail?.recent_events ?? []).map(mapEvent),
     reconciliation: detail ? mapReconciliation(detail.reconciliation) : undefined,
     torrentHistory: (detail?.torrent_history ?? []).map(mapTorrentArchiveItem),
+    torrentStatus: mapTorrentStatus(value.torrent_status),
   }
 }

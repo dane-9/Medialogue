@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.models.domain import AssociationType, IdentityState, ReleaseState, Severity, TorrentArchiveState
 from app.schemas.tags import TagResponse
+from app.schemas.torrent_status import MediaTorrentStatusResponse
 
 MovieCollectionState = Literal["Present", "Missing", "Conflict", "Duplicate"]
 MoviePlexState = Literal[
@@ -52,6 +53,7 @@ class MovieReleaseResponse(BaseModel):
     first_seen_at: datetime
     directories: list[MediaDirectoryResponse]
     parse_snapshot: dict[str, Any]
+    torrent_status: MediaTorrentStatusResponse = Field(default_factory=MediaTorrentStatusResponse)
 
 
 class MovieIncomingDownloadResponse(BaseModel):
@@ -139,6 +141,7 @@ class MovieSummaryResponse(BaseModel):
     incoming: bool = False
     incoming_kind: IncomingKind | None = None
     last_observed_at: datetime | None = None
+    torrent_status: MediaTorrentStatusResponse = Field(default_factory=MediaTorrentStatusResponse)
 
 
 class MovieDetailResponse(MovieSummaryResponse):

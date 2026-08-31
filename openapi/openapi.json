@@ -2395,6 +2395,45 @@
       },
       "DownloadResponse": {
         "properties": {
+          "activity": {
+            "enum": [
+              "downloading",
+              "checking",
+              "metadata",
+              "queued",
+              "stalled",
+              "seeding",
+              "paused",
+              "error"
+            ],
+            "title": "Activity",
+            "type": "string"
+          },
+          "amount_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Left"
+          },
+          "archive_state": {
+            "$ref": "#/components/schemas/TorrentArchiveState"
+          },
+          "availability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability"
+          },
           "category": {
             "anyOf": [
               {
@@ -2427,6 +2466,17 @@
             ],
             "title": "Completed At"
           },
+          "download_speed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Speed"
+          },
           "edition": {
             "anyOf": [
               {
@@ -2437,6 +2487,17 @@
               }
             ],
             "title": "Edition"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
           },
           "first_seen_at": {
             "format": "date-time",
@@ -2481,6 +2542,17 @@
             "title": "Last Seen At",
             "type": "string"
           },
+          "leeches": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leeches"
+          },
           "media_state": {
             "anyOf": [
               {
@@ -2495,6 +2567,17 @@
               }
             ],
             "title": "Media State"
+          },
+          "media_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Title"
           },
           "movie_id": {
             "anyOf": [
@@ -2534,6 +2617,17 @@
             ],
             "title": "Quality"
           },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          },
           "reconciliation_detail": {
             "anyOf": [
               {
@@ -2561,6 +2655,18 @@
               }
             ],
             "title": "Reconciliation State"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
           },
           "removed_at": {
             "anyOf": [
@@ -2599,6 +2705,29 @@
           "scope": {
             "$ref": "#/components/schemas/DownloadScope"
           },
+          "seeds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seeds"
+          },
+          "show_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Id"
+          },
           "state": {
             "anyOf": [
               {
@@ -2632,6 +2761,29 @@
               }
             ],
             "title": "Total Size"
+          },
+          "tracker_state": {
+            "default": "unknown",
+            "enum": [
+              "healthy",
+              "degraded",
+              "unavailable",
+              "unregistered",
+              "unknown"
+            ],
+            "title": "Tracker State",
+            "type": "string"
+          },
+          "upload_speed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Speed"
           }
         },
         "required": [
@@ -2652,7 +2804,9 @@
           "is_present",
           "first_seen_at",
           "last_seen_at",
-          "removed_at"
+          "removed_at",
+          "activity",
+          "archive_state"
         ],
         "title": "DownloadResponse",
         "type": "object"
@@ -3143,6 +3297,9 @@
               }
             ],
             "title": "Show Release Id"
+          },
+          "torrent_status": {
+            "$ref": "#/components/schemas/MediaTorrentStatusResponse"
           }
         },
         "required": [
@@ -5303,6 +5460,72 @@
         "title": "MediaRole",
         "type": "string"
       },
+      "MediaTorrentStatusResponse": {
+        "properties": {
+          "archived_torrent_count": {
+            "default": 0,
+            "title": "Archived Torrent Count",
+            "type": "integer"
+          },
+          "backed_up_release_count": {
+            "default": 0,
+            "title": "Backed Up Release Count",
+            "type": "integer"
+          },
+          "failed_archive_count": {
+            "default": 0,
+            "title": "Failed Archive Count",
+            "type": "integer"
+          },
+          "present_torrent_count": {
+            "default": 0,
+            "title": "Present Torrent Count",
+            "type": "integer"
+          },
+          "release_count": {
+            "default": 0,
+            "title": "Release Count",
+            "type": "integer"
+          },
+          "state": {
+            "default": "untracked",
+            "enum": [
+              "untracked",
+              "tracked",
+              "backed_up",
+              "archived",
+              "partial",
+              "attention"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "torrent_count": {
+            "default": 0,
+            "title": "Torrent Count",
+            "type": "integer"
+          },
+          "tracked_release_count": {
+            "default": 0,
+            "title": "Tracked Release Count",
+            "type": "integer"
+          },
+          "tracker_state": {
+            "default": "unknown",
+            "enum": [
+              "healthy",
+              "degraded",
+              "unavailable",
+              "unregistered",
+              "unknown"
+            ],
+            "title": "Tracker State",
+            "type": "string"
+          }
+        },
+        "title": "MediaTorrentStatusResponse",
+        "type": "object"
+      },
       "MediaType": {
         "enum": [
           "movies",
@@ -5660,6 +5883,9 @@
             },
             "title": "Torrent History",
             "type": "array"
+          },
+          "torrent_status": {
+            "$ref": "#/components/schemas/MediaTorrentStatusResponse"
           },
           "year": {
             "anyOf": [
@@ -6239,6 +6465,9 @@
           },
           "state": {
             "$ref": "#/components/schemas/ReleaseState"
+          },
+          "torrent_status": {
+            "$ref": "#/components/schemas/MediaTorrentStatusResponse"
           }
         },
         "required": [
@@ -6417,6 +6646,9 @@
               }
             ],
             "title": "Tmdb Id"
+          },
+          "torrent_status": {
+            "$ref": "#/components/schemas/MediaTorrentStatusResponse"
           },
           "year": {
             "anyOf": [
@@ -9468,6 +9700,9 @@
             ],
             "title": "Tmdb Id"
           },
+          "torrent_status": {
+            "$ref": "#/components/schemas/MediaTorrentStatusResponse"
+          },
           "tvdb_id": {
             "anyOf": [
               {
@@ -9888,6 +10123,9 @@
               }
             ],
             "title": "Tmdb Id"
+          },
+          "torrent_status": {
+            "$ref": "#/components/schemas/MediaTorrentStatusResponse"
           },
           "tvdb_id": {
             "anyOf": [
@@ -13281,16 +13519,6 @@
                 }
               ],
               "title": "State"
-            }
-          },
-          {
-            "in": "query",
-            "name": "include_removed",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Include Removed",
-              "type": "boolean"
             }
           }
         ],

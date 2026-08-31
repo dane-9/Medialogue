@@ -185,7 +185,7 @@ def test_recovery_bundle_contains_sqlite_backup_archive_config_and_inventory(rec
         assert backup_meta["sqlite"]["database_file"] == "database/medialogue.db"
         assert backup_meta["sqlite"]["backup"]["tool"] == "sqlite3_backup"
         assert backup_meta["schema_migration_revision"] is None
-        assert backup_meta["torrent_manifest_schema_version"] == 1
+        assert backup_meta["torrent_manifest_schema_version"] == 2
         assert backup_meta["sensitive"] is True
 
         restored = root_path / "restored-medialogue.db"

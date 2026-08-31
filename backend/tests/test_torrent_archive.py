@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -19,7 +20,8 @@ from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.qbittorrent import TorrentObservation
 from app.main import create_app
-from app.models.domain import IdentityState, Movie
+from app.models.domain import IdentityState, Movie, Torrent, TorrentArchiveState
+from app.services.torrent_archive import verify_torrent_archive
 
 
 class _NoMatchTMDBClient:
@@ -126,6 +128,38 @@ def _login(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": response.json()["csrf_token"]}
 
 
+def test_archive_verification_rejects_tampered_torrent_bytes(tmp_path: Path) -> None:
+    payload = b"d4:infod4:name7:exampleee"
+    torrent_path = tmp_path / "example.torrent"
+    manifest_path = tmp_path / "example.json"
+    torrent_path.write_bytes(payload)
+    info_hash = "f" * 40
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "torrent_info_hash": info_hash,
+                "archive": {"torrent_sha256": hashlib.sha256(payload).hexdigest()},
+                "recovery": {"properties": {}, "files": [], "trackers": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    torrent = Torrent(
+        info_hash=info_hash,
+        name="Example",
+        archive_state=TorrentArchiveState.ARCHIVED,
+        archive_path=str(torrent_path),
+        manifest_path=str(manifest_path),
+    )
+    assert verify_torrent_archive(torrent) == (True, None)
+
+    torrent_path.write_bytes(payload + b"tampered")
+    valid, reason = verify_torrent_archive(torrent)
+    assert valid is False
+    assert reason == "torrent export checksum does not match the manifest"
+
+
 def _install_fake(client: TestClient, behavior: ArchiveQBitBehavior) -> None:
     from app.api import downloads as downloads_api
     from app.api import torrent_archive as archive_api
@@ -170,8 +204,8 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
             "username": "media",
             "password": "secret",
             "scope": "movies",
-            "category": "movies",
-            "tags": ["managed"],
+            "category": "client-default",
+            "tags": ["client-default"],
             "enabled": True,
         },
     ).json()
@@ -225,13 +259,20 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         manifest_path = Path(item["manifest_path"])
         assert torrent_path.read_bytes() == behavior.torrent_bytes
         manifest = json.loads(manifest_path.read_text())
-        assert manifest["schema_version"] == 1
+        assert manifest["schema_version"] == 2
         assert manifest["torrent_info_hash"] == info_hash
         assert manifest["media_title"] == "Inception"
         assert manifest["release_name"] == release_name
         assert manifest["download_client_name"] == "qbit-movies"
         assert manifest["previous_resolved_path"].startswith(str(media_root))
         assert manifest["archive"]["torrent_sha256"]
+        assert manifest["recovery"] == {
+            "captured_at": None,
+            "files": [],
+            "properties": {},
+            "settings": {"content_path": str(media_root / release_name), "scope": "movies"},
+            "trackers": [],
+        }
 
         async def remove_movie_record():
             async with db_session.async_session_factory() as db:

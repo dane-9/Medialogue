@@ -5,7 +5,7 @@ from time import perf_counter
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,7 +16,18 @@ from app.core.integration_config import DownloadClientConfig, get_integration_co
 from app.db.session import get_db
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.auth import AdminUser
-from app.models.domain import AssociationType, DownloadClient, MovieRelease, MovieReleaseTorrent, Problem, ProblemStatus, Torrent, TorrentClientObservation
+from app.models.domain import (
+    AssociationType,
+    DownloadClient,
+    MovieRelease,
+    MovieReleaseTorrent,
+    Problem,
+    ProblemStatus,
+    ShowRelease,
+    ShowReleaseTorrent,
+    Torrent,
+    TorrentClientObservation,
+)
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.downloads import (
@@ -50,6 +61,26 @@ def utcnow() -> datetime:
 
 def get_qbittorrent_client_factory():
     return QBittorrentClient
+
+
+def _activity_state(observation: TorrentClientObservation) -> str:
+    state = str(observation.state or "").casefold()
+    progress = float(observation.progress or 0)
+    if state.startswith("checking"):
+        return "checking"
+    if "error" in state or "missing" in state:
+        return "error"
+    if state == "metadl":
+        return "metadata"
+    if "queued" in state:
+        return "queued"
+    if "stall" in state and progress < 1:
+        return "stalled"
+    if "pause" in state or "stopped" in state:
+        return "paused"
+    if progress < 1:
+        return "downloading"
+    return "seeding"
 
 
 def _client_response(client: ConfiguredDownloadClient) -> DownloadClientResponse:
@@ -87,20 +118,46 @@ async def _download_response(
     torrent: Torrent,
     client: ConfiguredDownloadClient,
 ) -> DownloadResponse:
-    association_row = (
-        await db.execute(
+    association = None
+    release = None
+    if client.scope.value == "movies":
+        association_rows = (
+            await db.execute(
             select(MovieReleaseTorrent, MovieRelease)
             .join(MovieRelease, MovieRelease.id == MovieReleaseTorrent.movie_release_id)
             .options(
                 selectinload(MovieRelease.quality_definition),
                 selectinload(MovieRelease.directories),
+                selectinload(MovieRelease.movie),
             )
             .where(MovieReleaseTorrent.torrent_id == torrent.id)
             .order_by(MovieReleaseTorrent.created_at.desc())
-            .limit(1)
+            )
+        ).all()
+        selected = next(
+            (item for item in association_rows if item[0].association_type != AssociationType.HISTORICAL),
+            association_rows[0] if association_rows else None,
         )
-    ).first()
-    association, release = association_row if association_row else (None, None)
+    else:
+        association_rows = (
+            await db.execute(
+                select(ShowReleaseTorrent, ShowRelease)
+                .join(ShowRelease, ShowRelease.id == ShowReleaseTorrent.show_release_id)
+                .options(
+                    selectinload(ShowRelease.quality_definition),
+                    selectinload(ShowRelease.directories),
+                    selectinload(ShowRelease.show),
+                )
+                .where(ShowReleaseTorrent.torrent_id == torrent.id)
+                .order_by(ShowReleaseTorrent.created_at.desc())
+            )
+        ).all()
+        selected = next(
+            (item for item in association_rows if item[0].association_type != AssociationType.HISTORICAL),
+            association_rows[0] if association_rows else None,
+        )
+    if selected is not None:
+        association, release = selected
     media_state = None
     reconciliation_state = None
     reconciliation_detail = None
@@ -109,7 +166,7 @@ async def _download_response(
         reconciliation_state = association.association_type.value
         problem = await db.scalar(
             select(Problem).where(
-                Problem.entity_type == "movie_release",
+                Problem.entity_type == ("movie_release" if client.scope.value == "movies" else "show_release"),
                 Problem.entity_id == release.id,
                 Problem.status == ProblemStatus.OPEN,
             ).order_by(Problem.created_at.desc())
@@ -137,9 +194,18 @@ async def _download_response(
         last_seen_at=observation.last_seen_at,
         removed_at=observation.removed_at,
         completed_at=torrent.completed_at,
-        movie_id=release.movie_id if release else None,
+        movie_id=release.movie_id if isinstance(release, MovieRelease) else None,
+        show_id=release.show_id if isinstance(release, ShowRelease) else None,
+        release_id=release.id if release else None,
+        media_title=(
+            release.movie.title
+            if isinstance(release, MovieRelease)
+            else release.show.title
+            if isinstance(release, ShowRelease)
+            else None
+        ),
         quality=release.quality_definition.name if release and release.quality_definition else None,
-        edition=release.effective_edition if release else None,
+        edition=release.effective_edition if isinstance(release, MovieRelease) else None,
         media_state=media_state,
         reconciliation_state=reconciliation_state,
         reconciliation_detail=reconciliation_detail,
@@ -154,6 +220,17 @@ async def _download_response(
             if release and association and association.association_type == AssociationType.INCOMING
             else None
         ),
+        activity=_activity_state(observation),
+        download_speed=observation.download_speed,
+        upload_speed=observation.upload_speed,
+        eta_seconds=observation.eta_seconds,
+        amount_left=observation.amount_left,
+        ratio=float(observation.ratio) if observation.ratio is not None else None,
+        seeds=observation.seeds,
+        leeches=observation.leeches,
+        availability=float(observation.availability) if observation.availability is not None else None,
+        archive_state=torrent.archive_state,
+        tracker_state=str((torrent.tracker_summary or {}).get("state") or "unknown"),
     )
 
 
@@ -481,15 +558,15 @@ async def list_downloads(
     client_id: UUID | None = None,
     scope: DownloadScope | None = None,
     state: str | None = None,
-    include_removed: bool = False,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[DownloadResponse]:
     conditions = []
     if client_id is not None:
         conditions.append(TorrentClientObservation.download_client_id == client_id)
-    if not include_removed:
-        conditions.append(TorrentClientObservation.is_present.is_(True))
+    # Downloads is intentionally a live operational view. Removed observations
+    # remain durable evidence elsewhere but never appear here.
+    conditions.append(TorrentClientObservation.is_present.is_(True))
     if state:
         conditions.append(TorrentClientObservation.state == state)
     if scope:
@@ -503,22 +580,23 @@ async def list_downloads(
         .where(*conditions)
         .order_by(TorrentClientObservation.last_seen_at.desc())
     )
-    count_query = (
-        select(func.count())
-        .select_from(TorrentClientObservation)
-        .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
-        .where(*conditions)
-    )
-    total = await db.scalar(count_query) or 0
-    rows = (
-        await db.execute(query.offset((page - 1) * page_size).limit(page_size))
-    ).all()
+    rows = (await db.execute(query)).all()
+    configured_by_id = {
+        item.id: item for item in await list_configured_download_clients(db)
+    }
+    responses = [
+        await _download_response(db, observation, torrent, configured)
+        for observation, torrent in rows
+        if (configured := configured_by_id.get(observation.download_client_id)) is not None
+    ]
+    # A historical association is preserved in release/torrent history, not in
+    # the live activity workspace. Unassociated in-scope torrents remain visible
+    # while Medialogue is still identifying/reconciling them.
+    responses = [item for item in responses if item.reconciliation_state != "historical"]
+    total = len(responses)
+    start = (page - 1) * page_size
     return Collection(
-        items=[
-            await _download_response(db, observation, torrent, configured)
-            for observation, torrent in rows
-            if (configured := await get_configured_download_client(db, observation.download_client_id)) is not None
-        ],
+        items=responses[start : start + page_size],
         page=page,
         page_size=page_size,
         total=total,

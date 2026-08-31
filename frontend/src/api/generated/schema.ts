@@ -3218,6 +3218,16 @@ export interface components {
         };
         /** DownloadResponse */
         DownloadResponse: {
+            /**
+             * Activity
+             * @enum {string}
+             */
+            activity: "downloading" | "checking" | "metadata" | "queued" | "stalled" | "seeding" | "paused" | "error";
+            /** Amount Left */
+            amount_left?: number | null;
+            archive_state: components["schemas"]["TorrentArchiveState"];
+            /** Availability */
+            availability?: number | null;
             /** Category */
             category: string | null;
             /**
@@ -3229,8 +3239,12 @@ export interface components {
             client_name: string;
             /** Completed At */
             completed_at?: string | null;
+            /** Download Speed */
+            download_speed?: number | null;
             /** Edition */
             edition?: string | null;
+            /** Eta Seconds */
+            eta_seconds?: number | null;
             /**
              * First Seen At
              * Format: date-time
@@ -3257,8 +3271,12 @@ export interface components {
              * Format: date-time
              */
             last_seen_at: string;
+            /** Leeches */
+            leeches?: number | null;
             /** Media State */
             media_state?: ("present" | "missing") | null;
+            /** Media Title */
+            media_title?: string | null;
             /** Movie Id */
             movie_id?: string | null;
             /** Name */
@@ -3267,10 +3285,14 @@ export interface components {
             progress: number | null;
             /** Quality */
             quality?: string | null;
+            /** Ratio */
+            ratio?: number | null;
             /** Reconciliation Detail */
             reconciliation_detail?: string | null;
             /** Reconciliation State */
             reconciliation_state?: ("incoming" | "attached" | "historical" | "conflict") | null;
+            /** Release Id */
+            release_id?: string | null;
             /** Removed At */
             removed_at: string | null;
             /** Reported Save Path */
@@ -3278,6 +3300,10 @@ export interface components {
             /** Resolved Save Path */
             resolved_save_path: string | null;
             scope: components["schemas"]["DownloadScope"];
+            /** Seeds */
+            seeds?: number | null;
+            /** Show Id */
+            show_id?: string | null;
             /** State */
             state: string | null;
             /** Tags */
@@ -3289,6 +3315,14 @@ export interface components {
             torrent_id: string;
             /** Total Size */
             total_size: number | null;
+            /**
+             * Tracker State
+             * @default unknown
+             * @enum {string}
+             */
+            tracker_state: "healthy" | "degraded" | "unavailable" | "unregistered" | "unknown";
+            /** Upload Speed */
+            upload_speed?: number | null;
         };
         /**
          * DownloadScope
@@ -3485,6 +3519,7 @@ export interface components {
             release_scope?: components["schemas"]["ReleaseScope"] | null;
             /** Show Release Id */
             show_release_id?: string | null;
+            torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
         };
         /** EpisodeOrderingOption */
         EpisodeOrderingOption: {
@@ -4231,6 +4266,56 @@ export interface components {
          * @enum {string}
          */
         MediaRole: "movie_video" | "episode_video" | "multi_episode_video" | "dvd_structure" | "bluray_structure" | "other_media";
+        /** MediaTorrentStatusResponse */
+        MediaTorrentStatusResponse: {
+            /**
+             * Archived Torrent Count
+             * @default 0
+             */
+            archived_torrent_count: number;
+            /**
+             * Backed Up Release Count
+             * @default 0
+             */
+            backed_up_release_count: number;
+            /**
+             * Failed Archive Count
+             * @default 0
+             */
+            failed_archive_count: number;
+            /**
+             * Present Torrent Count
+             * @default 0
+             */
+            present_torrent_count: number;
+            /**
+             * Release Count
+             * @default 0
+             */
+            release_count: number;
+            /**
+             * State
+             * @default untracked
+             * @enum {string}
+             */
+            state: "untracked" | "tracked" | "backed_up" | "archived" | "partial" | "attention";
+            /**
+             * Torrent Count
+             * @default 0
+             */
+            torrent_count: number;
+            /**
+             * Tracked Release Count
+             * @default 0
+             */
+            tracked_release_count: number;
+            /**
+             * Tracker State
+             * @default unknown
+             * @enum {string}
+             */
+            tracker_state: "healthy" | "degraded" | "unavailable" | "unregistered" | "unknown";
+        };
         /**
          * MediaType
          * @enum {string}
@@ -4351,6 +4436,7 @@ export interface components {
             tmdb_id: number | null;
             /** Torrent History */
             torrent_history?: components["schemas"]["MovieTorrentHistoryResponse"][];
+            torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
             /** Year */
             year: number | null;
         };
@@ -4571,6 +4657,7 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             state: components["schemas"]["ReleaseState"];
+            torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
         };
         /** MovieSummaryResponse */
         MovieSummaryResponse: {
@@ -4626,6 +4713,7 @@ export interface components {
             title: string;
             /** Tmdb Id */
             tmdb_id: number | null;
+            torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
             /** Year */
             year: number | null;
         };
@@ -5661,6 +5749,7 @@ export interface components {
             tmdb_episode_group_id?: string | null;
             /** Tmdb Id */
             tmdb_id: number | null;
+            torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
             /** Tvdb Id */
             tvdb_id?: number | null;
             /** Year */
@@ -5820,6 +5909,7 @@ export interface components {
             tmdb_episode_group_id?: string | null;
             /** Tmdb Id */
             tmdb_id: number | null;
+            torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
             /** Tvdb Id */
             tvdb_id?: number | null;
             /** Year */
@@ -7545,7 +7635,6 @@ export interface operations {
                 client_id?: string | null;
                 scope?: components["schemas"]["DownloadScope"] | null;
                 state?: string | null;
-                include_removed?: boolean;
             };
             header?: never;
             path?: never;

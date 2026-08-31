@@ -25,7 +25,19 @@ from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.qbittorrent import TorrentObservation
 from app.main import create_app
-from app.models.domain import DownloadClient, Problem, Torrent
+from app.models.domain import (
+    AssociationType,
+    DownloadClient,
+    Movie,
+    MovieRelease,
+    MovieReleaseTorrent,
+    Problem,
+    Show,
+    ShowRelease,
+    ShowReleaseTorrent,
+    Torrent,
+    TorrentClientObservation,
+)
 
 
 class _NoMatchTMDBClient:
@@ -179,6 +191,13 @@ def _torrent(
     content_path: str | None = None,
     category: str = "movies",
     tags: tuple[str, ...] = ("managed",),
+    download_speed: int | None = None,
+    upload_speed: int | None = None,
+    eta: int | None = None,
+    amount_left: int | None = None,
+    ratio: float | None = None,
+    seeds: int | None = None,
+    leeches: int | None = None,
 ) -> TorrentObservation:
     return TorrentObservation(
         info_hash=info_hash,
@@ -193,6 +212,13 @@ def _torrent(
         total_size=10_000,
         added_at=1_700_000_000,
         completed_at=1_700_000_100 if progress >= 1 else None,
+        download_speed=download_speed,
+        upload_speed=upload_speed,
+        eta=eta,
+        amount_left=amount_left,
+        ratio=ratio,
+        seeds=seeds,
+        leeches=leeches,
     )
 
 
@@ -384,6 +410,13 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
                     progress=0.25,
                     save_path=str(root),
                     content_path=str(root / "Inception 2010 2160p WEB-DL"),
+                    download_speed=2_000_000,
+                    upload_speed=125_000,
+                    eta=120,
+                    amount_left=7_500,
+                    ratio=0.25,
+                    seeds=14,
+                    leeches=3,
                 ),
                 _torrent(
                     "unrelatedhash",
@@ -409,6 +442,14 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
             assert items[0]["info_hash"] == "moviehash"
             assert items[0]["progress"] == pytest.approx(0.25)
             assert items[0]["is_present"] is True
+            assert items[0]["activity"] == "downloading"
+            assert items[0]["download_speed"] == 2_000_000
+            assert items[0]["upload_speed"] == 125_000
+            assert items[0]["eta_seconds"] == 120
+            assert items[0]["amount_left"] == 7_500
+            assert items[0]["ratio"] == pytest.approx(0.25)
+            assert items[0]["seeds"] == 14
+            assert items[0]["leeches"] == 3
             assert root.exists(), "Polling must not mutate media roots"
 
             behavior.torrents = [
@@ -432,15 +473,108 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
             historical = client.get("/api/v1/downloads")
             assert historical.status_code == 200, historical.text
             assert historical.json()["items"] == []
-            historical = client.get("/api/v1/downloads?include_removed=true")
-            assert historical.status_code == 200, historical.text
-            assert historical.json()["items"][0]["is_present"] is False
-            assert historical.json()["items"][0]["removed_at"] is not None
+            # Removed observations are durable history, but Downloads is a
+            # deliberately live operational view and never returns them.
+            assert client.get("/api/v1/downloads?include_removed=true").json()["items"] == []
         finally:
             client.app.dependency_overrides.clear()
     finally:
         if root.exists():
             root.rmdir()
+
+
+def test_downloads_excludes_historical_associations_and_supports_show_links(client: TestClient) -> None:
+    headers = _login(client)
+    movie_client = _create_client(client, headers, name="history-client")
+    show_client = _create_client(
+        client,
+        headers,
+        name="show-client",
+        url="http://qbit-shows.test:8080",
+        scope="shows",
+        category="shows",
+    )
+    movie_id = uuid4()
+    movie_release_id = uuid4()
+    movie_torrent_id = uuid4()
+    show_id = uuid4()
+    show_release_id = uuid4()
+    show_torrent_id = uuid4()
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            db.add_all(
+                [
+                    Movie(id=movie_id, title="Old Movie", sort_title="Old Movie"),
+                    MovieRelease(
+                        id=movie_release_id,
+                        movie_id=movie_id,
+                        raw_release_name="Old.Movie.2020.1080p.WEB-DL",
+                    ),
+                    Torrent(
+                        id=movie_torrent_id,
+                        info_hash="historicalhash",
+                        name="Old.Movie.2020.1080p.WEB-DL",
+                    ),
+                    Show(id=show_id, title="Example Show"),
+                    ShowRelease(
+                        id=show_release_id,
+                        show_id=show_id,
+                        raw_release_name="Example.Show.S01.1080p.WEB-DL",
+                    ),
+                    Torrent(
+                        id=show_torrent_id,
+                        info_hash="showhash",
+                        name="Example.Show.S01.1080p.WEB-DL",
+                    ),
+                ]
+            )
+            await db.flush()
+            db.add_all(
+                [
+                    MovieReleaseTorrent(
+                        movie_release_id=movie_release_id,
+                        torrent_id=movie_torrent_id,
+                        association_type=AssociationType.HISTORICAL,
+                    ),
+                    TorrentClientObservation(
+                        torrent_id=movie_torrent_id,
+                        download_client_id=UUID(movie_client["id"]),
+                        state="uploading",
+                        progress=1,
+                        is_present=True,
+                    ),
+                    ShowReleaseTorrent(
+                        show_release_id=show_release_id,
+                        torrent_id=show_torrent_id,
+                        association_type=AssociationType.ATTACHED,
+                    ),
+                    TorrentClientObservation(
+                        torrent_id=show_torrent_id,
+                        download_client_id=UUID(show_client["id"]),
+                        state="uploading",
+                        progress=1,
+                        is_present=True,
+                    ),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(seed())
+    response = client.get("/api/v1/downloads")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    item = payload["items"][0]
+    assert item["info_hash"] == "showhash"
+    assert item["scope"] == "shows"
+    assert item["show_id"] == str(show_id)
+    assert item["movie_id"] is None
+    assert item["release_id"] == str(show_release_id)
+    assert item["media_title"] == "Example Show"
+    assert item["reconciliation_state"] == "attached"
+    assert item["activity"] == "seeding"
 
 
 def test_checking_torrent_updates_telemetry_without_reconciliation(client: TestClient) -> None:

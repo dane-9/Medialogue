@@ -34,6 +34,7 @@ export type ProblemAction = 'restore' | 'dismiss' | 'recheck' | 'confirm_movie_m
 export type SearchTargetEntityType = 'tmdb_movie' | 'tmdb_show_season' | 'movie' | 'episode' | 'season'
 export type SearchIndexerState = 'queued' | 'completed' | 'failed'
 export type TorrentArchiveState = 'not_archived' | 'archived' | 'failed'
+export type TorrentMediaState = 'untracked' | 'tracked' | 'backed_up' | 'archived' | 'partial' | 'attention'
 export type TorrentAssociationType = 'incoming' | 'attached' | 'historical'
 export type MediaRole = 'movie_video' | 'episode_video' | 'multi_episode_video' | 'dvd_structure' | 'bluray_structure' | 'other_media'
 
@@ -89,6 +90,19 @@ export interface Movie {
   recentEvents?: MovieEvent[]
   reconciliation?: ReconciliationAggregate
   torrentHistory?: TorrentArchiveItem[]
+  torrentStatus: MediaTorrentStatus
+}
+
+export interface MediaTorrentStatus {
+  state: TorrentMediaState
+  releaseCount: number
+  trackedReleaseCount: number
+  backedUpReleaseCount: number
+  torrentCount: number
+  presentTorrentCount: number
+  archivedTorrentCount: number
+  failedArchiveCount: number
+  trackerState: 'healthy' | 'degraded' | 'unavailable' | 'unregistered' | 'unknown'
 }
 
 export interface MovieDirectory {
@@ -121,6 +135,7 @@ export interface MovieRelease {
   selectionSnapshot?: Record<string, unknown>
   /** What the parser read out of the release name: HDR, audio, codec, flags. */
   parser?: Record<string, unknown>
+  torrentStatus: MediaTorrentStatus
 }
 
 export type MovieEditionMode = 'automatic' | 'standard' | 'named'
@@ -253,6 +268,7 @@ export interface EpisodeMedia {
   releaseScope?: 'episode' | 'multi_episode' | 'season_pack' | 'other'
   mappedEpisodeNumbers: number[]
   manualMapping: boolean
+  torrentStatus: MediaTorrentStatus
 }
 
 export interface Episode {
@@ -322,6 +338,7 @@ export interface Show {
   problems?: ReconciliationEvidence[]
   storageRoots?: Array<{ id: string; name: string; path: string; health?: 'available' | 'unavailable' | 'unknown' }>
   lastObservedAt?: string
+  torrentStatus: MediaTorrentStatus
 }
 
 export interface TMDBShowLookup {
@@ -347,6 +364,7 @@ export interface Download {
   client: string
   kind: 'Movie' | 'Show'
   state: 'Downloading' | 'Checking' | 'Seeding' | 'Completed' | 'Paused' | 'Error'
+  activity: 'downloading' | 'checking' | 'metadata' | 'queued' | 'stalled' | 'seeding' | 'paused' | 'error'
   progress: number
   size: string
   eta: string
@@ -355,11 +373,22 @@ export interface Download {
   quality?: string
   edition?: string
   movieId?: string
+  showId?: string
+  releaseId?: string
+  mediaTitle?: string
   mediaState?: string
   reconciliationState?: string
   reconciliationDetail?: string
   incoming?: boolean
   incomingKind?: 'replacement' | 'release'
+  uploadSpeed: string
+  amountLeft?: string
+  ratio?: number
+  seeds?: number
+  leeches?: number
+  availability?: number
+  archiveState: TorrentArchiveState
+  trackerState: 'healthy' | 'degraded' | 'unavailable' | 'unregistered' | 'unknown'
 }
 
 export type DownloadClientScope = 'movies' | 'shows'

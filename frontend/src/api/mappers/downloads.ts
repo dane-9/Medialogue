@@ -15,34 +15,60 @@ export function formatBytes(value: unknown): string {
 }
 
 export function mapDownload(value: DownloadDto): Download {
-  const rawState = (value.state ?? 'unknown').toLowerCase()
   const progress = percentValue(value.progress) ?? 0
-  let state: Download['state'] = 'Downloading'
-  if (rawState.startsWith('checking')) state = 'Checking'
-  else if (rawState.includes('error') || rawState.includes('missing')) state = 'Error'
-  else if (rawState.includes('pause') || rawState.includes('stopped')) state = 'Paused'
-  else if (rawState === 'completed' || rawState === 'complete') state = 'Completed'
-  else if (rawState.includes('up') || rawState.includes('seed') || rawState.includes('upload')) state = 'Seeding'
-  else if (progress >= 100 && !rawState.includes('down') && !rawState.includes('meta')) state = 'Completed'
+  const states: Record<DownloadDto['activity'], Download['state']> = {
+    downloading: 'Downloading',
+    checking: 'Checking',
+    metadata: 'Downloading',
+    queued: 'Paused',
+    stalled: 'Downloading',
+    seeding: 'Seeding',
+    paused: 'Paused',
+    error: 'Error',
+  }
+  const etaSeconds = value.eta_seconds
+  const eta = etaSeconds === null || etaSeconds === undefined || etaSeconds < 0 || etaSeconds >= 8640000
+    ? '—'
+    : etaSeconds < 60
+      ? `${etaSeconds}s`
+      : etaSeconds < 3600
+        ? `${Math.ceil(etaSeconds / 60)}m`
+        : etaSeconds < 86400
+          ? `${Math.floor(etaSeconds / 3600)}h ${Math.ceil((etaSeconds % 3600) / 60)}m`
+          : `${Math.floor(etaSeconds / 86400)}d ${Math.ceil((etaSeconds % 86400) / 3600)}h`
 
   return {
     id: value.id,
     name: value.name,
     client: value.client_name,
     kind: value.scope === 'shows' ? 'Show' : 'Movie',
-    state,
+    state: states[value.activity],
+    activity: value.activity,
     progress,
     size: formatBytes(value.total_size),
-    eta: '—',
-    speed: '—',
+    eta,
+    speed: value.download_speed ? `${formatBytes(value.download_speed)}/s` : '—',
     path: value.resolved_save_path ?? value.reported_save_path ?? 'Unknown path',
     quality: value.quality ?? undefined,
     edition: value.edition ?? undefined,
     movieId: value.movie_id ?? undefined,
+    showId: value.show_id ?? undefined,
+    releaseId: value.release_id ?? undefined,
+    mediaTitle: value.media_title ?? undefined,
     mediaState: value.media_state ?? undefined,
     reconciliationState: value.reconciliation_state ?? undefined,
     reconciliationDetail: value.reconciliation_detail ?? undefined,
     incoming: value.incoming ?? false,
     incomingKind: value.incoming_kind ?? undefined,
+    uploadSpeed: value.upload_speed ? `${formatBytes(value.upload_speed)}/s` : '—',
+    amountLeft: value.amount_left === null || value.amount_left === undefined || value.amount_left <= 0
+      ? undefined
+      : formatBytes(value.amount_left),
+    ratio: value.ratio ?? undefined,
+    seeds: value.seeds ?? undefined,
+    leeches: value.leeches ?? undefined,
+    availability: value.availability ?? undefined,
+    archiveState: value.archive_state,
+    trackerState: value.tracker_state,
   }
 }

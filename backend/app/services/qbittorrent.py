@@ -20,7 +20,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.qbittorrent import QBittorrentClient
+from app.integrations.qbittorrent import QBittorrentClient, TorrentTrackerSnapshot
 from app.models.domain import (
     IntegrationType,
     JobStatus,
@@ -35,6 +35,12 @@ from app.services.events import create_event, publish_live_event
 from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
 from app.services.jobs import JobFailure, checkpoint_job, run_job
 from app.services.torrent_archive import ensure_torrent_archived, refresh_torrent_manifest, torrent_archive_complete
+from app.services.torrent_tracking import (
+    deactivate_client_tracker_health,
+    persist_tracker_health,
+    redact_tracker_message,
+    tracker_endpoint_display,
+)
 from app.services.reconciliation import (
     associate_incoming_torrent,
     cancel_incoming_torrent,
@@ -53,6 +59,70 @@ _client_locks: defaultdict[UUID, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _detail_check_due(metadata: dict[str, object], now: datetime, *, seconds: int = 300) -> bool:
+    raw = metadata.get("tracker_checked_at")
+    if not isinstance(raw, str):
+        return True
+    try:
+        previous = datetime.fromisoformat(raw)
+        if previous.tzinfo is None:
+            previous = previous.replace(tzinfo=timezone.utc)
+        return (now - previous).total_seconds() >= seconds
+    except ValueError:
+        return True
+
+
+def _portable_metadata(observed) -> dict[str, object]:
+    values = {
+        "added_at": observed.added_at,
+        "amount_left": observed.amount_left,
+        "auto_tmm": observed.auto_tmm,
+        "download_limit": observed.download_limit,
+        "upload_limit": observed.upload_limit,
+        "downloaded": observed.downloaded,
+        "uploaded": observed.uploaded,
+        "force_start": observed.force_start,
+        "first_last_piece_priority": observed.first_last_piece_priority,
+        "sequential_download": observed.sequential_download,
+        "super_seeding": observed.super_seeding,
+        "priority": observed.priority,
+        "ratio": observed.ratio,
+        "ratio_limit": observed.ratio_limit,
+        "seeding_time": observed.seeding_time,
+        "seeding_time_limit": observed.seeding_time_limit,
+        "inactive_seeding_time_limit": observed.inactive_seeding_time_limit,
+        "seeds": observed.seeds,
+        "leeches": observed.leeches,
+        "download_speed": observed.download_speed,
+        "upload_speed": observed.upload_speed,
+        "eta": observed.eta,
+        "availability": observed.availability,
+    }
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def _snapshot_trackers(snapshot: dict[str, object] | None) -> tuple[TorrentTrackerSnapshot, ...]:
+    if not snapshot or not isinstance(snapshot.get("trackers"), list):
+        return ()
+    result: list[TorrentTrackerSnapshot] = []
+    for raw in snapshot["trackers"]:
+        if not isinstance(raw, dict) or not isinstance(raw.get("url"), str):
+            continue
+        result.append(
+            TorrentTrackerSnapshot(
+                url=raw["url"],
+                status=int(raw.get("status") or 0),
+                tier=int(raw.get("tier") or 0),
+                peers=raw.get("peers") if isinstance(raw.get("peers"), int) else None,
+                seeds=raw.get("seeds") if isinstance(raw.get("seeds"), int) else None,
+                leeches=raw.get("leeches") if isinstance(raw.get("leeches"), int) else None,
+                downloaded=raw.get("downloaded") if isinstance(raw.get("downloaded"), int) else None,
+                message=raw.get("message") if isinstance(raw.get("message"), str) else None,
+            )
+        )
+    return tuple(result)
 
 
 def _comparison_path(value: str | None) -> str:
@@ -283,6 +353,7 @@ async def _poll_download_client(
 
     current_hashes: set[str] = set()
     relevant_count = added = completed = ignored = removed = processing_errors = 0
+    detail_adapter = None
     for observed in observations:
         info_hash = observed.info_hash.lower()
         current_hashes.add(info_hash)
@@ -396,12 +467,13 @@ async def _poll_download_client(
                         # must not suppress the real completion transition once
                         # qBittorrent returns to a normal state.
                         completed_at=None if observed.checking else timestamp_completed,
-                        tracker_summary={"tracker": observed.tracker} if observed.tracker else {},
+                        tracker_summary={"tracker": tracker_endpoint_display(observed.tracker)} if observed.tracker else {},
                         metadata_json={
                             "content_path": observed.content_path,
                             "mapping_id": str(mapping_id) if mapping_id else None,
                             "completed": observed.complete,
                             "checking": observed.checking,
+                            **_portable_metadata(observed),
                         },
                     )
                     db.add(torrent)
@@ -435,7 +507,10 @@ async def _poll_download_client(
                     if timestamp_completed:
                         torrent.completed_at = timestamp_completed
                     if observed.tracker:
-                        torrent.tracker_summary = {"tracker": observed.tracker}
+                        torrent.tracker_summary = {
+                            **(torrent.tracker_summary or {}),
+                            "tracker": tracker_endpoint_display(observed.tracker),
+                        }
                     torrent.metadata_json = {
                         **(torrent.metadata_json or {}),
                         "content_path": observed.content_path,
@@ -444,6 +519,7 @@ async def _poll_download_client(
                         # durable fact that this torrent completed previously.
                         "completed": was_complete if observed.checking else observed.complete,
                         "checking": observed.checking,
+                        **_portable_metadata(observed),
                     }
                     if observed.complete and not was_complete:
                         completed += 1
@@ -476,6 +552,14 @@ async def _poll_download_client(
                 row.resolved_save_path = resolved_content
                 row.state = observed.state
                 row.progress = observed.progress
+                row.download_speed = observed.download_speed
+                row.upload_speed = observed.upload_speed
+                row.eta_seconds = observed.eta
+                row.amount_left = observed.amount_left
+                row.ratio = observed.ratio
+                row.seeds = observed.seeds
+                row.leeches = observed.leeches
+                row.availability = observed.availability
                 row.category = observed.category or None
                 row.tags = list(observed.tags)
                 row.is_present = True
@@ -486,6 +570,7 @@ async def _poll_download_client(
                     "progress": float(observed.progress),
                     "state": observed.state,
                     "scope": client.scope.value,
+                    **_portable_metadata(observed),
                 }
                 current_progress = float(observed.progress)
                 if (
@@ -524,6 +609,47 @@ async def _poll_download_client(
                 if observed.checking:
                     continue
 
+                recovery_snapshot = None
+                tracker_snapshots: tuple[TorrentTrackerSnapshot, ...] = ()
+                tracker_details_collected = False
+                needs_archive = not torrent_archive_complete(torrent)
+                if needs_archive or _detail_check_due(torrent.metadata_json or {}, checked_at):
+                    try:
+                        if detail_adapter is None:
+                            detail_adapter = client_factory(
+                                client.url, client.username or "", client.password or ""
+                            )
+                        if needs_archive and hasattr(detail_adapter, "get_torrent_recovery_snapshot"):
+                            recovery_snapshot = await detail_adapter.get_torrent_recovery_snapshot(info_hash)
+                            tracker_snapshots = _snapshot_trackers(recovery_snapshot)
+                            tracker_details_collected = True
+                        elif hasattr(detail_adapter, "get_torrent_trackers"):
+                            tracker_snapshots = await detail_adapter.get_torrent_trackers(info_hash)
+                            tracker_details_collected = True
+                        torrent.metadata_json = {
+                            **(torrent.metadata_json or {}),
+                            "tracker_checked_at": checked_at.isoformat(),
+                            "tracker_check_error": None,
+                        }
+                    except Exception as exc:
+                        # Detail collection must never turn a reachable qBit client
+                        # into an integration outage or mutate torrent/media state.
+                        torrent.metadata_json = {
+                            **(torrent.metadata_json or {}),
+                            "tracker_checked_at": checked_at.isoformat(),
+                            "tracker_check_error": (
+                                redact_tracker_message(str(exc)) or "qBittorrent detail request failed"
+                            )[:500],
+                        }
+                    if tracker_details_collected:
+                        await persist_tracker_health(
+                            db,
+                            torrent,
+                            client.id,
+                            tracker_snapshots,
+                            checked_at=checked_at,
+                        )
+
                 # Persist an Incoming association while downloading. Completion is
                 # authoritative, but attachment additionally requires shared path,
                 # directory, filename, and TMDB/manual identity verification. Plex
@@ -544,9 +670,15 @@ async def _poll_download_client(
                     )
 
                 if not torrent_archive_complete(torrent):
-                    await ensure_torrent_archived(db, torrent, client, client_factory=client_factory)
+                    await ensure_torrent_archived(
+                        db,
+                        torrent,
+                        client,
+                        client_factory=client_factory,
+                        recovery_snapshot=recovery_snapshot,
+                    )
                 else:
-                    await refresh_torrent_manifest(db, torrent)
+                    await refresh_torrent_manifest(db, torrent, recovery_snapshot=recovery_snapshot)
 
                 await reconcile_torrent_disagreements(db, torrent, qbit_present=True)
         except Exception as exc:
@@ -584,8 +716,12 @@ async def _poll_download_client(
                 )
                 torrent = await db.get(Torrent, row.torrent_id)
                 if torrent is not None:
+                    await deactivate_client_tracker_health(db, torrent.id, client.id)
                     await cancel_incoming_torrent(db, torrent)
                     await reconcile_torrent_disagreements(db, torrent, qbit_present=False)
+
+    if detail_adapter is not None:
+        await detail_adapter.close()
 
     return {
         "client_id": client.id,

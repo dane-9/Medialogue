@@ -51,6 +51,15 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
             schedule_columns = {column["name"] for column in inspector.get_columns("schedules")}
             job_columns = {column["name"] for column in inspector.get_columns("jobs")}
             job_indexes = {index["name"] for index in inspector.get_indexes("jobs")}
+            tracker_health_columns = {
+                column["name"] for column in inspector.get_columns("torrent_tracker_observations")
+            }
+            tracker_health_indexes = {
+                index["name"] for index in inspector.get_indexes("torrent_tracker_observations")
+            }
+            torrent_observation_columns = {
+                column["name"] for column in inspector.get_columns("torrent_client_observations")
+            }
         finally:
             engine.dispose()
     finally:
@@ -85,6 +94,18 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
     assert {"last_started_at", "last_finished_at", "next_run_at", "last_status", "last_duration_ms"} <= schedule_columns
     assert "schedule_id" in job_columns
     assert {"ix_jobs_created", "uq_jobs_active_schedule"} <= job_indexes
+    assert {"endpoint_key", "health_state", "terminal_confirmed", "last_success_at"} <= tracker_health_columns
+    assert "ix_torrent_tracker_active_state" in tracker_health_indexes
+    assert {
+        "download_speed",
+        "upload_speed",
+        "eta_seconds",
+        "amount_left",
+        "ratio",
+        "seeds",
+        "leeches",
+        "availability",
+    } <= torrent_observation_columns
 
 
 def test_upgrade_head_offline_sql_generation_succeeds() -> None:
@@ -120,6 +141,8 @@ def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> 
         "0007_review_quality_profiles.py",
         "0008_schedule_runtime.py",
         "0009_scheduled_job_safety.py",
+        "0010_torrent_tracker_health.py",
+        "0011_download_telemetry.py",
     ]
 
     previous = None

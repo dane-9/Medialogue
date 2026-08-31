@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
+from app.models.domain import TorrentArchiveState
+
 from .common import ORMModel
 
 
@@ -144,6 +146,9 @@ class DownloadResponse(ORMModel):
     removed_at: datetime | None
     completed_at: datetime | None = None
     movie_id: UUID | None = None
+    show_id: UUID | None = None
+    release_id: UUID | None = None
+    media_title: str | None = None
     quality: str | None = None
     edition: str | None = None
     media_state: Literal["present", "missing"] | None = None
@@ -151,3 +156,14 @@ class DownloadResponse(ORMModel):
     reconciliation_detail: str | None = None
     incoming: bool = False
     incoming_kind: Literal["replacement", "release"] | None = None
+    activity: Literal["downloading", "checking", "metadata", "queued", "stalled", "seeding", "paused", "error"]
+    download_speed: int | None = None
+    upload_speed: int | None = None
+    eta_seconds: int | None = None
+    amount_left: int | None = None
+    ratio: float | None = None
+    seeds: int | None = None
+    leeches: int | None = None
+    availability: float | None = None
+    archive_state: TorrentArchiveState
+    tracker_state: Literal["healthy", "degraded", "unavailable", "unregistered", "unknown"] = "unknown"

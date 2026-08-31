@@ -41,11 +41,13 @@ from app.schemas.movies import (
     MovieSummaryResponse,
     TMDBMovieLookupResponse,
 )
+from app.schemas.torrent_status import MediaTorrentStatusResponse
 
 from app.services.movies import add_movie_from_tmdb
 from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
+from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -101,7 +103,32 @@ async def list_movies(
         kind = "replacement" if str(raw_kind).casefold() == "replacement" else "release"
         if movie_id not in incoming_kinds or kind == "replacement":
             incoming_kinds[movie_id] = kind
-    items = [_summary(movie, problems.get(movie.id, 0), incoming_kinds.get(movie.id)) for movie in movies]
+    active_by_movie = {
+        movie.id: [
+            release
+            for release in movie.releases
+            if release.release_state
+            in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
+        ]
+        for movie in movies
+    }
+    release_statuses = await release_torrent_statuses(
+        db,
+        (release.id for releases in active_by_movie.values() for release in releases),
+        media_type="movies",
+    )
+    items = [
+        _summary(
+            movie,
+            problems.get(movie.id, 0),
+            incoming_kinds.get(movie.id),
+            aggregate_torrent_status(
+                release_statuses.get(release.id, MediaTorrentStatusResponse())
+                for release in active_by_movie[movie.id]
+            ),
+        )
+        for movie in movies
+    ]
     if state:
         items = [item for item in items if item.state.casefold() == state.casefold()]
     reverse = sort.startswith("-")
@@ -253,7 +280,23 @@ async def get_movie(
             .limit(20)
         )
     ).all()
-    summary_model = _summary(movie, problem_count)
+    active_release_ids = [
+        release.id
+        for release in movie.releases
+        if release.release_state
+        in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
+    ]
+    release_statuses = await release_torrent_statuses(
+        db, active_release_ids, media_type="movies"
+    )
+    summary_model = _summary(
+        movie,
+        problem_count,
+        torrent_status=aggregate_torrent_status(
+            release_statuses.get(release_id, MediaTorrentStatusResponse())
+            for release_id in active_release_ids
+        ),
+    )
     incoming_rows = (
         await db.execute(
             select(MovieReleaseTorrent, MovieRelease, Torrent)
@@ -403,7 +446,10 @@ async def get_movie(
     return MovieDetailResponse(
         **summary,
         overview=movie.overview,
-        releases=[_release(item) for item in sorted(movie.releases, key=lambda item: item.first_seen_at, reverse=True)],
+        releases=[
+            _release(item, release_statuses.get(item.id, MediaTorrentStatusResponse()))
+            for item in sorted(movie.releases, key=lambda item: item.first_seen_at, reverse=True)
+        ],
         torrent_history=torrent_history,
         recent_events=[
             {
@@ -502,7 +548,12 @@ async def _problem_counts(db: AsyncSession, movie_ids: list[UUID]) -> dict[UUID,
     return counts
 
 
-def _summary(movie: Movie, problem_count: int, incoming_kind: str | None = None) -> MovieSummaryResponse:
+def _summary(
+    movie: Movie,
+    problem_count: int,
+    incoming_kind: str | None = None,
+    torrent_status: MediaTorrentStatusResponse | None = None,
+) -> MovieSummaryResponse:
     active = [
         release
         for release in movie.releases
@@ -572,6 +623,7 @@ def _summary(movie: Movie, problem_count: int, incoming_kind: str | None = None)
         incoming=incoming_kind is not None,
         incoming_kind=incoming_kind,
         last_observed_at=last_observed,
+        torrent_status=torrent_status or MediaTorrentStatusResponse(),
     )
 
 
@@ -588,7 +640,10 @@ def _media_filename(directory: MediaDirectory) -> str | None:
     return chosen.filename if chosen else None
 
 
-def _release(release: MovieRelease) -> MovieReleaseResponse:
+def _release(
+    release: MovieRelease,
+    torrent_status: MediaTorrentStatusResponse | None = None,
+) -> MovieReleaseResponse:
     confidence = release.parse_snapshot.get("identity_confidence")
     return MovieReleaseResponse(
         id=release.id,
@@ -618,4 +673,5 @@ def _release(release: MovieRelease) -> MovieReleaseResponse:
             for directory in release.directories
         ],
         parse_snapshot=release.parse_snapshot,
+        torrent_status=torrent_status or MediaTorrentStatusResponse(),
     )

@@ -34,12 +34,14 @@ from app.schemas.shows import (
     ShowUpdate,
     TMDBShowLookupResponse,
 )
+from app.schemas.torrent_status import MediaTorrentStatusResponse
 from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.events import scope_predicate, show_event_scope
 from app.services.shows import add_show_from_tmdb, resolve_show_resource, set_media_file_episode_mappings, show_plex_state, show_problem_count
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
+from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
 
 router = APIRouter(tags=["shows"])
 
@@ -75,7 +77,20 @@ def _show_state(show: Show) -> str:
     return "Missing" if any(episode.presence_state != PresenceState.PRESENT for episode in counted) else "Present"
 
 
-async def _summary(db: AsyncSession, show: Show) -> ShowSummaryResponse:
+def _show_release_ids(show: Show) -> set[UUID]:
+    return {
+        mapping.show_release_id
+        for episode in show.episodes
+        for mapping in episode.media_maps
+        if mapping.show_release_id is not None
+    }
+
+
+async def _summary(
+    db: AsyncSession,
+    show: Show,
+    torrent_status: MediaTorrentStatusResponse | None = None,
+) -> ShowSummaryResponse:
     counted = _counted_episodes(show)
     present = sum(episode.presence_state == PresenceState.PRESENT for episode in counted)
     missing = sum(episode.presence_state != PresenceState.PRESENT for episode in counted)
@@ -88,6 +103,13 @@ async def _summary(db: AsyncSession, show: Show) -> ShowSummaryResponse:
         ),
         default=None,
     )
+    if torrent_status is None:
+        release_ids = _show_release_ids(show)
+        release_statuses = await release_torrent_statuses(db, release_ids, media_type="shows")
+        torrent_status = aggregate_torrent_status(
+            release_statuses.get(release_id, MediaTorrentStatusResponse())
+            for release_id in release_ids
+        )
     return ShowSummaryResponse(
         id=show.id,
         resource_id=str(show.tmdb_id or show.id),
@@ -108,6 +130,7 @@ async def _summary(db: AsyncSession, show: Show) -> ShowSummaryResponse:
         poster_ref=show.poster_ref,
         revision=show.revision,
         last_observed_at=last_observed,
+        torrent_status=torrent_status,
     )
 
 
@@ -270,7 +293,23 @@ async def list_shows(
         pattern = f"%{query.strip()}%"
         statement = statement.where(Show.title.ilike(pattern))
     shows = list((await db.scalars(statement)).unique().all())
-    items = [await _summary(db, show) for show in shows]
+    releases_by_show = {show.id: _show_release_ids(show) for show in shows}
+    release_statuses = await release_torrent_statuses(
+        db,
+        (release_id for release_ids in releases_by_show.values() for release_id in release_ids),
+        media_type="shows",
+    )
+    items = [
+        await _summary(
+            db,
+            show,
+            aggregate_torrent_status(
+                release_statuses.get(release_id, MediaTorrentStatusResponse())
+                for release_id in releases_by_show[show.id]
+            ),
+        )
+        for show in shows
+    ]
     if state:
         items = [item for item in items if item.state.casefold() == state.casefold()]
     reverse = sort.startswith("-")
@@ -529,8 +568,17 @@ async def _detail(db: AsyncSession, resource_id: str) -> ShowDetailResponse:
     show = (await db.scalars(statement)).unique().one_or_none()
     if show is None:
         raise AppError("NOT_FOUND", "Show was not found.", status_code=404)
-    summary = await _summary(db, show)
-    seasons = await _season_responses(db, show)
+    release_ids = _show_release_ids(show)
+    release_statuses = await release_torrent_statuses(db, release_ids, media_type="shows")
+    summary = await _summary(
+        db,
+        show,
+        aggregate_torrent_status(
+            release_statuses.get(release_id, MediaTorrentStatusResponse())
+            for release_id in release_ids
+        ),
+    )
+    seasons = await _season_responses(db, show, release_statuses=release_statuses)
     episode_ids = [episode.id for episode in show.episodes]
     media_file_ids = [mapping.media_file_id for episode in show.episodes for mapping in episode.media_maps]
     conditions = [(Problem.entity_type == "show") & (Problem.entity_id == show.id)]
@@ -572,7 +620,15 @@ async def _detail(db: AsyncSession, resource_id: str) -> ShowDetailResponse:
     )
 
 
-async def _season_responses(db: AsyncSession, show: Show) -> list[SeasonResponse]:
+async def _season_responses(
+    db: AsyncSession,
+    show: Show,
+    *,
+    release_statuses: dict[UUID, MediaTorrentStatusResponse] | None = None,
+) -> list[SeasonResponse]:
+    if release_statuses is None:
+        release_ids = _show_release_ids(show)
+        release_statuses = await release_torrent_statuses(db, release_ids, media_type="shows")
     plex_by_file = {item.media_file_id: item.match_state.value for item in show.plex_observations if item.media_file_id}
     result: list[SeasonResponse] = []
     for season in sorted(show.seasons, key=lambda item: item.season_number):
@@ -609,6 +665,11 @@ async def _season_responses(db: AsyncSession, show: Show) -> list[SeasonResponse
                     release_scope=release.release_scope.value if release else None,
                     mapped_episode_numbers=shared_numbers,
                     manual_mapping=mapping.manual_override,
+                    torrent_status=(
+                        release_statuses.get(release.id, MediaTorrentStatusResponse())
+                        if release is not None
+                        else MediaTorrentStatusResponse()
+                    ),
                 ))
             plex_state = "unknown"
             for candidate in ("conflict", "multiple_versions", "unavailable", "pending", "not_found", "matched"):

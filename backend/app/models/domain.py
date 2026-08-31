@@ -515,6 +515,7 @@ class Torrent(TimestampMixin, Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONType, default=dict, nullable=False)
 
     observations: Mapped[list["TorrentClientObservation"]] = relationship(back_populates="torrent", cascade="all, delete-orphan")
+    tracker_observations: Mapped[list["TorrentTrackerObservation"]] = relationship(back_populates="torrent", cascade="all, delete-orphan")
     movie_releases: Mapped[list[MovieRelease]] = relationship(secondary="movie_release_torrents", back_populates="torrents")
     show_releases: Mapped[list[ShowRelease]] = relationship(secondary="show_release_torrents", back_populates="torrents")
 
@@ -530,6 +531,14 @@ class TorrentClientObservation(Base):
     resolved_save_path: Mapped[str | None] = mapped_column(Text)
     state: Mapped[str | None] = mapped_column(String(128))
     progress: Mapped[Decimal | None] = mapped_column(Numeric(6, 5))
+    download_speed: Mapped[int | None] = mapped_column(BigInteger)
+    upload_speed: Mapped[int | None] = mapped_column(BigInteger)
+    eta_seconds: Mapped[int | None] = mapped_column(Integer)
+    amount_left: Mapped[int | None] = mapped_column(BigInteger)
+    ratio: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    seeds: Mapped[int | None] = mapped_column(Integer)
+    leeches: Mapped[int | None] = mapped_column(Integer)
+    availability: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     category: Mapped[str | None] = mapped_column(String(256))
     tags: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
     is_present: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -539,6 +548,42 @@ class TorrentClientObservation(Base):
 
     torrent: Mapped[Torrent] = relationship(back_populates="observations")
     download_client: Mapped["DownloadClient"] = relationship(back_populates="observations")
+
+
+class TorrentTrackerObservation(Base):
+    """Redacted, durable announce health for one torrent tracker endpoint."""
+
+    __tablename__ = "torrent_tracker_observations"
+    __table_args__ = (
+        UniqueConstraint("torrent_id", "download_client_id", "endpoint_key", name="uq_torrent_tracker_endpoint"),
+        Index("ix_torrent_tracker_active_state", "torrent_id", "active", "health_state"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    torrent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("torrents.id", ondelete="CASCADE"), nullable=False)
+    # Deliberately not a foreign key: tracker evidence must survive removal of
+    # a qBittorrent client configuration.
+    download_client_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    endpoint_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    endpoint_display: Mapped[str] = mapped_column(Text, nullable=False)
+    tier: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    health_state: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
+    message: Mapped[str | None] = mapped_column(Text)
+    message_key: Mapped[str | None] = mapped_column(String(64))
+    peers: Mapped[int | None] = mapped_column(Integer)
+    seeds: Mapped[int | None] = mapped_column(Integer)
+    leeches: Mapped[int | None] = mapped_column(Integer)
+    downloaded: Mapped[int | None] = mapped_column(Integer)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    terminal_failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    terminal_reason: Mapped[str | None] = mapped_column(String(64))
+    terminal_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    torrent: Mapped[Torrent] = relationship(back_populates="tracker_observations")
 
 
 class MovieReleaseTorrent(Base):

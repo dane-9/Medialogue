@@ -22,6 +22,12 @@ async def test_qbittorrent_observation_and_completion():
                     "save_path": "/downloads/movies",
                     "content_path": "/downloads/movies/Inception",
                     "tags": "managed, archive",
+                    "dlspeed": 1_250_000,
+                    "upspeed": 250_000,
+                    "eta": 42,
+                    "availability": 3.5,
+                    "num_seeds": 12,
+                    "num_leechs": 4,
                 }
             ],
         )
@@ -32,6 +38,12 @@ async def test_qbittorrent_observation_and_completion():
     assert values[0].info_hash == "abc"
     assert values[0].complete
     assert values[0].tags == ("managed", "archive")
+    assert values[0].download_speed == 1_250_000
+    assert values[0].upload_speed == 250_000
+    assert values[0].eta == 42
+    assert values[0].availability == pytest.approx(3.5)
+    assert values[0].seeds == 12
+    assert values[0].leeches == 4
 
 
 @pytest.mark.asyncio
@@ -178,6 +190,48 @@ def test_qbittorrent_new_client_polling_default_is_30_seconds():
         scope="movies",
     )
     assert payload.poll_interval_seconds == 30
+
+
+@pytest.mark.asyncio
+async def test_qbittorrent_collects_portable_recovery_snapshot():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, text="Ok.")
+        if request.url.path.endswith("/torrents/properties"):
+            return httpx.Response(200, json={"save_path": "/media", "piece_size": 1048576, "up_limit": 42})
+        if request.url.path.endswith("/torrents/files"):
+            return httpx.Response(200, json=[{
+                "index": 0,
+                "name": "Movie/Movie.mkv",
+                "size": 123,
+                "progress": 1,
+                "priority": 1,
+                "piece_range": [0, 2],
+            }])
+        if request.url.path.endswith("/torrents/trackers"):
+            return httpx.Response(200, json=[{
+                "url": "https://tracker.example/secret/announce",
+                "status": 2,
+                "tier": 0,
+                "num_peers": 8,
+                "num_seeds": 4,
+                "num_leeches": 1,
+                "num_downloaded": 99,
+                "msg": "Working",
+            }])
+        raise AssertionError(request.url.path)
+
+    client = QBittorrentClient("http://qbit", "user", "pass", transport=httpx.MockTransport(handler))
+    try:
+        snapshot = await client.get_torrent_recovery_snapshot("ABC")
+    finally:
+        await client.close()
+
+    assert snapshot["properties"]["save_path"] == "/media"
+    assert snapshot["properties"]["up_limit"] == 42
+    assert snapshot["files"][0]["name"] == "Movie/Movie.mkv"
+    assert snapshot["trackers"][0]["url"] == "https://tracker.example/secret/announce"
+    assert snapshot["trackers"][0]["seeds"] == 4
 
 
 @pytest.mark.asyncio
