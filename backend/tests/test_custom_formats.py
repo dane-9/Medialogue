@@ -76,6 +76,45 @@ def test_signed_profile_scores_and_title_overrides():
     assert override.total_score == 550
 
 
+def test_more_specific_format_supersedes_broad_match_and_scores_once():
+    broad = CustomFormat(
+        "Dolby Vision",
+        [{"type": "release_title", "pattern": r"\bDV\b"}],
+        id="broad-dv",
+    )
+    specific = CustomFormat(
+        "DV HDR10",
+        [{"type": "release_title", "pattern": r"^(?=.*\bDV\b)(?=.*\bHDR\b)"}],
+        id="specific-dv-hdr10",
+        supersedes=(broad.id,),
+    )
+    result = evaluate_custom_formats(
+        [broad, specific],
+        "Movie.2026.2160p.BluRay.REMUX.DV.HDR-GROUP",
+        profile_scores={broad.id: 45, specific.id: 50},
+    )
+    broad_result, specific_result = result.formats
+    assert specific_result.matched is True
+    assert specific_result.score_contribution == 50
+    assert broad_result.matched is False
+    assert broad_result.raw_matched is True
+    assert broad_result.suppressed_by == (specific.id,)
+    assert broad_result.suppressed_by_names == (specific.name,)
+    assert broad_result.score_contribution == 0
+    assert result.total_score == 50
+
+
+def test_supersedence_is_transitive_from_the_most_specific_match():
+    base = CustomFormat("Base", [{"type": "release_title", "pattern": "TAG"}], id="base")
+    middle = CustomFormat("Middle", [{"type": "release_title", "pattern": "TAG"}], id="middle", supersedes=(base.id,))
+    specific = CustomFormat("Specific", [{"type": "release_title", "pattern": "TAG"}], id="specific", supersedes=(middle.id,))
+    result = evaluate_custom_formats([base, middle, specific], "Movie TAG", profile_scores={"base": 10, "middle": 20, "specific": 30})
+    assert result.total_score == 30
+    assert [item.matched for item in result.formats] == [False, False, True]
+    assert result.formats[0].suppressed_by_names == ("Specific",)
+    assert result.formats[1].suppressed_by_names == ("Specific",)
+
+
 def test_highest_matching_rule_offset_is_added_to_the_profile_score():
     custom_format = CustomFormat(
         "Revision",

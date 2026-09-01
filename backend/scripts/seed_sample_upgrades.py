@@ -181,7 +181,6 @@ SAMPLE_FORMATS: list[tuple[str, str, int]] = [
     ("HDR10+", "HDR10+", 35),
     ("HDR", "HDR10", 25),
     ("REMUX", "Remux", 70),
-    ("Atmos", "Dolby Atmos", 60),
     ("TrueHD", "TrueHD", 55),
     ("DTS-HD", "DTS-HD MA", 25),
     ("HEVC", "HEVC", 15),
@@ -196,6 +195,45 @@ SAMPLE_FORMATS: list[tuple[str, str, int]] = [
 ]
 
 
+def _sample_id(name: str) -> str:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{name}").hex
+
+
+def _sample_result(name: str, contribution: int, *, regex_match: str | None = None) -> dict:
+    condition = {
+        "condition_id": f"{_sample_id(name)}-sample",
+        "condition_type": "release_title",
+        "matched": True,
+        "effective_result": True,
+        "required": False,
+        "negated": False,
+        "regex_match": regex_match,
+    }
+    return {
+        "custom_format_id": _sample_id(name),
+        "custom_format_name": name,
+        "matched": True,
+        "raw_matched": True,
+        "suppressed_by": [],
+        "suppressed_by_names": [],
+        "configured_score": contribution,
+        "contribution": contribution,
+        "conditions": [condition],
+    }
+
+
+def _take_over(matched: list[dict], *, name: str, contribution: int, supersedes: set[str]) -> None:
+    takeover_id = _sample_id(name)
+    for item in matched:
+        if item["custom_format_name"] not in supersedes or not item["matched"]:
+            continue
+        item["matched"] = False
+        item["contribution"] = 0
+        item["suppressed_by"] = [takeover_id]
+        item["suppressed_by_names"] = [name]
+    matched.append(_sample_result(name, contribution))
+
+
 def _matched_formats(release_name: str) -> list[dict]:
     """Score a release name with the sample table, as the real scorer would.
 
@@ -207,14 +245,33 @@ def _matched_formats(release_name: str) -> list[dict]:
     matched: list[dict] = []
     for token, name, contribution in SAMPLE_FORMATS:
         if token.casefold() in tokens and not any(item["custom_format_name"] == name for item in matched):
-            matched.append(
-                {
-                    "custom_format_id": uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{name}").hex,
-                    "custom_format_name": name,
-                    "matched": True,
-                    "contribution": contribution,
-                }
-            )
+            matched.append(_sample_result(name, contribution, regex_match=token))
+
+    # Samples must model the same built-in takeover rules as real evaluation.
+    # Otherwise the Upgrade Media page can appear broken even though a real
+    # indexer result correctly suppresses the broader formats.
+    has_dv = re.search(r"(?i)(?<![a-z0-9])(?:dv|dovi|dolby[ .]?vision)(?![a-z0-9])", release_name) is not None
+    has_hdr10_plus = re.search(r"(?i)(?<![a-z0-9])hdr10\+(?![a-z0-9])", release_name) is not None
+    has_hdr10 = re.search(r"(?i)(?<![a-z0-9])hdr(?:10)?(?!\+)(?![a-z0-9])", release_name) is not None
+    if has_dv and has_hdr10_plus:
+        _take_over(
+            matched,
+            name="DV HDR10+",
+            contribution=60,
+            supersedes={"Dolby Vision", "HDR10+", "HDR10"},
+        )
+    elif has_dv and has_hdr10:
+        _take_over(
+            matched,
+            name="DV HDR10",
+            contribution=50,
+            supersedes={"Dolby Vision", "HDR10"},
+        )
+
+    has_truehd = "truehd" in tokens
+    has_atmos = "atmos" in tokens
+    if has_truehd and has_atmos:
+        _take_over(matched, name="TrueHD Atmos", contribution=60, supersedes={"TrueHD"})
     return matched
 
 
@@ -223,7 +280,11 @@ def _comparison(current_name: str, candidate_name: str) -> tuple[dict, list[dict
 
     current = _matched_formats(current_name)
     candidate = _matched_formats(candidate_name)
-    previous = {item["custom_format_name"]: item["contribution"] for item in current}
+    previous = {
+        item["custom_format_name"]: item["contribution"]
+        for item in current
+        if item["matched"]
+    }
     added = [
         {
             "custom_format_id": item["custom_format_id"],
@@ -234,6 +295,7 @@ def _comparison(current_name: str, candidate_name: str) -> tuple[dict, list[dict
             "new": item["custom_format_name"] not in previous,
         }
         for item in candidate
+        if item["matched"]
         if item["contribution"] > previous.get(item["custom_format_name"], 0)
     ]
     snapshot = {

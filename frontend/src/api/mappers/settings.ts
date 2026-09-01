@@ -49,6 +49,7 @@ export function mapCustomFormat(value: CustomFormatDto): CustomFormat {
     builtin: value.builtin ?? false,
     schemaVersion: value.schema_version,
     conditions,
+    supersedes: value.supersedes ?? [],
     conditionCount: value.condition_count,
     usedByProfiles: value.used_by_profiles,
     revision: value.revision,
@@ -88,6 +89,9 @@ export function mapCustomFormatEvaluation(value: CustomFormatEvaluationDto): Cus
     customFormatId: value.custom_format_id,
     customFormatName: value.custom_format_name,
     matched: value.matched,
+    rawMatched: value.raw_matched,
+    suppressedBy: value.suppressed_by ?? [],
+    suppressedByNames: value.suppressed_by_names ?? [],
     conditions: value.conditions.map(mapConditionEvaluation),
     groupResults: value.group_results,
     scoreOffset: value.score_offset ?? 0,
@@ -176,12 +180,13 @@ export function customFormatConditionPayload(condition: CustomFormatCondition): 
   }
 }
 
-export function customFormatPayload(format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'>): CustomFormatCreateDto {
+export function customFormatPayload(format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions' | 'supersedes'>): CustomFormatCreateDto {
   return {
     name: format.name,
     description: format.description || null,
     media_scope: format.mediaScope,
     enabled: format.enabled,
     conditions: format.conditions.map(customFormatConditionPayload),
+    supersedes: format.supersedes,
   }
 }

@@ -12,7 +12,7 @@ const primary = [
   { to: '/movies', label: 'Movies', icon: 'clapper' as const },
   { to: '/shows', label: 'Shows', icon: 'tv-screen' as const },
   { to: '/new-media', label: 'New Media', icon: 'new-media' as const },
-  { to: '/upgrade-media', label: 'Upgrade Media', icon: 'refresh' as const },
+  { to: '/upgrade-media', label: 'Upgrade Media', icon: 'upgrade-media' as const },
   { to: '/downloads', label: 'Downloads', icon: 'download' as const },
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
 ]

@@ -2306,6 +2306,13 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .cf-editor-rules-panel { gap: var(--s3); padding-top: 20px; }
 .cf-editor-fields { display: grid; grid-template-columns: minmax(240px, 1.25fr) minmax(170px, .8fr); gap: var(--s4); max-width: 760px; }
 .cf-editor-fields .field-wide { grid-column: 1 / -1; }
+.cf-supersedes-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s1); max-height: 190px; overflow-y: auto; padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raised); }
+.cf-supersedes-list label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s2); min-height: 32px; padding: var(--s1) var(--s2); border: 1px solid transparent; border-radius: var(--r-sm); color: var(--muted); font-size: var(--t-xs); }
+.cf-supersedes-list label:hover { color: var(--text); background: var(--surface); }
+.cf-supersedes-list label.selected { color: var(--text); border-color: var(--accent-line); background: var(--accent-soft); }
+.cf-supersedes-list input { accent-color: var(--accent); }
+.cf-supersedes-list small, .cf-supersedes-empty { color: var(--faint); font: var(--t-micro) var(--mono); }
+.cf-test-all-row.suppressed { color: var(--muted); }
 .cf-description-input { min-height: 96px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 .cf-editor-next { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); max-width: 760px; padding-top: var(--s2); }
 .cf-logic-summary { display: flex; align-items: center; gap: var(--s2); max-width: 760px; padding: var(--s3); border: 1px solid var(--accent-line); border-radius: var(--r-lg); color: var(--accent-text); background: var(--accent-soft); }
@@ -3857,6 +3864,11 @@ select.input { background-color: var(--input-bg); }
 .upgrade-row:hover > .upgrade-cell { background: var(--raised); }
 /* The commit bar stays put while the list scrolls, as it does on New Media. */
 .upgrade-workspace { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--s3); height: calc(100vh - 260px); min-height: 420px; }
+/* The read-only notice is content New Media has no equivalent of, and the height
+   above is a fixed offset, so its own height is subtracted to keep the commit
+   bar level across the two pages. Built from the note's tokens, not a constant:
+   one line of text, its padding, its border and the gap beneath it. */
+.upgrade-workspace.with-note { height: calc(100vh - 260px - (var(--t-sm) * 1.5 + var(--s3) * 2 + 2px + var(--s4))); }
 .upgrade-workspace > .upgrade-scroll { grid-row: 1; min-height: 0; overflow-y: auto; }
 .upgrade-workspace > .new-media-add { grid-column: 1; grid-row: 2; }
 .upgrade-scroll {

@@ -65,6 +65,7 @@ function freshFormat(): CustomFormat {
     enabled: true,
     schemaVersion: 1,
     conditions: [freshCondition()],
+    supersedes: [],
     conditionCount: 1,
     usedByProfiles: 0,
     revision: 0,
@@ -109,7 +110,7 @@ function EvaluationRows({ evaluation }: { evaluation: CustomFormatEvaluation }) 
   return <div className="cf-evaluation">
     <div className={`cf-evaluation-summary ${evaluation.matched ? 'matched' : 'not-matched'}`}>
       <Icon name={evaluation.matched ? 'check' : 'close'} size={15} />
-      <strong>{evaluation.matched ? 'Matches this format' : 'Does not match this format'}</strong>
+      <strong>{evaluation.matched ? 'Matches this format' : evaluation.rawMatched ? `Suppressed by ${evaluation.suppressedByNames.join(', ')}` : 'Does not match this format'}</strong>
       <span>{evaluation.scoreOffset ? `Match offset ${evaluation.scoreOffset > 0 ? '+' : ''}${evaluation.scoreOffset}` : 'No match offset'}</span>
     </div>
     {evaluation.error && <div className="cf-inline-error">{evaluation.error}</div>}
@@ -475,7 +476,7 @@ export default function CustomFormatsPageView() {
       <div className="cf-editor-shell">
         <aside className="cf-editor-rail">
           <nav aria-label="Custom Format editor sections">
-            <button className={editorView === 'details' ? 'active' : ''} onClick={() => setEditorView('details')}><span>1</span><div><strong>Details</strong><small>Name, scope and status</small></div><Icon name="chevron" size={14} /></button>
+            <button className={editorView === 'details' ? 'active' : ''} onClick={() => setEditorView('details')}><span>1</span><div><strong>Details</strong><small>Name, scope and takeovers</small></div><Icon name="chevron" size={14} /></button>
             <button className={editorView === 'conditions' ? 'active' : ''} onClick={() => setEditorView('conditions')}><span>2</span><div><strong>Match rules</strong><small>{draft.conditions.length} configured</small></div><Icon name="chevron" size={14} /></button>
             <button className={editorView === 'test' ? 'active' : ''} onClick={() => setEditorView('test')}><span>3</span><div><strong>Test</strong><small>Try a real release title</small></div><Icon name="chevron" size={14} /></button>
           </nav>
@@ -496,6 +497,29 @@ export default function CustomFormatsPageView() {
               </Field>
               <Field label="Description" wide>
                 <textarea className="input cf-description-input" value={draft.description ?? ''} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="e.g. Lossless audio commonly found in remuxes and high-quality releases." readOnly={draft.builtin} />
+              </Field>
+              <Field label="Supersedes" help="When this format matches, selected broader formats remain diagnostic matches but contribute no score." wide>
+                <div className="cf-supersedes-list">
+                  {formats.filter((format) => format.id !== draft.id).map((format) => {
+                    const checked = draft.supersedes.includes(format.id)
+                    return <label className={checked ? 'selected' : ''} key={format.id}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={draft.builtin}
+                        onChange={() => setDraft((current) => ({
+                          ...current,
+                          supersedes: checked
+                            ? current.supersedes.filter((id) => id !== format.id)
+                            : [...current.supersedes, format.id],
+                        }))}
+                      />
+                      <span>{format.name}</span>
+                      {format.builtin && <small>Built-in</small>}
+                    </label>
+                  })}
+                  {!formats.some((format) => format.id !== draft.id) && <span className="cf-supersedes-empty">No other Custom Formats are available.</span>}
+                </div>
               </Field>
             </div>
             <div className="cf-editor-next"><Button variant="primary" onClick={() => setEditorView('conditions')}>Continue to match rules</Button></div>
@@ -534,7 +558,7 @@ export default function CustomFormatsPageView() {
             <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="ghost" onClick={() => void testAll()} disabled={testing || !releaseName.trim()}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
             {!testResult && !testAllResult && <div className="cf-test-placeholder"><Icon name="activity" size={18} /><strong>Ready to test</strong><span>Run the title above to see every rule’s evidence and result.</span></div>}
             {testResult?.evaluation && <EvaluationRows evaluation={testResult.evaluation} />}
-            {testAllResult && <div className="cf-test-all"><div className="cf-test-all-head"><span>Every format evaluated{testAllResult.qualityProfileName ? ` against ${testAllResult.qualityProfileName}` : ''}</span><span>{testAllResult.matchedCount} MATCHED{testAllResult.totalScore !== undefined ? ` · ${testAllResult.totalScore > 0 ? '+' : ''}${testAllResult.totalScore}` : ''}</span></div>{testAllResult.formats.map((evaluation) => <div className="cf-test-all-row" key={evaluation.customFormatId}><Icon name={evaluation.matched ? 'check' : 'close'} size={14} /><span>{evaluation.customFormatName}</span><small>{evaluation.contribution === undefined ? '-' : `${evaluation.contribution > 0 ? '+' : ''}${evaluation.contribution}`}</small></div>)}</div>}
+            {testAllResult && <div className="cf-test-all"><div className="cf-test-all-head"><span>Every format evaluated{testAllResult.qualityProfileName ? ` against ${testAllResult.qualityProfileName}` : ''}</span><span>{testAllResult.matchedCount} MATCHED{testAllResult.totalScore !== undefined ? ` · ${testAllResult.totalScore > 0 ? '+' : ''}${testAllResult.totalScore}` : ''}</span></div>{testAllResult.formats.map((evaluation) => <div className={`cf-test-all-row ${evaluation.rawMatched && !evaluation.matched ? 'suppressed' : ''}`} key={evaluation.customFormatId}><Icon name={evaluation.matched ? 'check' : evaluation.rawMatched ? 'pause' : 'close'} size={14} /><span>{evaluation.customFormatName}{evaluation.rawMatched && !evaluation.matched ? ` · suppressed by ${evaluation.suppressedByNames.join(', ')}` : ''}</span><small>{evaluation.contribution === undefined ? '-' : `${evaluation.contribution > 0 ? '+' : ''}${evaluation.contribution}`}</small></div>)}</div>}
             {testResult?.parsed && <details className="cf-parser-details"><summary>View parser output</summary><pre>{JSON.stringify(testResult.parsed, null, 2)}</pre></details>}
             <div className="cf-editor-next"><Button variant="secondary" onClick={() => setEditorView('conditions')}>Back to rules</Button></div>
           </section>}
@@ -565,6 +589,7 @@ function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { forma
         {condition.name || typeLabel(condition.type)}
       </span>)}
       {format.conditions.length > 6 && <span className="cf-condition-chip cf-condition-more">+{format.conditions.length - 6} more</span>}
+      {format.supersedes.length > 0 && <span className="cf-condition-chip"><em>Supersedes</em>{format.supersedes.length}</span>}
     </div>
   </article>
 }

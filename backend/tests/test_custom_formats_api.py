@@ -130,6 +130,73 @@ def test_custom_format_crud_has_no_intrinsic_score_and_uses_revision(client: Tes
     assert deleted.json()["deleted"] is True
 
 
+def test_custom_format_supersedes_is_cycle_safe_and_visible_in_test_all(client: TestClient) -> None:
+    headers = _login(client)
+    broad = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={"name": "Broad DV", "conditions": [{"type": "release_title", "pattern": r"\bDV\b"}]},
+    ).json()
+    specific_response = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={
+            "name": "Specific DV HDR",
+            "conditions": [{"type": "release_title", "pattern": r"^(?=.*\bDV\b)(?=.*\bHDR\b)"}],
+            "supersedes": [broad["id"]],
+        },
+    )
+    assert specific_response.status_code == 201, specific_response.text
+    specific = specific_response.json()
+    assert specific["supersedes"] == [broad["id"]]
+
+    tested = client.post(
+        "/api/v1/custom-formats/test-all",
+        headers=headers,
+        json={"release_name": "Movie.2026.DV.HDR-GROUP", "media_scope": "both"},
+    )
+    assert tested.status_code == 200, tested.text
+    broad_result = _format_named(tested.json(), "Broad DV")
+    specific_result = _format_named(tested.json(), "Specific DV HDR")
+    assert specific_result["matched"] is True
+    assert broad_result["matched"] is False
+    assert broad_result["raw_matched"] is True
+    assert broad_result["suppressed_by"] == [specific["id"]]
+    assert broad_result["suppressed_by_names"] == ["Specific DV HDR"]
+
+    cycle = client.patch(
+        f"/api/v1/custom-formats/{broad['id']}",
+        headers=headers,
+        json={"supersedes": [specific["id"]], "expected_revision": broad["revision"]},
+    )
+    assert cycle.status_code == 422, cycle.text
+    assert cycle.json()["error"]["code"] == "CUSTOM_FORMAT_SUPERSEDES_CYCLE"
+
+    deleted = client.delete(f"/api/v1/custom-formats/{broad['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    refreshed = client.get(f"/api/v1/custom-formats/{specific['id']}").json()
+    assert refreshed["supersedes"] == []
+
+
+def test_builtin_specific_formats_take_over_broader_dynamic_range_matches(client: TestClient) -> None:
+    headers = _login(client)
+    tested = client.post(
+        "/api/v1/custom-formats/test-all",
+        headers=headers,
+        json={"release_name": "Movie.2026.2160p.BluRay.REMUX.DV.HDR-GROUP", "media_scope": "movies"},
+    )
+    assert tested.status_code == 200, tested.text
+    payload = tested.json()
+    combined = _format_named(payload, "DV HDR10")
+    dolby_vision = _format_named(payload, "Dolby Vision")
+    hdr10 = _format_named(payload, "HDR10")
+    assert combined["matched"] is True
+    assert dolby_vision["raw_matched"] is True and dolby_vision["matched"] is False
+    assert hdr10["raw_matched"] is True and hdr10["matched"] is False
+    assert dolby_vision["suppressed_by_names"] == ["DV HDR10"]
+    assert hdr10["suppressed_by_names"] == ["DV HDR10"]
+
+
 def test_custom_format_sections_and_order_are_persistent(client: TestClient) -> None:
     headers = _login(client)
     created = _create(client, headers, name="My Ordered Format")

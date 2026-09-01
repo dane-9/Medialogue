@@ -816,6 +816,7 @@ export interface CustomFormat {
   enabled: boolean
   schemaVersion: number
   conditions: CustomFormatCondition[]
+  supersedes: string[]
   conditionCount: number
   usedByProfiles: number
   revision: number
@@ -851,6 +852,9 @@ export interface CustomFormatEvaluation {
   customFormatId: string
   customFormatName: string
   matched: boolean
+  rawMatched: boolean
+  suppressedBy: string[]
+  suppressedByNames: string[]
   conditions: CustomFormatConditionEvaluation[]
   groupResults: Record<string, boolean>
   scoreOffset: number

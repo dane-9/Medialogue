@@ -35,12 +35,12 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     seeders: value.seeders ?? undefined,
     leechers: value.leechers ?? undefined,
     publishedAt: value.published_at ?? undefined,
-    currentMatchedFormats: value.current_matched_formats.map((format) => ({
+    currentMatchedFormats: (value.current_matched_formats ?? []).map((format) => ({
       id: format.custom_format_id,
       name: format.custom_format_name,
       contribution: format.contribution,
     })),
-    candidateMatchedFormats: value.candidate_matched_formats.map((format) => ({
+    candidateMatchedFormats: (value.candidate_matched_formats ?? []).map((format) => ({
       id: format.custom_format_id,
       name: format.custom_format_name,
       contribution: format.contribution,

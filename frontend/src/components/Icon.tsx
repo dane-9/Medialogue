@@ -1,8 +1,21 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media'
 
 const paths: Record<IconName, JSX.Element> = {
+  'upgrade-media': <>
+    <path
+      fill="currentColor"
+      stroke="none"
+      d="M3.5 13h9a.75.75 0 0 1 .102 1.493l-.102.007h-9a.75.75 0 0 1-.102-1.493zh9z"
+    />
+    <path
+      fill="currentColor"
+      stroke="none"
+      transform="matrix(1 0 0 -1 0 12.78)"
+      d="M7.898 1.007L8 1a.75.75 0 0 1 .743.648l.007.102v7.688l2.255-2.254a.75.75 0 0 1 .977-.072l.084.072a.75.75 0 0 1 .072.977l-.072.084L8.53 11.78a.75.75 0 0 1-.976.073l-.084-.073l-3.536-3.535a.75.75 0 0 1 .977-1.133l.084.072L7.25 9.44V1.75a.75.75 0 0 1 .648-.743L8 1z"
+    />
+  </>,
   download: <path
     fill="currentColor"
     stroke="none"
@@ -181,6 +194,7 @@ const VIEW_BOXES: Partial<Record<IconName, string>> = {
   security: '-3.48 -3.48 62.96 62.96',
   indexers: '-1.44 -0.73 26.45 26.45',
   download: '-1.12 -1.37 18.24 18.24',
+  'upgrade-media': '-1.12 -1.37 18.24 18.24',
   alert: '-1.88 -1.85 27.75 27.75',
   lock: '-1.51 -1.51 27.03 27.03',
   unlock: '-1.51 -1.51 27.03 27.03',

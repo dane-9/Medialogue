@@ -30,11 +30,11 @@ export const settingsApi = {
     const payload = await openApiData(openApiClient.PUT('/api/v1/custom-formats/layout', { body }))
     return payload.sections.map(mapCustomFormatSection)
   },
-  createCustomFormat: async (format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'>) => {
+  createCustomFormat: async (format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions' | 'supersedes'>) => {
     const payload = await openApiData(openApiClient.POST('/api/v1/custom-formats', { body: customFormatPayload(format) }))
     return mapCustomFormat(payload)
   },
-  updateCustomFormat: async (id: string, format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'> & { expectedRevision?: number }) => {
+  updateCustomFormat: async (id: string, format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions' | 'supersedes'> & { expectedRevision?: number }) => {
     const body = { ...customFormatPayload(format), expected_revision: format.expectedRevision } satisfies CustomFormatUpdateDto
     const payload = await openApiData(openApiClient.PATCH('/api/v1/custom-formats/{custom_format_id}', { params: { path: { custom_format_id: id } }, body }))
     return mapCustomFormat(payload)
@@ -45,7 +45,7 @@ export const settingsApi = {
     return mapCustomFormat(payload)
   },
   deleteCustomFormat: (id: string) => openApiData(openApiClient.DELETE('/api/v1/custom-formats/{custom_format_id}', { params: { path: { custom_format_id: id } } })),
-  testCustomFormat: async (format: Pick<CustomFormat, 'id' | 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions'>, releaseName: string, indexer?: string): Promise<CustomFormatTestResult> => {
+  testCustomFormat: async (format: Pick<CustomFormat, 'id' | 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions' | 'supersedes'>, releaseName: string, indexer?: string): Promise<CustomFormatTestResult> => {
     const body = {
       release_name: releaseName,
       indexer,

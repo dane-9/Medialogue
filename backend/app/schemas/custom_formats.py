@@ -76,6 +76,7 @@ class CustomFormatCreate(BaseModel):
     media_scope: CustomFormatScope = CustomFormatScope.BOTH
     enabled: bool = True
     conditions: list[CustomFormatConditionInput] = Field(min_length=1, max_length=100)
+    supersedes: list[UUID] = Field(default_factory=list, max_length=500)
 
 
 class CustomFormatUpdate(BaseModel):
@@ -84,6 +85,7 @@ class CustomFormatUpdate(BaseModel):
     media_scope: CustomFormatScope | None = None
     enabled: bool | None = None
     conditions: list[CustomFormatConditionInput] | None = Field(default=None, min_length=1, max_length=100)
+    supersedes: list[UUID] | None = Field(default=None, max_length=500)
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -110,6 +112,7 @@ class CustomFormatResponse(ORMModel):
     schema_version: int
     conditions: list[CustomFormatConditionResponse]
     condition_count: int
+    supersedes: list[UUID] = Field(default_factory=list)
     used_by_profiles: int
     revision: int
     created_at: datetime
@@ -133,6 +136,7 @@ class CustomFormatTestDefinition(BaseModel):
     media_scope: CustomFormatScope = CustomFormatScope.BOTH
     enabled: bool = True
     conditions: list[CustomFormatConditionInput] = Field(min_length=1, max_length=100)
+    supersedes: list[UUID] = Field(default_factory=list, max_length=500)
 
 
 class CustomFormatTestRequest(BaseModel):
@@ -171,6 +175,9 @@ class CustomFormatEvaluationResponse(BaseModel):
     custom_format_id: str
     custom_format_name: str
     matched: bool
+    raw_matched: bool
+    suppressed_by: list[str] = Field(default_factory=list)
+    suppressed_by_names: list[str] = Field(default_factory=list)
     conditions: list[CustomFormatConditionEvaluationResponse]
     group_results: dict[str, bool]
     score_offset: int = 0
@@ -200,6 +207,8 @@ class CustomFormatExportItem(BaseModel):
     media_scope: CustomFormatScope = CustomFormatScope.BOTH
     enabled: bool = True
     conditions: list[CustomFormatConditionInput]
+    #: Names, rather than installation-specific ids, keep exports portable.
+    supersedes: list[str] = Field(default_factory=list, max_length=500)
 
 
 class CustomFormatExportBundle(BaseModel):

@@ -147,7 +147,7 @@ async def ensure_default_quality_profile(session: AsyncSession) -> None:
     await session.flush()
 
 
-async def ensure_builtin_custom_formats(session: AsyncSession) -> None:
+async def ensure_builtin_custom_formats(session: AsyncSession) -> bool:
     """Install and re-sync the Custom Formats Medialogue ships.
 
     Keyed on ``builtin_key`` so a definition can be corrected in a later build
@@ -161,7 +161,19 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> None:
 
     rows = (await session.scalars(select(CustomFormat).where(CustomFormat.builtin.is_(True)))).all()
     existing = {row.builtin_key: row for row in rows}
+    original = {
+        key: (
+            row.name,
+            row.description,
+            row.media_scope,
+            dict(row.condition_definition or {}),
+            row.builtin,
+        )
+        for key, row in existing.items()
+    }
+    changed = False
 
+    managed: dict[str, CustomFormat] = {}
     for builtin in BUILTIN_FORMATS:
         row = existing.get(builtin.key)
         if row is None:
@@ -172,11 +184,24 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> None:
                 revision=1,
             )
             session.add(row)
+            changed = True
         row.name = builtin.name
         row.description = builtin.description
         row.media_scope = MediaScope(builtin.media_scope)
-        row.condition_definition = condition_definition(builtin)
         row.builtin = True
+        managed[builtin.key] = row
+
+    await session.flush()
+    for builtin in BUILTIN_FORMATS:
+        row = managed[builtin.key]
+        row.condition_definition = condition_definition(
+            builtin,
+            supersedes=tuple(str(managed[key].id) for key in builtin.supersedes if key in managed),
+        )
+        previous = original.get(builtin.key)
+        current = (row.name, row.description, row.media_scope, dict(row.condition_definition or {}), row.builtin)
+        if previous is not None and previous != current:
+            changed = True
 
     # Withdrawn built-ins must disappear from the catalog. Score rows are
     # application configuration, not historical evidence, and cascade away;
@@ -184,5 +209,7 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> None:
     for key, row in existing.items():
         if key not in BUILTIN_KEYS:
             await session.delete(row)
+            changed = True
 
     await session.flush()
+    return changed

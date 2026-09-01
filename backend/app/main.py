@@ -72,8 +72,13 @@ async def lifespan(_: FastAPI):
             if settings.bootstrap_admin:
                 await ensure_default_admin(db, settings)
             await ensure_quality_definitions(db)
-            await ensure_builtin_custom_formats(db)
+            builtins_changed = await ensure_builtin_custom_formats(db)
             await ensure_default_quality_profile(db)
+            if builtins_changed:
+                # Built-in conditions and takeover relationships affect saved
+                # release score snapshots used by searches and upgrades.
+                from app.services.quality_profiles import refresh_all_release_scores
+                await refresh_all_release_scores(db)
             await mark_running_jobs_interrupted(db)
             await ensure_configured_integration_states(db)
             await ensure_default_schedules(db)

@@ -43,6 +43,9 @@ class BuiltinFormat:
     default_enabled: bool = True
     group: str = "General"
     tags: tuple[str, ...] = field(default_factory=tuple)
+    # More-specific formats can take over broader matches. Keys are resolved
+    # to durable Custom Format ids during bootstrap.
+    supersedes: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _codec(key: str, name: str, description: str, values: list[str], group: str) -> BuiltinFormat:
@@ -75,7 +78,8 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
     BuiltinFormat(
         key="audio-truehd-atmos", name="TrueHD Atmos", group="Audio",
         description="Lossless, object-based Dolby Atmos carried by TrueHD. It is primarily found on Blu-ray and UHD discs and remains compatible with TrueHD playback.",
-        conditions=(BuiltinCondition(type="audio_codec", value=["TrueHD Atmos"]),)),
+        conditions=(BuiltinCondition(type="audio_codec", value=["TrueHD Atmos"]),),
+        supersedes=("audio-truehd",)),
     BuiltinFormat(
         key="audio-truehd", name="Dolby TrueHD", group="Audio",
         description="Lossless Dolby audio with support for up to 7.1 channels, commonly found on Blu-ray. Unlike TrueHD Atmos, it carries no object-based Atmos data.",
@@ -83,7 +87,8 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
     BuiltinFormat(
         key="audio-dtsx", name="DTS:X", group="Audio",
         description="Lossless, object-based 3D audio carried by DTS-HD Master Audio. It is the DTS counterpart to Dolby Atmos and is mainly found on Blu-ray releases.",
-        conditions=(BuiltinCondition(type="release_title", pattern=r"\b(dts[-_. ]?x)\b(?!\d)"),)),
+        conditions=(BuiltinCondition(type="release_title", pattern=r"\b(dts[-_. ]?x)\b(?!\d)"),),
+        supersedes=("audio-dtshd-ma", "audio-dts")),
     BuiltinFormat(
         key="audio-dtshd-ma", name="DTS-HD MA", group="Audio",
         description="Lossless surround audio commonly used on Blu-ray, with a DTS core for older equipment. It supports up to 7.1 channels and can also carry DTS:X.",
@@ -99,7 +104,8 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
     BuiltinFormat(
         key="audio-ddplus-atmos", name="DD+ Atmos", group="Audio",
         description="Lossy, object-based Dolby Atmos carried by DD+. It is the Atmos format used by most streaming services, with less detail and dynamic range than TrueHD Atmos.",
-        conditions=(BuiltinCondition(type="audio_codec", value=["DD+ Atmos"]),)),
+        conditions=(BuiltinCondition(type="audio_codec", value=["DD+ Atmos"]),),
+        supersedes=("audio-ddplus",)),
     BuiltinFormat(
         key="audio-ddplus", name="DD+", group="Audio",
         description="Lossy Dolby Digital Plus, also called DDP or E-AC-3. It supports up to 7.1 channels and is commonly used by streaming services for standard surround sound.",
@@ -135,11 +141,13 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
     BuiltinFormat(
         key="hdr-dv-hdr10", name="DV HDR10", group="Dynamic Range",
         description="Dolby Vision paired with an HDR10 fallback, giving compatible displays dynamic HDR while retaining reliable playback on standard HDR10 equipment.",
-        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\b(HDR(10)?(?!\+))\b)"),)),
+        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\b(HDR(10)?(?!\+))\b)"),),
+        supersedes=("hdr-dolby-vision", "hdr-hdr10")),
     BuiltinFormat(
         key="hdr-dv-hdr10-plus", name="DV HDR10+", group="Dynamic Range",
         description="Dolby Vision paired with an HDR10+ base layer: dynamic metadata for Dolby Vision displays and dynamic metadata again for everything else. The best dynamic range a release can carry.",
-        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\bHDR10\+)"),)),
+        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\bHDR10\+)"),),
+        supersedes=("hdr-dolby-vision", "hdr-hdr10-plus", "hdr-hdr10")),
     BuiltinFormat(
         key="hdr-hdr10-plus", name="HDR10+", group="Dynamic Range",
         description="Dynamic HDR metadata that can tune color, brightness, and contrast for each frame. It falls back to standard HDR10 on unsupported displays.",
@@ -322,7 +330,7 @@ if set(DEFAULT_FORMAT_SCORES) != BUILTIN_KEYS:
     raise RuntimeError("Default Quality Profile scores must cover every built-in Custom Format exactly once")
 
 
-def condition_definition(builtin: BuiltinFormat) -> dict[str, Any]:
+def condition_definition(builtin: BuiltinFormat, *, supersedes: tuple[str, ...] = ()) -> dict[str, Any]:
     """Render a built-in into the stored condition-definition shape."""
 
     from app.schemas.custom_formats import CUSTOM_FORMAT_SCHEMA_VERSION
@@ -335,6 +343,7 @@ def condition_definition(builtin: BuiltinFormat) -> dict[str, Any]:
 
     return {
         "schema_version": CUSTOM_FORMAT_SCHEMA_VERSION,
+        "supersedes": list(supersedes),
         "conditions": [
             {
                 "id": f"{builtin.key}-{index}",

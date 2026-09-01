@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import delete, func, select
@@ -134,16 +134,32 @@ def _scope(value: CustomFormatScope | str) -> MediaScope:
 def _normalized_conditions(values: list[Any]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for value in values:
-        raw = value.model_dump(mode="json", exclude_none=True) if hasattr(value, "model_dump") else dict(value)
+        if hasattr(value, "model_dump"):
+            raw = value.model_dump(mode="json", exclude_none=True)
+        elif hasattr(value, "to_dict"):
+            raw = value.to_dict()
+        else:
+            raw = dict(value)
         normalized.append(FormatCondition.from_dict(raw).to_dict())
     return normalized
 
 
-def _definition(conditions: list[Any]) -> dict[str, Any]:
+def _definition(conditions: list[Any], supersedes: list[UUID] | tuple[str, ...] = ()) -> dict[str, Any]:
     return {
         "schema_version": CUSTOM_FORMAT_SCHEMA_VERSION,
+        "supersedes": [str(item) for item in supersedes],
         "conditions": _normalized_conditions(conditions),
     }
+
+
+def _supersedes_ids(definition: dict[str, Any] | None) -> list[UUID]:
+    values: list[UUID] = []
+    for value in (definition or {}).get("supersedes", []):
+        try:
+            values.append(UUID(str(value)))
+        except (TypeError, ValueError):
+            continue
+    return list(dict.fromkeys(values))
 
 
 def _evaluation_format_from_model(row: CustomFormatModel) -> EvaluationFormat:
@@ -167,7 +183,7 @@ def _evaluation_format_from_test(value: CustomFormatTestDefinition) -> Evaluatio
             "description": value.description,
             "media_scope": value.media_scope.value,
             "enabled": value.enabled,
-            "condition_definition": _definition(value.conditions),
+            "condition_definition": _definition(value.conditions, value.supersedes),
         }
     )
 
@@ -177,6 +193,9 @@ def _evaluation_response(value: Any, *, include_profile_score: bool = False) -> 
         custom_format_id=value.custom_format_id,
         custom_format_name=value.custom_format_name,
         matched=value.matched,
+        raw_matched=value.matched if value.raw_matched is None else value.raw_matched,
+        suppressed_by=list(value.suppressed_by),
+        suppressed_by_names=list(value.suppressed_by_names),
         conditions=[condition.to_dict() for condition in value.conditions],
         group_results=dict(value.group_results),
         score_offset=int(value.score_offset),
@@ -210,6 +229,7 @@ async def _response(db: AsyncSession, row: CustomFormatModel) -> CustomFormatRes
         schema_version=int((row.condition_definition or {}).get("schema_version", CUSTOM_FORMAT_SCHEMA_VERSION)),
         conditions=conditions,
         condition_count=len(conditions),
+        supersedes=_supersedes_ids(row.condition_definition),
         used_by_profiles=await _used_by_profiles(db, row.id),
         revision=row.revision,
         created_at=row.created_at,
@@ -223,6 +243,50 @@ async def _ensure_name_available(db: AsyncSession, name: str, *, exclude_id: UUI
         query = query.where(CustomFormatModel.id != exclude_id)
     if await db.scalar(query) is not None:
         raise AppError("CUSTOM_FORMAT_NAME_EXISTS", "A Custom Format with that name already exists.", status_code=409)
+
+
+async def _validate_supersedence(
+    db: AsyncSession,
+    *,
+    format_id: UUID,
+    supersedes: list[UUID],
+) -> None:
+    targets = list(dict.fromkeys(supersedes))
+    if format_id in targets:
+        raise AppError("CUSTOM_FORMAT_SUPERSEDES_SELF", "A Custom Format cannot supersede itself.", status_code=422)
+    known = set((await db.scalars(select(CustomFormatModel.id))).all())
+    missing = [str(item) for item in targets if item not in known]
+    if missing:
+        raise AppError(
+            "CUSTOM_FORMAT_SUPERSEDES_NOT_FOUND",
+            "One or more superseded Custom Formats do not exist.",
+            status_code=422,
+            details={"ids": missing},
+        )
+
+    rows = (await db.scalars(select(CustomFormatModel))).all()
+    graph = {row.id: set(_supersedes_ids(row.condition_definition)) for row in rows}
+    graph[format_id] = set(targets)
+
+    def reaches(start: UUID, target: UUID) -> bool:
+        pending = [start]
+        seen: set[UUID] = set()
+        while pending:
+            current = pending.pop()
+            if current == target:
+                return True
+            if current in seen:
+                continue
+            seen.add(current)
+            pending.extend(graph.get(current, ()))
+        return False
+
+    if any(reaches(target, format_id) for target in targets):
+        raise AppError(
+            "CUSTOM_FORMAT_SUPERSEDES_CYCLE",
+            "That takeover would create a circular Custom Format relationship.",
+            status_code=422,
+        )
 
 
 def _validate_evaluation_format(fmt: EvaluationFormat) -> None:
@@ -334,7 +398,9 @@ async def create_custom_format(
 ) -> CustomFormatResponse:
     name = payload.name.strip()
     await _ensure_name_available(db, name)
-    definition = _definition(payload.conditions)
+    row_id = uuid4()
+    await _validate_supersedence(db, format_id=row_id, supersedes=payload.supersedes)
+    definition = _definition(payload.conditions, payload.supersedes)
     fmt = EvaluationFormat.from_dict(
         {
             "name": name,
@@ -346,6 +412,7 @@ async def create_custom_format(
     )
     _validate_evaluation_format(fmt)
     row = CustomFormatModel(
+        id=row_id,
         name=name,
         description=payload.description.strip() if payload.description else None,
         media_scope=_scope(payload.media_scope),
@@ -361,7 +428,7 @@ async def create_custom_format(
         entity_type="custom_format",
         entity_id=row.id,
         message=f"Custom Format {row.name} was created.",
-        details={"media_scope": row.media_scope.value, "condition_count": len(fmt.conditions)},
+        details={"media_scope": row.media_scope.value, "condition_count": len(fmt.conditions), "supersedes_count": len(payload.supersedes)},
     )
     await db.commit()
     return await _response(db, row)
@@ -436,7 +503,8 @@ async def export_all_custom_formats(
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatExportBundle:
     rows = (await db.scalars(select(CustomFormatModel).order_by(func.lower(CustomFormatModel.name)))).all()
-    return CustomFormatExportBundle(custom_formats=[_export_item(row) for row in rows])
+    names_by_id = {row.id: row.name for row in rows}
+    return CustomFormatExportBundle(custom_formats=[_export_item(row, names_by_id) for row in rows])
 
 
 @router.post("/import", response_model=CustomFormatImportResponse, status_code=status.HTTP_201_CREATED)
@@ -483,6 +551,20 @@ async def import_custom_formats(
         db.add(row)
         rows.append(row)
     await db.flush()
+    all_rows = (await db.scalars(select(CustomFormatModel))).all()
+    ids_by_name = {row.name.casefold(): row.id for row in all_rows}
+    for item, row in zip(payload.custom_formats, rows):
+        missing = [name for name in item.supersedes if name.casefold() not in ids_by_name]
+        if missing:
+            raise AppError(
+                "CUSTOM_FORMAT_SUPERSEDES_NOT_FOUND",
+                "An imported takeover refers to a Custom Format that is not present.",
+                status_code=422,
+                details={"names": missing},
+            )
+        target_ids = [ids_by_name[name.casefold()] for name in item.supersedes]
+        await _validate_supersedence(db, format_id=row.id, supersedes=target_ids)
+        row.condition_definition = _definition(item.conditions, target_ids)
     for row in rows:
         await create_event(
             db,
@@ -544,8 +626,12 @@ async def update_custom_format(
         row.media_scope = _scope(values["media_scope"])
     if "enabled" in values and values["enabled"] is not None:
         row.enabled = bool(values["enabled"])
-    if payload.conditions is not None:
-        row.condition_definition = _definition(payload.conditions)
+    if payload.conditions is not None or payload.supersedes is not None:
+        current = _evaluation_format_from_model(row)
+        conditions = payload.conditions if payload.conditions is not None else list(current.conditions)
+        supersedes = payload.supersedes if payload.supersedes is not None else _supersedes_ids(row.condition_definition)
+        await _validate_supersedence(db, format_id=row.id, supersedes=supersedes)
+        row.condition_definition = _definition(conditions, supersedes)
 
     candidate = _evaluation_format_from_model(row)
     _validate_evaluation_format(candidate)
@@ -556,7 +642,11 @@ async def update_custom_format(
         entity_type="custom_format",
         entity_id=row.id,
         message=f"Custom Format {row.name} was updated.",
-        details={"revision": row.revision, "condition_count": len(candidate.conditions)},
+        details={
+            "revision": row.revision,
+            "condition_count": len(candidate.conditions),
+            "supersedes_count": len(candidate.supersedes),
+        },
     )
     await db.flush()
     await refresh_all_release_scores(db)
@@ -600,6 +690,18 @@ async def delete_custom_format(
             definition["custom_format_scores"] = overrides
             assignment.override_definition = definition
             assignment.revision += 1
+    # Remove incoming takeover references before deleting the target.
+    other_formats = (await db.scalars(select(CustomFormatModel).where(CustomFormatModel.id != row.id))).all()
+    for other in other_formats:
+        target_ids = _supersedes_ids(other.condition_definition)
+        if row.id not in target_ids:
+            continue
+        fmt = _evaluation_format_from_model(other)
+        other.condition_definition = _definition(
+            list(fmt.conditions),
+            [target_id for target_id in target_ids if target_id != row.id],
+        )
+        other.revision += 1
     await db.delete(row)
     await db.flush()
     await refresh_all_release_scores(db)
@@ -607,7 +709,7 @@ async def delete_custom_format(
     return DeleteResponse(id=custom_format_id)
 
 
-def _export_item(row: CustomFormatModel) -> CustomFormatExportItem:
+def _export_item(row: CustomFormatModel, names_by_id: dict[UUID, str]) -> CustomFormatExportItem:
     fmt = _evaluation_format_from_model(row)
     return CustomFormatExportItem(
         name=row.name,
@@ -615,6 +717,7 @@ def _export_item(row: CustomFormatModel) -> CustomFormatExportItem:
         media_scope=CustomFormatScope(row.media_scope.value),
         enabled=row.enabled,
         conditions=[condition.to_dict() for condition in fmt.conditions],
+        supersedes=[names_by_id[item] for item in _supersedes_ids(row.condition_definition) if item in names_by_id],
     )
 
 
@@ -627,4 +730,5 @@ async def export_custom_format(
     row = await db.get(CustomFormatModel, custom_format_id)
     if row is None:
         raise AppError("NOT_FOUND", "Custom Format was not found.", status_code=404)
-    return CustomFormatExportBundle(custom_formats=[_export_item(row)])
+    all_rows = (await db.scalars(select(CustomFormatModel))).all()
+    return CustomFormatExportBundle(custom_formats=[_export_item(row, {item.id: item.name for item in all_rows})])

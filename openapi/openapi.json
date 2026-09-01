@@ -839,6 +839,15 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "supersedes": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Supersedes",
+            "type": "array"
           }
         },
         "required": [
@@ -909,16 +918,35 @@
             ],
             "title": "Profile Score"
           },
+          "raw_matched": {
+            "title": "Raw Matched",
+            "type": "boolean"
+          },
           "score_offset": {
             "default": 0,
             "title": "Score Offset",
             "type": "integer"
+          },
+          "suppressed_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suppressed By",
+            "type": "array"
+          },
+          "suppressed_by_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suppressed By Names",
+            "type": "array"
           }
         },
         "required": [
           "custom_format_id",
           "custom_format_name",
           "matched",
+          "raw_matched",
           "conditions",
           "group_results"
         ],
@@ -988,6 +1016,14 @@
             "default": 1,
             "title": "Schema Version",
             "type": "integer"
+          },
+          "supersedes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Supersedes",
+            "type": "array"
           }
         },
         "required": [
@@ -1034,6 +1070,14 @@
             "default": 1,
             "title": "Schema Version",
             "type": "integer"
+          },
+          "supersedes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Supersedes",
+            "type": "array"
           }
         },
         "required": [
@@ -1167,6 +1211,14 @@
           "schema_version": {
             "title": "Schema Version",
             "type": "integer"
+          },
+          "supersedes": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Supersedes",
+            "type": "array"
           },
           "updated_at": {
             "format": "date-time",
@@ -1402,6 +1454,15 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "supersedes": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Supersedes",
+            "type": "array"
           }
         },
         "required": [
@@ -1542,6 +1603,22 @@
               }
             ],
             "title": "Name"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
           }
         },
         "title": "CustomFormatUpdate",

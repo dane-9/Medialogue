@@ -2868,6 +2868,8 @@ export interface components {
             media_scope: components["schemas"]["CustomFormatScope"];
             /** Name */
             name: string;
+            /** Supersedes */
+            supersedes?: string[];
         };
         /** CustomFormatEvaluationResponse */
         CustomFormatEvaluationResponse: {
@@ -2889,11 +2891,17 @@ export interface components {
             matched: boolean;
             /** Profile Score */
             profile_score?: number | null;
+            /** Raw Matched */
+            raw_matched: boolean;
             /**
              * Score Offset
              * @default 0
              */
             score_offset: number;
+            /** Suppressed By */
+            suppressed_by?: string[];
+            /** Suppressed By Names */
+            suppressed_by_names?: string[];
         };
         /** CustomFormatExportBundle */
         CustomFormatExportBundle: {
@@ -2930,6 +2938,8 @@ export interface components {
              * @default 1
              */
             schema_version: number;
+            /** Supersedes */
+            supersedes?: string[];
         };
         /** CustomFormatExportItem */
         "CustomFormatExportItem-Output": {
@@ -2951,6 +2961,8 @@ export interface components {
              * @default 1
              */
             schema_version: number;
+            /** Supersedes */
+            supersedes?: string[];
         };
         /** CustomFormatImportBundle */
         CustomFormatImportBundle: {
@@ -3005,6 +3017,8 @@ export interface components {
             revision: number;
             /** Schema Version */
             schema_version: number;
+            /** Supersedes */
+            supersedes?: string[];
             /**
              * Updated At
              * Format: date-time
@@ -3082,6 +3096,8 @@ export interface components {
              * @default Test Format
              */
             name: string;
+            /** Supersedes */
+            supersedes?: string[];
         };
         /** CustomFormatTestRequest */
         CustomFormatTestRequest: {
@@ -3114,6 +3130,8 @@ export interface components {
             media_scope?: components["schemas"]["CustomFormatScope"] | null;
             /** Name */
             name?: string | null;
+            /** Supersedes */
+            supersedes?: string[] | null;
         };
         /** DatabaseHealth */
         DatabaseHealth: {

@@ -3798,7 +3798,7 @@ export function UpgradeMediaPage() {
       setItems(nextItems)
       setClients(nextClients)
       setProfiles(nextProfiles)
-      setReadOnlyRoots(nextCount.readOnlyRoots)
+      setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
       setError('')
     } catch (reason) {
       if (!quiet) setError(reason instanceof Error ? reason.message : 'Could not load upgrade candidates.')
@@ -4014,7 +4014,7 @@ export function UpgradeMediaPage() {
         </button>)}
       </div>
 
-      <div className="upgrade-workspace">
+      <div className={`upgrade-workspace ${readOnlyRoots.length ? 'with-note' : ''}`}>
       <div className="upgrade-scroll">
         <span className="new-media-col-head upgrade-head">Current release<em>CF Score</em></span>
         <span aria-hidden="true" />

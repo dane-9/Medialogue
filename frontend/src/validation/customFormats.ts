@@ -60,6 +60,7 @@ const customFormatSchema = z.object({
   media_scope: z.enum(['movies', 'shows', 'both']).default('both'),
   enabled: z.boolean().default(true),
   conditions: z.array(conditionSchema).min(1).max(100),
+  supersedes: z.array(z.string().trim().min(1).max(256)).max(500).default([]),
 })
 
 const customFormatImportSchema = z.object({

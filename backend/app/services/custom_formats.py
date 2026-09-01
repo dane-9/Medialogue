@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Mapping, Sequence
 
 from app.parser import ReleaseParseResult, parse_release
@@ -127,6 +127,7 @@ class CustomFormat:
     description: str | None = None
     media_scope: str = "both"
     enabled: bool = True
+    supersedes: tuple[str, ...] = ()
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -156,6 +157,7 @@ class CustomFormat:
             description=value.get("description"),
             media_scope=str(value.get("media_scope", "both")),
             enabled=bool(value.get("enabled", True)),
+            supersedes=tuple(str(item) for item in source.get("supersedes", value.get("supersedes", ())) if item),
             schema_version=int(value.get("schema_version", source.get("schema_version", SCHEMA_VERSION))),
         )
 
@@ -167,6 +169,7 @@ class CustomFormat:
             "description": self.description,
             "media_scope": self.media_scope,
             "enabled": self.enabled,
+            "supersedes": list(self.supersedes),
             "conditions": [condition.to_dict() for condition in self.conditions],
         }
 
@@ -227,6 +230,9 @@ class CustomFormatEvaluation:
     score_offset: int = 0
     group_results: dict[str, bool] = field(default_factory=dict)
     error: str | None = None
+    raw_matched: bool | None = None
+    suppressed_by: tuple[str, ...] = ()
+    suppressed_by_names: tuple[str, ...] = ()
 
     @property
     def matched_conditions(self) -> tuple[ConditionResult, ...]:
@@ -252,6 +258,9 @@ class CustomFormatEvaluation:
             "custom_format_id": self.custom_format_id,
             "custom_format_name": self.custom_format_name,
             "matched": self.matched,
+            "raw_matched": self.matched if self.raw_matched is None else self.raw_matched,
+            "suppressed_by": list(self.suppressed_by),
+            "suppressed_by_names": list(self.suppressed_by_names),
             "score": self.score_contribution,
             "configured_score": self.score,
             "score_offset": self.score_offset,
@@ -533,11 +542,13 @@ def evaluate_custom_formats(
 
     parsed = _coerce_release_parse(release)
     profile_scores = profile_scores if profile_scores is not None else scores
+    evaluation_formats: list[CustomFormat] = []
     evaluations: list[CustomFormatEvaluation] = []
     for item in custom_formats:
         fmt = item if isinstance(item, CustomFormat) else CustomFormat.from_dict(item)
         if not fmt.enabled and not include_disabled:
             continue
+        evaluation_formats.append(fmt)
         evaluations.append(
             evaluate_custom_format(
                 fmt,
@@ -546,8 +557,51 @@ def evaluate_custom_formats(
                 score=_score_for(fmt, profile_scores, score_overrides),
             )
         )
-    total = sum(item.score_contribution for item in evaluations)
-    return CustomFormatSetEvaluation(parsed=parsed, formats=tuple(evaluations), total_score=total)
+    # Resolve explicit takeovers only after every raw condition result exists.
+    # A suppressed format keeps its condition evidence but is no longer an
+    # effective match and therefore contributes no score anywhere downstream.
+    by_id = {fmt.id: fmt for fmt in evaluation_formats}
+    raw_matches = {fmt.id for fmt, result in zip(evaluation_formats, evaluations) if result.matched}
+
+    def closure(format_id: str) -> set[str]:
+        found: set[str] = set()
+        pending = list(by_id.get(format_id).supersedes if by_id.get(format_id) else ())
+        while pending:
+            target = pending.pop()
+            if target == format_id or target in found:
+                continue
+            found.add(target)
+            nested = by_id.get(target)
+            if nested is not None:
+                pending.extend(nested.supersedes)
+        return found
+
+    closures = {format_id: closure(format_id) for format_id in raw_matches}
+    roots = {
+        format_id for format_id in raw_matches
+        if not any(format_id in targets for source, targets in closures.items() if source != format_id)
+    }
+    suppressed: dict[str, set[str]] = defaultdict(set)
+    for source in roots:
+        for target in closures[source] & raw_matches:
+            suppressed[target].add(source)
+
+    resolved: list[CustomFormatEvaluation] = []
+    for fmt, result in zip(evaluation_formats, evaluations):
+        suppressors = sorted(suppressed.get(fmt.id, ()), key=lambda item: by_id[item].name.casefold())
+        if suppressors:
+            resolved.append(replace(
+                result,
+                matched=False,
+                raw_matched=True,
+                suppressed_by=tuple(suppressors),
+                suppressed_by_names=tuple(by_id[item].name for item in suppressors),
+            ))
+        else:
+            resolved.append(replace(result, raw_matched=result.matched))
+
+    total = sum(item.score_contribution for item in resolved)
+    return CustomFormatSetEvaluation(parsed=parsed, formats=tuple(resolved), total_score=total)
 
 
 def validate_condition(condition: FormatCondition | Mapping[str, Any]) -> tuple[str, ...]:
