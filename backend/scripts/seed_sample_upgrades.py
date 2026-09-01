@@ -21,6 +21,10 @@ DB = REPO / ".local" / "medialogue.db"
 #: again without touching candidates a real search produced.
 MARKER = "sample_upgrade"
 
+#: Media folder paths in this library are UNC, so the sample folder joins the
+#: configured root with a backslash rather than os.sep.
+SEP = "\\"
+
 #: One row per member of UpgradeCandidateResponse.upgrade_types, so every badge
 #: the page can draw is visible at once.
 SAMPLES: list[dict] = [
@@ -108,17 +112,179 @@ SAMPLES: list[dict] = [
 ]
 
 
-def _targets(connection: sqlite3.Connection) -> list[tuple[str, str, int]]:
-    """Real seasons to hang the samples on, so media titles resolve."""
+#: A movie sample needs a movie to point at. The library may legitimately have
+#: none, and current_paths is derived from a real MediaDirectory, so the sample
+#: brings its own title, release and folder. All three carry the marker in a way
+#: --clear can find, and the folder is never touched on disk.
+#: One movie per upgrade type, so the movie row can be compared with the show
+#: row for every reason a candidate exists. Editions are included because a
+#: movie folder commonly carries one and a show folder never does.
+MOVIE_SAMPLES: list[dict] = [
+    {
+        "title": "Blade Runner 2049", "year": 2017, "tmdb_id": 335984, "edition": None,
+        "types": ["quality"],
+        "folder": "Blade.Runner.2049.2017.1080p.BluRay.x264-GROUP",
+        "current_quality": "1080p BluRay", "current_score": 35,
+        "candidate": "Blade.Runner.2049.2017.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.7.1.Atmos-OTHER",
+        "quality": "2160p BluRay REMUX", "score": 230,
+        "size": 78 * 1024**3, "seeders": 58, "leechers": 4,
+        "added": [{"name": "Dolby Vision", "delta": 45}, {"name": "TrueHD Atmos", "delta": 60}],
+    },
+    {
+        "title": "Dune", "year": 2021, "tmdb_id": 438631, "edition": None,
+        "types": ["custom_format"],
+        "folder": "Dune.2021.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
+        "current_quality": "2160p BluRay REMUX", "current_score": 95,
+        "candidate": "Dune.2021.2160p.UHD.BluRay.REMUX.DV.HDR10+.HEVC.TrueHD.Atmos.7.1-OTHER",
+        "quality": "2160p BluRay REMUX", "score": 215,
+        "size": 84 * 1024**3, "seeders": 31, "leechers": 1,
+        "added": [{"name": "DV HDR10+", "delta": 60}, {"name": "TrueHD Atmos", "delta": 60}],
+    },
+    {
+        "title": "Blade Runner", "year": 1982, "tmdb_id": 78, "edition": "The Final Cut",
+        "types": ["quality", "custom_format"],
+        "folder": "Blade.Runner.1982.The.Final.Cut.1080p.BluRay.x264-GROUP",
+        "current_quality": "1080p BluRay", "current_score": 30,
+        "candidate": "Blade.Runner.1982.The.Final.Cut.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.5.1-OTHER",
+        "quality": "2160p BluRay REMUX", "score": 210,
+        "size": 71 * 1024**3, "seeders": 24, "leechers": 2,
+        "added": [{"name": "Dolby Vision", "delta": 45}, {"name": "TrueHD", "delta": 55}],
+    },
+    {
+        "title": "Aliens", "year": 1986, "tmdb_id": 679, "edition": "Extended Cut",
+        "types": ["repack"],
+        "folder": "Aliens.1986.Extended.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
+        "current_quality": "2160p BluRay REMUX", "current_score": 110,
+        "candidate": "Aliens.1986.Extended.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1.REPACK-GROUP",
+        "quality": "2160p BluRay REMUX", "score": 115,
+        "size": 69 * 1024**3, "seeders": 11, "leechers": 0,
+        "added": [{"name": "Repack", "delta": 5}],
+    },
+    {
+        "title": "The Lord of the Rings: The Two Towers", "year": 2002, "tmdb_id": 121, "edition": "Extended Edition",
+        "types": ["proper"],
+        "folder": "The.Lord.of.the.Rings.The.Two.Towers.2002.Extended.2160p.WEB-DL.DDP5.1.H.265-GROUP",
+        "current_quality": "2160p WEB-DL", "current_score": 75,
+        "candidate": "The.Lord.of.the.Rings.The.Two.Towers.2002.Extended.PROPER.2160p.WEB-DL.DDP5.1.Atmos.H.265-GROUP",
+        "quality": "2160p WEB-DL", "score": 90,
+        "size": 52 * 1024**3, "seeders": 63, "leechers": 5,
+        "added": [{"name": "Proper", "delta": 15}],
+    },
+    {
+        "title": "Apocalypse Now", "year": 1979, "tmdb_id": 28, "edition": "Redux",
+        "types": ["revision", "custom_format"],
+        "folder": "Apocalypse.Now.1979.Redux.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
+        "current_quality": "2160p BluRay REMUX", "current_score": 95,
+        "candidate": "Apocalypse.Now.1979.Redux.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.7.1.v2-GROUP",
+        "quality": "2160p BluRay REMUX", "score": 155,
+        "size": 76 * 1024**3, "seeders": 8, "leechers": 3,
+        "added": [{"name": "TrueHD", "delta": 55}, {"name": "Revision", "delta": 5}],
+        "eligible": False,
+        "block_reason": "No download client is configured for this indexer.",
+    },
+    {
+        "title": "The Thing", "year": 1982, "tmdb_id": 1091, "edition": None,
+        # season_pack is a show-only reason, so a movie shows the closest
+        # equivalent: one folder replacing several loose copies.
+        "types": ["quality"],
+        "folder": "The.Thing.1982.1080p.WEB-DL.DD5.1.H.264-GROUP",
+        "current_quality": "1080p WEB-DL", "current_score": 25,
+        "candidate": "The.Thing.1982.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.5.1-OTHER",
+        "quality": "2160p BluRay REMUX", "score": 205,
+        "size": 64 * 1024**3, "seeders": 42, "leechers": 2,
+        "added": [{"name": "Dolby Vision", "delta": 45}, {"name": "TrueHD", "delta": 55}],
+    },
+]
+
+#: Fixed id bases so re-seeding reuses the same rows instead of piling up.
+MOVIE_ID_BASE = 0x3D1EA000
+
+
+def _ids(index: int) -> tuple[str, str, str]:
+    """Stable ids per sample, so re-seeding replaces rather than duplicates."""
+
+    base = MOVIE_ID_BASE + index * 16
+    return uuid.UUID(int=base).hex, uuid.UUID(int=base + 1).hex, uuid.UUID(int=base + 2).hex
+
+
+def _seed_movies(connection: sqlite3.Connection) -> list[tuple[dict, str, str]]:
+    """Insert each sample movie with a release and folder. Returns their ids.
+
+    The library may legitimately hold no movies, and both the title and the path
+    on an upgrade row are derived from real rows, so a movie sample has to bring
+    its own. Nothing is written to disk; the folder is a record only.
+    """
+
+    root = connection.execute(
+        "select id, resolved_root_path from storage_roots where media_type = 'MOVIES' limit 1"
+    ).fetchone()
+    if root is None:
+        print("No movies media folder configured; skipping the movie samples.")
+        return []
+    root_id, root_path = root
+
+    seeded: list[tuple[dict, str, str]] = []
+    for index, sample in enumerate(MOVIE_SAMPLES):
+        movie_id, release_id, directory_id = _ids(index)
+        path = f"{root_path}{SEP}{sample['folder']}"
+        connection.execute(
+            """insert or replace into movies
+               (id, title, sort_title, year, tmdb_id, overview, monitored, identity_state,
+                manual_identity_override, revision, created_at, updated_at)
+               values (?, ?, ?, ?, ?, ?, 1, 'MATCHED', 0, 1, datetime('now'), datetime('now'))""",
+            (movie_id, sample["title"], sample["title"], sample["year"], sample["tmdb_id"],
+             f"Seeded for UI review ({MARKER})."),
+        )
+        quality = connection.execute(
+            "select id from quality_definitions where name = ? limit 1", (sample["current_quality"],)
+        ).fetchone()
+        connection.execute(
+            """insert or replace into movie_releases
+               (id, movie_id, raw_release_name, parsed_title, parsed_year, parsed_edition,
+                effective_edition, quality_definition_id, release_group, release_state, first_seen_at,
+                original_custom_format_score, current_custom_format_score, parse_snapshot,
+                edition_override_active, audio_languages, audio_language_override_active, version_kind,
+                created_at, updated_at)
+               values (?, ?, ?, ?, ?, ?, ?, ?, 'GROUP', 'CURRENT', datetime('now'),
+                       ?, ?, ?, 0, '[]', 0, 'original', datetime('now'), datetime('now'))""",
+            (release_id, movie_id, sample["folder"], sample["title"], sample["year"],
+             sample["edition"], sample["edition"], quality[0] if quality else None,
+             sample["current_score"], sample["current_score"], json.dumps({MARKER: True})),
+        )
+        connection.execute(
+            """insert or replace into media_directories
+               (id, storage_root_id, reported_path, resolved_path, movie_release_id, "exists",
+                first_seen_at, last_seen_at, missing_check_count, source_type)
+               values (?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'), 0, 'FILESYSTEM')""",
+            (directory_id, root_id, path, path, release_id),
+        )
+        seeded.append((sample, movie_id, release_id))
+    return seeded
+
+
+def _targets(connection: sqlite3.Connection) -> list[tuple[str, str, int, str]]:
+    """Real seasons, each with a real show release to point current_release_ids at.
+
+    current_paths is not stored on the candidate: the API derives it by joining
+    the release through its mapped media files to their directories. A sample
+    with no release id therefore renders "Path not recorded", so each one has to
+    borrow a release that genuinely has files on disk.
+    """
 
     rows = connection.execute(
-        """select seasons.id, shows.title, seasons.season_number
-           from seasons join shows on shows.id = seasons.show_id
-           where seasons.season_number > 0
+        """select seasons.id, shows.title, seasons.season_number, min(show_releases.id)
+           from seasons
+           join shows on shows.id = seasons.show_id
+           join episodes on episodes.season_id = seasons.id
+           join episode_media_maps on episode_media_maps.episode_id = episodes.id
+           join media_files on media_files.id = episode_media_maps.media_file_id
+           join show_releases on show_releases.id = episode_media_maps.show_release_id
+           where seasons.season_number > 0 and media_files."exists" = 1
+           group by seasons.id
            order by shows.title, seasons.season_number"""
     ).fetchall()
     if not rows:
-        raise SystemExit("No seasons in the library; scan a show folder first.")
+        raise SystemExit("No mapped show media in the library; scan a show folder first.")
     return rows
 
 
@@ -133,7 +299,7 @@ def seed() -> None:
 
     inserted = 0
     for index, sample in enumerate(SAMPLES):
-        season_id, show_title, season_number = targets[index % len(targets)]
+        season_id, show_title, season_number, release_id = targets[index % len(targets)]
         snapshot = {MARKER: True, "note": "Seeded for UI review; not a real search result."}
         connection.execute(
             """insert into upgrade_candidates
@@ -146,7 +312,7 @@ def seed() -> None:
                 comparison_snapshot, incoming_release_ids,
                 last_searched_at, created_at, updated_at)
                values (?, ?, 'SHOWS', NULL, ?,
-                       '[]', ?, ?, ?,
+                       ?, ?, ?, ?,
                        ?, ?, ?, NULL,
                        ?, ?, ?, ?,
                        ?, ?, ?, datetime('now', '-2 days'),
@@ -157,6 +323,7 @@ def seed() -> None:
                 uuid.uuid4().hex,
                 f"sample:{index}:{season_id}",
                 season_id,
+                json.dumps([release_id]),
                 sample["current_release_name"].replace("Show", show_title.replace(" ", ".")),
                 sample["current_quality"],
                 sample["current_score"],
@@ -179,6 +346,52 @@ def seed() -> None:
         )
         inserted += 1
         del season_number
+    for sample, movie_id, movie_release_id in _seed_movies(connection):
+        connection.execute(
+            """insert into upgrade_candidates
+               (id, target_key, media_type, movie_id, season_id,
+                current_release_ids, current_release_name, current_quality, current_custom_format_score,
+                indexer_id, indexer_name, guid, download_url,
+                title, quality, custom_format_score, score_delta,
+                size, seeders, leechers, published_at,
+                upgrade_types, added_custom_formats, execution_eligible, execution_block_reason,
+                comparison_snapshot, incoming_release_ids,
+                last_searched_at, created_at, updated_at)
+               values (?, ?, 'MOVIES', ?, NULL,
+                       ?, ?, ?, ?,
+                       ?, ?, ?, NULL,
+                       ?, ?, ?, ?,
+                       ?, ?, ?, datetime('now', '-1 day'),
+                       ?, ?, ?, ?,
+                       ?, '[]',
+                       datetime('now'), datetime('now'), datetime('now'))""",
+            (
+                uuid.uuid4().hex,
+                f"sample:movie:{movie_id}",
+                movie_id,
+                json.dumps([movie_release_id]),
+                sample["folder"],
+                sample["current_quality"],
+                sample["current_score"],
+                indexer_id,
+                indexer_name,
+                f"sample-upgrade-movie-{movie_id}",
+                sample["candidate"],
+                sample["quality"],
+                sample["score"],
+                sample["score"] - sample["current_score"],
+                sample["size"],
+                sample["seeders"],
+                sample["leechers"],
+                json.dumps(sample["types"]),
+                json.dumps(sample["added"]),
+                1 if sample.get("eligible", True) else 0,
+                sample.get("block_reason"),
+                json.dumps({MARKER: True, "note": "Seeded for UI review; not a real search result."}),
+            ),
+        )
+        inserted += 1
+
     connection.commit()
     print(f"inserted {inserted} sample upgrade candidates")
 
@@ -188,6 +401,13 @@ def clear() -> None:
     cursor = connection.execute(
         "delete from upgrade_candidates where comparison_snapshot like ?", (f'%"{MARKER}"%',)
     )
+    # The sample movie exists only to give the movie candidate a real title and
+    # folder, so it leaves with it. Its folder on disk is never touched.
+    for index in range(len(MOVIE_SAMPLES)):
+        movie_id, release_id, directory_id = _ids(index)
+        connection.execute("delete from media_directories where id = ?", (directory_id,))
+        connection.execute("delete from movie_releases where id = ?", (release_id,))
+        connection.execute("delete from movies where id = ?", (movie_id,))
     connection.commit()
     print(f"removed {cursor.rowcount} sample upgrade candidates")
 

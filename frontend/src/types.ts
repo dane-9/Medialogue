@@ -412,6 +412,12 @@ export interface UpgradeCandidate {
   mediaYear?: number
   seasonNumber?: number
   currentPaths: string[]
+  /** Media folder the current release lives in. */
+  rootName?: string
+  /** Artwork for the title. */
+  posterRef?: string
+  /** Folder holding the current release; undefined when a season is split. */
+  releaseFolder?: string
   currentReleaseIds: string[]
   currentReleaseName: string
   currentQuality?: string

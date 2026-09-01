@@ -29,6 +29,15 @@ class UpgradeCandidateResponse(BaseModel):
     media_year: int | None = None
     season_number: int | None = None
     current_paths: list[str] = Field(default_factory=list)
+    #: Media folder this candidate's current release lives in, so the page can
+    #: group by folder the way New Media does.
+    root_name: str | None = None
+    #: Artwork for the title, so a row is recognisable before it is read.
+    poster_ref: str | None = None
+    #: The folder holding the current release: the movie's own folder, or the
+    #: season folder inside the show container. Null when a season's files are
+    #: split across folders, where no single name would be true.
+    release_folder: str | None = None
     current_release_ids: list[UUID]
     current_release_name: str
     current_quality: str | None = None

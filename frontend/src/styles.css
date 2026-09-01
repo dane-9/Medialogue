@@ -3846,42 +3846,67 @@ select.input { background-color: var(--input-bg); }
 /* Upgrade Media ----------------------------------------------------------- */
 .upgrade-media-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 180px)); gap: var(--s3); margin-bottom: var(--s4); }
 .upgrade-media-loading { min-height: 180px; display: grid; place-items: center; color: var(--muted); }
-.upgrade-media-list { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
-.upgrade-media-head, .upgrade-media-row { min-width: 1180px; display: grid; grid-template-columns: minmax(220px, 1.1fr) minmax(250px, 1.25fr) minmax(270px, 1.35fr) minmax(180px, .9fr) minmax(175px, .8fr); }
-.upgrade-media-head { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--line); color: var(--faint); font: var(--t-micro) var(--mono); text-transform: uppercase; letter-spacing: .06em; }
-.upgrade-media-head > span { padding: var(--s3) var(--s4); }
-.upgrade-media-row { border-bottom: 1px solid var(--line); }
-.upgrade-media-row:last-child { border-bottom: 0; }
-.upgrade-media-row:hover { background: var(--raised); }
-.upgrade-media-cell { min-width: 0; padding: var(--s4); border-right: 1px solid var(--line); }
-.upgrade-media-cell:last-child { border-right: 0; }
-.upgrade-media-target, .upgrade-release-card, .upgrade-improvement, .upgrade-action-cell { display: flex; flex-direction: column; gap: var(--s2); }
-.upgrade-media-title-line { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
-.upgrade-media-title-line a { min-width: 0; color: inherit; text-decoration: none; }
-.upgrade-media-title-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.upgrade-media-path { display: flex; align-items: flex-start; gap: var(--s2); color: var(--faint); font: var(--t-micro) var(--mono); overflow-wrap: anywhere; }
-.upgrade-media-path svg { flex: 0 0 auto; margin-top: 1px; }
-.upgrade-release-card > strong { overflow-wrap: anywhere; font-weight: 500; line-height: 1.35; }
-.upgrade-release-card > small { color: var(--faint); }
-.upgrade-release-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); color: var(--muted); font-size: 12px; }
-.upgrade-release-meta b { color: var(--text); }
-.upgrade-type-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.upgrade-improvement > strong { font-size: 13px; }
-.score-positive { color: var(--ok); }
-.upgrade-format-list { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
-.upgrade-format-list b { color: var(--ok); font-weight: 500; }
-.upgrade-action-cell { align-items: flex-start; }
-.upgrade-action-cell .button { width: 100%; justify-content: center; margin-top: auto; }
-.upgrade-action-cell > small { color: var(--muted); line-height: 1.4; }
-.upgrade-action-error { color: var(--danger) !important; }
-.upgrade-progress-wrap { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
-.upgrade-progress-wrap small { grid-column: 1 / -1; color: var(--faint); overflow-wrap: anywhere; }
+/* Two separated panels with their own headers, as New Media does: the media you
+   have, and the candidate that would replace it. */
+/* The commit bar stays put while the list scrolls, as it does on New Media. */
+.upgrade-workspace { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--s3); height: calc(100vh - 260px); min-height: 420px; }
+.upgrade-workspace > .upgrade-scroll { grid-row: 1; min-height: 0; overflow-y: auto; }
+.upgrade-workspace > .new-media-add { grid-column: 1; grid-row: 2; }
+.upgrade-scroll {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0 var(--s3);
+  align-content: start;
+}
+.upgrade-row { display: contents; }
+.upgrade-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+  min-height: 56px;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: var(--surface);
+}
+.upgrade-scroll > .upgrade-row:last-child > .upgrade-cell { border-radius: 0 0 var(--r-md) var(--r-md); }
+.upgrade-row:hover > .upgrade-cell { background: var(--raised); }
+
 .upgrade-modal-copy { display: grid; gap: var(--s3); margin-bottom: var(--s4); }
 .upgrade-modal-copy p { margin: 0; color: var(--muted); line-height: 1.5; }
-.upgrade-modal-copy strong { color: var(--text); }
-.upgrade-modal-arrow { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--raised); }
-.upgrade-modal-arrow span:last-child { text-align: right; }
 .upgrade-destination-form { padding: 0; }
+.upgrade-arrow { display: grid; place-items: center; color: var(--faint); }
+.upgrade-target > .new-media-check { margin-right: calc(0px - var(--s1)); }
+.upgrade-poster {
+  position: relative;
+  display: grid;
+  width: 32px;
+  aspect-ratio: 2 / 3;
+  flex: none;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--faint);
+  background: var(--raised);
+}
+.upgrade-poster img { width: 100%; height: 100%; object-fit: cover; }
+.upgrade-target-copy > strong, .upgrade-change-copy > strong { font-weight: 400; }
+.upgrade-target-copy, .upgrade-change-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.upgrade-target-copy strong, .upgrade-change-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-target-copy small { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+
+.upgrade-change-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); font-size: var(--t-micro); }
+.upgrade-change-meta b { color: var(--muted); }
+/* Only drawn when the resolution actually moves. */
+.upgrade-quality-change { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.upgrade-quality-change svg { color: var(--faint); }
+
+.upgrade-action { display: flex; flex: none; align-items: center; gap: var(--s2); }
+.upgrade-progress-wrap { display: flex; align-items: center; gap: var(--s2); min-width: 110px; font: var(--t-micro) var(--mono); color: var(--muted); }
+.upgrade-progress-wrap .progress { flex: 1; }
+
 .upgrade-cleanup-review { display: grid; gap: var(--s3); }
 .upgrade-cleanup-review .settings-note { margin: 0; }
 .upgrade-cleanup-total { display: grid; grid-template-columns: 1fr auto; gap: 4px var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--raised); }

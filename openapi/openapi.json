@@ -12149,6 +12149,17 @@
             ],
             "title": "Old Torrents Removed At"
           },
+          "poster_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Ref"
+          },
           "published_at": {
             "anyOf": [
               {
@@ -12171,6 +12182,28 @@
               }
             ],
             "title": "Quality"
+          },
+          "release_folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Folder"
+          },
+          "root_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Name"
           },
           "score_delta": {
             "title": "Score Delta",

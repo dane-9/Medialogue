@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import PurePath, PurePosixPath
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -21,6 +23,7 @@ from app.models.domain import (
     Schedule,
     Season,
     Show,
+    StorageRoot,
     TorrentClientObservation,
     UpgradeCandidate,
 )
@@ -48,11 +51,15 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     media_year: int | None = None
     season_number: int | None = None
     current_paths: list[str] = []
+    root_name: str | None = None
+    poster_ref: str | None = None
+    release_folder: str | None = None
     if row.media_type == MediaType.MOVIES:
         movie = await db.get(Movie, row.movie_id) if row.movie_id else None
         if movie is not None:
             media_title = movie.title
             media_year = movie.year
+            poster_ref = movie.poster_ref
         release_ids = [UUID(value) for value in row.current_release_ids]
         if release_ids:
             current_paths = list(
@@ -65,12 +72,21 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
                     )
                 )
             )
+            root_name = await db.scalar(
+                select(StorageRoot.name)
+                .join(MediaDirectory, MediaDirectory.storage_root_id == StorageRoot.id)
+                .where(MediaDirectory.movie_release_id.in_(release_ids))
+                .limit(1)
+            )
+            if current_paths:
+                release_folder = PurePath(current_paths[0]).name or None
     else:
         season = await db.get(Season, row.season_id) if row.season_id else None
         show = await db.get(Show, season.show_id) if season is not None else None
         if show is not None:
             media_title = show.title
             media_year = show.year
+            poster_ref = show.poster_ref
         if season is not None:
             season_number = season.season_number
         release_ids = [UUID(value) for value in row.current_release_ids]
@@ -88,6 +104,30 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
                     )
                 )
             )
+            # The media folder this candidate belongs to, so the page can group
+            # by folder the way New Media does.
+            root_name = await db.scalar(
+                select(StorageRoot.name)
+                .join(MediaDirectory, MediaDirectory.storage_root_id == StorageRoot.id)
+                .join(MediaFile, MediaFile.media_directory_id == MediaDirectory.id)
+                .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
+                .where(EpisodeMediaMap.show_release_id.in_(release_ids))
+                .limit(1)
+            )
+            relative_paths = await db.scalars(
+                select(MediaFile.relative_path)
+                .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
+                .where(EpisodeMediaMap.show_release_id.in_(release_ids), MediaFile.exists.is_(True))
+            )
+            # Reported only when the whole season agrees on one folder, so a
+            # season split across folders falls back to the show container
+            # rather than showing whichever one happened to come first.
+            folders = set()
+            for value in relative_paths:
+                parts = PurePosixPath(value.replace("\\", "/")).parts
+                if len(parts) > 1:
+                    folders.add(parts[0])
+            release_folder = next(iter(folders)) if len(folders) == 1 else None
 
     progress = None
     download_state = None
@@ -111,6 +151,9 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         media_year=media_year,
         season_number=season_number,
         current_paths=current_paths,
+        root_name=root_name,
+        poster_ref=poster_ref,
+        release_folder=release_folder,
         current_release_ids=[UUID(value) for value in row.current_release_ids],
         current_release_name=row.current_release_name,
         current_quality=row.current_quality,

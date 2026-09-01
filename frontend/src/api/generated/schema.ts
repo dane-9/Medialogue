@@ -6682,10 +6682,16 @@ export interface components {
             movie_id?: string | null;
             /** Old Torrents Removed At */
             old_torrents_removed_at?: string | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
             /** Published At */
             published_at?: string | null;
             /** Quality */
             quality?: string | null;
+            /** Release Folder */
+            release_folder?: string | null;
+            /** Root Name */
+            root_name?: string | null;
             /** Score Delta */
             score_delta: number;
             /** Season Id */

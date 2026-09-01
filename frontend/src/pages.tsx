@@ -1685,10 +1685,10 @@ export function NewMediaPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [rootName, setRootName] = useState('')
-  const [selectedId, setSelectedId] = useState('')
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [selectedId, setSelectedId] = useState('')
   const [editionOptions, setEditionOptions] = useState<string[]>([])
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [profileBusy, setProfileBusy] = useState(false)
@@ -1864,8 +1864,8 @@ export function NewMediaPage() {
         <span className="new-media-col-head">Detected {noun}</span>
         {rows.map((item) => {
             const match = item.selected
-            const active = item.id === selectedId
-            const blocked = !item.exists || !match
+              const active = item.id === selectedId
+              const blocked = !item.exists || !match
             const included = !excluded.has(item.id)
             const editionConflict = included && conflictingIds.has(item.id)
             const state = !match ? { tone: 'needs-match', text: 'No results' }
@@ -3729,9 +3729,11 @@ export function UpgradeMediaPage() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [busyId, setBusyId] = useState('')
+  const [selectedRoot, setSelectedRoot] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [upgradeTarget, setUpgradeTarget] = useState<UpgradeCandidate | null>(null)
+  const [chosen, setChosen] = useState<Set<string>>(new Set())
+  const [confirming, setConfirming] = useState(false)
   const [clientId, setClientId] = useState('')
   const [category, setCategory] = useState('')
   const [categories, setCategories] = useState<Array<{ name: string; resolvedSavePath: string; isDefault: boolean }>>([])
@@ -3757,18 +3759,8 @@ export function UpgradeMediaPage() {
   useEffect(() => { void load() }, [])
   useLiveLibraryRefresh(() => load(true), 5000)
 
-  const openUpgrade = (item: UpgradeCandidate) => {
-    const eligibleClients = clients.filter((client) => client.enabled && client.scope === item.mediaType)
-    const preferred = eligibleClients.find((client) => client.id === item.selectedDownloadClientId) ?? eligibleClients[0]
-    setUpgradeTarget(item)
-    setClientId(preferred?.id ?? '')
-    setCategory('')
-    setCategories([])
-    setError('')
-  }
-
   useEffect(() => {
-    if (!upgradeTarget || !clientId) { setCategories([]); setCategory(''); return }
+    if (!confirming || !clientId) { setCategories([]); setCategory(''); return }
     let alive = true
     setCategoryLoading(true)
     api.downloadClientCategories(clientId)
@@ -3782,7 +3774,7 @@ export function UpgradeMediaPage() {
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not read qBittorrent categories.') })
       .finally(() => { if (alive) setCategoryLoading(false) })
     return () => { alive = false }
-  }, [upgradeTarget, clientId, clients])
+  }, [confirming, clientId, clients])
 
   const search = async () => {
     setSearching(true); setError(''); setMessage('')
@@ -3793,16 +3785,34 @@ export function UpgradeMediaPage() {
     finally { setSearching(false) }
   }
 
-  const execute = async () => {
-    if (!upgradeTarget || !clientId || !category) return
-    setBusyId(upgradeTarget.id); setError(''); setMessage('')
-    try {
-      const updated = await api.executeUpgrade(upgradeTarget.id, clientId, category)
-      setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
-      setUpgradeTarget(null)
-      setMessage(`Submitted ${updated.title} to ${updated.selectedDownloadClientName ?? 'qBittorrent'}. The current release remains authoritative until validation completes.`)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not submit the upgrade.') }
-    finally { setBusyId('') }
+  const toggleChosen = (id: string) => setChosen((current) => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+
+  // Submitted one at a time so a rejected candidate does not discard the rest,
+  // and so a failure can name which one it was.
+  const executeChosen = async () => {
+    if (!clientId || !category || !picked.length) return
+    setBusyId('batch'); setError(''); setMessage('')
+    const failures: string[] = []
+    let submitted = 0
+    for (const item of picked) {
+      try {
+        const updated = await api.executeUpgrade(item.id, clientId, category)
+        setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
+        submitted += 1
+      } catch (reason) {
+        failures.push(`${item.mediaTitle}: ${reason instanceof Error ? reason.message : 'submission failed'}`)
+      }
+    }
+    setChosen(new Set())
+    setConfirming(false)
+    if (submitted) setMessage(`Submitted ${submitted} ${submitted === 1 ? 'upgrade' : 'upgrades'}. Each current release stays authoritative until its replacement validates.`)
+    if (failures.length) setError(failures.join(' · '))
+    setBusyId('')
   }
 
   const retryHandoff = async (item: UpgradeCandidate) => {
@@ -3835,6 +3845,37 @@ export function UpgradeMediaPage() {
   }
 
   const ready = items.filter((item) => !item.executionState).length
+  // Grouped by media folder, like New Media: a candidate is read inside the
+  // folder it belongs to rather than in one flat list across every root.
+  const roots = useMemo(() => {
+    const grouped = new Map<string, { name: string; mediaType: 'movies' | 'shows'; count: number }>()
+    for (const item of items) {
+      const name = item.rootName ?? 'Unknown folder'
+      const existing = grouped.get(name)
+      if (existing) existing.count += 1
+      else grouped.set(name, { name, mediaType: item.mediaType, count: 1 })
+    }
+    return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [items])
+  const rootName = roots.some((entry) => entry.name === selectedRoot) ? selectedRoot : roots[0]?.name ?? ''
+  const rows = useMemo(() => items.filter((item) => (item.rootName ?? 'Unknown folder') === rootName), [items, rootName])
+  // A candidate already in flight keeps its own per-row actions, and a blocked
+  // one cannot be submitted at all, so neither can join the batch.
+  const picked = useMemo(() => rows.filter((item) => !item.executionState && item.executionEligible && chosen.has(item.id)), [rows, chosen])
+  const mediaType = rows[0]?.mediaType ?? 'movies'
+  const noun = mediaType === 'movies' ? 'Movie' : 'Show'
+  const eligibleClients = useMemo(() => clients.filter((client) => client.enabled && client.scope === mediaType), [clients, mediaType])
+
+  useEffect(() => { setChosen(new Set()) }, [rootName])
+
+  // One destination for the whole selection, chosen when the dialog opens.
+  const openConfirm = () => {
+    const preferred = eligibleClients.find((client) => client.id === picked[0]?.selectedDownloadClientId) ?? eligibleClients[0]
+    setClientId(preferred?.id ?? '')
+    setCategory('')
+    setCategories([])
+    setConfirming(true)
+  }
   const active = items.filter((item) => item.executionState && item.executionState !== 'completed').length
 
   return <Page
@@ -3845,72 +3886,114 @@ export function UpgradeMediaPage() {
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
 
-    {!loading && items.length > 0 && <div className="upgrade-media-summary">
-      <Stat label="Candidates" value={String(items.length)} />
-      <Stat label="Ready" value={String(ready)} />
-      <Stat label="In workflow" value={String(active)} />
-    </div>}
 
     {loading ? <div className="upgrade-media-loading">Loading upgrade candidates…</div> : !items.length ? <EmptyState
       icon="refresh"
       title="No upgrades found"
       detail="Run an upgrade search to compare current releases with the configured indexers. Nothing is downloaded automatically."
       action={<Button variant="primary" icon="refresh" disabled={searching} onClick={() => void search()}>Search for upgrades</Button>}
-    /> : <div className="upgrade-media-list">
-      <div className="upgrade-media-head">
-        <span>Media / folder</span><span>Current release</span><span>Best candidate</span><span>Improvement</span><span>Action</span>
+    /> : <>
+      <div className="new-media-roots-label">Media folders</div>
+      <div className="new-media-roots">
+        {roots.map((entry) => <button
+          type="button"
+          key={entry.name}
+          className={`new-media-root ${entry.name === rootName ? 'active' : ''}`}
+          onClick={() => setSelectedRoot(entry.name)}
+        >
+          <span className="new-media-root-name">
+            <span className={`kind-box kind-${entry.mediaType === 'movies' ? 'movie' : 'show'}`} aria-label={entry.mediaType === 'movies' ? 'Movies folder' : 'Shows folder'}>
+              <Icon name={entry.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={13} />
+            </span>
+            <strong>{entry.name}</strong>
+          </span>
+          <small>{entry.count} {entry.count === 1 ? 'upgrade' : 'upgrades'}</small>
+        </button>)}
       </div>
-      {items.map((item) => {
-        const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
-        const mediaHref = item.movieId ? `/movies/${item.movieId}` : item.seasonId ? undefined : undefined
-        return <div className={`upgrade-media-row ${item.executionState ? `state-${item.executionState}` : ''}`} key={item.id}>
-          <div className="upgrade-media-cell upgrade-media-target">
-            <div className="upgrade-media-title-line"><span className={`kind-box kind-${item.mediaType === 'movies' ? 'movie' : 'show'}`}><Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={13} /></span>{mediaHref ? <Link to={mediaHref}><strong>{item.mediaTitle}</strong></Link> : <strong>{item.mediaTitle}</strong>}<span className="muted">{item.mediaYear}{item.seasonNumber !== undefined ? ` · S${String(item.seasonNumber).padStart(2, '0')}` : ''}</span></div>
-            {item.currentPaths.length ? item.currentPaths.map((path) => <span className="upgrade-media-path" key={path}><Icon name="folder" size={13} />{path}</span>) : <span className="muted">Current path unavailable</span>}
-          </div>
-          <div className="upgrade-media-cell upgrade-release-card current">
-            <strong>{item.currentReleaseName}</strong>
-            <div className="upgrade-release-meta"><Badge tone="neutral">{item.currentQuality ?? 'Unknown quality'}</Badge><span>CF score <b>{item.currentCustomFormatScore}</b></span></div>
-          </div>
-          <div className="upgrade-media-cell upgrade-release-card candidate">
-            <strong>{item.title}</strong>
-            <div className="upgrade-release-meta"><Badge tone="blue">{item.quality ?? 'Unknown quality'}</Badge><span>CF score <b>{item.customFormatScore}</b></span></div>
-            <small>{item.indexerName}{item.size !== undefined ? ` · ${formatUpgradeBytes(item.size)}` : ''}{item.seeders !== undefined ? ` · ${item.seeders} seeds` : ''}</small>
-          </div>
-          <div className="upgrade-media-cell upgrade-improvement">
-            <div className="upgrade-type-list">{item.upgradeTypes.map((type) => <Badge key={type} tone={type === 'quality' ? 'purple' : type === 'custom_format' ? 'blue' : 'amber'}>{upgradeTypeLabel(type)}</Badge>)}</div>
-            <strong className={item.scoreDelta > 0 ? 'score-positive' : ''}>{item.scoreDelta >= 0 ? '+' : ''}{item.scoreDelta} CF score</strong>
-            {item.addedCustomFormats.length > 0 && <div className="upgrade-format-list">{item.addedCustomFormats.map((format) => <span key={format.id || format.name}>{format.name} <b>+{format.delta}</b></span>)}</div>}
-          </div>
-          <div className="upgrade-media-cell upgrade-action-cell">
-            <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>
-            {(item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && <div className="upgrade-progress-wrap">
-              {progress !== undefined && <><Progress value={progress} tone="blue" /><span>{progress}%</span></>}
-              <small>{item.downloadState ?? item.executionState}{item.selectedDownloadClientName ? ` · ${item.selectedDownloadClientName}` : ''}</small>
-            </div>}
-            {item.executionError && <small className="upgrade-action-error">{item.executionError}</small>}
-            {!item.executionState && <Button variant="primary" icon="download" disabled={!item.executionEligible || busyId === item.id} onClick={() => openUpgrade(item)}>Upgrade</Button>}
-            {!item.executionState && !item.executionEligible && <small>{item.executionBlockReason ?? 'This candidate cannot be executed.'}</small>}
-            {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}
-            {item.executionState === 'cleanup_required' && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={() => void reviewCleanup(item)}>Review cleanup</Button>}
-          </div>
-        </div>
-      })}
-    </div>}
 
-    {upgradeTarget && <Modal
+      <div className="upgrade-workspace">
+      <div className="upgrade-scroll">
+        <span className="new-media-col-head">Current media</span>
+        <span aria-hidden="true" />
+        <span className="new-media-col-head">Best candidate</span>
+        {rows.map((item) => {
+          const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
+          // The season folder for shows, the movie's own folder for movies. Falls
+          // back to the container when a season's files span several folders.
+          const folderName = item.releaseFolder ?? pathParts(item.currentPaths[0])?.name
+          // Only a real change: quality is unchanged on most Custom Format,
+          // repack and proper upgrades, and "X → X" reads as a difference.
+          const qualityChanged = Boolean(item.quality) && item.quality !== item.currentQuality
+          const batchable = !item.executionState && item.executionEligible
+          return <div className="upgrade-row" key={item.id}>
+            <div className="upgrade-cell upgrade-target">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={chosen.has(item.id) && batchable}
+                aria-label={`Upgrade ${folderName ?? item.mediaTitle}`}
+                className={`new-media-check ${chosen.has(item.id) && batchable ? 'on' : ''}`}
+                disabled={!batchable}
+                onClick={() => toggleChosen(item.id)}
+              >{chosen.has(item.id) && batchable && <Icon name="check" size={11} />}</button>
+              <span className="upgrade-poster">
+                {item.posterRef ? <PosterImage reference={item.posterRef} title={item.mediaTitle} /> : <Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={16} />}
+              </span>
+              <span className="upgrade-target-copy">
+                <strong title={item.currentPaths[0]}>{folderName ?? item.mediaTitle}</strong>
+                <small>{item.mediaTitle}{item.seasonNumber !== undefined ? ` · Season ${item.seasonNumber}` : item.mediaYear ? ` · ${item.mediaYear}` : ''}</small>
+              </span>
+            </div>
+            {/* The one thing the row asserts: this becomes that. */}
+            <span className="upgrade-arrow" aria-hidden="true"><Icon name="arrow" size={14} /></span>
+            <div className="upgrade-cell upgrade-change">
+              {/* The candidate names itself, exactly as the folder does on the
+                  left. Quality, group and source are all in that name, so the
+                  line beneath states only why it is an upgrade. */}
+              <span className="upgrade-change-copy">
+                <strong title={item.title}>{item.title}</strong>
+                <small className="upgrade-change-meta">
+                  {item.upgradeTypes.map((type) => <Badge key={type} tone={type === 'quality' ? 'purple' : type === 'custom_format' ? 'blue' : 'amber'}>{upgradeTypeLabel(type)}</Badge>)}
+                  {qualityChanged && <span className="upgrade-quality-change">{item.currentQuality ?? 'Unknown'}<Icon name="arrow" size={12} />{item.quality}</span>}
+                  <b className={item.scoreDelta > 0 ? 'score-positive' : ''}>{item.scoreDelta >= 0 ? '+' : ''}{item.scoreDelta} CF</b>
+                </small>
+              </span>
+              <span className="upgrade-action">
+                {item.executionState
+                  ? <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>
+                  : !item.executionEligible && <Badge tone="grey">Blocked</Badge>}
+                {(item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && progress !== undefined && <span className="upgrade-progress-wrap"><Progress value={progress} tone="blue" /><span>{progress}%</span></span>}
+                {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}
+                {item.executionState === 'cleanup_required' && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={() => void reviewCleanup(item)}>Review cleanup</Button>}
+              </span>
+            </div>
+          </div>
+        })}
+      </div>
+
+      <div className="new-media-add">
+        <Button
+          variant="primary"
+          icon="download"
+          disabled={!picked.length || Boolean(busyId)}
+          onClick={openConfirm}
+        >{`Upgrade ${picked.length} ${picked.length === 1 ? noun : `${noun}s`}`}</Button>
+      </div>
+      </div>
+    </>}
+
+    {confirming && <Modal
       title="Start upgrade"
-      eyebrow={`${upgradeTarget.mediaTitle}${upgradeTarget.seasonNumber !== undefined ? ` · Season ${upgradeTarget.seasonNumber}` : ''}`}
+      eyebrow={`${picked.length} ${picked.length === 1 ? noun.toLowerCase() : `${noun.toLowerCase()}s`} in ${rootName}`}
       icon="download"
-      onClose={() => { if (!busyId) setUpgradeTarget(null) }}
-      footer={<><Button variant="ghost" disabled={Boolean(busyId)} onClick={() => setUpgradeTarget(null)}>Cancel</Button><Button variant="primary" icon="download" disabled={Boolean(busyId) || !clientId || !category || categoryLoading} onClick={() => void execute()}>{busyId ? 'Submitting…' : 'Start upgrade'}</Button></>}
+      onClose={() => { if (!busyId) setConfirming(false) }}
+      footer={<><Button variant="ghost" disabled={Boolean(busyId)} onClick={() => setConfirming(false)}>Cancel</Button><Button variant="primary" icon="download" disabled={Boolean(busyId) || !clientId || !category || categoryLoading} onClick={() => void executeChosen()}>{busyId ? 'Submitting…' : 'Start upgrade'}</Button></>}
     >
       <div className="upgrade-modal-copy">
-        <p><strong>{upgradeTarget.currentReleaseName}</strong> stays untouched and authoritative while the replacement downloads and validates.</p>
-        <div className="upgrade-modal-arrow"><span>{upgradeTarget.currentQuality ?? 'Current'}</span><Icon name="arrow" size={18} /><span>{upgradeTarget.quality ?? 'Candidate'}</span></div>
+        <p>Every current release stays untouched and authoritative while its replacement downloads and validates.</p>
       </div>
       <div className="settings-form upgrade-destination-form">
-        <label><span className="field-label">qBittorrent client</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)}>{clients.filter((client) => client.enabled && client.scope === upgradeTarget.mediaType).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></label>
+        <label><span className="field-label">qBittorrent client</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></label>
         <label><span className="field-label">Category</span><Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select></label>
         <div className="wizard-destination-path"><span>qBittorrent placement</span><strong>{categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
       </div>
