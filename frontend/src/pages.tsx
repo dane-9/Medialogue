@@ -4034,6 +4034,10 @@ export function UpgradeMediaPage() {
           // candidate. The API falls back to the folder-derived release name
           // when no tracker title was retained.
           const currentDisplayName = item.currentReleaseName || folderName || item.mediaTitle
+          // A pack replaces a set, and naming only the best member hides the
+          // rest of it. Summarise the set instead, and let the row open it.
+          const replacing = item.currentReleases.length > 1 ? item.currentReleases : []
+          const replacedQualities = [...new Set(replacing.map((entry) => qualityLabel(entry.quality) || 'Unknown'))]
           // Only a real change: quality is unchanged on most Custom Format,
           // repack and proper upgrades, and "X → X" reads as a difference.
           const qualityChanged = Boolean(item.quality) && item.quality !== item.currentQuality
@@ -4090,7 +4094,28 @@ export function UpgradeMediaPage() {
                 </span>
               </Tooltip>
               <span className="upgrade-target-copy">
-                <strong>{currentDisplayName}</strong>
+                {replacing.length
+                  ? <details className="upgrade-replacing">
+                      <summary>
+                        {/* The folder is the identity of the row, exactly as it
+                            is when a single release is named. */}
+                        <strong>{folderName ?? item.mediaTitle}</strong>
+                        <small>
+                          {replacedQualities.join(', ')}
+                          {item.currentEpisodeCount !== undefined && item.seasonEpisodeCount !== undefined
+                            ? ` · ${item.currentEpisodeCount}/${item.seasonEpisodeCount} episodes`
+                            : ''}
+                        </small>
+                      </summary>
+                      <span className="upgrade-replacing-list">
+                        {replacing.map((entry) => <span key={entry.id} className="upgrade-replacing-row">
+                          <span>{entry.name}</span>
+                          <span className="release-pill">{qualityLabel(entry.quality) || 'Unknown'}</span>
+                          <b>{entry.customFormatScore}</b>
+                        </span>)}
+                      </span>
+                    </details>
+                  : <strong>{currentDisplayName}</strong>}
                 <span className={`new-media-profile-cell upgrade-profile-cell ${item.qualityProfileId ? '' : 'optional'}`} onClick={(event) => event.stopPropagation()}>
                   <Dropdown
                     ariaLabel={`Quality Profile for ${currentDisplayName}`}
@@ -4101,9 +4126,13 @@ export function UpgradeMediaPage() {
                   />
                 </span>
               </span>
-              <UpgradeCompare item={item} profile={profileName}>
-                <span className="upgrade-score"><b>{item.currentCustomFormatScore}</b></span>
-              </UpgradeCompare>
+              {/* The column keeps its width; only the figure inside it is the
+                  hover target, so the empty half does not open the card. */}
+              <span className="upgrade-score-col">
+                <UpgradeCompare item={item} profile={profileName}>
+                  <span className="upgrade-score"><b>{item.currentCustomFormatScore}</b></span>
+                </UpgradeCompare>
+              </span>
             </div>
             {/* The one thing the row asserts: this becomes that. */}
             <span className="upgrade-arrow" aria-hidden="true"><Icon name="caret" size={16} /></span>
@@ -4148,12 +4177,14 @@ export function UpgradeMediaPage() {
                 </small>
               </span>
               <span className="upgrade-action">
-                <UpgradeCompare item={item} profile={profileName}>
-                  <span className="upgrade-score">
-                    <b>{item.customFormatScore}</b>
-                    {item.scoreDelta !== 0 && <em className={item.scoreDelta > 0 ? 'cf-plus' : 'cf-minus'}>{item.scoreDelta > 0 ? '+' : ''}{item.scoreDelta}</em>}
-                  </span>
-                </UpgradeCompare>
+                <span className="upgrade-score-col">
+                  <UpgradeCompare item={item} profile={profileName}>
+                    <span className="upgrade-score">
+                      <b>{item.customFormatScore}</b>
+                      {item.scoreDelta !== 0 && <em className={item.scoreDelta > 0 ? 'cf-plus' : 'cf-minus'}>{item.scoreDelta > 0 ? '+' : ''}{item.scoreDelta}</em>}
+                    </span>
+                  </UpgradeCompare>
+                </span>
                 {/* The column is fixed width; the pill inside hugs its text,
                     exactly as it does in Interactive Search. */}
                 <span className="upgrade-peers">

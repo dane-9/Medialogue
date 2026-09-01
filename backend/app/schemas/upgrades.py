@@ -20,6 +20,13 @@ UpgradeExecutionState = Literal[
 ]
 
 
+class UpgradeCurrentRelease(BaseModel):
+    release_id: str
+    release_name: str
+    quality: str | None = None
+    custom_format_score: int = 0
+
+
 class UpgradeMatchedFormat(BaseModel):
     custom_format_id: str
     custom_format_name: str
@@ -72,6 +79,13 @@ class UpgradeCandidateResponse(BaseModel):
     #: Every Custom Format that matched, per side, with what it contributed.
     #: Read from the comparison snapshot so the row can explain its score
     #: without a second round trip.
+    #: Every release the candidate would replace. One for a movie; one per
+    #: episode when a season pack replaces loose episode torrents, where naming
+    #: only the best of them hides most of what is being changed.
+    current_releases: list[UpgradeCurrentRelease] = Field(default_factory=list)
+    #: Episodes the season has on disk, and how many the season holds in total.
+    current_episode_count: int | None = None
+    season_episode_count: int | None = None
     current_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
     candidate_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
     execution_eligible: bool

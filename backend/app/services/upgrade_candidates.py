@@ -601,6 +601,16 @@ def _score_candidate(
             "quality_preference": target.reference.quality_preference,
             "custom_format_score": target.reference.custom_format_score,
             "score_snapshot": target.reference.score_snapshot,
+            "releases": [
+                {
+                    "release_id": str(item.release_id),
+                    "release_name": item.release_name,
+                    "quality": item.quality,
+                    "custom_format_score": item.custom_format_score,
+                    "release_scope": item.release_scope.value if item.release_scope is not None else None,
+                }
+                for item in target.releases
+            ],
         },
         "candidate": {
             "quality": quality,

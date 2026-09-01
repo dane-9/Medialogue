@@ -35,6 +35,14 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     seeders: value.seeders ?? undefined,
     leechers: value.leechers ?? undefined,
     publishedAt: value.published_at ?? undefined,
+    currentReleases: (value.current_releases ?? []).map((release) => ({
+      id: release.release_id,
+      name: release.release_name,
+      quality: release.quality ?? undefined,
+      customFormatScore: release.custom_format_score,
+    })),
+    currentEpisodeCount: value.current_episode_count ?? undefined,
+    seasonEpisodeCount: value.season_episode_count ?? undefined,
     currentMatchedFormats: (value.current_matched_formats ?? []).map((format) => ({
       id: format.custom_format_id,
       name: format.custom_format_name,

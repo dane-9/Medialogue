@@ -6741,6 +6741,8 @@ export interface components {
             created_at: string;
             /** Current Custom Format Score */
             current_custom_format_score: number;
+            /** Current Episode Count */
+            current_episode_count?: number | null;
             /** Current Matched Formats */
             current_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
             /** Current Paths */
@@ -6751,6 +6753,8 @@ export interface components {
             current_release_ids: string[];
             /** Current Release Name */
             current_release_name: string;
+            /** Current Releases */
+            current_releases?: components["schemas"]["UpgradeCurrentRelease"][];
             /** Custom Format Score */
             custom_format_score: number;
             /** Download Progress */
@@ -6813,6 +6817,8 @@ export interface components {
             root_name?: string | null;
             /** Score Delta */
             score_delta: number;
+            /** Season Episode Count */
+            season_episode_count?: number | null;
             /** Season Id */
             season_id?: string | null;
             /** Season Number */
@@ -6904,6 +6910,20 @@ export interface components {
             kind: "directory" | "file";
             /** Path */
             path: string;
+        };
+        /** UpgradeCurrentRelease */
+        UpgradeCurrentRelease: {
+            /**
+             * Custom Format Score
+             * @default 0
+             */
+            custom_format_score: number;
+            /** Quality */
+            quality?: string | null;
+            /** Release Id */
+            release_id: string;
+            /** Release Name */
+            release_name: string;
         };
         /** UpgradeExecuteRequest */
         UpgradeExecuteRequest: {

@@ -51,7 +51,8 @@ SAMPLES: list[dict] = [
     },
     {
         "types": ["season_pack"],
-        "current_release_name": "Show.S03E01-E10.1080p.BluRay.x264-GROUP (10 files)",
+        "current_release_name": "Show.S03E01.1080p.BluRay.x264-GROUP",
+        "replaces": [f"Show.S03E{number:02d}.1080p.BluRay.x264-GROUP" for number in range(1, 11)],
         "current_quality": "1080p Encode",
         "title": "Show.S03.COMPLETE.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-PACK",
         "quality": "1080p BluRay REMUX",
@@ -275,8 +276,17 @@ def _matched_formats(release_name: str) -> list[dict]:
     return matched
 
 
-def _comparison(current_name: str, candidate_name: str) -> tuple[dict, list[dict], int, int]:
-    """Snapshot, gained formats and both totals for one sample pair."""
+def _comparison(
+    current_name: str,
+    candidate_name: str,
+    replaces: list[str] | None = None,
+    current_quality: str | None = None,
+) -> tuple[dict, list[dict], int, int]:
+    """Snapshot, gained formats and both totals for one sample pair.
+
+    ``replaces`` names every release the candidate would take the place of, as a
+    season pack does with a season of episode torrents.
+    """
 
     current = _matched_formats(current_name)
     candidate = _matched_formats(candidate_name)
@@ -301,7 +311,18 @@ def _comparison(current_name: str, candidate_name: str) -> tuple[dict, list[dict
     snapshot = {
         MARKER: True,
         "note": "Seeded for UI review; not a real search result.",
-        "current": {"score_snapshot": {"formats": current}},
+        "current": {
+            "score_snapshot": {"formats": current},
+            "releases": [
+                {
+                    "release_id": uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{name}").hex,
+                    "release_name": name,
+                    "quality": current_quality,
+                    "custom_format_score": sum(item["contribution"] for item in _matched_formats(name)),
+                }
+                for name in (replaces or [current_name])
+            ],
+        },
         "candidate": {"formats": candidate},
     }
     return (
@@ -415,7 +436,12 @@ def seed() -> None:
         season_id, show_title, season_number, release_id = targets[index % len(targets)]
         current_name = sample["current_release_name"].replace("Show", show_title.replace(" ", "."))
         candidate_name = sample["title"].replace("Show", show_title.replace(" ", "."))
-        snapshot, added, current_score, score = _comparison(current_name, candidate_name)
+        replaces = [
+            value.replace("Show", show_title.replace(" ", ".")) for value in sample.get("replaces", [])
+        ]
+        snapshot, added, current_score, score = _comparison(
+            current_name, candidate_name, replaces, sample["current_quality"]
+        )
         connection.execute(
             """insert into upgrade_candidates
                (id, target_key, media_type, movie_id, season_id,
@@ -462,7 +488,9 @@ def seed() -> None:
         inserted += 1
         del season_number
     for sample, movie_id, movie_release_id in _seed_movies(connection):
-        snapshot, added, current_score, score = _comparison(sample["folder"], sample["candidate"])
+        snapshot, added, current_score, score = _comparison(
+            sample["folder"], sample["candidate"], None, sample["current_quality"]
+        )
         connection.execute(
             """insert into upgrade_candidates
                (id, target_key, media_type, movie_id, season_id,

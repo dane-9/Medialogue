@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
     AccessMode,
+    Episode,
     MediaDirectory,
     MediaFile,
     MediaType,
@@ -33,6 +34,7 @@ from app.models.domain import (
 )
 from app.schemas.upgrades import (
     UpgradeCandidateCount,
+    UpgradeCurrentRelease,
     UpgradeMatchedFormat,
     UpgradeCandidateResponse,
     UpgradeCleanupCommitRequest,
@@ -97,6 +99,8 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     media_year: int | None = None
     tmdb_id: int | None = None
     season_number: int | None = None
+    current_episode_count: int | None = None
+    season_episode_count: int | None = None
     current_paths: list[str] = []
     root_name: str | None = None
     poster_ref: str | None = None
@@ -142,6 +146,11 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
             poster_ref = show.poster_ref
         if season is not None:
             season_number = season.season_number
+            # What the season holds, so a pack that fills gaps can be told
+            # apart from one that swaps like for like.
+            season_episode_count = int(
+                await db.scalar(select(func.count()).select_from(Episode).where(Episode.season_id == season.id)) or 0
+            ) or None
         release_ids = [UUID(value) for value in row.current_release_ids]
         if release_ids:
             # Show MediaDirectory is the Show container. Keep only paths that
@@ -167,6 +176,14 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
                 .where(EpisodeMediaMap.show_release_id.in_(release_ids))
                 .limit(1)
             )
+            current_episode_count = int(
+                await db.scalar(
+                    select(func.count(func.distinct(EpisodeMediaMap.episode_id)))
+                    .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
+                    .where(EpisodeMediaMap.show_release_id.in_(release_ids), MediaFile.exists.is_(True))
+                )
+                or 0
+            ) or None
             relative_paths = await db.scalars(
                 select(MediaFile.relative_path)
                 .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
@@ -237,6 +254,18 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         published_at=row.published_at,
         upgrade_types=list(row.upgrade_types or []),
         added_custom_formats=[dict(value) for value in row.added_custom_formats or []],
+        current_releases=[
+            UpgradeCurrentRelease(
+                release_id=str(value.get("release_id") or ""),
+                release_name=str(value.get("release_name") or ""),
+                quality=value.get("quality"),
+                custom_format_score=int(value.get("custom_format_score") or 0),
+            )
+            for value in ((snapshot.get("current") or {}).get("releases") or [])
+            if isinstance(value, dict)
+        ],
+        current_episode_count=current_episode_count,
+        season_episode_count=season_episode_count,
         current_matched_formats=_matched_formats(
             ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("formats")
         ),

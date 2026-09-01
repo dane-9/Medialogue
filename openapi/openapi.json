@@ -12118,6 +12118,17 @@
             "title": "Current Custom Format Score",
             "type": "integer"
           },
+          "current_episode_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Episode Count"
+          },
           "current_matched_formats": {
             "items": {
               "$ref": "#/components/schemas/UpgradeMatchedFormat"
@@ -12154,6 +12165,13 @@
           "current_release_name": {
             "title": "Current Release Name",
             "type": "string"
+          },
+          "current_releases": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeCurrentRelease"
+            },
+            "title": "Current Releases",
+            "type": "array"
           },
           "custom_format_score": {
             "title": "Custom Format Score",
@@ -12404,6 +12422,17 @@
           "score_delta": {
             "title": "Score Delta",
             "type": "integer"
+          },
+          "season_episode_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Episode Count"
           },
           "season_id": {
             "anyOf": [
@@ -12712,6 +12741,40 @@
           "kind"
         ],
         "title": "UpgradeCleanupTarget",
+        "type": "object"
+      },
+      "UpgradeCurrentRelease": {
+        "properties": {
+          "custom_format_score": {
+            "default": 0,
+            "title": "Custom Format Score",
+            "type": "integer"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "release_id": {
+            "title": "Release Id",
+            "type": "string"
+          },
+          "release_name": {
+            "title": "Release Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id",
+          "release_name"
+        ],
+        "title": "UpgradeCurrentRelease",
         "type": "object"
       },
       "UpgradeExecuteRequest": {

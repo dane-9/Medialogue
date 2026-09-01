@@ -394,6 +394,13 @@ export interface Download {
 export type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision'
 export type UpgradeExecutionState = 'submitted' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
 
+export interface UpgradeCurrentRelease {
+  id: string
+  name: string
+  quality?: string
+  customFormatScore: number
+}
+
 export interface UpgradeMatchedFormat {
   id: string
   name: string
@@ -446,6 +453,9 @@ export interface UpgradeCandidate {
   publishedAt?: string
   upgradeTypes: UpgradeType[]
   addedCustomFormats: UpgradeCustomFormatImprovement[]
+  currentReleases: UpgradeCurrentRelease[]
+  currentEpisodeCount?: number
+  seasonEpisodeCount?: number
   currentMatchedFormats: UpgradeMatchedFormat[]
   candidateMatchedFormats: UpgradeMatchedFormat[]
   executionEligible: boolean
