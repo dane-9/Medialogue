@@ -44,6 +44,9 @@ class UpgradeCandidateResponse(BaseModel):
     current_custom_format_score: int
     indexer_id: UUID | None = None
     indexer_name: str
+    #: The indexer's configured badge colour, so the row can tint it the way
+    #: search results do.
+    indexer_color: str | None = None
     title: str
     quality: str | None = None
     custom_format_score: int

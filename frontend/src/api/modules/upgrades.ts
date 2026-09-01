@@ -32,6 +32,7 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     seeders: value.seeders ?? undefined,
     leechers: value.leechers ?? undefined,
     publishedAt: value.published_at ?? undefined,
+    indexerColor: value.indexer_color ?? undefined,
     upgradeTypes: value.upgrade_types,
     addedCustomFormats: value.added_custom_formats.map((format) => ({
       id: String(format.custom_format_id ?? ''),

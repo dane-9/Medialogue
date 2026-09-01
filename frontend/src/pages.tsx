@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { badgeColor } from './lib/badgeColor'
 import { eventLabel, eventStamp } from './lib/eventLabel'
@@ -10,6 +10,8 @@ import { rootBrowseStart, rootDraftChanged, rootPathAfterBrowse } from './lib/ro
 import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
 import { needsAttention, statusTone } from './lib/status'
+import { diffReleaseTokens } from './lib/releaseTokens'
+import { upgradeTokenReason } from './lib/upgradeTokenReason'
 import { pathParts } from './lib/pathParts'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
 import { qualityMark } from './lib/qualityMark'
@@ -3688,7 +3690,9 @@ function upgradeTypeLabel(value: UpgradeType) {
   if (value === 'season_pack') return 'Season Pack'
   if (value === 'repack') return 'REPACK'
   if (value === 'proper') return 'PROPER'
-  if (value === 'revision') return 'Revision'
+  // The scene tag itself, as REPACK and PROPER are: the backend reason is
+  // named 'revision', but what the release says is REAL.
+  if (value === 'revision') return 'REAL'
   return 'Quality'
 }
 
@@ -3924,6 +3928,20 @@ export function UpgradeMediaPage() {
           // Only a real change: quality is unchanged on most Custom Format,
           // repack and proper upgrades, and "X → X" reads as a difference.
           const qualityChanged = Boolean(item.quality) && item.quality !== item.currentQuality
+          // Both names are the same dotted string bar a token or three. Lighting
+          // only those puts the difference where the eye already is.
+          const tokens = diffReleaseTokens(item.title, item.currentReleaseName)
+          const tokenContext = {
+            upgradeTypes: item.upgradeTypes as string[],
+            addedCustomFormats: item.addedCustomFormats,
+            currentQuality: item.currentQuality,
+            quality: item.quality,
+            currentReleaseName: item.currentReleaseName,
+          }
+          // "Quality" and "Custom Format" only name the row beneath them, which
+          // already shows the resolution arrow and the formats gained.
+          const reasons = item.upgradeTypes.filter((type) => type !== 'quality' && type !== 'custom_format')
+          const indexerBadge = badgeColor(item.indexerColor)
           const batchable = !item.executionState && item.executionEligible
           return <div className="upgrade-row" key={item.id}>
             <div className="upgrade-cell upgrade-target">
@@ -3951,11 +3969,27 @@ export function UpgradeMediaPage() {
                   left. Quality, group and source are all in that name, so the
                   line beneath states only why it is an upgrade. */}
               <span className="upgrade-change-copy">
-                <strong title={item.title}>{item.title}</strong>
+                <strong>{tokens.map((token, index) => {
+                  const reason = upgradeTokenReason(token, tokenContext)
+                  // The separator stays outside the token so a hovered token
+                  // highlights on its own, not joined to the one before it.
+                  const text = <span className={reason ? 'upgrade-token-new' : 'upgrade-token-same'}>{token.text}</span>
+                  return <Fragment key={index}>
+                    <span className="upgrade-token-sep">{token.sep}</span>
+                    {reason ? <Tooltip asChild content={reason}>{text}</Tooltip> : text}
+                  </Fragment>
+                })}</strong>
                 <small className="upgrade-change-meta">
-                  {item.upgradeTypes.map((type) => <Badge key={type} tone={type === 'quality' ? 'purple' : type === 'custom_format' ? 'blue' : 'amber'}>{upgradeTypeLabel(type)}</Badge>)}
+                  {/* Where the candidate came from, before why it is better.
+                      Tinted by the indexer's own colour, as search results are. */}
+                  <span
+                    className="badge badge-neutral"
+                    style={indexerBadge
+                      ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background }
+                      : undefined}
+                  >{item.indexerName}</span>
+                  {reasons.map((type) => <Badge key={type} tone="amber">{upgradeTypeLabel(type)}</Badge>)}
                   {qualityChanged && <span className="upgrade-quality-change">{item.currentQuality ?? 'Unknown'}<Icon name="arrow" size={12} />{item.quality}</span>}
-                  <b className={item.scoreDelta > 0 ? 'score-positive' : ''}>{item.scoreDelta >= 0 ? '+' : ''}{item.scoreDelta} CF</b>
                 </small>
               </span>
               <span className="upgrade-action">

@@ -57,7 +57,7 @@ SAMPLES: list[dict] = [
     {
         "types": ["season_pack"],
         "current_release_name": "Show.S03E01-E10.1080p.BluRay.x264-GROUP (10 files)",
-        "current_quality": "1080p BluRay",
+        "current_quality": "1080p Encode",
         "current_score": 50,
         "title": "Show.S03.COMPLETE.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-PACK",
         "quality": "1080p BluRay REMUX",
@@ -98,13 +98,13 @@ SAMPLES: list[dict] = [
         "current_release_name": "Show.S06.2160p.BluRay.REMUX.HEVC.DTS-HD.MA.5.1-GROUP",
         "current_quality": "2160p BluRay REMUX",
         "current_score": 95,
-        "title": "Show.S06.2160p.BluRay.REMUX.HEVC.TrueHD.7.1.v2-GROUP",
+        "title": "Show.S06.REAL.2160p.BluRay.REMUX.HEVC.TrueHD.7.1-GROUP",
         "quality": "2160p BluRay REMUX",
         "score": 155,
         "size": 90 * 1024**3,
         "seeders": 6,
         "leechers": 4,
-        "added": [{"name": "TrueHD", "delta": 55}, {"name": "Revision", "delta": 5}],
+        "added": [{"name": "TrueHD", "delta": 55}, {"name": "REAL", "delta": 5}],
         # One blocked row, so the refusal path is visible too.
         "eligible": False,
         "block_reason": "No download client is configured for this indexer.",
@@ -124,7 +124,7 @@ MOVIE_SAMPLES: list[dict] = [
         "title": "Blade Runner 2049", "year": 2017, "tmdb_id": 335984, "edition": None,
         "types": ["quality"],
         "folder": "Blade.Runner.2049.2017.1080p.BluRay.x264-GROUP",
-        "current_quality": "1080p BluRay", "current_score": 35,
+        "current_quality": "1080p Encode", "current_score": 35,
         "candidate": "Blade.Runner.2049.2017.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.7.1.Atmos-OTHER",
         "quality": "2160p BluRay REMUX", "score": 230,
         "size": 78 * 1024**3, "seeders": 58, "leechers": 4,
@@ -144,7 +144,7 @@ MOVIE_SAMPLES: list[dict] = [
         "title": "Blade Runner", "year": 1982, "tmdb_id": 78, "edition": "The Final Cut",
         "types": ["quality", "custom_format"],
         "folder": "Blade.Runner.1982.The.Final.Cut.1080p.BluRay.x264-GROUP",
-        "current_quality": "1080p BluRay", "current_score": 30,
+        "current_quality": "1080p Encode", "current_score": 30,
         "candidate": "Blade.Runner.1982.The.Final.Cut.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.5.1-OTHER",
         "quality": "2160p BluRay REMUX", "score": 210,
         "size": 71 * 1024**3, "seeders": 24, "leechers": 2,
@@ -175,10 +175,10 @@ MOVIE_SAMPLES: list[dict] = [
         "types": ["revision", "custom_format"],
         "folder": "Apocalypse.Now.1979.Redux.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
         "current_quality": "2160p BluRay REMUX", "current_score": 95,
-        "candidate": "Apocalypse.Now.1979.Redux.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.7.1.v2-GROUP",
+        "candidate": "Apocalypse.Now.1979.Redux.REAL.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.7.1-GROUP",
         "quality": "2160p BluRay REMUX", "score": 155,
         "size": 76 * 1024**3, "seeders": 8, "leechers": 3,
-        "added": [{"name": "TrueHD", "delta": 55}, {"name": "Revision", "delta": 5}],
+        "added": [{"name": "TrueHD", "delta": 55}, {"name": "REAL", "delta": 5}],
         "eligible": False,
         "block_reason": "No download client is configured for this indexer.",
     },
@@ -198,6 +198,27 @@ MOVIE_SAMPLES: list[dict] = [
 
 #: Fixed id bases so re-seeding reuses the same rows instead of piling up.
 MOVIE_ID_BASE = 0x3D1EA000
+
+
+def _added_formats(sample: dict) -> list[dict]:
+    """Shape the sample's gained formats the way the real scorer records them.
+
+    The API reads custom_format_id/custom_format_name, so a sample that stores a
+    bare name shows up in the UI as an unnamed "Custom Format".
+    """
+
+    added = []
+    for position, entry in enumerate(sample["added"]):
+        added.append({
+            "custom_format_id": uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{entry['name']}").hex,
+            "custom_format_name": entry["name"],
+            "contribution": entry["delta"],
+            "previous_contribution": None,
+            "delta": entry["delta"],
+            "new": True,
+            "position": position,
+        })
+    return added
 
 
 def _ids(index: int) -> tuple[str, str, str]:
@@ -338,7 +359,7 @@ def seed() -> None:
                 sample["seeders"],
                 sample["leechers"],
                 json.dumps(sample["types"]),
-                json.dumps(sample["added"]),
+                json.dumps(_added_formats(sample)),
                 1 if sample.get("eligible", True) else 0,
                 sample.get("block_reason"),
                 json.dumps(snapshot),
@@ -384,7 +405,7 @@ def seed() -> None:
                 sample["seeders"],
                 sample["leechers"],
                 json.dumps(sample["types"]),
-                json.dumps(sample["added"]),
+                json.dumps(_added_formats(sample)),
                 1 if sample.get("eligible", True) else 0,
                 sample.get("block_reason"),
                 json.dumps({MARKER: True, "note": "Seeded for UI review; not a real search result."}),

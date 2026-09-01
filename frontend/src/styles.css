@@ -3900,6 +3900,9 @@ select.input { background-color: var(--input-bg); }
 .upgrade-change-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); font-size: var(--t-micro); }
 .upgrade-change-meta b { color: var(--muted); }
 /* Only drawn when the resolution actually moves. */
+.upgrade-token-same, .upgrade-token-sep { color: var(--faint); }
+.upgrade-token-new { margin: 0 -2px; padding: 1px 2px; border-radius: var(--r-sm); color: var(--ok); cursor: pointer; }
+.upgrade-token-new:hover { background: var(--ok-soft); }
 .upgrade-quality-change { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
 .upgrade-quality-change svg { color: var(--faint); }
 

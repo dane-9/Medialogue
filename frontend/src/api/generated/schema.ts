@@ -2845,7 +2845,7 @@ export interface components {
              */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem-Output"][];
             /**
              * Schema Version
              * @default 1
@@ -2853,7 +2853,28 @@ export interface components {
             schema_version: number;
         };
         /** CustomFormatExportItem */
-        CustomFormatExportItem: {
+        "CustomFormatExportItem-Input": {
+            /** Conditions */
+            conditions: components["schemas"]["CustomFormatConditionInput"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** @default both */
+            media_scope: components["schemas"]["CustomFormatScope"];
+            /** Name */
+            name: string;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** CustomFormatExportItem */
+        "CustomFormatExportItem-Output": {
             /** Conditions */
             conditions: components["schemas"]["CustomFormatConditionInput"][];
             /** Description */
@@ -2878,7 +2899,7 @@ export interface components {
             /** Application */
             application: string;
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem-Input"][];
             /** Schema Version */
             schema_version: number;
         };
@@ -6662,6 +6683,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Indexer Color */
+            indexer_color?: string | null;
             /** Indexer Id */
             indexer_id?: string | null;
             /** Indexer Name */

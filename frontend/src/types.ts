@@ -424,6 +424,7 @@ export interface UpgradeCandidate {
   currentCustomFormatScore: number
   indexerId?: string
   indexerName: string
+  indexerColor?: string
   title: string
   quality?: string
   customFormatScore: number

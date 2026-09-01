@@ -12,6 +12,7 @@ from app.api import downloads as downloads_api
 from app.api import indexers as indexers_api
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
+from app.core.integration_config import get_integration_config_store
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
@@ -44,6 +45,17 @@ from app.services.upgrade_execution import (
 )
 
 router = APIRouter(tags=["upgrade candidates"])
+
+
+def _indexer_color(indexer_id: UUID | None) -> str | None:
+    """The badge colour configured for an indexer, if it still exists."""
+
+    if indexer_id is None:
+        return None
+    for item in get_integration_config_store().list_indexers():
+        if item.id == indexer_id:
+            return item.color
+    return None
 
 
 async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidateResponse:
@@ -160,6 +172,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_custom_format_score=row.current_custom_format_score,
         indexer_id=row.indexer_id,
         indexer_name=row.indexer_name,
+        indexer_color=_indexer_color(row.indexer_id),
         title=row.title,
         quality=row.quality,
         custom_format_score=row.custom_format_score,
