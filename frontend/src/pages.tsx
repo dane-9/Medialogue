@@ -3686,25 +3686,43 @@ function BackupRecoverySettings() {
 }
 
 
-function UpgradeScore({ value, formats, delta, profile }: { value: number; formats: UpgradeMatchedFormat[]; delta?: number; profile: string }) {
-  return <Tooltip placement="left" delay={250} content={<span className="cf-breakdown">
-    {/* The profile is what decides these scores, so it belongs on the header. */}
+function UpgradeCompare({ item, profile, children }: { item: UpgradeCandidate; profile: string; children: ReactNode }) {
+  const rows = useMemo(() => {
+    const merged = new Map<string, { name: string; current?: number; candidate?: number }>()
+    for (const format of item.currentMatchedFormats) merged.set(format.id, { name: format.name, current: format.contribution })
+    for (const format of item.candidateMatchedFormats) {
+      const entry = merged.get(format.id)
+      if (entry) entry.candidate = format.contribution
+      else merged.set(format.id, { name: format.name, candidate: format.contribution })
+    }
+    // Biggest movers first, so what changed is read before what did not.
+    return [...merged.entries()]
+      .map(([id, entry]) => ({ id, ...entry, delta: (entry.candidate ?? 0) - (entry.current ?? 0) }))
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.name.localeCompare(b.name))
+  }, [item.currentMatchedFormats, item.candidateMatchedFormats])
+
+  const cell = (value: number | undefined, tone: string) => value === undefined
+    ? <b className="cf-zero">-</b>
+    : <b className={tone}>{value > 0 ? '+' : ''}{value}</b>
+
+  return <Tooltip asChild placement="below" delay={250} content={<span className="cf-breakdown">
     <span className="cf-breakdown-head"><strong>Custom Formats</strong><small>{profile}</small></span>
-    {formats.length
-      ? <span className="cf-breakdown-rows">{formats.map((format) => <span key={format.id} className="cf-breakdown-row">
-          <span>{format.name}</span>
-          <b className={format.contribution > 0 ? 'cf-plus' : format.contribution < 0 ? 'cf-minus' : 'cf-zero'}>
-            {format.contribution > 0 ? '+' : ''}{format.contribution}
-          </b>
-        </span>)}</span>
-      : <small>No Custom Formats matched this release.</small>}
-    <span className="cf-breakdown-total"><span>Total</span><b>{value}</b></span>
-  </span>}>
-    <span className="upgrade-score">
-      <b>{value}</b>
-      {delta !== undefined && delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}>{delta > 0 ? '+' : ''}{delta}</em>}
+    {rows.length
+      ? <span className="cf-breakdown-rows">
+          <span className="cf-breakdown-row cf-breakdown-legend"><span>Format</span><b>Current</b><b>Upgrade</b></span>
+          {rows.map((row) => <span key={row.id} className="cf-breakdown-row">
+            <span>{row.name}</span>
+            {cell(row.current, 'cf-zero')}
+            {cell(row.candidate, row.delta > 0 ? 'cf-plus' : row.delta < 0 ? 'cf-minus' : 'cf-zero')}
+          </span>)}
+        </span>
+      : <small>No Custom Formats matched either release.</small>}
+    <span className="cf-breakdown-row cf-breakdown-total">
+      <span>Total</span>
+      <b>{item.currentCustomFormatScore}</b>
+      <b className={item.scoreDelta > 0 ? 'cf-plus' : item.scoreDelta < 0 ? 'cf-minus' : 'cf-zero'}>{item.customFormatScore}</b>
     </span>
-  </Tooltip>
+  </span>}>{children}</Tooltip>
 }
 
 function upgradeTypeLabel(value: UpgradeType) {
@@ -4077,7 +4095,9 @@ export function UpgradeMediaPage() {
                   />
                 </span>
               </span>
-              <UpgradeScore value={item.currentCustomFormatScore} formats={item.currentMatchedFormats} profile={profileName} />
+              <UpgradeCompare item={item} profile={profileName}>
+                <span className="upgrade-score"><b>{item.currentCustomFormatScore}</b></span>
+              </UpgradeCompare>
             </div>
             {/* The one thing the row asserts: this becomes that. */}
             <span className="upgrade-arrow" aria-hidden="true"><Icon name="caret" size={16} /></span>
@@ -4121,7 +4141,12 @@ export function UpgradeMediaPage() {
                 </small>
               </span>
               <span className="upgrade-action">
-                <UpgradeScore value={item.customFormatScore} formats={item.candidateMatchedFormats} delta={item.scoreDelta} profile={profileName} />
+                <UpgradeCompare item={item} profile={profileName}>
+                  <span className="upgrade-score">
+                    <b>{item.customFormatScore}</b>
+                    {item.scoreDelta !== 0 && <em className={item.scoreDelta > 0 ? 'cf-plus' : 'cf-minus'}>{item.scoreDelta > 0 ? '+' : ''}{item.scoreDelta}</em>}
+                  </span>
+                </UpgradeCompare>
                 {item.executionState && <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>}
                 {(item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && progress !== undefined && <span className="upgrade-progress-wrap"><Progress value={progress} tone="blue" /><span>{progress}%</span></span>}
                 {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}

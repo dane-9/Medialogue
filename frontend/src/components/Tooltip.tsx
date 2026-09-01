@@ -26,7 +26,7 @@ export function Tooltip({ content, children, className, focusable = false, asChi
 
   asChild?: boolean
 
-  placement?: 'auto' | 'right' | 'left'
+  placement?: 'auto' | 'right' | 'left' | 'below'
 
   interactive?: boolean
 }) {
@@ -57,7 +57,7 @@ export function Tooltip({ content, children, className, focusable = false, asChi
       return
     }
 
-    const below = rect.top < bubbleRect.height + gap
+    const below = placement === 'below' || rect.top < bubbleRect.height + gap
     const top = below ? rect.bottom + gap : rect.top - gap - bubbleRect.height
 
     const half = bubbleRect.width / 2

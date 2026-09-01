@@ -3890,6 +3890,8 @@ select.input { background-color: var(--input-bg); }
 .upgrade-score em { font: 500 var(--t-micro) var(--mono); font-style: normal; }
 .upgrade-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .upgrade-head em { font-style: normal; }
+.upgrade-quality-change { display: inline-flex; align-items: center; gap: 1px; color: var(--muted); }
+.upgrade-quality-change .release-pill { max-width: none; text-transform: none; letter-spacing: 0; }
 
 .cf-breakdown { display: grid; gap: var(--s2); }
 .cf-breakdown-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
@@ -3897,16 +3899,21 @@ select.input { background-color: var(--input-bg); }
 .cf-breakdown-head small { flex: none; color: var(--muted); font-size: var(--t-micro); }
 .cf-breakdown small { color: var(--muted); }
 .cf-breakdown-rows { display: grid; gap: 2px; }
-.cf-breakdown-row, .cf-breakdown-total { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+/* Name, then the two values in fixed columns so they line up down the card. */
+.cf-breakdown-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: baseline; gap: var(--s2); }
+.cf-breakdown-row b { text-align: right; }
+.cf-breakdown-legend { color: var(--faint); }
+.cf-breakdown-legend b { color: var(--faint); font-weight: 500; }
 .cf-breakdown-row span { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .cf-breakdown-row b, .cf-breakdown-total b { flex: none; font: 500 var(--t-xs) var(--mono); }
 .cf-breakdown-total { padding-top: var(--s2); border-top: 1px solid var(--line); color: var(--text); }
+.cf-breakdown-total > span { color: var(--text); }
 .cf-plus { color: var(--ok); }
 .cf-minus { color: var(--err); }
 .cf-zero { color: var(--faint); }
 
 .upgrade-arrow { display: grid; place-items: center; color: var(--faint); }
-.upgrade-arrow svg, .upgrade-quality-change svg { transform: rotate(-90deg); }
+.upgrade-arrow svg, .upgrade-quality-change svg { transform: rotate(-90deg); color: var(--faint); }
 .upgrade-identity { display: flex; align-items: flex-start; gap: var(--s3); }
 /* Positioned, because .poster-image fills its nearest positioned ancestor. */
 .upgrade-identity-art { position: relative; display: grid; width: 58px; flex: none; aspect-ratio: 2 / 3; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-sm); color: var(--faint); background: var(--raised); }
@@ -3960,10 +3967,7 @@ select.input { background-color: var(--input-bg); }
 .upgrade-token-linked { color: var(--ok); background: var(--ok-soft); }
 /* Pills, so the line speaks the same language as the indexer and reason
    badges beside it; green marks the target, as it does in the title. */
-.upgrade-quality-change { display: inline-flex; align-items: center; gap: 1px; color: var(--muted); }
-.upgrade-quality-change svg { color: var(--faint); }
 /* Quality names are written, not shouted: uppercasing turned 1080p into 1080P. */
-.upgrade-quality-change .release-pill { max-width: none; text-transform: none; letter-spacing: 0; }
 .upgrade-quality-new { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 
 .upgrade-action { display: flex; flex: none; align-items: center; gap: var(--s2); }
