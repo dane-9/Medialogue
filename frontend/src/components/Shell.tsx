@@ -57,6 +57,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const [plexAvailable, setPlexAvailable] = useState(false)
   const [problemCount, setProblemCount] = useState(0)
   const [newMediaCount, setNewMediaCount] = useState(0)
+  const [upgradeCount, setUpgradeCount] = useState(0)
   const newMediaCountGeneration = useRef(0)
   const [pageTopbarHost, setPageTopbarHost] = useState<HTMLDivElement | null>(null)
   const location = useLocation()
@@ -80,6 +81,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   useEffect(() => {
     let alive = true
     const refreshProblemCount = () => api.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
+    const refreshUpgradeCount = () => api.upgradeCandidateCount().then((value) => { if (alive) setUpgradeCount(value.count) }).catch(() => undefined)
     const refreshHealth = () => api.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
     const refreshPlexAvailability = () => api.plexConfiguration().then((configuration) => {
       if (alive) setPlexAvailable(configuration.configured && configuration.enabled && configuration.token_configured)
@@ -87,10 +89,11 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     void refreshHealth()
     void refreshPlexAvailability()
     void refreshProblemCount()
+    void refreshUpgradeCount()
     void refreshNewMediaCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const jobListener = () => void refreshNewMediaCount()
+    const jobListener = () => { void refreshNewMediaCount(); void refreshUpgradeCount() }
     // Problem SSE events are invalidation signals only. SQLite remains the
     // authoritative count, so reconnects, rollbacks and duplicate-resolution
     // events can never leave the badge drifting from the queue.
@@ -108,6 +111,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     stream.addEventListener('qbittorrent.health', healthListener)
 
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
+    const upgradeTimer = window.setInterval(refreshUpgradeCount, 300000)
     const newMediaChangedListener = () => void refreshNewMediaCount()
     const plexConfigurationChangedListener = () => { void refreshPlexAvailability(); void refreshHealth() }
     window.addEventListener('medialogue-new-media-changed', newMediaChangedListener)
@@ -118,6 +122,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       alive = false
       stream.close()
       window.clearInterval(problemTimer)
+      window.clearInterval(upgradeTimer)
       window.clearInterval(newMediaTimer)
       window.removeEventListener('medialogue-new-media-changed', newMediaChangedListener)
       window.removeEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
@@ -137,7 +142,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <GlobalSearchButton onOpen={() => setSearchOpen(true)} />
       </div>
       <div className="sidebar-scroll">
-        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount, alert: true } : item.to === '/new-media' ? { ...item, count: newMediaCount } : item)} />
+        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount, alert: true } : item.to === '/new-media' ? { ...item, count: newMediaCount } : item.to === '/upgrade-media' ? { ...item, count: upgradeCount, tone: 'ok' as const } : item)} />
         <NavSection items={tools} />
         <NavSection items={system} />
       </div>
@@ -158,8 +163,8 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   </div></PageTopbarHostContext.Provider></PlexAvailableContext.Provider>
 }
 
-function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number; alert?: boolean }> }) {
-  return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count ? <span className={`nav-count ${item.alert ? 'nav-count-alert' : ''}`}>{item.count}</span> : null}</NavLink>)}</div>
+function NavSection({ items }: { items: Array<{ to: string; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number; alert?: boolean; tone?: 'ok' }> }) {
+  return <div className="nav-section">{items.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.count ? <span className={`nav-count ${item.alert ? 'nav-count-alert' : ''} ${item.tone === 'ok' ? 'nav-count-ok' : ''}`}>{item.count}</span> : null}</NavLink>)}</div>
 }
 
 function HealthLink({ item }: { item: HealthIndicator }) {

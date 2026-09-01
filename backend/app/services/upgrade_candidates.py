@@ -113,7 +113,7 @@ def _revision_rank(parsed: Any) -> int:
         int(getattr(attrs, "proper_revision", 0) or 0),
         int(getattr(attrs, "rerip_revision", 0) or 0),
     )
-    return numbered + int(bool(attrs.real))
+    return numbered
 
 
 def _release_group_key(value: str | None) -> str | None:
@@ -150,7 +150,7 @@ def _current_revision_reasons(reference: CurrentReleaseEvidence, candidate_parse
         reasons.append("repack")
     if attrs.proper:
         reasons.append("proper")
-    if attrs.rerip or attrs.real:
+    if attrs.rerip:
         reasons.append("revision")
     return reasons
 
@@ -219,13 +219,21 @@ def _season_airing_eligible(season: Season, episodes: list[Episode], *, today: d
     return True, None
 
 
-def _read_only_guard(releases: list[MovieRelease | ShowRelease]) -> tuple[bool, str | None]:
+def _read_only_root(releases: list[MovieRelease | ShowRelease]) -> str | None:
+    """The name of the read-only media folder holding these releases, if any.
+
+    A read-only folder cannot receive a replacement, so there is nothing to
+    decide about such a release and it is not searched at all. Returning the
+    name lets the page say which folder was skipped instead of listing every
+    release inside it.
+    """
+
     for release in releases:
         for directory in release.directories:
             root = directory.storage_root
             if root is not None and root.access_mode == AccessMode.READ_ONLY:
-                return False, f"Media folder {root.name} is read-only."
-    return True, None
+                return root.name
+    return None
 
 
 def _preferred_release_name(release: MovieRelease | ShowRelease) -> str:
@@ -290,7 +298,7 @@ async def _release_evidence(
     )
 
 
-async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int]:
+async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int, set[str]]:
     movies = (
         await db.scalars(
             select(Movie)
@@ -300,6 +308,7 @@ async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int]:
     ).all()
     targets: list[UpgradeTarget] = []
     skipped_quality = 0
+    skipped_read_only: set[str] = set()
     for movie in movies:
         profile = await load_effective_profile(db, media_type=MediaType.MOVIES, entity_id=movie.id)
         releases = (
@@ -325,7 +334,10 @@ async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int]:
             if evidence is None:
                 skipped_quality += 1
                 continue
-            execution_eligible, block_reason = _read_only_guard([release])
+            read_only = _read_only_root([release])
+            if read_only is not None:
+                skipped_read_only.add(read_only)
+                continue
             targets.append(
                 UpgradeTarget(
                     target_key=f"movie-release:{release.id}",
@@ -345,21 +357,22 @@ async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int]:
                     ),
                     releases=(evidence,),
                     reference=evidence,
-                    execution_eligible=execution_eligible,
-                    execution_block_reason=block_reason,
+                    execution_eligible=True,
+                    execution_block_reason=None,
                     season_pack_upgrades=profile.season_pack_upgrades,
                 )
             )
-    return targets, skipped_quality
+    return targets, skipped_quality, skipped_read_only
 
 
-async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeTarget], int, int]:
+async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeTarget], int, int, set[str]]:
     shows = (
         await db.scalars(select(Show).where(Show.monitored.is_(True)).order_by(Show.title, Show.id))
     ).all()
     targets: list[UpgradeTarget] = []
     skipped_airing = 0
     skipped_quality = 0
+    skipped_read_only: set[str] = set()
     for show in shows:
         profile = await load_effective_profile(db, media_type=MediaType.SHOWS, entity_id=show.id)
         seasons = (
@@ -419,7 +432,10 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
                     item.release_name.casefold(),
                 ),
             )[0]
-            execution_eligible, block_reason = _read_only_guard(list(releases))
+            read_only = _read_only_root(list(releases))
+            if read_only is not None:
+                skipped_read_only.add(read_only)
+                continue
             targets.append(
                 UpgradeTarget(
                     target_key=f"show-season:{season.id}",
@@ -440,12 +456,12 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
                     ),
                     releases=tuple(evidence),
                     reference=reference,
-                    execution_eligible=execution_eligible,
-                    execution_block_reason=block_reason,
+                    execution_eligible=True,
+                    execution_block_reason=None,
                     season_pack_upgrades=profile.season_pack_upgrades,
                 )
             )
-    return targets, skipped_airing, skipped_quality
+    return targets, skipped_airing, skipped_quality, skipped_read_only
 
 
 async def _evaluation_policy(
@@ -761,8 +777,9 @@ async def _worker(
     await update_job(db, job, status=JobStatus.RUNNING, progress={"completed": 0, "total": 0, "percent": 0})
     await db.commit()
 
-    movie_targets, movie_skipped_quality = await _movie_targets(db)
-    show_targets, skipped_airing, show_skipped_quality = await _show_targets(db, today=today)
+    movie_targets, movie_skipped_quality, movie_read_only = await _movie_targets(db)
+    show_targets, skipped_airing, show_skipped_quality, show_read_only = await _show_targets(db, today=today)
+    read_only_roots = sorted(movie_read_only | show_read_only)
     targets = [*movie_targets, *show_targets]
     valid_keys = {target.target_key for target in targets}
     inactive = (
@@ -806,6 +823,7 @@ async def _worker(
             "indexer_failures": failures,
             "skipped_airing_or_incomplete": skipped_airing,
             "skipped_unknown_current_quality": movie_skipped_quality + show_skipped_quality,
+            "skipped_read_only_roots": read_only_roots,
             "automatic_grabs": False,
         }
         await update_job(
@@ -828,6 +846,7 @@ async def _worker(
         "indexer_failures": failures,
         "skipped_airing_or_incomplete": skipped_airing,
         "skipped_unknown_current_quality": movie_skipped_quality + show_skipped_quality,
+        "skipped_read_only_roots": read_only_roots,
         "automatic_grabs": False,
     }
     await update_job(

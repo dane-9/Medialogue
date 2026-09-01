@@ -224,6 +224,8 @@ h1, h2, h3, p { margin: 0; }
    running jobs are informational, and reading them as errors made a healthy
    install look broken. */
 .nav-count-alert { color: var(--err); background: var(--err-soft); }
+/* Upgrades are an opportunity, not a fault or a plain queue. */
+.nav-count-ok { color: var(--ok); background: var(--ok-soft); }
 
 .sidebar-footer { padding: var(--s2); border-top: 1px solid var(--line); }
 .sidebar-health { display: grid; gap: 2px; padding-bottom: var(--s2); margin-bottom: var(--s2); border-bottom: 1px solid var(--line); }
@@ -3142,6 +3144,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 @keyframes tooltip-in-below { from { opacity: 0; transform: translateX(-50%) translateY(-2px); } to { opacity: 1; } }
 .tooltip.tooltip-below { animation-name: tooltip-in-below; }
 .tooltip.tooltip-right { width: 280px; max-width: calc(100vw - var(--sidebar) - 24px); transform: translateY(-50%); animation-name: tooltip-in-right; }
+.tooltip.tooltip-left { width: 250px; max-width: calc(100vw - var(--sidebar) - 24px); transform: translate(-100%, -50%); animation-name: tooltip-in-left; }
+@keyframes tooltip-in-left { from { opacity: 0; transform: translate(-100%, -50%) translateX(2px); } to { opacity: 1; } }
 .tooltip.tooltip-interactive { pointer-events: auto; }
 @keyframes tooltip-in-right { from { opacity: 0; transform: translateX(-2px) translateY(-50%); } to { opacity: 1; } }
 .tooltip p { margin: 0; color: var(--text); font-size: var(--t-xs); line-height: 1.5; white-space: normal; }
@@ -3460,6 +3464,7 @@ body {
   background: #2f5c73;
 }
 .nav-count-alert { color: #ffd8d8; background: #8b3333; }
+.nav-count-ok { color: #d3f0dd; background: #3c6b4e; }
 .sidebar-footer {
   border-top-color: #343a43;
   background: rgba(23, 29, 37, .24);
@@ -3613,7 +3618,8 @@ select.input { background-color: var(--input-bg); }
 .event-row:hover,
 .release-row:hover:not(:disabled),
 .new-media-row:hover > .new-media-folder-cell:not(.active),
-.new-media-row:hover > .new-media-match-cell:not(.active) {
+.new-media-row:hover > .new-media-match-cell:not(.active),
+.upgrade-row:hover > .upgrade-cell {
   color: #fff;
   background-color: #323a4b;
 }
@@ -3848,6 +3854,7 @@ select.input { background-color: var(--input-bg); }
 .upgrade-media-loading { min-height: 180px; display: grid; place-items: center; color: var(--muted); }
 /* Two separated panels with their own headers, as New Media does: the media you
    have, and the candidate that would replace it. */
+.upgrade-row:hover > .upgrade-cell { background: var(--raised); }
 /* The commit bar stays put while the list scrolls, as it does on New Media. */
 .upgrade-workspace { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--s3); height: calc(100vh - 260px); min-height: 420px; }
 .upgrade-workspace > .upgrade-scroll { grid-row: 1; min-height: 0; overflow-y: auto; }
@@ -3862,22 +3869,60 @@ select.input { background-color: var(--input-bg); }
 .upgrade-cell {
   display: flex;
   align-items: center;
-  gap: var(--s3);
+  gap: var(--s2);
   min-width: 0;
-  min-height: 56px;
-  padding: var(--s2) var(--s3);
+  min-height: 52px;
+  padding: var(--s1) var(--s3);
   border: 1px solid var(--line);
   border-top: 0;
   background: var(--surface);
 }
 .upgrade-scroll > .upgrade-row:last-child > .upgrade-cell { border-radius: 0 0 var(--r-md) var(--r-md); }
-.upgrade-row:hover > .upgrade-cell { background: var(--raised); }
 
 .upgrade-modal-copy { display: grid; gap: var(--s3); margin-bottom: var(--s4); }
+/* .modal-body carries no padding of its own; forms bring theirs, prose does not. */
+.modal-copy-inset { padding: var(--s4); margin-bottom: 0; }
 .upgrade-modal-copy p { margin: 0; color: var(--muted); line-height: 1.5; }
 .upgrade-destination-form { padding: 0; }
+/* The score closes each cell, so both sides can be compared down a column. */
+.upgrade-score { display: flex; flex: none; align-items: baseline; gap: 4px; margin-left: auto; padding-left: var(--s2); cursor: pointer; }
+.upgrade-score b { color: var(--text); font: var(--t-sm) var(--mono); }
+.upgrade-score em { font: 500 var(--t-micro) var(--mono); font-style: normal; }
+.upgrade-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.upgrade-head em { font-style: normal; }
+
+.cf-breakdown { display: grid; gap: var(--s2); }
+.cf-breakdown-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.cf-breakdown-head strong { color: var(--text); font-size: var(--t-xs); }
+.cf-breakdown-head small { flex: none; color: var(--muted); font-size: var(--t-micro); }
+.cf-breakdown small { color: var(--muted); }
+.cf-breakdown-rows { display: grid; gap: 2px; }
+.cf-breakdown-row, .cf-breakdown-total { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.cf-breakdown-row span { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.cf-breakdown-row b, .cf-breakdown-total b { flex: none; font: 500 var(--t-xs) var(--mono); }
+.cf-breakdown-total { padding-top: var(--s2); border-top: 1px solid var(--line); color: var(--text); }
+.cf-plus { color: var(--ok); }
+.cf-minus { color: var(--err); }
+.cf-zero { color: var(--faint); }
+
 .upgrade-arrow { display: grid; place-items: center; color: var(--faint); }
-.upgrade-target > .new-media-check { margin-right: calc(0px - var(--s1)); }
+.upgrade-arrow svg, .upgrade-quality-change svg { transform: rotate(-90deg); }
+.upgrade-identity { display: flex; align-items: flex-start; gap: var(--s3); }
+/* Positioned, because .poster-image fills its nearest positioned ancestor. */
+.upgrade-identity-art { position: relative; display: grid; width: 58px; flex: none; aspect-ratio: 2 / 3; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-sm); color: var(--faint); background: var(--raised); }
+.upgrade-identity-copy { display: grid; align-content: start; gap: var(--s1); min-width: 0; }
+.upgrade-identity strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text);
+  font-size: var(--t-md);
+  line-height: 1.3;
+  white-space: normal;
+}
+.upgrade-identity small { color: var(--text); font-size: var(--t-sm); }
+.upgrade-identity code { color: var(--accent-text); font: var(--t-micro) var(--mono); }
 .upgrade-poster {
   position: relative;
   display: grid;
@@ -3892,19 +3937,34 @@ select.input { background-color: var(--input-bg); }
   background: var(--raised);
 }
 .upgrade-poster img { width: 100%; height: 100%; object-fit: cover; }
-.upgrade-target-copy > strong, .upgrade-change-copy > strong { font-weight: 400; }
 .upgrade-target-copy, .upgrade-change-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
-.upgrade-target-copy strong, .upgrade-change-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* The same release name in the same place as New Media's folder name, so the
+   two pages read as one idiom. */
+.upgrade-target-copy strong, .upgrade-change-copy strong { display: block; overflow: hidden; color: var(--text); font: var(--t-sm)/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-target-copy small { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-profile-cell { opacity: 1; visibility: visible; }
 
-.upgrade-change-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); font-size: var(--t-micro); }
+/* Matches the height of the quality profile control opposite it, so both
+   titles sit on the same line rather than each centring its own stack. */
+.upgrade-change-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-height: 20px; font-size: var(--t-micro); }
 .upgrade-change-meta b { color: var(--muted); }
+/* Sized to the indexer pill beside them. The default 20px badge is taller than
+   the line it sits on, so it grew the row and shifted the title upwards. */
+.upgrade-change-meta .badge { height: auto; padding: 1px 6px; font: 600 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 /* Only drawn when the resolution actually moves. */
-.upgrade-token-same, .upgrade-token-sep { color: var(--faint); }
+/* The same colour as the current release opposite it: the green already marks
+   what differs, so dimming the rest only made the two columns disagree. */
+.upgrade-token-same, .upgrade-token-sep { color: inherit; }
 .upgrade-token-new { margin: 0 -2px; padding: 1px 2px; border-radius: var(--r-sm); color: var(--ok); cursor: pointer; }
 .upgrade-token-new:hover { background: var(--ok-soft); }
-.upgrade-quality-change { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.upgrade-token-linked { color: var(--ok); background: var(--ok-soft); }
+/* Pills, so the line speaks the same language as the indexer and reason
+   badges beside it; green marks the target, as it does in the title. */
+.upgrade-quality-change { display: inline-flex; align-items: center; gap: 1px; color: var(--muted); }
 .upgrade-quality-change svg { color: var(--faint); }
+/* Quality names are written, not shouted: uppercasing turned 1080p into 1080P. */
+.upgrade-quality-change .release-pill { max-width: none; text-transform: none; letter-spacing: 0; }
+.upgrade-quality-new { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 
 .upgrade-action { display: flex; flex: none; align-items: center; gap: var(--s2); }
 .upgrade-progress-wrap { display: flex; align-items: center; gap: var(--s2); min-width: 110px; font: var(--t-micro) var(--mono); color: var(--muted); }

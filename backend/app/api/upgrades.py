@@ -5,7 +5,7 @@ from pathlib import PurePath, PurePosixPath
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import downloads as downloads_api
@@ -16,11 +16,14 @@ from app.core.integration_config import get_integration_config_store
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
+    AccessMode,
     MediaDirectory,
     MediaFile,
     MediaType,
     Movie,
     MovieRelease,
+    MediaProfileOverride,
+    QualityProfile,
     Schedule,
     Season,
     Show,
@@ -29,12 +32,24 @@ from app.models.domain import (
     UpgradeCandidate,
 )
 from app.schemas.upgrades import (
+    UpgradeCandidateCount,
+    UpgradeMatchedFormat,
     UpgradeCandidateResponse,
     UpgradeCleanupCommitRequest,
     UpgradeCleanupPreviewResponse,
     UpgradeCleanupResult,
     UpgradeExecuteRequest,
+    UpgradeQualityProfileBulkUpdate,
+    UpgradeQualityProfileUpdate,
+    UpgradeQualityProfileUpdateResponse,
     UpgradeSearchResponse,
+)
+from app.services.events import create_event
+from app.services.quality_profiles import (
+    get_assignment,
+    load_effective_profile,
+    refresh_movie_release_scores,
+    refresh_show_release_scores,
 )
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
 from app.services.upgrade_execution import (
@@ -58,19 +73,43 @@ def _indexer_color(indexer_id: UUID | None) -> str | None:
     return None
 
 
+def _matched_formats(rows: Any) -> list[UpgradeMatchedFormat]:
+    """Formats that matched, ordered by impact then name.
+
+    A zero contribution is kept: a matched format that scores nothing is still
+    a fact about the release, and hiding it makes the score look unexplained.
+    """
+
+    matched = [
+        UpgradeMatchedFormat(
+            custom_format_id=str(item.get("custom_format_id") or ""),
+            custom_format_name=str(item.get("custom_format_name") or "Custom Format"),
+            contribution=int(item.get("contribution") or 0),
+        )
+        for item in (rows if isinstance(rows, list) else [])
+        if isinstance(item, dict) and item.get("matched")
+    ]
+    return sorted(matched, key=lambda item: (-item.contribution, item.custom_format_name.casefold()))
+
+
 async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidateResponse:
     media_title = "Unknown media"
     media_year: int | None = None
+    tmdb_id: int | None = None
     season_number: int | None = None
     current_paths: list[str] = []
     root_name: str | None = None
     poster_ref: str | None = None
     release_folder: str | None = None
+    profile_media_type = row.media_type
+    profile_entity_id: UUID | None = None
     if row.media_type == MediaType.MOVIES:
         movie = await db.get(Movie, row.movie_id) if row.movie_id else None
         if movie is not None:
+            profile_entity_id = movie.id
             media_title = movie.title
             media_year = movie.year
+            tmdb_id = movie.tmdb_id
             poster_ref = movie.poster_ref
         release_ids = [UUID(value) for value in row.current_release_ids]
         if release_ids:
@@ -96,8 +135,10 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         season = await db.get(Season, row.season_id) if row.season_id else None
         show = await db.get(Show, season.show_id) if season is not None else None
         if show is not None:
+            profile_entity_id = show.id
             media_title = show.title
             media_year = show.year
+            tmdb_id = show.tmdb_id
             poster_ref = show.poster_ref
         if season is not None:
             season_number = season.season_number
@@ -154,6 +195,13 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
             progress = float(observation.progress) if observation.progress is not None else None
             download_state = observation.state
 
+    effective_profile = (
+        await load_effective_profile(db, media_type=profile_media_type, entity_id=profile_entity_id)
+        if profile_entity_id is not None
+        else None
+    )
+
+    snapshot = dict(row.comparison_snapshot or {})
     return UpgradeCandidateResponse(
         id=row.id,
         media_type=row.media_type,
@@ -161,6 +209,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         season_id=row.season_id,
         media_title=media_title,
         media_year=media_year,
+        tmdb_id=tmdb_id,
         season_number=season_number,
         current_paths=current_paths,
         root_name=root_name,
@@ -170,6 +219,11 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_release_name=row.current_release_name,
         current_quality=row.current_quality,
         current_custom_format_score=row.current_custom_format_score,
+        quality_profile_id=(
+            None if effective_profile is None or effective_profile.profile_inherited else effective_profile.profile_id
+        ),
+        quality_profile_name=effective_profile.profile_name if effective_profile else None,
+        quality_profile_inherited=effective_profile.profile_inherited if effective_profile else True,
         indexer_id=row.indexer_id,
         indexer_name=row.indexer_name,
         indexer_color=_indexer_color(row.indexer_id),
@@ -183,6 +237,10 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         published_at=row.published_at,
         upgrade_types=list(row.upgrade_types or []),
         added_custom_formats=[dict(value) for value in row.added_custom_formats or []],
+        current_matched_formats=_matched_formats(
+            ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("formats")
+        ),
+        candidate_matched_formats=_matched_formats((snapshot.get("candidate") or {}).get("formats")),
         execution_eligible=row.execution_eligible,
         execution_block_reason=row.execution_block_reason,
         comparison_snapshot=dict(row.comparison_snapshot or {}),
@@ -225,6 +283,39 @@ async def list_upgrade_candidates(
     return [await _response(db, row) for row in rows]
 
 
+@router.get("/upgrade-candidates/count", response_model=UpgradeCandidateCount)
+async def count_upgrade_candidates(
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UpgradeCandidateCount:
+    """Candidates still awaiting a decision.
+
+    One already submitted is being acted on, and one that cannot be submitted is
+    not a decision to make, so neither belongs in a badge that should reach zero
+    once the queue has been worked through.
+    """
+
+    count = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(UpgradeCandidate)
+            .where(
+                UpgradeCandidate.execution_state.is_(None),
+                UpgradeCandidate.execution_eligible.is_(True),
+            )
+        )
+        or 0
+    )
+    read_only = list(
+        await db.scalars(
+            select(StorageRoot.name)
+            .where(StorageRoot.access_mode == AccessMode.READ_ONLY)
+            .order_by(StorageRoot.name)
+        )
+    )
+    return UpgradeCandidateCount(count=count, read_only_roots=read_only)
+
+
 @router.post("/upgrade-candidates/search", response_model=UpgradeSearchResponse, status_code=status.HTTP_202_ACCEPTED)
 async def search_upgrade_candidates(
     _: object = Depends(require_csrf),
@@ -239,6 +330,163 @@ async def search_upgrade_candidates(
         raise AppError("UPGRADE_SEARCH_UNAVAILABLE", "Upgrade search task is unavailable.", status_code=503)
     job = await trigger_schedule(db, schedule, trigger="manual")
     return UpgradeSearchResponse(job_id=job.id)
+
+
+async def _profile_targets(
+    db: AsyncSession,
+    candidate_ids: list[UUID],
+) -> tuple[list[UpgradeCandidate], dict[tuple[MediaType, UUID], Movie | Show]]:
+    rows = list((await db.scalars(select(UpgradeCandidate).where(UpgradeCandidate.id.in_(candidate_ids)))).all())
+    if len(rows) != len(set(candidate_ids)):
+        raise AppError("UPGRADE_CANDIDATE_NOT_FOUND", "One or more upgrade candidates were not found.", status_code=404)
+    if any(row.execution_state is not None for row in rows):
+        raise AppError(
+            "UPGRADE_ALREADY_STARTED",
+            "A Quality Profile cannot be changed after an upgrade has started.",
+            status_code=409,
+        )
+
+    targets: dict[tuple[MediaType, UUID], Movie | Show] = {}
+    for row in rows:
+        if row.media_type == MediaType.MOVIES:
+            target = await db.get(Movie, row.movie_id) if row.movie_id else None
+        else:
+            season = await db.get(Season, row.season_id) if row.season_id else None
+            target = await db.get(Show, season.show_id) if season is not None else None
+        if target is None:
+            raise AppError("UPGRADE_MEDIA_NOT_FOUND", "The media for an upgrade candidate was not found.", status_code=404)
+        targets[(row.media_type, target.id)] = target
+    return rows, targets
+
+
+async def _queue_upgrade_search(db: AsyncSession, *, trigger: str):
+    schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "search_media_upgrades"))
+    if schedule is None:
+        await ensure_default_schedules(db)
+        await db.commit()
+        schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "search_media_upgrades"))
+    if schedule is None:
+        raise AppError("UPGRADE_SEARCH_UNAVAILABLE", "Upgrade search task is unavailable.", status_code=503)
+    return await trigger_schedule(db, schedule, trigger=trigger)
+
+
+async def _set_upgrade_quality_profile(
+    db: AsyncSession,
+    *,
+    candidate_ids: list[UUID],
+    quality_profile_id: UUID | None,
+) -> UpgradeQualityProfileUpdateResponse:
+    profile = await db.get(QualityProfile, quality_profile_id) if quality_profile_id else None
+    if quality_profile_id is not None and profile is None:
+        raise AppError("INVALID_QUALITY_PROFILE", "Quality Profile does not exist.", status_code=422)
+
+    rows, targets = await _profile_targets(db, candidate_ids)
+    changed = 0
+    for (media_type, entity_id), _target in targets.items():
+        assignment = await get_assignment(db, media_type=media_type, entity_id=entity_id, for_update=True)
+        if assignment is None:
+            if quality_profile_id is None:
+                continue
+            assignment = MediaProfileOverride(
+                media_type=media_type,
+                movie_id=entity_id if media_type == MediaType.MOVIES else None,
+                show_id=entity_id if media_type == MediaType.SHOWS else None,
+                quality_profile_id=quality_profile_id,
+                override_definition={},
+                revision=1,
+            )
+            db.add(assignment)
+        elif assignment.quality_profile_id != quality_profile_id:
+            assignment.quality_profile_id = quality_profile_id
+            assignment.revision += 1
+        else:
+            continue
+        await db.flush()
+        if media_type == MediaType.MOVIES:
+            await refresh_movie_release_scores(db, entity_id)
+        else:
+            await refresh_show_release_scores(db, entity_id)
+        await create_event(
+            db,
+            "quality_profile.assignment_updated",
+            entity_type="movie" if media_type == MediaType.MOVIES else "show",
+            entity_id=entity_id,
+            message="Quality Profile assignment was changed from Upgrade Media.",
+            details={
+                "quality_profile_id": str(quality_profile_id) if quality_profile_id else None,
+                "source": "upgrade_media",
+                "overrides_preserved": True,
+            },
+        )
+        changed += 1
+
+    affected_keys = set(targets)
+    all_candidates = (await db.scalars(select(UpgradeCandidate).where(UpgradeCandidate.execution_state.is_(None)))).all()
+    affected_ids: list[UUID] = []
+    season_show_ids: dict[UUID, UUID] = {}
+    for candidate in all_candidates:
+        if candidate.media_type == MediaType.MOVIES and candidate.movie_id is not None:
+            key = (MediaType.MOVIES, candidate.movie_id)
+        elif candidate.season_id is not None:
+            show_id = season_show_ids.get(candidate.season_id)
+            if show_id is None:
+                season = await db.get(Season, candidate.season_id)
+                show_id = season.show_id if season else None
+                if show_id is not None:
+                    season_show_ids[candidate.season_id] = show_id
+            key = (MediaType.SHOWS, show_id) if show_id is not None else None
+        else:
+            key = None
+        if key not in affected_keys:
+            continue
+        candidate.execution_eligible = False
+        candidate.execution_block_reason = "Quality Profile changed; waiting for upgrade candidates to be re-evaluated."
+        affected_ids.append(candidate.id)
+
+    await db.commit()
+    job = await _queue_upgrade_search(db, trigger="quality_profile_changed")
+    return UpgradeQualityProfileUpdateResponse(
+        job_id=job.id,
+        candidate_ids=affected_ids or [row.id for row in rows],
+        quality_profile_id=quality_profile_id,
+        quality_profile_name=profile.name if profile else None,
+        updated_entities=changed,
+    )
+
+
+@router.patch(
+    "/upgrade-candidates/{candidate_id}/quality-profile",
+    response_model=UpgradeQualityProfileUpdateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def set_upgrade_quality_profile(
+    candidate_id: UUID,
+    payload: UpgradeQualityProfileUpdate,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> UpgradeQualityProfileUpdateResponse:
+    return await _set_upgrade_quality_profile(
+        db,
+        candidate_ids=[candidate_id],
+        quality_profile_id=payload.quality_profile_id,
+    )
+
+
+@router.post(
+    "/upgrade-candidates/quality-profile",
+    response_model=UpgradeQualityProfileUpdateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def set_upgrade_quality_profiles(
+    payload: UpgradeQualityProfileBulkUpdate,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> UpgradeQualityProfileUpdateResponse:
+    return await _set_upgrade_quality_profile(
+        db,
+        candidate_ids=payload.candidate_ids,
+        quality_profile_id=payload.quality_profile_id,
+    )
 
 
 @router.post("/upgrade-candidates/{candidate_id}/upgrade", response_model=UpgradeCandidateResponse)

@@ -20,6 +20,12 @@ UpgradeExecutionState = Literal[
 ]
 
 
+class UpgradeMatchedFormat(BaseModel):
+    custom_format_id: str
+    custom_format_name: str
+    contribution: int
+
+
 class UpgradeCandidateResponse(BaseModel):
     id: UUID
     media_type: MediaType
@@ -27,6 +33,8 @@ class UpgradeCandidateResponse(BaseModel):
     season_id: UUID | None = None
     media_title: str
     media_year: int | None = None
+    #: TMDB id of the movie or show, for the identity card on the row.
+    tmdb_id: int | None = None
     season_number: int | None = None
     current_paths: list[str] = Field(default_factory=list)
     #: Media folder this candidate's current release lives in, so the page can
@@ -42,6 +50,10 @@ class UpgradeCandidateResponse(BaseModel):
     current_release_name: str
     current_quality: str | None = None
     current_custom_format_score: int
+    #: Null means the title inherits the default Quality Profile.
+    quality_profile_id: UUID | None = None
+    quality_profile_name: str | None = None
+    quality_profile_inherited: bool = True
     indexer_id: UUID | None = None
     indexer_name: str
     #: The indexer's configured badge colour, so the row can tint it the way
@@ -57,6 +69,11 @@ class UpgradeCandidateResponse(BaseModel):
     published_at: datetime | None = None
     upgrade_types: list[Literal["quality", "custom_format", "season_pack", "repack", "proper", "revision"]]
     added_custom_formats: list[dict[str, Any]]
+    #: Every Custom Format that matched, per side, with what it contributed.
+    #: Read from the comparison snapshot so the row can explain its score
+    #: without a second round trip.
+    current_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
+    candidate_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
     execution_eligible: bool
     execution_block_reason: str | None = None
     comparison_snapshot: dict[str, Any]
@@ -77,8 +94,31 @@ class UpgradeCandidateResponse(BaseModel):
     updated_at: datetime
 
 
+class UpgradeCandidateCount(BaseModel):
+    count: int
+    #: Media folders excluded from upgrade searches because they are read-only.
+    #: Reported once here rather than per row, since it is one folder setting.
+    read_only_roots: list[str] = Field(default_factory=list)
+
+
 class UpgradeSearchResponse(BaseModel):
     job_id: UUID
+
+
+class UpgradeQualityProfileUpdate(BaseModel):
+    quality_profile_id: UUID | None = None
+
+
+class UpgradeQualityProfileBulkUpdate(UpgradeQualityProfileUpdate):
+    candidate_ids: list[UUID] = Field(min_length=1, max_length=1000)
+
+
+class UpgradeQualityProfileUpdateResponse(BaseModel):
+    job_id: UUID
+    candidate_ids: list[UUID]
+    quality_profile_id: UUID | None = None
+    quality_profile_name: str | None = None
+    updated_entities: int
 
 
 class UpgradeExecuteRequest(BaseModel):

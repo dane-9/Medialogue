@@ -2,7 +2,7 @@ import { cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, 
 import { createPortal } from 'react-dom'
 import type { ReactElement, ReactNode, Ref } from 'react'
 
-type Position = { left: number; top: number; below: boolean; right: boolean }
+type Position = { left: number; top: number; below: boolean; right: boolean; leftward: boolean }
 
 function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   return (node: T) => {
@@ -26,7 +26,7 @@ export function Tooltip({ content, children, className, focusable = false, asChi
 
   asChild?: boolean
 
-  placement?: 'auto' | 'right'
+  placement?: 'auto' | 'right' | 'left'
 
   interactive?: boolean
 }) {
@@ -35,7 +35,7 @@ export function Tooltip({ content, children, className, focusable = false, asChi
   const [open, setOpen] = useState(false)
   const timer = useRef<number>()
   const closeTimer = useRef<number>()
-  const [position, setPosition] = useState<Position>({ left: 0, top: 0, below: false, right: false })
+  const [position, setPosition] = useState<Position>({ left: 0, top: 0, below: false, right: false, leftward: false })
 
   const place = useCallback(() => {
     const trigger = triggerRef.current
@@ -45,10 +45,15 @@ export function Tooltip({ content, children, className, focusable = false, asChi
     const bubbleRect = bubble.getBoundingClientRect()
     const gap = 8
 
-    if (placement === 'right') {
+    if (placement === 'right' || placement === 'left') {
       const halfHeight = bubbleRect.height / 2
       const centre = Math.min(Math.max(rect.top + rect.height / 2, halfHeight + gap), window.innerHeight - halfHeight - gap)
-      setPosition({ left: rect.right + gap, top: centre, below: false, right: true })
+      // Opening leftward is measured from the bubble's own right edge, and
+      // clamped so a trigger near the window edge does not push it off screen.
+      const left = placement === 'left'
+        ? Math.max(rect.left - gap, bubbleRect.width + gap)
+        : rect.right + gap
+      setPosition({ left, top: centre, below: false, right: placement === 'right', leftward: placement === 'left' })
       return
     }
 
@@ -58,7 +63,7 @@ export function Tooltip({ content, children, className, focusable = false, asChi
     const half = bubbleRect.width / 2
     const centre = rect.left + rect.width / 2
     const left = Math.min(Math.max(centre, half + gap), window.innerWidth - half - gap)
-    setPosition({ left, top, below, right: false })
+    setPosition({ left, top, below, right: false, leftward: false })
   }, [placement])
 
   useLayoutEffect(() => { if (open) place() }, [open, place])
@@ -101,7 +106,7 @@ export function Tooltip({ content, children, className, focusable = false, asChi
   const bubble = open ? createPortal(
     <div
       ref={bubbleRef}
-      className={`tooltip ${position.below ? 'tooltip-below' : ''} ${position.right ? 'tooltip-right' : ''} ${interactive ? 'tooltip-interactive' : ''}`}
+      className={`tooltip ${position.below ? 'tooltip-below' : ''} ${position.right ? 'tooltip-right' : ''} ${position.leftward ? 'tooltip-left' : ''} ${interactive ? 'tooltip-interactive' : ''}`}
       role={interactive ? 'dialog' : 'tooltip'}
       style={{ left: position.left, top: position.top }}
       onMouseEnter={interactive ? cancelClose : undefined}

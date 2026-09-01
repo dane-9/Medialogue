@@ -2303,6 +2303,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/upgrade-candidates/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Upgrade Candidates
+         * @description Candidates still awaiting a decision.
+         *
+         *     One already submitted is being acted on, and one that cannot be submitted is
+         *     not a decision to make, so neither belongs in a badge that should reach zero
+         *     once the queue has been worked through.
+         */
+        get: operations["count_upgrade_candidates_api_v1_upgrade_candidates_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/quality-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Upgrade Quality Profiles */
+        post: operations["set_upgrade_quality_profiles_api_v1_upgrade_candidates_quality_profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/upgrade-candidates/search": {
         parameters: {
             query?: never;
@@ -2352,6 +2393,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/{candidate_id}/quality-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Upgrade Quality Profile */
+        patch: operations["set_upgrade_quality_profile_api_v1_upgrade_candidates__candidate_id__quality_profile_patch"];
         trace?: never;
     };
     "/api/v1/upgrade-candidates/{candidate_id}/retry-handoff": {
@@ -6637,12 +6695,21 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
         };
+        /** UpgradeCandidateCount */
+        UpgradeCandidateCount: {
+            /** Count */
+            count: number;
+            /** Read Only Roots */
+            read_only_roots?: string[];
+        };
         /** UpgradeCandidateResponse */
         UpgradeCandidateResponse: {
             /** Added Custom Formats */
             added_custom_formats: {
                 [key: string]: unknown;
             }[];
+            /** Candidate Matched Formats */
+            candidate_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
             /** Cleanup Completed At */
             cleanup_completed_at?: string | null;
             /** Comparison Snapshot */
@@ -6656,6 +6723,8 @@ export interface components {
             created_at: string;
             /** Current Custom Format Score */
             current_custom_format_score: number;
+            /** Current Matched Formats */
+            current_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
             /** Current Paths */
             current_paths?: string[];
             /** Current Quality */
@@ -6711,6 +6780,15 @@ export interface components {
             published_at?: string | null;
             /** Quality */
             quality?: string | null;
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /**
+             * Quality Profile Inherited
+             * @default true
+             */
+            quality_profile_inherited: boolean;
+            /** Quality Profile Name */
+            quality_profile_name?: string | null;
             /** Release Folder */
             release_folder?: string | null;
             /** Root Name */
@@ -6735,6 +6813,8 @@ export interface components {
             submitted_at?: string | null;
             /** Title */
             title: string;
+            /** Tmdb Id */
+            tmdb_id?: number | null;
             /** Torrent Id */
             torrent_id?: string | null;
             /**
@@ -6816,6 +6896,43 @@ export interface components {
              * Format: uuid
              */
             download_client_id: string;
+        };
+        /** UpgradeMatchedFormat */
+        UpgradeMatchedFormat: {
+            /** Contribution */
+            contribution: number;
+            /** Custom Format Id */
+            custom_format_id: string;
+            /** Custom Format Name */
+            custom_format_name: string;
+        };
+        /** UpgradeQualityProfileBulkUpdate */
+        UpgradeQualityProfileBulkUpdate: {
+            /** Candidate Ids */
+            candidate_ids: string[];
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+        };
+        /** UpgradeQualityProfileUpdate */
+        UpgradeQualityProfileUpdate: {
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+        };
+        /** UpgradeQualityProfileUpdateResponse */
+        UpgradeQualityProfileUpdateResponse: {
+            /** Candidate Ids */
+            candidate_ids: string[];
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /** Quality Profile Name */
+            quality_profile_name?: string | null;
+            /** Updated Entities */
+            updated_entities: number;
         };
         /** UpgradeSearchResponse */
         UpgradeSearchResponse: {
@@ -11694,6 +11811,59 @@ export interface operations {
             };
         };
     };
+    count_upgrade_candidates_api_v1_upgrade_candidates_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCandidateCount"];
+                };
+            };
+        };
+    };
+    set_upgrade_quality_profiles_api_v1_upgrade_candidates_quality_profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeQualityProfileBulkUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeQualityProfileUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_upgrade_candidates_api_v1_upgrade_candidates_search_post: {
         parameters: {
             query?: never;
@@ -11767,6 +11937,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeCleanupPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_upgrade_quality_profile_api_v1_upgrade_candidates__candidate_id__quality_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeQualityProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeQualityProfileUpdateResponse"];
                 };
             };
             /** @description Validation Error */

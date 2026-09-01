@@ -11,7 +11,8 @@ import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
 import { needsAttention, statusTone } from './lib/status'
 import { diffReleaseTokens } from './lib/releaseTokens'
-import { upgradeTokenReason } from './lib/upgradeTokenReason'
+import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason } from './lib/upgradeTokenReason'
+import { qualityLabel } from './lib/qualityLabel'
 import { pathParts } from './lib/pathParts'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
 import { qualityMark } from './lib/qualityMark'
@@ -30,7 +31,7 @@ import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import { isTaskOverdue } from './lib/taskTiming'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeType } from './types'
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeType } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
 import jackettIcon from './assets/jackett.svg'
@@ -3685,14 +3686,35 @@ function BackupRecoverySettings() {
 }
 
 
+function UpgradeScore({ value, formats, delta, profile }: { value: number; formats: UpgradeMatchedFormat[]; delta?: number; profile: string }) {
+  return <Tooltip placement="left" delay={250} content={<span className="cf-breakdown">
+    {/* The profile is what decides these scores, so it belongs on the header. */}
+    <span className="cf-breakdown-head"><strong>Custom Formats</strong><small>{profile}</small></span>
+    {formats.length
+      ? <span className="cf-breakdown-rows">{formats.map((format) => <span key={format.id} className="cf-breakdown-row">
+          <span>{format.name}</span>
+          <b className={format.contribution > 0 ? 'cf-plus' : format.contribution < 0 ? 'cf-minus' : 'cf-zero'}>
+            {format.contribution > 0 ? '+' : ''}{format.contribution}
+          </b>
+        </span>)}</span>
+      : <small>No Custom Formats matched this release.</small>}
+    <span className="cf-breakdown-total"><span>Total</span><b>{value}</b></span>
+  </span>}>
+    <span className="upgrade-score">
+      <b>{value}</b>
+      {delta !== undefined && delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}>{delta > 0 ? '+' : ''}{delta}</em>}
+    </span>
+  </Tooltip>
+}
+
 function upgradeTypeLabel(value: UpgradeType) {
   if (value === 'custom_format') return 'Custom Format'
   if (value === 'season_pack') return 'Season Pack'
   if (value === 'repack') return 'REPACK'
   if (value === 'proper') return 'PROPER'
   // The scene tag itself, as REPACK and PROPER are: the backend reason is
-  // named 'revision', but what the release says is REAL.
-  if (value === 'revision') return 'REAL'
+  // named 'revision', but what the release says is RERIP.
+  if (value === 'revision') return 'RERIP'
   return 'Quality'
 }
 
@@ -3730,13 +3752,18 @@ function formatUpgradeBytes(bytes?: number) {
 export function UpgradeMediaPage() {
   const [items, setItems] = useState<UpgradeCandidate[]>([])
   const [clients, setClients] = useState<DownloadClient[]>([])
+  const [profiles, setProfiles] = useState<QualityProfile[]>([])
+  const [profileBusy, setProfileBusy] = useState(false)
+  const [hoveredTokenGroup, setHoveredTokenGroup] = useState('')
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [busyId, setBusyId] = useState('')
   const [selectedRoot, setSelectedRoot] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [chosen, setChosen] = useState<Set<string>>(new Set())
+  const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  const [profilePrompt, setProfilePrompt] = useState<string | null>(null)
+  const [readOnlyRoots, setReadOnlyRoots] = useState<string[]>([])
   const [confirming, setConfirming] = useState(false)
   const [clientId, setClientId] = useState('')
   const [category, setCategory] = useState('')
@@ -3749,9 +3776,11 @@ export function UpgradeMediaPage() {
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
     try {
-      const [nextItems, nextClients] = await Promise.all([api.upgradeCandidates(), api.downloadClients()])
+      const [nextItems, nextClients, nextProfiles, nextCount] = await Promise.all([api.upgradeCandidates(), api.downloadClients(), api.qualityProfiles(), api.upgradeCandidateCount()])
       setItems(nextItems)
       setClients(nextClients)
+      setProfiles(nextProfiles)
+      setReadOnlyRoots(nextCount.readOnlyRoots)
       setError('')
     } catch (reason) {
       if (!quiet) setError(reason instanceof Error ? reason.message : 'Could not load upgrade candidates.')
@@ -3789,12 +3818,37 @@ export function UpgradeMediaPage() {
     finally { setSearching(false) }
   }
 
-  const toggleChosen = (id: string) => setChosen((current) => {
+  // Leaving a row out is the exception, so the set holds what is excluded.
+  const toggleChosen = (id: string) => setExcluded((current) => {
     const next = new Set(current)
     if (next.has(id)) next.delete(id)
     else next.add(id)
     return next
   })
+
+  const applyProfileResult = (
+    result: { candidateIds: string[]; qualityProfileId?: string; qualityProfileName?: string },
+  ) => {
+    const affected = new Set(result.candidateIds)
+    setItems((current) => current.map((item) => affected.has(item.id) ? {
+      ...item,
+      qualityProfileId: result.qualityProfileId,
+      qualityProfileName: result.qualityProfileName,
+      qualityProfileInherited: !result.qualityProfileId,
+      executionEligible: false,
+      executionBlockReason: 'Quality Profile changed; waiting for upgrade candidates to be re-evaluated.',
+    } : item))
+  }
+
+  const setRowProfile = async (item: UpgradeCandidate, profileId: string | null) => {
+    setProfileBusy(true); setError(''); setMessage('')
+    try {
+      const result = await api.setUpgradeQualityProfile(item.id, profileId)
+      applyProfileResult(result)
+      setMessage('Quality Profile changed. Upgrade candidates are being re-evaluated.')
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
+    finally { setProfileBusy(false) }
+  }
 
   // Submitted one at a time so a rejected candidate does not discard the rest,
   // and so a failure can name which one it was.
@@ -3812,7 +3866,7 @@ export function UpgradeMediaPage() {
         failures.push(`${item.mediaTitle}: ${reason instanceof Error ? reason.message : 'submission failed'}`)
       }
     }
-    setChosen(new Set())
+    setExcluded(new Set())
     setConfirming(false)
     if (submitted) setMessage(`Submitted ${submitted} ${submitted === 1 ? 'upgrade' : 'upgrades'}. Each current release stays authoritative until its replacement validates.`)
     if (failures.length) setError(failures.join(' · '))
@@ -3863,14 +3917,37 @@ export function UpgradeMediaPage() {
   }, [items])
   const rootName = roots.some((entry) => entry.name === selectedRoot) ? selectedRoot : roots[0]?.name ?? ''
   const rows = useMemo(() => items.filter((item) => (item.rootName ?? 'Unknown folder') === rootName), [items, rootName])
+  // The checkboxes decide what the bar acts on, for the profile exactly as for
+  // the upgrade button.
+  const profileTargets = useMemo(() => rows.filter((item) => !item.executionState && !excluded.has(item.id)), [rows, excluded])
+  const sharedProfile = useMemo(() => {
+    if (!profileTargets.length) return undefined
+    const first = profileTargets[0].qualityProfileId ?? ''
+    return profileTargets.every((item) => (item.qualityProfileId ?? '') === first) ? first : undefined
+  }, [profileTargets])
+
+  // Writes the profile on every title in the folder, which then re-scores their
+  // candidates, so the change is confirmed before it is made.
+  const setAllProfiles = async (profileId: string | null) => {
+    setProfilePrompt(null)
+    if (!profileTargets.length) return
+    setProfileBusy(true); setError(''); setMessage('')
+    try {
+      const result = await api.setUpgradeQualityProfiles(profileTargets.map((item) => item.id), profileId)
+      applyProfileResult(result)
+      const name = profiles.find((profile) => profile.id === profileId)?.name ?? defaultProfileLabel(profiles)
+      setMessage(`${result.updatedEntities} ${result.updatedEntities === 1 ? 'title' : 'titles'} set to ${name}. Upgrade candidates are being re-evaluated.`)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
+    finally { setProfileBusy(false) }
+  }
   // A candidate already in flight keeps its own per-row actions, and a blocked
   // one cannot be submitted at all, so neither can join the batch.
-  const picked = useMemo(() => rows.filter((item) => !item.executionState && item.executionEligible && chosen.has(item.id)), [rows, chosen])
+  const picked = useMemo(() => rows.filter((item) => !item.executionState && item.executionEligible && !excluded.has(item.id)), [rows, excluded])
   const mediaType = rows[0]?.mediaType ?? 'movies'
   const noun = mediaType === 'movies' ? 'Movie' : 'Show'
   const eligibleClients = useMemo(() => clients.filter((client) => client.enabled && client.scope === mediaType), [clients, mediaType])
 
-  useEffect(() => { setChosen(new Set()) }, [rootName])
+  useEffect(() => { setExcluded(new Set()) }, [rootName])
 
   // One destination for the whole selection, chosen when the dialog opens.
   const openConfirm = () => {
@@ -3889,7 +3966,11 @@ export function UpgradeMediaPage() {
   >
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
-
+    {/* One note for the folder setting, rather than one badge on every release
+        that happens to sit inside it. */}
+    {readOnlyRoots.length > 0 && <div className="settings-note"><Icon name="lock" size={16} /><span>
+      {readOnlyRoots.length === 1 ? `${readOnlyRoots[0]} is read-only` : `${readOnlyRoots.join(', ')} are read-only`}, so no upgrades are searched there. Change the access mode in Settings - Media Folders.
+    </span></div>}
 
     {loading ? <div className="upgrade-media-loading">Loading upgrade candidates…</div> : !items.length ? <EmptyState
       icon="refresh"
@@ -3917,9 +3998,9 @@ export function UpgradeMediaPage() {
 
       <div className="upgrade-workspace">
       <div className="upgrade-scroll">
-        <span className="new-media-col-head">Current media</span>
+        <span className="new-media-col-head upgrade-head">Current release<em>CF Score</em></span>
         <span aria-hidden="true" />
-        <span className="new-media-col-head">Best candidate</span>
+        <span className="new-media-col-head upgrade-head">Upgrade<em>CF Score</em></span>
         {rows.map((item) => {
           const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
           // The season folder for shows, the movie's own folder for movies. Falls
@@ -3937,47 +4018,86 @@ export function UpgradeMediaPage() {
           const tokens = diffReleaseTokens(item.title, item.currentReleaseName)
           const tokenContext = {
             upgradeTypes: item.upgradeTypes as string[],
-            addedCustomFormats: item.addedCustomFormats,
+            addedCustomFormats: candidateFormatReasons(item.comparisonSnapshot, item.addedCustomFormats),
             currentQuality: item.currentQuality,
             quality: item.quality,
-            currentReleaseName: item.currentReleaseName,
           }
+          const tokenReasons = shareCombinedDynamicRangeReasons(
+            tokens,
+            tokens.map((token) => upgradeTokenReason(token, tokenContext)),
+          )
+          const sharedTokenGroups = sharedUpgradeReasonTokenGroups(tokenReasons)
           // "Quality" and "Custom Format" only name the row beneath them, which
           // already shows the resolution arrow and the formats gained.
           const reasons = item.upgradeTypes.filter((type) => type !== 'quality' && type !== 'custom_format')
           const indexerBadge = badgeColor(item.indexerColor)
+          const profileName = profiles.find((profile) => profile.id === item.qualityProfileId)?.name
+            ?? profiles.find((profile) => profile.isDefault)?.name
+            ?? 'Default'
           const batchable = !item.executionState && item.executionEligible
           return <div className="upgrade-row" key={item.id}>
             <div className="upgrade-cell upgrade-target">
               <button
                 type="button"
                 role="checkbox"
-                aria-checked={chosen.has(item.id) && batchable}
+                aria-checked={batchable && !excluded.has(item.id)}
                 aria-label={`Upgrade ${currentDisplayName}`}
-                className={`new-media-check ${chosen.has(item.id) && batchable ? 'on' : ''}`}
+                className={`new-media-check ${batchable && !excluded.has(item.id) ? 'on' : ''}`}
                 disabled={!batchable}
                 onClick={() => toggleChosen(item.id)}
-              >{chosen.has(item.id) && batchable && <Icon name="check" size={11} />}</button>
-              <span className="upgrade-poster">
-                {item.posterRef ? <PosterImage reference={item.posterRef} title={item.mediaTitle} /> : <Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={16} />}
-              </span>
+              >{batchable && !excluded.has(item.id) && <Icon name="check" size={11} />}</button>
+              {/* The poster carries the identity now, so the row does not have
+                  to restate the title the folder name already contains. */}
+              <Tooltip placement="left" delay={250} content={<span className="upgrade-identity">
+                <span className="upgrade-identity-art">
+                  {item.posterRef ? <PosterImage reference={item.posterRef} title={item.mediaTitle} /> : <Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={28} />}
+                </span>
+                <span className="upgrade-identity-copy">
+                  <strong>{item.mediaTitle}</strong>
+                  <small>{[
+                    item.mediaYear ? `${item.mediaYear}` : undefined,
+                    item.seasonNumber !== undefined ? `Season ${item.seasonNumber}` : undefined,
+                  ].filter(Boolean).join(' · ') || (item.mediaType === 'movies' ? 'Movie' : 'Show')}</small>
+                  <code>{item.tmdbId ? `TMDB ${item.tmdbId}` : 'No TMDB id'}</code>
+                </span>
+              </span>}>
+                <span className="upgrade-poster">
+                  {item.posterRef ? <PosterImage reference={item.posterRef} title={item.mediaTitle} /> : <Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={16} />}
+                </span>
+              </Tooltip>
               <span className="upgrade-target-copy">
-                <strong title={item.currentPaths[0]}>{currentDisplayName}</strong>
-                <small>{item.mediaTitle}{item.seasonNumber !== undefined ? ` · Season ${item.seasonNumber}` : item.mediaYear ? ` · ${item.mediaYear}` : ''}</small>
+                <strong>{currentDisplayName}</strong>
+                <span className="new-media-profile-cell upgrade-profile-cell" onClick={(event) => event.stopPropagation()}>
+                  <Dropdown
+                    ariaLabel={`Quality Profile for ${currentDisplayName}`}
+                    value={item.qualityProfileId ?? ''}
+                    disabled={profileBusy || Boolean(item.executionState)}
+                    options={[{ value: '', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
+                    onChange={(value) => void setRowProfile(item, value || null)}
+                  />
+                </span>
               </span>
+              <UpgradeScore value={item.currentCustomFormatScore} formats={item.currentMatchedFormats} profile={profileName} />
             </div>
             {/* The one thing the row asserts: this becomes that. */}
-            <span className="upgrade-arrow" aria-hidden="true"><Icon name="arrow" size={14} /></span>
+            <span className="upgrade-arrow" aria-hidden="true"><Icon name="caret" size={16} /></span>
             <div className="upgrade-cell upgrade-change">
               {/* The candidate names itself, exactly as the folder does on the
                   left. Quality, group and source are all in that name, so the
                   line beneath states only why it is an upgrade. */}
               <span className="upgrade-change-copy">
                 <strong>{tokens.map((token, index) => {
-                  const reason = upgradeTokenReason(token, tokenContext)
+                  const reason = tokenReasons[index]
+                  const sharedGroup = sharedTokenGroups.get(index)
+                  const sharedGroupKey = sharedGroup ? `${item.id}:${sharedGroup}` : ''
+                  const linked = Boolean(sharedGroupKey) && hoveredTokenGroup === sharedGroupKey
                   // The separator stays outside the token so a hovered token
                   // highlights on its own, not joined to the one before it.
-                  const text = <span className={reason ? 'upgrade-token-new' : 'upgrade-token-same'}>{token.text}</span>
+                  const text = <span
+                    className={`${reason ? 'upgrade-token-new' : 'upgrade-token-same'} ${linked ? 'upgrade-token-linked' : ''}`}
+                    onMouseEnter={sharedGroupKey ? () => setHoveredTokenGroup(sharedGroupKey) : undefined}
+                    onMouseLeave={sharedGroupKey ? () => setHoveredTokenGroup('') : undefined}
+                  >{token.text}</span>
                   return <Fragment key={index}>
                     <span className="upgrade-token-sep">{token.sep}</span>
                     {reason ? <Tooltip asChild content={reason}>{text}</Tooltip> : text}
@@ -3993,13 +4113,16 @@ export function UpgradeMediaPage() {
                       : undefined}
                   ><i>Indexer</i>{item.indexerName}</span>
                   {reasons.map((type) => <Badge key={type} tone="amber">{upgradeTypeLabel(type)}</Badge>)}
-                  {qualityChanged && <span className="upgrade-quality-change">{item.currentQuality ?? 'Unknown'}<Icon name="arrow" size={12} />{item.quality}</span>}
+                  {qualityChanged && <span className="upgrade-quality-change">
+                    <span className="release-pill">{qualityLabel(item.currentQuality) || 'Unknown'}</span>
+                    <Icon name="caret" size={14} />
+                    <span className="release-pill upgrade-quality-new">{qualityLabel(item.quality)}</span>
+                  </span>}
                 </small>
               </span>
               <span className="upgrade-action">
-                {item.executionState
-                  ? <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>
-                  : !item.executionEligible && <Badge tone="neutral">Blocked</Badge>}
+                <UpgradeScore value={item.customFormatScore} formats={item.candidateMatchedFormats} delta={item.scoreDelta} profile={profileName} />
+                {item.executionState && <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>}
                 {(item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && progress !== undefined && <span className="upgrade-progress-wrap"><Progress value={progress} tone="blue" /><span>{progress}%</span></span>}
                 {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}
                 {item.executionState === 'cleanup_required' && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={() => void reviewCleanup(item)}>Review cleanup</Button>}
@@ -4010,6 +4133,21 @@ export function UpgradeMediaPage() {
       </div>
 
       <div className="new-media-add">
+        <span className="new-media-add-profile">
+          <span className="field-label">Quality Profile</span>
+          <Dropdown
+            ariaLabel="Quality Profile for every upgrade candidate in this folder"
+            value={sharedProfile ?? MIXED_PROFILE}
+            disabled={profileBusy || !profileTargets.length}
+            options={[
+              ...(sharedProfile === undefined ? [{ value: MIXED_PROFILE, label: 'Mixed', disabled: true }] : []),
+              { value: '', label: defaultProfileLabel(profiles) },
+              ...profiles.map((profile) => ({ value: profile.id, label: profile.name })),
+            ]}
+            onChange={(value) => setProfilePrompt(value || '')}
+          />
+        </span>
+        <div className="toolbar-spacer" />
         <Button
           variant="primary"
           icon="download"
@@ -4019,6 +4157,21 @@ export function UpgradeMediaPage() {
       </div>
       </div>
     </>}
+
+    {profilePrompt !== null && <Modal
+      title="Change Quality Profile"
+      eyebrow={rootName}
+      onClose={() => { if (!profileBusy) setProfilePrompt(null) }}
+      footer={<><span className="modal-foot-spacer" /><Button variant="ghost" disabled={profileBusy} onClick={() => setProfilePrompt(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={profileBusy} onClick={() => void setAllProfiles(profilePrompt || null)}>{profileBusy ? 'Applying…' : 'Change Quality Profile'}</Button></>}
+    >
+      <div className="upgrade-modal-copy modal-copy-inset">
+        <p>
+          This sets the <strong>{profiles.find((profile) => profile.id === profilePrompt)?.name ?? defaultProfileLabel(profiles)}</strong> quality
+          profile to the {profileTargets.length} selected {profileTargets.length === 1 ? (mediaType === 'movies' ? 'movie' : 'show') : (mediaType === 'movies' ? 'movies' : 'shows')} in the <strong>{rootName}</strong> media folder.
+        </p>
+        <p>The profile belongs to the title, not to this page, so the change applies everywhere. Every candidate here is re-scored against the new profile: scores can change, and a row can disappear entirely if its release is no longer beaten under it.</p>
+      </div>
+    </Modal>}
 
     {confirming && <Modal
       title="Start upgrade"

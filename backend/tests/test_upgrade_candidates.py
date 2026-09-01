@@ -2,6 +2,7 @@ import asyncio
 import os
 from dataclasses import dataclass, field
 from datetime import date
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,6 +21,7 @@ from app.models.domain import (
     Job,
     JobStatus,
     MediaDirectory,
+    MediaProfileOverride,
     MediaType,
     Movie,
     MovieRelease,
@@ -118,8 +120,6 @@ async def _create_upgrade_job() -> str:
 
 def _run_search(behavior: FakeBehavior, *, today: date = date(2026, 8, 31)) -> None:
     job_id = asyncio.run(_create_upgrade_job())
-    from uuid import UUID
-
     asyncio.run(run_upgrade_search_job(UUID(job_id), client_factory=behavior.factory, today=today))
 
 
@@ -133,7 +133,7 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
                 name="Movies",
                 resolved_root_path="/media/movies",
                 media_type=MediaType.MOVIES,
-                access_mode=AccessMode.READ_ONLY,
+                access_mode=AccessMode.READ_WRITE,
             )
             movie = Movie(
                 title="Upgrade Movie",
@@ -193,8 +193,7 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
     assert row["title"] == "Upgrade.Movie.2024.2160p.WEB-DL.x264-GRP"
     assert row["current_release_name"] == "Upgrade.Movie.2024.1080p.WEB-DL.x264-GRP"
     assert "quality" in row["upgrade_types"]
-    assert row["execution_eligible"] is False
-    assert "read-only" in row["execution_block_reason"]
+    assert row["execution_eligible"] is True
     assert "download_url" not in row
     assert "guid" not in row
 
@@ -254,6 +253,72 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
         assert expected_type in revision_rows[0]["upgrade_types"]
         comparison = revision_rows[0]["comparison_snapshot"]
         assert comparison["candidate"]["same_release_group"] is True
+
+
+def test_read_only_media_folder_is_never_searched_and_is_reported_once(client: TestClient) -> None:
+    """A read-only folder cannot receive a replacement, so it yields no rows.
+
+    Searching it would spend indexer queries producing candidates nobody can act
+    on, and one per release would restate a single folder setting many times.
+    """
+
+    headers = _login(client)
+    _create_indexer(client, headers, scope="movies")
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(
+                name="Archive",
+                resolved_root_path="/media/archive",
+                media_type=MediaType.MOVIES,
+                access_mode=AccessMode.READ_ONLY,
+            )
+            movie = Movie(
+                title="Locked Movie",
+                sort_title="Locked Movie",
+                year=2024,
+                tmdb_id=2002,
+                identity_state=IdentityState.MATCHED,
+            )
+            db.add_all([root, movie])
+            await db.flush()
+            release = MovieRelease(
+                movie_id=movie.id,
+                raw_release_name="Locked Movie (2024)",
+                tracker_title="Locked.Movie.2024.1080p.WEB-DL.x264-GRP",
+            )
+            db.add(release)
+            await db.flush()
+            db.add(
+                MediaDirectory(
+                    storage_root_id=root.id,
+                    resolved_path="/media/archive/Locked Movie (2024)",
+                    movie_release_id=release.id,
+                )
+            )
+            await db.commit()
+
+    asyncio.run(seed())
+    behavior = FakeBehavior(
+        movie_results=[
+            SearchResult(
+                title="Locked.Movie.2024.2160p.WEB-DL.x264-GRP",
+                guid="quality-upgrade",
+                download_url="http://upgrade-indexer.test/download/quality",
+                size=20,
+                seeders=50,
+                published=None,
+                leechers=1,
+            )
+        ]
+    )
+    _run_search(behavior)
+
+    assert client.get("/api/v1/upgrade-candidates").json() == []
+
+    count = client.get("/api/v1/upgrade-candidates/count").json()
+    assert count["count"] == 0
+    assert count["read_only_roots"] == ["Archive"]
 
 
 def test_show_season_pack_must_match_highest_quality_and_wait_until_season_complete(client: TestClient) -> None:
@@ -392,6 +457,92 @@ def test_season_pack_upgrade_policy_can_be_disabled_per_profile(client: TestClie
     )
     assert response.status_code == 200, response.text
     assert response.json()["season_pack_upgrades"] is False
+
+
+def test_upgrade_profile_controls_preserve_overrides_and_support_bulk(client: TestClient, monkeypatch) -> None:
+    headers = _login(client)
+    # Keep the scheduled re-evaluation queued during this focused API test.
+    monkeypatch.setattr("app.services.scheduler.launch_runtime_job", lambda *_args, **_kwargs: None)
+    default = next(profile for profile in client.get("/api/v1/quality-profiles").json() if profile["is_default"])
+    preferred_response = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={"name": "Upgrade Preferred", "custom_format_scores": []},
+    )
+    assert preferred_response.status_code == 201, preferred_response.text
+    preferred = preferred_response.json()
+
+    async def seed() -> str:
+        async with db_session.async_session_factory() as db:
+            movie = Movie(
+                title="Profile Movie",
+                sort_title="Profile Movie",
+                year=2026,
+                tmdb_id=9001,
+                identity_state=IdentityState.MATCHED,
+            )
+            db.add(movie)
+            await db.flush()
+            db.add(MediaProfileOverride(
+                media_type=MediaType.MOVIES,
+                movie_id=movie.id,
+                quality_profile_id=UUID(default["id"]),
+                override_definition={"minimum_custom_format_score": 25, "custom_format_scores": {}},
+                revision=3,
+            ))
+            candidate = UpgradeCandidate(
+                target_key=f"movie:{movie.id}",
+                media_type=MediaType.MOVIES,
+                movie_id=movie.id,
+                current_release_ids=[],
+                current_release_name="Profile.Movie.2026.1080p.WEB-DL-GRP",
+                current_quality="1080p WEB-DL",
+                indexer_name="Test Indexer",
+                guid="profile-candidate",
+                title="Profile.Movie.2026.2160p.WEB-DL-GRP",
+                quality="2160p WEB-DL",
+                upgrade_types=["quality"],
+                execution_eligible=True,
+            )
+            db.add(candidate)
+            await db.commit()
+            return str(candidate.id)
+
+    candidate_id = asyncio.run(seed())
+    listed = client.get("/api/v1/upgrade-candidates").json()[0]
+    assert listed["quality_profile_id"] == default["id"]
+    assert listed["quality_profile_inherited"] is False
+
+    changed = client.patch(
+        f"/api/v1/upgrade-candidates/{candidate_id}/quality-profile",
+        headers=headers,
+        json={"quality_profile_id": preferred["id"]},
+    )
+    assert changed.status_code == 202, changed.text
+    assert changed.json()["quality_profile_id"] == preferred["id"]
+    assert changed.json()["candidate_ids"] == [candidate_id]
+
+    inherited = client.post(
+        "/api/v1/upgrade-candidates/quality-profile",
+        headers=headers,
+        json={"candidate_ids": [candidate_id], "quality_profile_id": None},
+    )
+    assert inherited.status_code == 202, inherited.text
+    assert inherited.json()["quality_profile_id"] is None
+
+    async def verify() -> None:
+        async with db_session.async_session_factory() as db:
+            assignment = await db.scalar(select(MediaProfileOverride).where(MediaProfileOverride.movie_id.is_not(None)))
+            assert assignment is not None
+            assert assignment.quality_profile_id is None
+            assert assignment.override_definition == {"minimum_custom_format_score": 25, "custom_format_scores": {}}
+            assert assignment.revision == 5
+            candidate = await db.get(UpgradeCandidate, UUID(candidate_id))
+            assert candidate is not None
+            assert candidate.execution_eligible is False
+            assert "re-evaluated" in str(candidate.execution_block_reason)
+
+    asyncio.run(verify())
 
 
 def test_airing_guard_fails_closed_on_unknown_or_future_metadata() -> None:

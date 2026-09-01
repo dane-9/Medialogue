@@ -70,6 +70,7 @@ def test_every_builtin_has_a_unique_key_and_at_least_one_condition() -> None:
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL DOVI x265-FLUX"),
         ("hdr-dolby-vision", "Movie 2024 2160p WEB-DL Dolby.Vision x265-FLUX"),
         ("hdr-dv-hdr10", "Movie 2024 2160p WEB-DL DoVi HDR10 x265-FLUX"),
+        ("hdr-dv-hdr10", "Movie 2024 2160p UHD BluRay REMUX DV HDR HEVC-GRP"),
         ("hdr-hdr10-plus", "Movie 2024 2160p WEB-DL DV HDR10+ x265-FLUX"),
         ("hdr-hdr10", "Movie 2024 2160p WEB-DL HDR x265-FLUX"),
         ("hdr-hdr10", "Movie 2024 2160p WEB-DL HDR10 x265-FLUX"),

@@ -22,6 +22,9 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     currentReleaseName: value.current_release_name,
     currentQuality: value.current_quality ?? undefined,
     currentCustomFormatScore: value.current_custom_format_score,
+    qualityProfileId: value.quality_profile_id ?? undefined,
+    qualityProfileName: value.quality_profile_name ?? undefined,
+    qualityProfileInherited: value.quality_profile_inherited,
     indexerId: value.indexer_id ?? undefined,
     indexerName: value.indexer_name,
     title: value.title,
@@ -32,6 +35,17 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     seeders: value.seeders ?? undefined,
     leechers: value.leechers ?? undefined,
     publishedAt: value.published_at ?? undefined,
+    currentMatchedFormats: value.current_matched_formats.map((format) => ({
+      id: format.custom_format_id,
+      name: format.custom_format_name,
+      contribution: format.contribution,
+    })),
+    candidateMatchedFormats: value.candidate_matched_formats.map((format) => ({
+      id: format.custom_format_id,
+      name: format.custom_format_name,
+      contribution: format.contribution,
+    })),
+    tmdbId: value.tmdb_id ?? undefined,
     indexerColor: value.indexer_color ?? undefined,
     upgradeTypes: value.upgrade_types,
     addedCustomFormats: value.added_custom_formats.map((format) => ({
@@ -82,6 +96,10 @@ function mapCleanupPreview(value: UpgradeCleanupPreviewDto): UpgradeCleanupPrevi
 }
 
 export const upgradesApi = {
+  upgradeCandidateCount: async () => {
+    const value = await openApiData(openApiClient.GET('/api/v1/upgrade-candidates/count'))
+    return { count: value.count, readOnlyRoots: value.read_only_roots }
+  },
   upgradeCandidates: async (mediaType?: 'movies' | 'shows') => {
     const rows = await openApiData(openApiClient.GET('/api/v1/upgrade-candidates', {
       params: { query: { media_type: mediaType ?? null } },
@@ -91,6 +109,31 @@ export const upgradesApi = {
   searchUpgrades: async () => {
     const value = await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/search'))
     return { jobId: value.job_id }
+  },
+  setUpgradeQualityProfile: async (candidateId: string, qualityProfileId: string | null) => {
+    const value = await openApiData(openApiClient.PATCH('/api/v1/upgrade-candidates/{candidate_id}/quality-profile', {
+      params: { path: { candidate_id: candidateId } },
+      body: { quality_profile_id: qualityProfileId },
+    }))
+    return {
+      jobId: value.job_id,
+      candidateIds: value.candidate_ids,
+      qualityProfileId: value.quality_profile_id ?? undefined,
+      qualityProfileName: value.quality_profile_name ?? undefined,
+      updatedEntities: value.updated_entities,
+    }
+  },
+  setUpgradeQualityProfiles: async (candidateIds: string[], qualityProfileId: string | null) => {
+    const value = await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/quality-profile', {
+      body: { candidate_ids: candidateIds, quality_profile_id: qualityProfileId },
+    }))
+    return {
+      jobId: value.job_id,
+      candidateIds: value.candidate_ids,
+      qualityProfileId: value.quality_profile_id ?? undefined,
+      qualityProfileName: value.quality_profile_name ?? undefined,
+      updatedEntities: value.updated_entities,
+    }
   },
   executeUpgrade: async (candidateId: string, downloadClientId: string, category?: string) => mapUpgradeCandidate(
     await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/{candidate_id}/upgrade', {

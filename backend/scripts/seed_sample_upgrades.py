@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import uuid
 from pathlib import Path
@@ -32,82 +33,62 @@ SAMPLES: list[dict] = [
         "types": ["quality"],
         "current_release_name": "Show.S01.1080p.WEB-DL.DD5.1.H.264-GROUP",
         "current_quality": "1080p WEB-DL",
-        "current_score": 40,
         "title": "Show.S01.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.7.1-GROUP",
         "quality": "2160p BluRay REMUX",
-        "score": 215,
         "size": 92 * 1024**3,
         "seeders": 34,
         "leechers": 2,
-        "added": [{"name": "Dolby Vision", "delta": 45}, {"name": "TrueHD Atmos", "delta": 60}],
     },
     {
         "types": ["custom_format"],
         "current_release_name": "Show.S02.2160p.BluRay.REMUX.HEVC.DTS-HD.MA.5.1-GROUP",
         "current_quality": "2160p BluRay REMUX",
-        "current_score": 95,
         "title": "Show.S02.2160p.BluRay.REMUX.DV.HDR10+.HEVC.TrueHD.Atmos.7.1-OTHER",
         "quality": "2160p BluRay REMUX",
-        "score": 215,
         "size": 88 * 1024**3,
         "seeders": 21,
         "leechers": 0,
-        "added": [{"name": "DV HDR10+", "delta": 60}, {"name": "TrueHD Atmos", "delta": 60}],
     },
     {
         "types": ["season_pack"],
         "current_release_name": "Show.S03E01-E10.1080p.BluRay.x264-GROUP (10 files)",
         "current_quality": "1080p Encode",
-        "current_score": 50,
         "title": "Show.S03.COMPLETE.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-PACK",
         "quality": "1080p BluRay REMUX",
-        "score": 120,
         "size": 61 * 1024**3,
         "seeders": 12,
         "leechers": 1,
-        "added": [{"name": "Remux", "delta": 70}],
     },
     {
         "types": ["repack"],
         "current_release_name": "Show.S04.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-GROUP",
         "current_quality": "1080p BluRay REMUX",
-        "current_score": 120,
         "title": "Show.S04.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1.REPACK-GROUP",
         "quality": "1080p BluRay REMUX",
-        "score": 125,
         "size": 58 * 1024**3,
         "seeders": 9,
         "leechers": 0,
-        "added": [{"name": "Repack", "delta": 5}],
     },
     {
         "types": ["proper"],
         "current_release_name": "Show.S05.2160p.WEB-DL.DDP5.1.H.265-GROUP",
         "current_quality": "2160p WEB-DL",
-        "current_score": 80,
         "title": "Show.S05.PROPER.2160p.WEB-DL.DDP5.1.Atmos.H.265-GROUP",
         "quality": "2160p WEB-DL",
-        "score": 95,
         "size": 44 * 1024**3,
         "seeders": 47,
         "leechers": 3,
-        "added": [{"name": "Proper", "delta": 15}],
     },
     {
         "types": ["revision", "custom_format"],
         "current_release_name": "Show.S06.2160p.BluRay.REMUX.HEVC.DTS-HD.MA.5.1-GROUP",
         "current_quality": "2160p BluRay REMUX",
-        "current_score": 95,
-        "title": "Show.S06.REAL.2160p.BluRay.REMUX.HEVC.TrueHD.7.1-GROUP",
+        "title": "Show.S06.RERIP.2160p.BluRay.REMUX.HEVC.TrueHD.7.1-GROUP",
         "quality": "2160p BluRay REMUX",
-        "score": 155,
         "size": 90 * 1024**3,
         "seeders": 6,
         "leechers": 4,
-        "added": [{"name": "TrueHD", "delta": 55}, {"name": "REAL", "delta": 5}],
         # One blocked row, so the refusal path is visible too.
-        "eligible": False,
-        "block_reason": "No download client is configured for this indexer.",
     },
 ]
 
@@ -124,63 +105,55 @@ MOVIE_SAMPLES: list[dict] = [
         "title": "Blade Runner 2049", "year": 2017, "tmdb_id": 335984, "edition": None,
         "types": ["quality"],
         "folder": "Blade.Runner.2049.2017.1080p.BluRay.x264-GROUP",
-        "current_quality": "1080p Encode", "current_score": 35,
+        "current_quality": "1080p Encode",
         "candidate": "Blade.Runner.2049.2017.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.7.1.Atmos-OTHER",
-        "quality": "2160p BluRay REMUX", "score": 230,
+        "quality": "2160p BluRay REMUX",
         "size": 78 * 1024**3, "seeders": 58, "leechers": 4,
-        "added": [{"name": "Dolby Vision", "delta": 45}, {"name": "TrueHD Atmos", "delta": 60}],
     },
     {
         "title": "Dune", "year": 2021, "tmdb_id": 438631, "edition": None,
         "types": ["custom_format"],
         "folder": "Dune.2021.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
-        "current_quality": "2160p BluRay REMUX", "current_score": 95,
+        "current_quality": "2160p BluRay REMUX",
         "candidate": "Dune.2021.2160p.UHD.BluRay.REMUX.DV.HDR10+.HEVC.TrueHD.Atmos.7.1-OTHER",
-        "quality": "2160p BluRay REMUX", "score": 215,
+        "quality": "2160p BluRay REMUX",
         "size": 84 * 1024**3, "seeders": 31, "leechers": 1,
-        "added": [{"name": "DV HDR10+", "delta": 60}, {"name": "TrueHD Atmos", "delta": 60}],
     },
     {
         "title": "Blade Runner", "year": 1982, "tmdb_id": 78, "edition": "The Final Cut",
         "types": ["quality", "custom_format"],
         "folder": "Blade.Runner.1982.The.Final.Cut.1080p.BluRay.x264-GROUP",
-        "current_quality": "1080p Encode", "current_score": 30,
+        "current_quality": "1080p Encode",
         "candidate": "Blade.Runner.1982.The.Final.Cut.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.5.1-OTHER",
-        "quality": "2160p BluRay REMUX", "score": 210,
+        "quality": "2160p BluRay REMUX",
         "size": 71 * 1024**3, "seeders": 24, "leechers": 2,
-        "added": [{"name": "Dolby Vision", "delta": 45}, {"name": "TrueHD", "delta": 55}],
     },
     {
         "title": "Aliens", "year": 1986, "tmdb_id": 679, "edition": "Extended Cut",
         "types": ["repack"],
         "folder": "Aliens.1986.Extended.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
-        "current_quality": "2160p BluRay REMUX", "current_score": 110,
+        "current_quality": "2160p BluRay REMUX",
         "candidate": "Aliens.1986.Extended.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1.REPACK-GROUP",
-        "quality": "2160p BluRay REMUX", "score": 115,
+        "quality": "2160p BluRay REMUX",
         "size": 69 * 1024**3, "seeders": 11, "leechers": 0,
-        "added": [{"name": "Repack", "delta": 5}],
     },
     {
         "title": "The Lord of the Rings: The Two Towers", "year": 2002, "tmdb_id": 121, "edition": "Extended Edition",
         "types": ["proper"],
         "folder": "The.Lord.of.the.Rings.The.Two.Towers.2002.Extended.2160p.WEB-DL.DDP5.1.H.265-GROUP",
-        "current_quality": "2160p WEB-DL", "current_score": 75,
+        "current_quality": "2160p WEB-DL",
         "candidate": "The.Lord.of.the.Rings.The.Two.Towers.2002.Extended.PROPER.2160p.WEB-DL.DDP5.1.Atmos.H.265-GROUP",
-        "quality": "2160p WEB-DL", "score": 90,
+        "quality": "2160p WEB-DL",
         "size": 52 * 1024**3, "seeders": 63, "leechers": 5,
-        "added": [{"name": "Proper", "delta": 15}],
     },
     {
         "title": "Apocalypse Now", "year": 1979, "tmdb_id": 28, "edition": "Redux",
         "types": ["revision", "custom_format"],
         "folder": "Apocalypse.Now.1979.Redux.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
-        "current_quality": "2160p BluRay REMUX", "current_score": 95,
-        "candidate": "Apocalypse.Now.1979.Redux.REAL.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.7.1-GROUP",
-        "quality": "2160p BluRay REMUX", "score": 155,
+        "current_quality": "2160p BluRay REMUX",
+        "candidate": "Apocalypse.Now.1979.Redux.RERIP.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.7.1-GROUP",
+        "quality": "2160p BluRay REMUX",
         "size": 76 * 1024**3, "seeders": 8, "leechers": 3,
-        "added": [{"name": "TrueHD", "delta": 55}, {"name": "REAL", "delta": 5}],
-        "eligible": False,
-        "block_reason": "No download client is configured for this indexer.",
     },
     {
         "title": "The Thing", "year": 1982, "tmdb_id": 1091, "edition": None,
@@ -188,11 +161,10 @@ MOVIE_SAMPLES: list[dict] = [
         # equivalent: one folder replacing several loose copies.
         "types": ["quality"],
         "folder": "The.Thing.1982.1080p.WEB-DL.DD5.1.H.264-GROUP",
-        "current_quality": "1080p WEB-DL", "current_score": 25,
+        "current_quality": "1080p WEB-DL",
         "candidate": "The.Thing.1982.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.5.1-OTHER",
-        "quality": "2160p BluRay REMUX", "score": 205,
+        "quality": "2160p BluRay REMUX",
         "size": 64 * 1024**3, "seeders": 42, "leechers": 2,
-        "added": [{"name": "Dolby Vision", "delta": 45}, {"name": "TrueHD", "delta": 55}],
     },
 ]
 
@@ -200,25 +172,82 @@ MOVIE_SAMPLES: list[dict] = [
 MOVIE_ID_BASE = 0x3D1EA000
 
 
-def _added_formats(sample: dict) -> list[dict]:
-    """Shape the sample's gained formats the way the real scorer records them.
+#: Rough stand-ins for the Custom Formats a library usually defines, keyed by
+#: the token that would match them. The real scorer evaluates configured formats
+#: under the release's own quality profile; a sample cannot, so it scores both
+#: sides with the same table and stays internally consistent.
+SAMPLE_FORMATS: list[tuple[str, str, int]] = [
+    ("DV", "Dolby Vision", 45),
+    ("HDR10+", "HDR10+", 35),
+    ("HDR", "HDR10", 25),
+    ("REMUX", "Remux", 70),
+    ("Atmos", "Dolby Atmos", 60),
+    ("TrueHD", "TrueHD", 55),
+    ("DTS-HD", "DTS-HD MA", 25),
+    ("HEVC", "HEVC", 15),
+    ("WEB-DL", "WEB-DL", 10),
+    ("REPACK", "Repack", 5),
+    ("PROPER", "Proper", 15),
+    ("RERIP", "Rerip", 5),
+    ("x264", "h264", 0),
+    ("H", "h264", 0),
+    ("DDP5", "Dolby Digital Plus", -5),
+    ("DD5", "Dolby Digital", -10),
+]
 
-    The API reads custom_format_id/custom_format_name, so a sample that stores a
-    bare name shows up in the UI as an unnamed "Custom Format".
+
+def _matched_formats(release_name: str) -> list[dict]:
+    """Score a release name with the sample table, as the real scorer would.
+
+    Both sides go through this, so a candidate's total, its current total and
+    the difference between them always agree with the listed formats.
     """
 
-    added = []
-    for position, entry in enumerate(sample["added"]):
-        added.append({
-            "custom_format_id": uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{entry['name']}").hex,
-            "custom_format_name": entry["name"],
-            "contribution": entry["delta"],
-            "previous_contribution": None,
-            "delta": entry["delta"],
-            "new": True,
-            "position": position,
-        })
-    return added
+    tokens = {token.casefold() for token in re.split(r"[.-]", release_name) if token}
+    matched: list[dict] = []
+    for token, name, contribution in SAMPLE_FORMATS:
+        if token.casefold() in tokens and not any(item["custom_format_name"] == name for item in matched):
+            matched.append(
+                {
+                    "custom_format_id": uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{name}").hex,
+                    "custom_format_name": name,
+                    "matched": True,
+                    "contribution": contribution,
+                }
+            )
+    return matched
+
+
+def _comparison(current_name: str, candidate_name: str) -> tuple[dict, list[dict], int, int]:
+    """Snapshot, gained formats and both totals for one sample pair."""
+
+    current = _matched_formats(current_name)
+    candidate = _matched_formats(candidate_name)
+    previous = {item["custom_format_name"]: item["contribution"] for item in current}
+    added = [
+        {
+            "custom_format_id": item["custom_format_id"],
+            "custom_format_name": item["custom_format_name"],
+            "contribution": item["contribution"],
+            "previous_contribution": previous.get(item["custom_format_name"]),
+            "delta": item["contribution"] - previous.get(item["custom_format_name"], 0),
+            "new": item["custom_format_name"] not in previous,
+        }
+        for item in candidate
+        if item["contribution"] > previous.get(item["custom_format_name"], 0)
+    ]
+    snapshot = {
+        MARKER: True,
+        "note": "Seeded for UI review; not a real search result.",
+        "current": {"score_snapshot": {"formats": current}},
+        "candidate": {"formats": candidate},
+    }
+    return (
+        snapshot,
+        added,
+        sum(item["contribution"] for item in current),
+        sum(item["contribution"] for item in candidate),
+    )
 
 
 def _ids(index: int) -> tuple[str, str, str]:
@@ -259,6 +288,7 @@ def _seed_movies(connection: sqlite3.Connection) -> list[tuple[dict, str, str]]:
         quality = connection.execute(
             "select id from quality_definitions where name = ? limit 1", (sample["current_quality"],)
         ).fetchone()
+        current_score = sum(item["contribution"] for item in _matched_formats(sample["folder"]))
         connection.execute(
             """insert or replace into movie_releases
                (id, movie_id, raw_release_name, parsed_title, parsed_year, parsed_edition,
@@ -270,7 +300,7 @@ def _seed_movies(connection: sqlite3.Connection) -> list[tuple[dict, str, str]]:
                        ?, ?, ?, 0, '[]', 0, 'original', datetime('now'), datetime('now'))""",
             (release_id, movie_id, sample["folder"], sample["title"], sample["year"],
              sample["edition"], sample["edition"], quality[0] if quality else None,
-             sample["current_score"], sample["current_score"], json.dumps({MARKER: True})),
+             current_score, current_score, json.dumps({MARKER: True})),
         )
         connection.execute(
             """insert or replace into media_directories
@@ -321,7 +351,9 @@ def seed() -> None:
     inserted = 0
     for index, sample in enumerate(SAMPLES):
         season_id, show_title, season_number, release_id = targets[index % len(targets)]
-        snapshot = {MARKER: True, "note": "Seeded for UI review; not a real search result."}
+        current_name = sample["current_release_name"].replace("Show", show_title.replace(" ", "."))
+        candidate_name = sample["title"].replace("Show", show_title.replace(" ", "."))
+        snapshot, added, current_score, score = _comparison(current_name, candidate_name)
         connection.execute(
             """insert into upgrade_candidates
                (id, target_key, media_type, movie_id, season_id,
@@ -345,29 +377,30 @@ def seed() -> None:
                 f"sample:{index}:{season_id}",
                 season_id,
                 json.dumps([release_id]),
-                sample["current_release_name"].replace("Show", show_title.replace(" ", ".")),
+                current_name,
                 sample["current_quality"],
-                sample["current_score"],
+                current_score,
                 indexer_id,
                 indexer_name,
                 f"sample-upgrade-{index}",
-                sample["title"].replace("Show", show_title.replace(" ", ".")),
+                candidate_name,
                 sample["quality"],
-                sample["score"],
-                sample["score"] - sample["current_score"],
+                score,
+                score - current_score,
                 sample["size"],
                 sample["seeders"],
                 sample["leechers"],
                 json.dumps(sample["types"]),
-                json.dumps(_added_formats(sample)),
-                1 if sample.get("eligible", True) else 0,
-                sample.get("block_reason"),
+                json.dumps(added),
+                1,
+                None,
                 json.dumps(snapshot),
             ),
         )
         inserted += 1
         del season_number
     for sample, movie_id, movie_release_id in _seed_movies(connection):
+        snapshot, added, current_score, score = _comparison(sample["folder"], sample["candidate"])
         connection.execute(
             """insert into upgrade_candidates
                (id, target_key, media_type, movie_id, season_id,
@@ -393,22 +426,22 @@ def seed() -> None:
                 json.dumps([movie_release_id]),
                 sample["folder"],
                 sample["current_quality"],
-                sample["current_score"],
+                current_score,
                 indexer_id,
                 indexer_name,
                 f"sample-upgrade-movie-{movie_id}",
                 sample["candidate"],
                 sample["quality"],
-                sample["score"],
-                sample["score"] - sample["current_score"],
+                score,
+                score - current_score,
                 sample["size"],
                 sample["seeders"],
                 sample["leechers"],
                 json.dumps(sample["types"]),
-                json.dumps(_added_formats(sample)),
-                1 if sample.get("eligible", True) else 0,
-                sample.get("block_reason"),
-                json.dumps({MARKER: True, "note": "Seeded for UI review; not a real search result."}),
+                json.dumps(added),
+                1,
+                None,
+                json.dumps(snapshot),
             ),
         )
         inserted += 1

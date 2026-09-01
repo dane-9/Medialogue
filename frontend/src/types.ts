@@ -394,6 +394,12 @@ export interface Download {
 export type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision'
 export type UpgradeExecutionState = 'submitted' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
 
+export interface UpgradeMatchedFormat {
+  id: string
+  name: string
+  contribution: number
+}
+
 export interface UpgradeCustomFormatImprovement {
   id: string
   name: string
@@ -410,6 +416,7 @@ export interface UpgradeCandidate {
   seasonId?: string
   mediaTitle: string
   mediaYear?: number
+  tmdbId?: number
   seasonNumber?: number
   currentPaths: string[]
   /** Media folder the current release lives in. */
@@ -421,7 +428,11 @@ export interface UpgradeCandidate {
   currentReleaseIds: string[]
   currentReleaseName: string
   currentQuality?: string
-  currentCustomFormatScore: number
+    currentCustomFormatScore: number
+    /** Undefined means this title inherits the default Quality Profile. */
+    qualityProfileId?: string
+    qualityProfileName?: string
+    qualityProfileInherited: boolean
   indexerId?: string
   indexerName: string
   indexerColor?: string
@@ -435,6 +446,8 @@ export interface UpgradeCandidate {
   publishedAt?: string
   upgradeTypes: UpgradeType[]
   addedCustomFormats: UpgradeCustomFormatImprovement[]
+  currentMatchedFormats: UpgradeMatchedFormat[]
+  candidateMatchedFormats: UpgradeMatchedFormat[]
   executionEligible: boolean
   executionBlockReason?: string
   comparisonSnapshot: Record<string, unknown>

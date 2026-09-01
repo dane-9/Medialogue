@@ -11978,6 +11978,26 @@
         "title": "TorrentRestoreRequest",
         "type": "object"
       },
+      "UpgradeCandidateCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "read_only_roots": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Read Only Roots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "UpgradeCandidateCount",
+        "type": "object"
+      },
       "UpgradeCandidateResponse": {
         "properties": {
           "added_custom_formats": {
@@ -11986,6 +12006,13 @@
               "type": "object"
             },
             "title": "Added Custom Formats",
+            "type": "array"
+          },
+          "candidate_matched_formats": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeMatchedFormat"
+            },
+            "title": "Candidate Matched Formats",
             "type": "array"
           },
           "cleanup_completed_at": {
@@ -12013,6 +12040,13 @@
           "current_custom_format_score": {
             "title": "Current Custom Format Score",
             "type": "integer"
+          },
+          "current_matched_formats": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeMatchedFormat"
+            },
+            "title": "Current Matched Formats",
+            "type": "array"
           },
           "current_paths": {
             "items": {
@@ -12240,6 +12274,34 @@
             ],
             "title": "Quality"
           },
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          },
+          "quality_profile_inherited": {
+            "default": true,
+            "title": "Quality Profile Inherited",
+            "type": "boolean"
+          },
+          "quality_profile_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Name"
+          },
           "release_folder": {
             "anyOf": [
               {
@@ -12360,6 +12422,17 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "tmdb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmdb Id"
           },
           "torrent_id": {
             "anyOf": [
@@ -12588,6 +12661,129 @@
           "download_client_id"
         ],
         "title": "UpgradeExecuteRequest",
+        "type": "object"
+      },
+      "UpgradeMatchedFormat": {
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "integer"
+          },
+          "custom_format_id": {
+            "title": "Custom Format Id",
+            "type": "string"
+          },
+          "custom_format_name": {
+            "title": "Custom Format Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "custom_format_id",
+          "custom_format_name",
+          "contribution"
+        ],
+        "title": "UpgradeMatchedFormat",
+        "type": "object"
+      },
+      "UpgradeQualityProfileBulkUpdate": {
+        "properties": {
+          "candidate_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Candidate Ids",
+            "type": "array"
+          },
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          }
+        },
+        "required": [
+          "candidate_ids"
+        ],
+        "title": "UpgradeQualityProfileBulkUpdate",
+        "type": "object"
+      },
+      "UpgradeQualityProfileUpdate": {
+        "properties": {
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          }
+        },
+        "title": "UpgradeQualityProfileUpdate",
+        "type": "object"
+      },
+      "UpgradeQualityProfileUpdateResponse": {
+        "properties": {
+          "candidate_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Candidate Ids",
+            "type": "array"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          },
+          "quality_profile_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Name"
+          },
+          "updated_entities": {
+            "title": "Updated Entities",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "candidate_ids",
+          "updated_entities"
+        ],
+        "title": "UpgradeQualityProfileUpdateResponse",
         "type": "object"
       },
       "UpgradeSearchResponse": {
@@ -19891,6 +20087,69 @@
         ]
       }
     },
+    "/api/v1/upgrade-candidates/count": {
+      "get": {
+        "description": "Candidates still awaiting a decision.\n\nOne already submitted is being acted on, and one that cannot be submitted is\nnot a decision to make, so neither belongs in a badge that should reach zero\nonce the queue has been worked through.",
+        "operationId": "count_upgrade_candidates_api_v1_upgrade_candidates_count_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeCandidateCount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Count Upgrade Candidates",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/quality-profile": {
+      "post": {
+        "operationId": "set_upgrade_quality_profiles_api_v1_upgrade_candidates_quality_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeQualityProfileBulkUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeQualityProfileUpdateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Upgrade Quality Profiles",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
     "/api/v1/upgrade-candidates/search": {
       "post": {
         "operationId": "search_upgrade_candidates_api_v1_upgrade_candidates_search_post",
@@ -20003,6 +20262,59 @@
           }
         },
         "summary": "Preview Cleanup",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/quality-profile": {
+      "patch": {
+        "operationId": "set_upgrade_quality_profile_api_v1_upgrade_candidates__candidate_id__quality_profile_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeQualityProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeQualityProfileUpdateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Upgrade Quality Profile",
         "tags": [
           "upgrade candidates"
         ]
