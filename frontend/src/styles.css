@@ -3293,7 +3293,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .new-media-folder-cell > span { display: flex; align-items: center; min-width: 0; }
 /* The name and its profile control stack, so the row is one folder with one
    decision under it rather than two columns competing for the same width. */
-.new-media-folder-copy { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.new-media-folder-copy { display: grid; flex: 1; gap: var(--s2); min-width: 0; }
 /* Only as wide as the control it holds. As a stretched grid item it covered the
    rest of the row, and its click handler — there to keep the dropdown from
    selecting the row — swallowed every click in that empty space. */
@@ -3309,7 +3309,10 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .new-media-row:hover .new-media-profile-cell.optional,
 .new-media-folder-cell:focus-within .new-media-profile-cell.optional,
-.new-media-folder-cell:has(.dropdown-trigger.open) .new-media-profile-cell.optional {
+.new-media-folder-cell:has(.dropdown-trigger.open) .new-media-profile-cell.optional,
+.upgrade-row:hover .new-media-profile-cell.optional,
+.upgrade-cell:focus-within .new-media-profile-cell.optional,
+.upgrade-cell:has(.dropdown-trigger.open) .new-media-profile-cell.optional {
   visibility: visible;
   opacity: 1;
   transition: opacity .16s ease, visibility 0s;
@@ -3959,12 +3962,11 @@ select.input { background-color: var(--input-bg); }
   background: var(--raised);
 }
 .upgrade-poster img { width: 100%; height: 100%; object-fit: cover; }
-.upgrade-target-copy, .upgrade-change-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.upgrade-target-copy, .upgrade-change-copy { display: grid; gap: var(--s2); min-width: 0; flex: 1; }
 /* The same release name in the same place as New Media's folder name, so the
    two pages read as one idiom. */
 .upgrade-target-copy strong, .upgrade-change-copy strong { display: block; overflow: hidden; color: var(--text); font: var(--t-sm)/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-target-copy small { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
-.upgrade-profile-cell { opacity: 1; visibility: visible; }
 
 /* Matches the height of the quality profile control opposite it, so both
    titles sit on the same line rather than each centring its own stack. */

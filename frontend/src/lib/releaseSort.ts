@@ -10,7 +10,7 @@ export const DEFAULT_DESC: Record<SortKey, boolean> = {
   age: true,
 }
 
-export const DEFAULT_SORT: SortKey = 'rank'
+export const DEFAULT_SORT: SortKey = 'score'
 
 function value(item: InteractiveSearchResult, sort: SortKey): number {
   switch (sort) {

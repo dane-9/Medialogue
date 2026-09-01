@@ -16,6 +16,7 @@ import { formatBytes } from './components/ReleaseResults'
 import { formatPeers, swarmHealth } from './lib/swarm'
 import { qualityLabel } from './lib/qualityLabel'
 import { pathParts } from './lib/pathParts'
+import { parserWarningMessage } from './lib/parserWarnings'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
 import { qualityMark } from './lib/qualityMark'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -1110,7 +1111,10 @@ function parserIdentity(details: Record<string, unknown>): { title?: string; yea
   const title = problemText(details.parsed_title) ?? problemText(identity.title_candidate)
   const year = problemText(details.parsed_year) ?? problemText(identity.year)
   const warningsValue = Array.isArray(details.parser_warnings) ? details.parser_warnings : Array.isArray(parse.warnings) ? parse.warnings : []
-  const warnings = warningsValue.map((value) => problemText(value)).filter((value): value is string => Boolean(value))
+  const warnings = warningsValue
+    .map((value) => problemText(value))
+    .filter((value): value is string => Boolean(value))
+    .map(parserWarningMessage)
   return { title, year, identity: problemText(details.parsed_identity) ?? problemIdentity(title, year), warnings }
 }
 
@@ -4087,7 +4091,7 @@ export function UpgradeMediaPage() {
               </Tooltip>
               <span className="upgrade-target-copy">
                 <strong>{currentDisplayName}</strong>
-                <span className="new-media-profile-cell upgrade-profile-cell" onClick={(event) => event.stopPropagation()}>
+                <span className={`new-media-profile-cell upgrade-profile-cell ${item.qualityProfileId ? '' : 'optional'}`} onClick={(event) => event.stopPropagation()}>
                   <Dropdown
                     ariaLabel={`Quality Profile for ${currentDisplayName}`}
                     value={item.qualityProfileId ?? ''}

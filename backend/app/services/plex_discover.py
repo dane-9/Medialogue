@@ -17,7 +17,10 @@ async def lookup_tmdb_ratings(
     """Resolve IMDb ratings for TMDB results when Plex Discover is available."""
 
     configuration = await get_configured_plex(db)
-    if configuration is None or not configuration.enabled or not configuration.token:
+    # Plex Discover is an external metadata source, not the configured local
+    # Plex server. A stored account token can still provide IMDb metadata when
+    # local Plex verification has been turned off.
+    if configuration is None or not configuration.token:
         return {}
     if kind not in {"movie", "show"}:
         return {}

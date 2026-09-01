@@ -20,6 +20,9 @@ const ids = (list: InteractiveSearchResult[]) => list.map((item) => item.id)
 const asOpened = (list: InteractiveSearchResult[]) =>
   sortReleases(list, DEFAULT_SORT, DEFAULT_DESC[DEFAULT_SORT])
 
+const asRanked = (list: InteractiveSearchResult[]) =>
+  sortReleases(list, 'rank', DEFAULT_DESC.rank)
+
 const REMUX = 10
 const WEBDL = 4
 
@@ -29,7 +32,7 @@ describe('quality outranks Custom Format score', () => {
       release({ id: 'webdl', qualityPreference: WEBDL, customFormatScore: 9999 }),
       release({ id: 'remux', qualityPreference: REMUX, customFormatScore: -50 }),
     ]
-    expect(ids(asOpened(list))).toEqual(['remux', 'webdl'])
+    expect(ids(asRanked(list))).toEqual(['remux', 'webdl'])
   })
 
   it('holds no matter how large the score gap is', () => {
@@ -37,7 +40,7 @@ describe('quality outranks Custom Format score', () => {
       release({ id: 'webdl', qualityPreference: WEBDL, customFormatScore: 1_000_000 }),
       release({ id: 'remux', qualityPreference: REMUX, customFormatScore: -1_000_000 }),
     ]
-    expect(ids(asOpened(list))[0]).toBe('remux')
+    expect(ids(asRanked(list))[0]).toBe('remux')
   })
 
   it('uses score to decide between releases of the same quality', () => {
@@ -46,7 +49,7 @@ describe('quality outranks Custom Format score', () => {
       release({ id: 'best', qualityPreference: REMUX, customFormatScore: 500 }),
       release({ id: 'mid', qualityPreference: REMUX, customFormatScore: 120 }),
     ]
-    expect(ids(asOpened(list))).toEqual(['best', 'mid', 'plain'])
+    expect(ids(asRanked(list))).toEqual(['best', 'mid', 'plain'])
   })
 
   it('uses seeders only when quality and score both tie', () => {
@@ -54,7 +57,7 @@ describe('quality outranks Custom Format score', () => {
       release({ id: 'thin', qualityPreference: REMUX, customFormatScore: 100, seeders: 2 }),
       release({ id: 'healthy', qualityPreference: REMUX, customFormatScore: 100, seeders: 200 }),
     ]
-    expect(ids(asOpened(list))).toEqual(['healthy', 'thin'])
+    expect(ids(asRanked(list))).toEqual(['healthy', 'thin'])
   })
 
   it('orders a full mixed list by quality tier first', () => {
@@ -64,7 +67,18 @@ describe('quality outranks Custom Format score', () => {
       release({ id: 'webdl-poor', qualityPreference: WEBDL, customFormatScore: 5 }),
       release({ id: 'remux-great', qualityPreference: REMUX, customFormatScore: 400 }),
     ]
-    expect(ids(asOpened(list))).toEqual(['remux-great', 'remux-poor', 'webdl-great', 'webdl-poor'])
+    expect(ids(asRanked(list))).toEqual(['remux-great', 'remux-poor', 'webdl-great', 'webdl-poor'])
+  })
+})
+
+describe('default interactive-search order', () => {
+  it('opens with the highest Custom Format score first regardless of quality tier', () => {
+    const list = [
+      release({ id: 'remux', qualityPreference: REMUX, customFormatScore: 10 }),
+      release({ id: 'webdl', qualityPreference: WEBDL, customFormatScore: 900 }),
+    ]
+    expect(DEFAULT_SORT).toBe('score')
+    expect(ids(asOpened(list))).toEqual(['webdl', 'remux'])
   })
 })
 

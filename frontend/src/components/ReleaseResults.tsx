@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { InteractiveSearchResult } from '../types'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
+import { parserWarningMessage } from '../lib/parserWarnings'
 import { formatPeers, swarmHealth } from '../lib/swarm'
 import { formatAge } from '../lib/age'
 import { languageLabel, releaseLanguages, UNKNOWN_LANGUAGE } from '../lib/languages'
@@ -47,8 +48,8 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
   const choose = (key: SortKey) => {
     if (key !== sort) { setSort(key); setDesc(DEFAULT_DESC[key]); return }
     if (desc === DEFAULT_DESC[key]) { setDesc(!DEFAULT_DESC[key]); return }
-    setSort(DEFAULT_SORT)
-    setDesc(DEFAULT_DESC[DEFAULT_SORT])
+    setSort('rank')
+    setDesc(DEFAULT_DESC.rank)
   }
 
   const header = (key: SortKey, text: string, centred = false) => <Tooltip
@@ -140,7 +141,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
               ? <Tooltip
                   className={`release-pill ${result.qualityAllowed && !scoreRejected ? 'release-warned' : 'release-blocked'}`}
                   content={<>
-                    <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+                    <ul>{warnings.map((warning) => <li key={warning}>{parserWarningMessage(warning)}</li>)}</ul>
                   </>}
                 ><Icon name="alert" size={11} />{!result.qualityAllowed ? 'Blocked by profile' : scoreRejected ? 'Rejected by score' : warnings.length}</Tooltip>
               : null}
