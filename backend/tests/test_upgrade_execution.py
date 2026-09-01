@@ -598,6 +598,53 @@ def test_movie_upgrade_submission_handoff_and_explicit_cleanup(client) -> None:
         test_client.app.dependency_overrides.clear()
 
 
+def test_movie_upgrade_handoff_rejects_a_different_edition(client) -> None:
+    test_client, tmp_path = client
+    headers = _login(test_client)
+    qbit, indexer = _create_integrations(test_client, headers)
+    candidate_id, _movie_id, old_release_id, _old_torrent_id, _old_dir, _new_dir = asyncio.run(
+        _seed_movie_upgrade(tmp_path, qbit, indexer)
+    )
+
+    async def run() -> None:
+        async with db_session.async_session_factory() as db:
+            old = await db.get(MovieRelease, old_release_id)
+            candidate = await db.get(UpgradeCandidate, candidate_id)
+            assert old is not None and candidate is not None
+            old.parsed_edition = "Director's Cut"
+            old.effective_edition = "Director's Cut"
+            candidate.title = "Upgrade.Movie.2024.Directors.Cut.2160p.WEB-DL-GRP"
+            candidate.comparison_snapshot = {
+                "current": {"edition": "Director's Cut"},
+                "candidate": {"edition": "Director's Cut"},
+            }
+            candidate.execution_state = "submitted"
+            candidate.submitted_info_hash = "c" * 40
+            candidate.selected_download_client_id = UUID(qbit["id"])
+            candidate.submitted_at = datetime.now(timezone.utc)
+            replacement = Torrent(
+                info_hash="c" * 40,
+                name="Upgrade.Movie.2024.2160p.WEB-DL-GRP",
+            )
+            db.add(replacement)
+            await db.flush()
+
+            association = await associate_upgrade_torrent(
+                db,
+                replacement,
+                download_client_id=UUID(qbit["id"]),
+                scope=MediaType.MOVIES,
+                complete=False,
+            )
+
+            assert association is not None
+            assert candidate.execution_state == "handoff_attention"
+            assert "Director's Cut → Theatrical Cut" in (candidate.execution_error or "")
+            assert candidate.incoming_release_ids == []
+
+    asyncio.run(run())
+
+
 def test_cleanup_refuses_when_replacement_disappears_after_preview(client) -> None:
     test_client, tmp_path = client
     headers = _login(test_client)

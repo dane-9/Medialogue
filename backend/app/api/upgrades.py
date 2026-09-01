@@ -32,6 +32,7 @@ from app.models.domain import (
     TorrentClientObservation,
     UpgradeCandidate,
 )
+from app.parser import parse_release
 from app.schemas.upgrades import (
     UpgradeCandidateCount,
     UpgradeCurrentRelease,
@@ -47,6 +48,7 @@ from app.schemas.upgrades import (
     UpgradeSearchResponse,
 )
 from app.services.events import create_event
+from app.services.movie_editions import edition_label, same_edition
 from app.services.quality_profiles import (
     get_assignment,
     load_effective_profile,
@@ -105,6 +107,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     root_name: str | None = None
     poster_ref: str | None = None
     release_folder: str | None = None
+    current_edition: str | None = None
     profile_media_type = row.media_type
     profile_entity_id: UUID | None = None
     if row.media_type == MediaType.MOVIES:
@@ -117,6 +120,9 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
             poster_ref = movie.poster_ref
         release_ids = [UUID(value) for value in row.current_release_ids]
         if release_ids:
+            current_edition = await db.scalar(
+                select(MovieRelease.effective_edition).where(MovieRelease.id == release_ids[0])
+            )
             current_paths = list(
                 dict.fromkeys(
                     await db.scalars(
@@ -219,6 +225,21 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     )
 
     snapshot = dict(row.comparison_snapshot or {})
+    candidate_snapshot = snapshot.get("candidate") or {}
+    candidate_edition = (
+        candidate_snapshot.get("edition")
+        if isinstance(candidate_snapshot, dict) and "edition" in candidate_snapshot
+        else parse_release(row.title).edition
+    )
+    edition_matches = row.media_type != MediaType.MOVIES or same_edition(current_edition, candidate_edition)
+    execution_eligible = bool(row.execution_eligible and edition_matches)
+    execution_block_reason = row.execution_block_reason
+    if not edition_matches:
+        execution_block_reason = (
+            "Edition mismatch: "
+            f"{edition_label(current_edition)} cannot be replaced by {edition_label(candidate_edition)}. "
+            "Search for upgrades again."
+        )
     return UpgradeCandidateResponse(
         id=row.id,
         media_type=row.media_type,
@@ -235,6 +256,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_release_ids=[UUID(value) for value in row.current_release_ids],
         current_release_name=row.current_release_name,
         current_quality=row.current_quality,
+        current_edition=current_edition,
         current_custom_format_score=row.current_custom_format_score,
         quality_profile_id=(
             None if effective_profile is None or effective_profile.profile_inherited else effective_profile.profile_id
@@ -246,6 +268,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         indexer_color=_indexer_color(row.indexer_id),
         title=row.title,
         quality=row.quality,
+        candidate_edition=candidate_edition,
         custom_format_score=row.custom_format_score,
         score_delta=row.score_delta,
         size=row.size,
@@ -259,6 +282,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
                 release_id=str(value.get("release_id") or ""),
                 release_name=str(value.get("release_name") or ""),
                 quality=value.get("quality"),
+                edition=value.get("edition"),
                 custom_format_score=int(value.get("custom_format_score") or 0),
             )
             for value in ((snapshot.get("current") or {}).get("releases") or [])
@@ -270,8 +294,8 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
             ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("formats")
         ),
         candidate_matched_formats=_matched_formats((snapshot.get("candidate") or {}).get("formats")),
-        execution_eligible=row.execution_eligible,
-        execution_block_reason=row.execution_block_reason,
+        execution_eligible=execution_eligible,
+        execution_block_reason=execution_block_reason,
         comparison_snapshot=dict(row.comparison_snapshot or {}),
         execution_state=row.execution_state,
         selected_download_client_id=row.selected_download_client_id,

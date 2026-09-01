@@ -3755,6 +3755,14 @@ function upgradeStateLabel(item: UpgradeCandidate) {
   }
 }
 
+function upgradeEditionLabel(edition?: string) {
+  return edition?.trim() || 'Theatrical Cut'
+}
+
+function upgradeEditionsMatch(current?: string, candidate?: string) {
+  return upgradeEditionLabel(current).toLocaleLowerCase() === upgradeEditionLabel(candidate).toLocaleLowerCase()
+}
+
 function upgradeStateTone(item: UpgradeCandidate): 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple' {
   if (item.executionState === 'completed') return 'green'
   if (item.executionState === 'handoff_attention' || item.executionState === 'failed') return 'red'
@@ -4059,6 +4067,7 @@ export function UpgradeMediaPage() {
           // already shows the resolution arrow and the formats gained.
           const reasons = item.upgradeTypes.filter((type) => type !== 'quality' && type !== 'custom_format')
           const indexerBadge = badgeColor(item.indexerColor)
+          const editionMismatch = item.mediaType === 'movies' && !upgradeEditionsMatch(item.currentEdition, item.candidateEdition)
           const profileName = profiles.find((profile) => profile.id === item.qualityProfileId)?.name
             ?? profiles.find((profile) => profile.isDefault)?.name
             ?? 'Default'
@@ -4116,14 +4125,17 @@ export function UpgradeMediaPage() {
                       </span>
                     </details>
                   : <strong>{currentDisplayName}</strong>}
-                <span className={`new-media-profile-cell upgrade-profile-cell ${item.qualityProfileId ? '' : 'optional'}`} onClick={(event) => event.stopPropagation()}>
-                  <Dropdown
-                    ariaLabel={`Quality Profile for ${currentDisplayName}`}
-                    value={item.qualityProfileId ?? ''}
-                    disabled={profileBusy || Boolean(item.executionState)}
-                    options={[{ value: '', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
-                    onChange={(value) => void setRowProfile(item, value || null)}
-                  />
+                <span className="upgrade-target-meta">
+                  {item.mediaType === 'movies' && <span className="release-pill upgrade-edition-pill"><i>Edition</i>{upgradeEditionLabel(item.currentEdition)}</span>}
+                  <span className={`new-media-profile-cell upgrade-profile-cell ${item.qualityProfileId ? '' : 'optional'}`} onClick={(event) => event.stopPropagation()}>
+                    <Dropdown
+                      ariaLabel={`Quality Profile for ${currentDisplayName}`}
+                      value={item.qualityProfileId ?? ''}
+                      disabled={profileBusy || Boolean(item.executionState)}
+                      options={[{ value: '', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
+                      onChange={(value) => void setRowProfile(item, value || null)}
+                    />
+                  </span>
                 </span>
               </span>
               {/* The column keeps its width; only the figure inside it is the
@@ -4167,6 +4179,8 @@ export function UpgradeMediaPage() {
                       ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background }
                       : undefined}
                   ><i>Indexer</i>{item.indexerName}</span>
+                  {item.mediaType === 'movies' && <span className="release-pill upgrade-edition-pill"><i>Edition</i>{upgradeEditionLabel(item.candidateEdition)}</span>}
+                  {editionMismatch && <Tooltip content={item.executionBlockReason ?? 'The candidate is a different movie edition.'}><Badge tone="red">Edition mismatch</Badge></Tooltip>}
                   {reasons.map((type) => <Badge key={type} tone="amber">{upgradeTypeLabel(type)}</Badge>)}
                   {qualityChanged && <span className="upgrade-quality-change">
                     <span className="release-pill">{qualityLabel(item.currentQuality) || 'Unknown'}</span>

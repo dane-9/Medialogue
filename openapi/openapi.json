@@ -12085,6 +12085,17 @@
             "title": "Added Custom Formats",
             "type": "array"
           },
+          "candidate_edition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Edition"
+          },
           "candidate_matched_formats": {
             "items": {
               "$ref": "#/components/schemas/UpgradeMatchedFormat"
@@ -12117,6 +12128,17 @@
           "current_custom_format_score": {
             "title": "Current Custom Format Score",
             "type": "integer"
+          },
+          "current_edition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Edition"
           },
           "current_episode_count": {
             "anyOf": [
@@ -12749,6 +12771,17 @@
             "default": 0,
             "title": "Custom Format Score",
             "type": "integer"
+          },
+          "edition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition"
           },
           "quality": {
             "anyOf": [

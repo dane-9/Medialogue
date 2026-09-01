@@ -490,3 +490,10 @@ def test_the_combined_edition_is_not_offered_as_a_choice():
     assert "Uncut" in EDITION_OPTIONS
     assert "Super-Sized" in EDITION_OPTIONS
     assert "Super-Sized and Uncut" not in EDITION_OPTIONS
+
+
+def test_redux_is_detected_as_a_movie_edition():
+    parsed = parse_release("Apocalypse.Now.1979.Redux.2160p.UHD.BluRay.REMUX-GROUP")
+
+    assert parsed.edition == "Redux"
+    assert parsed.identity.title_candidate == "Apocalypse Now"

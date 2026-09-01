@@ -42,3 +42,17 @@ def test_seeded_upgrade_improvements_exclude_suppressed_formats() -> None:
         for item in snapshot["candidate"]["formats"]
         if item["matched"]
     )
+
+
+def test_seeded_movie_comparison_carries_matching_editions() -> None:
+    snapshot, _added, _current_score, _candidate_score = _comparison(
+        "Blade.Runner.1982.The.Final.Cut.1080p.BluRay.x264-GROUP",
+        "Blade.Runner.1982.The.Final.Cut.2160p.UHD.BluRay.REMUX-GROUP",
+        current_quality="1080p Encode",
+        current_edition="Final Cut",
+        candidate_edition="Final Cut",
+    )
+
+    assert snapshot["current"]["edition"] == "Final Cut"
+    assert snapshot["current"]["releases"][0]["edition"] == "Final Cut"
+    assert snapshot["candidate"]["edition"] == "Final Cut"

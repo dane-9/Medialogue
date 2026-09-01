@@ -34,6 +34,7 @@ from app.services.custom_formats import CustomFormat as EvaluationFormat, evalua
 from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, list_configured_indexers
 from app.services.jobs import run_job, update_job
+from app.services.movie_editions import same_edition
 from app.services.quality_profiles import EffectiveProfile, evaluate_current_release_score, load_effective_profile, minimum_quality_status
 from app.services.search import SearchTarget, _published_at, _query_indexer
 
@@ -50,6 +51,7 @@ class CurrentReleaseEvidence:
     score_snapshot: dict[str, Any]
     parse_snapshot: dict[str, Any]
     release_group: str
+    edition: str | None = None
     release_scope: ReleaseScope | None = None
 
 
@@ -294,6 +296,7 @@ async def _release_evidence(
         score_snapshot=score_snapshot,
         parse_snapshot=parsed.to_dict(),
         release_group=parsed.release_group,
+        edition=release.effective_edition if isinstance(release, MovieRelease) else None,
         release_scope=release.release_scope if isinstance(release, ShowRelease) else None,
     )
 
@@ -510,6 +513,8 @@ def _score_candidate(
     if not result.title.strip() or not result.download_url:
         return None
     parsed = parse_release(result.title)
+    if target.media_type == MediaType.MOVIES and not same_edition(target.reference.edition, parsed.edition):
+        return None
     quality = parsed.quality.canonical
     preference = _quality_preference(quality, profile.quality_order)
     if quality is None or preference is None:
@@ -597,6 +602,7 @@ def _score_candidate(
             "reference_release_id": str(target.reference.release_id),
             "release_name": target.reference.release_name,
             "release_group": target.reference.release_group,
+            "edition": target.reference.edition,
             "quality": target.reference.quality,
             "quality_preference": target.reference.quality_preference,
             "custom_format_score": target.reference.custom_format_score,
@@ -606,6 +612,7 @@ def _score_candidate(
                     "release_id": str(item.release_id),
                     "release_name": item.release_name,
                     "quality": item.quality,
+                    "edition": item.edition,
                     "custom_format_score": item.custom_format_score,
                     "release_scope": item.release_scope.value if item.release_scope is not None else None,
                 }
@@ -619,6 +626,7 @@ def _score_candidate(
             "minimum_quality_met": floor_status,
             "minimum_custom_format_score_met": minimum_score_met,
             "parse": parsed.to_dict(),
+            "edition": parsed.edition,
             "release_group": parsed.release_group,
             "same_release_group": same_release_group,
             "revision_context_eligible": revision_context_matches,

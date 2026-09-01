@@ -6726,6 +6726,8 @@ export interface components {
             added_custom_formats: {
                 [key: string]: unknown;
             }[];
+            /** Candidate Edition */
+            candidate_edition?: string | null;
             /** Candidate Matched Formats */
             candidate_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
             /** Cleanup Completed At */
@@ -6741,6 +6743,8 @@ export interface components {
             created_at: string;
             /** Current Custom Format Score */
             current_custom_format_score: number;
+            /** Current Edition */
+            current_edition?: string | null;
             /** Current Episode Count */
             current_episode_count?: number | null;
             /** Current Matched Formats */
@@ -6918,6 +6922,8 @@ export interface components {
              * @default 0
              */
             custom_format_score: number;
+            /** Edition */
+            edition?: string | null;
             /** Quality */
             quality?: string | null;
             /** Release Id */

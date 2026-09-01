@@ -61,6 +61,7 @@ _EDITION_ALIASES: tuple[tuple[str, str], ...] = (
     ("special assembly", "Special Assembly Cut"),
     ("unrated", "Unrated"),
     ("final cut", "Final Cut"),
+    ("redux", "Redux"),
     ("open matte", "Open Matte"),
     ("imax enhanced", "IMAX"),
     ("imax", "IMAX"),

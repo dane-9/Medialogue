@@ -255,6 +255,77 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
         assert comparison["candidate"]["same_release_group"] is True
 
 
+def test_movie_upgrade_preserves_the_current_edition(client: TestClient) -> None:
+    headers = _login(client)
+    _create_indexer(client, headers, scope="movies")
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(
+                name="Movies",
+                resolved_root_path="/media/movies",
+                media_type=MediaType.MOVIES,
+                access_mode=AccessMode.READ_WRITE,
+            )
+            movie = Movie(
+                title="Blade Runner",
+                sort_title="Blade Runner",
+                year=1982,
+                tmdb_id=78,
+                identity_state=IdentityState.MATCHED,
+            )
+            db.add_all([root, movie])
+            await db.flush()
+            release = MovieRelease(
+                movie_id=movie.id,
+                raw_release_name="Blade.Runner.1982.The.Final.Cut.1080p.BluRay.x264-GRP",
+                tracker_title="Blade.Runner.1982.The.Final.Cut.1080p.BluRay.x264-GRP",
+                parsed_edition="Final Cut",
+                effective_edition="Final Cut",
+            )
+            db.add(release)
+            await db.flush()
+            db.add(MediaDirectory(
+                storage_root_id=root.id,
+                resolved_path="/media/movies/Blade Runner (1982) [Final Cut]",
+                movie_release_id=release.id,
+            ))
+            await db.commit()
+
+    asyncio.run(seed())
+    behavior = FakeBehavior(movie_results=[
+        SearchResult(
+            title="Blade.Runner.1982.2160p.UHD.BluRay.REMUX-GRP",
+            guid="theatrical",
+            download_url="http://upgrade-indexer.test/theatrical",
+            size=20,
+            seeders=100,
+            published=None,
+        ),
+        SearchResult(
+            title="Blade.Runner.1982.The.Final.Cut.2160p.UHD.BluRay.REMUX-GRP",
+            guid="final-cut",
+            download_url="http://upgrade-indexer.test/final-cut",
+            size=20,
+            seeders=5,
+            published=None,
+        ),
+    ])
+    _run_search(behavior)
+
+    rows = client.get("/api/v1/upgrade-candidates?media_type=movies").json()
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Blade.Runner.1982.The.Final.Cut.2160p.UHD.BluRay.REMUX-GRP"
+    assert rows[0]["current_edition"] == "Final Cut"
+    assert rows[0]["candidate_edition"] == "Final Cut"
+    assert rows[0]["comparison_snapshot"]["current"]["edition"] == "Final Cut"
+    assert rows[0]["comparison_snapshot"]["candidate"]["edition"] == "Final Cut"
+
+    behavior.movie_results = [behavior.movie_results[0]]
+    _run_search(behavior)
+    assert client.get("/api/v1/upgrade-candidates?media_type=movies").json() == []
+
+
 def test_read_only_media_folder_is_never_searched_and_is_reported_once(client: TestClient) -> None:
     """A read-only folder cannot receive a replacement, so it yields no rows.
 

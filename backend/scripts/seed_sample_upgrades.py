@@ -121,7 +121,7 @@ MOVIE_SAMPLES: list[dict] = [
         "size": 84 * 1024**3, "seeders": 31, "leechers": 1,
     },
     {
-        "title": "Blade Runner", "year": 1982, "tmdb_id": 78, "edition": "The Final Cut",
+        "title": "Blade Runner", "year": 1982, "tmdb_id": 78, "edition": "Final Cut",
         "types": ["quality", "custom_format"],
         "folder": "Blade.Runner.1982.The.Final.Cut.1080p.BluRay.x264-GROUP",
         "current_quality": "1080p Encode",
@@ -139,7 +139,7 @@ MOVIE_SAMPLES: list[dict] = [
         "size": 69 * 1024**3, "seeders": 11, "leechers": 0,
     },
     {
-        "title": "The Lord of the Rings: The Two Towers", "year": 2002, "tmdb_id": 121, "edition": "Extended Edition",
+        "title": "The Lord of the Rings: The Two Towers", "year": 2002, "tmdb_id": 121, "edition": "Extended Cut",
         "types": ["proper"],
         "folder": "The.Lord.of.the.Rings.The.Two.Towers.2002.Extended.2160p.WEB-DL.DDP5.1.H.265-GROUP",
         "current_quality": "2160p WEB-DL",
@@ -281,6 +281,8 @@ def _comparison(
     candidate_name: str,
     replaces: list[str] | None = None,
     current_quality: str | None = None,
+    current_edition: str | None = None,
+    candidate_edition: str | None = None,
 ) -> tuple[dict, list[dict], int, int]:
     """Snapshot, gained formats and both totals for one sample pair.
 
@@ -312,18 +314,20 @@ def _comparison(
         MARKER: True,
         "note": "Seeded for UI review; not a real search result.",
         "current": {
+            "edition": current_edition,
             "score_snapshot": {"formats": current},
             "releases": [
                 {
                     "release_id": uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{name}").hex,
                     "release_name": name,
                     "quality": current_quality,
+                    "edition": current_edition,
                     "custom_format_score": sum(item["contribution"] for item in _matched_formats(name)),
                 }
                 for name in (replaces or [current_name])
             ],
         },
-        "candidate": {"formats": candidate},
+        "candidate": {"edition": candidate_edition, "formats": candidate},
     }
     return (
         snapshot,
@@ -489,7 +493,12 @@ def seed() -> None:
         del season_number
     for sample, movie_id, movie_release_id in _seed_movies(connection):
         snapshot, added, current_score, score = _comparison(
-            sample["folder"], sample["candidate"], None, sample["current_quality"]
+            sample["folder"],
+            sample["candidate"],
+            None,
+            sample["current_quality"],
+            sample["edition"],
+            sample["edition"],
         )
         connection.execute(
             """insert into upgrade_candidates

@@ -24,6 +24,7 @@ class UpgradeCurrentRelease(BaseModel):
     release_id: str
     release_name: str
     quality: str | None = None
+    edition: str | None = None
     custom_format_score: int = 0
 
 
@@ -56,6 +57,7 @@ class UpgradeCandidateResponse(BaseModel):
     current_release_ids: list[UUID]
     current_release_name: str
     current_quality: str | None = None
+    current_edition: str | None = None
     current_custom_format_score: int
     #: Null means the title inherits the default Quality Profile.
     quality_profile_id: UUID | None = None
@@ -68,6 +70,7 @@ class UpgradeCandidateResponse(BaseModel):
     indexer_color: str | None = None
     title: str
     quality: str | None = None
+    candidate_edition: str | None = None
     custom_format_score: int
     score_delta: int
     size: int | None = None

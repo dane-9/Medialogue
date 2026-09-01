@@ -398,6 +398,7 @@ export interface UpgradeCurrentRelease {
   id: string
   name: string
   quality?: string
+  edition?: string
   customFormatScore: number
 }
 
@@ -435,16 +436,18 @@ export interface UpgradeCandidate {
   currentReleaseIds: string[]
   currentReleaseName: string
   currentQuality?: string
-    currentCustomFormatScore: number
-    /** Undefined means this title inherits the default Quality Profile. */
-    qualityProfileId?: string
-    qualityProfileName?: string
-    qualityProfileInherited: boolean
+  currentEdition?: string
+  currentCustomFormatScore: number
+  /** Undefined means this title inherits the default Quality Profile. */
+  qualityProfileId?: string
+  qualityProfileName?: string
+  qualityProfileInherited: boolean
   indexerId?: string
   indexerName: string
   indexerColor?: string
   title: string
   quality?: string
+  candidateEdition?: string
   customFormatScore: number
   scoreDelta: number
   size?: number

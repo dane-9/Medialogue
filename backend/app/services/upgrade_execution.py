@@ -45,6 +45,7 @@ from app.models.domain import (
 from app.parser import parse_release
 from app.services.events import create_event, publish_live_event
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
+from app.services.movie_editions import edition_label, same_edition
 
 
 QBittorrentClientFactory = Callable[..., Any]
@@ -70,6 +71,21 @@ def _ids(values: list[str] | None) -> list[UUID]:
         except ValueError:
             continue
     return result
+
+
+def _candidate_edition(row: UpgradeCandidate) -> str | None:
+    candidate = (row.comparison_snapshot or {}).get("candidate") or {}
+    if isinstance(candidate, dict) and "edition" in candidate:
+        value = candidate.get("edition")
+        return str(value).strip() if value else None
+    return parse_release(row.title).edition
+
+
+def _movie_edition_error(current: str | None, candidate: str | None) -> str:
+    return (
+        "The replacement edition does not match the current Movie edition "
+        f"({edition_label(current)} → {edition_label(candidate)}). Search for upgrades again."
+    )
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -186,6 +202,16 @@ async def submit_upgrade_candidate(
         raise AppError("UPGRADE_NOT_DOWNLOADABLE", "The indexer did not provide a downloadable torrent for this candidate.", status_code=409)
 
     releases = await _current_releases(db, row)
+    if row.media_type == MediaType.MOVIES:
+        current = releases[0]
+        assert isinstance(current, MovieRelease)
+        candidate_edition = _candidate_edition(row)
+        if not same_edition(current.effective_edition, candidate_edition):
+            raise AppError(
+                "UPGRADE_EDITION_MISMATCH",
+                _movie_edition_error(current.effective_edition, candidate_edition),
+                status_code=409,
+            )
     await _assert_writable_target(db, row, releases)
     await _assert_old_torrents_archived(db, row)
 
@@ -335,9 +361,18 @@ async def associate_upgrade_torrent(
         if row.media_type == MediaType.MOVIES:
             movie = await db.get(Movie, row.movie_id) if row.movie_id else None
             old_ids = _ids(row.current_release_ids)
-            if movie is None or len(old_ids) != 1:
+            old_release = await db.get(MovieRelease, old_ids[0]) if len(old_ids) == 1 else None
+            if movie is None or old_release is None:
                 row.execution_state = "handoff_attention"
                 row.execution_error = "The Movie replacement target changed before qBittorrent reported the upgrade."
+                return {"upgrade_execution_id": str(row.id)}
+            expected_edition = _candidate_edition(row)
+            if (
+                not same_edition(old_release.effective_edition, expected_edition)
+                or not same_edition(expected_edition, parsed.edition)
+            ):
+                row.execution_state = "handoff_attention"
+                row.execution_error = _movie_edition_error(old_release.effective_edition, parsed.edition)
                 return {"upgrade_execution_id": str(row.id)}
             release = MovieRelease(
                 movie_id=movie.id,
