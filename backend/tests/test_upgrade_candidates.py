@@ -193,6 +193,63 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
     assert "download_url" not in row
     assert "guid" not in row
 
+    behavior.movie_results = [
+        SearchResult(
+            title="Upgrade.Movie.2024.2160p.WEB-DL.REPACK.x264-OTHER",
+            guid="cross-group-quality-upgrade",
+            download_url="http://upgrade-indexer.test/download/cross-group-quality",
+            size=20,
+            seeders=50,
+            published=None,
+            leechers=2,
+        )
+    ]
+    _run_search(behavior)
+    cross_group_quality = client.get("/api/v1/upgrade-candidates").json()
+    assert len(cross_group_quality) == 1
+    assert "quality" in cross_group_quality[0]["upgrade_types"]
+    assert "repack" not in cross_group_quality[0]["upgrade_types"]
+    assert cross_group_quality[0]["comparison_snapshot"]["candidate"]["same_release_group"] is False
+    assert any(
+        item["suppressed_for_upgrade"]
+        for item in cross_group_quality[0]["comparison_snapshot"]["candidate"]["formats"]
+        if item["matched"]
+    )
+
+    for marker in ("REPACK", "PROPER"):
+        behavior.movie_results = [
+            SearchResult(
+                title=f"Upgrade.Movie.2024.1080p.WEB-DL.{marker}.x264-OTHER",
+                guid=f"cross-group-{marker.casefold()}",
+                download_url=f"http://upgrade-indexer.test/download/{marker.casefold()}",
+                size=10,
+                seeders=50,
+                published=None,
+                leechers=2,
+            )
+        ]
+        _run_search(behavior)
+        assert client.get("/api/v1/upgrade-candidates").json() == []
+
+    for marker, expected_type in (("REPACK2", "repack"), ("PROPER2", "proper")):
+        behavior.movie_results = [
+            SearchResult(
+                title=f"Upgrade.Movie.2024.1080p.WEB-DL.{marker}.x264-GRP",
+                guid=f"same-group-{marker.casefold()}",
+                download_url=f"http://upgrade-indexer.test/download/{marker.casefold()}",
+                size=10,
+                seeders=50,
+                published=None,
+                leechers=2,
+            )
+        ]
+        _run_search(behavior)
+        revision_rows = client.get("/api/v1/upgrade-candidates").json()
+        assert len(revision_rows) == 1
+        assert expected_type in revision_rows[0]["upgrade_types"]
+        comparison = revision_rows[0]["comparison_snapshot"]
+        assert comparison["candidate"]["same_release_group"] is True
+
 
 def test_show_season_pack_must_match_highest_quality_and_wait_until_season_complete(client: TestClient) -> None:
     headers = _login(client)

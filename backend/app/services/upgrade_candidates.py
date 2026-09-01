@@ -49,6 +49,7 @@ class CurrentReleaseEvidence:
     custom_format_score: int
     score_snapshot: dict[str, Any]
     parse_snapshot: dict[str, Any]
+    release_group: str
     release_scope: ReleaseScope | None = None
 
 
@@ -77,6 +78,7 @@ class ScoredCandidate:
     quality_preference: int
     custom_format_score: int
     parsed: Any
+    revision_rank: int
     upgrade_types: tuple[str, ...]
     added_custom_formats: tuple[dict[str, Any], ...]
     snapshot: dict[str, Any]
@@ -106,19 +108,66 @@ def _matched_formats(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _revision_rank(parsed: Any) -> int:
     attrs = parsed.attributes
-    return int(bool(attrs.repack)) + int(bool(attrs.proper)) + int(bool(attrs.real))
+    numbered = max(
+        int(getattr(attrs, "repack_revision", 0) or 0),
+        int(getattr(attrs, "proper_revision", 0) or 0),
+        int(getattr(attrs, "rerip_revision", 0) or 0),
+    )
+    return numbered + int(bool(attrs.real))
+
+
+def _release_group_key(value: str | None) -> str | None:
+    normalized = str(value or "").strip().casefold()
+    return None if normalized in {"", "nogroup", "nogrp"} else normalized
+
+
+def _same_release_group(reference: CurrentReleaseEvidence, candidate_parsed: Any) -> bool:
+    current = _release_group_key(reference.release_group)
+    candidate = _release_group_key(candidate_parsed.release_group)
+    return current is not None and candidate is not None and current == candidate
+
+
+def _revision_context_matches(target: UpgradeTarget, candidate_parsed: Any) -> bool:
+    if not _same_release_group(target.reference, candidate_parsed):
+        return False
+    # A season pack is a new consolidation artifact, not a revision of one of
+    # its component episode torrents. Revision credit only applies when the
+    # current season is already represented by a pack from the same group.
+    if target.media_type == MediaType.SHOWS:
+        return all(item.release_scope == ReleaseScope.SEASON_PACK for item in target.releases)
+    return True
 
 
 def _current_revision_reasons(reference: CurrentReleaseEvidence, candidate_parsed: Any) -> list[str]:
-    current = parse_release(reference.release_name).attributes
+    current = parse_release(reference.release_name)
+    if not _same_release_group(reference, candidate_parsed):
+        return []
+    if _revision_rank(candidate_parsed) <= _revision_rank(current):
+        return []
+    attrs = candidate_parsed.attributes
     reasons: list[str] = []
-    if candidate_parsed.attributes.repack and not current.repack:
+    if attrs.repack:
         reasons.append("repack")
-    if candidate_parsed.attributes.proper and not current.proper:
+    if attrs.proper:
         reasons.append("proper")
-    if candidate_parsed.attributes.real and not current.real:
+    if attrs.rerip or attrs.real:
         reasons.append("revision")
     return reasons
+
+
+def _revision_dependent_format(format_definition: EvaluationFormat) -> bool:
+    """Whether a Custom Format's match depends on a revision marker."""
+
+    for condition in format_definition.conditions:
+        if condition.negate:
+            continue
+        evidence = " ".join(
+            str(value or "")
+            for value in (condition.name, condition.value, condition.pattern)
+        ).casefold()
+        if any(marker in evidence for marker in ("repack", "proper", "rerip", "real")):
+            return True
+    return False
 
 
 def _added_or_improved_formats(
@@ -210,6 +259,7 @@ async def _release_evidence(
         custom_format_score=int(score),
         score_snapshot=score_snapshot,
         parse_snapshot=parsed.to_dict(),
+        release_group=parsed.release_group,
         release_scope=release.release_scope if isinstance(release, ShowRelease) else None,
     )
 
@@ -432,6 +482,9 @@ def _score_candidate(
         score_overrides=profile.overrides,
         context={"indexer": indexer.name},
     )
+    same_release_group = _same_release_group(target.reference, parsed)
+    revision_context_matches = _revision_context_matches(target, parsed)
+    formats_by_id = {str(item.id): item for item in formats}
     format_snapshots: list[dict[str, Any]] = []
     for item in evaluation.formats:
         key = str(item.custom_format_id)
@@ -442,12 +495,24 @@ def _score_candidate(
         evidence["override_score"] = int(override) if override is not None else None
         evidence["effective_score"] = int(override if override is not None else configured)
         evidence["score_offset"] = int(item.score_offset)
-        evidence["contribution"] = int(item.score_contribution)
+        suppressed_revision = (
+            item.matched
+            and not revision_context_matches
+            and (definition := formats_by_id.get(key)) is not None
+            and _revision_dependent_format(definition)
+        )
+        evidence["contribution"] = 0 if suppressed_revision else int(item.score_contribution)
+        evidence["suppressed_for_upgrade"] = bool(suppressed_revision)
+        evidence["suppression_reason"] = (
+            "Revision markers only receive upgrade credit for the same release group and release scope."
+            if suppressed_revision
+            else None
+        )
         evidence.pop("score", None)
         evidence.pop("configured_score", None)
         format_snapshots.append(evidence)
 
-    score = int(evaluation.total_score)
+    score = sum(int(item.get("contribution") or 0) for item in format_snapshots)
     reasons: list[str] = []
     if preference < target.reference.quality_preference:
         reasons.append("quality")
@@ -460,7 +525,11 @@ def _score_candidate(
     ):
         reasons.append("season_pack")
 
-    revision_reasons = _current_revision_reasons(target.reference, parsed)
+    revision_reasons = (
+        _current_revision_reasons(target.reference, parsed)
+        if revision_context_matches
+        else []
+    )
     # A revision by itself must not sacrifice Custom Format score. Quality and
     # season-pack reasons have their own explicit policy and may legitimately do so.
     if score >= target.reference.custom_format_score or "quality" in reasons or "season_pack" in reasons:
@@ -483,6 +552,7 @@ def _score_candidate(
             "release_ids": [str(item.release_id) for item in target.releases],
             "reference_release_id": str(target.reference.release_id),
             "release_name": target.reference.release_name,
+            "release_group": target.reference.release_group,
             "quality": target.reference.quality,
             "quality_preference": target.reference.quality_preference,
             "custom_format_score": target.reference.custom_format_score,
@@ -495,6 +565,9 @@ def _score_candidate(
             "minimum_quality_met": floor_status,
             "minimum_custom_format_score_met": minimum_score_met,
             "parse": parsed.to_dict(),
+            "release_group": parsed.release_group,
+            "same_release_group": same_release_group,
+            "revision_context_eligible": revision_context_matches,
             "formats": format_snapshots,
         },
         "upgrade_types": reasons,
@@ -510,6 +583,7 @@ def _score_candidate(
         quality_preference=preference,
         custom_format_score=score,
         parsed=parsed,
+        revision_rank=_revision_rank(parsed) if revision_context_matches else 0,
         upgrade_types=tuple(reasons),
         added_custom_formats=added_formats,
         snapshot=snapshot,
@@ -522,7 +596,7 @@ def _candidate_sort_key(candidate: ScoredCandidate) -> tuple[Any, ...]:
     return (
         candidate.quality_preference,
         -candidate.custom_format_score,
-        -_revision_rank(candidate.parsed),
+        -candidate.revision_rank,
         -(candidate.result.seeders if candidate.result.seeders is not None else -1),
         published_rank,
         candidate.indexer_priority,

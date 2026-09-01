@@ -123,10 +123,12 @@ _PROVIDERS: dict[str, str] = {
 }
 
 _REGIONS = {
+    "AU",
     "FIN",
     "BRA",
     "GBR",
     "USA",
+    "US",
     "UK",
     "CAN",
     "AUS",
@@ -158,12 +160,9 @@ _LANGUAGES = {
 
 _ATTRIBUTE_CANONICAL = {
     "hybrid": "Hybrid",
-    "repack": "REPACK",
-    "proper": "PROPER",
     "real": "REAL",
     "internal": "INTERNAL",
     "limited": "LIMITED",
-    "rerip": "RERIP",
     "reencode": "RE-ENCODE",
     "remastered": "REMASTERED",
     "complete": "COMPLETE",
@@ -197,6 +196,7 @@ _KNOWN_NON_TITLE = {
     "dvd",
     "dvd5",
     "dvd9",
+    "dvdrip",
     "ntsc",
     "pal",
     "x264",
@@ -222,12 +222,17 @@ _KNOWN_NON_TITLE = {
     "truehd",
     "dts-hd",
     "dts",
+    "dts-es",
     "ma",
     "hra",
     "dd",
     "dd+",
     "flac",
     "aac",
+    "pcm",
+    "lpcm",
+    "opus",
+    "mp3",
     "atmos",
     "dts:x",
     "dtsx",
@@ -238,6 +243,15 @@ _KNOWN_NON_TITLE = {
     "internal",
     "limited",
     "complete",
+    "dual-audio",
+    "dualaudio",
+    "multi",
+    "multilang",
+    "auro3d",
+    "auro-3d",
+    "3d",
+    "nogroup",
+    "nogrp",
     "aka",
 }
 
@@ -278,7 +292,17 @@ def normalize_release_name(raw_name: str) -> str:
 
     value = _clean_raw_name(raw_name)
     value = value.replace("’", "'").replace("`", "'")
+    # Preserve decimal punctuation in a title when a later release year makes
+    # the intent unambiguous (``Jackass.2.5.2007``). Dots between technical
+    # numbers such as ``S01.1080p`` remain ordinary release separators.
+    decimal_marker = "\u0000DECIMAL\u0000"
+    value = re.sub(
+        r"(?P<left>\d)\.(?P<right>\d)(?=.*(?<!\d)(?:19\d{2}|20\d{2})(?!\d))",
+        rf"\g<left>{decimal_marker}\g<right>",
+        value,
+    )
     value = re.sub(r"[._]+", " ", value)
+    value = value.replace(decimal_marker, ".")
     value = re.sub(r"\s+", " ", value)
     return value.strip(" -")
 
@@ -403,6 +427,20 @@ def _extract_tv_boundary(normalized: str) -> tuple[int | None, tuple[int, ...], 
     return None, (), None, None
 
 
+def _identity_title_parts(value: str) -> tuple[str | None, tuple[str, ...], str | None]:
+    """Separate tracker disambiguators from the title sent to metadata search."""
+
+    title = value.strip(" -")
+    geographic = None
+    geographic_match = re.search(r"\s*[([](?P<code>[A-Za-z]{2,3})[)\]]\s*$", title)
+    if geographic_match:
+        geographic = geographic_match.group("code").upper()
+        title = title[: geographic_match.start()].strip(" -")
+    names = [item.strip(" -") for item in re.split(r"\s+AKA\s+", title, flags=re.IGNORECASE)]
+    names = [item for item in names if item]
+    return (names[0] if names else None), tuple(names[1:]), geographic
+
+
 def parse_season_folder(name: str) -> int | None:
     """Return the season number a directory name denotes, if any.
 
@@ -513,6 +551,8 @@ def _release_group(raw: str, normalized: str) -> tuple[str, str, bool]:
         r"(?:WEB|Blu|DTS)\s*$", prefix, re.IGNORECASE
     ):
         return "NoGroup", normalized, False
+    if group.casefold() in {"nogroup", "nogrp"}:
+        return "NoGroup", normalize_release_name(raw[:cut].rstrip(" -")), False
     # A plain library title may legitimately end in a hyphenated word, such
     # as ``The X-Files`` or ``The Fresh Prince of Bel-Air``. Only interpret
     # the final segment as a scene release group when the preceding text also
@@ -572,12 +612,16 @@ def _quality(normalized: str) -> QualityInfo:
 
     has_dvd5, has_dvd9, disc_layout = _dvd_disc_layout(normalized)
     has_dvd = bool(re.search(r"\bDVD(?:\s*[59])?\b", normalized, re.I))
+    has_dvdrip = bool(re.search(r"\bDVD[- ]?Rip\b", normalized, re.I))
     has_bluray = bool(re.search(r"\b(?:UHD\s+)?Blu[- ]?Ray\b", normalized, re.I))
+    has_uhd_bluray = bool(re.search(r"\bUHD\s+Blu[- ]?Ray\b", normalized, re.I))
     has_remux = bool(re.search(r"\bREMUX\b", normalized, re.I))
     has_webdl = bool(re.search(r"\bWEB[- ]?DL\b|\bWEB-DL\b", normalized, re.I))
     has_webrip = bool(re.search(r"\bWEB[- ]?Rip\b|\bWEBRip\b", normalized, re.I))
     has_hdtv = bool(re.search(r"\bHDTV\b", normalized, re.I))
     has_dvd_remux = bool(re.search(r"\bDVD\s+REMUX\b", normalized, re.I))
+    has_native_disc_video = bool(re.search(r"\b(?:AVC|HEVC|MPEG[- ]?2|VC[- ]?1)\b", normalized, re.I))
+    has_encode_video = bool(re.search(r"\b(?:x26[45]|H[. -]?26[45]|AV1)\b", normalized, re.I))
     standard = None
     standard_match = re.search(r"\b(NTSC|PAL)\b", normalized, re.I)
     if standard_match:
@@ -590,6 +634,15 @@ def _quality(normalized: str) -> QualityInfo:
         return QualityInfo("Full Disc DVD9", resolution, "DVD", None, disc_layout, standard, raw_tokens)
     if has_dvd5 and not has_dvd_remux:
         return QualityInfo("Full Disc DVD5", resolution, "DVD", None, disc_layout, standard, raw_tokens)
+
+    # Tracker full-disc names omit REMUX and identify the untouched disc by its
+    # native authored codec. Encodes conventionally use x264/x265/H.264/H.265.
+    if has_bluray and not has_remux and has_native_disc_video and not has_encode_video:
+        canonical = "Full Disc UHD BluRay" if has_uhd_bluray else "Full Disc BluRay"
+        return QualityInfo(canonical, resolution, "BluRay", "Full Disc", None, standard, raw_tokens)
+
+    if has_dvd and not has_dvdrip and not has_dvd_remux and has_native_disc_video and not has_encode_video:
+        return QualityInfo("Full Disc DVD", resolution, "DVD", "Full Disc", None, standard, raw_tokens)
 
     if has_remux and has_bluray and resolution:
         return QualityInfo(f"{resolution} BluRay REMUX", resolution, "BluRay", "REMUX", None, standard, raw_tokens)
@@ -614,7 +667,7 @@ def _quality(normalized: str) -> QualityInfo:
             return QualityInfo(f"{resolution} {canonical_source}", resolution, source, None, None, standard, raw_tokens)
 
     # Plain DVD releases are encodes rather than full-disc images.
-    if has_dvd and resolution:
+    if (has_dvd or has_dvdrip) and resolution:
         return QualityInfo(f"{resolution} DVD Encode", resolution, "DVD", "Encode", None, standard, raw_tokens)
 
     # A token-only DVD5/DVD9 name was already handled above; retain the
@@ -649,16 +702,31 @@ def _attributes(normalized: str) -> ReleaseAttributes:
     for key, canonical in _ATTRIBUTE_CANONICAL.items():
         if re.search(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])", folded):
             found.append(canonical)
+    revisions: dict[str, int] = {}
+    for marker in ("repack", "proper", "rerip"):
+        matches = re.findall(rf"(?<![a-z0-9]){marker}(\d*)(?![a-z0-9])", folded)
+        revision = max((int(value or "1") for value in matches), default=0)
+        revisions[marker] = revision
+        if revision:
+            found.append(f"{marker.upper()}{revision if revision > 1 else ''}")
+    three_d = bool(re.search(r"(?<![a-z0-9])3d(?![a-z0-9])", folded))
+    if three_d:
+        found.append("3D")
     # Stable order follows the canonical vocabulary, not source token order.
     return ReleaseAttributes(
         values=tuple(found),
         hybrid="Hybrid" in found,
-        repack="REPACK" in found,
-        proper="PROPER" in found,
+        repack=revisions["repack"] > 0,
+        proper=revisions["proper"] > 0,
+        rerip=revisions["rerip"] > 0,
         real="REAL" in found,
         internal="INTERNAL" in found,
         limited="LIMITED" in found,
         complete="COMPLETE" in found,
+        three_d=three_d,
+        repack_revision=revisions["repack"],
+        proper_revision=revisions["proper"],
+        rerip_revision=revisions["rerip"],
     )
 
 
@@ -741,6 +809,9 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
         channels=channels,
         atmos=bool(re.search(r"(?<![a-z0-9])atmos(?![a-z0-9])", folded)),
         dts_x=bool(re.search(r"(?<![a-z0-9])dts x(?![a-z0-9])", folded)),
+        auro_3d=bool(re.search(r"(?<![a-z0-9])auro\s*3d(?![a-z0-9])", folded)),
+        dual_audio=bool(re.search(r"(?<![a-z0-9])dual\s*audio(?![a-z0-9])", folded)),
+        multi_audio=bool(re.search(r"(?<![a-z0-9])multi(?:lang|audio)?(?![a-z0-9])", folded)),
     )
 
 
@@ -814,8 +885,20 @@ def _language_and_regions(normalized: str) -> tuple[tuple[str, ...], tuple[str, 
             add(name)
 
     tokens = _tokens(normalized)
+    resolution_index = next(
+        (index for index, token in enumerate(tokens) if re.fullmatch(r"\d{3,4}[pi]|4K|8K", token, re.I)),
+        -1,
+    )
+    disc_source_index = next(
+        (
+            index
+            for index, token in enumerate(tokens)
+            if re.fullmatch(r"Blu-?Ray|DVD(?:5|9)?", token, re.I)
+        ),
+        -1,
+    )
     regions: list[str] = []
-    for token in tokens:
+    for index, token in enumerate(tokens):
         clean = token.strip("[](){}.,")
         upper = clean.upper()
 
@@ -824,7 +907,13 @@ def _language_and_regions(normalized: str) -> tuple[tuple[str, ...], tuple[str, 
             add(_LANGUAGE_CODES_UPPER[upper])
         if upper in _LANGUAGE_TOKENS:
             add(_LANGUAGE_TOKENS[upper])
-        if upper in _REGIONS and upper not in regions:
+        positional_disc_region = (
+            clean == upper
+            and re.fullmatch(r"[A-Z]{2,3}", clean) is not None
+            and resolution_index < index < disc_source_index
+            and upper not in {"PAL", "UHD"}
+        )
+        if (upper in _REGIONS or positional_disc_region) and upper not in regions:
             regions.append(upper)
 
     # A German release tagged DL carries the original audio too; ML adds English.
@@ -899,6 +988,13 @@ def _unknown_tokens(
         folded = stripped.casefold()
         if folded in known:
             continue
+        if audio.codec and re.fullmatch(
+            r"(?:truehd|dts(?:-?hd)?(?:-?ma|-?hra)?|ddp|dd\+?|e-?ac-?3|flac|aac|opus|l?pcm)"
+            r"[1-9](?:[._][0-9]){0,2}",
+            stripped,
+            re.IGNORECASE,
+        ):
+            continue
         if re.fullmatch(r"\d+(?:\.\d+)?", stripped):
             # Channel numbers are known; standalone year/resolution numbers
             # in the technical tail are not useful unknown evidence.
@@ -956,13 +1052,16 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
             # Technical suffixes are sometimes separated only by a provider
             # token; remove a trailing release-group artefact if present.
             episode_title = episode_title.strip(" ._-([") or None
+        primary_title, alternate_titles, geographic = _identity_title_parts(title_part)
         identity = IdentityInfo(
-            title_part or None,
-            identity_year,
-            season,
-            episodes,
-            episode_title or None,
+            title_candidate=primary_title,
+            year=identity_year,
+            season=season,
+            episodes=episodes,
+            episode_title=episode_title or None,
             seasons=_extract_season_numbers(normalized, season),
+            alternate_titles=alternate_titles,
+            geographic=geographic,
         )
         boundary_for_technical = marker_end
     else:
@@ -983,16 +1082,33 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
                 leading_tech = None
                 leading_title = ""
             if leading_title and re.search(r"[A-Za-z]", leading_title):
-                identity = IdentityInfo(leading_title, year, None, (), None)
+                primary_title, alternate_titles, geographic = _identity_title_parts(leading_title)
+                identity = IdentityInfo(
+                    title_candidate=primary_title,
+                    year=year,
+                    alternate_titles=alternate_titles,
+                    geographic=geographic,
+                )
                 boundary_for_technical = leading_tech if leading_tech is not None else len(normalized)
             else:
                 title_part = normalized[: year_match.start()].strip(" -")
-                identity = IdentityInfo(title_part or None, year, None, (), None)
+                primary_title, alternate_titles, geographic = _identity_title_parts(title_part)
+                identity = IdentityInfo(
+                    title_candidate=primary_title,
+                    year=year,
+                    alternate_titles=alternate_titles,
+                    geographic=geographic,
+                )
                 boundary_for_technical = year_match.end()
         else:
             technical_start = _technical_boundary(normalized)
             title_part = normalized[:technical_start].strip(" -") if technical_start is not None else normalized
-            identity = IdentityInfo(title_part or None, None, None, (), None)
+            primary_title, alternate_titles, geographic = _identity_title_parts(title_part)
+            identity = IdentityInfo(
+                title_candidate=primary_title,
+                alternate_titles=alternate_titles,
+                geographic=geographic,
+            )
             boundary_for_technical = technical_start or 0
 
     quality = _quality(normalized)
@@ -1003,6 +1119,8 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
     video = _video(cleaned, normalized)
     audio = _audio(cleaned, normalized)
     languages, regions = _language_and_regions(normalized)
+    if identity.geographic and identity.geographic not in regions:
+        regions = (*regions, identity.geographic)
 
     technical_start = _technical_boundary(normalized, start=boundary_for_technical)
     # If no explicit quality was found, the suffix after the identity boundary

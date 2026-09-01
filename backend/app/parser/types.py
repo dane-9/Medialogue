@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterator
 
 
-PARSER_VERSION = "1.3.0"
+PARSER_VERSION = "1.4.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +30,8 @@ class IdentityInfo:
     # ``season`` remains the primary/first season for compatibility, while
     # callers making containment decisions must use this complete set.
     seasons: tuple[int, ...] = ()
+    alternate_titles: tuple[str, ...] = ()
+    geographic: str | None = None
 
     @property
     def title(self) -> str | None:
@@ -59,6 +61,7 @@ class IdentityInfo:
         value = asdict(self)
         value["episodes"] = list(self.episodes)
         value["seasons"] = list(self.season_numbers)
+        value["alternate_titles"] = list(self.alternate_titles)
         value["title"] = self.title_candidate
         return value
 
@@ -105,10 +108,15 @@ class ReleaseAttributes:
     hybrid: bool = False
     repack: bool = False
     proper: bool = False
+    rerip: bool = False
     real: bool = False
     internal: bool = False
     limited: bool = False
     complete: bool = False
+    three_d: bool = False
+    repack_revision: int = 0
+    proper_revision: int = 0
+    rerip_revision: int = 0
 
     def __contains__(self, value: object) -> bool:
         return any(str(value).casefold() == item.casefold() for item in self.values)
@@ -136,10 +144,15 @@ class ReleaseAttributes:
             "hybrid": self.hybrid,
             "repack": self.repack,
             "proper": self.proper,
+            "rerip": self.rerip,
             "real": self.real,
             "internal": self.internal,
             "limited": self.limited,
             "complete": self.complete,
+            "three_d": self.three_d,
+            "repack_revision": self.repack_revision,
+            "proper_revision": self.proper_revision,
+            "rerip_revision": self.rerip_revision,
         }
 
 
@@ -195,6 +208,9 @@ class AudioInfo:
     channels: str | None = None
     atmos: bool = False
     dts_x: bool = False
+    auro_3d: bool = False
+    dual_audio: bool = False
+    multi_audio: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

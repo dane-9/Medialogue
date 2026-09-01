@@ -68,7 +68,7 @@ MOVIE_CORPUS = [
     ),
     (
         "The Land of Happiness AKA Onnen maa 1993 576i FIN PAL DVD5 MPEG-2 DD 3.1-SPLiFF",
-        "The Land of Happiness AKA Onnen maa",
+        "The Land of Happiness",
         1993,
         "Full Disc DVD5",
         None,
@@ -101,6 +101,11 @@ def test_real_world_movie_corpus():
         assert result.quality.canonical == quality
         assert result.edition == edition
         assert result.release_group == group
+
+    alias = parse_release(
+        "The Land of Happiness AKA Onnen maa 1993 576i FIN PAL DVD5 MPEG-2 DD 3.1-SPLiFF"
+    )
+    assert alias.identity.alternate_titles == ("Onnen maa",)
 
 
 def test_tv_boundaries_and_multi_episode():
@@ -231,18 +236,18 @@ def test_progressive_dvd_remux_qualities_are_canonical_supported_values():
     assert pal.quality.canonical in QUALITY_BY_NAME
 
 
-def test_the_same_resolution_is_one_quality_whatever_the_broadcast_standard():
+def test_the_same_resolution_is_one_full_disc_quality_whatever_the_broadcast_standard():
     pal = parse_release("Movie 2000 576p PAL DVD MPEG-2 DD 2.0-GROUP")
     ntsc = parse_release("Movie 2000 576p NTSC DVD MPEG-2 DD 2.0-GROUP")
 
-    assert pal.quality.canonical == ntsc.quality.canonical == "576p DVD Encode"
+    assert pal.quality.canonical == ntsc.quality.canonical == "Full Disc DVD"
     assert (pal.quality.tv_standard, ntsc.quality.tv_standard) == ("PAL", "NTSC")
 
 
-def test_a_dvd_release_without_a_standard_token_is_still_classified():
+def test_a_full_disc_dvd_without_a_standard_token_is_still_classified():
     parsed = parse_release("Movie 2000 480p DVD MPEG-2 DD 2.0-GROUP")
 
-    assert parsed.quality.canonical == "480p DVD Encode"
+    assert parsed.quality.canonical == "Full Disc DVD"
     assert parsed.quality.tv_standard is None
 
 
@@ -255,7 +260,7 @@ def test_extended_resolution_and_source_combinations_are_structured():
         "Movie 2026 1080i HDTV MPEG-2-GROUP": "1080i HDTV",
         "Movie 2026 540p WEB-DL H.264-GROUP": "540p WEB-DL",
         "Movie 2020 720p BluRay REMUX AVC-GROUP": "720p BluRay REMUX",
-        "Movie 2000 576i PAL DVD MPEG-2-GROUP": "576i DVD Encode",
+        "Movie 2000 576i PAL DVD MPEG-2-GROUP": "Full Disc DVD",
         "Movie 2000 480p DVD REMUX MPEG-2-GROUP": "480p DVD REMUX",
     }
 
@@ -305,6 +310,52 @@ def test_vc1_is_recognized_as_video_codec_not_unknown_release_text():
     assert result.year == 2009
     assert result.video.codec == "VC-1"
     assert "VC-1" not in result.unknown_tokens
+
+
+def test_tracker_naming_convention_distinguishes_encodes_and_full_discs() -> None:
+    decimal_title = parse_release(
+        "Jackass.2.5.2007.480p.PMTP.WEB-DL.AAC.2.0.H.264-Muffin"
+    )
+    dvd_rip = parse_release(
+        "Love Finds Andy Hardy 1938 480p DVDRip DD 1.0 x264-HANDJOB"
+    )
+    bluray = parse_release("Ava 2020 1080p AUS Blu-ray AVC DTS-HD MA 5.1-NAND")
+    uhd = parse_release(
+        "Antibodies 2020 2160p USA UHD Blu-ray HEVC TrueHD 7.1 Atmos-BOMBARDEiRS"
+    )
+    dvd = parse_release("Melody Time 1948 Censored 480p NTSC DVD MPEG-2 DD 2.0-Nadya")
+
+    assert decimal_title.title == "Jackass 2.5"
+    assert decimal_title.quality.canonical == "480p WEB-DL"
+    assert dvd_rip.quality.canonical == "480p DVD Encode"
+    assert bluray.quality.canonical == "Full Disc BluRay"
+    assert bluray.regions == ("AUS",)
+    assert uhd.quality.canonical == "Full Disc UHD BluRay"
+    assert uhd.regions == ("USA",)
+    assert dvd.quality.canonical == "Full Disc DVD"
+
+
+def test_tracker_identity_metadata_and_revision_markers_are_structured() -> None:
+    geographic = parse_release(
+        "The Office (US) 2005 S01 1080p WEB-DL DDP5.1 H.264-GRP"
+    )
+    revision = parse_release(
+        "Movie 2024 REPACK2 PROPER3 RERIP2 3D 1080p WEB-DL Dual-Audio Auro3D DDP5.1-GRP"
+    )
+    no_group = parse_release("Movie 2024 1080p WEB-DL MULTI DDP5.1-NOGRP")
+
+    assert geographic.title == "The Office"
+    assert geographic.identity.geographic == "US"
+    assert "US" in geographic.regions
+    assert "DDP5" not in geographic.unknown_tokens
+    assert revision.attributes.repack_revision == 2
+    assert revision.attributes.proper_revision == 3
+    assert revision.attributes.rerip_revision == 2
+    assert revision.attributes.three_d is True
+    assert revision.audio.dual_audio is True
+    assert revision.audio.auro_3d is True
+    assert no_group.release_group == "NoGroup"
+    assert no_group.audio.multi_audio is True
 
 
 def test_season_folder_names_cover_the_common_layouts() -> None:

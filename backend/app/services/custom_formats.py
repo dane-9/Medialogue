@@ -350,6 +350,8 @@ def _structured_evidence(
                 values.append(f"{parsed.audio.codec} Atmos")
         if parsed.audio.dts_x:
             values.append("DTS:X")
+        if parsed.audio.auro_3d:
+            values.append("Auro3D")
         return tuple(values), "audio codec"
     if ctype == "audio_channels":
         return ((parsed.audio.channels,) if parsed.audio.channels else ()), "audio channels"

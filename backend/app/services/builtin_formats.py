@@ -259,6 +259,9 @@ BUILTIN_KEYS = frozenset(item.key for item in BUILTIN_FORMATS)
 DEFAULT_QUALITY_PROFILE_NAME = "Default"
 DEFAULT_QUALITY_PROFILE_MARKER = "medialogue-default-quality-profile-v1"
 DEFAULT_EXCLUDED_QUALITY_DEFINITIONS: frozenset[str] = frozenset({
+    "Full Disc UHD BluRay",
+    "Full Disc BluRay",
+    "Full Disc DVD",
     "Full Disc DVD5",
     "Full Disc DVD9",
     "Full Disc DVD5/DVD9",
