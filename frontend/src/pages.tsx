@@ -12,6 +12,8 @@ import { describeScan } from './lib/scanProgress'
 import { needsAttention, statusTone } from './lib/status'
 import { diffReleaseTokens } from './lib/releaseTokens'
 import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason } from './lib/upgradeTokenReason'
+import { formatBytes } from './components/ReleaseResults'
+import { formatPeers, swarmHealth } from './lib/swarm'
 import { qualityLabel } from './lib/qualityLabel'
 import { pathParts } from './lib/pathParts'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
@@ -3961,6 +3963,7 @@ export function UpgradeMediaPage() {
   // A candidate already in flight keeps its own per-row actions, and a blocked
   // one cannot be submitted at all, so neither can join the batch.
   const picked = useMemo(() => rows.filter((item) => !item.executionState && item.executionEligible && !excluded.has(item.id)), [rows, excluded])
+  const pickedBytes = useMemo(() => picked.reduce((total, item) => total + (item.size ?? 0), 0), [picked])
   const mediaType = rows[0]?.mediaType ?? 'movies'
   const noun = mediaType === 'movies' ? 'Movie' : 'Show'
   const eligibleClients = useMemo(() => clients.filter((client) => client.enabled && client.scope === mediaType), [clients, mediaType])
@@ -3980,7 +3983,6 @@ export function UpgradeMediaPage() {
   return <Page
     title="Upgrade Media"
     subtitle="Review the best known replacement for each release. Downloads and destructive cleanup always require explicit actions."
-    action={<Button variant="primary" icon="refresh" disabled={searching} onClick={() => void search()}>{searching ? 'Starting…' : 'Search for upgrades'}</Button>}
   >
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
@@ -4018,7 +4020,7 @@ export function UpgradeMediaPage() {
       <div className="upgrade-scroll">
         <span className="new-media-col-head upgrade-head">Current release<em>CF Score</em></span>
         <span aria-hidden="true" />
-        <span className="new-media-col-head upgrade-head">Upgrade<em>CF Score</em></span>
+        <span className="new-media-col-head upgrade-head">Upgrade<em><span>CF Score</span><i>Peers</i></em></span>
         {rows.map((item) => {
           const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
           // The season folder for shows, the movie's own folder for movies. Falls
@@ -4138,6 +4140,7 @@ export function UpgradeMediaPage() {
                     <Icon name="caret" size={14} />
                     <span className="release-pill upgrade-quality-new">{qualityLabel(item.quality)}</span>
                   </span>}
+                  {item.size !== undefined && <span className="upgrade-fact">{formatBytes(item.size)}</span>}
                 </small>
               </span>
               <span className="upgrade-action">
@@ -4147,6 +4150,14 @@ export function UpgradeMediaPage() {
                     {item.scoreDelta !== 0 && <em className={item.scoreDelta > 0 ? 'cf-plus' : 'cf-minus'}>{item.scoreDelta > 0 ? '+' : ''}{item.scoreDelta}</em>}
                   </span>
                 </UpgradeCompare>
+                {/* The column is fixed width; the pill inside hugs its text,
+                    exactly as it does in Interactive Search. */}
+                <span className="upgrade-peers">
+                  <Tooltip
+                    className={`release-pill release-pill-swarm swarm-${swarmHealth(item.seeders)}`}
+                    content={`${item.seeders ?? 'N/A'} seeders, ${item.leechers ?? 'N/A'} leechers`}
+                  >{formatPeers(item.seeders, item.leechers)}</Tooltip>
+                </span>
                 {item.executionState && <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>}
                 {(item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && progress !== undefined && <span className="upgrade-progress-wrap"><Progress value={progress} tone="blue" /><span>{progress}%</span></span>}
                 {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}
@@ -4173,12 +4184,13 @@ export function UpgradeMediaPage() {
           />
         </span>
         <div className="toolbar-spacer" />
+        <Button variant="secondary" icon="refresh" disabled={searching} onClick={() => void search()}>{searching ? 'Starting…' : 'Search for upgrades'}</Button>
         <Button
           variant="primary"
           icon="download"
           disabled={!picked.length || Boolean(busyId)}
           onClick={openConfirm}
-        >{`Upgrade ${picked.length} ${picked.length === 1 ? noun : `${noun}s`}`}</Button>
+        >{`Upgrade ${picked.length} ${picked.length === 1 ? noun : `${noun}s`}${pickedBytes ? ` · ${formatBytes(pickedBytes)}` : ''}`}</Button>
       </div>
       </div>
     </>}

@@ -3897,11 +3897,14 @@ select.input { background-color: var(--input-bg); }
 .upgrade-modal-copy p { margin: 0; color: var(--muted); line-height: 1.5; }
 .upgrade-destination-form { padding: 0; }
 /* The score closes each cell, so both sides can be compared down a column. */
-.upgrade-score { display: flex; flex: none; align-items: baseline; gap: 4px; margin-left: auto; padding-left: var(--s2); cursor: pointer; }
+.upgrade-score { display: flex; flex: none; align-items: baseline; justify-content: flex-end; gap: 4px; width: 96px; margin-left: auto; cursor: pointer; }
 .upgrade-score b { color: var(--text); font: var(--t-sm) var(--mono); }
 .upgrade-score em { font: 500 var(--t-micro) var(--mono); font-style: normal; }
 .upgrade-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
-.upgrade-head em { font-style: normal; }
+.upgrade-head em { display: flex; align-items: center; gap: var(--s2); font-style: normal; }
+.upgrade-head em > span { width: 96px; text-align: right; }
+.upgrade-head i { width: 52px; font-style: normal; text-align: center; }
+.upgrade-fact { color: var(--muted); font-family: var(--mono); font-size: var(--t-micro); }
 .upgrade-quality-change { display: inline-flex; align-items: center; gap: 1px; color: var(--muted); }
 .upgrade-quality-change .release-pill { max-width: none; text-transform: none; letter-spacing: 0; }
 
@@ -3982,6 +3985,8 @@ select.input { background-color: var(--input-bg); }
 /* Quality names are written, not shouted: uppercasing turned 1080p into 1080P. */
 .upgrade-quality-new { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 
+.upgrade-peers { display: flex; width: 52px; flex: none; justify-content: center; }
+.upgrade-peers .release-pill-swarm { flex: none; }
 .upgrade-action { display: flex; flex: none; align-items: center; gap: var(--s2); }
 .upgrade-progress-wrap { display: flex; align-items: center; gap: var(--s2); min-width: 110px; font: var(--t-micro) var(--mono); color: var(--muted); }
 .upgrade-progress-wrap .progress { flex: 1; }
