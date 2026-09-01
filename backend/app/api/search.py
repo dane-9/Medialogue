@@ -13,6 +13,7 @@ from app.api import tmdb as tmdb_api
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
+from app.integrations.qbittorrent import magnet_info_hash, torrent_payload_info_hash
 from app.models.auth import AdminUser
 from app.models.domain import Episode, InteractiveSearchResult, Job, MediaProfileOverride, MediaType, Movie, QualityProfile, Season, Show
 from app.parser import parse_release
@@ -587,8 +588,10 @@ async def download_search_result(
         "content_layout": client.content_layout,
         "add_to_top": add_to_top,
     }
+    submitted_info_hash: str | None = None
     try:
         if result.download_url.casefold().startswith("magnet:"):
+            submitted_info_hash = magnet_info_hash(result.download_url)
             await qbittorrent_client.add_url(
                 result.download_url,
                 **qbittorrent_options,
@@ -600,6 +603,7 @@ async def download_search_result(
                 timeout=float(indexer.timeout_seconds),
             )
             torrent_bytes = await torznab.fetch_torrent(result.download_url)
+            submitted_info_hash = torrent_payload_info_hash(torrent_bytes)
             safe_filename = "".join(character if character.isalnum() or character in " ._-" else "_" for character in result.title).strip()
             await qbittorrent_client.add_torrent(
                 torrent_bytes,
@@ -648,6 +652,7 @@ async def download_search_result(
         result.target_entity_id = target_season.id
 
     result.selected_at = now
+    result.submitted_info_hash = submitted_info_hash
     result.selected_download_client_id = client.id
     result.selection_snapshot = {
         "search_result_id": str(result.id),
@@ -655,6 +660,7 @@ async def download_search_result(
         "indexer_id": str(result.indexer_id) if result.indexer_id else None,
         "indexer_name": result.indexer_name,
         "release_name": result.title,
+        "submitted_info_hash": submitted_info_hash,
         "size": result.size,
         "seeders": result.seeders,
         "leechers": result.leechers,

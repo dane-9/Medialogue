@@ -228,6 +228,31 @@ def _read_only_guard(releases: list[MovieRelease | ShowRelease]) -> tuple[bool, 
     return True, None
 
 
+def _preferred_release_name(release: MovieRelease | ShowRelease) -> str:
+    """Use the selected indexer title, retaining the folder name as fallback."""
+
+    tracker_title = str(release.tracker_title or "").strip()
+    if not tracker_title and isinstance(release, MovieRelease):
+        tracker_title = str((release.selection_snapshot or {}).get("release_name") or "").strip()
+    if not tracker_title:
+        torrents = sorted(
+            release.torrents,
+            key=lambda item: (item.last_seen_at, item.id),
+            reverse=True,
+        )
+        tracker_title = next(
+            (
+                str((torrent.metadata_json or {}).get("tracker_title") or "").strip()
+                for torrent in torrents
+                if str((torrent.metadata_json or {}).get("tracker_title") or "").strip()
+            ),
+            "",
+        )
+    if tracker_title and not release.tracker_title:
+        release.tracker_title = tracker_title
+    return tracker_title or release.raw_release_name
+
+
 async def _release_evidence(
     db: AsyncSession,
     *,
@@ -236,13 +261,14 @@ async def _release_evidence(
     release: MovieRelease | ShowRelease,
     quality_order: tuple[str, ...],
 ) -> CurrentReleaseEvidence | None:
+    release_name = _preferred_release_name(release)
     score, score_snapshot = await evaluate_current_release_score(
         db,
         media_type=media_type,
         entity_id=entity_id,
-        release_name=release.raw_release_name,
+        release_name=release_name,
     )
-    parsed = parse_release(release.raw_release_name)
+    parsed = parse_release(release_name)
     quality = (
         release.quality_definition.name
         if release.quality_definition is not None
@@ -253,7 +279,7 @@ async def _release_evidence(
         return None
     return CurrentReleaseEvidence(
         release_id=release.id,
-        release_name=release.raw_release_name,
+        release_name=release_name,
         quality=quality,
         quality_preference=preference,
         custom_format_score=int(score),
@@ -282,6 +308,7 @@ async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int]:
                 .options(
                     selectinload(MovieRelease.quality_definition),
                     selectinload(MovieRelease.directories).selectinload(MediaDirectory.storage_root),
+                    selectinload(MovieRelease.torrents),
                 )
                 .where(MovieRelease.movie_id == movie.id, MovieRelease.release_state == ReleaseState.CURRENT)
                 .order_by(MovieRelease.first_seen_at, MovieRelease.id)
@@ -356,6 +383,7 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
                     .options(
                         selectinload(ShowRelease.quality_definition),
                         selectinload(ShowRelease.directories).selectinload(MediaDirectory.storage_root),
+                        selectinload(ShowRelease.torrents),
                     )
                     .where(
                         ShowRelease.show_id == show.id,

@@ -3925,6 +3925,10 @@ export function UpgradeMediaPage() {
           // The season folder for shows, the movie's own folder for movies. Falls
           // back to the container when a season's files span several folders.
           const folderName = item.releaseFolder ?? pathParts(item.currentPaths[0])?.name
+          // The selected indexer title is the useful comparison against the new
+          // candidate. The API falls back to the folder-derived release name
+          // when no tracker title was retained.
+          const currentDisplayName = item.currentReleaseName || folderName || item.mediaTitle
           // Only a real change: quality is unchanged on most Custom Format,
           // repack and proper upgrades, and "X → X" reads as a difference.
           const qualityChanged = Boolean(item.quality) && item.quality !== item.currentQuality
@@ -3949,7 +3953,7 @@ export function UpgradeMediaPage() {
                 type="button"
                 role="checkbox"
                 aria-checked={chosen.has(item.id) && batchable}
-                aria-label={`Upgrade ${folderName ?? item.mediaTitle}`}
+                aria-label={`Upgrade ${currentDisplayName}`}
                 className={`new-media-check ${chosen.has(item.id) && batchable ? 'on' : ''}`}
                 disabled={!batchable}
                 onClick={() => toggleChosen(item.id)}
@@ -3958,7 +3962,7 @@ export function UpgradeMediaPage() {
                 {item.posterRef ? <PosterImage reference={item.posterRef} title={item.mediaTitle} /> : <Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={16} />}
               </span>
               <span className="upgrade-target-copy">
-                <strong title={item.currentPaths[0]}>{folderName ?? item.mediaTitle}</strong>
+                <strong title={item.currentPaths[0]}>{currentDisplayName}</strong>
                 <small>{item.mediaTitle}{item.seasonNumber !== undefined ? ` · Season ${item.seasonNumber}` : item.mediaYear ? ` · ${item.mediaYear}` : ''}</small>
               </span>
             </div>
@@ -3983,11 +3987,11 @@ export function UpgradeMediaPage() {
                   {/* Where the candidate came from, before why it is better.
                       Tinted by the indexer's own colour, as search results are. */}
                   <span
-                    className="badge badge-neutral"
+                    className="release-pill release-pill-indexer"
                     style={indexerBadge
                       ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background }
                       : undefined}
-                  >{item.indexerName}</span>
+                  ><i>Indexer</i>{item.indexerName}</span>
                   {reasons.map((type) => <Badge key={type} tone="amber">{upgradeTypeLabel(type)}</Badge>)}
                   {qualityChanged && <span className="upgrade-quality-change">{item.currentQuality ?? 'Unknown'}<Icon name="arrow" size={12} />{item.quality}</span>}
                 </small>
@@ -3995,7 +3999,7 @@ export function UpgradeMediaPage() {
               <span className="upgrade-action">
                 {item.executionState
                   ? <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>
-                  : !item.executionEligible && <Badge tone="grey">Blocked</Badge>}
+                  : !item.executionEligible && <Badge tone="neutral">Blocked</Badge>}
                 {(item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && progress !== undefined && <span className="upgrade-progress-wrap"><Progress value={progress} tone="blue" /><span>{progress}%</span></span>}
                 {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}
                 {item.executionState === 'cleanup_required' && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={() => void reviewCleanup(item)}>Review cleanup</Button>}

@@ -322,6 +322,10 @@ async def associate_upgrade_torrent(
         row.torrent_id = torrent.id
     elif row.torrent_id != torrent.id:
         return None
+    torrent.metadata_json = {
+        **(torrent.metadata_json or {}),
+        "tracker_title": row.title,
+    }
 
     if not incoming_ids:
         parsed = parse_release(torrent.name)
@@ -338,6 +342,7 @@ async def associate_upgrade_torrent(
             release = MovieRelease(
                 movie_id=movie.id,
                 raw_release_name=torrent.name,
+                tracker_title=row.title,
                 parsed_title=parsed.identity.title_candidate or movie.title,
                 parsed_year=parsed.identity.year or movie.year,
                 parsed_edition=parsed.edition,
@@ -371,6 +376,7 @@ async def associate_upgrade_torrent(
                 show_id=show.id,
                 season_id=season.id,
                 raw_release_name=torrent.name,
+                tracker_title=row.title,
                 release_scope=ReleaseScope.SEASON_PACK,
                 quality_definition_id=quality.id if quality else None,
                 release_group=parsed.release_group,

@@ -17,12 +17,13 @@ from time import perf_counter
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import QBittorrentClient, TorrentTrackerSnapshot
 from app.models.domain import (
     IntegrationType,
+    InteractiveSearchResult,
     JobStatus,
     MediaType,
     RemotePathMapping,
@@ -53,6 +54,38 @@ from app.services.reconciliation import (
 QBittorrentClientFactory = Callable[[str, str, str], QBittorrentClient]
 
 logger = logging.getLogger(__name__)
+
+
+async def _selected_tracker_title(
+    db: AsyncSession,
+    *,
+    info_hash: str,
+    torrent_name: str,
+) -> str | None:
+    """Return the exact selected indexer title for an observed torrent."""
+
+    selected = await db.scalar(
+        select(InteractiveSearchResult)
+        .where(
+            InteractiveSearchResult.selected_at.is_not(None),
+            InteractiveSearchResult.submitted_info_hash == info_hash,
+        )
+        .order_by(InteractiveSearchResult.selected_at.desc())
+        .limit(1)
+    )
+    if selected is None:
+        # Compatibility for selections made before info hashes were persisted.
+        selected = await db.scalar(
+            select(InteractiveSearchResult)
+            .where(
+                InteractiveSearchResult.selected_at.is_not(None),
+                func.lower(InteractiveSearchResult.title) == torrent_name.casefold(),
+            )
+            .order_by(InteractiveSearchResult.selected_at.desc())
+            .limit(1)
+        )
+    title = str(selected.title or "").strip() if selected is not None else ""
+    return title or None
 
 _client_locks: defaultdict[UUID, asyncio.Lock] = defaultdict(asyncio.Lock)
 
@@ -532,6 +565,17 @@ async def _poll_download_client(
                             message=f"Download completed: {observed.name}.",
                             details={"client_id": str(client.id), "info_hash": info_hash},
                         )
+
+                tracker_title = await _selected_tracker_title(
+                    db,
+                    info_hash=info_hash,
+                    torrent_name=observed.name,
+                )
+                if tracker_title:
+                    torrent.metadata_json = {
+                        **(torrent.metadata_json or {}),
+                        "tracker_title": tracker_title,
+                    }
 
                 row = await db.scalar(
                     select(TorrentClientObservation).where(

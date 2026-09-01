@@ -234,6 +234,9 @@ class MovieRelease(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     movie_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("movies.id", ondelete="CASCADE"), nullable=False)
     raw_release_name: Mapped[str] = mapped_column(Text, nullable=False)
+    # Exact title returned by the indexer for the selected torrent. The raw
+    # release name remains the filesystem/folder-derived fallback.
+    tracker_title: Mapped[str | None] = mapped_column(Text)
     parsed_title: Mapped[str | None] = mapped_column(String(512))
     parsed_year: Mapped[int | None] = mapped_column(Integer)
     parsed_edition: Mapped[str | None] = mapped_column(String(128))
@@ -337,6 +340,7 @@ class ShowRelease(TimestampMixin, Base):
     show_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), nullable=False)
     season_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("seasons.id", ondelete="SET NULL"))
     raw_release_name: Mapped[str] = mapped_column(Text, nullable=False)
+    tracker_title: Mapped[str | None] = mapped_column(Text)
     release_scope: Mapped[ReleaseScope] = mapped_column(SAEnum(ReleaseScope, native_enum=False), default=ReleaseScope.OTHER, nullable=False)
     quality_definition_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("quality_definitions.id", ondelete="SET NULL"))
     release_group: Mapped[str | None] = mapped_column(String(256))
@@ -965,6 +969,9 @@ class InteractiveSearchResult(Base):
     custom_format_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     warnings: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)
     selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Correlates the selected tracker result with the torrent qBittorrent later
+    # reports even when its internal name differs from the indexer listing.
+    submitted_info_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     selected_download_client_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("download_clients.id", ondelete="SET NULL"))
     selection_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

@@ -20,7 +20,8 @@ from app.integrations.qbittorrent import TorrentCategory
 from app.integrations.tmdb import TMDBEpisodeMetadata, TMDBMovieMatch, TMDBSeasonMetadata, TMDBShowDetails
 from app.integrations.torznab import SearchResult
 from app.main import create_app
-from app.models.domain import IdentityState, MediaProfileOverride, Movie, Season, Show
+from app.models.domain import IdentityState, InteractiveSearchResult, Job, MediaProfileOverride, MediaType, Movie, Season, Show
+from app.services.qbittorrent import _selected_tracker_title
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -39,6 +40,35 @@ def _user_formats(payload: dict) -> list[dict]:
     """Only the formats a test created; built-ins are filtered out."""
 
     return [item for item in payload.get("items", []) if not item.get("builtin")]
+
+
+def test_selected_tracker_title_correlates_by_hash_when_qbit_name_differs(client: TestClient) -> None:
+    async def exercise() -> str | None:
+        async with db_session.async_session_factory() as db:
+            job = Job(job_type="interactive_search", summary={})
+            db.add(job)
+            await db.flush()
+            db.add(
+                InteractiveSearchResult(
+                    job_id=job.id,
+                    indexer_name="Tracker",
+                    media_type=MediaType.MOVIES,
+                    target_entity_type="movie",
+                    guid="tracker-guid",
+                    title="Tracker.Display.Title.2026.1080p.WEB-DL-GRP",
+                    submitted_info_hash="a" * 40,
+                    selected_at=datetime.now(timezone.utc),
+                    expires_at=datetime.now(timezone.utc),
+                )
+            )
+            await db.commit()
+            return await _selected_tracker_title(
+                db,
+                info_hash="a" * 40,
+                torrent_name="Different internal torrent name",
+            )
+
+    assert asyncio.run(exercise()) == "Tracker.Display.Title.2026.1080p.WEB-DL-GRP"
 
 
 
@@ -593,14 +623,18 @@ def test_unattached_movie_search_commits_only_after_explicit_qbit_download(clien
                 assignment = await db.scalar(
                     select(MediaProfileOverride).where(MediaProfileOverride.movie_id == movie.id)
                 )
-                return movie, assignment
+                selected = await db.get(InteractiveSearchResult, uuid.UUID(result_id))
+                return movie, assignment, selected
 
-        movie, assignment = asyncio.run(committed_state())
+        movie, assignment, selected = asyncio.run(committed_state())
         assert str(movie.id) == submitted.json()["movie_id"]
         assert movie.title == "Inception"
         assert movie.overview == "A dream within a dream."
         assert assignment is not None
         assert str(assignment.quality_profile_id) == profile_id
+        assert selected is not None
+        assert selected.submitted_info_hash
+        assert selected.selection_snapshot["submitted_info_hash"] == selected.submitted_info_hash
 
         repeated = client.post(
             f"/api/v1/search-results/{result_id}/download",

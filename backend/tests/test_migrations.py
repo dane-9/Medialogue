@@ -156,6 +156,7 @@ def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> 
         "0011_download_telemetry.py",
         "0012_upgrade_candidates.py",
         "0013_upgrade_execution.py",
+        "0014_tracker_release_titles.py",
     ]
 
     previous = None

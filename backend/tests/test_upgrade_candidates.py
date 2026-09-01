@@ -144,7 +144,11 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
             )
             db.add_all([root, movie])
             await db.flush()
-            release = MovieRelease(movie_id=movie.id, raw_release_name="Upgrade.Movie.2024.1080p.WEB-DL.x264-GRP")
+            release = MovieRelease(
+                movie_id=movie.id,
+                raw_release_name="Upgrade Movie (2024)",
+                tracker_title="Upgrade.Movie.2024.1080p.WEB-DL.x264-GRP",
+            )
             db.add(release)
             await db.flush()
             db.add(
@@ -187,6 +191,7 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
     assert len(rows) == 1
     row = rows[0]
     assert row["title"] == "Upgrade.Movie.2024.2160p.WEB-DL.x264-GRP"
+    assert row["current_release_name"] == "Upgrade.Movie.2024.1080p.WEB-DL.x264-GRP"
     assert "quality" in row["upgrade_types"]
     assert row["execution_eligible"] is False
     assert "read-only" in row["execution_block_reason"]
@@ -359,6 +364,7 @@ def test_show_season_pack_must_match_highest_quality_and_wait_until_season_compl
     assert len(rows) == 1
     assert rows[0]["title"] == "Pack.Show.S01.2160p.WEB-DL.x264-GRP"
     assert rows[0]["current_quality"] == "2160p WEB-DL"
+    assert rows[0]["current_release_name"] == "Pack.Show.S01E01.2160p.WEB-DL.x264-GRP"
     assert "season_pack" in rows[0]["upgrade_types"]
     assert rows[0]["execution_eligible"] is True
 
