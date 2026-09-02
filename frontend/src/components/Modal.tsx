@@ -2,8 +2,9 @@ import { useEffect } from 'react'
 import type { PropsWithChildren, ReactNode } from 'react'
 import { Icon } from './Icon'
 
-export function Modal({ title, eyebrow, icon, brand, onClose, footer, titleAction, headerAction, headerCenter, wide, className, children }: PropsWithChildren<{
+export function Modal({ title, titleSuffix, eyebrow, icon, brand, onClose, footer, titleAction, headerAction, headerCenter, wide, className, children }: PropsWithChildren<{
   title: string
+  titleSuffix?: ReactNode
   eyebrow?: string
 
   icon?: Parameters<typeof Icon>[0]['name']
@@ -40,7 +41,7 @@ export function Modal({ title, eyebrow, icon, brand, onClose, footer, titleActio
         {icon && <span className="modal-head-icon"><Icon name={icon} size={18} /></span>}
         <div className="modal-head-copy">
           {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-          <h2>{title}</h2>
+          <h2>{title}{titleSuffix}</h2>
         </div>
         {titleAction && <div className="modal-head-title-action">{titleAction}</div>}
         <span className="modal-head-spacer" />

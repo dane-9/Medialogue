@@ -38,8 +38,8 @@ describe('upgradeTokenReason', () => {
   })
 
   it('attributes both combined dynamic-range tokens to the most specific format', () => {
-    expect(reasonFor('DV')).toBe('Custom Format: DV HDR10 (+50 to the score).')
-    expect(reasonFor('HDR')).toBe('Custom Format: DV HDR10 (+50 to the score).')
+    expect(reasonFor('DV')).toBe('Custom Format: DV HDR10 +50')
+    expect(reasonFor('HDR')).toBe('Custom Format: DV HDR10 +50')
   })
 
   it.each(['DV.HDR', 'DV.HDR10+'])('links both tokens in the combined %s display', (suffix) => {
@@ -53,7 +53,7 @@ describe('upgradeTokenReason', () => {
 
   it('shares a DV-only reason with the HDR half of the combined label', () => {
     const tokens = diffReleaseTokens('Movie.2026.DV.HDR.HEVC-GROUP', 'Movie.2026.HEVC-GROUP')
-    const dvReason = 'Custom Format: Dolby Vision (+45 to the score).'
+    const dvReason = 'Custom Format: Dolby Vision +45'
     const reasons = shareCombinedDynamicRangeReasons(
       tokens,
       tokens.map((token) => token.text === 'DV' ? dvReason : undefined),
@@ -72,8 +72,8 @@ describe('upgradeTokenReason', () => {
       },
     }, [{ name: 'Dolby Vision', delta: 45 }])
     const combinedContext = { ...context, addedCustomFormats: formats }
-    expect(reasonFor('DV', combinedContext)).toBe('Custom Format: DV HDR10 (+0 to the score).')
-    expect(reasonFor('HDR', combinedContext)).toBe('Custom Format: DV HDR10 (+0 to the score).')
+    expect(reasonFor('DV', combinedContext)).toBe('Custom Format: DV HDR10 +0')
+    expect(reasonFor('HDR', combinedContext)).toBe('Custom Format: DV HDR10 +0')
   })
 
   it('groups every adjacent token carrying the same reason', () => {
@@ -82,8 +82,8 @@ describe('upgradeTokenReason', () => {
       'Quality: 1080p WEB-DL to 2160p BluRay REMUX.',
       'Quality: 1080p WEB-DL to 2160p BluRay REMUX.',
       undefined,
-      'Custom Format: Lossless Atmos (+60 to the score).',
-      'Custom Format: Lossless Atmos (+60 to the score).',
+      'Custom Format: Lossless Atmos +60',
+      'Custom Format: Lossless Atmos +60',
     ])
     expect(groups.get(1)).toBe(groups.get(2))
     expect(groups.get(4)).toBe(groups.get(5))
@@ -110,7 +110,7 @@ describe('upgradeTokenReason', () => {
     const tokens = diffReleaseTokens('Movie.2026.TrueHD.Atmos-GROUP', 'Movie.2026.DD5.1-GROUP')
     const customContext = { ...context, addedCustomFormats: formats }
     const reasons = tokens.map((token) => upgradeTokenReason(token, customContext))
-    const expected = 'Custom Format: Preferred lossless audio (+75 to the score).'
+    const expected = 'Custom Format: Preferred lossless audio +75'
     expect(reasons[tokens.findIndex((token) => token.text === 'TrueHD')]).toBe(expected)
     expect(reasons[tokens.findIndex((token) => token.text === 'Atmos')]).toBe(expected)
     const groups = sharedUpgradeReasonTokenGroups(reasons)
@@ -119,7 +119,18 @@ describe('upgradeTokenReason', () => {
   })
 
   it('matches a Custom Format named with the token itself', () => {
-    expect(reasonFor('TrueHD')).toBe('Custom Format: TrueHD Atmos (+60 to the score).')
+    expect(reasonFor('TrueHD')).toBe('Custom Format: TrueHD Atmos +60')
+  })
+
+  it('names the reason after the section the format sits under', () => {
+    const sectioned = {
+      ...context,
+      formatSections: { 'dv hdr10': 'Dynamic Range', 'truehd atmos': 'Audio' },
+    }
+    expect(reasonFor('DV', sectioned)).toBe('Dynamic Range: DV HDR10 +50')
+    expect(reasonFor('TrueHD', sectioned)).toBe('Audio: TrueHD Atmos +60')
+    // A format the layout does not place keeps the generic label.
+    expect(reasonFor('DV', { ...context, formatSections: {} })).toBe('Custom Format: DV HDR10 +50')
   })
 
   it('attributes resolution and source tokens to the quality change', () => {

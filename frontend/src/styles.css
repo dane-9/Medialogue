@@ -1352,6 +1352,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .search-client-chooser .select { min-width: 130px; }
 .score-positive { color: var(--ok); }
 .score-negative { color: var(--err); }
+.score-zero { color: var(--muted); }
 
 .cf-condition-card {
   display: grid;
@@ -2234,6 +2235,11 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .cf-condition-chip em { color: var(--warn); font-style: normal; }
 .cf-condition-chip code { overflow: hidden; color: var(--accent-text); text-overflow: ellipsis; white-space: nowrap; }
+/* A score is a score wherever it is shown: the chip's accent is for condition
+   values, not for the profile's format scores. */
+.cf-condition-chip code.score-positive { color: var(--ok); }
+.cf-condition-chip code.score-negative { color: var(--err); }
+.cf-condition-chip code.score-zero { color: var(--muted); }
 .cf-condition-more { color: var(--faint); }
 .cf-card-add {
   align-items: center;
@@ -2852,7 +2858,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .show-season-tab-empty p { max-width: 430px; margin: 0; color: var(--muted); font-size: var(--t-xs); line-height: 1.55; }
 
 @media (max-width: 820px) {
-  .wizard-modal { width: min(100% - 16px, 720px); height: calc(100vh - 16px); }
+  .wizard-modal,
+  .upgrade-results-modal { width: min(100% - 16px, 720px); height: calc(100vh - 16px); }
   .wizard-profile > span { display: none; }
 
   .wizard-steps { display: none; }
@@ -2875,7 +2882,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 
 @media (max-width: 480px) {
-  .wizard-modal { width: calc(100% - 8px); height: calc(100vh - 8px); border-radius: var(--r-md); }
+  .wizard-modal,
+  .upgrade-results-modal { width: calc(100% - 8px); height: calc(100vh - 8px); border-radius: var(--r-md); }
   .wizard-head { gap: 8px; padding-inline: 8px; }
   .wizard-title-block h2 { font-size: 15px; }
   .wizard-setup { padding: 12px; }
@@ -3038,8 +3046,12 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .swarm-weak { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
 .swarm-dead { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
 .swarm-unknown { color: var(--muted); border-color: var(--line); background: var(--raised); }
-.release-name em {
+.release-name em,
+.release-edition {
   flex: none;
+  /* Its own font: in Interactive Search it inherited the mono type of
+     .release-tags, so anywhere else it silently rendered in the page sans. */
+  font: var(--t-micro) var(--mono);
   padding: 1px var(--s1);
   border-radius: var(--r-sm);
   background: var(--raised-2);
@@ -3109,7 +3121,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 @media (max-width: 900px) {
   .release-head,
-  .release-row { grid-template-columns: 54px minmax(140px, 1fr) 72px 84px 34px; }
+  .release-row,
+  .upgrade-results-current-row { grid-template-columns: 54px minmax(140px, 1fr) 72px 84px 34px; }
   .release-head > *:nth-child(n+5):not(.release-refresh),
   .release-row > *:nth-child(n+5):not(.release-refresh) { display: none; }
 }
@@ -3530,6 +3543,23 @@ body {
   background: var(--control-hover);
 }
 .button-ghost:hover { color: #fff; background: #323a4b; }
+/* A footer action is a real choice, not an aside: Cancel and Back get the same
+   filled box as any other secondary button rather than sitting borderless next
+   to the primary one. Ghost stays ghost everywhere else, where it is inline
+   with text or in a toolbar. */
+.modal-foot .button-ghost,
+.wizard-foot .button-ghost,
+.settings-footer .button-ghost {
+  color: #dcdedf;
+  border-color: transparent;
+  background: #323a46;
+}
+.modal-foot .button-ghost:hover,
+.wizard-foot .button-ghost:hover,
+.settings-footer .button-ghost:hover {
+  color: #fff;
+  background: var(--control-hover);
+}
 .button-danger {
   color: #fff;
   border-color: transparent;
@@ -3753,6 +3783,8 @@ select.input { background-color: var(--input-bg); }
     #25282e;
   box-shadow: var(--shadow-modal);
 }
+/* Head and foot only draw their dividing lines: the panel's own gradient runs
+   uninterrupted from the title bar through the body to the action row. */
 .modal-head,
 .modal-foot,
 .global-search-head,
@@ -3760,9 +3792,8 @@ select.input { background-color: var(--input-bg); }
 .wizard-head,
 .wizard-foot {
   border-color: #343a43;
-  background: rgba(36,40,47,.74);
+  background: transparent;
 }
-.modal > .modal-head { background: transparent; }
 .modal-head-icon { border-radius: 2px; background: rgba(65,122,155,.24); }
 .global-search-row { border-radius: 2px; }
 .global-search-row.active { color: #fff; background: #323a4b; }
@@ -3877,8 +3908,12 @@ select.input { background-color: var(--input-bg); }
 .upgrade-workspace > .upgrade-scroll { grid-row: 1; min-height: 0; overflow-y: auto; }
 .upgrade-workspace > .new-media-add { grid-column: 1; grid-row: 2; }
 .upgrade-scroll {
+  --upgrade-results-width: 116px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* Results is an appended action rail. Growing the grid by exactly its width
+     plus one gap leaves the original three comparison columns unchanged. */
+  width: calc(100% + var(--upgrade-results-width) + var(--s3));
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) var(--upgrade-results-width);
   gap: 0 var(--s3);
   align-content: start;
 }
@@ -3898,11 +3933,47 @@ select.input { background-color: var(--input-bg); }
   background: var(--surface);
 }
 .upgrade-scroll > .upgrade-row:last-child > .upgrade-cell { border-radius: 0 0 var(--r-md) var(--r-md); }
+.upgrade-results-head { justify-content: center; text-align: center; }
+.upgrade-results-cell { align-items: center; justify-content: center; padding-inline: var(--s2); }
+.upgrade-results-cell .button { width: 100%; justify-content: center; padding-inline: var(--s2); white-space: nowrap; }
+
+.upgrade-reason-score { font: var(--t-xs) var(--mono); font-weight: 600; }
+.upgrade-reason-score.positive { color: var(--ok); }
+.upgrade-reason-score.negative { color: var(--err); }
+.upgrade-reason-score.neutral { color: var(--muted); }
 
 .upgrade-modal-copy { display: grid; gap: var(--s3); margin-bottom: var(--s4); }
 /* .modal-body carries no padding of its own; forms bring theirs, prose does not. */
 .modal-copy-inset { padding: var(--s4); margin-bottom: 0; }
 .upgrade-modal-copy p { margin: 0; color: var(--muted); line-height: 1.5; }
+.upgrade-results-current { display: grid; padding: var(--s3) 0; border-bottom: 1px solid var(--line); background: var(--raised); }
+/* The list's own grid, so the current release lines its columns up with the
+   header beneath it: format box under FORMAT, score under CF SCORE. */
+.upgrade-results-current-row {
+  display: grid;
+  grid-template-columns: 54px minmax(200px, 1fr) 72px 84px 74px 96px 34px;
+  align-items: center;
+  gap: var(--s4);
+  padding: 0 var(--s4);
+}
+.upgrade-results-current-row > .release-quality { justify-self: center; }
+.upgrade-results-current-row .release-name strong { overflow: hidden; color: var(--text); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-results-modal {
+  /* Same box as the interactive-search wizard, so the two release browsers read
+     as one view: same width, same fixed height, list scrolling inside it. */
+  width: min(1103px, calc(100vw - 32px));
+  height: min(860px, calc(100vh - 48px));
+  max-height: none;
+}
+.upgrade-results-title-year { color: var(--muted); font-weight: 400; }
+.upgrade-results-modal .modal-body { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+.upgrade-results-browser { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.upgrade-results-browser .release-list { min-height: 180px; }
+.upgrade-results-browser .release-row:disabled { opacity: .68; }
+.upgrade-results-browser .release-row:disabled .release-name strong { color: var(--muted); }
+.upgrade-current-release-pill { color: var(--muted); border-color: var(--line-strong); background: var(--raised-2); }
+.upgrade-result-recommended { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+.upgrade-result-selected { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 .upgrade-destination-form { padding: 0; }
 /* The score closes each cell, so both sides can be compared down a column. */
 .upgrade-score-col { display: flex; width: 96px; flex: none; align-self: center; justify-content: flex-end; margin-left: auto; }
@@ -3983,7 +4054,6 @@ select.input { background-color: var(--input-bg); }
 .upgrade-target-copy strong, .upgrade-change-copy strong { display: block; overflow: hidden; color: var(--text); font: var(--t-sm)/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-target-copy small { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-target-meta { display: flex; min-width: 0; min-height: 20px; align-items: center; gap: var(--s2); }
-.upgrade-edition-pill { color: var(--muted); border-color: var(--line-strong); background: var(--raised-2); text-transform: none; letter-spacing: 0; }
 
 /* Matches the height of the quality profile control opposite it, so both
    titles sit on the same line rather than each centring its own stack. */
@@ -4002,7 +4072,13 @@ select.input { background-color: var(--input-bg); }
 /* Pills, so the line speaks the same language as the indexer and reason
    badges beside it; green marks the target, as it does in the title. */
 /* Quality names are written, not shouted: uppercasing turned 1080p into 1080P. */
-.upgrade-quality-new { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
+/* Only the indexer stays outlined here: its border carries the indexer's own
+   colour and is the one pill that identifies a source. The scene tags and the
+   quality change read as plain fills. Transparent rather than removed, so the
+   pills keep the height and rhythm they already had. */
+.upgrade-change-meta .badge,
+.upgrade-quality-change .release-pill { border-color: transparent; }
+.upgrade-quality-new { color: var(--ok); background: var(--ok-soft); }
 
 .upgrade-peers { display: flex; width: 52px; flex: none; justify-content: center; }
 .upgrade-peers .release-pill-swarm { flex: none; }

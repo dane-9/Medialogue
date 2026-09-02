@@ -5,6 +5,11 @@ export interface UpgradeTokenContext {
   addedCustomFormats: Array<{ name: string; delta: number; matchedTokens?: string[] }>
   currentQuality?: string
   quality?: string
+
+  /** Section a format sits under on the Custom Formats page, keyed by lower-cased
+   *  format name. Names the reason after what the format is about — "Dynamic
+   *  Range", "Video", "Audio" — instead of the generic mechanism. */
+  formatSections?: Record<string, string>
 }
 
 type FormatReason = { name: string; delta: number; matchedTokens?: string[] }
@@ -155,6 +160,19 @@ const SCENE_TAGS: Record<string, string> = {
 
 const words = (value: string) => tokenWords(value)
 
+/** "Dynamic Range: DV HDR10 +50" — the section the format is filed under reads
+ *  as its kind. Formats with no section keep the generic label, which is still
+ *  true of every one of them. The score closes the line so the renderer can
+ *  tint it; UPGRADE_REASON_SCORE is that agreement in one place. */
+function formatReasonText(format: FormatReason, sections?: Record<string, string>) {
+  const delta = format.delta >= 0 ? `+${format.delta}` : `${format.delta}`
+  const section = sections?.[format.name.toLowerCase()]
+  return `${section || 'Custom Format'}: ${format.name} ${delta}`
+}
+
+/** The trailing signed score of a reason, if it carries one. */
+export const UPGRADE_REASON_SCORE = /\s([+-]\d+)$/
+
 /** Explain why one token of a candidate title is an improvement.
  *
  * Returns undefined unless the token can be tied to a specific reason this
@@ -177,8 +195,7 @@ export function upgradeTokenReason(token: ReleaseTokenDiff, context: UpgradeToke
     for (const format of context.addedCustomFormats) {
       const named = words(format.name)
       if (!named.includes(candidate)) continue
-      const delta = format.delta >= 0 ? `+${format.delta}` : `${format.delta}`
-      return `Custom Format: ${format.name} (${delta} to the score).`
+      return formatReasonText(format, context.formatSections)
     }
   }
 
@@ -186,8 +203,7 @@ export function upgradeTokenReason(token: ReleaseTokenDiff, context: UpgradeToke
   // evidence ties its detected release tokens back to that arbitrary name.
   for (const format of context.addedCustomFormats) {
     if (!format.matchedTokens?.includes(key)) continue
-    const delta = format.delta >= 0 ? `+${format.delta}` : `${format.delta}`
-    return `Custom Format: ${format.name} (${delta} to the score).`
+    return formatReasonText(format, context.formatSections)
   }
 
   // Resolution and source tokens: the quality change already states itself.

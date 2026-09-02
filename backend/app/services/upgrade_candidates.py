@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Callable
@@ -515,6 +516,10 @@ def _score_candidate(
     parsed = parse_release(result.title)
     if target.media_type == MediaType.MOVIES and not same_edition(target.reference.edition, parsed.edition):
         return None
+    if target.media_type == MediaType.SHOWS:
+        seasons = tuple(parsed.identity.seasons)
+        if parsed.identity.episodes or len(seasons) != 1 or seasons[0] != target.search_target.season:
+            return None
     quality = parsed.quality.canonical
     preference = _quality_preference(quality, profile.quality_order)
     if quality is None or preference is None:
@@ -667,13 +672,77 @@ def _candidate_sort_key(candidate: ScoredCandidate) -> tuple[Any, ...]:
     )
 
 
+def _rejection_reasons(
+    target: UpgradeTarget,
+    profile: EffectiveProfile,
+    result: TorznabSearchResult,
+) -> list[str]:
+    if not result.title.strip():
+        return ["The indexer returned an empty release title."]
+    if not result.download_url:
+        return ["The indexer did not provide a downloadable torrent."]
+    parsed = parse_release(result.title)
+    if target.media_type == MediaType.MOVIES and not same_edition(target.reference.edition, parsed.edition):
+        return [f"Different movie edition: {parsed.edition or 'Theatrical Cut' }."]
+    if target.media_type == MediaType.SHOWS:
+        seasons = tuple(parsed.identity.seasons)
+        if parsed.identity.episodes:
+            return ["Individual episode releases are not eligible; Medialogue requires a season pack."]
+        if len(seasons) != 1 or seasons[0] != target.search_target.season:
+            return ["The release is not a pack for exactly this season."]
+    quality = parsed.quality.canonical
+    preference = _quality_preference(quality, profile.quality_order)
+    if quality is None or preference is None:
+        return ["The release quality is not recognized by this Quality Profile."]
+    if preference > target.reference.quality_preference:
+        return ["The release is lower quality than the current upgrade floor."]
+    return ["The release does not improve quality, Custom Format score, or revision status."]
+
+
+def _stored_search_result(
+    *,
+    target: UpgradeTarget,
+    indexer: ConfiguredIndexer,
+    result: TorznabSearchResult,
+    scored: ScoredCandidate | None,
+    profile: EffectiveProfile,
+) -> dict[str, Any]:
+    parsed = scored.parsed if scored is not None else parse_release(result.title)
+    guid = (result.guid or result.download_url or result.title).strip()
+    result_id = uuid.uuid5(uuid.NAMESPACE_URL, f"medialogue:{target.target_key}:{indexer.id}:{guid}")
+    published = _published_at(result.published)
+    return {
+        "id": str(result_id),
+        "indexer_id": str(indexer.id),
+        "indexer_name": indexer.name,
+        "indexer_priority": int(indexer.priority),
+        "guid": guid,
+        "download_url": result.download_url,
+        "title": result.title,
+        "quality": scored.quality if scored is not None else parsed.quality.canonical,
+        "edition": parsed.edition,
+        "release_group": parsed.release_group,
+        "custom_format_score": scored.custom_format_score if scored is not None else None,
+        "size": result.size,
+        "seeders": result.seeders,
+        "leechers": result.leechers,
+        "published_at": published.isoformat() if published else None,
+        "eligible": scored is not None,
+        "rejection_reasons": [] if scored is not None else _rejection_reasons(target, profile, result),
+        "upgrade_types": list(scored.upgrade_types) if scored is not None else [],
+        "added_custom_formats": [dict(item) for item in scored.added_custom_formats] if scored is not None else [],
+        "snapshot": scored.snapshot if scored is not None else {},
+        "parser": parsed.to_dict(),
+    }
+
+
 async def _search_target(
     db: AsyncSession,
     *,
     target: UpgradeTarget,
     indexers: list[ConfiguredIndexer],
     client_factory: TorznabClientFactory,
-) -> tuple[ScoredCandidate | None, int, bool]:
+) -> tuple[ScoredCandidate | None, list[dict[str, Any]], int, bool]:
     profile, formats = await _evaluation_policy(db, media_type=target.media_type, entity_id=target.profile_entity_id)
     eligible_scopes = (
         {MediaScope.MOVIES, MediaScope.BOTH}
@@ -686,11 +755,12 @@ async def _search_target(
         if indexer.enabled and indexer.enable_interactive_search and indexer.scope in eligible_scopes
     ]
     if not scoped:
-        return None, 0, False
+        return None, [], 0, False
     outcomes = await asyncio.gather(
         *[_query_indexer(indexer, target.search_target, client_factory=client_factory) for indexer in scoped]
     )
     candidates: list[ScoredCandidate] = []
+    stored_results: list[dict[str, Any]] = []
     failures = 0
     successful_indexers = 0
     by_id = {indexer.id: indexer for indexer in scoped}
@@ -704,10 +774,22 @@ async def _search_target(
             scored = _score_candidate(target=target, profile=profile, formats=formats, indexer=indexer, result=result)
             if scored is not None:
                 candidates.append(scored)
+            stored_results.append(
+                _stored_search_result(target=target, indexer=indexer, result=result, scored=scored, profile=profile)
+            )
     if not candidates:
-        return None, failures, successful_indexers > 0
+        return None, stored_results, failures, successful_indexers > 0
     candidates.sort(key=_candidate_sort_key)
-    return candidates[0], failures, True
+    stored_results.sort(
+        key=lambda item: (
+            not bool(item["eligible"]),
+            next(
+                (_candidate_sort_key(candidate) for candidate in candidates if str(candidate.indexer_id) == item["indexer_id"] and candidate.result.title == item["title"]),
+                (9999, 0, 0, 0, 0, 9999, str(item["title"]).casefold(), str(item["id"])),
+            ),
+        )
+    )
+    return candidates[0], stored_results, failures, True
 
 
 async def _persist_candidate(
@@ -715,6 +797,7 @@ async def _persist_candidate(
     *,
     target: UpgradeTarget,
     candidate: ScoredCandidate | None,
+    search_results: list[dict[str, Any]],
     searched_at: datetime,
 ) -> tuple[bool, bool]:
     row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.target_key == target.target_key))
@@ -767,6 +850,7 @@ async def _persist_candidate(
     row.execution_eligible = target.execution_eligible
     row.execution_block_reason = target.execution_block_reason
     row.comparison_snapshot = candidate.snapshot
+    row.search_results = search_results
     row.last_searched_at = searched_at
     await db.flush()
     publish_live_event(
@@ -816,7 +900,7 @@ async def _worker(
     found = removed = failures = searched = 0
     total = len(targets)
     for position, target in enumerate(targets, start=1):
-        best, target_failures, completed_search = await _search_target(
+        best, search_results, target_failures, completed_search = await _search_target(
             db,
             target=target,
             indexers=indexers,
@@ -829,6 +913,7 @@ async def _worker(
                 db,
                 target=target,
                 candidate=best,
+                search_results=search_results,
                 searched_at=utcnow(),
             )
             found += int(has_candidate)
@@ -882,7 +967,7 @@ async def run_upgrade_search_job(
     client_factory: TorznabClientFactory = TorznabClient,
     today: date | None = None,
 ) -> None:
-    """Evaluate the library and retain only each target's best known upgrade."""
+    """Evaluate the library and retain its recommendation plus every search result."""
 
     run_date = today or utcnow().date()
 

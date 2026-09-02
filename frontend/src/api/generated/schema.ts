@@ -2412,6 +2412,40 @@ export interface paths {
         patch: operations["set_upgrade_quality_profile_api_v1_upgrade_candidates__candidate_id__quality_profile_patch"];
         trace?: never;
     };
+    "/api/v1/upgrade-candidates/{candidate_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Upgrade Search Results */
+        get: operations["upgrade_search_results_api_v1_upgrade_candidates__candidate_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/{candidate_id}/results/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Select Upgrade Search Result */
+        post: operations["select_upgrade_search_result_api_v1_upgrade_candidates__candidate_id__results_select_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/upgrade-candidates/{candidate_id}/retry-handoff": {
         parameters: {
             query?: never;
@@ -6796,6 +6830,11 @@ export interface components {
             media_type: components["schemas"]["MediaType"];
             /** Media Year */
             media_year?: number | null;
+            /**
+             * Movie Has Multiple Editions
+             * @default false
+             */
+            movie_has_multiple_editions: boolean;
             /** Movie Id */
             movie_id?: string | null;
             /** Old Torrents Removed At */
@@ -6817,6 +6856,11 @@ export interface components {
             quality_profile_name?: string | null;
             /** Release Folder */
             release_folder?: string | null;
+            /**
+             * Result Count
+             * @default 1
+             */
+            result_count: number;
             /** Root Name */
             root_name?: string | null;
             /** Score Delta */
@@ -6985,6 +7029,83 @@ export interface components {
              * Format: uuid
              */
             job_id: string;
+        };
+        /** UpgradeSearchResultResponse */
+        UpgradeSearchResultResponse: {
+            /** Custom Format Score */
+            custom_format_score?: number | null;
+            /** Edition */
+            edition?: string | null;
+            /** Eligible */
+            eligible: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Indexer Color */
+            indexer_color?: string | null;
+            /** Indexer Id */
+            indexer_id?: string | null;
+            /** Indexer Name */
+            indexer_name: string;
+            /** Leechers */
+            leechers?: number | null;
+            /** Matched Format Names */
+            matched_format_names?: string[];
+            /** Parser */
+            parser?: {
+                [key: string]: unknown;
+            };
+            /** Published At */
+            published_at?: string | null;
+            /** Quality */
+            quality?: string | null;
+            /**
+             * Recommended
+             * @default false
+             */
+            recommended: boolean;
+            /** Rejection Reasons */
+            rejection_reasons?: string[];
+            /** Release Group */
+            release_group?: string | null;
+            /** Seeders */
+            seeders?: number | null;
+            /**
+             * Selected
+             * @default false
+             */
+            selected: boolean;
+            /** Size */
+            size?: number | null;
+            /** Title */
+            title: string;
+            /** Upgrade Types */
+            upgrade_types?: string[];
+        };
+        /** UpgradeSearchResultSelectRequest */
+        UpgradeSearchResultSelectRequest: {
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+        };
+        /** UpgradeSearchResultsResponse */
+        UpgradeSearchResultsResponse: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Results */
+            results: components["schemas"]["UpgradeSearchResultResponse"][];
+            /**
+             * Searched At
+             * Format: date-time
+             */
+            searched_at: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -12016,6 +12137,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeQualityProfileUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upgrade_search_results_api_v1_upgrade_candidates__candidate_id__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeSearchResultsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_upgrade_search_result_api_v1_upgrade_candidates__candidate_id__results_select_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeSearchResultSelectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCandidateResponse"];
                 };
             };
             /** @description Validation Error */

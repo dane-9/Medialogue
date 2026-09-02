@@ -30,7 +30,7 @@ const system = [
 const fallbackHealth: HealthIndicator[] = [
   { name: 'Plex', state: 'unknown', detail: 'Not configured', settingsTab: 'Plex', items: [] },
   { name: 'qBittorrent', state: 'unknown', detail: 'Not configured', settingsTab: 'qBittorrent', items: [] },
-  { name: 'Storage', state: 'unknown', detail: 'No media folders configured', settingsTab: 'Media', items: [] },
+  { name: 'Media Folders', state: 'unknown', detail: 'No media folders configured', settingsTab: 'Media', items: [] },
   { name: 'Indexers', state: 'unknown', detail: 'Not configured', settingsTab: 'Indexers', items: [] },
 ]
 

@@ -116,7 +116,7 @@ export const systemApi = {
           })),
         },
         {
-          name: 'Storage', settingsTab: 'Media', state: storageState,
+          name: 'Media Folders', settingsTab: 'Media', state: storageState,
           detail: storageRoots.length ? `${availableRoots}/${storageRoots.length} folders available` : 'No media folders configured',
           items: storageRoots.map((root) => ({
             id: root.id, name: root.name, state: serviceState(root.status), detail: root.status,

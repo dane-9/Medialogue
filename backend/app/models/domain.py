@@ -915,6 +915,9 @@ class UpgradeCandidate(TimestampMixin, Base):
     execution_eligible: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     execution_block_reason: Mapped[str | None] = mapped_column(Text)
     comparison_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    # Complete private result set from the latest target search. Download URLs
+    # stay here and are projected through a URL-free response schema.
+    search_results: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
     execution_state: Mapped[str | None] = mapped_column(String(40))
     submitted_info_hash: Mapped[str | None] = mapped_column(String(64))
     selected_download_client_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))

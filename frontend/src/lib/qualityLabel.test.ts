@@ -5,6 +5,7 @@ describe('qualityLabel', () => {
   it('drops BluRay from a remux, where it is the only possible source', () => {
     expect(qualityLabel('2160p BluRay REMUX')).toBe('2160p REMUX')
     expect(qualityLabel('1080p BluRay REMUX')).toBe('1080p REMUX')
+    expect(qualityLabel('1080i BluRay REMUX')).toBe('1080i REMUX')
     expect(qualityLabel('720p BluRay REMUX')).toBe('720p REMUX')
   })
 

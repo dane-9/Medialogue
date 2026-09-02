@@ -56,3 +56,19 @@ def test_seeded_movie_comparison_carries_matching_editions() -> None:
     assert snapshot["current"]["edition"] == "Final Cut"
     assert snapshot["current"]["releases"][0]["edition"] == "Final Cut"
     assert snapshot["candidate"]["edition"] == "Final Cut"
+
+
+def test_seeded_audio_formats_match_the_same_punctuation_as_the_real_parser() -> None:
+    master = _by_name("Movie.2026.1080p.BluRay.REMUX.DTS-HD.MA.5.1-GROUP")
+    high_resolution = _by_name("Movie 2026 1080p BluRay DTS HD HRA 5.1 GROUP")
+
+    assert master["DTS-HD MA"]["contribution"] == 45
+    assert "DTS-HD HRA" not in master
+    assert high_resolution["DTS-HD HRA"]["contribution"] == 20
+    assert "DTS-HD MA" not in high_resolution
+
+
+def test_seeded_hyphenated_source_format_is_not_lost() -> None:
+    formats = _by_name("Movie.2026.2160p.WEB-DL.DDP5.1.H.265-GROUP")
+
+    assert formats["WEB-DL"]["contribution"] == 10

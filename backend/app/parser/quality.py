@@ -25,8 +25,8 @@ class QualityDefinition:
 WEB_DL_RESOLUTIONS = ("2160p", "1440p", "1080p", "720p", "576p", "540p", "480p", "360p")
 WEBRIP_RESOLUTIONS = ("2160p", "1440p", "1080p", "720p", "576p", "540p", "480p", "360p")
 HDTV_RESOLUTIONS = ("2160p", "1080p", "1080i", "720p", "576p", "576i", "480p", "480i", "360p")
-BLURAY_REMUX_RESOLUTIONS = ("2160p", "1080p", "720p")
-BLURAY_ENCODE_RESOLUTIONS = ("2160p", "1080p", "720p")
+BLURAY_REMUX_RESOLUTIONS = ("2160p", "1080p", "1080i", "720p")
+BLURAY_ENCODE_RESOLUTIONS = ("2160p", "1080p", "1080i", "720p")
 
 
 def _family(

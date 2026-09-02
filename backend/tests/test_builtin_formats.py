@@ -229,14 +229,27 @@ def test_default_profile_scores_reflect_the_intended_ranking() -> None:
     assert all(value == 0 for key, value in streaming.items() if key != "web-bcore")
 
 
-def test_full_disc_dvd_is_left_out_of_the_default_profile() -> None:
+def test_unsafe_and_full_disc_qualities_are_left_out_of_the_default_profile() -> None:
     from app.services.builtin_formats import DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
     from app.parser import list_quality_definitions
 
     known = {item.name for item in list_quality_definitions()}
     assert DEFAULT_EXCLUDED_QUALITY_DEFINITIONS <= known
-    assert all(name.startswith("Full Disc") for name in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS)
-    assert {name for name in known if name.startswith("Full Disc")} == DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+    assert "1080i Encode" in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+    assert {name for name in known if name.startswith("Full Disc")} == {
+        name for name in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS if name.startswith("Full Disc")
+    }
+
+
+def test_interlaced_bluray_qualities_are_first_class_definitions() -> None:
+    from app.parser import list_quality_definitions
+
+    definitions = {item.name: item for item in list_quality_definitions()}
+
+    assert definitions["1080i BluRay REMUX"].scan_type == "interlaced"
+    assert definitions["1080i Encode"].scan_type == "interlaced"
+    assert definitions["1080p BluRay REMUX"].rank > definitions["1080i BluRay REMUX"].rank
+    assert definitions["1080i BluRay REMUX"].rank > definitions["720p BluRay REMUX"].rank
 
 
 @pytest.mark.parametrize(

@@ -12333,6 +12333,11 @@
             ],
             "title": "Media Year"
           },
+          "movie_has_multiple_editions": {
+            "default": false,
+            "title": "Movie Has Multiple Editions",
+            "type": "boolean"
+          },
           "movie_id": {
             "anyOf": [
               {
@@ -12429,6 +12434,11 @@
               }
             ],
             "title": "Release Folder"
+          },
+          "result_count": {
+            "default": 1,
+            "title": "Result Count",
+            "type": "integer"
           },
           "root_name": {
             "anyOf": [
@@ -12971,6 +12981,225 @@
           "job_id"
         ],
         "title": "UpgradeSearchResponse",
+        "type": "object"
+      },
+      "UpgradeSearchResultResponse": {
+        "properties": {
+          "custom_format_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Format Score"
+          },
+          "edition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "indexer_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexer Color"
+          },
+          "indexer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexer Id"
+          },
+          "indexer_name": {
+            "title": "Indexer Name",
+            "type": "string"
+          },
+          "leechers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leechers"
+          },
+          "matched_format_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Format Names",
+            "type": "array"
+          },
+          "parser": {
+            "additionalProperties": true,
+            "title": "Parser",
+            "type": "object"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "recommended": {
+            "default": false,
+            "title": "Recommended",
+            "type": "boolean"
+          },
+          "rejection_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejection Reasons",
+            "type": "array"
+          },
+          "release_group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Group"
+          },
+          "seeders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seeders"
+          },
+          "selected": {
+            "default": false,
+            "title": "Selected",
+            "type": "boolean"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "upgrade_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upgrade Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "indexer_name",
+          "title",
+          "eligible"
+        ],
+        "title": "UpgradeSearchResultResponse",
+        "type": "object"
+      },
+      "UpgradeSearchResultSelectRequest": {
+        "properties": {
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_id"
+        ],
+        "title": "UpgradeSearchResultSelectRequest",
+        "type": "object"
+      },
+      "UpgradeSearchResultsResponse": {
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeSearchResultResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "searched_at": {
+            "format": "date-time",
+            "title": "Searched At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "searched_at",
+          "results"
+        ],
+        "title": "UpgradeSearchResultsResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -20488,6 +20717,102 @@
           }
         },
         "summary": "Set Upgrade Quality Profile",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/results": {
+      "get": {
+        "operationId": "upgrade_search_results_api_v1_upgrade_candidates__candidate_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeSearchResultsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upgrade Search Results",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/results/select": {
+      "post": {
+        "operationId": "select_upgrade_search_result_api_v1_upgrade_candidates__candidate_id__results_select_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeSearchResultSelectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeCandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Select Upgrade Search Result",
         "tags": [
           "upgrade candidates"
         ]

@@ -1,4 +1,4 @@
-import type { UpgradeCandidate, UpgradeCleanupPreview, UpgradeCleanupResult } from '../../types'
+import type { UpgradeCandidate, UpgradeCleanupPreview, UpgradeCleanupResult, UpgradeSearchResults } from '../../types'
 import type { components } from '../generated/schema'
 import { openApiClient, openApiData } from '../transport'
 
@@ -22,6 +22,7 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     currentReleaseName: value.current_release_name,
     currentQuality: value.current_quality ?? undefined,
     currentEdition: value.current_edition ?? undefined,
+    movieHasMultipleEditions: value.movie_has_multiple_editions,
     currentCustomFormatScore: value.current_custom_format_score,
     qualityProfileId: value.quality_profile_id ?? undefined,
     qualityProfileName: value.quality_profile_name ?? undefined,
@@ -31,6 +32,7 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     title: value.title,
     quality: value.quality ?? undefined,
     candidateEdition: value.candidate_edition ?? undefined,
+    resultCount: value.result_count,
     customFormatScore: value.custom_format_score,
     scoreDelta: value.score_delta,
     size: value.size ?? undefined,
@@ -117,6 +119,43 @@ export const upgradesApi = {
     }))
     return rows.map(mapUpgradeCandidate)
   },
+  upgradeSearchResults: async (candidateId: string): Promise<UpgradeSearchResults> => {
+    const value = await openApiData(openApiClient.GET('/api/v1/upgrade-candidates/{candidate_id}/results', {
+      params: { path: { candidate_id: candidateId } },
+    }))
+    return {
+      candidateId: value.candidate_id,
+      searchedAt: value.searched_at,
+      results: value.results.map((result) => ({
+        id: result.id,
+        indexerId: result.indexer_id ?? undefined,
+        indexerName: result.indexer_name,
+        indexerColor: result.indexer_color ?? undefined,
+        title: result.title,
+        quality: result.quality ?? undefined,
+        edition: result.edition ?? undefined,
+        releaseGroup: result.release_group ?? undefined,
+        customFormatScore: result.custom_format_score ?? undefined,
+        size: result.size ?? undefined,
+        seeders: result.seeders ?? undefined,
+        leechers: result.leechers ?? undefined,
+        publishedAt: result.published_at ?? undefined,
+        eligible: result.eligible,
+        rejectionReasons: result.rejection_reasons ?? [],
+        upgradeTypes: result.upgrade_types ?? [],
+        matchedFormatNames: result.matched_format_names ?? [],
+        parser: result.parser ?? {},
+        recommended: result.recommended,
+        selected: result.selected,
+      })),
+    }
+  },
+  selectUpgradeSearchResult: async (candidateId: string, resultId: string) => mapUpgradeCandidate(
+    await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/{candidate_id}/results/select', {
+      params: { path: { candidate_id: candidateId } },
+      body: { result_id: resultId },
+    })),
+  ),
   searchUpgrades: async () => {
     const value = await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/search'))
     return { jobId: value.job_id }

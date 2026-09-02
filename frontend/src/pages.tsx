@@ -11,10 +11,11 @@ import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
 import { needsAttention, statusTone } from './lib/status'
 import { diffReleaseTokens } from './lib/releaseTokens'
-import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason } from './lib/upgradeTokenReason'
-import { formatBytes } from './components/ReleaseResults'
+import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason, UPGRADE_REASON_SCORE } from './lib/upgradeTokenReason'
+import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { formatPeers, swarmHealth } from './lib/swarm'
 import { qualityLabel } from './lib/qualityLabel'
+import { splitQuality } from './lib/quality'
 import { pathParts } from './lib/pathParts'
 import { parserWarningMessage } from './lib/parserWarnings'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
@@ -34,7 +35,7 @@ import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import { isTaskOverdue } from './lib/taskTiming'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeType } from './types'
+import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchResult, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults, UpgradeType } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
 import jackettIcon from './assets/jackett.svg'
@@ -923,7 +924,7 @@ export function TasksPage() {
       {!loading && !tasks.length && <EmptyState icon="activity" title="No available tasks" detail="No background tasks are registered." />}
     </Panel>
     <Panel className="table-panel tasks-panel" title="History" note={`${jobs.length} MOST RECENT`}>
-      <div className="tasks-table-wrap"><table className="data-table tasks-table tasks-queue-table"><thead><tr><th>Name</th><th>Started</th><th>Ended</th><th>Duration</th><th>Progress</th><th>Detail</th><th /></tr></thead><tbody>{jobs.map((job) => {
+      <div className="tasks-table-wrap"><table className="data-table tasks-table tasks-queue-table"><thead><tr><th>Name</th><th>Started</th><th>Ended</th><th>Duration</th><th>Progress</th><th>Details</th><th /></tr></thead><tbody>{jobs.map((job) => {
           const canCancel = job.cancellable && (job.state === 'running' || job.state === 'queued')
           const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(job.state)
           const progress = terminal
@@ -3759,6 +3760,16 @@ function upgradeEditionLabel(edition?: string) {
   return edition?.trim() || 'Theatrical Cut'
 }
 
+/** A token reason with its trailing score tinted: green for a gain, red for a
+ *  loss, grey for a format that matched without moving the score. */
+function upgradeReasonContent(reason: string) {
+  const match = UPGRADE_REASON_SCORE.exec(reason)
+  if (!match) return reason
+  const score = Number(match[1])
+  const tone = score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral'
+  return <>{reason.slice(0, match.index)} <b className={`upgrade-reason-score ${tone}`}>{match[1]}</b></>
+}
+
 function upgradeEditionsMatch(current?: string, candidate?: string) {
   return upgradeEditionLabel(current).toLocaleLowerCase() === upgradeEditionLabel(candidate).toLocaleLowerCase()
 }
@@ -3785,6 +3796,7 @@ export function UpgradeMediaPage() {
   const [items, setItems] = useState<UpgradeCandidate[]>([])
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
+  const [formatSections, setFormatSections] = useState<Record<string, string>>({})
   const [profileBusy, setProfileBusy] = useState(false)
   const [hoveredTokenGroup, setHoveredTokenGroup] = useState('')
   const [loading, setLoading] = useState(true)
@@ -3804,14 +3816,54 @@ export function UpgradeMediaPage() {
   const [cleanupTarget, setCleanupTarget] = useState<UpgradeCandidate | null>(null)
   const [cleanup, setCleanup] = useState<UpgradeCleanupPreview | null>(null)
   const [cleanupLoading, setCleanupLoading] = useState(false)
+  const [resultsTarget, setResultsTarget] = useState<UpgradeCandidate | null>(null)
+  const [searchResults, setSearchResults] = useState<UpgradeSearchResults | null>(null)
+  const [resultsLoading, setResultsLoading] = useState(false)
+  const [selectedResultId, setSelectedResultId] = useState('')
+  const [resultSelecting, setResultSelecting] = useState(false)
+  const upgradeReleaseResults = useMemo<InteractiveSearchResult[]>(() => {
+    if (!searchResults || !resultsTarget) return []
+    return searchResults.results.map((result) => ({
+      id: result.id,
+      jobId: resultsTarget.id,
+      indexerId: result.indexerId,
+      indexerName: result.indexerName,
+      indexerColor: result.indexerColor,
+      mediaType: resultsTarget.mediaType,
+      targetEntityType: resultsTarget.mediaType === 'movies' ? 'movie' : 'season',
+      title: result.title,
+      size: result.size,
+      seeders: result.seeders,
+      leechers: result.leechers,
+      publishedAt: result.publishedAt,
+      quality: result.quality,
+      qualityAllowed: result.eligible,
+      qualityPreference: 0,
+      edition: result.edition,
+      releaseGroup: result.releaseGroup,
+      customFormatScore: result.customFormatScore,
+      customFormatSnapshot: { matched_format_names: result.matchedFormatNames },
+      parser: result.parser,
+      warnings: [],
+      createdAt: searchResults.searchedAt,
+      expiresAt: searchResults.searchedAt,
+    }))
+  }, [searchResults, resultsTarget])
 
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
     try {
-      const [nextItems, nextClients, nextProfiles, nextCount] = await Promise.all([api.upgradeCandidates(), api.downloadClients(), api.qualityProfiles(), api.upgradeCandidateCount()])
+      const [nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout] = await Promise.all([api.upgradeCandidates(), api.downloadClients(), api.qualityProfiles(), api.upgradeCandidateCount(), api.customFormats(), api.customFormatLayout()])
       setItems(nextItems)
       setClients(nextClients)
       setProfiles(nextProfiles)
+      // Token tooltips name a format by the section it is filed under on the
+      // Custom Formats page, so the layout is what turns an id into that name.
+      const formatNames = new Map(nextFormats.map((format) => [format.id, format.name]))
+      setFormatSections(Object.fromEntries(nextLayout.flatMap((section) => section.formatIds.flatMap((id) => {
+        const name = formatNames.get(id)
+        return name ? [[name.toLowerCase(), section.name] as const] : []
+      }))))
       setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
       setError('')
     } catch (reason) {
@@ -3922,6 +3974,30 @@ export function UpgradeMediaPage() {
     finally { setCleanupLoading(false) }
   }
 
+  const openResults = async (item: UpgradeCandidate) => {
+    setResultsTarget(item); setSearchResults(null); setResultsLoading(true); setError('')
+    try {
+      const result = await api.upgradeSearchResults(item.id)
+      setSearchResults(result)
+      setSelectedResultId(result.results.find((entry) => entry.selected)?.id ?? result.results.find((entry) => entry.recommended)?.id ?? '')
+    } catch (reason) {
+      setResultsTarget(null)
+      setError(reason instanceof Error ? reason.message : 'Could not load cached upgrade search results.')
+    } finally { setResultsLoading(false) }
+  }
+
+  const chooseSearchResult = async () => {
+    if (!resultsTarget || !selectedResultId) return
+    setResultSelecting(true); setError('')
+    try {
+      const updated = await api.selectUpgradeSearchResult(resultsTarget.id, selectedResultId)
+      setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setResultsTarget(null); setSearchResults(null)
+      setMessage(`Selected ${updated.title} as the upgrade for ${updated.mediaTitle}.`)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not select that upgrade result.') }
+    finally { setResultSelecting(false) }
+  }
+
   const commitCleanup = async () => {
     if (!cleanupTarget || !cleanup?.eligible) return
     setBusyId(cleanupTarget.id); setError(''); setMessage('')
@@ -3935,6 +4011,10 @@ export function UpgradeMediaPage() {
   }
 
   const ready = items.filter((item) => !item.executionState).length
+  const showResultsEdition = Boolean(
+    resultsTarget?.mediaType === 'movies'
+    && (resultsTarget.currentEdition || resultsTarget.movieHasMultipleEditions),
+  )
   // Grouped by media folder, like New Media: a candidate is read inside the
   // folder it belongs to rather than in one flat list across every root.
   const roots = useMemo(() => {
@@ -4033,6 +4113,7 @@ export function UpgradeMediaPage() {
         <span className="new-media-col-head upgrade-head">Current release<em>CF Score</em></span>
         <span aria-hidden="true" />
         <span className="new-media-col-head upgrade-head">Upgrade<em><span>CF Score</span><i>Peers</i></em></span>
+        <span className="new-media-col-head upgrade-results-head">Releases</span>
         {rows.map((item) => {
           const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
           // The season folder for shows, the movie's own folder for movies. Falls
@@ -4057,6 +4138,7 @@ export function UpgradeMediaPage() {
             addedCustomFormats: candidateFormatReasons(item.comparisonSnapshot, item.addedCustomFormats),
             currentQuality: item.currentQuality,
             quality: item.quality,
+            formatSections,
           }
           const tokenReasons = shareCombinedDynamicRangeReasons(
             tokens,
@@ -4068,6 +4150,9 @@ export function UpgradeMediaPage() {
           const reasons = item.upgradeTypes.filter((type) => type !== 'quality' && type !== 'custom_format')
           const indexerBadge = badgeColor(item.indexerColor)
           const editionMismatch = item.mediaType === 'movies' && !upgradeEditionsMatch(item.currentEdition, item.candidateEdition)
+          const showMovieEdition = item.mediaType === 'movies' && Boolean(
+            item.currentEdition || item.candidateEdition || item.movieHasMultipleEditions || editionMismatch,
+          )
           const profileName = profiles.find((profile) => profile.id === item.qualityProfileId)?.name
             ?? profiles.find((profile) => profile.isDefault)?.name
             ?? 'Default'
@@ -4126,7 +4211,7 @@ export function UpgradeMediaPage() {
                     </details>
                   : <strong>{currentDisplayName}</strong>}
                 <span className="upgrade-target-meta">
-                  {item.mediaType === 'movies' && <span className="release-pill upgrade-edition-pill"><i>Edition</i>{upgradeEditionLabel(item.currentEdition)}</span>}
+                  {showMovieEdition && <em className="release-edition">{upgradeEditionLabel(item.currentEdition)}</em>}
                   <span className={`new-media-profile-cell upgrade-profile-cell ${item.qualityProfileId ? '' : 'optional'}`} onClick={(event) => event.stopPropagation()}>
                     <Dropdown
                       ariaLabel={`Quality Profile for ${currentDisplayName}`}
@@ -4167,7 +4252,7 @@ export function UpgradeMediaPage() {
                   >{token.text}</span>
                   return <Fragment key={index}>
                     <span className="upgrade-token-sep">{token.sep}</span>
-                    {reason ? <Tooltip asChild content={reason}>{text}</Tooltip> : text}
+                    {reason ? <Tooltip asChild content={upgradeReasonContent(reason)}>{text}</Tooltip> : text}
                   </Fragment>
                 })}</strong>
                 <small className="upgrade-change-meta">
@@ -4179,7 +4264,7 @@ export function UpgradeMediaPage() {
                       ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background }
                       : undefined}
                   ><i>Indexer</i>{item.indexerName}</span>
-                  {item.mediaType === 'movies' && <span className="release-pill upgrade-edition-pill"><i>Edition</i>{upgradeEditionLabel(item.candidateEdition)}</span>}
+                  {showMovieEdition && <em className="release-edition">{upgradeEditionLabel(item.candidateEdition)}</em>}
                   {editionMismatch && <Tooltip content={item.executionBlockReason ?? 'The candidate is a different movie edition.'}><Badge tone="red">Edition mismatch</Badge></Tooltip>}
                   {reasons.map((type) => <Badge key={type} tone="amber">{upgradeTypeLabel(type)}</Badge>)}
                   {qualityChanged && <span className="upgrade-quality-change">
@@ -4212,6 +4297,11 @@ export function UpgradeMediaPage() {
                 {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={() => void retryHandoff(item)}>{busyId === item.id ? 'Checking…' : 'Retry handoff'}</Button>}
                 {item.executionState === 'cleanup_required' && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={() => void reviewCleanup(item)}>Review cleanup</Button>}
               </span>
+            </div>
+            <div className="upgrade-cell upgrade-results-cell">
+              <Button variant="ghost" icon="search" disabled={Boolean(item.executionState)} onClick={() => void openResults(item)}>
+                View All
+              </Button>
             </div>
           </div>
         })}
@@ -4274,6 +4364,61 @@ export function UpgradeMediaPage() {
         <label><span className="field-label">Category</span><Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select></label>
         <div className="wizard-destination-path"><span>qBittorrent placement</span><strong>{categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
       </div>
+    </Modal>}
+
+    {resultsTarget && <Modal
+      title={resultsTarget.mediaTitle}
+      titleSuffix={resultsTarget.mediaYear ? <span className="upgrade-results-title-year"> ({resultsTarget.mediaYear})</span> : undefined}
+      eyebrow={resultsTarget.seasonNumber !== undefined ? `SEASON ${resultsTarget.seasonNumber}` : undefined}
+      className="upgrade-results-modal"
+      onClose={() => { if (!resultSelecting) { setResultsTarget(null); setSearchResults(null) } }}
+      footer={<><span className="wizard-foot-count">{searchResults ? `${searchResults.results.length} Torrent${searchResults.results.length === 1 ? '' : 's'} found` : ''}</span><span className="modal-foot-spacer" /><Button variant="ghost" disabled={resultSelecting} onClick={() => { setResultsTarget(null); setSearchResults(null) }}>Cancel</Button><Button variant="primary" icon="check" disabled={resultSelecting || !selectedResultId || !searchResults?.results.find((entry) => entry.id === selectedResultId)?.eligible} onClick={() => void chooseSearchResult()}>{resultSelecting ? 'Selecting…' : 'Use this result'}</Button></>}
+    >
+      <div className="upgrade-results-current">
+        {(() => {
+          // Laid out on the release table's own grid so the current release reads
+          // as a row of the list above it: format box over FORMAT, score over CF SCORE.
+          const { resolution, type } = splitQuality(resultsTarget.currentQuality)
+          const score = resultsTarget.currentCustomFormatScore
+          const edition = showResultsEdition ? upgradeEditionLabel(resultsTarget.currentEdition) : undefined
+          return <div className="upgrade-results-current-row">
+            <Tooltip asChild content={resultsTarget.currentQuality || 'Unknown quality'}>
+              <span className="release-quality">
+                {resolution ? <strong>{resolution}</strong> : null}
+                <small>{type || 'Unknown'}</small>
+              </span>
+            </Tooltip>
+            <span className="release-name">
+              <strong>{resultsTarget.currentReleaseName}</strong>
+              <span className="release-tags">
+                {edition ? <em className="release-edition">{edition}</em> : null}
+                <span className="release-pill upgrade-current-release-pill">Current release</span>
+              </span>
+            </span>
+            <span className={`release-numeric release-score ${score < 0 ? 'negative' : score > 0 ? 'positive' : ''}`}>{score > 0 ? `+${score}` : score}</span>
+          </div>
+        })()}
+      </div>
+      {resultsLoading ? <div className="table-loading">Loading cached search results…</div> : searchResults && <div className="upgrade-results-browser">
+        <ReleaseResults
+          results={upgradeReleaseResults}
+          selectedId={selectedResultId}
+          onSelect={setSelectedResultId}
+          disabled={resultSelecting}
+          isSelectable={(release) => Boolean(searchResults.results.find((entry) => entry.id === release.id)?.eligible)}
+          renderTags={(release) => {
+            const result = searchResults.results.find((entry) => entry.id === release.id)
+            if (!result) return null
+            return <>
+              {result.recommended && <span className="release-pill upgrade-result-recommended">Recommended</span>}
+              {result.selected && <span className="release-pill upgrade-result-selected">Selected</span>}
+              {!result.eligible && <Tooltip className="release-pill release-blocked" content={<ul>{result.rejectionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}><Icon name="alert" size={11} />Rejected</Tooltip>}
+            </>
+          }}
+          label={`Cached upgrade search results for ${resultsTarget.mediaTitle}`}
+          empty="No cached releases were returned."
+        />
+      </div>}
     </Modal>}
 
     {cleanupTarget && <Modal

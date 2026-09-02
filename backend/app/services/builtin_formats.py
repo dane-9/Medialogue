@@ -267,6 +267,9 @@ BUILTIN_KEYS = frozenset(item.key for item in BUILTIN_FORMATS)
 DEFAULT_QUALITY_PROFILE_NAME = "Default"
 DEFAULT_QUALITY_PROFILE_MARKER = "medialogue-default-quality-profile-v1"
 DEFAULT_EXCLUDED_QUALITY_DEFINITIONS: frozenset[str] = frozenset({
+    # Interlaced Blu-ray remuxes preserve a legitimate source. An interlaced
+    # encode adds another lossy generation and should never be a default grab.
+    "1080i Encode",
     "Full Disc UHD BluRay",
     "Full Disc BluRay",
     "Full Disc DVD",

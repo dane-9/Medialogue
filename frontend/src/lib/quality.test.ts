@@ -5,6 +5,7 @@ describe('splitQuality', () => {
   it('drops the source, keeping only the kind of release', () => {
     expect(splitQuality('2160p BluRay REMUX')).toEqual({ resolution: '2160p', type: 'REMUX' })
     expect(splitQuality('1080p BluRay REMUX')).toEqual({ resolution: '1080p', type: 'REMUX' })
+    expect(splitQuality('1080i BluRay REMUX')).toEqual({ resolution: '1080i', type: 'REMUX' })
     expect(splitQuality('480i NTSC DVD REMUX')).toEqual({ resolution: '480i', type: 'REMUX' })
     expect(splitQuality('576p PAL DVD REMUX')).toEqual({ resolution: '576p', type: 'REMUX' })
   })

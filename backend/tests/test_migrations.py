@@ -116,6 +116,7 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
         "torrent_id",
         "incoming_release_ids",
         "cleanup_completed_at",
+        "search_results",
     } <= upgrade_candidate_columns
 
 
@@ -157,6 +158,7 @@ def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> 
         "0012_upgrade_candidates.py",
         "0013_upgrade_execution.py",
         "0014_tracker_release_titles.py",
+        "0015_upgrade_search_results.py",
     ]
 
     previous = None

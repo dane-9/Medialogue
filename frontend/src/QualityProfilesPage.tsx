@@ -369,7 +369,7 @@ export default function QualityProfilesPage() {
 
         <div className="cf-editor-content">
           {editorView === 'details' && <section className="cf-editor-panel qp-details-panel">
-            <div className="cf-editor-panel-head"><div className="eyebrow">STEP 1 OF 3</div><h3>Profile details</h3><p>Name this ranking policy and optionally configure quality warnings and score acceptance.</p></div>
+            <div className="cf-editor-panel-head"><h3>Profile details</h3><p>Name this ranking policy and optionally configure quality warnings and score acceptance.</p></div>
             <div className="qp-details-fields">
               <Field label="Profile name" help="Shown when assigning this profile to a movie or show.">
                 <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Remux first" autoFocus={creating} />
@@ -393,7 +393,7 @@ export default function QualityProfilesPage() {
           </section>}
 
           {editorView === 'qualities' && <section className="cf-editor-panel qp-qualities-panel">
-            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><div><div className="eyebrow">STEP 2 OF 3</div><h3>Quality order</h3></div><p>Enabled qualities rank from top to bottom. Drag them into your preferred order.</p></div>
+            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><div><h3>Quality order</h3></div><p>Enabled qualities rank from top to bottom. Drag them into your preferred order.</p></div>
             <div className="qp-quality-toolbar">
               <div className="search-field"><Icon name="search" size={15} /><Input aria-label="Filter qualities" value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value)} placeholder="Filter by resolution or source…" /></div>
               <span><strong>{qualityIds.length}</strong> of {qualities.length} enabled</span>
@@ -491,7 +491,7 @@ function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: Qu
     <div className="cf-card-conditions">
       {ranked.slice(0, shown).map((entry) => <span className="cf-condition-chip" key={entry.customFormatId}>
         {formatById.get(entry.customFormatId)?.name ?? 'Deleted format'}
-        <code className={entry.score < 0 ? 'score-negative' : entry.score > 0 ? 'score-positive' : undefined}>{scoreLabel(entry.score)}</code>
+        <code className={entry.score < 0 ? 'score-negative' : entry.score > 0 ? 'score-positive' : 'score-zero'}>{scoreLabel(entry.score)}</code>
       </span>)}
       {ranked.length > shown && <span className="cf-condition-chip cf-condition-more">+{ranked.length - shown} more</span>}
       {!ranked.length && <span className="cf-condition-chip cf-condition-more">No scored formats</span>}

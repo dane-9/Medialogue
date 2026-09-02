@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import PurePath, PurePosixPath
 
 from uuid import UUID
@@ -23,6 +24,7 @@ from app.models.domain import (
     MediaType,
     Movie,
     MovieRelease,
+    ReleaseState,
     MediaProfileOverride,
     QualityProfile,
     Schedule,
@@ -46,9 +48,12 @@ from app.schemas.upgrades import (
     UpgradeQualityProfileUpdate,
     UpgradeQualityProfileUpdateResponse,
     UpgradeSearchResponse,
+    UpgradeSearchResultResponse,
+    UpgradeSearchResultsResponse,
+    UpgradeSearchResultSelectRequest,
 )
 from app.services.events import create_event
-from app.services.movie_editions import edition_label, same_edition
+from app.services.movie_editions import edition_label, edition_slot, same_edition
 from app.services.quality_profiles import (
     get_assignment,
     load_effective_profile,
@@ -108,6 +113,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     poster_ref: str | None = None
     release_folder: str | None = None
     current_edition: str | None = None
+    movie_has_multiple_editions = False
     profile_media_type = row.media_type
     profile_entity_id: UUID | None = None
     if row.media_type == MediaType.MOVIES:
@@ -118,6 +124,13 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
             media_year = movie.year
             tmdb_id = movie.tmdb_id
             poster_ref = movie.poster_ref
+            edition_values = await db.scalars(
+                select(MovieRelease.effective_edition).where(
+                    MovieRelease.movie_id == movie.id,
+                    MovieRelease.release_state == ReleaseState.CURRENT,
+                )
+            )
+            movie_has_multiple_editions = len({edition_slot(value) for value in edition_values}) > 1
         release_ids = [UUID(value) for value in row.current_release_ids]
         if release_ids:
             current_edition = await db.scalar(
@@ -257,6 +270,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_release_name=row.current_release_name,
         current_quality=row.current_quality,
         current_edition=current_edition,
+        movie_has_multiple_editions=movie_has_multiple_editions,
         current_custom_format_score=row.current_custom_format_score,
         quality_profile_id=(
             None if effective_profile is None or effective_profile.profile_inherited else effective_profile.profile_id
@@ -269,6 +283,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         title=row.title,
         quality=row.quality,
         candidate_edition=candidate_edition,
+        result_count=max(1, len(row.search_results or [])),
         custom_format_score=row.custom_format_score,
         score_delta=row.score_delta,
         size=row.size,
@@ -334,6 +349,141 @@ async def list_upgrade_candidates(
         )
     ).all()
     return [await _response(db, row) for row in rows]
+
+
+def _search_result_rows(row: UpgradeCandidate) -> list[dict[str, Any]]:
+    stored = [dict(value) for value in (row.search_results or []) if isinstance(value, dict)]
+    if stored:
+        return stored
+    candidate = (row.comparison_snapshot or {}).get("candidate") or {}
+    return [{
+        "id": str(row.id),
+        "indexer_id": str(row.indexer_id) if row.indexer_id else None,
+        "indexer_name": row.indexer_name,
+        "guid": row.guid,
+        "title": row.title,
+        "quality": row.quality,
+        "edition": candidate.get("edition") if isinstance(candidate, dict) else None,
+        "release_group": candidate.get("release_group") if isinstance(candidate, dict) else None,
+        "custom_format_score": row.custom_format_score,
+        "size": row.size,
+        "seeders": row.seeders,
+        "leechers": row.leechers,
+        "published_at": row.published_at,
+        "eligible": bool(row.execution_eligible),
+        "rejection_reasons": [row.execution_block_reason] if row.execution_block_reason else [],
+        "upgrade_types": list(row.upgrade_types or []),
+        "added_custom_formats": list(row.added_custom_formats or []),
+        "snapshot": dict(row.comparison_snapshot or {}),
+        "parser": candidate.get("parse") if isinstance(candidate, dict) else {},
+        "download_url": row.download_url,
+    }]
+
+
+def _search_result_response(row: UpgradeCandidate, value: dict[str, Any], *, position: int) -> UpgradeSearchResultResponse:
+    indexer_id = UUID(str(value["indexer_id"])) if value.get("indexer_id") else None
+    snapshot = value.get("snapshot") or {}
+    candidate = snapshot.get("candidate") if isinstance(snapshot, dict) else {}
+    formats = candidate.get("formats") if isinstance(candidate, dict) else []
+    matched_format_names = [
+        str(item.get("custom_format_name") or item.get("name"))
+        for item in (formats or [])
+        if isinstance(item, dict) and item.get("matched") and (item.get("custom_format_name") or item.get("name"))
+    ]
+    selected = (
+        str(value.get("guid") or "") == row.guid
+        and indexer_id == row.indexer_id
+        and str(value.get("title") or "") == row.title
+    )
+    return UpgradeSearchResultResponse(
+        id=UUID(str(value.get("id") or row.id)),
+        indexer_id=indexer_id,
+        indexer_name=str(value.get("indexer_name") or "Unknown indexer"),
+        indexer_color=_indexer_color(indexer_id),
+        title=str(value.get("title") or "Untitled result"),
+        quality=value.get("quality"),
+        edition=value.get("edition"),
+        release_group=value.get("release_group"),
+        custom_format_score=value.get("custom_format_score"),
+        size=value.get("size"),
+        seeders=value.get("seeders"),
+        leechers=value.get("leechers"),
+        published_at=value.get("published_at"),
+        eligible=bool(value.get("eligible")),
+        rejection_reasons=[str(reason) for reason in value.get("rejection_reasons") or []],
+        upgrade_types=[str(reason) for reason in value.get("upgrade_types") or []],
+        matched_format_names=matched_format_names,
+        parser=dict(value.get("parser") or {}),
+        recommended=position == 0 and bool(value.get("eligible")),
+        selected=selected,
+    )
+
+
+@router.get("/upgrade-candidates/{candidate_id}/results", response_model=UpgradeSearchResultsResponse)
+async def upgrade_search_results(
+    candidate_id: UUID,
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UpgradeSearchResultsResponse:
+    row = await db.get(UpgradeCandidate, candidate_id)
+    if row is None:
+        raise AppError("NOT_FOUND", "Upgrade candidate was not found.", status_code=404)
+    values = _search_result_rows(row)
+    return UpgradeSearchResultsResponse(
+        candidate_id=row.id,
+        searched_at=row.last_searched_at,
+        results=[_search_result_response(row, value, position=index) for index, value in enumerate(values)],
+    )
+
+
+@router.post("/upgrade-candidates/{candidate_id}/results/select", response_model=UpgradeCandidateResponse)
+async def select_upgrade_search_result(
+    candidate_id: UUID,
+    payload: UpgradeSearchResultSelectRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> UpgradeCandidateResponse:
+    row = await db.get(UpgradeCandidate, candidate_id)
+    if row is None:
+        raise AppError("NOT_FOUND", "Upgrade candidate was not found.", status_code=404)
+    if row.execution_state is not None:
+        raise AppError("UPGRADE_ALREADY_STARTED", "The selected result cannot change after an upgrade starts.", status_code=409)
+    value = next((item for item in _search_result_rows(row) if str(item.get("id")) == str(payload.result_id)), None)
+    if value is None:
+        raise AppError("UPGRADE_RESULT_NOT_FOUND", "That cached search result is no longer available.", status_code=404)
+    if not value.get("eligible"):
+        reasons = " ".join(str(reason) for reason in value.get("rejection_reasons") or [])
+        raise AppError("UPGRADE_RESULT_REJECTED", reasons or "That result does not qualify as an upgrade.", status_code=409)
+    snapshot = dict(value.get("snapshot") or {})
+    current = snapshot.get("current") or {}
+    row.indexer_id = UUID(str(value["indexer_id"])) if value.get("indexer_id") else None
+    row.indexer_name = str(value.get("indexer_name") or row.indexer_name)
+    row.guid = str(value.get("guid") or value.get("title") or row.guid)
+    row.download_url = value.get("download_url")
+    row.title = str(value.get("title") or row.title)
+    row.quality = value.get("quality")
+    row.custom_format_score = int(value.get("custom_format_score") or 0)
+    row.score_delta = row.custom_format_score - int(current.get("custom_format_score") or row.current_custom_format_score)
+    row.size = value.get("size")
+    row.seeders = value.get("seeders")
+    row.leechers = value.get("leechers")
+    published = value.get("published_at")
+    row.published_at = datetime.fromisoformat(published) if isinstance(published, str) else published
+    row.upgrade_types = [str(reason) for reason in value.get("upgrade_types") or []]
+    row.added_custom_formats = [dict(item) for item in value.get("added_custom_formats") or []]
+    row.comparison_snapshot = snapshot
+    # Choosing a different release changes only the recommendation. Target-level
+    # guards (for example a profile that is awaiting re-evaluation) must survive.
+    await create_event(
+        db,
+        "upgrade.result_selected",
+        entity_type="upgrade_candidate",
+        entity_id=row.id,
+        message=f"Selected alternate upgrade result {row.title}.",
+        details={"candidate_id": str(row.id), "result_id": str(payload.result_id)},
+    )
+    await db.commit()
+    return await _response(db, row)
 
 
 @router.get("/upgrade-candidates/count", response_model=UpgradeCandidateCount)

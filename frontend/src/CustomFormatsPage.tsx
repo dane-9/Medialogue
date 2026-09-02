@@ -485,7 +485,7 @@ export default function CustomFormatsPageView() {
 
         <div className="cf-editor-content">
           {editorView === 'details' && <section className="cf-editor-panel">
-            <div className="cf-editor-panel-head"><div className="eyebrow">STEP 1 OF 3</div><h3>Describe this format</h3><p>Give the rule set a clear purpose and choose where it belongs.</p></div>
+            <div className="cf-editor-panel-head"><h3>Describe this format</h3><p>Give the rule set a clear purpose and choose where it belongs.</p></div>
             <div className="cf-editor-fields">
               <Field label="Format name" help="Shown on cards, Quality Profiles and evaluation results.">
                 <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Dolby Vision with HDR10 fallback" readOnly={draft.builtin} autoFocus={!draft.id} />
@@ -553,7 +553,7 @@ export default function CustomFormatsPageView() {
           </section>}
 
           {editorView === 'test' && <section className="cf-editor-panel">
-            <div className="cf-editor-panel-head"><div className="eyebrow">STEP 3 OF 3</div><h3>Try a real release title</h3><p>Testing uses the unsaved rules currently in this editor and does not change your library.</p></div>
+            <div className="cf-editor-panel-head"><h3>Try a real release title</h3><p>Testing uses the unsaved rules currently in this editor and does not change your library.</p></div>
             <label className="cf-release-test-input"><span>Release title</span><textarea className="input" value={releaseName} onChange={(event) => setReleaseName(event.target.value)} placeholder="Paste a full release title…" /></label>
             <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="ghost" onClick={() => void testAll()} disabled={testing || !releaseName.trim()}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
             {!testResult && !testAllResult && <div className="cf-test-placeholder"><Icon name="activity" size={18} /><strong>Ready to test</strong><span>Run the title above to see every rule’s evidence and result.</span></div>}

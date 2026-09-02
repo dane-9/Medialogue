@@ -183,7 +183,8 @@ SAMPLE_FORMATS: list[tuple[str, str, int]] = [
     ("HDR", "HDR10", 25),
     ("REMUX", "Remux", 70),
     ("TrueHD", "TrueHD", 55),
-    ("DTS-HD", "DTS-HD MA", 25),
+    ("DTS-HD MA", "DTS-HD MA", 45),
+    ("DTS-HD HRA", "DTS-HD HRA", 20),
     ("HEVC", "HEVC", 15),
     ("WEB-DL", "WEB-DL", 10),
     ("REPACK", "Repack", 5),
@@ -235,6 +236,16 @@ def _take_over(matched: list[dict], *, name: str, contribution: int, supersedes:
     matched.append(_sample_result(name, contribution))
 
 
+def _sample_token_matches(release_name: str, token: str) -> bool:
+    """Match sample tokens across the punctuation accepted by the real parser."""
+
+    parts = [re.escape(part) for part in re.split(r"[- ._]+", token) if part]
+    if not parts:
+        return False
+    phrase = r"[- ._]*".join(parts)
+    return re.search(rf"(?i)(?<![a-z0-9]){phrase}(?![a-z0-9])", release_name) is not None
+
+
 def _matched_formats(release_name: str) -> list[dict]:
     """Score a release name with the sample table, as the real scorer would.
 
@@ -242,10 +253,9 @@ def _matched_formats(release_name: str) -> list[dict]:
     the difference between them always agree with the listed formats.
     """
 
-    tokens = {token.casefold() for token in re.split(r"[.-]", release_name) if token}
     matched: list[dict] = []
     for token, name, contribution in SAMPLE_FORMATS:
-        if token.casefold() in tokens and not any(item["custom_format_name"] == name for item in matched):
+        if _sample_token_matches(release_name, token) and not any(item["custom_format_name"] == name for item in matched):
             matched.append(_sample_result(name, contribution, regex_match=token))
 
     # Samples must model the same built-in takeover rules as real evaluation.
@@ -269,8 +279,8 @@ def _matched_formats(release_name: str) -> list[dict]:
             supersedes={"Dolby Vision", "HDR10"},
         )
 
-    has_truehd = "truehd" in tokens
-    has_atmos = "atmos" in tokens
+    has_truehd = _sample_token_matches(release_name, "TrueHD")
+    has_atmos = _sample_token_matches(release_name, "Atmos")
     if has_truehd and has_atmos:
         _take_over(matched, name="TrueHD Atmos", contribution=60, supersedes={"TrueHD"})
     return matched

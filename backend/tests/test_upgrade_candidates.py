@@ -181,6 +181,15 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
                 published=None,
                 leechers=1,
             ),
+            SearchResult(
+                title="Upgrade.Movie.2024.Directors.Cut.2160p.WEB-DL.x264-GRP",
+                guid="wrong-edition",
+                download_url="http://upgrade-indexer.test/download/wrong-edition?api_key=do-not-expose",
+                size=20,
+                seeders=100,
+                published=None,
+                leechers=0,
+            ),
         ]
     )
     _run_search(behavior)
@@ -194,8 +203,37 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
     assert row["current_release_name"] == "Upgrade.Movie.2024.1080p.WEB-DL.x264-GRP"
     assert "quality" in row["upgrade_types"]
     assert row["execution_eligible"] is True
+    assert row["result_count"] == 3
     assert "download_url" not in row
     assert "guid" not in row
+
+    results_response = client.get(f"/api/v1/upgrade-candidates/{row['id']}/results")
+    assert results_response.status_code == 200, results_response.text
+    result_rows = results_response.json()["results"]
+    assert len(result_rows) == 3
+    assert all("download_url" not in result for result in result_rows)
+    assert all("guid" not in result for result in result_rows)
+    assert sum(result["recommended"] for result in result_rows) == 1
+    assert sum(result["selected"] for result in result_rows) == 1
+    rejected = next(result for result in result_rows if result["title"].endswith("Directors.Cut.2160p.WEB-DL.x264-GRP"))
+    assert rejected["eligible"] is False
+    assert any("edition" in reason.casefold() for reason in rejected["rejection_reasons"])
+
+    repack = next(result for result in result_rows if ".REPACK." in result["title"])
+    selected_response = client.post(
+        f"/api/v1/upgrade-candidates/{row['id']}/results/select",
+        headers=headers,
+        json={"result_id": repack["id"]},
+    )
+    assert selected_response.status_code == 200, selected_response.text
+    selected_row = selected_response.json()
+    assert selected_row["title"] == "Upgrade.Movie.2024.1080p.WEB-DL.REPACK.x264-GRP"
+    assert selected_row["result_count"] == 3
+    selected_results = client.get(f"/api/v1/upgrade-candidates/{row['id']}/results").json()["results"]
+    assert next(result for result in selected_results if result["id"] == repack["id"])["selected"] is True
+    assert next(result for result in selected_results if result["recommended"])["title"] == (
+        "Upgrade.Movie.2024.2160p.WEB-DL.x264-GRP"
+    )
 
     behavior.movie_results = [
         SearchResult(

@@ -58,6 +58,7 @@ class UpgradeCandidateResponse(BaseModel):
     current_release_name: str
     current_quality: str | None = None
     current_edition: str | None = None
+    movie_has_multiple_editions: bool = False
     current_custom_format_score: int
     #: Null means the title inherits the default Quality Profile.
     quality_profile_id: UUID | None = None
@@ -71,6 +72,7 @@ class UpgradeCandidateResponse(BaseModel):
     title: str
     quality: str | None = None
     candidate_edition: str | None = None
+    result_count: int = 1
     custom_format_score: int
     score_delta: int
     size: int | None = None
@@ -120,6 +122,39 @@ class UpgradeCandidateCount(BaseModel):
 
 class UpgradeSearchResponse(BaseModel):
     job_id: UUID
+
+
+class UpgradeSearchResultResponse(BaseModel):
+    id: UUID
+    indexer_id: UUID | None = None
+    indexer_name: str
+    indexer_color: str | None = None
+    title: str
+    quality: str | None = None
+    edition: str | None = None
+    release_group: str | None = None
+    custom_format_score: int | None = None
+    size: int | None = None
+    seeders: int | None = None
+    leechers: int | None = None
+    published_at: datetime | None = None
+    eligible: bool
+    rejection_reasons: list[str] = Field(default_factory=list)
+    upgrade_types: list[str] = Field(default_factory=list)
+    matched_format_names: list[str] = Field(default_factory=list)
+    parser: dict[str, Any] = Field(default_factory=dict)
+    recommended: bool = False
+    selected: bool = False
+
+
+class UpgradeSearchResultsResponse(BaseModel):
+    candidate_id: UUID
+    searched_at: datetime
+    results: list[UpgradeSearchResultResponse]
+
+
+class UpgradeSearchResultSelectRequest(BaseModel):
+    result_id: UUID
 
 
 class UpgradeQualityProfileUpdate(BaseModel):

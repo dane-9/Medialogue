@@ -437,6 +437,7 @@ export interface UpgradeCandidate {
   currentReleaseName: string
   currentQuality?: string
   currentEdition?: string
+  movieHasMultipleEditions: boolean
   currentCustomFormatScore: number
   /** Undefined means this title inherits the default Quality Profile. */
   qualityProfileId?: string
@@ -448,6 +449,7 @@ export interface UpgradeCandidate {
   title: string
   quality?: string
   candidateEdition?: string
+  resultCount: number
   customFormatScore: number
   scoreDelta: number
   size?: number
@@ -479,6 +481,35 @@ export interface UpgradeCandidate {
   lastSearchedAt: string
   createdAt: string
   updatedAt: string
+}
+
+export interface UpgradeSearchResult {
+  id: string
+  indexerId?: string
+  indexerName: string
+  indexerColor?: string
+  title: string
+  quality?: string
+  edition?: string
+  releaseGroup?: string
+  customFormatScore?: number
+  size?: number
+  seeders?: number
+  leechers?: number
+  publishedAt?: string
+  eligible: boolean
+  rejectionReasons: string[]
+  upgradeTypes: string[]
+  matchedFormatNames: string[]
+  parser: Record<string, unknown>
+  recommended: boolean
+  selected: boolean
+}
+
+export interface UpgradeSearchResults {
+  candidateId: string
+  searchedAt: string
+  results: UpgradeSearchResult[]
 }
 
 export interface UpgradeCleanupTarget {

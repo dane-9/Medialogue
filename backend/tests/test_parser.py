@@ -258,6 +258,8 @@ def test_extended_resolution_and_source_combinations_are_structured():
         "Movie 2026 2160p WEB-DL AV1-GROUP": "2160p WEB-DL",
         "Movie 2026 1440p WEBRip H.265-GROUP": "1440p WEBRip",
         "Movie 2026 1080i HDTV MPEG-2-GROUP": "1080i HDTV",
+        "Movie 2026 1080i BluRay REMUX AVC DTS-HD MA 5.1-GROUP": "1080i BluRay REMUX",
+        "Movie 2026 1080i BluRay x264-GROUP": "1080i Encode",
         "Movie 2026 540p WEB-DL H.264-GROUP": "540p WEB-DL",
         "Movie 2020 720p BluRay REMUX AVC-GROUP": "720p BluRay REMUX",
         "Movie 2000 576i PAL DVD MPEG-2-GROUP": "Full Disc DVD",

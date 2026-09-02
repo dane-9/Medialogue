@@ -27,7 +27,7 @@ export function matchedFormatNames(result: InteractiveSearchResult): string[] {
 
 const signed = (score?: number) => `${(score ?? 0) > 0 ? '+' : ''}${score ?? 0}`
 
-export function ReleaseResults({ results, selectedId, onSelect, disabled, empty, label, tag, onRefresh, refreshing }: {
+export function ReleaseResults({ results, selectedId, onSelect, disabled, empty, label, tag, renderTags, isSelectable, onRefresh, refreshing }: {
   results: InteractiveSearchResult[]
   selectedId: string
   onSelect: (id: string) => void
@@ -36,6 +36,12 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
   label: string
 
   tag?: string
+
+  /** Extra metadata owned by the screen embedding the shared release table. */
+  renderTags?: (result: InteractiveSearchResult) => ReactNode
+
+  /** Keeps rejected upgrade candidates visible without allowing selection. */
+  isSelectable?: (result: InteractiveSearchResult) => boolean
 
   onRefresh?: () => void
   refreshing?: boolean
@@ -93,7 +99,8 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
 
     {sorted.map((result) => {
       const selected = selectedId === result.id
-      const score = result.customFormatScore ?? 0
+      const score = result.customFormatScore
+      const selectable = !disabled && (isSelectable?.(result) ?? true)
       const { resolution, type } = splitQuality(result.quality, parsedResolution(result.parser))
       const formats = matchedFormatNames(result)
       const warnings = result.warnings ?? []
@@ -106,7 +113,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
         role="option"
         key={result.id}
         aria-selected={selected}
-        disabled={disabled}
+        disabled={!selectable}
         className={`release-row ${selected ? 'selected' : ''}`}
         onClick={() => onSelect(selected ? '' : result.id)}
       >
@@ -125,7 +132,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
                 ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background }
                 : undefined}
             ><i>Indexer</i>{result.indexerName}</span>
-            {result.edition ? <em>{result.edition}</em> : null}
+            {result.edition ? <em className="release-edition">{result.edition}</em> : null}
             {languages.length > 1
               ? <Tooltip
                   className="release-pill release-pill-language"
@@ -137,6 +144,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
                 ? <span className={`release-pill release-pill-language ${languages[0] === UNKNOWN_LANGUAGE ? 'release-pill-unknown' : ''}`}>{languages[0]}</span>
                 : null}
             {tag ? <em>{tag}</em> : null}
+            {renderTags?.(result)}
             {warnings.length
               ? <Tooltip
                   className={`release-pill ${result.qualityAllowed && !scoreRejected ? 'release-warned' : 'release-blocked'}`}
@@ -148,13 +156,13 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
           </span>
         </span>
         <Tooltip
-          className={`release-numeric release-score ${score < 0 ? 'negative' : score > 0 ? 'positive' : ''} ${formats.length ? 'has-formats' : ''}`}
+          className={`release-numeric release-score ${(score ?? 0) < 0 ? 'negative' : (score ?? 0) > 0 ? 'positive' : ''} ${formats.length ? 'has-formats' : ''}`}
           content={formats.length
             ? <>
                 <ul>{formats.map((name) => <li key={name}>{name}</li>)}</ul>
               </>
             : 'No Custom Formats matched'}
-        >{signed(score)}</Tooltip>
+        >{score === undefined ? '—' : signed(score)}</Tooltip>
         <span className="release-numeric">{formatBytes(result.size)}</span>
         <span className="release-numeric">
           <Tooltip
