@@ -11,7 +11,7 @@ def _create_engine(database_url: str):
     url = make_url(database_url)
     if url.drivername != "sqlite+aiosqlite":
         raise ValueError("The application runtime requires a sqlite+aiosqlite database URL")
-    engine = create_async_engine(database_url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(database_url, pool_pre_ping=True)
 
     @event.listens_for(engine.sync_engine, "connect")
     def configure_sqlite(dbapi_connection, _connection_record) -> None:

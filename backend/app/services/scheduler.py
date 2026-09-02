@@ -201,17 +201,6 @@ async def trigger_schedule(db: AsyncSession, schedule: Schedule, *, trigger: str
     return job
 
 
-async def trigger_health_sweep(*, trigger: str = "event") -> Job | None:
-    async with db_session.async_session_factory() as db:
-        schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "integration_health_sweep"))
-        if schedule is None:
-            await ensure_default_schedules(db)
-            await db.commit()
-            schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "integration_health_sweep"))
-        if schedule is None or not schedule.enabled:
-            return None
-        return await trigger_schedule(db, schedule, trigger=trigger)
-
 
 async def request_health_sweep(db: AsyncSession) -> None:
     """Make the health task due after configuration changes.

@@ -18,7 +18,6 @@ from app.models.domain import (
 )
 from collections.abc import Sequence
 
-from app.parser.quality import QUALITY_BY_NAME
 from app.services.builtin_formats import DEFAULT_QUALITY_PROFILE_MARKER
 
 
@@ -365,27 +364,13 @@ def minimum_quality_status(
         return None
     if not candidate_quality:
         return None
-    if quality_order:
-        try:
-            return quality_order.index(candidate_quality) <= quality_order.index(minimum_quality)
-        except ValueError:
-            return None
-    candidate = QUALITY_BY_NAME.get(candidate_quality)
-    minimum = QUALITY_BY_NAME.get(minimum_quality)
-    if candidate is None or minimum is None:
+    if not quality_order:
         return None
-    return int(candidate.rank) >= int(minimum.rank)
+    try:
+        return quality_order.index(candidate_quality) <= quality_order.index(minimum_quality)
+    except ValueError:
+        return None
 
-
-async def assigned_title_count(db: AsyncSession, profile_id: UUID) -> int:
-    return int(
-        await db.scalar(
-            select(func.count())
-            .select_from(MediaProfileOverride)
-            .where(MediaProfileOverride.quality_profile_id == profile_id)
-        )
-        or 0
-    )
 
 
 async def assigned_titles_by_type(db: AsyncSession, profile_id: UUID) -> tuple[int, int]:

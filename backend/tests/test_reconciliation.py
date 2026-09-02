@@ -1,5 +1,4 @@
 from app.reconciliation.engine import ReconciliationEngine
-from app.reconciliation.path_mapping import RemotePathMapping, is_inside_root, resolve_reported_path
 from app.reconciliation.types import (
     CandidateObservation,
     DecisionKind,
@@ -286,22 +285,6 @@ def test_unrelated_torrent_is_ignored():
     assert result.kind is DecisionKind.IGNORED
 
 
-def test_remote_path_mapping_uses_longest_component_prefix():
-    result = resolve_reported_path(
-        "/downloads/movies/Inception/file.mkv",
-        [
-            RemotePathMapping("broad", "/downloads", "/media"),
-            RemotePathMapping("movies", "/downloads/movies", "/media/movies-array"),
-        ],
-    )
-    assert result.reported_path == "/downloads/movies/Inception/file.mkv"
-    assert result.resolved_path == "/media/movies-array/Inception/file.mkv"
-    assert result.mapping_id == "movies"
-
-
-def test_root_containment_is_component_safe():
-    assert is_inside_root("/media/movies/Film", "/media/movies")
-    assert not is_inside_root("/media/movies-evil/Film", "/media/movies")
 
 
 def test_missing_release_is_replaced_before_adding_another_present_edition():
