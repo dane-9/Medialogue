@@ -5,7 +5,7 @@ import secrets
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     app_name: str = "Medialogue"
     environment: str = "development"
     debug: bool = False
-    secret_key: str = Field(default="change-me-in-production", min_length=16)
+    secret_key: str = "change-me-in-production"
     database_url: str = "sqlite+aiosqlite:////config/medialogue.db"
     config_dir: str = "/config"
     torrent_archive_dir: str = "/torrent-archive"
@@ -50,6 +50,21 @@ class Settings(BaseSettings):
     bootstrap_admin: bool = True
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
+
+    @field_validator("secret_key", mode="before")
+    @classmethod
+    def normalize_secret_key(cls, value: object) -> str:
+        # Compose intentionally passes an empty value when the operator does
+        # not provide an override. Treat that exactly like an unset value so
+        # production startup can generate /config/application-secret.
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return "change-me-in-production"
+        if not isinstance(value, str):
+            raise ValueError("MEDIALOGUE_SECRET_KEY must be a string")
+        normalized = value.strip()
+        if not is_placeholder_secret(normalized) and len(normalized) < 16:
+            raise ValueError("MEDIALOGUE_SECRET_KEY must be at least 16 characters")
+        return normalized
 
     @field_validator("database_url")
     @classmethod
@@ -107,12 +122,86 @@ def _create_application_secret(path: Path) -> str:
     return value
 
 
-def ensure_runtime_secret(settings: Settings | None = None) -> str:
-    """Resolve the stable production secret before any encrypted config access.
+def _legacy_environment_secret() -> str | None:
+    """Read the pre-hardening SECRET_KEY name for one compatibility cycle."""
 
-    Development/test settings intentionally retain the historical placeholder
-    behavior. Production treats placeholders as absent and persists one strong
-    generated value under the operator-owned config directory.
+    raw = os.environ.get("SECRET_KEY")
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value or is_placeholder_secret(value):
+        return None
+    if len(value) < 16:
+        raise RuntimeError("Legacy SECRET_KEY must be at least 16 characters.")
+    return value
+
+
+def _integration_pair_exists(settings: Settings) -> bool:
+    config_dir = Path(settings.config_dir)
+    return (config_dir / "medialogue.json").exists() and (config_dir / "secrets.enc").exists()
+
+
+def _find_legacy_integration_secret(settings: Settings) -> str | None:
+    """Return a known legacy key only if it decrypts the existing secret store."""
+
+    if not _integration_pair_exists(settings):
+        return None
+    from app.core.integration_config import validate_existing_integration_secret
+
+    # Keep the order deterministic. The first value is the historical runtime
+    # default used by released Compose examples before automatic key creation.
+    candidates = (
+        "replace-with-a-long-random-secret",
+        "change-me-in-production",
+        "replace-with-a-long-random-secret-at-least-32-characters",
+        "example-only-change-me",
+        "your-real-random-secret",
+    )
+    for candidate in candidates:
+        if validate_existing_integration_secret(settings.config_dir, candidate):
+            return candidate
+    return None
+
+
+def _repair_or_migrate_existing_integration_secret(
+    settings: Settings,
+    *,
+    target_secret: str,
+    legacy_secret: str | None = None,
+) -> None:
+    """Ensure an existing encrypted integration store uses ``target_secret``.
+
+    A persisted generated key can survive a crash between key creation and the
+    secrets-file rewrite. In that case the target key will not decrypt yet, so
+    we retry the known legacy key and complete the re-encryption.
+    """
+
+    if not _integration_pair_exists(settings):
+        return
+    from app.core.integration_config import (
+        migrate_existing_integration_secret,
+        validate_existing_integration_secret,
+    )
+
+    if validate_existing_integration_secret(settings.config_dir, target_secret):
+        return
+    old_secret = legacy_secret or _find_legacy_integration_secret(settings)
+    if old_secret is None:
+        raise RuntimeError(
+            "Existing integration secrets cannot be decrypted with the configured or known legacy application keys. "
+            "Restore the previous MEDIALOGUE_SECRET_KEY/SECRET_KEY before starting Medialogue."
+        )
+    migrate_existing_integration_secret(settings.config_dir, old_secret, target_secret)
+
+
+def ensure_runtime_secret(settings: Settings | None = None) -> str:
+    """Resolve a stable production secret before encrypted configuration access.
+
+    Explicit MEDIALOGUE_SECRET_KEY remains authoritative. The historical
+    SECRET_KEY environment name is accepted for upgrade compatibility. If no
+    operator key exists, production persists a generated key under /config.
+    Existing stores encrypted with a documented legacy placeholder are
+    decrypted successfully *before* a new key is persisted, then re-encrypted.
     """
 
     current = settings or get_settings()
@@ -124,11 +213,31 @@ def ensure_runtime_secret(settings: Settings | None = None) -> str:
             raise RuntimeError("MEDIALOGUE_SECRET_KEY must not contain a newline.")
         return current.secret_key
 
+    legacy_env = _legacy_environment_secret()
+    if legacy_env is not None:
+        current.secret_key = legacy_env
+        return legacy_env
+
     path = application_secret_path(current)
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
+        legacy_store_secret = _find_legacy_integration_secret(current)
+        if _integration_pair_exists(current) and legacy_store_secret is None:
+            # Do not create a new key until we have proved how to decrypt the
+            # existing credentials. Persisting an unrelated key here would
+            # turn an upgrade/configuration problem into data loss.
+            raise RuntimeError(
+                "Existing integration secrets require their previous application key. "
+                "Set MEDIALOGUE_SECRET_KEY (or legacy SECRET_KEY) to the key used by this installation and restart."
+            )
         resolved = _create_application_secret(path)
+        if legacy_store_secret is not None:
+            _repair_or_migrate_existing_integration_secret(
+                current,
+                target_secret=resolved,
+                legacy_secret=legacy_store_secret,
+            )
     except OSError as exc:
         raise RuntimeError(f"Could not read persisted application secret: {path}.") from exc
     else:
@@ -137,6 +246,7 @@ def ensure_runtime_secret(settings: Settings | None = None) -> str:
             os.chmod(path, 0o600)
         except OSError as exc:
             raise RuntimeError(f"Could not secure persisted application secret: {path}.") from exc
+        _repair_or_migrate_existing_integration_secret(current, target_secret=resolved)
 
     current.secret_key = resolved
     return resolved

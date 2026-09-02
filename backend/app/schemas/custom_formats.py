@@ -41,7 +41,7 @@ class StrictCustomFormatModel(BaseModel):
 class CustomFormatConditionInput(StrictCustomFormatModel):
     id: str | None = Field(default=None, max_length=128)
     name: str | None = Field(default=None, max_length=256)
-    pattern: str | None = Field(default=None, max_length=4096)
+    pattern: str | None = Field(default=None, max_length=1024)
     required: bool = False
     negate: bool = False
     case_sensitive: bool = False

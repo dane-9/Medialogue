@@ -17,3 +17,5 @@ The database is `/config/medialogue.db`. Keep `/config` on a local filesystem an
 ## `MEDIALOGUE_SECRET_KEY`
 
 `MEDIALOGUE_SECRET_KEY` protects the current build's encrypted secrets file. If it is omitted, the application generates `/config/application-secret`; keep that file with the config dataset. Do not copy `secrets.enc` between development builds without the matching key.
+
+For upgrade compatibility, the former `SECRET_KEY` environment variable is still accepted when `MEDIALOGUE_SECRET_KEY` is unset. Existing stores that were encrypted with the historical documented placeholder are verified first, then automatically re-encrypted under the generated `/config/application-secret`. A store encrypted with an operator-supplied key is never guessed or overwritten: restore that previous key through `MEDIALOGUE_SECRET_KEY` (or the legacy `SECRET_KEY`) before starting the upgraded container.

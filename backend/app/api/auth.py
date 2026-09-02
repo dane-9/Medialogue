@@ -108,15 +108,15 @@ async def login(
     if retry_after is not None:
         raise _login_throttle_error(retry_after)
 
-    result = await db.execute(select(AdminUser).where(AdminUser.username == payload.username))
-    admin = result.scalar_one_or_none()
-
-    if settings.is_production and (admin is None or admin.is_default_password):
+    if settings.is_production and await production_bootstrap_required(db):
         raise AppError(
             "INITIAL_SETUP_REQUIRED",
             "Complete initial administrator setup before normal login.",
             status_code=401,
         )
+
+    result = await db.execute(select(AdminUser).where(AdminUser.username == payload.username))
+    admin = result.scalar_one_or_none()
 
     if admin is None or not verify_password(payload.password, admin.password_hash):
         login_rate_limiter.record_failure(key)

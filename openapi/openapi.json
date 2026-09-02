@@ -752,7 +752,7 @@
           "pattern": {
             "anyOf": [
               {
-                "maxLength": 4096,
+                "maxLength": 1024,
                 "type": "string"
               },
               {

@@ -54,7 +54,6 @@ jobs:
       - name: Prepare release-smoke environment
         run: |
           cp .env.example .env
-          printf 'MEDIALOGUE_SECRET_KEY=ci-release-secret-0123456789abcdefghijklmnopqrstuvwxyz\n' >> .env
           mkdir -p .ci-media .local/config .local/torrent-archive
       - name: Validate Compose configuration
         run: docker compose config -q
@@ -81,6 +80,15 @@ jobs:
           timeout 180 bash -c 'until curl -fsS http://127.0.0.1:8000/readyz >/dev/null; do sleep 3; done'
           curl -fsS http://127.0.0.1:8000/healthz
           curl -fsS http://127.0.0.1:8000/readyz
+      - name: Verify generated application secret survives restart
+        run: |
+          test -s .local/config/application-secret
+          test "$(stat -c '%a' .local/config/application-secret)" = "600"
+          before="$(sha256sum .local/config/application-secret | cut -d' ' -f1)"
+          docker compose restart media-manager
+          timeout 180 bash -c 'until curl -fsS http://127.0.0.1:8000/readyz >/dev/null; do sleep 3; done'
+          after="$(sha256sum .local/config/application-secret | cut -d' ' -f1)"
+          test "$before" = "$after"
       - name: Show container state
         if: always()
         run: docker compose ps && docker compose logs --no-color --tail=150

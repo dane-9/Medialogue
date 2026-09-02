@@ -12,6 +12,7 @@ import secrets
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,11 +84,13 @@ def verify_confirmation_payload(token: str, secret_key: str) -> dict[str, object
 
 
 async def consume_confirmation_jti(db: AsyncSession, payload: Mapping[str, object]) -> None:
-    """Atomically consume a destructive confirmation token ID.
+    """Durably consume a destructive confirmation token before side effects.
 
-    The unique database constraint is the cross-request/process guard. A
-    nested transaction turns a duplicate insert into a controlled application
-    error without rolling back the caller's surrounding work.
+    The nonce is committed immediately. This is intentional: callers invoke
+    this helper only after all preview/state validation and immediately before
+    irreversible filesystem/network work. If a later operation fails and the
+    caller rolls its own transaction back, the confirmation must still remain
+    consumed so replay cannot repeat a partial destructive action.
     """
 
     try:
@@ -100,9 +103,21 @@ async def consume_confirmation_jti(db: AsyncSession, payload: Mapping[str, objec
     except (KeyError, TypeError, ValueError, OverflowError, OSError) as exc:
         raise AppError("INVALID_CONFIRMATION", "Confirmation token is missing a valid ID.", status_code=409) from exc
 
+    now = datetime.now(timezone.utc)
+    if expires_at <= now:
+        raise AppError("CONFIRMATION_EXPIRED", "This confirmation token has expired.", status_code=409)
+
     try:
-        async with db.begin_nested():
-            db.add(ConfirmationNonce(jti=jti, purpose=purpose, expires_at=expires_at))
-            await db.flush()
+        # Opportunistic cleanup keeps this small appliance table bounded. The
+        # deletion and the new single-use marker are committed together.
+        await db.execute(delete(ConfirmationNonce).where(ConfirmationNonce.expires_at <= now))
+        db.add(ConfirmationNonce(jti=jti, purpose=purpose, expires_at=expires_at))
+        await db.flush()
+        await db.commit()
     except IntegrityError as exc:
-        raise AppError("CONFIRMATION_REPLAY", "This confirmation token has already been used.", status_code=409) from exc
+        await db.rollback()
+        raise AppError(
+            "CONFIRMATION_REPLAY",
+            "This confirmation token has already been used.",
+            status_code=409,
+        ) from exc
