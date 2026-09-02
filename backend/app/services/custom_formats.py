@@ -8,16 +8,19 @@ Persistence mappings are normalized into service objects before evaluation.
 
 from __future__ import annotations
 
-import re
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Mapping, Sequence
 
+import regex as user_regex
+
 from app.parser import ReleaseParseResult, parse_release
 
 
 SCHEMA_VERSION = 1
+USER_REGEX_MAX_LENGTH = 1024
+USER_REGEX_TIMEOUT_SECONDS = 0.05
 
 
 def _new_id() -> str:
@@ -292,20 +295,25 @@ def _structured_evidence(
 def _matches_expected(
     condition: FormatCondition,
     evidence: Sequence[Any],
-) -> tuple[bool, str | None, str | None, int | None]:
+) -> tuple[bool, str | None, str | None, int | None, str | None]:
     expected = condition.pattern
     if expected is None or expected == "":
-        return False, None, "condition has no value/pattern", None
-    flags = 0 if condition.case_sensitive else re.IGNORECASE
+        return False, None, None, None, "condition has no value/pattern"
+    flags = 0 if condition.case_sensitive else user_regex.IGNORECASE
     patterns = _as_tuple(expected)
     for wanted in patterns:
-        expression = str(wanted) if condition.pattern is not None else rf"^(?:{re.escape(str(wanted))})$"
+        expression = str(wanted)
+        if len(expression) > USER_REGEX_MAX_LENGTH:
+            return False, None, None, None, "regex pattern exceeds the 1024-character limit"
         try:
-            regex = re.compile(expression, flags)
-        except re.error as exc:
-            return False, None, f"invalid regex: {exc}", None
+            compiled = user_regex.compile(expression, flags)
+        except user_regex.error as exc:
+            return False, None, None, None, f"invalid regex: {exc}"
         for item in evidence:
-            match = regex.search(str(item))
+            try:
+                match = compiled.search(str(item), timeout=USER_REGEX_TIMEOUT_SECONDS)
+            except TimeoutError:
+                return False, str(item), None, None, "regex evaluation timed out"
             if match:
                 captured_offset: int | None = None
                 if "score_offset" in match.re.groupindex:
@@ -315,8 +323,8 @@ def _matches_expected(
                             captured_offset = max(-100000, min(100000, int(raw_offset)))
                         except ValueError:
                             captured_offset = None
-                return True, str(item), match.group(0), captured_offset
-    return False, evidence[0] if evidence else None, None, None
+                return True, str(item), match.group(0), captured_offset, None
+    return False, evidence[0] if evidence else None, None, None, None
 
 
 def _evaluate_condition(
@@ -325,12 +333,13 @@ def _evaluate_condition(
     context: Mapping[str, Any],
 ) -> ConditionResult:
     evidence, evidence_label = _structured_evidence(condition, parsed, context)
-    underlying, evidence_value, regex_match, captured_offset = _matches_expected(condition, evidence)
-    effective = not underlying if condition.negate else underlying
-    validation_error = regex_match if regex_match and regex_match.startswith("invalid regex:") else None
-    if validation_error:
-        regex_match = None
-        reason = validation_error
+    underlying, evidence_value, regex_match, captured_offset, error = _matches_expected(condition, evidence)
+    # A malformed or timed-out user expression must never become a successful
+    # negated condition. Fail closed while retaining the diagnostic reason for
+    # the UI and API evaluation output.
+    effective = False if error else (not underlying if condition.negate else underlying)
+    if error:
+        reason = error
     elif underlying:
         reason = f"matched {evidence_label}"
     elif evidence:
@@ -397,6 +406,19 @@ def evaluate_custom_format(
         for item in condition_results
         if item.matched and not item.negated
     ]
+    evaluation_error = next(
+        (
+            item.reason
+            for item in condition_results
+            if item.reason
+            and (
+                item.reason.startswith("invalid regex:")
+                or item.reason.startswith("regex evaluation timed out")
+                or item.reason.startswith("regex pattern exceeds")
+            )
+        ),
+        None,
+    )
     return CustomFormatEvaluation(
         custom_format_id=fmt.id,
         custom_format_name=fmt.name,
@@ -404,6 +426,7 @@ def evaluate_custom_format(
         conditions=condition_results,
         score=int(score),
         score_offset=max(matched_offsets) if matched and matched_offsets else 0,
+        error=evaluation_error,
         group_results=group_results,
     )
 
@@ -554,9 +577,12 @@ def validate_condition(condition: FormatCondition) -> tuple[str, ...]:
         errors.append("condition pattern is required")
     if item.pattern:
         for pattern in _as_tuple(item.pattern):
+            if len(str(pattern)) > USER_REGEX_MAX_LENGTH:
+                errors.append("regex pattern exceeds the 1024-character limit")
+                continue
             try:
-                re.compile(str(pattern), 0 if item.case_sensitive else re.IGNORECASE)
-            except re.error as exc:
+                user_regex.compile(str(pattern), 0 if item.case_sensitive else user_regex.IGNORECASE)
+            except user_regex.error as exc:
                 errors.append(f"invalid regex: {exc}")
     return tuple(errors)
 

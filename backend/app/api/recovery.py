@@ -7,19 +7,22 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
 
 from app.api.dependencies import require_admin, require_csrf
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.db.session import get_db
+from app.core.security import verify_password
 from app.integrations.qbittorrent import QBittorrentClient
-from app.models.auth import AdminUser
+from app.models.auth import AdminUser, AuthSession
 from app.models.domain import Job, JobStatus
 from app.services.events import create_event
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.recovery import (
     RecoveryCapabilitiesResponse,
     RecoveryExportAcceptedResponse,
+    RecoveryExportRequest,
     RecoveryReimportPlanResponse,
     RecoveryReimportRequest,
 )
@@ -62,11 +65,14 @@ async def capabilities(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def start_recovery_export(
+    payload: RecoveryExportRequest,
     background_tasks: BackgroundTasks,
-    _: object = Depends(require_csrf),
+    auth_session: AuthSession = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     runner=Depends(get_recovery_export_runner),
 ) -> RecoveryExportAcceptedResponse:
+    if not verify_password(payload.current_password, auth_session.admin.password_hash):
+        raise AppError("INVALID_PASSWORD", "Current password is incorrect.", status_code=400)
     capability = await recovery_capabilities(db)
     if not capability["supported"]:
         raise AppError(
@@ -125,6 +131,15 @@ def _validated_bundle_path(job: Job) -> Path:
     return candidate
 
 
+def _remove_downloaded_bundle(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        # Expiry cleanup remains the fallback if the filesystem is
+        # temporarily unavailable after the response has completed.
+        return
+
+
 @router.get("/exports/{job_id}/download")
 async def download_recovery_export(
     job_id: UUID,
@@ -149,6 +164,7 @@ async def download_recovery_export(
         media_type="application/zip",
         filename=filename,
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        background=BackgroundTask(_remove_downloaded_bundle, bundle),
     )
 
 

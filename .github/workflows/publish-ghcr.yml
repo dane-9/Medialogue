@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@18ce135bb5112fa8ce4ed6c17ab05699d7f3a5e0 # v3.11.0
 
       - name: Compute lowercase GHCR image name
         id: image
@@ -32,7 +32,7 @@ jobs:
 
       - name: Generate image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
         with:
           images: ${{ steps.image.outputs.image }}
           tags: |
@@ -46,7 +46,7 @@ jobs:
       # Build locally first. Nothing is pushed until the resulting image passes
       # the same runtime checks needed by the real container entrypoint.
       - name: Build image for pre-publish validation
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
           file: ./Dockerfile
@@ -65,13 +65,13 @@ jobs:
             python -c "import alembic; from alembic.config import main; print(alembic.__version__)"
             alembic --version
             cd /app/backend
-            test "$(find alembic/versions -maxdepth 1 -type f -name "*.py" ! -name "__init__.py" | wc -l)" -eq 14
+            test "$(find alembic/versions -maxdepth 1 -type f -name "*.py" ! -name "__init__.py" | wc -l)" -eq 2
             test "$(alembic heads | grep -c "(head)")" -eq 1
-            alembic heads | grep -q "^0014 (head)$"
+            alembic heads | grep -q "^0002 (head)$"
           '
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

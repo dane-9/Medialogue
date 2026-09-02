@@ -14,13 +14,23 @@ import QualityProfilesPage from './QualityProfilesPage'
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false)
+  const [setupRequired, setSetupRequired] = useState(false)
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
     let alive = true
     authApi.session()
       .then(() => { if (alive) setAuthenticated(true) })
-      .catch(() => { if (alive) setAuthenticated(false) })
+      .catch(async () => {
+        if (!alive) return
+        setAuthenticated(false)
+        try {
+          const status = await authApi.bootstrapStatus()
+          if (alive) setSetupRequired(status.required)
+        } catch {
+          if (alive) setSetupRequired(false)
+        }
+      })
       .finally(() => { if (alive) setChecking(false) })
     return () => { alive = false }
   }, [])
@@ -28,7 +38,11 @@ function App() {
   const login = () => { setAuthenticated(true); setChecking(false) }
   const logout = async () => { try { await authApi.logout() } catch {} setAuthenticated(false) }
   if (checking) return <BootScreen />
-  return authenticated ? <ConfirmProvider><BrowserRouter><AuthenticatedApp onLogout={logout} /></BrowserRouter></ConfirmProvider> : <LoginPage onLogin={login} />
+  return authenticated
+    ? <ConfirmProvider><BrowserRouter><AuthenticatedApp onLogout={logout} /></BrowserRouter></ConfirmProvider>
+    : setupRequired
+      ? <FirstRunSetupPage onSetup={login} />
+      : <LoginPage onLogin={login} />
 }
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
@@ -98,6 +112,56 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
         {error && <div className="login-error">{error}</div>}
         <Button type="submit" variant="primary" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</Button>
       </form>
+    </div>
+    <div className="login-footer">v0.1.0</div>
+  </div>
+}
+
+function FirstRunSetupPage({ onSetup }: { onSetup: () => void }) {
+  const [setupToken, setSetupToken] = useState('')
+  const [username, setUsername] = useState('admin')
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setError('')
+    if (password.length < 12) {
+      setError('Choose a password with at least 12 characters.')
+      return
+    }
+    if (password !== confirmation) {
+      setError('The password confirmation does not match.')
+      return
+    }
+    setLoading(true)
+    try {
+      await authApi.bootstrap(setupToken, username, password)
+      onSetup()
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500) setError(reason.message || 'The setup details were rejected.')
+      else setError('Unable to reach the server. Wait for the API to become ready and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return <div className="login-screen">
+    <div className="login-panel">
+      <img className="login-brand-banner" src={medialogueBanner} alt="Medialogue" />
+      <div className="login-form">
+        <div className="heading-copy"><div className="eyebrow">FIRST RUN</div><h1>Set up your administrator account</h1><p>Read the one-time setup token from the container, then choose the password used for normal sign-in.</p></div>
+        <form onSubmit={submit} className="login-form">
+          <label><span className="field-label">Setup token</span><Input value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="off" spellCheck={false} /></label>
+          <label><span className="field-label">Administrator username</span><Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label>
+          <label><span className="field-label">Password</span><Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" autoFocus /></label>
+          <label><span className="field-label">Confirm password</span><Input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type="password" autoComplete="new-password" /></label>
+          {error && <div className="login-error">{error}</div>}
+          <Button type="submit" variant="primary" disabled={loading || !setupToken || !username || !password || !confirmation}>{loading ? 'Setting up…' : 'Create administrator'}</Button>
+        </form>
+      </div>
     </div>
     <div className="login-footer">v0.1.0</div>
   </div>

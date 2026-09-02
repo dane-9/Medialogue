@@ -18,8 +18,9 @@ services:
       MEDIALOGUE_CONFIG_DIR: /config
       MEDIALOGUE_TORRENT_ARCHIVE_DIR: /torrent-archive
       MEDIALOGUE_RECOVERY_EXPORT_DIR: /config/recovery-exports
-      MEDIALOGUE_RECOVERY_EXPORT_RETENTION_HOURS: ${RECOVERY_EXPORT_RETENTION_HOURS:-24}
-      MEDIALOGUE_SECRET_KEY: ${SECRET_KEY:-replace-with-a-long-random-secret}
+      MEDIALOGUE_RECOVERY_EXPORT_RETENTION_HOURS: ${RECOVERY_EXPORT_RETENTION_HOURS:-1}
+      # Optional override. If omitted, the application creates /config/application-secret.
+      MEDIALOGUE_SECRET_KEY: ${MEDIALOGUE_SECRET_KEY:-}
       MEDIALOGUE_LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MEDIALOGUE_COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:

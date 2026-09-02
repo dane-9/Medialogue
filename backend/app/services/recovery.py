@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
-from app.core.security import sign_confirmation_payload, verify_confirmation_payload
+from app.core.security import consume_confirmation_jti, sign_confirmation_payload, verify_confirmation_payload
 from app.db import session as db_session
 from app.models.domain import (
     CustomFormat,
@@ -545,6 +545,7 @@ async def confirm_recovery_reimport_plan(
             status_code=409,
             details={"torrent_ids": [item["torrent_id"] for item in unavailable]},
         )
+    await consume_confirmation_jti(db, payload)
     return plan, selected
 
 

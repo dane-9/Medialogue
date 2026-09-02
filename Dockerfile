@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS frontend-build
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS frontend-build
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS runtime
 ARG VERSION=0.1.0
 LABEL org.opencontainers.image.title="Medialogue" \
       org.opencontainers.image.version="$VERSION" \
@@ -31,11 +31,12 @@ WORKDIR /app/backend
 # backend/alembic/ is Medialogue's migration script directory. Setuptools
 # must not install it as the Python "alembic" package because that would
 # collide with the real Alembic dependency. Verify the import/CLI in-image.
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir -r requirements.lock \
+    && pip install --no-cache-dir --no-deps . \
     && python -c "import alembic; from alembic.config import main; assert getattr(alembic, '__version__', None); print('Alembic', alembic.__version__)" \
     && alembic --version \
     && test "$(alembic heads | grep -c '(head)')" -eq 1 \
-    && alembic heads | grep -q '^0014 (head)$' \
+    && alembic heads | grep -q '^0002 (head)$' \
     && test -x /usr/local/bin/medialogue-entrypoint \
     && mkdir -p /config/recovery-exports /torrent-archive \
     && chown -R appuser:appuser /app /config /torrent-archive

@@ -4,6 +4,15 @@ set -eu
 PUID="${PUID:-10001}"
 PGID="${PGID:-10001}"
 
+if [ "$PUID" = "0" ] && [ "${MEDIALOGUE_ALLOW_ROOT:-false}" != "true" ]; then
+  echo "Refusing to run Medialogue as UID 0. Set MEDIALOGUE_ALLOW_ROOT=true only for a deliberate compatibility deployment." >&2
+  exit 1
+fi
+
+if [ "${MEDIALOGUE_ENTRYPOINT_CHECK_ONLY:-0}" = "1" ]; then
+  exit 0
+fi
+
 run_app() {
   cd /app/backend
   alembic upgrade head

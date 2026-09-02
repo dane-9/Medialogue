@@ -1,17 +1,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from xml.etree import ElementTree
+from typing import Final
 
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 import httpx
 
 from app.parser.iso_languages import resolve_languages
 
 TORZNAB_NS = "http://torznab.com/schemas/2015/feed"
+MAX_TORRENT_BYTES: Final = 10 * 1024 * 1024
+MAX_XML_BYTES: Final = 5 * 1024 * 1024
+MAX_REDIRECTS: Final = 3
 
 
 class TorznabError(RuntimeError):
     pass
+
+
+def _origin(url: httpx.URL) -> tuple[str, str, int]:
+    scheme = url.scheme.lower()
+    host = (url.host or "").lower()
+    if scheme not in {"http", "https"} or not host:
+        raise TorznabError("Configured Torznab URL must use HTTP or HTTPS.")
+    return scheme, host, url.port or (443 if scheme == "https" else 80)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,26 +53,67 @@ class TorznabClient:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_key = api_key
+        try:
+            self._base_url = httpx.URL(url.rstrip("/"))
+            self.trusted_origin = _origin(self._base_url)
+        except (TypeError, ValueError) as exc:
+            raise TorznabError("Configured Torznab URL is invalid.") from exc
         self._client = httpx.AsyncClient(
-            base_url=url.rstrip("/"),
+            base_url=self._base_url,
             timeout=timeout,
             transport=transport,
-            follow_redirects=True,
+            follow_redirects=False,
         )
 
     async def close(self) -> None:
         await self._client.aclose()
 
+    @staticmethod
+    async def _read_bounded(response: httpx.Response, limit: int, message: str) -> bytes:
+        content_length = response.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > limit:
+                    raise TorznabError(message)
+            except ValueError:
+                pass
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in response.aiter_bytes():
+            total += len(chunk)
+            if total > limit:
+                raise TorznabError(message)
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    def resolve_download_url(self, download_url: str, *, base_url: httpx.URL | None = None) -> httpx.URL:
+        """Resolve a result/redirect URL and require the configured origin."""
+
+        base = base_url or self._base_url
+        try:
+            resolved = base.join(download_url)
+            candidate_origin = _origin(resolved)
+        except (TypeError, ValueError, TorznabError) as exc:
+            raise TorznabError("Indexer download URL points to an untrusted origin.") from exc
+        if candidate_origin != self.trusted_origin:
+            raise TorznabError("Indexer download URL points to an untrusted origin.")
+        return resolved
+
     async def health(self) -> dict[str, str | None]:
-        response = await self._client.get("", params={"apikey": self.api_key, "t": "caps"})
         try:
-            response.raise_for_status()
+            async with self._client.stream("GET", "", params={"apikey": self.api_key, "t": "caps"}) as response:
+                response.raise_for_status()
+                payload = await self._read_bounded(
+                    response,
+                    MAX_XML_BYTES,
+                    "Torznab capabilities response exceeded the maximum size.",
+                )
         except httpx.HTTPError as exc:
-            raise TorznabError(f"Torznab request failed: HTTP {response.status_code}") from exc
+            raise TorznabError("Torznab request failed.") from exc
         try:
-            root = ElementTree.fromstring(response.content)
-        except ElementTree.ParseError as exc:
-            raise TorznabError("Torznab capabilities response was not valid XML") from exc
+            root = ElementTree.fromstring(payload)
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
+            raise TorznabError("Torznab capabilities response was not valid XML.") from exc
         server = root.find("server")
         return {
             "status": "healthy",
@@ -89,27 +143,49 @@ class TorznabClient:
             params["ep"] = episode
         if categories:
             params["cat"] = ",".join(str(value) for value in categories)
-        response = await self._client.get("", params=params)
         try:
-            response.raise_for_status()
+            async with self._client.stream("GET", "", params=params) as response:
+                response.raise_for_status()
+                payload = await self._read_bounded(
+                    response,
+                    MAX_XML_BYTES,
+                    "Torznab search response exceeded the maximum size.",
+                )
         except httpx.HTTPError as exc:
-            raise TorznabError(f"Torznab search failed: HTTP {response.status_code}") from exc
+            raise TorznabError("Torznab search failed.") from exc
         try:
-            root = ElementTree.fromstring(response.content)
-        except ElementTree.ParseError as exc:
-            raise TorznabError("Torznab search response was not valid XML") from exc
-        return [self._parse_item(item) for item in root.findall("./channel/item")]
+            root = ElementTree.fromstring(payload)
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
+            raise TorznabError("Torznab search response was not valid XML.") from exc
+        return [self._parse_item(item) for item in root.findall("./channel/item")[:2000]]
 
     async def fetch_torrent(self, download_url: str) -> bytes:
-        response = await self._client.get(download_url)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise TorznabError(f"Torrent download failed: HTTP {response.status_code}") from exc
-        payload = response.content
-        if not payload:
-            raise TorznabError("Indexer returned an empty torrent payload")
-        return payload
+        current_url = self.resolve_download_url(download_url)
+        for redirect_count in range(MAX_REDIRECTS + 1):
+            try:
+                async with self._client.stream("GET", current_url) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise TorznabError("Indexer returned an invalid torrent redirect.")
+                        if redirect_count >= MAX_REDIRECTS:
+                            raise TorznabError("Indexer returned too many torrent redirects.")
+                        current_url = self.resolve_download_url(location, base_url=current_url)
+                        continue
+                    response.raise_for_status()
+                    payload = await self._read_bounded(
+                        response,
+                        MAX_TORRENT_BYTES,
+                        "Indexer torrent response exceeded the maximum size.",
+                    )
+            except TorznabError:
+                raise
+            except httpx.HTTPError as exc:
+                raise TorznabError("Torrent download failed.") from exc
+            if not payload:
+                raise TorznabError("Indexer returned an empty torrent payload")
+            return payload
+        raise TorznabError("Indexer returned too many torrent redirects.")
 
     @staticmethod
     def _parse_item(item: ElementTree.Element) -> SearchResult:

@@ -1,5 +1,5 @@
-import logging
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tasks, tmdb, torrent_archive, upgrades
-from app.core.config import Settings, get_settings, set_settings
+from app.core.config import Settings, ensure_runtime_secret, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.integration_config import get_integration_config_store
 from app.core.logging import configure_logging
@@ -17,6 +17,7 @@ from app.db.bootstrap import (
     ensure_default_admin,
     ensure_default_quality_profile,
     ensure_builtin_custom_formats,
+    ensure_production_bootstrap_state,
     ensure_quality_definitions,
     mark_running_jobs_interrupted,
 )
@@ -60,13 +61,28 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
+    # Resolve the stable production secret before the encrypted integration
+    # store is created. Failures here are security-critical and must not be
+    # hidden by the non-critical database bootstrap warning below.
+    ensure_runtime_secret(settings)
     configure_logging(settings.log_level)
     # /config is the source of truth for integration configuration. Fresh
-    # Fresh installs intentionally start from the single current schema baseline.
+    # installs intentionally start from the single current schema baseline.
     get_integration_config_store().ensure_initialized()
+
+    if settings.is_production:
+        async with db_session.async_session_factory() as db:
+            setup_required = await ensure_production_bootstrap_state(db, settings)
+            await db.commit()
+        if setup_required:
+            logger.warning(
+                "Initial administrator setup is required. Retrieve the one-time setup token with: "
+                "docker exec <medialogue-container> cat /config/initial-setup-token"
+            )
+
     try:
         async with db_session.async_session_factory() as db:
-            if settings.bootstrap_admin:
+            if not settings.is_production and settings.bootstrap_admin:
                 await ensure_default_admin(db, settings)
             await ensure_quality_definitions(db)
             builtins_changed = await ensure_builtin_custom_formats(db)

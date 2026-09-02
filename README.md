@@ -9,13 +9,15 @@ Detailed deployment and administration guides are under [`docs/`](docs/README.md
 
 ## TrueNAS SCALE + Dockge
 
-For TrueNAS SCALE with Dockge installed as an App, use the GHCR deployment path rather than building source inside Dockge. **Nothing publishes automatically:** both CI and GHCR publishing are manual GitHub Actions workflows that run only when you click **Run workflow**. Secrets stay in Dockge's local `.env`, not in the GitHub repository. Follow [`TRUENAS_DOCKGE_GHCR.md`](TRUENAS_DOCKGE_GHCR.md), then paste [`compose.truenas-dockge.yml`](compose.truenas-dockge.yml) into Dockge.
+For TrueNAS SCALE with Dockge installed as an App, use the GHCR deployment path rather than building source inside Dockge. GHCR publishing remains an explicit manual workflow; CI runs automatically on pull requests and pushes to `main`. Secrets stay in Dockge's local `.env`, not in the GitHub repository. Follow [`TRUENAS_DOCKGE_GHCR.md`](TRUENAS_DOCKGE_GHCR.md), then paste [`compose.truenas-dockge.yml`](compose.truenas-dockge.yml) into Dockge.
 
 ## Quick start
 
 Extract this source release (or clone the repository) into one directory; the supplied Compose file builds the production image from the included Dockerfile, backend, and frontend.
 
-1. Copy `.env.example` to `.env` and set a strong `SECRET_KEY`.
+1. Copy `.env.example` to `.env`. Medialogue generates and persists
+   `/config/application-secret`; set `MEDIALOGUE_SECRET_KEY` only when an
+   operator-managed override is desired.
 2. Review `PUID`/`PGID` and the persistent directory paths. The container prepares `/config` and `/torrent-archive` before dropping privileges; media roots are never chowned.
 3. Add only the media bind mounts Medialogue should be allowed to inspect to `docker-compose.yml`. The example mounts `/media` read-only.
 4. Start the stack:
@@ -24,7 +26,10 @@ Extract this source release (or clone the repository) into one directory; the su
    docker compose up -d --build
    ```
 
-5. Open `http://localhost:8000` and sign in with `admin` / `adminadmin`. The first-run checklist appears automatically.
+5. Open `http://localhost:8000`, read the one-time token with
+   `docker compose exec media-manager cat /config/initial-setup-token`, and
+   complete the First Run administrator setup. The first-run checklist appears
+   automatically afterward.
 6. Configure only the integrations you use. TMDB is recommended before the first scan because it establishes external identity for newly discovered titles.
 7. Finish or skip optional setup items, then explicitly start the first media-folder scan. A newly added folder remains uninitialized and is ignored by automatic file checks until that first scan succeeds.
 
@@ -75,7 +80,7 @@ The `/torrent-archive` mount should therefore be durable and writable. It is rec
 
 ## Recovery Bundle export
 
-**Settings → Backup / Recovery** can create a complete disaster-recovery ZIP. The export runs as a persistent background Job, so its state remains visible across navigation and browser refresh. A completed bundle is available through a temporary authenticated download endpoint for the configured retention period (24 hours by default).
+**Settings → Backup / Recovery** can create a complete disaster-recovery ZIP. The export runs as a persistent background Job, so its state remains visible across navigation and browser refresh. A completed bundle is available through a temporary authenticated download endpoint for the configured retention period (1 hour by default).
 
 The bundle contains:
 

@@ -48,6 +48,98 @@
         "title": "AssociationType",
         "type": "string"
       },
+      "AuthRuntimeConfigResponse": {
+        "properties": {
+          "csrf_cookie_name": {
+            "title": "Csrf Cookie Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_cookie_name"
+        ],
+        "title": "AuthRuntimeConfigResponse",
+        "type": "object"
+      },
+      "AuthSessionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "expires_at",
+          "last_seen_at",
+          "current"
+        ],
+        "title": "AuthSessionResponse",
+        "type": "object"
+      },
+      "BootstrapRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          },
+          "setup_token": {
+            "maxLength": 256,
+            "minLength": 20,
+            "title": "Setup Token",
+            "type": "string"
+          },
+          "username": {
+            "default": "admin",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setup_token",
+          "password"
+        ],
+        "title": "BootstrapRequest",
+        "type": "object"
+      },
+      "BootstrapStatusResponse": {
+        "properties": {
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required"
+        ],
+        "title": "BootstrapStatusResponse",
+        "type": "object"
+      },
       "Collection_CustomFormatResponse_": {
         "properties": {
           "items": {
@@ -8074,6 +8166,21 @@
         "title": "RecoveryExportAcceptedResponse",
         "type": "object"
       },
+      "RecoveryExportRequest": {
+        "properties": {
+          "current_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password"
+        ],
+        "title": "RecoveryExportRequest",
+        "type": "object"
+      },
       "RecoveryReimportItem": {
         "properties": {
           "category": {
@@ -13137,6 +13244,90 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/auth/bootstrap": {
+      "post": {
+        "operationId": "bootstrap_api_v1_auth_bootstrap_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bootstrap",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/v1/auth/bootstrap/status": {
+      "get": {
+        "operationId": "bootstrap_status_api_v1_auth_bootstrap_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bootstrap Status",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/v1/auth/config": {
+      "get": {
+        "description": "Expose non-secret auth transport settings to the frontend at runtime.",
+        "operationId": "runtime_config_api_v1_auth_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthRuntimeConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Runtime Config",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "login_api_v1_auth_login_post",
@@ -13270,6 +13461,81 @@
           }
         },
         "summary": "Security",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "operationId": "list_sessions_api_v1_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuthSessionResponse"
+                  },
+                  "title": "Response List Sessions Api V1 Auth Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/revoke-others": {
+      "post": {
+        "operationId": "revoke_other_sessions_api_v1_auth_sessions_revoke_others_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Revoke Other Sessions",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{session_id}": {
+      "delete": {
+        "operationId": "revoke_session_api_v1_auth_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Session",
         "tags": [
           "authentication"
         ]
@@ -18152,6 +18418,16 @@
     "/api/v1/recovery/export": {
       "post": {
         "operationId": "start_recovery_export_api_v1_recovery_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "202": {
             "content": {
@@ -18162,6 +18438,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Start Recovery Export",

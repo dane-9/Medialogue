@@ -15,7 +15,7 @@ describe('URL state batches', () => {
     expect(updated.get('workflow')).toBe('choice')
     expect(updated.has('problem')).toBe(false)
     expect(updated.has('page')).toBe(false)
-    expect(updated.get('severity')).toBe('high')
+    expect(updated.get('severity')).toBe('error')
   })
 
   it('removes fallback filters without disturbing unrelated query state', () => {

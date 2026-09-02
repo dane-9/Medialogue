@@ -2,4 +2,5 @@
 set -Eeuo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+python "$ROOT/scripts/create-release-archive.py" --check
 exec "$ROOT/scripts/verify.sh" "$@"

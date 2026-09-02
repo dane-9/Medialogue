@@ -6,7 +6,7 @@ This checklist is for validating a Medialogue source release before deploying it
 
 - Extract the complete release tree; do not copy only `docker-compose.yml`.
 - Copy `.env.example` to `.env`.
-- Replace the example Medialogue secret key.
+- Leave `MEDIALOGUE_SECRET_KEY` unset to let Medialogue generate and persist `/config/application-secret`, or set it to a long random value and retain it with the config backup.
 - Review `PUID`, `PGID`, timezone, persistent paths, and media bind mounts.
 - Keep media mounts read-only; duplicate cleanup is performed outside Medialogue.
 
@@ -31,7 +31,13 @@ curl -fsS http://HOST:8000/readyz
 
 The application entrypoint applies Alembic migrations before Uvicorn starts. A failed migration therefore prevents the application from becoming ready.
 
-Sign in with the initial `admin` / `adminadmin` credentials and use the first-run checklist. The default-password warning remains visible until the password is changed.
+Read the one-time setup token and complete the First Run screen:
+
+```sh
+docker compose exec media-manager cat /config/initial-setup-token
+```
+
+Choose an administrator password of at least 12 characters. The token is deleted after setup.
 
 ## Safety checks
 

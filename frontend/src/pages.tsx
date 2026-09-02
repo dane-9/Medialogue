@@ -2211,18 +2211,38 @@ export function SettingsPage() {
 
 function SecuritySettings() {
   const [security, setSecurity] = useState<{ default_password_warning: boolean; session_expires_at?: string } | null>(null)
+  const [sessions, setSessions] = useState<Array<{ id: string; created_at: string; expires_at: string; last_seen_at: string; current: boolean }>>([])
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState<Message>(null)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { authApi.security().then(setSecurity).catch((reason) => setMessage(failed(reason, 'Could not load security state.'))) }, [])
+  const loadSessions = async () => {
+    try { setSessions(await authApi.sessions()) }
+    catch (reason) { setMessage(failed(reason, 'Could not load active sessions.')) }
+  }
+  useEffect(() => {
+    authApi.security().then(setSecurity).catch((reason) => setMessage(failed(reason, 'Could not load security state.')))
+    void loadSessions()
+  }, [])
   const change = async () => {
     if (newPassword.length < 12) { setMessage({ tone: 'error', text: 'New password must contain at least 12 characters.' }); return }
     if (newPassword !== confirmPassword) { setMessage({ tone: 'error', text: 'New password confirmation does not match.' }); return }
     setBusy(true); setMessage(pending('Changing password…'))
-    try { await authApi.changePassword(currentPassword, newPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setSecurity((value) => value ? { ...value, default_password_warning: false } : value); setMessage(ok('Password changed. Other active sessions were revoked.')) }
+    try { await authApi.changePassword(currentPassword, newPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setSecurity((value) => value ? { ...value, default_password_warning: false } : value); await loadSessions(); setMessage(ok('Password changed. Other active sessions were revoked.')) }
     catch (reason) { setMessage(failed(reason, 'Could not change password.')) }
+    finally { setBusy(false) }
+  }
+  const revokeSession = async (sessionId: string) => {
+    setBusy(true); setMessage(pending('Revoking session…'))
+    try { await authApi.revokeSession(sessionId); await loadSessions(); setMessage(ok('Session revoked.')) }
+    catch (reason) { setMessage(failed(reason, 'Could not revoke session.')) }
+    finally { setBusy(false) }
+  }
+  const revokeOthers = async () => {
+    setBusy(true); setMessage(pending('Revoking other sessions…'))
+    try { await authApi.revokeOtherSessions(); await loadSessions(); setMessage(ok('Other sessions revoked.')) }
+    catch (reason) { setMessage(failed(reason, 'Could not revoke other sessions.')) }
     finally { setBusy(false) }
   }
   const tooShort = newPassword.length > 0 && newPassword.length < 12
@@ -2251,7 +2271,17 @@ function SecuritySettings() {
     <Note message={message} />
     <div className="settings-footer">
       <Button variant="primary" onClick={() => void change()} disabled={busy || !currentPassword || tooShort || mismatch || !newPassword}>{busy ? 'Changing…' : 'Change password'}</Button>
-  const confirm = useConfirm()
+    </div>
+    <div className="settings-section">
+      <div><h3>Active sessions</h3><p>Review signed-in browser sessions and revoke any device you no longer recognize. Session tokens are opaque and never shown here.</p></div>
+      <div className="session-list">
+        {sessions.map((session) => <div className="session-row" key={session.id}>
+          <div><strong>{session.current ? 'This device' : 'Other device'}</strong><small>Created {new Date(session.created_at).toLocaleString()} · expires {new Date(session.expires_at).toLocaleString()}</small></div>
+          {session.current ? <Badge tone="green">Current</Badge> : <Button variant="ghost" onClick={() => void revokeSession(session.id)} disabled={busy}>Revoke</Button>}
+        </div>)}
+        {!sessions.length && <div className="history-empty">No active sessions found.</div>}
+        <div className="settings-footer"><Button variant="ghost" onClick={() => void revokeOthers()} disabled={busy || sessions.every((session) => session.current)}>Revoke other sessions</Button></div>
+      </div>
     </div>
   </>
 }
@@ -3522,6 +3552,7 @@ function BackupRecoverySettings() {
   const [confirmReimport, setConfirmReimport] = useState(false)
   const [message, setMessage] = useState<Message>(null)
   const [busy, setBusy] = useState(false)
+  const [recoveryPassword, setRecoveryPassword] = useState('')
   const [reimportBusy, setReimportBusy] = useState(false)
 
   const loadCapabilities = async () => {
@@ -3550,8 +3581,10 @@ function BackupRecoverySettings() {
 
   const start = async () => {
     setBusy(true); setMessage(null)
+    const currentPassword = recoveryPassword
+    setRecoveryPassword('')
     try {
-      const accepted = await systemApi.startRecoveryExport()
+      const accepted = await systemApi.startRecoveryExport(currentPassword)
       const value = await systemApi.job(accepted.job_id)
       setJob(value)
       setMessage(accepted.warning ? { tone: 'error', text: accepted.warning } : null)
@@ -3674,7 +3707,13 @@ function BackupRecoverySettings() {
     </div>}
 
     <Note message={message} />
-    <div className="settings-footer"><Button variant="ghost" icon="refresh" onClick={() => void loadCapabilities()}>Recheck</Button><Button variant="primary" icon="download" disabled={busy || !capabilities?.supported || job?.state === 'running' || job?.state === 'queued'} onClick={() => void start()}>{busy ? 'Starting…' : 'Export Recovery Bundle'}</Button></div>
+    <div className="settings-footer">
+      <Field label="Current administrator password" help="Re-enter your password to authorize this sensitive Recovery Bundle export. It is sent only in the POST body and is not stored.">
+        <Input type="password" value={recoveryPassword} onChange={(event) => setRecoveryPassword(event.target.value)} autoComplete="current-password" />
+      </Field>
+      <Button variant="ghost" icon="refresh" onClick={() => void loadCapabilities()}>Recheck</Button>
+      <Button variant="primary" icon="download" disabled={busy || !recoveryPassword || !capabilities?.supported || job?.state === 'running' || job?.state === 'queued'} onClick={() => void start()}>{busy ? 'Starting…' : 'Export Recovery Bundle'}</Button>
+    </div>
 
     {confirmReimport && reimportPlan && <Modal
       title="Confirm bulk recovery"

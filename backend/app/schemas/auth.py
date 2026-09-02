@@ -11,6 +11,20 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class BootstrapStatusResponse(BaseModel):
+    required: bool
+
+
+class AuthRuntimeConfigResponse(BaseModel):
+    csrf_cookie_name: str
+
+
+class BootstrapRequest(BaseModel):
+    setup_token: str = Field(min_length=20, max_length=256)
+    username: str = Field(default="admin", min_length=1, max_length=128)
+    password: str = Field(min_length=12, max_length=1024)
+
+
 class LoginResponse(BaseModel):
     authenticated: bool = True
     csrf_token: str
@@ -33,3 +47,11 @@ class PasswordChangeRequest(BaseModel):
 class SecurityResponse(BaseModel):
     default_password_warning: bool
     session_expires_at: datetime | None = None
+
+
+class AuthSessionResponse(BaseModel):
+    id: UUID
+    created_at: datetime
+    expires_at: datetime
+    last_seen_at: datetime
+    current: bool

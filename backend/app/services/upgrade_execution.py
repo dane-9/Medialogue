@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.core.security import sign_confirmation_payload, verify_confirmation_payload
+from app.core.security import consume_confirmation_jti, sign_confirmation_payload, verify_confirmation_payload
 from app.integrations.qbittorrent import magnet_info_hash, torrent_payload_info_hash
 from app.models.domain import (
     AccessMode,
@@ -860,6 +860,8 @@ async def commit_cleanup(db: AsyncSession, candidate_id: UUID, confirmation_toke
         raise AppError("DELETE_PREVIEW_STALE", "Old media changed since the cleanup preview. Review it again before deleting anything.", status_code=409)
     if core["blocked"]:
         raise AppError("UPGRADE_CLEANUP_BLOCKED", "Old media cleanup contains shared or unsafe paths and cannot be executed automatically.", status_code=409)
+
+    await consume_confirmation_jti(db, payload)
 
     deleted: list[str] = []
     for target in core["targets"]:

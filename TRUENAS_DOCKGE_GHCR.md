@@ -1,17 +1,17 @@
-# ELI5: Manual GitHub → GHCR → TrueNAS SCALE / Dockge
+# ELI5: GitHub → GHCR → TrueNAS SCALE / Dockge
 
-Nothing in this package publishes automatically.
+CI runs automatically for pull requests and pushes to `main`. Publishing a
+container image remains a deliberate manual action.
 
-Uploading or pushing code to GitHub does **not** run CI and does **not** publish a Docker image.
+Uploading or pushing code to GitHub runs the checks, but does **not** publish a
+Docker image.
 
 You decide when each action happens.
 
 ```text
-Upload code to GitHub
+Upload or push code to GitHub
         ↓
-Nothing happens automatically
-        ↓
-OPTIONAL: manually click "Run workflow" for CI
+CI checks pull requests and the main branch
         ↓
 WHEN YOU WANT TO PUBLISH:
 manually click "Run workflow" for Publish GHCR Image
@@ -29,19 +29,22 @@ Create a GitHub repository named `medialogue` and upload the contents of this Me
 
 Do not upload your real `.env` file. The repository `.gitignore` explicitly ignores `.env` and other `.env.*` files except the supplied examples.
 
-After the upload, **nothing runs automatically**.
+After the upload, CI runs on pull requests and pushes to `main`. The publish
+workflow remains manual.
 
-## 2. Optional: manually run the tests
+## 2. Review the automatic CI checks
 
-If you want GitHub to run the complete test/build checks:
+The complete test/build checks run automatically for a pull request or a push
+to `main`. You can also run them on demand:
 
 1. Open the repository.
 2. Click **Actions**.
-3. Click **CI (manual)**.
+3. Click **CI**.
 4. Click **Run workflow**.
 5. Click the green **Run workflow** button.
 
-This runs only because you clicked it.
+The manual option is useful when you want to rerun the checks without a new
+commit. It does not publish an image.
 
 It does not publish an image.
 
@@ -73,7 +76,8 @@ ghcr.io/YOUR_GITHUB_USERNAME/medialogue:latest
 
 It also publishes a `sha-...` tag for that exact commit.
 
-There are **no push, pull-request, tag, or schedule triggers** for either workflow.
+CI has pull-request, `main` push, and manual triggers. The publish workflow
+has a manual trigger only.
 
 ## 4. Make the GHCR package available to Dockge
 
@@ -127,7 +131,9 @@ PUID=568
 PGID=568
 TZ=Europe/Stockholm
 
-MEDIALOGUE_SECRET_KEY=your-real-random-secret
+# Optional. If omitted, Medialogue persists a generated key at
+# /config/application-secret. Keep that file with the config dataset.
+# MEDIALOGUE_SECRET_KEY=<generated-random-value>
 
 CONFIG_HOST_PATH=/mnt/tank/appdata/medialogue/config
 TORRENT_ARCHIVE_HOST_PATH=/mnt/tank/appdata/medialogue/torrent-archive
@@ -141,7 +147,7 @@ Medialogue writes its SQLite database and integration configuration to `CONFIG_H
 
 This build intentionally starts with a fresh SQLite database and does not import an older PostgreSQL database. Configure integrations from the UI, or retain file-backed `/config` files from a later compatible build.
 
-Generate safe random values, for example:
+If you choose an explicit override, generate a safe random value, for example:
 
 ```sh
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -165,14 +171,17 @@ Open:
 http://YOUR_TRUENAS_IP:8000
 ```
 
-Initial login:
+Initial setup:
 
 ```text
-username: admin
-password: adminadmin
+1. Read the one-time token from the container:
+   docker exec <medialogue-container> cat /config/initial-setup-token
+2. Open the First Run page.
+3. Choose an administrator username and a password of at least 12 characters.
 ```
 
-Change the password during first-run setup.
+The token is deleted after successful setup. Normal login is unavailable until
+this step is complete.
 
 ## 8. Storage paths inside Medialogue
 
@@ -201,7 +210,7 @@ The TrueNAS `/mnt/...` path belongs only on the Dockge/Compose side.
 Recommended:
 
 ```text
-1. Change admin password
+1. Complete administrator first-run setup
 2. Configure TMDB
 3. Configure Plex
 4. Configure Movie qBittorrent
@@ -214,7 +223,9 @@ Recommended:
 11. Start first scan manually
 ```
 
-The supplied media mounts are read-only for the first deployment.
+The supplied media mounts are read-only for the first deployment. UID 0 is
+rejected by default; the normal TrueNAS example uses `PUID=568` and `PGID=568`.
+Set `MEDIALOGUE_ALLOW_ROOT=true` only for a deliberate compatibility deployment.
 
 ## 10. Updating later
 
@@ -223,8 +234,8 @@ Nothing happens merely because you update GitHub.
 When you want a new container image:
 
 ```text
-1. Upload/push your new code
-2. Optionally run CI (manual)
+1. Upload/push your new code and review the automatic CI result
+2. Confirm the persistent `/config` dataset is retained
 3. Run Publish GHCR Image (manual)
 4. In Dockge, manually pull/redeploy Medialogue
 ```

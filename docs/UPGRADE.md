@@ -16,4 +16,4 @@ The database is `/config/medialogue.db`. Keep `/config` on a local filesystem an
 
 ## `MEDIALOGUE_SECRET_KEY`
 
-`MEDIALOGUE_SECRET_KEY` protects the current build's encrypted secrets file. Do not copy `secrets.enc` between development builds.
+`MEDIALOGUE_SECRET_KEY` protects the current build's encrypted secrets file. If it is omitted, the application generates `/config/application-secret`; keep that file with the config dataset. Do not copy `secrets.enc` between development builds without the matching key.

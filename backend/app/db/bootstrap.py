@@ -1,9 +1,69 @@
+from __future__ import annotations
+
+import os
+import secrets
+from pathlib import Path
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.models.auth import AdminUser
+
+
+_INITIAL_SETUP_TOKEN_FILENAME = "initial-setup-token"
+
+
+def initial_setup_token_path(settings: Settings) -> Path:
+    return Path(settings.config_dir) / _INITIAL_SETUP_TOKEN_FILENAME
+
+
+def _validate_setup_token(raw: str, path: Path) -> str:
+    token = raw.strip()
+    if not token or "\n" in token or "\r" in token or len(token) < 20:
+        raise RuntimeError(f"Initial setup token is malformed: {path}.")
+    return token
+
+
+def ensure_initial_setup_token(settings: Settings) -> str:
+    """Create or read the one-time production administrator setup token."""
+
+    path = initial_setup_token_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        token = _validate_setup_token(path.read_text(encoding="utf-8"), path)
+        os.chmod(path, 0o600)
+        return token
+
+    token = secrets.token_urlsafe(32)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(token)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(path, 0o600)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    return token
+
+
+async def production_bootstrap_required(session: AsyncSession) -> bool:
+    admins = (await session.scalars(select(AdminUser).order_by(AdminUser.created_at, AdminUser.id))).all()
+    return not admins or (len(admins) == 1 and admins[0].is_default_password)
+
+
+async def ensure_production_bootstrap_state(session: AsyncSession, settings: Settings) -> bool:
+    required = await production_bootstrap_required(session)
+    token_path = initial_setup_token_path(settings)
+    if required:
+        ensure_initial_setup_token(settings)
+    else:
+        token_path.unlink(missing_ok=True)
+    return required
 
 
 async def ensure_default_admin(session: AsyncSession, settings: Settings) -> AdminUser:

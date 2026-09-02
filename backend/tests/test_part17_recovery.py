@@ -282,7 +282,11 @@ def test_recovery_export_api_creates_persistent_job_and_prevents_overlap(recover
 
     client.app.dependency_overrides[recovery_api.get_recovery_export_runner] = lambda: no_op_runner
     try:
-        started = client.post("/api/v1/recovery/export", headers=headers)
+        started = client.post(
+            "/api/v1/recovery/export",
+            headers=headers,
+            json={"current_password": "adminadmin"},
+        )
         assert started.status_code == 202, started.text
         job_id = started.json()["job_id"]
         persisted = client.get(f"/api/v1/jobs/{job_id}")
@@ -295,7 +299,11 @@ def test_recovery_export_api_creates_persistent_job_and_prevents_overlap(recover
         assert history.status_code == 200
         assert history.json()["total"] == 1
 
-        duplicate = client.post("/api/v1/recovery/export", headers=headers)
+        duplicate = client.post(
+            "/api/v1/recovery/export",
+            headers=headers,
+            json={"current_password": "adminadmin"},
+        )
         assert duplicate.status_code == 409
         assert duplicate.json()["error"]["code"] == "RECOVERY_EXPORT_ALREADY_RUNNING"
         assert duplicate.json()["error"]["details"]["job_id"] == job_id

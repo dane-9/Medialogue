@@ -28,6 +28,10 @@ class RecoveryExportAcceptedResponse(BaseModel):
     )
 
 
+class RecoveryExportRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+
+
 class RecoveryReimportItem(BaseModel):
     torrent_id: UUID
     info_hash: str

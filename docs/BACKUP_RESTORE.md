@@ -6,7 +6,7 @@ Medialogue has three persistent recovery layers.
 
 `/config/medialogue.json` is the source of truth for Plex, TMDB, qBittorrent-client, and indexer settings. Passwords, tokens, and API keys are stored separately in `/config/secrets.enc`, encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`.
 
-Back up both files together and retain the matching `MEDIALOGUE_SECRET_KEY`. A copied `secrets.enc` file is intentionally unusable with a different secret key.
+Back up both files together and retain the matching `MEDIALOGUE_SECRET_KEY`. If the key was generated, back up `/config/application-secret` with the config dataset. A copied `secrets.enc` file is intentionally unusable with a different secret key.
 
 ## Torrent archive
 
@@ -26,6 +26,8 @@ Settings → Backup / Recovery creates a ZIP containing:
 - current recovery-format and application-version metadata.
 
 The bundle contains credentials and database contents. Store it as sensitive backup material.
+
+The export requires the current account password in the recovery form. The password is checked before any export job or capability is created, and it is not stored in browser state.
 
 ## Restore overview
 

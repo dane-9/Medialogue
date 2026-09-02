@@ -57,13 +57,13 @@ async def setup_status(db: AsyncSession, admin: AdminUser) -> SetupStatusRespons
     steps = [
         SetupStep(
             key="security",
-            title="Change the default password",
+            title="Choose an administrator password",
             complete=not admin.is_default_password,
             optional=True,
             detail=(
-                "Default password has been changed."
+                "Administrator password is configured."
                 if not admin.is_default_password
-                else "Recommended before normal use. Medialogue will continue warning while admin/adminadmin is active."
+                else "Recommended before normal use. Medialogue will continue warning while the development bootstrap password is active."
             ),
             settings_tab="Security",
         ),

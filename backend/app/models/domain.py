@@ -785,6 +785,19 @@ class Event(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class ConfirmationNonce(Base):
+    """Durable single-use IDs for destructive confirmation tokens."""
+
+    __tablename__ = "confirmation_nonces"
+    __table_args__ = (Index("ix_confirmation_nonces_expires_at", "expires_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    jti: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    purpose: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (

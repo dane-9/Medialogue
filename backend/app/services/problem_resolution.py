@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
-from app.core.security import sign_confirmation_payload, verify_confirmation_payload
+from app.core.security import consume_confirmation_jti, sign_confirmation_payload, verify_confirmation_payload
 from app.integrations.filesystem import FilesystemObserver
 from app.models.domain import AccessMode, IdentityState, JobStatus, MediaDirectory, Movie, MovieRelease, MovieReleaseTorrent, Problem, ProblemStatus, ReleaseState, Show, StorageRoot, Torrent, TorrentArchiveState, TorrentClientObservation, utcnow
 from app.core.problem_types import MOVIE_MATCH_REASONS, SHOW_MATCH_REASONS
@@ -795,6 +795,8 @@ async def commit_duplicate_resolution(
             "The selected winning release disappeared after preview; no losing media was deleted.",
             status_code=409,
         )
+
+    await consume_confirmation_jti(db, payload)
 
     winner.release_state = ReleaseState.CURRENT
     winner.became_current_at = winner.became_current_at or utcnow()

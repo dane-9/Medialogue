@@ -19,14 +19,30 @@ function readCookie(name: string): string | undefined {
   return document.cookie.split('; ').find((cookie) => cookie.startsWith(prefix))?.slice(prefix.length)
 }
 
+let csrfCookieNamePromise: Promise<string> | undefined
+
+async function getCsrfCookieName(): Promise<string> {
+  csrfCookieNamePromise ??= fetch('/api/v1/auth/config', { credentials: 'include', headers: { Accept: 'application/json' } })
+    .then(async (response) => {
+      if (!response.ok) throw new Error('Could not load the authentication transport configuration.')
+      const payload = await response.json() as { csrf_cookie_name?: unknown }
+      if (typeof payload.csrf_cookie_name !== 'string' || !payload.csrf_cookie_name) {
+        throw new Error('Authentication transport configuration is invalid.')
+      }
+      return payload.csrf_cookie_name
+    })
+    .catch((reason) => {
+      csrfCookieNamePromise = undefined
+      throw reason
+    })
+  return csrfCookieNamePromise
+}
+
 async function ensureCsrf(): Promise<string | undefined> {
-  const existing = readCookie('medialogue_csrf')
+  const cookieName = await getCsrfCookieName()
+  const existing = readCookie(cookieName)
   if (existing) return decodeURIComponent(existing)
-  try {
-    await fetch('/api/v1/auth/csrf', { credentials: 'include' })
-  } catch {
-  }
-  const refreshed = readCookie('medialogue_csrf')
+  const refreshed = readCookie(cookieName)
   return refreshed ? decodeURIComponent(refreshed) : undefined
 }
 
