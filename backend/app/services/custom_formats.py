@@ -2,8 +2,8 @@
 
 This module intentionally owns only matching.  Scores live in quality
 profiles, so one Custom Format can be reused with different signed scores.
-The evaluator accepts either parser objects or application-owned dictionaries,
-which keeps it useful to API and persistence layers without importing models.
+The evaluator consumes the current parser result or a raw release title.
+Persistence mappings are normalized into service objects before evaluation.
 """
 
 from __future__ import annotations
@@ -24,47 +24,11 @@ def _new_id() -> str:
     return str(uuid.uuid4())
 
 
-def _normalize_text(value: Any) -> str:
-    return str(value).strip().casefold()
-
-
-def _normalize_condition_type(value: Any) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", _normalize_text(value)).strip("_")
-
-
-_TYPE_ALIASES = {
-    "release_title": "release_title",
-    "title": "release_title",
-    "release_group": "release_group",
-    "group": "release_group",
-    "quality": "quality",
-    "quality_modifier": "quality_modifier",
-    "modifier": "quality_modifier",
-    "resolution": "resolution",
-    "source": "source",
-    "edition": "edition",
-    "language": "language",
-    "indexer": "indexer",
-    "tracker": "indexer",
-    "web_provider": "web_provider",
-    "provider": "web_provider",
-    "video_codec": "video_codec",
-    "audio_codec": "audio_codec",
-    "audio_channels": "audio_channels",
-    "channels": "audio_channels",
-    "hdr_type": "hdr_type",
-    "hdr": "hdr_type",
-    "release_attribute": "release_attribute",
-    "attribute": "release_attribute",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class FormatCondition:
     """One editor condition card."""
 
     type: str
-    value: Any = None
     name: str | None = None
     pattern: str | None = None
     required: bool = False
@@ -74,27 +38,14 @@ class FormatCondition:
     group: str | None = None
     score_offset: int = 0
 
-    @property
-    def condition_type(self) -> str:
-        return _TYPE_ALIASES.get(_normalize_condition_type(self.type), _normalize_condition_type(self.type))
-
-    @property
-    def expected(self) -> Any:
-        if self.pattern is not None:
-            return self.pattern
-        if self.value is not None:
-            return self.value
-        return self.name
-
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "FormatCondition":
         return cls(
-            type=str(value.get("type", value.get("condition_type", ""))),
-            value=value.get("value"),
+            type=str(value.get("type", "")),
             name=value.get("name"),
-            pattern=value.get("pattern", value.get("regex")),
+            pattern=value.get("pattern"),
             required=bool(value.get("required", False)),
-            negate=bool(value.get("negate", value.get("negated", False))),
+            negate=bool(value.get("negate", False)),
             case_sensitive=bool(value.get("case_sensitive", False)),
             id=str(value.get("id") or _new_id()),
             group=value.get("group"),
@@ -105,8 +56,7 @@ class FormatCondition:
         value: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
-            "type": self.condition_type,
-            "value": self.value,
+            "type": self.type,
             "required": self.required,
             "negate": self.negate,
             "case_sensitive": self.case_sensitive,
@@ -125,7 +75,6 @@ class CustomFormat:
     conditions: tuple[FormatCondition, ...] = ()
     id: str = field(default_factory=_new_id)
     description: str | None = None
-    media_scope: str = "both"
     enabled: bool = True
     supersedes: tuple[str, ...] = ()
     schema_version: int = SCHEMA_VERSION
@@ -144,33 +93,38 @@ class CustomFormat:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "CustomFormat":
-        definition = value.get("definition", value.get("condition_definition"))
-        if isinstance(definition, Mapping):
-            source = definition
-        else:
-            source = value
-        conditions = source.get("conditions", value.get("conditions", ()))
+        definition = value.get("condition_definition")
+        if not isinstance(definition, Mapping):
+            raise ValueError("custom format mapping requires condition_definition")
+        if int(definition["schema_version"]) != SCHEMA_VERSION:
+            raise ValueError(f"unsupported Custom Format schema: {definition['schema_version']}")
+        conditions = definition["conditions"]
+        supersedes = definition["supersedes"]
+        if not isinstance(conditions, (list, tuple)):
+            raise ValueError("custom format conditions must be a list")
+        if not isinstance(supersedes, (list, tuple)):
+            raise ValueError("custom format supersedes must be a list")
         return cls(
-            name=str(value.get("name", source.get("name", "Unnamed"))),
+            name=str(value["name"]),
             conditions=tuple(FormatCondition.from_dict(item) for item in conditions),
             id=str(value.get("id") or _new_id()),
             description=value.get("description"),
-            media_scope=str(value.get("media_scope", "both")),
-            enabled=bool(value.get("enabled", True)),
-            supersedes=tuple(str(item) for item in source.get("supersedes", value.get("supersedes", ())) if item),
-            schema_version=int(value.get("schema_version", source.get("schema_version", SCHEMA_VERSION))),
+            enabled=bool(value["enabled"]),
+            supersedes=tuple(str(item) for item in supersedes),
+            schema_version=SCHEMA_VERSION,
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": self.schema_version,
             "id": self.id,
             "name": self.name,
             "description": self.description,
-            "media_scope": self.media_scope,
             "enabled": self.enabled,
-            "supersedes": list(self.supersedes),
-            "conditions": [condition.to_dict() for condition in self.conditions],
+            "condition_definition": {
+                "schema_version": self.schema_version,
+                "supersedes": list(self.supersedes),
+                "conditions": [condition.to_dict() for condition in self.conditions],
+            },
         }
 
 
@@ -189,18 +143,6 @@ class ConditionResult:
     group: str | None = None
     regex_match: str | None = None
     score_offset: int = 0
-
-    @property
-    def passed(self) -> bool:
-        return self.effective_result
-
-    @property
-    def type(self) -> str:
-        return self.condition_type
-
-    @property
-    def negate(self) -> bool:
-        return self.negated
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -239,23 +181,8 @@ class CustomFormatEvaluation:
     suppressed_by_names: tuple[str, ...] = ()
 
     @property
-    def matched_conditions(self) -> tuple[ConditionResult, ...]:
-        return tuple(item for item in self.conditions if item.effective_result)
-
-    @property
-    def name(self) -> str:
-        return self.custom_format_name
-
-    @property
-    def failed_conditions(self) -> tuple[ConditionResult, ...]:
-        return tuple(item for item in self.conditions if not item.effective_result)
-
-    @property
     def score_contribution(self) -> int:
         return self.score + self.score_offset if self.matched and self.score_applies else 0
-
-    def explain(self) -> dict[str, Any]:
-        return self.to_dict()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -280,18 +207,6 @@ class CustomFormatSetEvaluation:
     formats: tuple[CustomFormatEvaluation, ...]
     total_score: int
 
-    @property
-    def evaluations(self) -> tuple[CustomFormatEvaluation, ...]:
-        return self.formats
-
-    @property
-    def score(self) -> int:
-        return self.total_score
-
-    @property
-    def matched_formats(self) -> tuple[CustomFormatEvaluation, ...]:
-        return tuple(item for item in self.formats if item.matched)
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "parsed": self.parsed.to_dict(),
@@ -299,20 +214,14 @@ class CustomFormatSetEvaluation:
             "total_score": self.total_score,
         }
 
-    def explain(self) -> dict[str, Any]:
-        return self.to_dict()
 
 
-def _coerce_release_parse(value: Any) -> ReleaseParseResult:
+def _coerce_release_parse(value: ReleaseParseResult | str) -> ReleaseParseResult:
     if isinstance(value, ReleaseParseResult):
         return value
     if isinstance(value, str):
         return parse_release(value)
-    if isinstance(value, Mapping):
-        raw = value.get("raw_name", value.get("raw", value.get("name", "")))
-        if raw:
-            return parse_release(str(raw))
-    raise TypeError("release must be a release name, ReleaseParseResult, or parser snapshot")
+    raise TypeError("release must be a release name or ReleaseParseResult")
 
 
 def _as_tuple(value: Any) -> tuple[Any, ...]:
@@ -328,7 +237,7 @@ def _structured_evidence(
     parsed: ReleaseParseResult,
     context: Mapping[str, Any],
 ) -> tuple[tuple[Any, ...], str]:
-    ctype = condition.condition_type
+    ctype = condition.type
     if ctype == "release_title":
         return (parsed.raw_name,), "raw release name"
     if ctype == "release_group":
@@ -371,7 +280,7 @@ def _structured_evidence(
     if ctype == "hdr_type":
         values = list(parsed.hdr.values)
         for value in tuple(values):
-            if _normalize_text(value) == "dolby vision":
+            if str(value).strip().casefold() == "dolby vision":
                 values.extend(("DV", "DoVi"))
         return tuple(dict.fromkeys(values)), "HDR type"
     if ctype == "release_attribute":
@@ -384,7 +293,7 @@ def _matches_expected(
     condition: FormatCondition,
     evidence: Sequence[Any],
 ) -> tuple[bool, str | None, str | None, int | None]:
-    expected = condition.expected
+    expected = condition.pattern
     if expected is None or expected == "":
         return False, None, "condition has no value/pattern", None
     flags = 0 if condition.case_sensitive else re.IGNORECASE
@@ -432,14 +341,14 @@ def _evaluate_condition(
         reason = ("negated: " + reason)
     return ConditionResult(
         condition_id=condition.id,
-        condition_type=condition.condition_type,
+        condition_type=condition.type,
         name=condition.name,
         matched=underlying,
         effective_result=effective,
         required=condition.required,
         negated=condition.negate,
         evidence=evidence_value,
-        expected=condition.expected,
+        expected=condition.pattern,
         reason=reason,
         group=condition.group,
         regex_match=regex_match,
@@ -448,16 +357,15 @@ def _evaluate_condition(
 
 
 def _group_key(condition: FormatCondition) -> str:
-    return condition.group or condition.condition_type
+    return condition.group or condition.type
 
 
 def evaluate_custom_format(
-    custom_format: CustomFormat | Mapping[str, Any],
-    release: ReleaseParseResult | str | Mapping[str, Any],
+    custom_format: CustomFormat,
+    release: ReleaseParseResult | str,
     *,
     context: Mapping[str, Any] | None = None,
     score: int = 0,
-    profile_score: int | None = None,
 ) -> CustomFormatEvaluation:
     """Evaluate one format and return every condition's explanation.
 
@@ -467,9 +375,7 @@ def evaluate_custom_format(
     This makes the grouping behavior independent of card ordering.
     """
 
-    fmt = custom_format if isinstance(custom_format, CustomFormat) else CustomFormat.from_dict(custom_format)
-    if profile_score is not None:
-        score = int(profile_score)
+    fmt = custom_format
     parsed = _coerce_release_parse(release)
     context = context or {}
     condition_results = tuple(_evaluate_condition(item, parsed, context) for item in fmt.conditions)
@@ -503,14 +409,14 @@ def evaluate_custom_format(
 
 
 def evaluate_condition(
-    condition: FormatCondition | Mapping[str, Any],
-    release: ReleaseParseResult | str | Mapping[str, Any],
+    condition: FormatCondition,
+    release: ReleaseParseResult | str,
     *,
     context: Mapping[str, Any] | None = None,
 ) -> ConditionResult:
     """Evaluate one condition card for parser/test tooling."""
 
-    item = condition if isinstance(condition, FormatCondition) else FormatCondition.from_dict(condition)
+    item = condition
     return _evaluate_condition(item, _coerce_release_parse(release), context or {})
 
 
@@ -523,12 +429,8 @@ def _score_for(
     overrides = overrides or {}
     if fmt.id in overrides:
         return int(overrides[fmt.id])
-    if fmt.name in overrides:
-        return int(overrides[fmt.name])
     if fmt.id in profile_scores:
         return int(profile_scores[fmt.id])
-    if fmt.name in profile_scores:
-        return int(profile_scores[fmt.name])
     return 0
 
 
@@ -550,18 +452,15 @@ def _score_applies_to_format(
     overrides = overrides or {}
     return (
         fmt.id in profile_scores
-        or fmt.name in profile_scores
         or fmt.id in overrides
-        or fmt.name in overrides
     )
 
 
 def evaluate_custom_formats(
-    custom_formats: Iterable[CustomFormat | Mapping[str, Any]],
-    release: ReleaseParseResult | str | Mapping[str, Any],
+    custom_formats: Iterable[CustomFormat],
+    release: ReleaseParseResult | str,
     *,
     profile_scores: Mapping[str, int] | None = None,
-    scores: Mapping[str, int] | None = None,
     score_overrides: Mapping[str, int] | None = None,
     context: Mapping[str, Any] | None = None,
     include_disabled: bool = False,
@@ -569,11 +468,10 @@ def evaluate_custom_formats(
     """Evaluate all enabled formats and sum only matched contributions."""
 
     parsed = _coerce_release_parse(release)
-    profile_scores = profile_scores if profile_scores is not None else scores
     evaluation_formats: list[CustomFormat] = []
     evaluations: list[CustomFormatEvaluation] = []
     for item in custom_formats:
-        fmt = item if isinstance(item, CustomFormat) else CustomFormat.from_dict(item)
+        fmt = item
         if not fmt.enabled and not include_disabled:
             continue
         evaluation_formats.append(fmt)
@@ -645,17 +543,17 @@ def evaluate_custom_formats(
     return CustomFormatSetEvaluation(parsed=parsed, formats=tuple(resolved), total_score=total)
 
 
-def validate_condition(condition: FormatCondition | Mapping[str, Any]) -> tuple[str, ...]:
+def validate_condition(condition: FormatCondition) -> tuple[str, ...]:
     """Return backend validation errors without mutating the definition."""
 
-    item = condition if isinstance(condition, FormatCondition) else FormatCondition.from_dict(condition)
+    item = condition
     errors: list[str] = []
-    if not item.condition_type:
+    if not item.type:
         errors.append("condition type is required")
-    if item.expected is None or item.expected == "":
-        errors.append("condition value/pattern is required")
-    if item.expected:
-        for pattern in _as_tuple(item.expected):
+    if item.pattern is None or item.pattern == "":
+        errors.append("condition pattern is required")
+    if item.pattern:
+        for pattern in _as_tuple(item.pattern):
             try:
                 re.compile(str(pattern), 0 if item.case_sensitive else re.IGNORECASE)
             except re.error as exc:
@@ -663,8 +561,8 @@ def validate_condition(condition: FormatCondition | Mapping[str, Any]) -> tuple[
     return tuple(errors)
 
 
-def validate_custom_format(custom_format: CustomFormat | Mapping[str, Any]) -> tuple[str, ...]:
-    fmt = custom_format if isinstance(custom_format, CustomFormat) else CustomFormat.from_dict(custom_format)
+def validate_custom_format(custom_format: CustomFormat) -> tuple[str, ...]:
+    fmt = custom_format
     errors: list[str] = []
     if not fmt.name.strip():
         errors.append("custom format name is required")
@@ -673,48 +571,17 @@ def validate_custom_format(custom_format: CustomFormat | Mapping[str, Any]) -> t
     return tuple(errors)
 
 
-def export_custom_format(custom_format: CustomFormat | Mapping[str, Any]) -> dict[str, Any]:
-    fmt = custom_format if isinstance(custom_format, CustomFormat) else CustomFormat.from_dict(custom_format)
-    return fmt.to_dict()
-
-
-def import_custom_format(value: Mapping[str, Any]) -> CustomFormat:
-    return CustomFormat.from_dict(value)
-
-
-class CustomFormatEngine:
-    """Small service facade for callers that prefer an object API."""
-
-    def evaluate(
-        self,
-        custom_format: CustomFormat | Mapping[str, Any],
-        release: ReleaseParseResult | str | Mapping[str, Any],
-        **kwargs: Any,
-    ) -> CustomFormatEvaluation:
-        return evaluate_custom_format(custom_format, release, **kwargs)
-
-    def evaluate_all(
-        self,
-        custom_formats: Iterable[CustomFormat | Mapping[str, Any]],
-        release: ReleaseParseResult | str | Mapping[str, Any],
-        **kwargs: Any,
-    ) -> CustomFormatSetEvaluation:
-        return evaluate_custom_formats(custom_formats, release, **kwargs)
-
 
 __all__ = [
     "SCHEMA_VERSION",
     "ConditionResult",
     "CustomFormat",
     "CustomFormatEvaluation",
-    "CustomFormatEngine",
     "CustomFormatSetEvaluation",
     "FormatCondition",
     "evaluate_condition",
     "evaluate_custom_format",
     "evaluate_custom_formats",
-    "export_custom_format",
-    "import_custom_format",
     "validate_condition",
     "validate_custom_format",
 ]

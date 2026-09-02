@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api/client'
+import { integrationsApi } from '../api/modules/integrations'
+import { moviesApi } from '../api/modules/movies'
+import { searchApi } from '../api/modules/search'
+import { settingsApi } from '../api/modules/settings'
 import type { DownloadClient, DownloadClientCategory, InteractiveSearchJob, QualityProfile } from '../types'
 import { Icon } from './Icon'
 import { Button, Select } from './ui'
@@ -50,7 +53,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
   useEffect(() => {
     let alive = true
     setSetupLoading(true)
-    Promise.all([api.qualityProfiles(), api.downloadClients()])
+    Promise.all([settingsApi.qualityProfiles(), integrationsApi.downloadClients()])
       .then(([profileRows, clientRows]) => {
         if (!alive) return
         const movieClients = clientRows.filter((client) => client.enabled && client.scope === 'movies')
@@ -73,7 +76,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
     let alive = true
     setCategoryLoading(true)
     setError('')
-    api.downloadClientCategories(clientId)
+    integrationsApi.downloadClientCategories(clientId)
       .then((rows) => {
         if (!alive) return
         setCategories(rows)
@@ -97,7 +100,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
     let timer = 0
     const refresh = async () => {
       try {
-        const value = await api.searchJob(jobId)
+        const value = await searchApi.searchJob(jobId)
         if (!alive) return
         setJob(value)
         if (value.status === 'failed') setError(String(value.error?.message ?? 'Interactive search failed.'))
@@ -119,7 +122,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
     }
     setStarting(true); setError(''); setJob(null); setSelectedResultId('')
     try {
-      const accepted = await api.startUnattachedMovieSearch(movie.tmdbId, profileId)
+      const accepted = await moviesApi.startUnattachedMovieSearch(movie.tmdbId, profileId)
       setJobId(accepted.job_id)
       setSearchedProfileId(profileId)
       setStep('search')
@@ -140,7 +143,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
     if (!selectedResult || !clientId || !category || !selectedResult.qualityAllowed) return
     setStarting(true); setError('')
     try {
-      const response = await api.downloadSearchResult(selectedResult.id, { download_client_id: clientId, category })
+      const response = await searchApi.downloadSearchResult(selectedResult.id, { download_client_id: clientId, category })
       if (!response.movie_id) throw new Error('qBittorrent accepted the release, but no movie was created.')
       onComplete(response.movie_id)
     } catch (reason) {

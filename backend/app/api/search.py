@@ -462,7 +462,7 @@ async def download_search_result(
         if not tmdb_id or not target.get("title") or target_season_number is None:
             raise AppError("SEARCH_TARGET_INVALID", "The TMDB Show season search target is incomplete.", status_code=409)
         parsed = parse_release(result.title)
-        if parsed.identity.season_numbers != (target_season_number,) or parsed.identity.episode_numbers:
+        if parsed.identity.seasons != (target_season_number,) or parsed.identity.episodes:
             raise AppError(
                 "NOT_A_SEASON_PACK",
                 "This result is not a single-season pack for the selected season.",
@@ -564,7 +564,7 @@ async def download_search_result(
                 await db.rollback()
             raise AppError("SEASON_NOT_FOUND", "The selected season is not present in Show metadata.", status_code=409)
 
-        profile_id_raw = target.get("quality_profile_id") or (result.custom_format_snapshot or {}).get("profile_id")
+        profile_id_raw = target.get("quality_profile_id")
         existing_assignment = await db.scalar(
             select(MediaProfileOverride).where(MediaProfileOverride.show_id == target_show.id)
         )
@@ -631,7 +631,7 @@ async def download_search_result(
             monitored=True,
             source="manual_download",
         )
-        profile_id_raw = target.get("quality_profile_id") or (result.custom_format_snapshot or {}).get("profile_id")
+        profile_id_raw = target.get("quality_profile_id")
         if profile_id_raw:
             profile_id = UUID(str(profile_id_raw))
             db.add(

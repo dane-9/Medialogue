@@ -210,53 +210,6 @@ class PlexClient:
                     )
         return PlexLibrarySnapshot(items=tuple(items))
 
-    async def find_exact_path(self, file_path: str) -> PlexMediaMatch | None:
-        requested = _canonical_path(file_path)
-        sections = ElementTree.fromstring((await self._get("/library/sections")).content)
-        for directory in sections.findall("Directory"):
-            key = directory.attrib.get("key")
-            if not key:
-                continue
-            response = await self._section_media(key, directory.attrib.get("type"))
-            if response is None:
-                continue
-            for video in ElementTree.fromstring(response.content).findall(".//Video"):
-                for part in video.findall("./Media/Part"):
-                    path = part.attrib.get("file")
-                    if path and _canonical_path(path) == requested:
-                        year = video.attrib.get("year")
-                        return PlexMediaMatch(
-                            rating_key=video.attrib.get("ratingKey", ""),
-                            title=video.attrib.get("title", ""),
-                            year=int(year) if year and year.isdigit() else None,
-                            edition=video.attrib.get("editionTitle"),
-                            file_path=path,
-                            show_title=video.attrib.get("grandparentTitle"),
-                            season_number=_safe_int(video.attrib.get("parentIndex")),
-                            episode_number=_safe_int(video.attrib.get("index")),
-                        )
-        return None
-
-    async def search_title_year(self, title: str, year: int | None) -> list[PlexTitleMatch]:
-        response = await self._get("/hubs/search", params={"query": title, "limit": 50})
-        matches: list[PlexTitleMatch] = []
-        for video in ElementTree.fromstring(response.content).findall(".//Video"):
-            plex_year = video.attrib.get("year")
-            parsed_year = int(plex_year) if plex_year and plex_year.isdigit() else None
-            if normalize_identity_title(video.attrib.get("title", "")) != normalize_identity_title(title):
-                continue
-            if year is not None and parsed_year != year:
-                continue
-            matches.append(
-                PlexTitleMatch(
-                    rating_key=video.attrib.get("ratingKey", ""),
-                    title=video.attrib.get("title", ""),
-                    year=parsed_year,
-                    edition=video.attrib.get("editionTitle"),
-                )
-            )
-        return matches
-
     async def _get(self, path: str, **kwargs: object) -> httpx.Response:
         response = await self._client.get(path, **kwargs)
         try:

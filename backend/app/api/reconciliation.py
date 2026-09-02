@@ -83,7 +83,6 @@ async def reconciliation_status(
 
 
 @router.post("/run", response_model=ReconciliationRunResponse, status_code=status.HTTP_202_ACCEPTED)
-@router.post("/refresh", response_model=ReconciliationRunResponse, status_code=status.HTTP_202_ACCEPTED, include_in_schema=False)
 async def run_reconciliation(
     payload: ReconciliationRunRequest = ReconciliationRunRequest(),
     _: object = Depends(require_csrf),

@@ -5,7 +5,8 @@ import medialogueBanner from './assets/medialogue-banner.png'
 import medialogueLogoAnimated from './assets/medialogue-logo-animated.svg'
 import medialogueLogo from './assets/medialogue-logo.svg'
 import { ConfirmProvider } from './components/Confirm'
-import { ApiError, api } from './api/client'
+import { ApiError } from './api/transport'
+import { authApi } from './api/modules/auth'
 import { AppShell } from './components/Shell'
 import { Button, Input } from './components/ui'
 import { CustomFormatsPage, DownloadsPage, EventHistoryPage, MovieDetailPage, MoviesPage, NewMediaPage, ProblemsPage, SettingsPage, ShowDetailPage, ShowsPage, TasksPage, TorrentArchivePage, UpgradeMediaPage } from './pages'
@@ -17,7 +18,7 @@ function App() {
 
   useEffect(() => {
     let alive = true
-    api.session()
+    authApi.session()
       .then(() => { if (alive) setAuthenticated(true) })
       .catch(() => { if (alive) setAuthenticated(false) })
       .finally(() => { if (alive) setChecking(false) })
@@ -25,7 +26,7 @@ function App() {
   }, [])
 
   const login = () => { setAuthenticated(true); setChecking(false) }
-  const logout = async () => { try { await api.logout() } catch {} setAuthenticated(false) }
+  const logout = async () => { try { await authApi.logout() } catch {} setAuthenticated(false) }
   if (checking) return <BootScreen />
   return authenticated ? <ConfirmProvider><BrowserRouter><AuthenticatedApp onLogout={logout} /></BrowserRouter></ConfirmProvider> : <LoginPage onLogin={login} />
 }
@@ -41,7 +42,6 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/downloads" element={<DownloadsPage />} />
     <Route path="/upgrade-media" element={<UpgradeMediaPage />} />
     <Route path="/new-media" element={<NewMediaPage />} />
-    <Route path="/review" element={<Navigate to="/new-media" replace />} />
     <Route path="/problems" element={<ProblemsPage />} />
     <Route path="/torrent-archive" element={<TorrentArchivePage />} />
     <Route path="/custom-formats" element={<CustomFormatsPage />} />
@@ -82,7 +82,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setLoading(true)
     try {
-      await api.login(username, password)
+      await authApi.login(username, password)
       onLogin()
     } catch (reason) {
       if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500) setError(reason.message || 'Invalid username or password.')

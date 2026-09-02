@@ -6,23 +6,6 @@ both branched on reasons nothing emitted any more, which made the set look
 richer than it was and hid that most Problems end the same way.
 """
 
-RETIRED_PROBLEM_REASONS = frozenset(
-    {
-        "EPISODE_MAPPING_UNRESOLVED",
-        "EPISODE_CONTAINER_MISMATCH",
-        "LOW_CONFIDENCE_MATCH",
-        "TMDB_SHOW_METADATA_UNAVAILABLE",
-        "TORRENT_REMOVED_EXTERNALLY",
-        "QBIT_REMOVE_FAILED",
-        "ACTIVE_RELEASE_LIMIT_REACHED",
-        "PATH_MAPPING_FAILED",
-        "SHOW_DIRECTORY_RECONCILIATION_FAILED",
-        "TMDB_IDENTITY_UNRESOLVED",
-        "TMDB_SHOW_IDENTITY_UNRESOLVED",
-        "TORRENT_SHOW_CONTAINER_REQUIRED",
-    }
-)
-
 PROBLEM_PRESENTATIONS: dict[str, tuple[str, str, str]] = {
     "PLEX_IDENTITY_MISMATCH": (
         "Identity conflict",

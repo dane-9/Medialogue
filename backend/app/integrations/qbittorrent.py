@@ -608,7 +608,7 @@ class QBittorrentClient:
         """
 
         if not priorities:
-            return
+            raise QBittorrentError("Recovery requires a non-empty per-file priority map")
 
         # A newly added torrent can take a short moment to become visible to
         # the files endpoint.  Do not silently lose the saved selection state
@@ -627,10 +627,10 @@ class QBittorrentClient:
         grouped: dict[int, list[int]] = {}
         for file_id, priority in priorities.items():
             # qBittorrent's public API uses 0 (skip), 1 (normal), 6 (high),
-            # and 7 (maximal).  Ignore malformed/future values rather than
-            # sending an invalid restore request to the client.
+            # and 7 (maximal). The recovery manifest is a strict current-format
+            # contract, so invalid values indicate corrupted evidence.
             if priority not in {0, 1, 6, 7}:
-                continue
+                raise QBittorrentError(f"Unsupported recovery file priority: {priority}")
             grouped.setdefault(priority, []).append(int(file_id))
 
         for priority, file_ids in grouped.items():

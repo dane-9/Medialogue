@@ -14,7 +14,7 @@ def test_required_and_same_type_or_grouping():
     custom_format = CustomFormat(
         "Preferred remux",
         [
-            {"type": "quality_modifier", "value": "REMUX", "required": True},
+            {"type": "quality_modifier", "pattern": "REMUX", "required": True},
             {"type": "release_group", "pattern": "^FraMeSToR$"},
             {"type": "release_group", "pattern": "^LM$"},
         ],
@@ -31,8 +31,8 @@ def test_different_condition_types_are_and_groups():
     custom_format = CustomFormat(
         "Remux with DV",
         [
-            {"type": "quality_modifier", "value": "REMUX", "required": True},
-            {"type": "hdr_type", "value": "Dolby Vision"},
+            {"type": "quality_modifier", "pattern": "REMUX", "required": True},
+            {"type": "hdr_type", "pattern": "Dolby Vision"},
         ],
     )
     assert evaluate_custom_format(custom_format, RELEASE).matched
@@ -47,7 +47,7 @@ def test_different_condition_types_are_and_groups():
 def test_negate_and_zero_score_are_explainable():
     custom_format = CustomFormat(
         "No HDR10+",
-        [{"type": "hdr_type", "value": "HDR10+", "required": True, "negate": True}],
+        [{"type": "hdr_type", "pattern": "HDR10+", "required": True, "negate": True}],
     )
     result = evaluate_custom_format(custom_format, RELEASE, score=0)
     assert result.matched
@@ -60,11 +60,11 @@ def test_negate_and_zero_score_are_explainable():
 
 def test_signed_profile_scores_and_title_overrides():
     formats = [
-        CustomFormat("Hybrid", [{"type": "release_attribute", "value": "Hybrid"}]),
-        CustomFormat("DV", [{"type": "hdr_type", "value": "DV"}]),
+        CustomFormat("Hybrid", [{"type": "release_attribute", "pattern": "Hybrid"}]),
+        CustomFormat("DV", [{"type": "hdr_type", "pattern": "DV"}]),
         CustomFormat("Bad group", [{"type": "release_group", "pattern": "^bad$"}]),
     ]
-    scores = {"Hybrid": 100, "DV": 50, "Bad group": -1000}
+    scores = {formats[0].id: 100, formats[1].id: 50, formats[2].id: -1000}
     result = evaluate_custom_formats(formats, RELEASE, profile_scores=scores)
     assert result.total_score == 150
     override = evaluate_custom_formats(
@@ -135,7 +135,7 @@ def test_supersedence_is_transitive_from_the_most_specific_match():
     base = CustomFormat("Base", [{"type": "release_title", "pattern": "TAG"}], id="base")
     middle = CustomFormat("Middle", [{"type": "release_title", "pattern": "TAG"}], id="middle", supersedes=(base.id,))
     specific = CustomFormat("Specific", [{"type": "release_title", "pattern": "TAG"}], id="specific", supersedes=(middle.id,))
-    result = evaluate_custom_formats([base, middle, specific], "Movie TAG", profile_scores={"base": 10, "middle": 20, "specific": 30})
+    result = evaluate_custom_formats([base, middle, specific], "Movie TAG", profile_scores={base.id: 10, middle.id: 20, specific.id: 30})
     assert result.total_score == 30
     assert [item.matched for item in result.formats] == [False, False, True]
     assert result.formats[0].suppressed_by_names == ("Specific",)
@@ -199,7 +199,7 @@ def test_indexer_and_release_title_use_context_and_regex():
     custom_format = CustomFormat(
         "Indexer and release",
         [
-            {"type": "indexer", "value": "Tracker", "required": True},
+            {"type": "indexer", "pattern": "Tracker", "required": True},
             {"type": "release_title", "pattern": r"Hybrid\s+2160p"},
         ],
     )
@@ -218,11 +218,11 @@ def test_invalid_regex_is_reported_by_validation_and_evaluation():
 def test_application_owned_json_roundtrip():
     custom_format = CustomFormat(
         "Hybrid",
-        [{"type": "release_attribute", "name": "Hybrid", "value": "Hybrid"}],
+        [{"type": "release_attribute", "name": "Hybrid", "pattern": "Hybrid"}],
     )
     restored = CustomFormat.from_dict(custom_format.to_dict())
     assert restored.name == custom_format.name
-    assert restored.conditions[0].condition_type == "release_attribute"
+    assert restored.conditions[0].type == "release_attribute"
 
 
 
@@ -234,19 +234,19 @@ def test_every_part11_condition_type_uses_expected_structured_evidence():
     cases = [
         ("release_title", {"pattern": r"Inception 2010 Hybrid"}, web_release, {}),
         ("release_group", {"pattern": r"^LM$"}, web_release, {}),
-        ("quality", {"value": "2160p WEB-DL"}, web_release, {}),
-        ("quality_modifier", {"value": "REMUX"}, remux_release, {}),
-        ("resolution", {"value": "2160p"}, web_release, {}),
-        ("source", {"value": "WEB-DL"}, web_release, {}),
-        ("edition", {"value": "IMAX"}, web_release, {}),
-        ("language", {"value": "FRENCH"}, french_release, {}),
-        ("indexer", {"value": "PTP"}, web_release, {"indexer": "PTP"}),
-        ("web_provider", {"value": "AMZN"}, web_release, {}),
-        ("video_codec", {"value": "HEVC"}, web_release, {}),
-        ("audio_codec", {"value": "TrueHD"}, web_release, {}),
-        ("audio_channels", {"value": "7.1"}, web_release, {}),
-        ("hdr_type", {"value": "Dolby Vision"}, web_release, {}),
-        ("release_attribute", {"value": "Hybrid"}, web_release, {}),
+        ("quality", {"pattern": "2160p WEB-DL"}, web_release, {}),
+        ("quality_modifier", {"pattern": "REMUX"}, remux_release, {}),
+        ("resolution", {"pattern": "2160p"}, web_release, {}),
+        ("source", {"pattern": "WEB-DL"}, web_release, {}),
+        ("edition", {"pattern": "IMAX"}, web_release, {}),
+        ("language", {"pattern": "FRENCH"}, french_release, {}),
+        ("indexer", {"pattern": "PTP"}, web_release, {"indexer": "PTP"}),
+        ("web_provider", {"pattern": "AMZN"}, web_release, {}),
+        ("video_codec", {"pattern": "HEVC"}, web_release, {}),
+        ("audio_codec", {"pattern": "TrueHD"}, web_release, {}),
+        ("audio_channels", {"pattern": "7.1"}, web_release, {}),
+        ("hdr_type", {"pattern": "Dolby Vision"}, web_release, {}),
+        ("release_attribute", {"pattern": "Hybrid"}, web_release, {}),
     ]
 
     for condition_type, data, release, context in cases:

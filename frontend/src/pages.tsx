@@ -30,7 +30,18 @@ import { useConfirm } from './components/Confirm'
 import { Modal } from './components/Modal'
 import { PageTopbar, usePlexAvailable } from './components/Shell'
 import { Badge, Button, EmptyState, EnabledButton, Input, Panel, Progress, Segmented, Select, Slider, Stat } from './components/ui'
-import { ApiError, api } from './api/client'
+import { ApiError } from './api/transport'
+import { authApi } from './api/modules/auth'
+import { discoveryApi } from './api/modules/discovery'
+import { downloadsApi } from './api/modules/downloads'
+import { integrationsApi } from './api/modules/integrations'
+import { moviesApi } from './api/modules/movies'
+import { problemsApi } from './api/modules/problems'
+import { settingsApi } from './api/modules/settings'
+import { showsApi } from './api/modules/shows'
+import { storageApi } from './api/modules/storage'
+import { systemApi } from './api/modules/system'
+import { upgradesApi } from './api/modules/upgrades'
 import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
@@ -144,7 +155,7 @@ export function MoviesPage() {
 
   const loadMovies = async () => {
     try {
-      const items = await api.movies(query, tagFilter, sort)
+      const items = await moviesApi.movies(query, tagFilter, sort)
       setMovies(items)
       setSelected((current) => new Set([...current].filter((id) => items.some((movie) => movie.id === id))))
       setError('')
@@ -158,7 +169,7 @@ export function MoviesPage() {
   useEffect(() => {
     let alive = true
     const timer = window.setTimeout(() => {
-      api.movies(query, tagFilter, sort).then((items) => {
+      moviesApi.movies(query, tagFilter, sort).then((items) => {
         if (!alive) return
         setMovies(items)
         setSelected((current) => new Set([...current].filter((id) => items.some((movie) => movie.id === id))))
@@ -170,7 +181,7 @@ export function MoviesPage() {
 
   useEffect(() => {
     let alive = true
-    Promise.all([api.tags(), api.qualityProfiles()]).then(([tagRows, profileRows]) => {
+    Promise.all([moviesApi.tags(), settingsApi.qualityProfiles()]).then(([tagRows, profileRows]) => {
       if (alive) { setTags(tagRows); setProfiles(profileRows) }
     }).catch(() => undefined)
     return () => { alive = false }
@@ -197,16 +208,16 @@ export function MoviesPage() {
     window.localStorage.setItem('medialogue.movies.view', next)
   }
 
-  const runBulk = async (action: Parameters<typeof api.bulkMovies>[0]['action'], options: { profileId?: string | null; tagIds?: string[] } = {}) => {
+  const runBulk = async (action: Parameters<typeof moviesApi.bulkMovies>[0]['action'], options: { profileId?: string | null; tagIds?: string[] } = {}) => {
     const ids = [...selected]
     if (!ids.length) return
     setBulkBusy(true); setMessage('')
     try {
-      const result = await api.bulkMovies({ movie_ids: ids, action, quality_profile_id: options.profileId, tag_ids: options.tagIds })
+      const result = await moviesApi.bulkMovies({ movie_ids: ids, action, quality_profile_id: options.profileId, tag_ids: options.tagIds })
       const label = action.replaceAll('_', ' ')
       if ('job_id' in result) {
         setMessage(`${label} queued as job ${result.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
-        const [job] = await api.waitForJobs([result.job_id])
+        const [job] = await systemApi.waitForJobs([result.job_id])
         const summary = job?.summary ?? {}
         const requested = Number(summary.requested ?? ids.length)
         const updated = Number(summary.updated ?? 0)
@@ -222,7 +233,7 @@ export function MoviesPage() {
   }
 
   const createTag = async (name: string) => {
-    const row = await api.createTag(name)
+    const row = await moviesApi.createTag(name)
     setTags((items) => [...items, row].sort((a, b) => a.name.localeCompare(b.name)))
     return row
   }
@@ -231,10 +242,10 @@ export function MoviesPage() {
     setCardBusy(movie.id)
     try {
       const accepted = action === 'search'
-        ? await api.startMovieSearch(movie.id)
+        ? await moviesApi.startMovieSearch(movie.id)
         : action === 'plex'
-          ? await api.recheckMoviePlex(movie.id)
-          : await api.bulkMovies({ movie_ids: [movie.id], action })
+          ? await moviesApi.recheckMoviePlex(movie.id)
+          : await moviesApi.bulkMovies({ movie_ids: [movie.id], action })
       if ('job_id' in accepted) setMessage(`${action === 'search' ? 'Movie search' : action === 'plex' ? 'Plex recheck' : action} queued as job ${accepted.job_id.slice(0, 8)}….`)
       else setMessage(`${action} applied to ${movie.title}.`)
       await loadMovies()
@@ -312,7 +323,7 @@ function QbitStatusBadge({ status, compact = false, showState = false }: { statu
   return <Tooltip content={detail}><Badge tone={tones[status.state]} className="media-card-secondary-badge">{showState ? labels[status.state] : compact ? 'qBit' : `qBittorrent ${labels[status.state]}`}</Badge></Tooltip>
 }
 
-function MovieBulkContextMenu({ position, count, profiles, tags, busy, onRun, onCreateTag, onClear }: { position: { x: number; y: number }; count: number; profiles: QualityProfile[]; tags: Tag[]; busy: boolean; onRun: (action: Parameters<typeof api.bulkMovies>[0]['action'], options?: { profileId?: string | null; tagIds?: string[] }) => Promise<void>; onCreateTag: (name: string) => Promise<Tag>; onClear: () => void }) {
+function MovieBulkContextMenu({ position, count, profiles, tags, busy, onRun, onCreateTag, onClear }: { position: { x: number; y: number }; count: number; profiles: QualityProfile[]; tags: Tag[]; busy: boolean; onRun: (action: Parameters<typeof moviesApi.bulkMovies>[0]['action'], options?: { profileId?: string | null; tagIds?: string[] }) => Promise<void>; onCreateTag: (name: string) => Promise<Tag>; onClear: () => void }) {
   const plexAvailable = usePlexAvailable()
   const [profileId, setProfileId] = useState('')
   const [tagId, setTagId] = useState('')
@@ -479,7 +490,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   const [message, setMessage] = useState('')
   const load = async () => {
     try {
-      const [value, profileRows, qualityRows, formatRows] = await Promise.all([api.movieProfileSettings(resourceId), api.qualityProfiles(), api.qualityDefinitions(), api.customFormats()])
+      const [value, profileRows, qualityRows, formatRows] = await Promise.all([settingsApi.movieProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions(), settingsApi.customFormats()])
       setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setFormats(formatRows)
       setProfileId(value.qualityProfileId ?? '')
       setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : '')
@@ -492,7 +503,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   const save = async () => {
     setBusy(true); setMessage('Saving profile assignment…')
     try {
-      const value = await api.saveMovieProfileSettings(resourceId, {
+      const value = await settingsApi.saveMovieProfileSettings(resourceId, {
         quality_profile_id: profileId || null,
         minimum_quality_definition_override_id: minimumOverrideId || null,
         minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride),
@@ -527,7 +538,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const load = async (reportError = true) => {
-    try { setMovie(await api.movie(id)); if (reportError) setError('') }
+    try { setMovie(await moviesApi.movie(id)); if (reportError) setError('') }
     catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Movie not found.') }
   }
   useEffect(() => { void load() }, [id])
@@ -535,9 +546,9 @@ export function MovieDetailPage({ id }: { id: string }) {
   const recheckPlex = async () => {
     setBusy(true); setMessage('Starting Plex recheck…')
     try {
-      const accepted = await api.recheckMoviePlex(id)
+      const accepted = await moviesApi.recheckMoviePlex(id)
       setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
-      const [job] = await api.waitForJobs([accepted.job_id])
+      const [job] = await systemApi.waitForJobs([accepted.job_id])
       await load()
       const summary = job?.summary ?? {}
       const count = (key: string) => Number(summary[key] ?? 0)
@@ -551,9 +562,9 @@ export function MovieDetailPage({ id }: { id: string }) {
   const refreshEvidence = async () => {
     setBusy(true); setMessage('Rechecking files…')
     try {
-      const refresh = await api.runReconciliation()
+      const refresh = await systemApi.runReconciliation()
       const jobIds = [...new Set([...(refresh.job_ids ?? []), ...(refresh.active_job_ids ?? [])].map(String))]
-      const jobs = jobIds.length ? await api.waitForJobs(jobIds) : []
+      const jobs = jobIds.length ? await systemApi.waitForJobs(jobIds) : []
       await load()
       const failures = jobs.filter((job) => job.state !== 'completed')
       if (failures.length) setMessage(`File check finished with ${failures.length} failed, cancelled, or interrupted job${failures.length === 1 ? '' : 's'}. Review Tasks for details.`)
@@ -561,11 +572,7 @@ export function MovieDetailPage({ id }: { id: string }) {
       else if (!jobs.length) setMessage('Nothing needed rechecking. No files were changed.')
       else setMessage('Recheck complete. No files were changed.')
     } catch (reason) {
-      // Older servers do not expose the optional rescan action; a GET still refreshes persisted evidence.
-      if (reason instanceof ApiError && (reason.status === 404 || reason.status === 405)) {
-        try { setMovie(await api.movie(id)); setMessage('Refreshed. This server has no recheck action.') }
-        catch (fallbackReason) { setMessage(fallbackReason instanceof Error ? fallbackReason.message : 'Could not refresh state.') }
-      } else setMessage(reason instanceof Error ? reason.message : 'Could not recheck the files.')
+      setMessage(reason instanceof Error ? reason.message : 'Could not recheck the files.')
     } finally { setBusy(false) }
   }
   if (error) return <Page title="Movie unavailable" subtitle={error}><EmptyState title="Could not load this movie" detail={error} /></Page>
@@ -599,13 +606,13 @@ export function ShowsPage() {
   const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
-    try { setItems(await api.shows(query, sort)); setError('') }
+    try { setItems(await showsApi.shows(query, sort)); setError('') }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load shows.') }
     finally { if (foreground) setLoading(false) }
   }
   useLiveLibraryRefresh(() => load(false))
   useEffect(() => { const timer = window.setTimeout(() => { void load() }, 150); return () => window.clearTimeout(timer) }, [query, sort])
-  useEffect(() => { api.specialsCounting().then((value) => setCountSpecials(value.count_specials)).catch(() => undefined) }, [])
+  useEffect(() => { showsApi.specialsCounting().then((value) => setCountSpecials(value.count_specials)).catch(() => undefined) }, [])
 
   // A hard switch, not a view filter: it rewrites the Counted flag on Season 0
   // for every show. Monitoring is left alone, so nothing stops being searched.
@@ -618,7 +625,7 @@ export function ShowsPage() {
     })) return
     setSpecialsBusy(true)
     try {
-      const result = await api.setSpecialsCounting(next)
+      const result = await showsApi.setSpecialsCounting(next)
       setCountSpecials(result.count_specials)
       setError('')
       await load(false)
@@ -661,15 +668,15 @@ export function ShowDetailPage({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const [mappingEditor, setMappingEditor] = useState<{ media: EpisodeMedia; season: Season } | null>(null)
   const [mappingEpisodeIds, setMappingEpisodeIds] = useState<string[]>([])
-  const load = async (reportError = true) => { try { setShow(await api.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
+  const load = async (reportError = true) => { try { setShow(await showsApi.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
   useEffect(() => { void load() }, [id])
   useLiveLibraryRefresh(() => load(false))
   const refreshMetadata = async () => {
     setBusy(true); setMessage('Starting TMDB metadata refresh…')
     try {
-      const accepted = await api.refreshShowMetadata(id)
+      const accepted = await showsApi.refreshShowMetadata(id)
       setMessage(`TMDB metadata refresh queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
-      const [job] = await api.waitForJobs([accepted.job_id])
+      const [job] = await systemApi.waitForJobs([accepted.job_id])
       await load()
       if (job?.state === 'completed') {
         const summary = job.summary ?? {}
@@ -682,9 +689,9 @@ export function ShowDetailPage({ id }: { id: string }) {
   const recheckPlex = async () => {
     setBusy(true); setMessage('Starting Plex recheck…')
     try {
-      const accepted = await api.recheckShowPlex(id)
+      const accepted = await showsApi.recheckShowPlex(id)
       setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
-      const [job] = await api.waitForJobs([accepted.job_id])
+      const [job] = await systemApi.waitForJobs([accepted.job_id])
       await load()
       const summary = job?.summary ?? {}
       const count = (key: string) => Number(summary[key] ?? 0)
@@ -694,7 +701,7 @@ export function ShowDetailPage({ id }: { id: string }) {
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Plex recheck failed.') }
     finally { setBusy(false) }
   }
-  const setSeasonMonitored = async (season: Season, monitored: boolean) => { try { await api.updateSeason(season.id, { monitored, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season monitoring.') } }
+  const setSeasonMonitored = async (season: Season, monitored: boolean) => { try { await showsApi.updateSeason(season.id, { monitored, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season monitoring.') } }
   const [orderings, setOrderings] = useState<EpisodeOrdering[] | null>(null)
   const [orderingBusy, setOrderingBusy] = useState(false)
 
@@ -702,7 +709,7 @@ export function ShowDetailPage({ id }: { id: string }) {
   const loadOrderings = async () => {
     if (orderings || orderingBusy) return
     setOrderingBusy(true)
-    try { setOrderings(await api.episodeOrderings(id)) }
+    try { setOrderings(await showsApi.episodeOrderings(id)) }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not read episode orderings.') }
     finally { setOrderingBusy(false) }
   }
@@ -719,7 +726,7 @@ export function ShowDetailPage({ id }: { id: string }) {
     })) return
     setOrderingBusy(true)
     try {
-      await api.updateShow(id, { tmdb_episode_group_id: option.id ?? '', expected_revision: show.revision })
+      await showsApi.updateShow(id, { tmdb_episode_group_id: option.id ?? '', expected_revision: show.revision })
       setOrderings(null)
       await load()
       setMessage(`Episode ordering switched to ${option.name}. Re-scan this show's media folder if file matches look off.`)
@@ -727,11 +734,11 @@ export function ShowDetailPage({ id }: { id: string }) {
     finally { setOrderingBusy(false) }
   }
 
-  const setSeasonCounted = async (season: Season, counted: boolean) => { try { await api.updateSeason(season.id, { counted, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season counting.') } }
-  const setEpisodeMonitored = async (episode: Episode, monitored: boolean) => { try { await api.updateEpisode(episode.id, { monitored, expected_revision: episode.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update episode monitoring.') } }
-  const searchSeason = async (season: Season) => { try { const result = await api.startSeasonSearch(season.id); setMessage(`Season search started · job ${result.job_id.slice(0, 8)}…`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start season search.') } }
+  const setSeasonCounted = async (season: Season, counted: boolean) => { try { await showsApi.updateSeason(season.id, { counted, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season counting.') } }
+  const setEpisodeMonitored = async (episode: Episode, monitored: boolean) => { try { await showsApi.updateEpisode(episode.id, { monitored, expected_revision: episode.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update episode monitoring.') } }
+  const searchSeason = async (season: Season) => { try { const result = await showsApi.startSeasonSearch(season.id); setMessage(`Season search started · job ${result.job_id.slice(0, 8)}…`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start season search.') } }
   const editMapping = (media: EpisodeMedia, season: Season) => { const selected = season.episodes.filter((episode) => media.mappedEpisodeNumbers.includes(episode.episodeNumber)).map((episode) => episode.id); setMappingEpisodeIds(selected); setMappingEditor({ media, season }) }
-  const saveMapping = async () => { if (!mappingEditor || !mappingEpisodeIds.length) return; setBusy(true); try { await api.correctEpisodeMapping(mappingEditor.media.mediaFileId, mappingEpisodeIds); setMessage('Episode mapping corrected. The media file and path were not changed.'); setMappingEditor(null); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not correct episode mapping.') } finally { setBusy(false) } }
+  const saveMapping = async () => { if (!mappingEditor || !mappingEpisodeIds.length) return; setBusy(true); try { await showsApi.correctEpisodeMapping(mappingEditor.media.mediaFileId, mappingEpisodeIds); setMessage('Episode mapping corrected. The media file and path were not changed.'); setMappingEditor(null); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not correct episode mapping.') } finally { setBusy(false) } }
   const seasons = show?.seasonDetail ?? []
   useEffect(() => {
     if (!seasons.length) return
@@ -765,9 +772,9 @@ function ShowProfilePanel({ resourceId }: { resourceId: string }) {
   const [minimumOverrideId, setMinimumOverrideId] = useState('')
   const [minimumScoreOverride, setMinimumScoreOverride] = useState('')
   const [message, setMessage] = useState('')
-  const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([api.showProfileSettings(resourceId), api.qualityProfiles(), api.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : ''); setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
+  const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([settingsApi.showProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : ''); setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
   useEffect(() => { void load() }, [resourceId])
-  const save = async () => { try { const value = await api.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride), custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
+  const save = async () => { try { const value = await settingsApi.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride), custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
   return <Panel title="Quality Profile" eyebrow="SHOW SEARCH SCORING"><div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>{settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (show override)' : ' (profile)'}</span></div>}{message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div></Panel>
 }
 
@@ -779,7 +786,7 @@ export function DownloadsPage() {
   const [error, setError] = useState('')
   const load = async (showLoading = true) => {
     if (showLoading) setLoading(true)
-    try { setItems(await api.downloads()); setError('') }
+    try { setItems(await downloadsApi.downloads()); setError('') }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load downloads.') }
     finally { if (showLoading) setLoading(false) }
   }
@@ -866,7 +873,7 @@ export function TasksPage() {
   const load = async (foreground = false) => {
     if (foreground) setLoading(true)
     try {
-      const [scheduled, recent] = await Promise.all([api.scheduledTasks(), api.jobs()])
+      const [scheduled, recent] = await Promise.all([systemApi.scheduledTasks(), systemApi.jobs()])
       setTasks(scheduled)
       setJobs(recent.slice(0, 30))
       setError('')
@@ -892,7 +899,7 @@ export function TasksPage() {
 
   const run = async (task: ScheduledTask) => {
     setRunningId(task.id); setError('')
-    try { await api.runScheduledTask(task.id); await load() }
+    try { await systemApi.runScheduledTask(task.id); await load() }
     catch (reason) { setError(reason instanceof Error ? reason.message : `Could not run ${task.name}.`) }
     finally { setRunningId('') }
   }
@@ -900,7 +907,7 @@ export function TasksPage() {
   const updateInterval = async (task: ScheduledTask, value: string) => {
     setUpdatingId(task.id); setError('')
     try {
-      const updated = await api.updateScheduledTask(task.id, value === 'manual' ? null : Number(value))
+      const updated = await systemApi.updateScheduledTask(task.id, value === 'manual' ? null : Number(value))
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))
     } catch (reason) { setError(reason instanceof Error ? reason.message : `Could not update ${task.name}.`) }
     finally { setUpdatingId('') }
@@ -908,7 +915,7 @@ export function TasksPage() {
 
   const cancel = async (job: Job) => {
     setCancellingId(job.id); setError('')
-    try { await api.cancelJob(job.id); await load() }
+    try { await systemApi.cancelJob(job.id); await load() }
     catch (reason) { setError(reason instanceof Error ? reason.message : `Could not cancel ${job.title}.`) }
     finally { setCancellingId('') }
   }
@@ -951,7 +958,7 @@ export function EventHistoryPage() {
 
   useEffect(() => {
     let alive = true
-    api.indexers()
+    integrationsApi.indexers()
       .then((items) => {
         if (!alive) return
         setIndexerColors(Object.fromEntries(items.map((item) => [item.name, item.color ?? ''])))
@@ -966,7 +973,7 @@ export function EventHistoryPage() {
   const load = async (targetPage = page) => {
     setLoading(true)
     try {
-      const payload = await api.events({ eventType: eventType || undefined, severity: severity || undefined, entityType: entityType || undefined, sort, page: targetPage, pageSize })
+      const payload = await systemApi.events({ eventType: eventType || undefined, severity: severity || undefined, entityType: entityType || undefined, sort, page: targetPage, pageSize })
       setEvents(payload.items)
       setTotal(payload.total)
       setPages(payload.pages)
@@ -981,7 +988,7 @@ export function EventHistoryPage() {
 
   useEffect(() => {
     let alive = true
-    const refresh = () => api.events({ eventType: eventType || undefined, severity: severity || undefined, entityType: entityType || undefined, sort, page, pageSize }).then((payload) => {
+    const refresh = () => systemApi.events({ eventType: eventType || undefined, severity: severity || undefined, entityType: entityType || undefined, sort, page, pageSize }).then((payload) => {
       if (alive) { setEvents(payload.items); setTotal(payload.total); setPages(payload.pages); setError('') }
     }).catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load events.') }).finally(() => { if (alive) setLoading(false) })
     void refresh()
@@ -1006,7 +1013,7 @@ export function EventHistoryPage() {
       confirmLabel: 'Delete event',
       note: 'This only removes the row from Events.',
     })) return
-    try { await api.deleteEvent(item.id); await load(page) }
+    try { await systemApi.deleteEvent(item.id); await load(page) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete event.') }
   }
 
@@ -1018,7 +1025,7 @@ export function EventHistoryPage() {
       note: 'Current media, torrents, problems and integrations are unaffected.',
     })) return
     try {
-      const result = await api.clearEvents({ eventType: eventType || undefined, severity: severity || undefined, entityType: entityType || undefined })
+      const result = await systemApi.clearEvents({ eventType: eventType || undefined, severity: severity || undefined, entityType: entityType || undefined })
       setPage(1)
       await load(1)
       setError(result.deleted ? '' : 'No matching history events were present.')
@@ -1372,7 +1379,7 @@ function MovieEditionResolver({ problem, movie, options, loading, onSaved }: { p
     if (!update.edition?.trim()) return
     setSavingId(releaseId); setError('')
     try {
-      const result = await api.updateMovieReleaseEditions(movie.id, [update])
+      const result = await moviesApi.updateMovieReleaseEditions(movie.id, [update])
       await onSaved(result.duplicateResolved)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save movie editions.') }
     finally { setSavingId('') }
@@ -1493,7 +1500,7 @@ export function ProblemsPage() {
   const [tmdbMatches, setTmdbMatches] = useState<TMDBCandidate[]>([])
   const [selectedTmdb, setSelectedTmdb] = useState<TMDBCandidate>()
   const [editingPlexIdentity, setEditingPlexIdentity] = useState(false)
-  const [plexConfiguration, setPlexConfiguration] = useState<Awaited<ReturnType<typeof api.plexConfiguration>>>()
+  const [plexConfiguration, setPlexConfiguration] = useState<Awaited<ReturnType<typeof integrationsApi.plexConfiguration>>>()
   const loadGeneration = useRef(0)
   const reloadCurrent = useRef<() => void>(() => undefined)
   const updateProblemView = (changes: Record<string, string | null>) => {
@@ -1505,8 +1512,8 @@ export function ProblemsPage() {
     setLoading(true)
     try {
       const [payload, nextSummary] = await Promise.all([
-        api.problemsPage({ status: queueStatus, page: targetPage, pageSize: 250, category: reasonFilter, severity: severityFilter, workflow: queueStatus === 'open' ? workflow : 'all' }),
-        api.problemSummary(),
+        problemsApi.problemsPage({ status: queueStatus, page: targetPage, pageSize: 250, category: reasonFilter, severity: severityFilter, workflow: queueStatus === 'open' ? workflow : 'all' }),
+        problemsApi.problemSummary(),
       ])
       if (generation !== loadGeneration.current) return
       setItems(payload.items); setTotal(payload.total); setPages(payload.pages); setPage(payload.page); setSummary(nextSummary)
@@ -1528,7 +1535,7 @@ export function ProblemsPage() {
     stream.addEventListener('problem.created', invalidate); stream.addEventListener('problem.updated', invalidate); stream.addEventListener('problem.resolved', invalidate); stream.addEventListener('problem.deleted', invalidate)
     return () => { if (timer !== undefined) window.clearTimeout(timer); stream.close() }
   }, [])
-  useEffect(() => { api.plexConfiguration().then(setPlexConfiguration).catch(() => undefined) }, [])
+  useEffect(() => { integrationsApi.plexConfiguration().then(setPlexConfiguration).catch(() => undefined) }, [])
 
   const visible = items.filter((problem) => !search.trim() || [problem.title, problem.subject, problem.detail, problem.code].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
   const current = visible.find((problem) => problem.id === selected) ?? visible[0]
@@ -1551,7 +1558,7 @@ export function ProblemsPage() {
     setDuplicateMovie(null); setEditionOptions([]); setSelectedTmdb(undefined); setEditingPlexIdentity(false); setTmdbMatches([])
     if (!current) return
     if (current.code === 'DUPLICATE_PHYSICAL_RELEASE' && current.entityId) {
-      void Promise.all([api.movie(current.entityId), api.movieEditionOptions()]).then(([movie, options]) => { setDuplicateMovie(movie); setEditionOptions(options) }).catch(() => undefined)
+      void Promise.all([moviesApi.movie(current.entityId), moviesApi.movieEditionOptions()]).then(([movie, options]) => { setDuplicateMovie(movie); setEditionOptions(options) }).catch(() => undefined)
     }
     const canMatch = current.availableActions?.some((action) => action === 'confirm_movie_match' || action === 'confirm_show_match')
     if (!canMatch || current.code === 'PLEX_IDENTITY_MISMATCH') return
@@ -1560,7 +1567,7 @@ export function ProblemsPage() {
     setTmdbQuery(query)
     const candidates = Array.isArray(details.tmdb_candidates) ? details.tmdb_candidates.map(problemRecord).map(problemCandidateFromEvidence).filter((item): item is TMDBCandidate => Boolean(item)) : []
     setTmdbMatches(candidates.slice(0, 6))
-    const searchCandidates = current.availableActions?.includes('confirm_show_match') ? api.lookupShows(query) : api.lookupMovies(query)
+    const searchCandidates = current.availableActions?.includes('confirm_show_match') ? showsApi.lookupShows(query) : moviesApi.lookupMovies(query)
     void searchCandidates.then((matches) => setTmdbMatches(matches.slice(0, 6))).catch(() => undefined)
   }, [current?.id])
 
@@ -1568,7 +1575,7 @@ export function ProblemsPage() {
     if (!current || !tmdbQuery.trim()) return
     setLoading(true); setMessage('')
     try {
-      const matches = current.availableActions?.includes('confirm_show_match') ? await api.lookupShows(tmdbQuery.trim()) : await api.lookupMovies(tmdbQuery.trim())
+      const matches = current.availableActions?.includes('confirm_show_match') ? await showsApi.lookupShows(tmdbQuery.trim()) : await moviesApi.lookupMovies(tmdbQuery.trim())
       setTmdbMatches(matches.slice(0, 6)); setSelectedTmdb(undefined)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
     finally { setLoading(false) }
@@ -1579,7 +1586,7 @@ export function ProblemsPage() {
     const action = current.availableActions?.includes('confirm_show_match') ? 'confirm_show_match' : 'confirm_movie_match'
     setLoading(true); setMessage('')
     try {
-      const resolved = await api.resolveProblem(current.id, action, { tmdb_id: selectedTmdb.tmdbId })
+      const resolved = await problemsApi.resolveProblem(current.id, action, { tmdb_id: selectedTmdb.tmdbId })
       removeSolvedProblem(current)
       await load(page, true)
       const followup = typeof resolved.resolution?.followup_job_id === 'string'
@@ -1592,9 +1599,9 @@ export function ProblemsPage() {
     if (!current) return
     setLoading(true); setMessage('')
     try {
-      const response = await api.resolveProblem(current.id, 'recheck')
+      const response = await problemsApi.resolveProblem(current.id, 'recheck')
       const jobId = typeof response.resolution?.recheck_parent_job_id === 'string' ? response.resolution.recheck_parent_job_id : ''
-      const jobs = jobId ? await api.waitForJobs([jobId]) : []
+      const jobs = jobId ? await systemApi.waitForJobs([jobId]) : []
       if (jobs.some((job) => job.summary?.condition_cleared === true)) removeSolvedProblem(current)
       await load(page, true)
       setMessage('Recheck finished. Solved problems were removed from the queue.')
@@ -1606,13 +1613,13 @@ export function ProblemsPage() {
     if (!current) return
     if (resolved) removeSolvedProblem(current)
     await load(page, true)
-    if (!resolved && current.entityId) setDuplicateMovie(await api.movie(current.entityId))
+    if (!resolved && current.entityId) setDuplicateMovie(await moviesApi.movie(current.entityId))
     setMessage(resolved ? 'Editions saved. The copies are different editions, so the Problem was resolved.' : 'Editions saved. At least two copies still have the same edition.')
   }
 
   const recheckAll = async () => {
     setLoading(true); setMessage('')
-    try { const result = await api.recheckProblems(); setMessage(result.requested ? `Rechecking ${result.requested} existing Problem${result.requested === 1 ? '' : 's'}…` : 'There are no open Problems to recheck.') }
+    try { const result = await problemsApi.recheckProblems(); setMessage(result.requested ? `Rechecking ${result.requested} existing Problem${result.requested === 1 ? '' : 's'}…` : 'There are no open Problems to recheck.') }
     catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not recheck Problems.') }
     finally { setLoading(false) }
   }
@@ -1623,8 +1630,8 @@ export function ProblemsPage() {
     if (!await confirm({ title: prompt, confirmLabel: 'Continue' })) return
     setLoading(true); setMessage('')
     try {
-      if (action === 'delete') await api.deleteProblem(current.id)
-      else await api.resolveProblem(current.id, action)
+      if (action === 'delete') await problemsApi.deleteProblem(current.id)
+      else await problemsApi.resolveProblem(current.id, action)
       removeSolvedProblem(current)
       await load(page, true); setMessage(action === 'dismiss' ? 'Problem suppressed.' : action === 'restore' ? 'Problem restored to the active queue.' : 'Problem record deleted.')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : `Could not ${action} the Problem.`) }
@@ -1649,12 +1656,12 @@ export function ProblemsPage() {
     const details = current.details ?? {}
     const query = problemText(details.local_identity ?? details.medialogue_title) ?? current.subject
     setTmdbQuery(query); setEditingPlexIdentity(true); setSelectedTmdb(undefined); setTmdbMatches([])
-    const request = current.availableActions?.includes('confirm_show_match') ? api.lookupShows(query) : api.lookupMovies(query)
+    const request = current.availableActions?.includes('confirm_show_match') ? showsApi.lookupShows(query) : moviesApi.lookupMovies(query)
     void request.then((matches) => setTmdbMatches(matches.slice(0, 6))).catch((reason) => setMessage(reason instanceof Error ? reason.message : 'TMDB lookup failed.'))
   }
 
   return <Page title="Problems" subtitle="See what is wrong, exactly where it is, and what to do next.">
-    <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><div className="problems-toolbar-rest"><Select value={reasonFilter} onChange={(event) => updateProblemView({ reason: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => updateProblemView({ severity: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></Select><div className="problems-toolbar-actions"><Button variant="ghost" onClick={() => updateProblemView({ problemStatus: queueStatus === 'dismissed' ? null : 'dismissed', problem: null, page: null })}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div></div></div>
+    <div className="problems-toolbar"><label className="problems-search"><Icon name="search" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issues, media, paths…" /></label><div className="problems-toolbar-rest"><Select value={reasonFilter} onChange={(event) => updateProblemView({ reason: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All issue types</option><option value="duplicates">Duplicates</option><option value="identity">Identity / matching</option><option value="paths">Paths / storage</option><option value="PLEX_IDENTITY_MISMATCH">Plex conflicts</option></Select><Select value={severityFilter} onChange={(event) => updateProblemView({ severity: event.target.value === 'all' ? null : event.target.value, problem: null, page: null })}><option value="all">All priorities</option><option value="error">High priority</option><option value="warning">Medium priority</option><option value="info">Low priority</option></Select><div className="problems-toolbar-actions"><Button variant="ghost" onClick={() => updateProblemView({ problemStatus: queueStatus === 'dismissed' ? null : 'dismissed', problem: null, page: null })}>{queueStatus === 'dismissed' ? 'Back to active' : `Suppressed${summary.suppressed ? ` (${summary.suppressed})` : ''}`}</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckAll()} disabled={loading || !summary.open}>{loading ? 'Working…' : 'Check all again'}</Button></div></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     <section className={`problems-layout ${selected ? 'show-detail' : ''}`}>
       <div className="problems-list"><div className="problems-list-head"><span>{queueStatus === 'dismissed' ? 'Suppressed Problems' : 'Problems'}</span><span>Showing {visible.length} of {total}</span></div>{visible.length ? visible.map((problem) => <button type="button" className={`problems-row ${current?.id === problem.id ? 'selected' : ''}`} onClick={() => setSelected(problem.id)} key={problem.id}><span className={`problems-severity severity-${problem.severity}`}><Icon name="alert" size={15} /></span><span className="problems-row-copy"><strong>{problem.title}</strong>{problemSubjectLine(problem) ? <span>{problemSubjectLine(problem)}</span> : null}<small>{problem.created}</small></span><Icon name="chevron" size={15} /></button>) : <EmptyState icon={queueStatus === 'dismissed' ? 'eye-off' : 'check'} title={queueStatus === 'dismissed' ? 'No suppressed Problems' : 'No Problems match these filters'} detail={queueStatus === 'dismissed' ? 'Admin suppressions will appear here.' : 'Change a filter or enjoy the quiet queue.'} />}</div>
@@ -1705,14 +1712,14 @@ export function NewMediaPage() {
 
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
-    try { setItems(await api.discoveries()); setError('') }
+    try { setItems(await discoveryApi.discoveries()); setError('') }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load New Media.') }
     finally { if (!quiet) setLoading(false) }
   }
   useEffect(() => {
     void load()
-    void api.movieEditionOptions().then(setEditionOptions).catch(() => undefined)
-    void api.qualityProfiles().then(setProfiles).catch(() => undefined)
+    void moviesApi.movieEditionOptions().then(setEditionOptions).catch(() => undefined)
+    void settingsApi.qualityProfiles().then(setProfiles).catch(() => undefined)
   }, [])
   useLiveLibraryRefresh(() => load(true))
 
@@ -1774,7 +1781,7 @@ export function NewMediaPage() {
   const setRowProfile = async (item: MediaDiscovery, profileId: string | null) => {
     setProfileBusy(true); setError('')
     try {
-      const updated = await api.updateDiscoveryQualityProfile(item.id, profileId)
+      const updated = await discoveryApi.updateDiscoveryQualityProfile(item.id, profileId)
       setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
     finally { setProfileBusy(false) }
@@ -1796,7 +1803,7 @@ export function NewMediaPage() {
     if (!targets.length) return
     setProfileBusy(true); setError(''); setMessage('')
     try {
-      const result = await api.bulkDiscoveryQualityProfile(targets.map((item) => item.id), profileId)
+      const result = await discoveryApi.bulkDiscoveryQualityProfile(targets.map((item) => item.id), profileId)
       await load(true)
       const name = profiles.find((profile) => profile.id === profileId)?.name
       setMessage(`${result.succeeded.length} folder${result.succeeded.length === 1 ? '' : 's'} set to ${name ?? 'no Quality Profile'}.`)
@@ -1810,7 +1817,7 @@ export function NewMediaPage() {
     if (!ids.length || hasEditionConflicts) return
     setAdding(true); setError(''); setMessage('')
     try {
-      const result = await api.bulkNewMediaDiscoveries(ids, 'approve')
+      const result = await discoveryApi.bulkNewMediaDiscoveries(ids, 'approve')
       setItems((current) => current.filter((item) => !result.succeeded.includes(item.id)))
       window.dispatchEvent(new Event('medialogue-new-media-changed'))
       setMessage(`${result.succeeded.length} ${result.succeeded.length === 1 ? noun : `${noun}s`} added to the library.`)
@@ -1827,7 +1834,7 @@ export function NewMediaPage() {
     const previous = item.selected
     setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, selected: candidate } : entry))
     try {
-      const updated = await api.selectDiscovery(item.id, candidate)
+      const updated = await discoveryApi.selectDiscovery(item.id, candidate)
       setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
     } catch (reason) {
       // Put the old match back rather than leaving the row claiming a choice
@@ -2005,7 +2012,7 @@ function NewMediaAlternatives({ item, onChoose, onSearched, onError }: {
 
   const search = async (term?: string) => {
     setSearching(true)
-    try { onSearched(await api.searchDiscoveryCandidates(item.id, term)) }
+    try { onSearched(await discoveryApi.searchDiscoveryCandidates(item.id, term)) }
     catch (reason) { onError(reason instanceof Error ? reason.message : 'TMDB lookup failed.') }
     finally { setSearching(false) }
   }
@@ -2064,7 +2071,7 @@ function NewMediaDiscoveryEdition({ item, options, onChanged, onError }: { item:
     const update = editionUpdate(item.id, next)
     if (!update.edition?.trim()) return
     setSaving(true); onError('')
-    try { onChanged(await api.updateDiscoveryEdition(item.id, { mode: update.mode, edition: update.edition })) }
+    try { onChanged(await discoveryApi.updateDiscoveryEdition(item.id, { mode: update.mode, edition: update.edition })) }
     catch (reason) { onError(reason instanceof Error ? reason.message : 'Could not save the edition.') }
     finally { setSaving(false) }
   }
@@ -2103,7 +2110,7 @@ export function TorrentArchivePage() {
   const load = async () => {
     setLoading(true)
     try {
-      const [archive, downloadClients, archiveHealth] = await Promise.all([api.torrentArchive(query), api.downloadClients(), api.torrentArchiveHealth()])
+      const [archive, downloadClients, archiveHealth] = await Promise.all([downloadsApi.torrentArchive(query), integrationsApi.downloadClients(), downloadsApi.torrentArchiveHealth()])
       setItems(archive); setClients(downloadClients); setHealth(archiveHealth); setError('')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load the torrent archive.') }
     finally { setLoading(false) }
@@ -2121,8 +2128,8 @@ export function TorrentArchivePage() {
     if (!restoreItem || !restoreClientId || !restorePath.trim()) return
     setBusy(true); setMessage('')
     try {
-      const result = await api.restoreTorrentArchive(restoreItem.id, { download_client_id: restoreClientId, save_path: restorePath.trim() })
-      const [job] = await api.waitForJobs([result.job_id])
+      const result = await downloadsApi.restoreTorrentArchive(restoreItem.id, { download_client_id: restoreClientId, save_path: restorePath.trim() })
+      const [job] = await systemApi.waitForJobs([result.job_id])
       if (!job || job.state !== 'completed') {
         setMessage(`Restore ${job?.state ?? 'failed'}. Review Tasks for details.`)
       } else {
@@ -2136,8 +2143,8 @@ export function TorrentArchivePage() {
   const retryArchive = async (item: TorrentArchiveItem) => {
     setBusy(true); setMessage('')
     try {
-      const accepted = await api.retryTorrentArchive(item.id)
-      const [job] = await api.waitForJobs([accepted.job_id])
+      const accepted = await downloadsApi.retryTorrentArchive(item.id)
+      const [job] = await systemApi.waitForJobs([accepted.job_id])
       if (!job || job.state !== 'completed') setMessage(`Archive retry ${job?.state ?? 'failed'}. Review Tasks for details.`)
       else setMessage(`Recovery archive completed for ${item.torrentName}.`)
       await load()
@@ -2178,19 +2185,10 @@ const settingsTabItems: Array<{ name: string; icon: Parameters<typeof Icon>[0]['
   { name: 'Backups', icon: 'backup' },
 ]
 const settingsTabs = settingsTabItems.map((item) => item.name)
-const legacySettingsTabs: Record<string, string> = {
-  Metadata: 'TMDB',
-  Schedules: 'qBittorrent',
-  'Backup / Recovery': 'Backups',
-  'Root Storage': 'Media',
-  'Storage Roots': 'Media',
-  'Media Folders': 'Media',
-}
 
 export function SettingsPage() {
   const [tab, setTab] = useUrlState('tab', 'Media')
-  const normalizedTab = legacySettingsTabs[tab] ?? tab
-  const current = settingsTabs.includes(normalizedTab) ? normalizedTab : 'Media'
+  const current = settingsTabs.includes(tab) ? tab : 'Media'
   return <Page title="Settings" subtitle="Connections, library paths, and system administration.">
     <div className="split split-narrow">
       <nav className="settings-nav">{settingsTabItems.map((item) => <button
@@ -2218,12 +2216,12 @@ function SecuritySettings() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState<Message>(null)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { api.security().then(setSecurity).catch((reason) => setMessage(failed(reason, 'Could not load security state.'))) }, [])
+  useEffect(() => { authApi.security().then(setSecurity).catch((reason) => setMessage(failed(reason, 'Could not load security state.'))) }, [])
   const change = async () => {
     if (newPassword.length < 12) { setMessage({ tone: 'error', text: 'New password must contain at least 12 characters.' }); return }
     if (newPassword !== confirmPassword) { setMessage({ tone: 'error', text: 'New password confirmation does not match.' }); return }
     setBusy(true); setMessage(pending('Changing password…'))
-    try { await api.changePassword(currentPassword, newPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setSecurity((value) => value ? { ...value, default_password_warning: false } : value); setMessage(ok('Password changed. Other active sessions were revoked.')) }
+    try { await authApi.changePassword(currentPassword, newPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setSecurity((value) => value ? { ...value, default_password_warning: false } : value); setMessage(ok('Password changed. Other active sessions were revoked.')) }
     catch (reason) { setMessage(failed(reason, 'Could not change password.')) }
     finally { setBusy(false) }
   }
@@ -2297,7 +2295,7 @@ function StorageSettings() {
   const loadRoots = async () => {
     const generation = ++rootsLoadGeneration.current
     try {
-      const nextRoots = await api.storageRoots()
+      const nextRoots = await storageApi.storageRoots()
       if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
     } catch (reason) {
       if (generation === rootsLoadGeneration.current) setMessage(failed(reason, 'Could not load media folder state.'))
@@ -2306,7 +2304,7 @@ function StorageSettings() {
   const load = async () => {
     const generation = ++rootsLoadGeneration.current
     try {
-      const [nextRoots, nextMappings, nextClients] = await Promise.all([api.storageRoots(), api.remotePathMappings(), api.downloadClients()])
+      const [nextRoots, nextMappings, nextClients] = await Promise.all([storageApi.storageRoots(), integrationsApi.remotePathMappings(), integrationsApi.downloadClients()])
       if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
       setMappings(nextMappings); setClients(nextClients)
       setMappingRootId((value) => value || nextRoots[0]?.id || '')
@@ -2316,13 +2314,13 @@ function StorageSettings() {
   useLiveLibraryRefresh(loadRoots, 15000, true)
   useEffect(() => {
     const generation = ++rootsLoadGeneration.current
-    api.checkStorageRootHealth().then((nextRoots) => {
+    storageApi.checkStorageRootHealth().then((nextRoots) => {
       if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
     }).catch(() => undefined)
   }, [])
-  useEffect(() => { api.librarySummary().then(setSummary).catch(() => undefined) }, [])
+  useEffect(() => { storageApi.librarySummary().then(setSummary).catch(() => undefined) }, [])
   useEffect(() => {
-    api.tmdbConfiguration()
+    integrationsApi.tmdbConfiguration()
       .then((value) => setTmdbReady(Boolean(value.enabled && value.api_key_configured)))
       .catch(() => undefined)
   }, [])
@@ -2357,7 +2355,7 @@ function StorageSettings() {
     const preservePathOnProblem = options.preservePathOnProblem ?? Boolean(selectedRoot)
     setBrowseBusy(true)
     try {
-      const result = await api.browseFilesystem(target)
+      const result = await storageApi.browseFilesystem(target)
       setListing(result)
       setPath((current) => rootPathAfterBrowse(current, result.current_path, Boolean(result.problem), updateDraftPath, preservePathOnProblem))
     } catch (reason) {
@@ -2375,8 +2373,8 @@ function StorageSettings() {
     try {
       const requestedDiscoveryMode = approveNewMedia ? 'review' : 'automatic'
       const saved = selectedRoot
-        ? await api.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, missing_grace_checks: missingGraceChecks })
-        : await api.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: true, missing_grace_checks: missingGraceChecks })
+        ? await storageApi.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, missing_grace_checks: missingGraceChecks })
+        : await storageApi.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: true, missing_grace_checks: missingGraceChecks })
       // A Vite page can outlive its backend process during development. Older
       // servers ignore unknown request fields, which previously closed the
       // modal as if New Media approval had been persisted when it had not.
@@ -2398,7 +2396,7 @@ function StorageSettings() {
           setMessage(ok(`${saved.name} added. Configure TMDB, then scan it.`))
         } else {
           try {
-            await api.startScan(saved.id)
+            await storageApi.startScan(saved.id)
             await loadRoots()
             setMessage(ok(`${saved.name} added. Scanning it now.`))
           } catch {
@@ -2416,7 +2414,7 @@ function StorageSettings() {
   const scanRoot = async (root: StorageRoot) => {
     setRootBusy(true)
     try {
-      await api.startScan(root.id)
+      await storageApi.startScan(root.id)
       await loadRoots()
       setMessage(ok(`${root.name} is scanning now.`))
     } catch (reason) {
@@ -2436,13 +2434,13 @@ function StorageSettings() {
     if (!root) return
     setRootBusy(true)
       try {
-        await api.deleteStorageRoot(root.id, removeEntries)
+        await storageApi.deleteStorageRoot(root.id, removeEntries)
         if (removeEntries) window.dispatchEvent(new Event('medialogue-new-media-changed'))
         setRoots((items) => items.filter((item) => item.id !== root.id))
       setRemoving(null)
       setRootModalOpen(false)
       setSelectedRoot(null)
-      setSummary(await api.librarySummary())
+      setSummary(await storageApi.librarySummary())
       setMessage(ok(removeEntries
         ? `${root.name} removed, along with ${root.media_count} ${mediaNoun(root)}.`
         : `${root.name} removed. Its ${root.media_count} ${mediaNoun(root)} ${root.media_count === 1 ? 'is' : 'are'} still in your library.`))
@@ -2475,8 +2473,8 @@ function StorageSettings() {
         enabled: mappingEnabled,
       }
       const saved = selectedMapping
-        ? await api.updateRemotePathMapping(selectedMapping.id, payload)
-        : await api.createRemotePathMapping({ ...payload, integration_id: mappingClientId || undefined, storage_root_id: mappingRootId || undefined })
+        ? await integrationsApi.updateRemotePathMapping(selectedMapping.id, payload)
+        : await integrationsApi.createRemotePathMapping({ ...payload, integration_id: mappingClientId || undefined, storage_root_id: mappingRootId || undefined })
       setMappings((items) => selectedMapping ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved])
       setMappingDirty(false); setAddingMapping(false); setMessage(ok(selectedMapping ? `${saved.name} updated.` : 'Remote path mapping added. Recheck the affected Problem after the next qBittorrent observation.'))
     } catch (reason) { setMessage(failed(reason, `Could not ${selectedMapping ? 'update' : 'add'} remote path mapping.`)) }
@@ -2489,7 +2487,7 @@ function StorageSettings() {
       confirmLabel: 'Remove mapping',
     })) return
     setMappingBusy(true)
-    try { await api.deleteRemotePathMapping(mapping.id); setMappings((items) => items.filter((item) => item.id !== mapping.id)); setAddingMapping(false); setSelectedMapping(null); setMessage(ok(`${mapping.name} removed.`)) }
+    try { await integrationsApi.deleteRemotePathMapping(mapping.id); setMappings((items) => items.filter((item) => item.id !== mapping.id)); setAddingMapping(false); setSelectedMapping(null); setMessage(ok(`${mapping.name} removed.`)) }
     catch (reason) { setMessage(failed(reason, 'Could not remove remote path mapping.')) }
     finally { setMappingBusy(false) }
   }
@@ -2505,10 +2503,10 @@ function StorageSettings() {
     setDragIndex(null)
     if (!wasDragging) return
     const ids = roots.map((root) => root.id)
-    try { setRoots(await api.reorderStorageRoots(ids)) }
+    try { setRoots(await storageApi.reorderStorageRoots(ids)) }
     // The list already shows the new order, so a failed save must put the
     // stored order back rather than leave the two disagreeing.
-    catch { setRoots(await api.storageRoots().catch(() => roots)) }
+    catch { setRoots(await storageApi.storageRoots().catch(() => roots)) }
   }
 
   const liveSelectedRoot = selectedRoot ? roots.find((root) => root.id === selectedRoot.id) ?? selectedRoot : null
@@ -2740,13 +2738,13 @@ function MetadataSettings() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<Message>(null)
 
-  const load = () => api.tmdbConfiguration().then((value) => { setConfiguration(value); setEnabled(value.enabled); setApiKey(''); setDirty(false) })
+  const load = () => integrationsApi.tmdbConfiguration().then((value) => { setConfiguration(value); setEnabled(value.enabled); setApiKey(''); setDirty(false) })
   useEffect(() => { load().catch((reason) => setMessage(failed(reason, 'Could not load TMDB settings.'))) }, [])
 
   const save = async () => {
     setSaving(true); setMessage(pending('Saving TMDB settings…'))
     try {
-      const value = await api.saveTmdb({ api_key: apiKey || undefined, enabled, expected_revision: configuration?.revision })
+      const value = await integrationsApi.saveTmdb({ api_key: apiKey || undefined, enabled, expected_revision: configuration?.revision })
       setConfiguration(value); setApiKey(''); setDirty(false); setMessage(ok('TMDB settings saved.'))
     } catch (reason) { setMessage(failed(reason, 'Could not save TMDB settings.')) } finally { setSaving(false) }
   }
@@ -2778,7 +2776,7 @@ function PlexSettings() {
   const [working, setWorking] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  const load = () => api.plexConfiguration().then((value) => {
+  const load = () => integrationsApi.plexConfiguration().then((value) => {
     setConfiguration(value)
     if (value.url) setUrl(value.url)
     setEnabled(value.enabled)
@@ -2790,7 +2788,7 @@ function PlexSettings() {
     if (!url.trim()) { setMessage({ tone: 'error', text: 'Enter a Plex server URL.' }); return }
     setWorking(true); setMessage(pending('Saving Plex settings…'))
     try {
-      const value = await api.savePlex({ url: url.trim(), token: token || undefined, enabled, expected_revision: configuration?.revision })
+      const value = await integrationsApi.savePlex({ url: url.trim(), token: token || undefined, enabled, expected_revision: configuration?.revision })
       setConfiguration(value); setToken(''); setDirty(false); setMessage(ok('Plex settings saved.'))
       window.dispatchEvent(new Event('medialogue-plex-configuration-changed'))
     } catch (reason) { setMessage(failed(reason, 'Could not save Plex settings.')) }
@@ -2799,7 +2797,7 @@ function PlexSettings() {
   const syncLibrary = async () => {
     setWorking(true); setMessage(pending('Starting Plex library verification…'))
     try {
-      const result = await api.syncPlexLibrary()
+      const result = await integrationsApi.syncPlexLibrary()
       setMessage(ok(`Plex verification queued as job ${result.job_id.slice(0, 8)}…. It reads Plex's existing library; it does not trigger a Plex scan.`))
     } catch (reason) { setMessage(failed(reason, 'Could not start Plex verification.')) }
     finally { setWorking(false) }
@@ -2921,7 +2919,7 @@ function QBittorrentSettings() {
   const loadClients = async (keepSelection = true) => {
     setLoading(true)
     try {
-      const items = await api.downloadClients()
+      const items = await integrationsApi.downloadClients()
       setClients(items)
       const nextId = keepSelection && selectedId && items.some((item) => item.id === selectedId) ? selectedId : items[0]?.id ?? ''
       setSelectedId(nextId)
@@ -2951,8 +2949,8 @@ function QBittorrentSettings() {
     setBusy(true); setError(''); setMessage('Saving qBittorrent client…')
     try {
       const value = selectedId
-        ? await api.updateDownloadClient(selectedId, { ...payload(), expected_revision: clients.find((item) => item.id === selectedId)?.revision })
-        : await api.createDownloadClient({ ...payload(), password: draft.password })
+        ? await integrationsApi.updateDownloadClient(selectedId, { ...payload(), expected_revision: clients.find((item) => item.id === selectedId)?.revision })
+        : await integrationsApi.createDownloadClient({ ...payload(), password: draft.password })
       setClients((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value])
       setSelectedId(value.id); setDraft(draftFromDownloadClient(value)); setDirty(false); setEditorOpen(false); setMessage(`${value.name} saved. Password is stored server-side and never returned to the browser.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save qBittorrent client.'); setMessage('') }
@@ -2962,7 +2960,7 @@ function QBittorrentSettings() {
     if (!selectedId) return
     setBusy(true); setError(''); setMessage('Refreshing qBittorrent health…')
     try {
-      const result = await api.refreshDownloadClient(selectedId)
+      const result = await integrationsApi.refreshDownloadClient(selectedId)
       setClients((items) => items.map((item) => item.id === selectedId ? { ...item, health: result.status, latency_ms: result.latency_ms, last_error: result.message, last_checked_at: new Date().toISOString() } : item))
       setMessage(result.status === 'healthy' ? 'Client health is healthy.' : result.message ?? `qBittorrent status: ${result.status}.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not refresh qBittorrent health.'); setMessage('') }
@@ -2971,7 +2969,7 @@ function QBittorrentSettings() {
   const refreshAll = async () => {
     if (!clients.length) return
     setBusy(true); setError(''); setMessage('Refreshing health for every qBittorrent client…')
-    const results = await Promise.allSettled(clients.map((client) => api.refreshDownloadClient(client.id)))
+    const results = await Promise.allSettled(clients.map((client) => integrationsApi.refreshDownloadClient(client.id)))
     setClients((items) => items.map((item, index) => {
       const result = results[index]
       return result?.status === 'fulfilled' ? { ...item, health: result.value.status, latency_ms: result.value.latency_ms, last_error: result.value.message, last_checked_at: new Date().toISOString() } : item
@@ -2989,7 +2987,7 @@ function QBittorrentSettings() {
     })) return
     setBusy(true); setError('')
     try {
-      await api.deleteDownloadClient(selectedId)
+      await integrationsApi.deleteDownloadClient(selectedId)
       const remaining = clients.filter((item) => item.id !== selectedId)
       setClients(remaining); const next = remaining[0]
       setSelectedId(next?.id ?? ''); setDraft(next ? draftFromDownloadClient(next) : emptyDownloadClient); setEditorOpen(false); setMessage('Client configuration removed; torrent history was not changed.')
@@ -3005,7 +3003,7 @@ function QBittorrentSettings() {
     setTogglingId(client.id); setError(''); setMessage('')
     try {
       const next = { ...draftFromDownloadClient(client), enabled: !client.enabled }
-      await api.updateDownloadClient(client.id, downloadClientPayload(next))
+      await integrationsApi.updateDownloadClient(client.id, downloadClientPayload(next))
       setClients((items) => items.map((item) => item.id === client.id ? { ...item, enabled: next.enabled } : item))
       if (client.id === selectedId) setDraft((current) => ({ ...current, enabled: next.enabled }))
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this client.') }
@@ -3233,7 +3231,7 @@ function IndexerSettings() {
   const load = async () => {
     setLoading(true)
     try {
-      const [items, clientRows] = await Promise.all([api.indexers(), api.downloadClients()])
+      const [items, clientRows] = await Promise.all([integrationsApi.indexers(), integrationsApi.downloadClients()])
       setIndexers(items)
       setClients(clientRows)
       setError('')
@@ -3286,8 +3284,8 @@ function IndexerSettings() {
         download_client_ids: draft.downloadClientIds,
       }
       const value = selectedId
-        ? await api.updateIndexer(selectedId, { ...base, ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}), expected_revision: selected?.revision })
-        : await api.createIndexer({ ...base, color: draft.color || undefined, api_key: draft.apiKey.trim() })
+        ? await integrationsApi.updateIndexer(selectedId, { ...base, ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}), expected_revision: selected?.revision })
+        : await integrationsApi.createIndexer({ ...base, color: draft.color || undefined, api_key: draft.apiKey.trim() })
       setIndexers((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value].sort((a, b) => a.name.localeCompare(b.name)))
       setSelectedId(value.id)
       setDraft(draftFromIndexer(value))
@@ -3306,8 +3304,8 @@ function IndexerSettings() {
     setBusy(true); setError(''); setMessage('Testing indexer connection…')
     try {
       const result = selectedId
-        ? await api.testIndexer(selectedId)
-        : await api.testIndexer(undefined, { torznab_url: draft.torznabUrl.trim(), api_key: draft.apiKey.trim(), timeout_seconds: draft.timeoutSeconds })
+        ? await integrationsApi.testIndexer(selectedId)
+        : await integrationsApi.testIndexer(undefined, { torznab_url: draft.torznabUrl.trim(), api_key: draft.apiKey.trim(), timeout_seconds: draft.timeoutSeconds })
       setMessage(result.status === 'healthy' ? `Indexer is reachable${result.title ? ` · ${result.title}` : ''}${result.latencyMs ? ` · ${result.latencyMs} ms` : ''}.` : result.message ?? `Indexer status: ${result.status}.`)
       if (selectedId) await load()
     } catch (reason) {
@@ -3318,7 +3316,7 @@ function IndexerSettings() {
   const testAll = async () => {
     if (!indexers.length) return
     setBusy(true); setError(''); setMessage('Testing all indexers…')
-    const results = await Promise.allSettled(indexers.map((indexer) => api.testIndexer(indexer.id)))
+    const results = await Promise.allSettled(indexers.map((indexer) => integrationsApi.testIndexer(indexer.id)))
     await load()
     const failedCount = results.filter((result) => result.status === 'rejected' || (result.status === 'fulfilled' && result.value.status !== 'healthy')).length
     setMessage(failedCount ? `Tested ${indexers.length} indexers; ${failedCount} reported a problem.` : `All ${indexers.length} indexers tested successfully.`)
@@ -3334,7 +3332,7 @@ function IndexerSettings() {
     })) return
     setBusy(true); setError('')
     try {
-      await api.deleteIndexer(selectedId)
+      await integrationsApi.deleteIndexer(selectedId)
       const remaining = indexers.filter((item) => item.id !== selectedId)
       setIndexers(remaining)
       const next = remaining[0]
@@ -3353,7 +3351,7 @@ function IndexerSettings() {
   const toggleIndexer = async (indexer: Indexer) => {
     setTogglingId(indexer.id); setError(''); setMessage('')
     try {
-      await api.updateIndexer(indexer.id, { enabled: !indexer.enabled })
+      await integrationsApi.updateIndexer(indexer.id, { enabled: !indexer.enabled })
       setIndexers((items) => items.map((item) => item.id === indexer.id ? { ...item, enabled: !indexer.enabled } : item))
       if (indexer.id === selectedId) setDraft((current) => ({ ...current, enabled: !indexer.enabled }))
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this indexer.') }
@@ -3527,7 +3525,7 @@ function BackupRecoverySettings() {
   const [reimportBusy, setReimportBusy] = useState(false)
 
   const loadCapabilities = async () => {
-    try { setCapabilities(await api.recoveryCapabilities()); setMessage(null) }
+    try { setCapabilities(await systemApi.recoveryCapabilities()); setMessage(null) }
     catch (reason) { setMessage(failed(reason, 'Could not inspect Recovery Bundle capabilities.')) }
   }
   useEffect(() => { void loadCapabilities() }, [])
@@ -3535,7 +3533,7 @@ function BackupRecoverySettings() {
     if (!job || !['queued', 'running'].includes(job.state)) return
     let alive = true
     const refresh = async () => {
-      try { const value = await api.job(job.id); if (alive) setJob(value) } catch {}
+      try { const value = await systemApi.job(job.id); if (alive) setJob(value) } catch {}
     }
     const timer = window.setInterval(() => void refresh(), 1500)
     return () => { alive = false; window.clearInterval(timer) }
@@ -3544,7 +3542,7 @@ function BackupRecoverySettings() {
     if (!reimportJob || !['queued', 'running'].includes(reimportJob.state)) return
     let alive = true
     const refresh = async () => {
-      try { const value = await api.job(reimportJob.id); if (alive) setReimportJob(value) } catch {}
+      try { const value = await systemApi.job(reimportJob.id); if (alive) setReimportJob(value) } catch {}
     }
     const timer = window.setInterval(() => void refresh(), 1500)
     return () => { alive = false; window.clearInterval(timer) }
@@ -3553,8 +3551,8 @@ function BackupRecoverySettings() {
   const start = async () => {
     setBusy(true); setMessage(null)
     try {
-      const accepted = await api.startRecoveryExport()
-      const value = await api.job(accepted.job_id)
+      const accepted = await systemApi.startRecoveryExport()
+      const value = await systemApi.job(accepted.job_id)
       setJob(value)
       setMessage(accepted.warning ? { tone: 'error', text: accepted.warning } : null)
     } catch (reason) { setMessage(failed(reason, 'Could not start Recovery Bundle export.')) }
@@ -3563,7 +3561,7 @@ function BackupRecoverySettings() {
   const inspectReimport = async () => {
     setReimportBusy(true); setMessage(null)
     try {
-      const plan = await api.recoveryReimportPlan()
+      const plan = await systemApi.recoveryReimportPlan()
       setReimportPlan(plan)
       setSelectedRecoveryIds(new Set(plan.items.filter((item) => item.status === 'ready').map((item) => item.torrentId)))
     } catch (reason) { setMessage(failed(reason, 'Could not inspect the bulk recovery plan.')) }
@@ -3573,8 +3571,8 @@ function BackupRecoverySettings() {
     if (!reimportPlan || !selectedRecoveryIds.size) return
     setReimportBusy(true); setMessage(null)
     try {
-      const accepted = await api.startRecoveryReimport(reimportPlan.confirmationToken, [...selectedRecoveryIds])
-      const value = await api.job(accepted.job_id)
+      const accepted = await systemApi.startRecoveryReimport(reimportPlan.confirmationToken, [...selectedRecoveryIds])
+      const value = await systemApi.job(accepted.job_id)
       setReimportJob(value)
       setConfirmReimport(false)
       setReimportPlan(null)
@@ -3614,11 +3612,10 @@ function BackupRecoverySettings() {
     <Note message={{ tone: 'error', text: 'The bundle contains a complete SQLite database backup and integration credentials. Treat anyone holding the ZIP as having full access to your Medialogue configuration and database.' }} />
 
     {capabilities && <div className="settings-section">
-      <div><h3>Backup compatibility</h3><p>Medialogue uses SQLite's online backup API to create a consistent database file while the application is running.</p></div>
+      <div><h3>Database backup</h3><p>Medialogue uses SQLite's online backup API to create a consistent database file while the application is running.</p></div>
       <div className="settings-form">
         <Field label="SQLite version" help="SQLite library version used to create the online backup."><Input readOnly value={capabilities.sqliteVersion ?? 'Unknown'} /></Field>
         <Field label="Database file" help="Application-owned database included in the Recovery Bundle."><Input readOnly value={capabilities.databasePath ?? 'Unavailable'} /></Field>
-        <Field label="Migration revision" help="Schema revision captured in the bundle. Restore onto this revision or later."><Input readOnly value={capabilities.migrationRevision ?? 'Unknown'} /></Field>
         <Field label="Temporary download retention" help="How long a finished bundle stays downloadable before it is deleted from the server."><Input readOnly value={`${capabilities.retentionHours} hours`} /></Field>
       </div>
     </div>}
@@ -3632,7 +3629,7 @@ function BackupRecoverySettings() {
         {bundleSize && <span className="muted">Bundle size: {bundleSize}</span>}
         {expiresAt && <span className="muted">Temporary download available until {expiresAt}</span>}
         {sha && <code className="recovery-hash">SHA-256: {sha}</code>}
-        {job.state === 'completed' && <Button variant="primary" icon="download" onClick={() => { window.location.href = api.recoveryDownloadUrl(job.id) }}>Download Recovery Bundle</Button>}
+        {job.state === 'completed' && <Button variant="primary" icon="download" onClick={() => { window.location.href = systemApi.recoveryDownloadUrl(job.id) }}>Download Recovery Bundle</Button>}
       </div>
     </div>}
 
@@ -3660,7 +3657,7 @@ function BackupRecoverySettings() {
           <td><Badge tone={item.status === 'ready' ? 'green' : item.status === 'already_present' ? 'neutral' : 'red'}>{item.status.replaceAll('_', ' ')}</Badge>{item.reasons.map((reason) => <span key={reason} className="table-sub">{reason}</span>)}</td>
           <td>{item.downloadClientName ?? 'Unavailable'}{item.category !== undefined && <span className="table-sub">Category: {item.category || 'none'}</span>}{item.tags.length ? <span className="table-sub">Tags: {item.tags.join(', ')}</span> : null}</td>
           <td><code>{item.savePath ?? 'Missing'}</code>{item.resolvedSavePath && item.resolvedSavePath !== item.savePath && <span className="table-sub">Resolves to {item.resolvedSavePath}</span>}</td>
-          <td>{item.fileSelectionCaptured ? <><span>{item.selectedFileCount}/{item.totalFileCount} files selected</span><span className="table-sub">{item.skippedFileCount} skipped file{item.skippedFileCount === 1 ? '' : 's'} will remain skipped</span></> : <span>Default qBittorrent file selection</span>}</td>
+          <td><span>{item.selectedFileCount}/{item.totalFileCount} files selected</span><span className="table-sub">{item.skippedFileCount} skipped file{item.skippedFileCount === 1 ? '' : 's'} will remain skipped</span></td>
         </tr>
       })}</tbody></table></div>
       <div className="settings-footer"><Button variant="primary" icon="download" disabled={!selectedRecoveryIds.size || reimportBusy} onClick={() => setConfirmReimport(true)}>Review and submit {selectedRecoveryIds.size || ''}</Button></div>
@@ -3853,7 +3850,7 @@ export function UpgradeMediaPage() {
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
     try {
-      const [nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout] = await Promise.all([api.upgradeCandidates(), api.downloadClients(), api.qualityProfiles(), api.upgradeCandidateCount(), api.customFormats(), api.customFormatLayout()])
+      const [nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout] = await Promise.all([upgradesApi.upgradeCandidates(), integrationsApi.downloadClients(), settingsApi.qualityProfiles(), upgradesApi.upgradeCandidateCount(), settingsApi.customFormats(), settingsApi.customFormatLayout()])
       setItems(nextItems)
       setClients(nextClients)
       setProfiles(nextProfiles)
@@ -3880,7 +3877,7 @@ export function UpgradeMediaPage() {
     if (!confirming || !clientId) { setCategories([]); setCategory(''); return }
     let alive = true
     setCategoryLoading(true)
-    api.downloadClientCategories(clientId)
+    integrationsApi.downloadClientCategories(clientId)
       .then((rows) => {
         if (!alive) return
         setCategories(rows)
@@ -3896,7 +3893,7 @@ export function UpgradeMediaPage() {
   const search = async () => {
     setSearching(true); setError(''); setMessage('')
     try {
-      await api.searchUpgrades()
+      await upgradesApi.searchUpgrades()
       setMessage('Upgrade search queued. This page will refresh as candidates are evaluated.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not start upgrade search.') }
     finally { setSearching(false) }
@@ -3927,7 +3924,7 @@ export function UpgradeMediaPage() {
   const setRowProfile = async (item: UpgradeCandidate, profileId: string | null) => {
     setProfileBusy(true); setError(''); setMessage('')
     try {
-      const result = await api.setUpgradeQualityProfile(item.id, profileId)
+      const result = await upgradesApi.setUpgradeQualityProfile(item.id, profileId)
       applyProfileResult(result)
       setMessage('Quality Profile changed. Upgrade candidates are being re-evaluated.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
@@ -3943,7 +3940,7 @@ export function UpgradeMediaPage() {
     let submitted = 0
     for (const item of picked) {
       try {
-        const updated = await api.executeUpgrade(item.id, clientId, category)
+        const updated = await upgradesApi.executeUpgrade(item.id, clientId, category)
         setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
         submitted += 1
       } catch (reason) {
@@ -3960,7 +3957,7 @@ export function UpgradeMediaPage() {
   const retryHandoff = async (item: UpgradeCandidate) => {
     setBusyId(item.id); setError(''); setMessage('')
     try {
-      const updated = await api.retryUpgradeHandoff(item.id)
+      const updated = await upgradesApi.retryUpgradeHandoff(item.id)
       setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
       setMessage('Replacement handoff was checked again.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not retry the replacement handoff.') }
@@ -3969,7 +3966,7 @@ export function UpgradeMediaPage() {
 
   const reviewCleanup = async (item: UpgradeCandidate) => {
     setCleanupTarget(item); setCleanup(null); setCleanupLoading(true); setError('')
-    try { setCleanup(await api.upgradeCleanupPreview(item.id)) }
+    try { setCleanup(await upgradesApi.upgradeCleanupPreview(item.id)) }
     catch (reason) { setCleanupTarget(null); setError(reason instanceof Error ? reason.message : 'Could not build the old-media cleanup preview.') }
     finally { setCleanupLoading(false) }
   }
@@ -3977,7 +3974,7 @@ export function UpgradeMediaPage() {
   const openResults = async (item: UpgradeCandidate) => {
     setResultsTarget(item); setSearchResults(null); setResultsLoading(true); setError('')
     try {
-      const result = await api.upgradeSearchResults(item.id)
+      const result = await upgradesApi.upgradeSearchResults(item.id)
       setSearchResults(result)
       setSelectedResultId(result.results.find((entry) => entry.selected)?.id ?? result.results.find((entry) => entry.recommended)?.id ?? '')
     } catch (reason) {
@@ -3990,7 +3987,7 @@ export function UpgradeMediaPage() {
     if (!resultsTarget || !selectedResultId) return
     setResultSelecting(true); setError('')
     try {
-      const updated = await api.selectUpgradeSearchResult(resultsTarget.id, selectedResultId)
+      const updated = await upgradesApi.selectUpgradeSearchResult(resultsTarget.id, selectedResultId)
       setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
       setResultsTarget(null); setSearchResults(null)
       setMessage(`Selected ${updated.title} as the upgrade for ${updated.mediaTitle}.`)
@@ -4002,7 +3999,7 @@ export function UpgradeMediaPage() {
     if (!cleanupTarget || !cleanup?.eligible) return
     setBusyId(cleanupTarget.id); setError(''); setMessage('')
     try {
-      const result = await api.cleanupUpgrade(cleanupTarget.id, cleanup.confirmationToken)
+      const result = await upgradesApi.cleanupUpgrade(cleanupTarget.id, cleanup.confirmationToken)
       setCleanupTarget(null); setCleanup(null)
       setMessage(`Upgrade complete. Deleted ${result.deletedPaths.length} reviewed old-media ${result.deletedPaths.length === 1 ? 'target' : 'targets'}.`)
       await load(true)
@@ -4045,7 +4042,7 @@ export function UpgradeMediaPage() {
     if (!profileTargets.length) return
     setProfileBusy(true); setError(''); setMessage('')
     try {
-      const result = await api.setUpgradeQualityProfiles(profileTargets.map((item) => item.id), profileId)
+      const result = await upgradesApi.setUpgradeQualityProfiles(profileTargets.map((item) => item.id), profileId)
       applyProfileResult(result)
       const name = profiles.find((profile) => profile.id === profileId)?.name ?? defaultProfileLabel(profiles)
       setMessage(`${result.updatedEntities} ${result.updatedEntities === 1 ? 'title' : 'titles'} set to ${name}. Upgrade candidates are being re-evaluated.`)

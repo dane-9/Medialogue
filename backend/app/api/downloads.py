@@ -350,7 +350,6 @@ async def get_download_client(
 
 
 @router.put("/download-clients/{client_id}", response_model=DownloadClientResponse)
-@router.patch("/download-clients/{client_id}", response_model=DownloadClientResponse, include_in_schema=False)
 async def update_download_client(
     client_id: UUID,
     payload: DownloadClientUpdate,

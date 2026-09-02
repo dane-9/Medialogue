@@ -233,7 +233,6 @@ async def reparse_movie_releases(db: AsyncSession, movie: Movie) -> int:
             release.effective_edition = parsed.edition
         release.quality_definition_id = quality.id if quality else None
         release.release_group = parsed.release_group
-        release.parser_version = parsed.parser_version
         release.parse_snapshot = {**fresh, **preserved}
         db.add(
             ParseEvidence(
@@ -241,7 +240,6 @@ async def reparse_movie_releases(db: AsyncSession, movie: Movie) -> int:
                 source_id=release.id,
                 raw_name=release.raw_release_name,
                 parse_snapshot={**fresh, "bulk_reparse": True},
-                parser_version=parsed.parser_version,
             )
         )
     await db.flush()

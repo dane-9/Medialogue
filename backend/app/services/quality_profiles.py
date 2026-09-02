@@ -21,14 +21,6 @@ from app.models.domain import (
 )
 from collections.abc import Sequence
 
-from app.services.builtin_formats import DEFAULT_QUALITY_PROFILE_MARKER
-
-
-#: Marks the profile bootstrap created. Provenance only: it stops reseeding, and
-#: is deliberately separate from which profile is currently the default, so the
-#: user can hand that role to a profile they made themselves.
-def is_seeded_profile(profile: QualityProfile) -> bool:
-    return (profile.settings or {}).get("system_profile") == DEFAULT_QUALITY_PROFILE_MARKER
 
 
 def is_marked_default(profile: QualityProfile) -> bool:
@@ -36,15 +28,9 @@ def is_marked_default(profile: QualityProfile) -> bool:
 
 
 def resolve_default_profile(profiles: Sequence[QualityProfile]) -> QualityProfile | None:
-    """Which profile titles without one of their own inherit.
+    """Return the profile explicitly configured as the default."""
 
-    The user's explicit choice wins. Falling back to the seeded profile keeps
-    installs that never made a choice behaving exactly as they did before the
-    role became selectable, so no migration is needed.
-    """
-
-    chosen = next((row for row in profiles if is_marked_default(row)), None)
-    return chosen or next((row for row in profiles if is_seeded_profile(row)), None)
+    return next((row for row in profiles if is_marked_default(row)), None)
 
 
 async def load_default_profile(db: AsyncSession) -> QualityProfile | None:
@@ -358,9 +344,8 @@ def minimum_quality_status(
 ) -> bool | None:
     """Return whether a classified candidate satisfies the configured warning floor.
 
-    A profile's top-to-bottom quality order is authoritative. Hardcoded ranks
-    remain only as a compatibility fallback for legacy callers without an
-    order snapshot.
+    A profile's top-to-bottom quality order is authoritative. Without an
+    order snapshot, the minimum-quality result is unknown.
     """
 
     if not minimum_quality:
@@ -470,7 +455,6 @@ async def evaluate_current_release_score(
                 "id": str(row.id),
                 "name": row.name,
                 "description": row.description,
-                "media_scope": "both",
                 "enabled": row.enabled,
                 "condition_definition": dict(row.condition_definition or {}),
             }

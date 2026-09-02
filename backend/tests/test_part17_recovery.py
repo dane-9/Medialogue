@@ -181,11 +181,11 @@ def test_recovery_bundle_contains_sqlite_backup_archive_config_and_inventory(rec
         assert any(movie["tmdb_id"] == 27205 for movie in inventory["movies"])
         assert any(path["resolved_path"].startswith("/media/movies/Inception") for path in inventory["media_directories"])
         backup_meta = json.loads(bundle.read("backup-metadata.json"))
-        assert backup_meta["recovery_schema_version"] == 2
+        assert backup_meta["recovery_schema_version"] == 1
         assert backup_meta["sqlite"]["database_file"] == "database/medialogue.db"
         assert backup_meta["sqlite"]["backup"]["tool"] == "sqlite3_backup"
-        assert backup_meta["schema_migration_revision"] is None
-        assert backup_meta["torrent_manifest_schema_version"] == 2
+        assert "schema_migration_revision" not in backup_meta
+        assert backup_meta["torrent_manifest_schema_version"] == 1
         assert backup_meta["sensitive"] is True
 
         restored = root_path / "restored-medialogue.db"
@@ -267,7 +267,6 @@ def test_recovery_export_api_creates_persistent_job_and_prevents_overlap(recover
             "sqlite_version": sqlite3.sqlite_version,
             "database_path": "/config/medialogue.db",
             "database_readable": True,
-            "migration_revision": "0001",
             "torrent_archive_readable": True,
             "export_directory_writable": True,
             "export_directory": "/tmp",

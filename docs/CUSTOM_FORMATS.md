@@ -4,7 +4,7 @@ Custom Formats use a Radarr-like matching model but are Medialogue-owned definit
 
 A Custom Format contains conditions. It does **not** contain a score. Scores belong to Quality Profiles.
 
-Supported condition types include release title/group, quality, source, resolution, edition, language, indexer, WEB provider, codecs, channels, HDR type, and release attributes.
+User-defined Custom Formats use release-title regular expressions. Medialogue's built-in formats may use parser-backed structured matching internally, but those condition types are not configurable or importable.
 
 Condition controls include:
 

@@ -28,14 +28,14 @@ export function releaseHdr(parser: Snapshot): string[] {
 }
 
 export function releaseVideoCodec(parser: Snapshot): string | undefined {
-  return text(section(parser, 'video')?.codec) ?? text(parser?.video_codec)
+  return text(section(parser, 'video')?.codec)
 }
 
 /** "TrueHD Atmos 7.1" — codec, object audio, then channels, skipping unknowns. */
 export function releaseAudio(parser: Snapshot): string | undefined {
   const audio = section(parser, 'audio')
-  const codec = text(audio?.codec) ?? text(parser?.audio_codec)
-  const channels = text(audio?.channels) ?? text(parser?.channels)
+  const codec = text(audio?.codec)
+  const channels = text(audio?.channels)
   const parts = [codec, audio?.atmos === true ? 'Atmos' : audio?.dts_x === true ? 'DTS:X' : undefined, channels]
   const label = parts.filter(Boolean).join(' ')
   return label || undefined

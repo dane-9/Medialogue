@@ -1,14 +1,7 @@
-"""Regression checks for the clean-install Alembic baseline.
-
-Medialogue deliberately does not preserve pre-v9 migration compatibility.
-Incompatible development builds are deployed against a freshly initialized
-application database, so CI verifies one current baseline rather than upgrade
-paths from historical schemas.
-"""
+"""Regression checks for the single current clean-install Alembic baseline."""
 
 from __future__ import annotations
 
-import ast
 import os
 from pathlib import Path
 import subprocess
@@ -139,46 +132,16 @@ def test_upgrade_head_offline_sql_generation_succeeds() -> None:
     assert "'0001'" in completed.stdout
 
 
-def test_migration_history_is_a_short_linear_chain_from_the_fresh_baseline() -> None:
+def test_migration_history_is_the_single_fresh_baseline() -> None:
     backend_dir = _backend_dir()
     versions_dir = backend_dir / "alembic" / "versions"
     migrations = sorted(path for path in versions_dir.glob("*.py") if path.name != "__init__.py")
-    assert [path.name for path in migrations] == [
-        "0001_fresh_baseline.py",
-        "0002_media_review.py",
-        "0003_removed_show_metadata_provider.py",
-        "0004_remove_metadata_provider_columns.py",
-        "0005_movie_edition_overrides.py",
-        "0006_review_movie_editions.py",
-        "0007_review_quality_profiles.py",
-        "0008_schedule_runtime.py",
-        "0009_scheduled_job_safety.py",
-        "0010_torrent_tracker_health.py",
-        "0011_download_telemetry.py",
-        "0012_upgrade_candidates.py",
-        "0013_upgrade_execution.py",
-        "0014_tracker_release_titles.py",
-        "0015_upgrade_search_results.py",
-    ]
+    assert [path.name for path in migrations] == ["0001_fresh_baseline.py"]
 
-    previous = None
-    for index, migration in enumerate(migrations, start=1):
-        source = migration.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(migration))
-        revision = down_revision = object()
-        for node in tree.body:
-            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
-                continue
-            names = {target.id for target in node.targets if isinstance(target, ast.Name)}
-            if "revision" in names:
-                revision = node.value.value
-            if "down_revision" in names:
-                down_revision = node.value.value
-        assert revision == f"{index:04d}"
-        assert down_revision == previous
-        assert len(str(revision)) <= 32
-        previous = revision
-    assert "Base.metadata.create_all" in migrations[0].read_text(encoding="utf-8")
+    source = migrations[0].read_text(encoding="utf-8")
+    assert 'revision = "0001"' in source
+    assert "down_revision = None" in source
+    assert "Base.metadata.create_all" in source
 
 
 def test_online_sqlite_migrations_use_installed_aiosqlite_driver() -> None:

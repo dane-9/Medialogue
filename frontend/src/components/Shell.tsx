@@ -1,7 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { api } from '../api/client'
+import { discoveryApi } from '../api/modules/discovery'
+import { integrationsApi } from '../api/modules/integrations'
+import { problemsApi } from '../api/modules/problems'
+import { systemApi } from '../api/modules/system'
+import { upgradesApi } from '../api/modules/upgrades'
 import medialogueBanner from '../assets/medialogue-banner.png'
 import type { HealthIndicator } from '../types'
 import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
@@ -69,7 +73,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const refreshNewMediaCount = useCallback(async () => {
     const generation = ++newMediaCountGeneration.current
     try {
-      const count = await api.discoveryCount()
+      const count = await discoveryApi.discoveryCount()
       if (generation === newMediaCountGeneration.current) setNewMediaCount(count)
     } catch {}
   }, [])
@@ -80,10 +84,10 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
 
   useEffect(() => {
     let alive = true
-    const refreshProblemCount = () => api.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
-    const refreshUpgradeCount = () => api.upgradeCandidateCount().then((value) => { if (alive) setUpgradeCount(value.count) }).catch(() => undefined)
-    const refreshHealth = () => api.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
-    const refreshPlexAvailability = () => api.plexConfiguration().then((configuration) => {
+    const refreshProblemCount = () => problemsApi.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
+    const refreshUpgradeCount = () => upgradesApi.upgradeCandidateCount().then((value) => { if (alive) setUpgradeCount(value.count) }).catch(() => undefined)
+    const refreshHealth = () => systemApi.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
+    const refreshPlexAvailability = () => integrationsApi.plexConfiguration().then((configuration) => {
       if (alive) setPlexAvailable(configuration.configured && configuration.enabled && configuration.token_configured)
     }).catch(() => undefined)
     void refreshHealth()

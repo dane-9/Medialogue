@@ -5,7 +5,6 @@ import {
   contextMenuSelection,
   duplicateLoserIds,
   duplicatePreviewReady,
-  isRegexConditionType,
   normalizeMediaView,
   problemMatchesFilter,
   toggleIdSelection,
@@ -61,12 +60,6 @@ describe('custom-format presentation rules', () => {
     expect(second).not.toBe(first)
   })
 
-  it('supports regex matching for every condition type', () => {
-    expect(isRegexConditionType('release_title')).toBe(true)
-    expect(isRegexConditionType('release_group')).toBe(true)
-    expect(isRegexConditionType('quality')).toBe(true)
-    expect(isRegexConditionType('release_attribute')).toBe(true)
-  })
 })
 
 describe('view preference hardening', () => {

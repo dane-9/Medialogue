@@ -12,7 +12,6 @@ class RecoveryCapabilitiesResponse(BaseModel):
     sqlite_version: str | None = None
     database_path: str | None = None
     database_readable: bool
-    migration_revision: str | None = None
     torrent_archive_readable: bool
     export_directory_writable: bool
     export_directory: str
@@ -45,7 +44,6 @@ class RecoveryReimportItem(BaseModel):
     resolved_save_path: str | None = None
     category: str | None = None
     tags: list[str] = Field(default_factory=list)
-    file_selection_captured: bool = False
     total_file_count: int = 0
     selected_file_count: int = 0
     skipped_file_count: int = 0

@@ -151,7 +151,7 @@ export const systemApi = {
   job: async (jobId: string) => mapJob(await openApiData(openApiClient.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId } } }))),
   recoveryCapabilities: async (): Promise<RecoveryCapabilities> => {
     const payload = await openApiData(openApiClient.GET('/api/v1/recovery/capabilities'))
-    return { supported: payload.supported, databaseBackend: payload.database_backend, sqliteVersion: payload.sqlite_version ?? undefined, databasePath: payload.database_path ?? undefined, databaseReadable: payload.database_readable, migrationRevision: payload.migration_revision ?? undefined, torrentArchiveReadable: payload.torrent_archive_readable, exportDirectoryWritable: payload.export_directory_writable, exportDirectory: payload.export_directory, retentionHours: payload.retention_hours, reasons: payload.reasons ?? [] }
+    return { supported: payload.supported, databaseBackend: payload.database_backend, sqliteVersion: payload.sqlite_version ?? undefined, databasePath: payload.database_path ?? undefined, databaseReadable: payload.database_readable, torrentArchiveReadable: payload.torrent_archive_readable, exportDirectoryWritable: payload.export_directory_writable, exportDirectory: payload.export_directory, retentionHours: payload.retention_hours, reasons: payload.reasons ?? [] }
   },
   startRecoveryExport: () => openApiData(openApiClient.POST('/api/v1/recovery/export')),
   recoveryDownloadUrl: (jobId: string) => `/api/v1/recovery/exports/${encodeURIComponent(jobId)}/download`,
@@ -181,7 +181,6 @@ export const systemApi = {
         resolvedSavePath: item.resolved_save_path ?? undefined,
         category: item.category ?? undefined,
         tags: item.tags ?? [],
-        fileSelectionCaptured: item.file_selection_captured,
         totalFileCount: item.total_file_count,
         selectedFileCount: item.selected_file_count,
         skippedFileCount: item.skipped_file_count,

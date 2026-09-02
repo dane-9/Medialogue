@@ -40,7 +40,7 @@ The existing Plex, qBittorrent, Storage, and Indexers rows above the administrat
 | A duplicate movie or episode file exists | Problems | The user must resolve a specific media conflict. |
 | A scheduled task repeatedly fails | Status | Background application behavior is unhealthy. |
 
-`ROOT_UNREACHABLE` currently behaves like a system condition even though it is represented as a Problem. Once Status owns storage availability, new root outages should be raised there and existing open root-outage Problems should be resolved or retired during migration. `TORRENT_PATH_NOT_FOUND` should remain a Problem because it refers to a specific observed torrent.
+Storage-root availability belongs to Status rather than Problems. `TORRENT_PATH_NOT_FOUND` should remain a Problem because it refers to a specific observed torrent.
 
 ## Page structure
 
@@ -94,7 +94,6 @@ The bottom section should contain diagnostic facts rather than warnings:
 - Uptime and start time.
 - Operating system and whether Medialogue is running in a container.
 - Database backend and SQLite version where applicable.
-- Current migration revision.
 - Application-data path and torrent-archive path.
 - Server timezone and current server time.
 
@@ -185,7 +184,6 @@ Do not raise a warning simply because Plex sync is Manual only; Plex itself is o
 | --- | --- | --- | --- |
 | `DEFAULT_ADMIN_CREDENTIALS` | The administrator still uses the shipped/default credentials. | Warning | Open account/security settings. |
 | `DATABASE_UNAVAILABLE` | A database health query fails. | Error | Show safe diagnostic guidance. |
-| `DATABASE_MIGRATION_MISMATCH` | The database revision does not match the running application. | Error | Link to upgrade guidance. |
 | `UNSUPPORTED_SQLITE_VERSION` | SQLite is below Medialogue's supported minimum. | Error | Link to installation guidance. |
 | `SYSTEM_TIME_INCORRECT` | Server time differs substantially from a trusted external response. | Warning or Error depending on drift. | Explain authentication and scheduling impact. |
 

@@ -102,19 +102,6 @@ async def _record_health_change(
         details={"status": configuration.health},
     )
 
-
-async def _client_library_snapshot(client: object) -> PlexLibrarySnapshot | None:
-    """Use the optimized snapshot API when the concrete Plex adapter supports it.
-
-    Test doubles and older adapters can omit ``library_snapshot``; callers then
-    fall back to the legacy per-path read methods.
-    """
-
-    loader = getattr(client, "library_snapshot", None)
-    if not callable(loader):
-        return None
-    return await loader()
-
 async def recheck_movie_plex(
     db: AsyncSession,
     movie: Movie,
@@ -153,11 +140,12 @@ async def recheck_movie_plex(
             configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
             configuration.latency_ms = round((perf_counter() - health_started) * 1000)
             configuration.last_error = None
-            effective_snapshot = await _client_library_snapshot(client)
+            effective_snapshot = await client.library_snapshot()
         for release in releases:
             checked += 1
+            assert effective_snapshot is not None
             exact, checked_path = await _find_release_exact_match(
-                db, client, release, snapshot=effective_snapshot
+                db, release, snapshot=effective_snapshot
             )
             if exact is not None:
                 # TMDB/manual matching owns movie identity. Once Plex reports
@@ -171,11 +159,8 @@ async def recheck_movie_plex(
                 )
                 continue
 
-            if effective_snapshot is not None:
-                title_matches = effective_snapshot.search_title_year(movie.title, movie.year)
-            else:
-                assert client is not None
-                title_matches = await client.search_title_year(movie.title, movie.year)
+            assert effective_snapshot is not None
+            title_matches = effective_snapshot.search_title_year(movie.title, movie.year)
             if len(title_matches) == 1:
                 title_match = title_matches[0]
                 state = PlexMatchState.MATCHED
@@ -240,10 +225,9 @@ async def recheck_movie_plex(
 
 async def _find_release_exact_match(
     db: AsyncSession,
-    client: PlexClient | None,
     release: MovieRelease,
     *,
-    snapshot: PlexLibrarySnapshot | None = None,
+    snapshot: PlexLibrarySnapshot,
 ) -> tuple[PlexMediaMatch | None, str | None]:
     root_ids = {directory.storage_root_id for directory in release.directories if directory.storage_root_id}
     roots = (
@@ -259,15 +243,11 @@ async def _find_release_exact_match(
                 continue
             path = str(PurePosixPath(directory.resolved_path) / media_file.relative_path)
             first_checked_path = first_checked_path or path
-            if snapshot is not None:
-                match = snapshot.find_exact_path(
-                    path,
-                    local_root=root_paths.get(directory.storage_root_id),
-                    media_type="movies",
-                )
-            else:
-                assert client is not None
-                match = await client.find_exact_path(path)
+            match = snapshot.find_exact_path(
+                path,
+                local_root=root_paths.get(directory.storage_root_id),
+                media_type="movies",
+            )
             if match is not None:
                 return match, path
     return None, first_checked_path
@@ -364,20 +344,17 @@ async def recheck_show_plex(
             configuration.machine_identifier = str(health.get("machine_identifier") or "") or None
             configuration.latency_ms = round((perf_counter() - started) * 1000)
             configuration.last_error = None
-            effective_snapshot = await _client_library_snapshot(client)
+            effective_snapshot = await client.library_snapshot()
         for episode, mapping, media_file, directory in rows:
             del mapping
             checked += 1
             path = str(PurePosixPath(directory.resolved_path) / media_file.relative_path)
-            if effective_snapshot is not None:
-                exact = effective_snapshot.find_exact_path(
-                    path,
-                    local_root=root_paths.get(directory.storage_root_id),
-                    media_type="shows",
-                )
-            else:
-                assert client is not None
-                exact = await client.find_exact_path(path)
+            assert effective_snapshot is not None
+            exact = effective_snapshot.find_exact_path(
+                path,
+                local_root=root_paths.get(directory.storage_root_id),
+                media_type="shows",
+            )
             if exact is None:
                 state = PlexMatchState.NOT_FOUND
                 not_found += 1

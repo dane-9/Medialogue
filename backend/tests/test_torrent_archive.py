@@ -117,7 +117,14 @@ class ArchiveQBitClient:
         return self.behavior.torrent_bytes
 
     async def get_torrent_recovery_snapshot(self, info_hash: str):
-        return self.behavior.recovery_snapshots.get(info_hash.lower())
+        return self.behavior.recovery_snapshots.get(
+            info_hash.lower(),
+            {
+                "properties": {},
+                "files": [{"index": 0, "name": "example.mkv", "size": 1, "priority": 1}],
+                "trackers": [],
+            },
+        )
 
     async def add_torrent(self, torrent: bytes, **kwargs):
         self.behavior.added.append({"torrent": torrent, **kwargs})
@@ -155,10 +162,14 @@ def test_archive_verification_rejects_tampered_torrent_bytes(tmp_path: Path) -> 
     manifest_path.write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 1,
                 "torrent_info_hash": info_hash,
                 "archive": {"torrent_sha256": hashlib.sha256(payload).hexdigest()},
-                "recovery": {"properties": {}, "files": [], "trackers": []},
+                "recovery": {
+                    "properties": {},
+                    "files": [{"index": 0, "name": "example.mkv", "size": 1, "priority": 1}],
+                    "trackers": [],
+                },
             }
         ),
         encoding="utf-8",
@@ -176,6 +187,36 @@ def test_archive_verification_rejects_tampered_torrent_bytes(tmp_path: Path) -> 
     valid, reason = verify_torrent_archive(torrent)
     assert valid is False
     assert reason == "torrent export checksum does not match the manifest"
+
+
+def test_archive_verification_requires_per_file_selection(tmp_path: Path) -> None:
+    payload = b"d4:infod4:name7:exampleee"
+    torrent_path = tmp_path / "example.torrent"
+    manifest_path = tmp_path / "example.json"
+    torrent_path.write_bytes(payload)
+    info_hash = "e" * 40
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "torrent_info_hash": info_hash,
+                "archive": {"torrent_sha256": hashlib.sha256(payload).hexdigest()},
+                "recovery": {"properties": {}, "files": [], "trackers": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    torrent = Torrent(
+        info_hash=info_hash,
+        name="Example",
+        archive_state=TorrentArchiveState.ARCHIVED,
+        archive_path=str(torrent_path),
+        manifest_path=str(manifest_path),
+    )
+
+    valid, reason = verify_torrent_archive(torrent)
+    assert valid is False
+    assert reason == "recovery file selection is missing"
 
 
 def _install_fake(client: TestClient, behavior: ArchiveQBitBehavior) -> None:
@@ -279,16 +320,19 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         manifest_path = Path(item["manifest_path"])
         assert torrent_path.read_bytes() == behavior.torrent_bytes
         manifest = json.loads(manifest_path.read_text())
-        assert manifest["schema_version"] == 2
+        assert manifest["schema_version"] == 1
         assert manifest["torrent_info_hash"] == info_hash
-        assert manifest["media_title"] == "Inception"
-        assert manifest["release_name"] == release_name
-        assert manifest["download_client_name"] == "qbit-movies"
-        assert manifest["previous_resolved_path"].startswith(str(media_root))
+        primary = manifest["media_associations"][0]
+        original_client = manifest["download_client_observations"][0]
+        assert primary["title"] == "Inception"
+        assert primary["release_name"] == release_name
+        assert original_client["download_client_name"] == "qbit-movies"
+        assert original_client["resolved_save_path"].startswith(str(media_root))
         assert manifest["archive"]["torrent_sha256"]
+        assert isinstance(manifest["recovery"]["captured_at"], str)
         assert manifest["recovery"] == {
-            "captured_at": None,
-            "files": [],
+            "captured_at": manifest["recovery"]["captured_at"],
+            "files": [{"index": 0, "name": "example.mkv", "priority": 1, "size": 1}],
             "properties": {},
             "settings": {"content_path": str(media_root / release_name), "scope": "movies"},
             "trackers": [],
@@ -310,9 +354,10 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         assert refreshed_job["status"] == "completed", refreshed_job
         assert torrent_path.read_bytes() == behavior.torrent_bytes
         preserved_manifest = json.loads(manifest_path.read_text())
-        assert preserved_manifest["media_title"] == "Inception"
-        assert preserved_manifest["tmdb_id"] == 27205
-        assert preserved_manifest["release_name"] == release_name
+        preserved_primary = preserved_manifest["media_associations"][0]
+        assert preserved_primary["title"] == "Inception"
+        assert preserved_primary["tmdb_id"] == 27205
+        assert preserved_primary["release_name"] == release_name
 
         behavior.torrents = []
         removed = client.post(f"/api/v1/download-clients/{configured['id']}/poll", headers=headers)
@@ -505,12 +550,17 @@ def test_bulk_recovery_plan_requires_preview_and_restores_saved_file_selection(a
                 manifest_path.write_text(
                     json.dumps(
                         {
-                            "schema_version": 2,
+                            "schema_version": 1,
                             "torrent_info_hash": info_hash,
                             "torrent_name": name,
-                            "media_type": "movies",
-                            "media_title": name.split(" 2026", 1)[0],
-                            "release_name": name,
+                            "media_associations": [
+                                {
+                                    "media_type": "movies",
+                                    "title": name.split(" 2026", 1)[0],
+                                    "release_name": name,
+                                    "paths": [],
+                                }
+                            ],
                             "download_client_observations": [
                                 {
                                     "download_client_id": configured["id"],
@@ -543,7 +593,7 @@ def test_bulk_recovery_plan_requires_preview_and_restores_saved_file_selection(a
                         archive_state=TorrentArchiveState.ARCHIVED,
                         archive_path=str(torrent_path),
                         manifest_path=str(manifest_path),
-                        manifest_schema_version=2,
+                        manifest_schema_version=1,
                     )
                 )
             await db.commit()
@@ -587,7 +637,6 @@ def test_bulk_recovery_plan_requires_preview_and_restores_saved_file_selection(a
         assert ready["resolved_save_path"] == str(media_root)
         assert ready["category"] == "movies-recovery"
         assert ready["tags"] == ["restore-me", "private"]
-        assert ready["file_selection_captured"] is True
         assert ready["selected_file_count"] == 1
         assert ready["skipped_file_count"] == 1
         assert by_hash[present_hash]["status"] == "already_present"

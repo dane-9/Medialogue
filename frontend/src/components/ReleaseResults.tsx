@@ -21,7 +21,7 @@ export function formatBytes(bytes?: number) {
 }
 
 export function matchedFormatNames(result: InteractiveSearchResult): string[] {
-  const raw = result.customFormatSnapshot.matched_format_names ?? result.customFormatSnapshot.matchedFormatNames
+  const raw = result.customFormatSnapshot.matched_format_names
   return Array.isArray(raw) ? raw.map(String).filter(Boolean) : []
 }
 

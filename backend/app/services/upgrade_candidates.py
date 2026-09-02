@@ -110,7 +110,7 @@ def _quality_preference(quality: str | None, quality_order: tuple[str, ...]) -> 
 
 
 def _matched_formats(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    rows = snapshot.get("breakdown") or snapshot.get("formats") or []
+    rows = snapshot.get("breakdown") or []
     return {
         str(item.get("custom_format_id")): dict(item)
         for item in rows
@@ -535,7 +535,6 @@ async def _evaluation_policy(
                 "id": str(row.id),
                 "name": row.name,
                 "description": row.description,
-                "media_scope": "both",
                 "enabled": row.enabled,
                 "condition_definition": dict(row.condition_definition or {}),
             }

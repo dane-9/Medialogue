@@ -25,7 +25,6 @@ def _evaluation(key: str, release: str, *, score: int = 0):
             "id": builtin.key,
             "name": builtin.name,
             "description": builtin.description,
-            "media_scope": builtin.media_scope,
             "enabled": True,
             "condition_definition": condition_definition(builtin),
         }

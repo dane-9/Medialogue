@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '../api/client'
+import { integrationsApi } from '../api/modules/integrations'
 import type { DownloadClient, DownloadClientScope } from '../types'
 import { Icon } from './Icon'
 import { Select } from './ui'
@@ -22,8 +22,8 @@ export function DownloadClientField({ clients, clientId, scope, disabled, onChan
     setChecking(true)
     setResult('')
     try {
-      const test = await api.testDownloadClient(clientId)
-      const rows = await api.downloadClients()
+      const test = await integrationsApi.testDownloadClient(clientId)
+      const rows = await integrationsApi.downloadClients()
       onRefreshed(rows.filter((client) => client.enabled && client.scope === scope))
       setResult(test.status === 'healthy'
         ? `Reachable${test.latency_ms ? ` · ${test.latency_ms} ms` : ''}`

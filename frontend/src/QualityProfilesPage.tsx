@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from './api/client'
+import { settingsApi } from './api/modules/settings'
 import { copyName } from './lib/copyName'
 import { fitChips } from './lib/chipBudget'
 import { Icon } from './components/Icon'
@@ -56,7 +56,7 @@ export default function QualityProfilesPage() {
 
   const load = async () => {
     try {
-      const [profileRows, qualityRows, formatRows, layout] = await Promise.all([api.qualityProfiles(), api.qualityDefinitions(), api.customFormats(), api.customFormatLayout()])
+      const [profileRows, qualityRows, formatRows, layout] = await Promise.all([settingsApi.qualityProfiles(), settingsApi.qualityDefinitions(), settingsApi.customFormats(), settingsApi.customFormatLayout()])
       setProfiles(profileRows); setQualities(qualityRows); setFormats(formatRows); setSections(layout)
       setMessage('')
       if (selectedId && profileRows.some((item) => item.id === selectedId)) setEditorOpen(true)
@@ -118,7 +118,7 @@ export default function QualityProfilesPage() {
   const duplicateProfileNow = async (source: QualityProfile) => {
     setBusy(true); setMessage('')
     try {
-      const created = await api.createQualityProfile({
+      const created = await settingsApi.createQualityProfile({
         name: copyName(source.name, profiles.map((item) => item.name)),
         minimum_quality_definition_id: source.minimumQuality?.id ?? null,
         minimum_custom_format_score: source.minimumCustomFormatScore ?? null,
@@ -142,11 +142,11 @@ export default function QualityProfilesPage() {
     const custom_format_scores = Object.entries(scores).map(([custom_format_id, score]) => ({ custom_format_id, score }))
     try {
       if (creating) {
-        const created = await api.createQualityProfile({ name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), season_pack_upgrades: seasonPackUpgrades, quality_definition_ids: qualityIds, custom_format_scores })
+        const created = await settingsApi.createQualityProfile({ name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), season_pack_upgrades: seasonPackUpgrades, quality_definition_ids: qualityIds, custom_format_scores })
         setProfiles((items) => [...items, created].sort((a, b) => a.name.localeCompare(b.name)))
         setCreating(false); setSelectedId(created.id); setEditorOpen(false); setMessage('Quality Profile created.')
       } else if (selected) {
-        const updated = await api.updateQualityProfile(selected.id, { name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), season_pack_upgrades: seasonPackUpgrades, quality_definition_ids: qualityIds, custom_format_scores, expected_revision: selected.revision })
+        const updated = await settingsApi.updateQualityProfile(selected.id, { name: name.trim(), minimum_quality_definition_id: minimumId || null, minimum_custom_format_score: minimumScore === '' ? null : Number(minimumScore), season_pack_upgrades: seasonPackUpgrades, quality_definition_ids: qualityIds, custom_format_scores, expected_revision: selected.revision })
         setProfiles((items) => items.map((item) => item.id === updated.id ? updated : item).sort((a, b) => a.name.localeCompare(b.name)))
         setEditorOpen(false); setMessage('Quality Profile saved. Assigned release scores were re-evaluated.')
       }
@@ -171,7 +171,7 @@ export default function QualityProfilesPage() {
     })) return
     setBusy(true)
     try {
-      await api.deleteQualityProfile(selected.id)
+      await settingsApi.deleteQualityProfile(selected.id)
       setProfiles((items) => items.filter((item) => item.id !== selected.id))
       setSelectedId(''); setEditorOpen(false)
       setMessage('Quality Profile deleted. Media and torrent data were untouched.')
@@ -185,8 +185,8 @@ export default function QualityProfilesPage() {
     if (!selected || selected.isDefault) return
     setBusy(true)
     try {
-      const updated = await api.setDefaultQualityProfile(selected.id)
-      const refreshed = await api.qualityProfiles()
+      const updated = await settingsApi.setDefaultQualityProfile(selected.id)
+      const refreshed = await settingsApi.qualityProfiles()
       setProfiles(refreshed)
       setMessage(`${updated.name} is now the default. Titles without a profile of their own use it.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not set the default Quality Profile.') }

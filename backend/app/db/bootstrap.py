@@ -1,18 +1,9 @@
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.problem_types import RETIRED_PROBLEM_REASONS
 from app.core.security import hash_password
 from app.models.auth import AdminUser
-
-
-async def remove_retired_problem_types(session: AsyncSession) -> None:
-    """Remove diagnostics that are no longer part of the Problems product."""
-
-    from app.models.domain import Problem
-
-    await session.execute(delete(Problem).where(Problem.reason.in_(RETIRED_PROBLEM_REASONS)))
 
 
 async def ensure_default_admin(session: AsyncSession, settings: Settings) -> AdminUser:
@@ -48,22 +39,11 @@ async def mark_running_jobs_interrupted(session: AsyncSession) -> None:
     )
 
 
-_DVD_STANDARD_RENAMES: dict[str, str] = {
-    f"{resolution} {standard} DVD {modifier}": f"{resolution} DVD {modifier}"
-    for resolution, standard in (("576i", "PAL"), ("576p", "PAL"), ("480i", "NTSC"), ("480p", "NTSC"))
-    for modifier in ("REMUX", "Encode")
-}
-
-
 async def ensure_quality_definitions(session: AsyncSession) -> None:
     from app.models.domain import QualityDefinition
     from app.parser import list_quality_definitions
 
     rows = (await session.scalars(select(QualityDefinition))).all()
-    for row in rows:
-        renamed = _DVD_STANDARD_RENAMES.get(row.name)
-        if renamed and not any(item.name == renamed for item in rows):
-            row.name = renamed
     existing = {item.name: item for item in rows}
     canonical_names: set[str] = set()
     for definition in list_quality_definitions():
@@ -128,6 +108,7 @@ async def ensure_default_quality_profile(session: AsyncSession) -> None:
                 if item.name not in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
             ],
             "system_profile": DEFAULT_QUALITY_PROFILE_MARKER,
+            "default_profile": True,
             "season_pack_upgrades": True,
         },
         revision=1,
@@ -156,7 +137,7 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> bool:
     disabled built-in must stay disabled across restarts.
     """
 
-    from app.models.domain import CustomFormat, MediaScope
+    from app.models.domain import CustomFormat
     from app.services.builtin_formats import BUILTIN_FORMATS, BUILTIN_KEYS, condition_definition
 
     rows = (await session.scalars(select(CustomFormat).where(CustomFormat.builtin.is_(True)))).all()
@@ -165,7 +146,6 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> bool:
         key: (
             row.name,
             row.description,
-            row.media_scope,
             dict(row.condition_definition or {}),
             row.builtin,
         )
@@ -187,7 +167,6 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> bool:
             changed = True
         row.name = builtin.name
         row.description = builtin.description
-        row.media_scope = MediaScope(builtin.media_scope)
         row.builtin = True
         managed[builtin.key] = row
 
@@ -199,7 +178,7 @@ async def ensure_builtin_custom_formats(session: AsyncSession) -> bool:
             supersedes=tuple(str(managed[key].id) for key in builtin.supersedes if key in managed),
         )
         previous = original.get(builtin.key)
-        current = (row.name, row.description, row.media_scope, dict(row.condition_definition or {}), row.builtin)
+        current = (row.name, row.description, dict(row.condition_definition or {}), row.builtin)
         if previous is not None and previous != current:
             changed = True
 

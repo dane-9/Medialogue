@@ -30,7 +30,7 @@ class MediaDiscoveryResponse(BaseModel):
     path: str
     root_name: str
     exists: bool
-    review_state: NewMediaState
+    new_media_state: NewMediaState
     parsed_title: str | None = None
     parsed_year: int | None = None
     confidence: float | None = None

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.dependencies import require_admin
 from app.models.auth import AdminUser
-from app.parser import list_quality_definitions, parse_release
+from app.parser import parse_release
 
 router = APIRouter(tags=["parser"])
 
@@ -19,21 +19,3 @@ async def test_parser(
     """Return the complete non-mutating, versioned release parse."""
     return parse_release(payload.name).to_dict()
 
-
-@router.get("/parser/quality-definitions", include_in_schema=False)
-async def quality_definitions(_: AdminUser = Depends(require_admin)) -> dict[str, object]:
-    definitions = list_quality_definitions()
-    return {
-        "items": [
-            {
-                "key": item.name,
-                "name": item.name,
-                "resolution": item.resolution,
-                "source": item.source,
-                "modifier": item.modifier,
-                "rank": item.rank,
-            }
-            for item in definitions
-        ],
-        "total": len(definitions),
-    }

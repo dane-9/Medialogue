@@ -21,6 +21,22 @@ _SECRETS_MAGIC = b"MEDIALOGUE-SECRETS-V1\n"
 _SECRETS_AAD = b"medialogue-secrets-v1"
 _SCHEMA_VERSION = 1
 
+_CONFIG_KEYS = {"schema_version", "plex", "tmdb", "download_clients", "indexers", "library"}
+_PLEX_KEYS = {"id", "url", "enabled", "revision"}
+_TMDB_KEYS = {"id", "enabled", "revision"}
+_LIBRARY_KEYS = {"count_specials", "show_folder_include_year"}
+_DOWNLOAD_CLIENT_KEYS = {
+    "id", "name", "url", "username", "scope", "category", "tags", "enabled", "revision",
+    "poll_interval_seconds", "recent_priority", "older_priority", "sequential_order",
+    "first_last_first", "content_layout", "completed_download_handling",
+}
+_INDEXER_KEYS = {
+    "id", "name", "torznab_url", "scope", "enabled", "timeout_seconds", "revision",
+    "enable_rss", "enable_interactive_search", "categories", "minimum_seeders", "priority",
+    "color", "multi_languages", "download_client_ids",
+}
+_SECRETS_KEYS = {"schema_version", "plex_token", "tmdb_api_key", "download_client_passwords", "indexer_api_keys"}
+
 
 @dataclass(slots=True)
 class PlexConfig:
@@ -121,9 +137,49 @@ class IntegrationConfigStore:
             "indexer_api_keys": {},
         }
 
+    @staticmethod
+    def _require_exact_keys(value: dict[str, Any], expected: set[str], label: str) -> None:
+        actual = set(value)
+        if actual != expected:
+            missing = sorted(expected - actual)
+            unknown = sorted(actual - expected)
+            details: list[str] = []
+            if missing:
+                details.append(f"missing {', '.join(missing)}")
+            if unknown:
+                details.append(f"unknown {', '.join(unknown)}")
+            raise RuntimeError(f"Invalid {label}: {'; '.join(details)}.")
+
+    def _validate_config(self, payload: dict[str, Any]) -> None:
+        self._require_exact_keys(payload, _CONFIG_KEYS, self.config_path.name)
+        library = payload.get("library")
+        if not isinstance(library, dict):
+            raise RuntimeError(f"Invalid {self.config_path.name}: library must be an object.")
+        self._require_exact_keys(library, _LIBRARY_KEYS, "library configuration")
+        for name, expected in (("plex", _PLEX_KEYS), ("tmdb", _TMDB_KEYS)):
+            row = payload.get(name)
+            if row is not None:
+                if not isinstance(row, dict):
+                    raise RuntimeError(f"Invalid {self.config_path.name}: {name} must be an object or null.")
+                self._require_exact_keys(row, expected, f"{name} configuration")
+        for name, expected in (("download_clients", _DOWNLOAD_CLIENT_KEYS), ("indexers", _INDEXER_KEYS)):
+            rows = payload.get(name)
+            if not isinstance(rows, list):
+                raise RuntimeError(f"Invalid {self.config_path.name}: {name} must be an array.")
+            for index, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    raise RuntimeError(f"Invalid {name}[{index}]: expected an object.")
+                self._require_exact_keys(row, expected, f"{name}[{index}]")
+
+    def _validate_secrets(self, payload: dict[str, Any]) -> None:
+        self._require_exact_keys(payload, _SECRETS_KEYS, self.secrets_path.name)
+        for name in ("download_client_passwords", "indexer_api_keys"):
+            if not isinstance(payload.get(name), dict):
+                raise RuntimeError(f"Invalid {self.secrets_path.name}: {name} must be an object.")
+
     def _read_json(self) -> dict[str, Any]:
         if not self.config_path.exists():
-            return self._default_config()
+            raise RuntimeError(f"Integration configuration file is missing: {self.config_path}.")
         try:
             payload = json.loads(self.config_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -135,13 +191,12 @@ class IntegrationConfigStore:
                 f"Unsupported {self.config_path.name} schema_version {payload.get('schema_version')!r}; "
                 f"expected {_SCHEMA_VERSION}."
             )
-        merged = self._default_config()
-        merged.update(payload)
-        return merged
+        self._validate_config(payload)
+        return payload
 
     def _read_secrets(self) -> dict[str, Any]:
         if not self.secrets_path.exists():
-            return self._default_secrets()
+            raise RuntimeError(f"Integration secrets file is missing: {self.secrets_path}.")
         try:
             raw = self.secrets_path.read_bytes()
             if not raw.startswith(_SECRETS_MAGIC):
@@ -163,9 +218,8 @@ class IntegrationConfigStore:
                 f"Unsupported {self.secrets_path.name} schema_version {payload.get('schema_version')!r}; "
                 f"expected {_SCHEMA_VERSION}."
             )
-        merged = self._default_secrets()
-        merged.update(payload)
-        return merged
+        self._validate_secrets(payload)
+        return payload
 
     def ensure_initialized(self) -> None:
         """Create the file-backed configuration on a fresh install.
@@ -178,14 +232,7 @@ class IntegrationConfigStore:
             config_exists = self.config_path.exists()
             secrets_exist = self.secrets_path.exists()
             if config_exists and secrets_exist:
-                config, secrets = self._load()
-                changed = False
-                for row in config.get("indexers") or []:
-                    if isinstance(row, dict) and "download_client_id" in row:
-                        row.pop("download_client_id", None)
-                        changed = True
-                if changed:
-                    self._save(config, secrets)
+                self._load()
                 return
             if config_exists != secrets_exist:
                 present = self.config_path.name if config_exists else self.secrets_path.name
@@ -268,25 +315,25 @@ class IntegrationConfigStore:
 
     def get_plex(self) -> PlexConfig | None:
         config, secrets = self._load()
-        row = config.get("plex")
-        if not isinstance(row, dict):
+        row = config["plex"]
+        if row is None:
             return None
         return PlexConfig(
             id=self._uuid(row["id"]),
-            url=str(row.get("url") or ""),
-            enabled=bool(row.get("enabled", True)),
-            revision=int(row.get("revision", 1)),
-            token=secrets.get("plex_token") or None,
+            url=str(row["url"]),
+            enabled=bool(row["enabled"]),
+            revision=int(row["revision"]),
+            token=secrets["plex_token"] or None,
         )
 
     def save_plex(self, *, id: UUID | None = None, url: str, token: str | None, enabled: bool, expected_revision: int | None = None) -> PlexConfig:
         config, secrets = self._load()
-        current = config.get("plex") if isinstance(config.get("plex"), dict) else None
-        if current and expected_revision is not None and int(current.get("revision", 1)) != expected_revision:
+        current = config["plex"]
+        if current and expected_revision is not None and int(current["revision"]) != expected_revision:
             raise ValueError("revision_conflict")
         if current:
             item_id = self._uuid(current["id"])
-            revision = int(current.get("revision", 1)) + 1
+            revision = int(current["revision"]) + 1
         else:
             item_id = id or uuid4()
             revision = 1
@@ -300,24 +347,24 @@ class IntegrationConfigStore:
 
     def get_tmdb(self) -> TMDBConfig | None:
         config, secrets = self._load()
-        row = config.get("tmdb")
-        if not isinstance(row, dict):
+        row = config["tmdb"]
+        if row is None:
             return None
         return TMDBConfig(
             id=self._uuid(row["id"]),
-            enabled=bool(row.get("enabled", True)),
-            revision=int(row.get("revision", 1)),
-            api_key=secrets.get("tmdb_api_key") or None,
+            enabled=bool(row["enabled"]),
+            revision=int(row["revision"]),
+            api_key=secrets["tmdb_api_key"] or None,
         )
 
     def save_tmdb(self, *, id: UUID | None = None, api_key: str | None, enabled: bool, expected_revision: int | None = None) -> TMDBConfig:
         config, secrets = self._load()
-        current = config.get("tmdb") if isinstance(config.get("tmdb"), dict) else None
-        if current and expected_revision is not None and int(current.get("revision", 1)) != expected_revision:
+        current = config["tmdb"]
+        if current and expected_revision is not None and int(current["revision"]) != expected_revision:
             raise ValueError("revision_conflict")
         if current:
             item_id = self._uuid(current["id"])
-            revision = int(current.get("revision", 1)) + 1
+            revision = int(current["revision"]) + 1
         else:
             item_id = id or uuid4()
             revision = 1
@@ -338,16 +385,11 @@ class IntegrationConfigStore:
         """
 
         config, _ = self._load()
-        library = config.get("library")
-        if not isinstance(library, dict):
-            return True
-        return bool(library.get("count_specials", True))
+        return bool(config["library"]["count_specials"])
 
     def save_count_specials(self, value: bool) -> bool:
         config, secrets = self._load()
-        library = config.get("library")
-        if not isinstance(library, dict):
-            library = {}
+        library = config["library"]
         library["count_specials"] = bool(value)
         config["library"] = library
         self._save(config, secrets)
@@ -357,18 +399,13 @@ class IntegrationConfigStore:
         """Default folder-name preference for future manual Show downloads."""
 
         config, _ = self._load()
-        library = config.get("library")
-        if not isinstance(library, dict):
-            return False
-        return bool(library.get("show_folder_include_year", False))
+        return bool(config["library"]["show_folder_include_year"])
 
     def save_show_folder_include_year(self, value: bool) -> bool:
         """Persist the user's last-used Show folder year toggle immediately."""
 
         config, secrets = self._load()
-        library = config.get("library")
-        if not isinstance(library, dict):
-            library = {}
+        library = config["library"]
         library["show_folder_include_year"] = bool(value)
         config["library"] = library
         self._save(config, secrets)
@@ -376,29 +413,27 @@ class IntegrationConfigStore:
 
     def list_download_clients(self) -> list[DownloadClientConfig]:
         config, secrets = self._load()
-        passwords = secrets.get("download_client_passwords") or {}
+        passwords = secrets["download_client_passwords"]
         items: list[DownloadClientConfig] = []
-        for row in config.get("download_clients") or []:
-            if not isinstance(row, dict):
-                continue
+        for row in config["download_clients"]:
             item_id = self._uuid(row["id"])
             items.append(DownloadClientConfig(
                 id=item_id,
-                name=str(row.get("name") or ""),
-                url=str(row.get("url") or ""),
-                username=row.get("username") or None,
-                scope=str(row.get("scope") or "movies"),
-                category=row.get("category") or None,
-                tags=list(row.get("tags") or []),
-                enabled=bool(row.get("enabled", True)),
-                revision=int(row.get("revision", 1)),
-                poll_interval_seconds=int(row.get("poll_interval_seconds", 30)),
-                recent_priority=str(row.get("recent_priority") or "last"),
-                older_priority=str(row.get("older_priority") or "last"),
-                sequential_order=bool(row.get("sequential_order", False)),
-                first_last_first=bool(row.get("first_last_first", False)),
-                content_layout=str(row.get("content_layout") or "default"),
-                completed_download_handling=bool(row.get("completed_download_handling", True)),
+                name=str(row["name"]),
+                url=str(row["url"]),
+                username=row["username"] or None,
+                scope=str(row["scope"]),
+                category=row["category"] or None,
+                tags=list(row["tags"]),
+                enabled=bool(row["enabled"]),
+                revision=int(row["revision"]),
+                poll_interval_seconds=int(row["poll_interval_seconds"]),
+                recent_priority=str(row["recent_priority"]),
+                older_priority=str(row["older_priority"]),
+                sequential_order=bool(row["sequential_order"]),
+                first_last_first=bool(row["first_last_first"]),
+                content_layout=str(row["content_layout"]),
+                completed_download_handling=bool(row["completed_download_handling"]),
                 password=passwords.get(str(item_id)) or None,
             ))
         return items
@@ -409,12 +444,12 @@ class IntegrationConfigStore:
 
     def save_download_client(self, item: DownloadClientConfig, *, expected_revision: int | None = None, preserve_blank_password: bool = True) -> DownloadClientConfig:
         config, secrets = self._load()
-        rows = list(config.get("download_clients") or [])
-        index = next((i for i, row in enumerate(rows) if isinstance(row, dict) and str(row.get("id")) == str(item.id)), None)
+        rows = list(config["download_clients"])
+        index = next((i for i, row in enumerate(rows) if str(row["id"]) == str(item.id)), None)
         current = rows[index] if index is not None else None
-        if current and expected_revision is not None and int(current.get("revision", 1)) != expected_revision:
+        if current and expected_revision is not None and int(current["revision"]) != expected_revision:
             raise ValueError("revision_conflict")
-        revision = int(current.get("revision", 1)) + 1 if current else 1
+        revision = int(current["revision"]) + 1 if current else 1
         row = {
             "id": str(item.id), "name": item.name, "url": item.url.rstrip("/"), "username": item.username,
             "scope": item.scope, "category": item.category, "tags": list(item.tags), "enabled": bool(item.enabled),
@@ -428,7 +463,7 @@ class IntegrationConfigStore:
         else:
             rows[index] = row
         config["download_clients"] = rows
-        passwords = dict(secrets.get("download_client_passwords") or {})
+        passwords = dict(secrets["download_client_passwords"])
         if item.password:
             passwords[str(item.id)] = item.password
         elif not current and not preserve_blank_password:
@@ -440,31 +475,29 @@ class IntegrationConfigStore:
     def delete_download_client(self, client_id: UUID | str) -> None:
         target = str(self._uuid(client_id))
         config, secrets = self._load()
-        config["download_clients"] = [row for row in config.get("download_clients") or [] if str(row.get("id")) != target]
-        passwords = dict(secrets.get("download_client_passwords") or {})
+        config["download_clients"] = [row for row in config["download_clients"] if str(row["id"]) != target]
+        passwords = dict(secrets["download_client_passwords"])
         passwords.pop(target, None)
         secrets["download_client_passwords"] = passwords
         self._save(config, secrets)
 
     def list_indexers(self) -> list[IndexerConfig]:
         config, secrets = self._load()
-        keys = secrets.get("indexer_api_keys") or {}
+        keys = secrets["indexer_api_keys"]
         items: list[IndexerConfig] = []
-        for row in config.get("indexers") or []:
-            if not isinstance(row, dict):
-                continue
+        for row in config["indexers"]:
             item_id = self._uuid(row["id"])
             items.append(IndexerConfig(
-                id=item_id, name=str(row.get("name") or ""), torznab_url=str(row.get("torznab_url") or ""),
-                scope=str(row.get("scope") or "both"), enabled=bool(row.get("enabled", True)),
-                timeout_seconds=int(row.get("timeout_seconds", 15)), revision=int(row.get("revision", 1)),
-                enable_rss=bool(row.get("enable_rss", True)),
-                enable_interactive_search=bool(row.get("enable_interactive_search", True)),
-                categories=[int(value) for value in (row.get("categories") or [])],
-                minimum_seeders=int(row.get("minimum_seeders", 1)), priority=int(row.get("priority", 25)),
-                color=(str(row["color"]) or None) if row.get("color") else None,
-                multi_languages=[str(value) for value in (row.get("multi_languages") or [])],
-                download_client_ids=[self._uuid(value) for value in (row.get("download_client_ids") or [])],
+                id=item_id, name=str(row["name"]), torznab_url=str(row["torznab_url"]),
+                scope=str(row["scope"]), enabled=bool(row["enabled"]),
+                timeout_seconds=int(row["timeout_seconds"]), revision=int(row["revision"]),
+                enable_rss=bool(row["enable_rss"]),
+                enable_interactive_search=bool(row["enable_interactive_search"]),
+                categories=[int(value) for value in row["categories"]],
+                minimum_seeders=int(row["minimum_seeders"]), priority=int(row["priority"]),
+                color=(str(row["color"]) or None) if row["color"] else None,
+                multi_languages=[str(value) for value in row["multi_languages"]],
+                download_client_ids=[self._uuid(value) for value in row["download_client_ids"]],
                 api_key=keys.get(str(item_id)) or None,
             ))
         return items
@@ -475,12 +508,12 @@ class IntegrationConfigStore:
 
     def save_indexer(self, item: IndexerConfig, *, expected_revision: int | None = None) -> IndexerConfig:
         config, secrets = self._load()
-        rows = list(config.get("indexers") or [])
-        index = next((i for i, row in enumerate(rows) if isinstance(row, dict) and str(row.get("id")) == str(item.id)), None)
+        rows = list(config["indexers"])
+        index = next((i for i, row in enumerate(rows) if str(row["id"]) == str(item.id)), None)
         current = rows[index] if index is not None else None
-        if current and expected_revision is not None and int(current.get("revision", 1)) != expected_revision:
+        if current and expected_revision is not None and int(current["revision"]) != expected_revision:
             raise ValueError("revision_conflict")
-        revision = int(current.get("revision", 1)) + 1 if current else 1
+        revision = int(current["revision"]) + 1 if current else 1
         row = {"id": str(item.id), "name": item.name, "torznab_url": item.torznab_url.rstrip("/"), "scope": item.scope,
                "enabled": bool(item.enabled), "timeout_seconds": int(item.timeout_seconds), "revision": revision,
                "enable_rss": bool(item.enable_rss), "enable_interactive_search": bool(item.enable_interactive_search),
@@ -492,7 +525,7 @@ class IntegrationConfigStore:
         else:
             rows[index] = row
         config["indexers"] = rows
-        keys = dict(secrets.get("indexer_api_keys") or {})
+        keys = dict(secrets["indexer_api_keys"])
         if item.api_key:
             keys[str(item.id)] = item.api_key
         secrets["indexer_api_keys"] = keys
@@ -502,8 +535,8 @@ class IntegrationConfigStore:
     def delete_indexer(self, indexer_id: UUID | str) -> None:
         target = str(self._uuid(indexer_id))
         config, secrets = self._load()
-        config["indexers"] = [row for row in config.get("indexers") or [] if str(row.get("id")) != target]
-        keys = dict(secrets.get("indexer_api_keys") or {})
+        config["indexers"] = [row for row in config["indexers"] if str(row["id"]) != target]
+        keys = dict(secrets["indexer_api_keys"])
         keys.pop(target, None)
         secrets["indexer_api_keys"] = keys
         self._save(config, secrets)

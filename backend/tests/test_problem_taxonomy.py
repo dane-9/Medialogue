@@ -43,8 +43,3 @@ def test_every_problem_has_distinct_plain_language_presentation():
 def test_an_unknown_reason_is_still_readable():
     assert problem_label("SOMETHING_NEW_ENTIRELY") == "Something new entirely"
 
-
-def test_retired_reasons_are_not_part_of_the_taxonomy():
-    from app.core.problem_types import RETIRED_PROBLEM_REASONS
-
-    assert not (RETIRED_PROBLEM_REASONS & set(PROBLEM_LABELS))

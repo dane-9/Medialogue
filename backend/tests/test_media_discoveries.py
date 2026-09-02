@@ -346,7 +346,7 @@ def test_confirmed_missing_folder_is_retired_from_review_after_rename(
     assert client.get("/api/v1/discoveries/count").json()["count"] == 1
 
 
-def test_legacy_missing_discovery_is_hidden_and_retired(
+def test_missing_discovery_is_hidden_and_retired(
     client: TestClient, tmp_path: Path
 ) -> None:
     headers = login(client)
@@ -359,7 +359,7 @@ def test_legacy_missing_discovery_is_hidden_and_retired(
     scan(client, headers, storage["id"])
     item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
 
-    async def mark_legacy_row_missing() -> None:
+    async def mark_row_missing() -> None:
         async with db_session.async_session_factory() as session:
             discovery = await session.get(MediaDiscovery, UUID(item["id"]))
             assert discovery is not None
@@ -369,7 +369,7 @@ def test_legacy_missing_discovery_is_hidden_and_retired(
             directory.missing_check_count = 2
             await session.commit()
 
-    asyncio.run(mark_legacy_row_missing())
+    asyncio.run(mark_row_missing())
 
     assert client.get("/api/v1/discoveries?page_size=250").json()["items"] == []
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0
@@ -550,7 +550,7 @@ def test_an_ignored_item_can_be_restored_to_the_queue(client: TestClient, tmp_pa
 
     restored = client.post(f"/api/v1/discoveries/{item['id']}/restore", headers=headers)
     assert restored.status_code == 200, restored.text
-    assert restored.json()["review_state"] == "pending"
+    assert restored.json()["new_media_state"] == "pending"
     assert client.get("/api/v1/discoveries/count").json()["count"] == 1
 
     assert client.post(f"/api/v1/discoveries/{item['id']}/restore", headers=headers).status_code == 409
@@ -647,60 +647,6 @@ def test_search_stores_candidates_on_the_item(client: TestClient, tmp_path: Path
 
     reloaded = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
     assert [candidate["title"] for candidate in reloaded["candidates"]] == titles
-
-
-def test_existing_review_item_is_reparsed_before_automatic_tmdb_search(
-    client: TestClient, tmp_path: Path, monkeypatch
-) -> None:
-    headers = login(client)
-    configure_tmdb(client, headers)
-
-    show_root = tmp_path / "shows"
-    folder = show_root / (
-        "Batman.The.Animated.Series.COMPLETE.S01-S04.1080p.BluRay."
-        "DTS-HD.MA.H.264-BTN"
-    )
-    folder.mkdir(parents=True)
-    (folder / "Batman.S01E01.mkv").write_bytes(b"episode")
-    storage = create_root(client, headers, show_root, "shows")
-    scan(client, headers, storage["id"])
-    item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
-
-    async def make_stale() -> None:
-        async with db_session.async_session_factory() as session:
-            discovery = await session.get(MediaDiscovery, UUID(item["id"]))
-            assert discovery is not None
-            snapshot = dict(discovery.parse_snapshot)
-            snapshot["parser_version"] = "1.2.0"
-            discovery.parse_snapshot = snapshot
-            discovery.parsed_title = "Batman The Animated Series COMPLETE"
-            discovery.candidates = [{"tmdb_id": 999, "title": "Wrong old result"}]
-            discovery.suggested_tmdb_id = 999
-            discovery.selected_tmdb_id = 999
-            await session.commit()
-
-    asyncio.run(make_stale())
-    queries: list[str] = []
-    original_search = FakeTMDBClient.search_show
-
-    async def capture_search(self, title: str, year: int | None = None):
-        queries.append(title)
-        return await original_search(self, title, year)
-
-    monkeypatch.setattr(FakeTMDBClient, "search_show", capture_search)
-
-    refreshed = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
-    assert refreshed["parsed_title"] == "Batman The Animated Series"
-    assert refreshed["candidates"] == []
-    assert refreshed["selected"] is None
-
-    searched = client.post(
-        f"/api/v1/discoveries/{item['id']}/search",
-        headers=headers,
-        json={"query": None},
-    )
-    assert searched.status_code == 200, searched.text
-    assert queries == ["Batman The Animated Series"]
 
 
 def test_searching_again_keeps_the_current_selection(client: TestClient, tmp_path: Path) -> None:
@@ -916,7 +862,7 @@ def test_importing_another_edition_keeps_the_profile_the_movie_already_has(clien
     second.mkdir(parents=True)
     (second / "Dune.2021.Directors.Cut.2160p.BluRay.REMUX-OTHER.mkv").write_bytes(b"movie")
     scan(client, headers, storage["id"])
-    pending = [item for item in client.get("/api/v1/discoveries?page_size=250").json()["items"] if item["review_state"] == "pending"]
+    pending = [item for item in client.get("/api/v1/discoveries?page_size=250").json()["items"] if item["new_media_state"] == "pending"]
     if pending:
         other = _quality_profile(client, headers, "Different choice")
         client.patch(

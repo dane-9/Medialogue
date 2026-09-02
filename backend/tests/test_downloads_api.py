@@ -301,7 +301,7 @@ def test_download_client_crud_redacts_password_and_preserves_multiple_scopes(cli
     assert all("password" not in item for item in items)
     assert all(item["password_configured"] is True for item in items)
 
-    updated = client.patch(
+    updated = client.put(
         f"/api/v1/download-clients/{movie['id']}",
         headers=headers,
         json={
@@ -316,7 +316,7 @@ def test_download_client_crud_redacts_password_and_preserves_multiple_scopes(cli
     assert updated.json()["revision"] == movie["revision"] + 1
     assert "super-secret-qbit-password" not in updated.text
 
-    stale = client.patch(
+    stale = client.put(
         f"/api/v1/download-clients/{movie['id']}",
         headers=headers,
         json={"expected_revision": movie["revision"]},
@@ -928,7 +928,7 @@ def test_an_indexer_needs_a_download_client_once_one_exists(client: TestClient) 
     assert created.status_code == 201, created.text
     assert created.json()["download_client_ids"] == [download_client["id"]]
 
-    cleared = client.patch(
+    cleared = client.put(
         f"/api/v1/indexers/{created.json()['id']}",
         headers=headers,
         json={"download_client_ids": [], "expected_revision": created.json()["revision"]},

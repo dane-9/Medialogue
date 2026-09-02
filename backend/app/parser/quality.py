@@ -76,7 +76,7 @@ def _dvd_family(modifier: str, rank_base: int) -> tuple[QualityDefinition, ...]:
 
 
 # Source families retain the previous default ordering. A profile's explicit
-# order is authoritative; rank only seeds fresh and legacy profiles.
+# order is authoritative; rank only seeds fresh profiles.
 QUALITY_DEFINITIONS: tuple[QualityDefinition, ...] = (
     *_family(BLURAY_REMUX_RESOLUTIONS, source="BluRay", modifier="REMUX", rank_base=1000),
     *_family(BLURAY_ENCODE_RESOLUTIONS, source="BluRay", modifier="Encode", rank_base=900),

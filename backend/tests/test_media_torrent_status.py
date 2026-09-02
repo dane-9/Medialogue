@@ -34,7 +34,7 @@ async def test_release_and_title_torrent_status_keep_tracking_and_backup_separat
             info_hash="a" * 40,
             name="Example 2026 2160p-GRP",
             archive_state=TorrentArchiveState.ARCHIVED,
-            manifest_schema_version=2,
+            manifest_schema_version=1,
             tracker_summary={"state": "healthy"},
         )
         db.add_all([movie, protected_release, untracked_release, client, torrent])

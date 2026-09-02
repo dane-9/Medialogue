@@ -609,6 +609,7 @@
         "type": "object"
       },
       "CustomFormatConditionInput": {
+        "additionalProperties": false,
         "properties": {
           "case_sensitive": {
             "default": false,
@@ -679,31 +680,8 @@
             "minimum": -100000.0,
             "title": "Score Offset",
             "type": "integer"
-          },
-          "type": {
-            "$ref": "#/components/schemas/CustomFormatConditionType"
-          },
-          "value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Value"
           }
         },
-        "required": [
-          "type"
-        ],
         "title": "CustomFormatConditionInput",
         "type": "object"
       },
@@ -762,18 +740,11 @@
             "default": 0,
             "title": "Score Offset",
             "type": "integer"
-          },
-          "type": {
-            "$ref": "#/components/schemas/CustomFormatConditionType"
-          },
-          "value": {
-            "title": "Value"
           }
         },
         "required": [
           "id",
           "name",
-          "type",
           "required",
           "negate",
           "case_sensitive"
@@ -803,6 +774,7 @@
         "type": "string"
       },
       "CustomFormatCreate": {
+        "additionalProperties": false,
         "properties": {
           "conditions": {
             "items": {
@@ -829,10 +801,6 @@
             "default": true,
             "title": "Enabled",
             "type": "boolean"
-          },
-          "media_scope": {
-            "$ref": "#/components/schemas/CustomFormatScope",
-            "default": "both"
           },
           "name": {
             "maxLength": 256,
@@ -954,20 +922,23 @@
         "type": "object"
       },
       "CustomFormatExportBundle": {
+        "additionalProperties": false,
         "properties": {
           "application": {
+            "const": "Medialogue",
             "default": "Medialogue",
             "title": "Application",
             "type": "string"
           },
           "custom_formats": {
             "items": {
-              "$ref": "#/components/schemas/CustomFormatExportItem-Output"
+              "$ref": "#/components/schemas/CustomFormatExportItem"
             },
             "title": "Custom Formats",
             "type": "array"
           },
           "schema_version": {
+            "const": 1,
             "default": 1,
             "title": "Schema Version",
             "type": "integer"
@@ -979,7 +950,8 @@
         "title": "CustomFormatExportBundle",
         "type": "object"
       },
-      "CustomFormatExportItem-Input": {
+      "CustomFormatExportItem": {
+        "additionalProperties": false,
         "properties": {
           "conditions": {
             "items": {
@@ -1004,16 +976,12 @@
             "title": "Enabled",
             "type": "boolean"
           },
-          "media_scope": {
-            "$ref": "#/components/schemas/CustomFormatScope",
-            "default": "both"
-          },
           "name": {
             "title": "Name",
             "type": "string"
           },
           "schema_version": {
-            "default": 1,
+            "const": 1,
             "title": "Schema Version",
             "type": "integer"
           },
@@ -1027,60 +995,7 @@
           }
         },
         "required": [
-          "name",
-          "conditions"
-        ],
-        "title": "CustomFormatExportItem",
-        "type": "object"
-      },
-      "CustomFormatExportItem-Output": {
-        "properties": {
-          "conditions": {
-            "items": {
-              "$ref": "#/components/schemas/CustomFormatConditionInput"
-            },
-            "title": "Conditions",
-            "type": "array"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "enabled": {
-            "default": true,
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "media_scope": {
-            "$ref": "#/components/schemas/CustomFormatScope",
-            "default": "both"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "schema_version": {
-            "default": 1,
-            "title": "Schema Version",
-            "type": "integer"
-          },
-          "supersedes": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 500,
-            "title": "Supersedes",
-            "type": "array"
-          }
-        },
-        "required": [
+          "schema_version",
           "name",
           "conditions"
         ],
@@ -1088,14 +1003,16 @@
         "type": "object"
       },
       "CustomFormatImportBundle": {
+        "additionalProperties": false,
         "properties": {
           "application": {
+            "const": "Medialogue",
             "title": "Application",
             "type": "string"
           },
           "custom_formats": {
             "items": {
-              "$ref": "#/components/schemas/CustomFormatExportItem-Input"
+              "$ref": "#/components/schemas/CustomFormatExportItem"
             },
             "maxItems": 500,
             "minItems": 1,
@@ -1103,6 +1020,7 @@
             "type": "array"
           },
           "schema_version": {
+            "const": 1,
             "title": "Schema Version",
             "type": "integer"
           }
@@ -1137,6 +1055,7 @@
         "type": "object"
       },
       "CustomFormatLayout": {
+        "additionalProperties": false,
         "properties": {
           "sections": {
             "items": {
@@ -1197,9 +1116,6 @@
             "title": "Id",
             "type": "string"
           },
-          "media_scope": {
-            "$ref": "#/components/schemas/CustomFormatScope"
-          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1234,7 +1150,6 @@
           "id",
           "name",
           "description",
-          "media_scope",
           "enabled",
           "schema_version",
           "conditions",
@@ -1247,16 +1162,8 @@
         "title": "CustomFormatResponse",
         "type": "object"
       },
-      "CustomFormatScope": {
-        "enum": [
-          "movies",
-          "shows",
-          "both"
-        ],
-        "title": "CustomFormatScope",
-        "type": "string"
-      },
       "CustomFormatSection": {
+        "additionalProperties": false,
         "properties": {
           "format_ids": {
             "items": {
@@ -1289,7 +1196,18 @@
         "type": "object"
       },
       "CustomFormatTestAllRequest": {
+        "additionalProperties": false,
         "properties": {
+          "custom_format": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomFormatTestDefinition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "include_disabled": {
             "default": false,
             "title": "Include Disabled",
@@ -1314,10 +1232,6 @@
             "maxItems": 64,
             "title": "Languages",
             "type": "array"
-          },
-          "media_scope": {
-            "$ref": "#/components/schemas/CustomFormatScope",
-            "default": "both"
           },
           "quality_profile_id": {
             "anyOf": [
@@ -1406,6 +1320,7 @@
         "type": "object"
       },
       "CustomFormatTestDefinition": {
+        "additionalProperties": false,
         "properties": {
           "conditions": {
             "items": {
@@ -1444,10 +1359,6 @@
             ],
             "title": "Id"
           },
-          "media_scope": {
-            "$ref": "#/components/schemas/CustomFormatScope",
-            "default": "both"
-          },
           "name": {
             "default": "Test Format",
             "maxLength": 256,
@@ -1472,6 +1383,7 @@
         "type": "object"
       },
       "CustomFormatTestRequest": {
+        "additionalProperties": false,
         "properties": {
           "custom_format": {
             "$ref": "#/components/schemas/CustomFormatTestDefinition"
@@ -1529,6 +1441,7 @@
         "type": "object"
       },
       "CustomFormatUpdate": {
+        "additionalProperties": false,
         "properties": {
           "conditions": {
             "anyOf": [
@@ -1580,16 +1493,6 @@
               }
             ],
             "title": "Expected Revision"
-          },
-          "media_scope": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CustomFormatScope"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "name": {
             "anyOf": [
@@ -5139,6 +5042,9 @@
           "media_type": {
             "$ref": "#/components/schemas/MediaType"
           },
+          "new_media_state": {
+            "$ref": "#/components/schemas/NewMediaState"
+          },
           "parsed_edition": {
             "anyOf": [
               {
@@ -5210,9 +5116,6 @@
             ],
             "title": "Quality Profile Name"
           },
-          "review_state": {
-            "$ref": "#/components/schemas/NewMediaState"
-          },
           "root_name": {
             "title": "Root Name",
             "type": "string"
@@ -5255,7 +5158,7 @@
           "path",
           "root_name",
           "exists",
-          "review_state",
+          "new_media_state",
           "created_at",
           "updated_at"
         ],
@@ -8103,17 +8006,6 @@
             "title": "Export Directory Writable",
             "type": "boolean"
           },
-          "migration_revision": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Migration Revision"
-          },
           "reasons": {
             "items": {
               "type": "string"
@@ -8217,11 +8109,6 @@
               }
             ],
             "title": "Download Client Name"
-          },
-          "file_selection_captured": {
-            "default": false,
-            "title": "File Selection Captured",
-            "type": "boolean"
           },
           "info_hash": {
             "title": "Info Hash",
@@ -13414,22 +13301,6 @@
           },
           {
             "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/CustomFormatScope"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Scope"
-            }
-          },
-          {
-            "in": "query",
             "name": "enabled",
             "required": false,
             "schema": {
@@ -15562,27 +15433,6 @@
         "summary": "Browse Filesystem",
         "tags": [
           "storage"
-        ]
-      }
-    },
-    "/api/v1/health": {
-      "get": {
-        "operationId": "api_health_api_v1_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LivenessResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Api Health",
-        "tags": [
-          "health"
         ]
       }
     },

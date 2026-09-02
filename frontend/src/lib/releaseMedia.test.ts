@@ -31,8 +31,7 @@ describe('releaseAudio', () => {
     expect(releaseAudio({ audio: { codec: 'DTS-HD MA', channels: '5.1', dts_x: true } })).toBe('DTS-HD MA DTS:X 5.1')
   })
 
-  it('falls back to the flat keys and skips what the parser did not find', () => {
-    expect(releaseAudio({ audio_codec: 'AC3', channels: '5.1' })).toBe('AC3 5.1')
+  it('skips fields the parser did not find', () => {
     expect(releaseAudio({ audio: { channels: '2.0' } })).toBe('2.0')
     expect(releaseAudio({ audio: {} })).toBeUndefined()
     expect(releaseAudio(undefined)).toBeUndefined()
@@ -40,10 +39,8 @@ describe('releaseAudio', () => {
 })
 
 describe('releaseVideoCodec', () => {
-  it('prefers the parsed codec over the flat key', () => {
+  it('reads the parsed video codec', () => {
     expect(releaseVideoCodec(remux)).toBe('HEVC')
-    expect(releaseVideoCodec({ video_codec: 'AVC' })).toBe('AVC')
-    expect(releaseVideoCodec({ video: { codec: '  ' }, video_codec: 'AVC' })).toBe('AVC')
     expect(releaseVideoCodec(undefined)).toBeUndefined()
   })
 })

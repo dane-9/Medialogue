@@ -300,7 +300,7 @@ def test_indexer_crud_redacts_api_key_and_tests_connection(client: TestClient) -
         assert listing[0]["health"] == "healthy"
         assert listing[0]["api_key_configured"] is True
 
-        updated = client.patch(
+        updated = client.put(
             f"/api/v1/indexers/{indexer['id']}",
             headers=headers,
             json={"name": "Renamed", "api_key": "", "expected_revision": indexer["revision"]},
@@ -324,10 +324,9 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
         headers=headers,
         json={
             "name": "Hybrid REMUX",
-            "media_scope": "movies",
             "conditions": [
-                {"type": "quality_modifier", "value": "REMUX", "required": True},
-                {"type": "release_attribute", "value": "Hybrid", "required": True},
+                {"pattern": "REMUX", "required": True},
+                {"pattern": "Hybrid", "required": True},
             ],
         },
     )
@@ -391,7 +390,7 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
             f"/api/v1/custom-formats/{custom_format_id}",
             headers=headers,
             json={
-                "conditions": [{"type": "release_attribute", "value": "REPACK", "required": True}],
+                "conditions": [{"pattern": "REPACK", "required": True}],
                 "expected_revision": current["revision"],
             },
         )

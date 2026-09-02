@@ -90,6 +90,19 @@ def _configure_tmdb(client: TestClient, headers: dict[str, str]) -> None:
     assert response.status_code == 200, response.text
 
 
+class FakePlexSnapshot:
+    def __init__(self, behavior: "FakePlexBehavior"):
+        self.behavior = behavior
+
+    def find_exact_path(self, file_path: str, **_kwargs) -> PlexMediaMatch | None:
+        self.behavior.seen_paths.append(file_path)
+        return self.behavior.exact_match
+
+    def search_title_year(self, title: str, year: int | None) -> list[PlexTitleMatch]:
+        self.behavior.searches.append((title, year))
+        return list(self.behavior.title_matches)
+
+
 class FakePlexClient:
     """Small read-only fake used through the Plex client dependency override."""
 
@@ -104,13 +117,8 @@ class FakePlexClient:
             raise RuntimeError(self.behavior.health_error)
         return {"status": "healthy", "machine_identifier": self.behavior.machine_identifier}
 
-    async def find_exact_path(self, file_path: str) -> PlexMediaMatch | None:
-        self.behavior.seen_paths.append(file_path)
-        return self.behavior.exact_match
-
-    async def search_title_year(self, title: str, year: int | None) -> list[PlexTitleMatch]:
-        self.behavior.searches.append((title, year))
-        return list(self.behavior.title_matches)
+    async def library_snapshot(self) -> FakePlexSnapshot:
+        return FakePlexSnapshot(self.behavior)
 
     async def close(self) -> None:
         return None

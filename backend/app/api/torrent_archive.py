@@ -44,6 +44,17 @@ def _manifest_primary(manifest: dict) -> dict:
     return {}
 
 
+def _manifest_previous_path(primary: dict, original: dict, key: str) -> str | None:
+    paths = primary.get("paths")
+    if isinstance(paths, list):
+        for path in paths:
+            if isinstance(path, dict) and path.get(key):
+                return str(path[key])
+    observation_key = "reported_save_path" if key == "reported_path" else "resolved_save_path"
+    value = original.get(observation_key)
+    return str(value) if value else None
+
+
 async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
     manifest = read_manifest(torrent)
     primary = _manifest_primary(manifest)
@@ -68,17 +79,17 @@ async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
         first_seen_at=torrent.first_seen_at,
         last_seen_at=torrent.last_seen_at,
         completed_at=torrent.completed_at,
-        media_type=primary.get("media_type") or manifest.get("media_type"),
-        media_title=primary.get("title") or manifest.get("media_title"),
-        tmdb_id=primary.get("tmdb_id") or manifest.get("tmdb_id"),
-        tvdb_id=primary.get("tvdb_id") or manifest.get("tvdb_id"),
-        release_name=primary.get("release_name") or manifest.get("release_name"),
-        quality=primary.get("quality") or manifest.get("quality"),
-        edition=primary.get("edition") if "edition" in primary else manifest.get("edition"),
-        release_group=primary.get("release_group") or manifest.get("release_group"),
-        original_download_client=original.get("download_client_name") or manifest.get("download_client_name"),
-        previous_reported_path=manifest.get("previous_reported_path"),
-        previous_resolved_path=manifest.get("previous_resolved_path"),
+        media_type=primary.get("media_type"),
+        media_title=primary.get("title"),
+        tmdb_id=primary.get("tmdb_id"),
+        tvdb_id=primary.get("tvdb_id"),
+        release_name=primary.get("release_name"),
+        quality=primary.get("quality"),
+        edition=primary.get("edition"),
+        release_group=primary.get("release_group"),
+        original_download_client=original.get("download_client_name"),
+        previous_reported_path=_manifest_previous_path(primary, original, "reported_path"),
+        previous_resolved_path=_manifest_previous_path(primary, original, "resolved_path"),
         qbit_present=qbit_present,
     )
 

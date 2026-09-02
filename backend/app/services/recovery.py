@@ -82,7 +82,7 @@ from app.services.torrent_archive import (
 )
 
 
-RECOVERY_SCHEMA_VERSION = 2
+RECOVERY_SCHEMA_VERSION = 1
 _LIBRARY_INVENTORY_SCHEMA_VERSION = 1
 _CONFIGURATION_EXPORT_SCHEMA_VERSION = 1
 DatabaseBackupRunner = Callable[[Path, Settings], Awaitable[dict[str, Any]]]
@@ -184,19 +184,11 @@ async def database_backup_metadata(db: AsyncSession) -> dict[str, Any]:
         return {
             "backend": backend,
             "sqlite_version": None,
-            "migration_revision": None,
         }
     sqlite_version = str(await db.scalar(text("SELECT sqlite_version()")) or "")
-    has_migration_table = await db.scalar(
-        text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'alembic_version'")
-    )
-    migration_revision = (
-        await db.scalar(text("SELECT version_num FROM alembic_version LIMIT 1")) if has_migration_table else None
-    )
     return {
         "backend": backend,
         "sqlite_version": sqlite_version,
-        "migration_revision": str(migration_revision) if migration_revision else None,
     }
 
 
@@ -237,7 +229,6 @@ async def recovery_capabilities(db: AsyncSession, settings: Settings | None = No
         "sqlite_version": db_meta.get("sqlite_version"),
         "database_path": str(database_path) if database_path else None,
         "database_readable": database_readable,
-        "migration_revision": db_meta.get("migration_revision"),
         "torrent_archive_readable": archive_readable,
         "export_directory_writable": output_writable,
         "export_directory": str(output),
@@ -247,22 +238,24 @@ async def recovery_capabilities(db: AsyncSession, settings: Settings | None = No
 
 
 def _manifest_media_type(manifest: dict[str, Any]) -> MediaType | None:
-    raw = str(manifest.get("media_type") or "").strip().lower()
-    if raw in {"movie", "movies"}:
-        return MediaType.MOVIES
-    if raw in {"show", "shows", "tv"}:
-        return MediaType.SHOWS
     associations = manifest.get("media_associations")
     if isinstance(associations, list):
         for association in associations:
             if not isinstance(association, dict):
                 continue
             raw = str(association.get("media_type") or "").strip().lower()
-            if raw in {"movie", "movies"}:
+            if raw == "movies":
                 return MediaType.MOVIES
-            if raw in {"show", "shows", "tv"}:
+            if raw == "shows":
                 return MediaType.SHOWS
     return None
+
+
+def _manifest_primary_association(manifest: dict[str, Any]) -> dict[str, Any]:
+    associations = manifest.get("media_associations")
+    if isinstance(associations, list) and associations and isinstance(associations[0], dict):
+        return associations[0]
+    return {}
 
 
 def _manifest_observations(manifest: dict[str, Any]) -> list[dict[str, Any]]:
@@ -417,14 +410,16 @@ async def build_recovery_reimport_plan(
         tags: list[str] = []
         resolved_save_path: str | None = None
 
-        priorities = recovery_file_priorities(manifest)
+        try:
+            priorities = recovery_file_priorities(manifest)
+        except ValueError as exc:
+            priorities = {}
+            reasons.append(f"Recovery manifest is invalid: {exc}.")
         recovery = manifest.get("recovery") if isinstance(manifest.get("recovery"), dict) else {}
         recovery_files = recovery.get("files") if isinstance(recovery.get("files"), list) else []
         total_files = len([item for item in recovery_files if isinstance(item, dict)])
         selected_files = sum(1 for priority in priorities.values() if priority > 0)
         skipped_files = sum(1 for priority in priorities.values() if priority == 0)
-        if total_files == 0:
-            warnings.append("No per-file selection snapshot is stored; qBittorrent will use its default file selection.")
 
         if torrent.archive_state != TorrentArchiveState.ARCHIVED or not torrent.archive_path:
             reasons.append("Torrent archive is incomplete.")
@@ -457,14 +452,15 @@ async def build_recovery_reimport_plan(
             and torrent.info_hash.strip().lower() in live_hashes.get(client.id, set())
         )
         status = "blocked" if reasons else "already_present" if already_present else "ready"
+        primary = _manifest_primary_association(manifest)
         items.append(
             {
                 "torrent_id": str(torrent.id),
                 "info_hash": torrent.info_hash,
                 "torrent_name": torrent.name,
                 "media_type": media_type.value if media_type else None,
-                "media_title": manifest.get("media_title"),
-                "release_name": manifest.get("release_name"),
+                "media_title": primary.get("title"),
+                "release_name": primary.get("release_name"),
                 "status": status,
                 "reasons": reasons,
                 "warnings": warnings,
@@ -474,7 +470,6 @@ async def build_recovery_reimport_plan(
                 "resolved_save_path": resolved_save_path,
                 "category": category,
                 "tags": tags,
-                "file_selection_captured": total_files > 0,
                 "total_file_count": total_files,
                 "selected_file_count": selected_files,
                 "skipped_file_count": skipped_files,
@@ -944,7 +939,6 @@ async def run_recovery_export(
                 "database_file": "database/medialogue.db",
                 "backup": _json_value(database_backup_result),
             },
-            "schema_migration_revision": db_meta.get("migration_revision"),
             "torrent_manifest_schema_version": MANIFEST_SCHEMA_VERSION,
             "configuration_export_schema_version": _CONFIGURATION_EXPORT_SCHEMA_VERSION,
             "library_inventory_schema_version": _LIBRARY_INVENTORY_SCHEMA_VERSION,
@@ -985,8 +979,7 @@ async def run_recovery_export(
                     "bundle_sha256": bundle_sha256,
                     "expires_at": expires_at.isoformat(),
                     "sqlite_version": db_meta.get("sqlite_version"),
-                    "migration_revision": db_meta.get("migration_revision"),
-                    "torrent_archive_files": len(archive_files),
+                                "torrent_archive_files": len(archive_files),
                 }
             )
             await update_job(db, job, status=JobStatus.COMPLETED, progress={"percent": 100, "stage": "completed"}, summary=summary)

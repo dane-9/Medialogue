@@ -57,13 +57,12 @@ export const settingsApi = {
   testAllCustomFormats: async (releaseName: string, draft?: CustomFormat, indexer?: string, qualityProfileId?: string): Promise<CustomFormatTestAllResult> => {
     const body = {
       release_name: releaseName,
-      media_scope: 'both' as const,
       indexer,
       quality_profile_id: qualityProfileId || null,
       include_disabled: false,
       custom_format: draft ? { id: draft.id || undefined, ...customFormatPayload(draft) } : undefined,
-    }
-    const payload = await openApiData(openApiClient.POST('/api/v1/custom-formats/test-all', { body: body as CustomFormatTestAllRequestDto }))
+    } satisfies CustomFormatTestAllRequestDto
+    const payload = await openApiData(openApiClient.POST('/api/v1/custom-formats/test-all', { body }))
     return {
       parsed: payload.parsed,
       formats: payload.formats.map(mapCustomFormatEvaluation),

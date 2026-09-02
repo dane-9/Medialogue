@@ -96,8 +96,8 @@ MOVIE_CORPUS = [
 def test_real_world_movie_corpus():
     for raw, title, year, quality, edition, group in MOVIE_CORPUS:
         result = parse_release(raw)
-        assert result.title == title
-        assert result.year == year
+        assert result.identity.title_candidate == title
+        assert result.identity.year == year
         assert result.quality.canonical == quality
         assert result.edition == edition
         assert result.release_group == group
@@ -110,34 +110,34 @@ def test_real_world_movie_corpus():
 
 def test_tv_boundaries_and_multi_episode():
     season = parse_release("Tyler Perry's Zatima S04 2160p AMZN WEB-DL DD+ 5.1 H.265-Kitsune")
-    assert season.title == "Tyler Perry's Zatima"
-    assert season.season == 4
-    assert season.episodes == ()
+    assert season.identity.title_candidate == "Tyler Perry's Zatima"
+    assert season.identity.season == 4
+    assert season.identity.episodes == ()
     assert season.provider == "AMZN"
 
     worded_pack = parse_release("Tyler Perry's Zatima Season 4 2160p AMZN WEB-DL DD+ 5.1 H.265-Kitsune")
-    assert worded_pack.title == "Tyler Perry's Zatima"
-    assert worded_pack.season == 4
-    assert worded_pack.episodes == ()
+    assert worded_pack.identity.title_candidate == "Tyler Perry's Zatima"
+    assert worded_pack.identity.season == 4
+    assert worded_pack.identity.episodes == ()
 
     episode = parse_release("Hey Boo S01E02 Nikita Iman 2160p WOWP WEB-DL AAC 2.0 H.264-Kitsune")
-    assert episode.title == "Hey Boo"
-    assert episode.season == 1
-    assert episode.episodes == (2,)
+    assert episode.identity.title_candidate == "Hey Boo"
+    assert episode.identity.season == 1
+    assert episode.identity.episodes == (2,)
     assert episode.identity.episode_title == "Nikita Iman"
     assert episode.video.codec == "H.264"
 
     multi = parse_release("Show.Name.S01E01E02.1080p.WEB-DL.H.264-GROUP")
-    assert multi.season == 1
-    assert multi.episodes == (1, 2)
+    assert multi.identity.season == 1
+    assert multi.identity.episodes == (1, 2)
 
     ranged = parse_release("Show Name S02E01-E03 1080p HDTV-GROUP")
-    assert ranged.season == 2
-    assert ranged.episodes == (1, 2, 3)
+    assert ranged.identity.season == 2
+    assert ranged.identity.episodes == (1, 2, 3)
 
     multi_season = parse_release("Dexters.Laboratory.S01-S04.1080p.WEB-DL.H.264-squalor")
-    assert multi_season.season == 1
-    assert multi_season.identity.season_numbers == (1, 2, 3, 4)
+    assert multi_season.identity.season == 1
+    assert multi_season.identity.seasons == (1, 2, 3, 4)
     assert multi_season.identity.to_dict()["seasons"] == [1, 2, 3, 4]
 
 
@@ -147,13 +147,13 @@ def test_complete_multi_season_show_release_is_structured():
         "DTS-HD.MA.H.264-BTN"
     )
 
-    assert result.title == "Batman The Animated Series"
-    assert result.season == 1
-    assert result.identity.season_numbers == (1, 2, 3, 4)
+    assert result.identity.title_candidate == "Batman The Animated Series"
+    assert result.identity.season == 1
+    assert result.identity.seasons == (1, 2, 3, 4)
     assert result.quality.canonical == "1080p Encode"
     assert result.release_group == "BTN"
     assert result.attributes.complete
-    assert "COMPLETE" in result.attributes
+    assert "COMPLETE" in result.attributes.values
     assert result.attributes.to_dict()["complete"] is True
     assert "COMPLETE" not in result.unknown_tokens
 
@@ -162,9 +162,9 @@ def test_hyphenated_show_titles_are_not_mistaken_for_release_groups():
     x_files = parse_release("The X-Files")
     fresh_prince = parse_release("The Fresh Prince of Bel-Air")
 
-    assert x_files.title == "The X-Files"
+    assert x_files.identity.title_candidate == "The X-Files"
     assert x_files.release_group == "NoGroup"
-    assert fresh_prince.title == "The Fresh Prince of Bel-Air"
+    assert fresh_prince.identity.title_candidate == "The Fresh Prince of Bel-Air"
     assert fresh_prince.release_group == "NoGroup"
 
 
@@ -173,9 +173,9 @@ def test_worded_season_episode_scheme_is_parsed():
         "The.Walking.Dead.Season.2.Episode.02.Bloodletting.REMUX-FraMeSToR"
     )
 
-    assert result.title == "The Walking Dead"
-    assert result.season == 2
-    assert result.episodes == (2,)
+    assert result.identity.title_candidate == "The Walking Dead"
+    assert result.identity.season == 2
+    assert result.identity.episodes == (2,)
     assert result.identity.episode_title == "Bloodletting"
     assert result.release_group == "FraMeSToR"
 
@@ -213,10 +213,9 @@ def test_no_group_and_unknown_tokens_are_explicit():
     assert "SomeFutureToken" in future.unknown_tokens
 
 
-def test_result_is_versioned_and_jsonable():
+def test_result_snapshot_is_jsonable():
     result = parse_release("Movie 2020 1080p WEB-DL-G")
-    assert result.parser_version
-    assert result.to_dict()["parser_version"] == result.parser_version
+    assert "parser_version" not in result.to_dict()
     assert result.to_dict()["quality"]["canonical"] == "1080p WEB-DL"
 
 
@@ -282,7 +281,7 @@ def test_full_disc_dvd_counts_are_evidence_not_separate_qualities():
 
     for release_name, (quality, layout) in cases.items():
         parsed = parse_release(release_name)
-        assert parsed.title == "Movie"
+        assert parsed.identity.title_candidate == "Movie"
         assert parsed.quality.canonical == quality
         assert parsed.quality.disc_type == layout
 
@@ -299,17 +298,17 @@ def test_leading_year_movie_directory_names_keep_the_title_candidate():
     emperor = parse_release("2000 The Emperor's New Groove")
     lilo = parse_release("2005 Lilo & Stitch 2 - Stitch Has a Glitch")
 
-    assert emperor.title == "The Emperor's New Groove"
-    assert emperor.year == 2000
-    assert lilo.title == "Lilo & Stitch 2 - Stitch Has a Glitch"
-    assert lilo.year == 2005
+    assert emperor.identity.title_candidate == "The Emperor's New Groove"
+    assert emperor.identity.year == 2000
+    assert lilo.identity.title_candidate == "Lilo & Stitch 2 - Stitch Has a Glitch"
+    assert lilo.identity.year == 2005
 
 
 def test_vc1_is_recognized_as_video_codec_not_unknown_release_text():
     result = parse_release("9 2009 1080p BluRay REMUX VC-1 DTS-HD MA 5.1-Spark")
 
-    assert result.title == "9"
-    assert result.year == 2009
+    assert result.identity.title_candidate == "9"
+    assert result.identity.year == 2009
     assert result.video.codec == "VC-1"
     assert "VC-1" not in result.unknown_tokens
 
@@ -327,7 +326,7 @@ def test_tracker_naming_convention_distinguishes_encodes_and_full_discs() -> Non
     )
     dvd = parse_release("Melody Time 1948 Censored 480p NTSC DVD MPEG-2 DD 2.0-Nadya")
 
-    assert decimal_title.title == "Jackass 2.5"
+    assert decimal_title.identity.title_candidate == "Jackass 2.5"
     assert decimal_title.quality.canonical == "480p WEB-DL"
     assert dvd_rip.quality.canonical == "480p DVD Encode"
     assert bluray.quality.canonical == "Full Disc BluRay"
@@ -346,7 +345,7 @@ def test_tracker_identity_metadata_and_revision_markers_are_structured() -> None
     )
     no_group = parse_release("Movie 2024 1080p WEB-DL MULTI DDP5.1-NOGRP")
 
-    assert geographic.title == "The Office"
+    assert geographic.identity.title_candidate == "The Office"
     assert geographic.identity.geographic == "US"
     assert "US" in geographic.regions
     assert "DDP5" not in geographic.unknown_tokens

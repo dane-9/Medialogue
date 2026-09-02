@@ -307,7 +307,6 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         season_episode_count=season_episode_count,
         current_matched_formats=_matched_formats(
             ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("breakdown")
-            or ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("formats")
         ),
         candidate_matched_formats=_matched_formats((snapshot.get("candidate") or {}).get("formats")),
         execution_eligible=execution_eligible,
@@ -353,32 +352,7 @@ async def list_upgrade_candidates(
 
 
 def _search_result_rows(row: UpgradeCandidate) -> list[dict[str, Any]]:
-    stored = [dict(value) for value in (row.search_results or []) if isinstance(value, dict)]
-    if stored:
-        return stored
-    candidate = (row.comparison_snapshot or {}).get("candidate") or {}
-    return [{
-        "id": str(row.id),
-        "indexer_id": str(row.indexer_id) if row.indexer_id else None,
-        "indexer_name": row.indexer_name,
-        "guid": row.guid,
-        "title": row.title,
-        "quality": row.quality,
-        "edition": candidate.get("edition") if isinstance(candidate, dict) else None,
-        "release_group": candidate.get("release_group") if isinstance(candidate, dict) else None,
-        "custom_format_score": row.custom_format_score,
-        "size": row.size,
-        "seeders": row.seeders,
-        "leechers": row.leechers,
-        "published_at": row.published_at,
-        "eligible": bool(row.execution_eligible),
-        "rejection_reasons": [row.execution_block_reason] if row.execution_block_reason else [],
-        "upgrade_types": list(row.upgrade_types or []),
-        "added_custom_formats": list(row.added_custom_formats or []),
-        "snapshot": dict(row.comparison_snapshot or {}),
-        "parser": candidate.get("parse") if isinstance(candidate, dict) else {},
-        "download_url": row.download_url,
-    }]
+    return [dict(value) for value in (row.search_results or []) if isinstance(value, dict)]
 
 
 def _search_result_response(row: UpgradeCandidate, value: dict[str, Any], *, position: int) -> UpgradeSearchResultResponse:
@@ -387,9 +361,9 @@ def _search_result_response(row: UpgradeCandidate, value: dict[str, Any], *, pos
     candidate = snapshot.get("candidate") if isinstance(snapshot, dict) else {}
     formats = candidate.get("formats") if isinstance(candidate, dict) else []
     matched_format_names = [
-        str(item.get("custom_format_name") or item.get("name"))
+        str(item["custom_format_name"])
         for item in (formats or [])
-        if isinstance(item, dict) and item.get("matched") and (item.get("custom_format_name") or item.get("name"))
+        if isinstance(item, dict) and item.get("matched") and item.get("custom_format_name")
     ]
     selected = (
         str(value.get("guid") or "") == row.guid

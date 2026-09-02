@@ -18,7 +18,6 @@ from .types import (
     AudioInfo,
     HDRInfo,
     IdentityInfo,
-    PARSER_VERSION,
     QualityInfo,
     ReleaseAttributes,
     ReleaseParseResult,
@@ -340,8 +339,8 @@ _SEASON_NUMBER = r"(?:\d{1,2}|(?:19|20)\d{2})"
 def _extract_season_numbers(normalized: str, primary_season: int | None) -> tuple[int, ...]:
     """Return every season explicitly covered by a release name.
 
-    The legacy ``season`` identity remains the first season for compatibility,
-    but a range such as S01-S04 is not semantically a Season 1 pack.
+    ``season`` is the first season, while ``seasons`` records the full range;
+    a range such as S01-S04 is not semantically a Season 1 pack.
     """
 
     season_range = re.search(
@@ -1007,7 +1006,7 @@ def _unknown_tokens(
     return tuple(result)
 
 
-def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> ReleaseParseResult:
+def parse_release(raw_name: str) -> ReleaseParseResult:
     """Parse a release/folder/filename into a structured result.
 
     The function is deterministic and side-effect free.  ``raw_name`` is
@@ -1164,7 +1163,6 @@ def parse_release(raw_name: str, *, parser_version: str = PARSER_VERSION) -> Rel
         languages=languages,
         regions=regions,
         unknown_tokens=unknown,
-        parser_version=parser_version,
         warnings=tuple(warnings),
     )
 

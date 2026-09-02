@@ -391,7 +391,7 @@ async def _attached_for_hash(db, info_hash: str):
     )
 
 
-def test_legacy_plex_metadata_conflict_no_longer_blocks_completed_replacement(client: TestClient) -> None:
+def test_plex_metadata_conflict_does_not_block_completed_replacement(client: TestClient) -> None:
     headers, root, old_dir, root_payload, movie = _movie_setup(client)
     new_name = "Inception 2010 Directors Cut 2160p UHD BluRay REMUX HEVC TrueHD-K"
     new_dir = root / new_name

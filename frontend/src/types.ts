@@ -737,7 +737,6 @@ export interface RecoveryCapabilities {
   sqliteVersion?: string
   databasePath?: string
   databaseReadable: boolean
-  migrationRevision?: string
   torrentArchiveReadable: boolean
   exportDirectoryWritable: boolean
   exportDirectory: string
@@ -763,7 +762,6 @@ export interface RecoveryReimportItem {
   resolvedSavePath?: string
   category?: string
   tags: string[]
-  fileSelectionCaptured: boolean
   totalFileCount: number
   selectedFileCount: number
   skippedFileCount: number
@@ -840,8 +838,6 @@ export type CustomFormatConditionType =
 export interface CustomFormatCondition {
   id: string
   name?: string
-  type: CustomFormatConditionType
-  value?: string | string[]
   pattern?: string
   required: boolean
   negate: boolean
@@ -981,8 +977,6 @@ export interface MediaProfileSettings {
 }
 
 export interface ApiErrorShape {
-  detail?: string
-  message?: string
   error?: { code?: string; message?: string; details?: unknown }
 }
 

@@ -14,7 +14,7 @@ from app.core.config import Settings
 from app.core.integration_config import get_integration_config_store
 from app.db import session as db_session
 from app.db.base import Base
-from app.integrations.plex import PlexMediaMatch
+from app.integrations.plex import PlexLibrarySnapshot, PlexMediaMatch
 from app.main import create_app
 from app.models.domain import (
     IdentityState,
@@ -305,17 +305,18 @@ class FakePlexClient:
     async def health(self):
         return {"status": "healthy", "machine_identifier": "part18-plex"}
 
-    async def find_exact_path(self, path: str):
-        return PlexMediaMatch(
-            rating_key="1",
-            title="Inception",
-            year=2010,
-            edition=None,
-            file_path=path,
+    async def library_snapshot(self):
+        return PlexLibrarySnapshot(
+            (
+                PlexMediaMatch(
+                    rating_key="1",
+                    title="Inception",
+                    year=2010,
+                    edition=None,
+                    file_path=str(Path.cwd()),
+                ),
+            )
         )
-
-    async def search_title_year(self, _title: str, _year: int | None):
-        return []
 
     async def close(self):
         return None

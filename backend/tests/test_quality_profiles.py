@@ -100,8 +100,7 @@ def seed_movie(*, with_release: bool = False) -> str:
 def create_cf(client: TestClient, headers: dict[str, str]) -> dict:
     response = client.post("/api/v1/custom-formats", headers=headers, json={
         "name": "Hybrid",
-        "media_scope": "movies",
-        "conditions": [{"type": "release_attribute", "value": "Hybrid", "required": True}],
+        "conditions": [{"pattern": "Hybrid", "required": True}],
     })
     assert response.status_code == 201, response.text
     return response.json()
@@ -257,7 +256,7 @@ def test_zero_and_negative_scores_are_valid_and_quality_definitions_are_read_onl
     headers = login(client)
     first = create_cf(client, headers)
     second = client.post("/api/v1/custom-formats", headers=headers, json={
-        "name": "NoGroup", "media_scope": "movies", "conditions": [{"type": "release_group", "pattern": "^NoGroup$"}]
+        "name": "NoGroup", "conditions": [{"pattern": "-NoGroup$"}]
     }).json()
     profile = client.post("/api/v1/quality-profiles", headers=headers, json={
         "name": "Signed",
@@ -326,10 +325,10 @@ def test_saved_profile_scores_are_returned_highest_first(client: TestClient):
     headers = login(client)
     middle = create_cf(client, headers)
     high = client.post("/api/v1/custom-formats", headers=headers, json={
-        "name": "Preferred", "media_scope": "movies", "conditions": [{"type": "release_title", "pattern": "Preferred"}]
+        "name": "Preferred", "conditions": [{"pattern": "Preferred"}]
     }).json()
     low = client.post("/api/v1/custom-formats", headers=headers, json={
-        "name": "Avoid", "media_scope": "movies", "conditions": [{"type": "release_title", "pattern": "Avoid"}]
+        "name": "Avoid", "conditions": [{"pattern": "Avoid"}]
     }).json()
     response = client.post("/api/v1/quality-profiles", headers=headers, json={
         "name": "Ordered",
@@ -419,7 +418,7 @@ def test_custom_format_edit_recomputes_current_score_without_rewriting_history(c
     assert before_snapshot["current_score_snapshot"]["total_score"] == 333
 
     changed = client.patch(f"/api/v1/custom-formats/{cf['id']}", headers=headers, json={
-        "conditions": [{"type": "release_attribute", "value": "REPACK", "required": True}],
+        "conditions": [{"pattern": "REPACK", "required": True}],
         "expected_revision": cf["revision"],
     })
     assert changed.status_code == 200, changed.text
@@ -497,8 +496,7 @@ def test_episode_search_uses_parent_show_profile(client: TestClient):
     show_resource, episode_id = asyncio.run(seed_show())
     cf_response = client.post("/api/v1/custom-formats", headers=headers, json={
         "name": "DSNP",
-        "media_scope": "shows",
-        "conditions": [{"type": "web_provider", "value": "DSNP", "required": True}],
+        "conditions": [{"pattern": "DSNP", "required": True}],
     })
     assert cf_response.status_code == 201, cf_response.text
     cf = cf_response.json()
@@ -546,7 +544,6 @@ def test_custom_format_test_all_can_explain_profile_score(client: TestClient):
     }).json()
     tested = client.post("/api/v1/custom-formats/test-all", json={
         "release_name": "Inception 2010 Hybrid 2160p UHD BluRay REMUX DV HDR HEVC-LM",
-        "media_scope": "movies",
         "quality_profile_id": profile["id"],
     })
     assert tested.status_code == 200, tested.text
@@ -585,7 +582,7 @@ def test_completed_selected_search_release_preserves_download_score_and_tracks_c
         "schema_version": 1,
         "custom_format_score": 500,
         "custom_format_snapshot": {
-            "schema_version": 2,
+            "schema_version": 1,
             "quality_profile_id": profile["id"],
             "quality_profile_name": "Historical Score",
             "total_score": 500,
@@ -747,7 +744,7 @@ def test_deleting_custom_format_cleans_live_overrides_but_preserves_historical_r
 def test_indexer_colour_round_trips_and_distinguishes_clearing_from_omitting(client: TestClient):
     """The badge colour is optional, validated, and clearable.
 
-    Clearing and omitting have to stay distinct: PATCH bodies are partial, so an
+    Clearing and omitting have to stay distinct: update bodies are partial, so an
     absent ``color`` must leave the stored one alone while an empty string is a
     deliberate reset to the default badge.
     """
@@ -762,14 +759,14 @@ def test_indexer_colour_round_trips_and_distinguishes_clearing_from_omitting(cli
 
     assert client.get(f"/api/v1/indexers/{indexer_id}").json()["color"] == "#7C8CF8"
 
-    kept = client.patch(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"priority": 30})
+    kept = client.put(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"priority": 30})
     assert kept.status_code == 200, kept.text
     assert kept.json()["color"] == "#7C8CF8"
 
-    changed = client.patch(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"color": "#ff0000"})
+    changed = client.put(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"color": "#ff0000"})
     assert changed.json()["color"] == "#ff0000"
 
-    cleared = client.patch(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"color": ""})
+    cleared = client.put(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"color": ""})
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["color"] is None
 
@@ -939,7 +936,7 @@ def test_custom_format_edit_recomputes_inherited_title_without_assignment_row(cl
         f"/api/v1/custom-formats/{cf['id']}",
         headers=headers,
         json={
-            "conditions": [{"type": "release_attribute", "value": "REPACK", "required": True}],
+            "conditions": [{"pattern": "REPACK", "required": True}],
             "expected_revision": cf["revision"],
         },
     )
@@ -972,8 +969,7 @@ def test_stored_score_prefers_tracker_title_over_filesystem_name(client: TestCli
         headers=headers,
         json={
             "name": "Tracker Token",
-            "media_scope": "movies",
-            "conditions": [{"type": "release_title", "pattern": r"\bTRACKER-TOKEN\b", "required": True}],
+            "conditions": [{"pattern": r"\bTRACKER-TOKEN\b", "required": True}],
         },
     ).json()
     profile = client.post(

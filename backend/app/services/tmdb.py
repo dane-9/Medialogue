@@ -91,15 +91,12 @@ async def _select_movie_by_alternative_title(
 ) -> tuple[TMDBMovieMatch | None, str | None]:
     """Use TMDB-owned alternate-title evidence without fuzzy guessing."""
 
-    loader = getattr(client, "get_movie_alternative_titles", None)
-    if not callable(loader):
-        return None, None
     target = normalize_identity_title(title)
     alias_matches: list[TMDBMovieMatch] = []
     for item in matches[:8]:
         if year is not None and item.year is not None and item.year != year:
             continue
-        aliases = await loader(item.tmdb_id)
+        aliases = await client.get_movie_alternative_titles(item.tmdb_id)
         if any(normalize_identity_title(alias) == target for alias in aliases):
             alias_matches.append(item)
     if len(alias_matches) == 1:

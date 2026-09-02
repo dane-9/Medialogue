@@ -386,7 +386,6 @@ async def associate_upgrade_torrent(
                 quality_definition_id=quality.id if quality else None,
                 release_group=parsed.release_group,
                 release_state=ReleaseState.MISSING,
-                parser_version=parsed.parser_version,
                 parse_snapshot={
                     **parsed.to_dict(),
                     "incoming": True,

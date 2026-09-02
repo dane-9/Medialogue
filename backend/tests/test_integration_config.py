@@ -76,6 +76,7 @@ def test_file_backed_integration_configuration_encrypts_secrets(tmp_path: Path) 
 
 def test_configuration_revision_and_write_only_secret_updates(tmp_path: Path) -> None:
     store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    store.ensure_initialized()
     first = store.save_plex(url="http://plex:32400", token="first-token", enabled=True)
     second = store.save_plex(
         url="http://plex-new:32400",
@@ -99,6 +100,7 @@ def test_configuration_revision_and_write_only_secret_updates(tmp_path: Path) ->
 
 def test_secret_key_change_refuses_to_decrypt_existing_config(tmp_path: Path) -> None:
     store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    store.ensure_initialized()
     store.save_tmdb(api_key="tmdb-key-value", enabled=True)
 
     wrong_key_store = IntegrationConfigStore(tmp_path, "different-integration-secret-123456")
@@ -151,14 +153,14 @@ def test_incomplete_config_pair_is_rejected_instead_of_recreating_secrets(tmp_pa
         fresh_store.ensure_initialized()
 
 
-def test_startup_removes_legacy_indexer_download_client_field(tmp_path: Path) -> None:
+def test_obsolete_indexer_fields_are_rejected(tmp_path: Path) -> None:
     store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
     store.ensure_initialized()
     indexer_id = uuid4()
     store.save_indexer(
         IndexerConfig(
             id=indexer_id,
-            name="Legacy indexer",
+            name="Indexer",
             torznab_url="http://prowlarr:9696/api/v1/indexer/1/newznab",
             api_key="secret",
             scope="movies",
@@ -171,7 +173,22 @@ def test_startup_removes_legacy_indexer_download_client_field(tmp_path: Path) ->
     config_path.write_text(json.dumps(payload), encoding="utf-8")
 
     restarted = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
-    restarted.ensure_initialized()
-    cleaned = json.loads(config_path.read_text(encoding="utf-8"))
-    assert "download_client_id" not in cleaned["indexers"][0]
-    assert restarted.get_indexer(indexer_id) is not None
+    with pytest.raises(RuntimeError, match="unknown download_client_id"):
+        restarted.ensure_initialized()
+
+
+def test_runtime_access_rejects_missing_config_files(tmp_path: Path) -> None:
+    store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    store.ensure_initialized()
+
+    (tmp_path / "medialogue.json").unlink()
+    with pytest.raises(RuntimeError, match="Integration configuration file is missing"):
+        store.get_plex()
+
+    store = IntegrationConfigStore(tmp_path, "integration-config-test-secret-123456")
+    # Recreate a valid pair, then verify the encrypted half is required too.
+    (tmp_path / "secrets.enc").unlink()
+    store.ensure_initialized()
+    (tmp_path / "secrets.enc").unlink()
+    with pytest.raises(RuntimeError, match="Integration secrets file is missing"):
+        store.get_tmdb()

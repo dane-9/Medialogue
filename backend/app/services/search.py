@@ -144,7 +144,6 @@ async def run_search_job(
                 "id": str(row.id),
                 "name": row.name,
                 "description": row.description,
-                "media_scope": "both",
                 "enabled": row.enabled,
                 "condition_definition": dict(row.condition_definition or {}),
                 "revision": row.revision,
@@ -424,8 +423,8 @@ async def _query_indexer(
 def _matches_single_season_pack(release_name: str, season_number: int) -> bool:
     parsed = parse_release(release_name)
     return (
-        parsed.identity.season_numbers == (season_number,)
-        and not parsed.identity.episode_numbers
+        parsed.identity.seasons == (season_number,)
+        and not parsed.identity.episodes
     )
 
 
@@ -525,7 +524,7 @@ async def _store_results(
             format_snapshots.append(evidence)
 
         custom_format_snapshot = {
-            "schema_version": 2,
+            "schema_version": 1,
             "evaluated_at": now.isoformat(),
             "profile_id": profile_snapshot.get("profile_id"),
             "profile_name": profile_snapshot.get("profile_name"),
@@ -560,7 +559,6 @@ async def _store_results(
             seeders=result.seeders,
             leechers=result.leechers,
             published_at=_published_at(result.published),
-            parser_version=parsed.parser_version,
             parse_snapshot={**parsed.to_dict(), "languages": list(languages)},
             quality=parsed.quality.canonical,
             edition=parsed.edition,

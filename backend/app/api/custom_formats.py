@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +13,11 @@ from app.core.custom_format_layout import read_custom_format_layout, save_custom
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import CustomFormat as CustomFormatModel
-from app.models.domain import MediaProfileOverride, MediaScope, ProfileCustomFormatScore, QualityProfile
+from app.models.domain import MediaProfileOverride, ProfileCustomFormatScore, QualityProfile
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.custom_formats import (
     CUSTOM_FORMAT_SCHEMA_VERSION,
+    CustomFormatConditionInput,
     CustomFormatConditionResponse,
     CustomFormatCreate,
     CustomFormatEvaluationResponse,
@@ -27,7 +28,6 @@ from app.schemas.custom_formats import (
     CustomFormatLayout,
     CustomFormatSection,
     CustomFormatResponse,
-    CustomFormatScope,
     CustomFormatTestAllRequest,
     CustomFormatTestAllResponse,
     CustomFormatTestDefinition,
@@ -93,16 +93,8 @@ def _reconciled_layout(rows: list[CustomFormatModel], stored: dict[str, Any] | N
     seen: set[UUID] = set()
     sections: list[CustomFormatSection] = []
     for section in layout.sections:
-        # Older installations had a permanent catch-all section named Custom.
-        # Formats now choose a meaningful section directly, so discard that
-        # legacy wrapper and reconcile its formats into Release below.
-        if section.id.casefold() == "custom" and section.name.strip().casefold() == "custom":
-            continue
         section_id = section.id
         section_name = section.name
-        if section.id.casefold() == "hdr" and section.name.strip().casefold() == "hdr":
-            section_id = "dynamic-range"
-            section_name = "Dynamic Range"
         values = [format_id for format_id in section.format_ids if format_id in known and format_id not in seen]
         seen.update(values)
         sections.append(CustomFormatSection(id=section_id, name=section_name, format_ids=values))
@@ -128,20 +120,25 @@ def _reconciled_layout(rows: list[CustomFormatModel], stored: dict[str, Any] | N
     return CustomFormatLayout(sections=sections)
 
 
-def _normalized_conditions(values: list[Any]) -> list[dict[str, Any]]:
+def _normalized_conditions(values: list[CustomFormatConditionInput | FormatCondition]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for value in values:
-        if hasattr(value, "model_dump"):
+        if isinstance(value, CustomFormatConditionInput):
             raw = value.model_dump(mode="json", exclude_none=True)
-        elif hasattr(value, "to_dict"):
-            raw = value.to_dict()
-        else:
-            raw = dict(value)
-        normalized.append(FormatCondition.from_dict(raw).to_dict())
+            raw["type"] = "release_title"
+            normalized.append(FormatCondition.from_dict(raw).to_dict())
+            continue
+        if isinstance(value, FormatCondition):
+            normalized.append(value.to_dict())
+            continue
+        raise TypeError(f"Unsupported Custom Format condition: {type(value).__name__}")
     return normalized
 
 
-def _definition(conditions: list[Any], supersedes: list[UUID] | tuple[str, ...] = ()) -> dict[str, Any]:
+def _definition(
+    conditions: list[CustomFormatConditionInput | FormatCondition],
+    supersedes: list[UUID] | tuple[str, ...] = (),
+) -> dict[str, Any]:
     return {
         "schema_version": CUSTOM_FORMAT_SCHEMA_VERSION,
         "supersedes": [str(item) for item in supersedes],
@@ -150,13 +147,7 @@ def _definition(conditions: list[Any], supersedes: list[UUID] | tuple[str, ...] 
 
 
 def _supersedes_ids(definition: dict[str, Any] | None) -> list[UUID]:
-    values: list[UUID] = []
-    for value in (definition or {}).get("supersedes", []):
-        try:
-            values.append(UUID(str(value)))
-        except (TypeError, ValueError):
-            continue
-    return list(dict.fromkeys(values))
+    return list(dict.fromkeys(UUID(str(value)) for value in (definition or {}).get("supersedes", [])))
 
 
 def _evaluation_format_from_model(row: CustomFormatModel) -> EvaluationFormat:
@@ -165,7 +156,6 @@ def _evaluation_format_from_model(row: CustomFormatModel) -> EvaluationFormat:
             "id": str(row.id),
             "name": row.name,
             "description": row.description,
-            "media_scope": CustomFormatScope.BOTH.value,
             "enabled": row.enabled,
             "condition_definition": dict(row.condition_definition or {}),
         }
@@ -178,7 +168,6 @@ def _evaluation_format_from_test(value: CustomFormatTestDefinition) -> Evaluatio
             "id": str(value.id) if value.id else None,
             "name": value.name,
             "description": value.description,
-            "media_scope": CustomFormatScope.BOTH.value,
             "enabled": value.enabled,
             "condition_definition": _definition(value.conditions, value.supersedes),
         }
@@ -220,10 +209,9 @@ async def _response(db: AsyncSession, row: CustomFormatModel) -> CustomFormatRes
         id=row.id,
         name=row.name,
         description=row.description,
-        media_scope=CustomFormatScope.BOTH,
         enabled=row.enabled,
         builtin=row.builtin,
-        schema_version=int((row.condition_definition or {}).get("schema_version", CUSTOM_FORMAT_SCHEMA_VERSION)),
+        schema_version=int(row.condition_definition["schema_version"]),
         conditions=conditions,
         condition_count=len(conditions),
         supersedes=_supersedes_ids(row.condition_definition),
@@ -301,7 +289,6 @@ def _validate_evaluation_format(fmt: EvaluationFormat) -> None:
 async def list_custom_formats(
     page: int = 1,
     page_size: int = 50,
-    scope: CustomFormatScope | None = None,
     enabled: bool | None = None,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -309,8 +296,6 @@ async def list_custom_formats(
     page = max(1, page)
     page_size = min(max(1, page_size), 250)
     conditions = []
-    # `scope` remains accepted for compatibility, but Custom Formats are now
-    # media-agnostic. Quality Profiles decide whether a score matters.
     if enabled is not None:
         conditions.append(CustomFormatModel.enabled.is_(enabled))
     count_query = select(func.count()).select_from(CustomFormatModel)
@@ -399,7 +384,6 @@ async def create_custom_format(
         {
             "name": name,
             "description": payload.description,
-            "media_scope": CustomFormatScope.BOTH.value,
             "enabled": payload.enabled,
             "condition_definition": definition,
         }
@@ -409,7 +393,6 @@ async def create_custom_format(
         id=row_id,
         name=name,
         description=payload.description.strip() if payload.description else None,
-        media_scope=MediaScope.BOTH,
         enabled=payload.enabled,
         condition_definition=definition,
         revision=1,
@@ -451,7 +434,6 @@ async def test_custom_format(
 @router.post("/test-all", response_model=CustomFormatTestAllResponse)
 async def test_all_custom_formats(
     payload: CustomFormatTestAllRequest,
-    request: Request,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatTestAllResponse:
@@ -460,13 +442,8 @@ async def test_all_custom_formats(
         query = query.where(CustomFormatModel.enabled.is_(True))
     rows = (await db.scalars(query.order_by(func.lower(CustomFormatModel.name)))).all()
     formats = [_evaluation_format_from_model(row) for row in rows]
-    # The editor can include its unsaved definition when comparing all
-    # formats. Keep this as a compatibility extension rather than changing the
-    # public request contract just for editor state.
-    raw_payload = await request.json()
-    raw_draft = raw_payload.get("custom_format") if isinstance(raw_payload, dict) else None
-    if raw_draft is not None:
-        draft_definition = CustomFormatTestDefinition.model_validate(raw_draft)
+    if payload.custom_format is not None:
+        draft_definition = payload.custom_format
         draft = _evaluation_format_from_test(draft_definition)
         _validate_evaluation_format(draft)
         draft_id = str(draft_definition.id) if draft_definition.id else None
@@ -514,8 +491,15 @@ async def export_all_custom_formats(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatExportBundle:
-    rows = (await db.scalars(select(CustomFormatModel).order_by(func.lower(CustomFormatModel.name)))).all()
-    names_by_id = {row.id: row.name for row in rows}
+    rows = (
+        await db.scalars(
+            select(CustomFormatModel)
+            .where(CustomFormatModel.builtin.is_(False))
+            .order_by(func.lower(CustomFormatModel.name))
+        )
+    ).all()
+    all_rows = (await db.scalars(select(CustomFormatModel))).all()
+    names_by_id = {row.id: row.name for row in all_rows}
     return CustomFormatExportBundle(custom_formats=[_export_item(row, names_by_id) for row in rows])
 
 
@@ -525,14 +509,6 @@ async def import_custom_formats(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatImportResponse:
-    if payload.application.casefold() != "medialogue":
-        raise AppError("INVALID_CUSTOM_FORMAT_IMPORT", "This file is not a Medialogue Custom Format export.", status_code=422)
-    if payload.schema_version != CUSTOM_FORMAT_SCHEMA_VERSION:
-        raise AppError(
-            "UNSUPPORTED_CUSTOM_FORMAT_SCHEMA",
-            f"Custom Format schema {payload.schema_version} is not supported.",
-            status_code=422,
-        )
     names = [item.name.strip() for item in payload.custom_formats]
     if len({name.casefold() for name in names}) != len(names):
         raise AppError("DUPLICATE_CUSTOM_FORMAT_IMPORT", "Import contains duplicate Custom Format names.", status_code=422)
@@ -546,7 +522,6 @@ async def import_custom_formats(
             {
                 "name": item.name.strip(),
                 "description": item.description,
-                "media_scope": CustomFormatScope.BOTH.value,
                 "enabled": item.enabled,
                 "condition_definition": definition,
             }
@@ -555,7 +530,6 @@ async def import_custom_formats(
         row = CustomFormatModel(
             name=item.name.strip(),
             description=item.description.strip() if item.description else None,
-            media_scope=MediaScope.BOTH,
             enabled=item.enabled,
             condition_definition=definition,
             revision=1,
@@ -606,7 +580,6 @@ async def get_custom_format(
 
 
 @router.patch("/{custom_format_id}", response_model=CustomFormatResponse)
-@router.put("/{custom_format_id}", response_model=CustomFormatResponse, include_in_schema=False)
 async def update_custom_format(
     custom_format_id: UUID,
     payload: CustomFormatUpdate,
@@ -636,9 +609,6 @@ async def update_custom_format(
     if "description" in values:
         description = values["description"]
         row.description = str(description).strip() if description else None
-    # Scope is no longer part of Custom Format behavior. Normalize edited
-    # legacy rows so persisted data converges on the media-agnostic model.
-    row.media_scope = MediaScope.BOTH
     if "enabled" in values and values["enabled"] is not None:
         row.enabled = bool(values["enabled"])
     if payload.conditions is not None or payload.supersedes is not None:
@@ -727,13 +697,31 @@ async def delete_custom_format(
 
 
 def _export_item(row: CustomFormatModel, names_by_id: dict[UUID, str]) -> CustomFormatExportItem:
+    if row.builtin:
+        raise AppError(
+            "BUILTIN_CUSTOM_FORMAT_EXPORT_UNAVAILABLE",
+            "Built-in Custom Formats are part of Medialogue and are not exportable.",
+            status_code=409,
+        )
     fmt = _evaluation_format_from_model(row)
     return CustomFormatExportItem(
+        schema_version=CUSTOM_FORMAT_SCHEMA_VERSION,
         name=row.name,
         description=row.description,
-        media_scope=CustomFormatScope.BOTH,
         enabled=row.enabled,
-        conditions=[condition.to_dict() for condition in fmt.conditions],
+        conditions=[
+            CustomFormatConditionInput(
+                id=condition.id,
+                name=condition.name,
+                pattern=condition.pattern,
+                required=condition.required,
+                negate=condition.negate,
+                case_sensitive=condition.case_sensitive,
+                group=condition.group,
+                score_offset=condition.score_offset,
+            )
+            for condition in fmt.conditions
+        ],
         supersedes=[names_by_id[item] for item in _supersedes_ids(row.condition_definition) if item in names_by_id],
     )
 

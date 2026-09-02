@@ -224,7 +224,7 @@ def _release_matches_member_identity(
     if release.show_id != show_id or release.season_id != season_id:
         return False
     release_identity = parse_release(release.raw_release_name).identity
-    release_seasons = release_identity.season_numbers
+    release_seasons = release_identity.seasons
     if len(release_seasons) > 1:
         return False
     if release_seasons and season_number not in release_seasons:
@@ -519,7 +519,7 @@ async def reconcile_show_directory(
             year=year,
         )
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
-        return "review" if discovery.review_state == NewMediaState.PENDING else "matched"
+        return "review" if discovery.new_media_state == NewMediaState.PENDING else "matched"
 
     if show is None:
         tmdb_resolution = await resolve_show_identity_detailed(db, title, year)
@@ -582,7 +582,7 @@ async def reconcile_show_directory(
     for candidate in (torrent_parse, folder_parse):
         if (
             candidate is not None
-            and len(candidate.identity.season_numbers) == 1
+            and len(candidate.identity.seasons) == 1
             and candidate.identity.season is not None
             and not candidate.identity.episodes
         ):
@@ -715,13 +715,12 @@ async def reconcile_show_directory(
             source_id=media_file.id,
             raw_name=Path(relative_path).stem,
             parse_snapshot=parsed.to_dict(),
-            parser_version=parsed.parser_version,
         ))
 
         explicit_member_season = parsed.identity.season
         explicit_member_episodes = tuple(dict.fromkeys(parsed.identity.episodes))
         belongs_to_pack = torrent_member_paths is None or relative_path in torrent_member_paths
-        container_seasons = container_parse.identity.season_numbers if container_parse is not None else ()
+        container_seasons = container_parse.identity.seasons if container_parse is not None else ()
         container_episodes = (
             tuple(dict.fromkeys(container_parse.identity.episodes))
             if container_parse is not None
@@ -970,8 +969,8 @@ async def reconcile_show_directory(
     discovery = await db.scalar(
         select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
     )
-    if discovery is not None and discovery.review_state != NewMediaState.APPROVED:
-        discovery.review_state = NewMediaState.APPROVED
+    if discovery is not None and discovery.new_media_state != NewMediaState.APPROVED:
+        discovery.new_media_state = NewMediaState.APPROVED
         discovery.selected_tmdb_id = show.tmdb_id
         discovery.approved_media_id = show.id
         discovery.reviewed_at = utcnow()

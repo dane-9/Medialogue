@@ -100,7 +100,7 @@ medialogue-recovery-<job-id>.zip
 
 The database backup is a consistent SQLite file created with SQLite's online backup API. It can be produced while Medialogue is running and is verified with `PRAGMA integrity_check` before packaging. Export also verifies the database file, torrent-archive mount, and export directory.
 
-`backup-metadata.json` records the application and SQLite versions, Alembic schema revision, torrent-manifest schema version, export timestamp, and temporary-download expiry. Recovery Bundles include the live file-backed integration configuration (`config/live/medialogue.json` and `config/live/secrets.enc`) plus a human-readable sensitive configuration export, the runtime database URL, and the application secret key. **The Recovery Bundle is therefore highly sensitive and should be protected like a database/password backup.**
+`backup-metadata.json` records the application and SQLite versions, current recovery/torrent-manifest format versions, export timestamp, and temporary-download expiry. Recovery Bundles include the live file-backed integration configuration (`config/live/medialogue.json` and `config/live/secrets.enc`) plus a human-readable sensitive configuration export, the runtime database URL, and the application secret key. **The Recovery Bundle is therefore highly sensitive and should be protected like a database/password backup.**
 
 The library inventory is deliberately readable without SQLite tooling and records Movies, Shows, releases, Episodes, paths, media files, torrent associations, Plex observations, parse evidence, and Problems. It is secondary evidence; the SQLite backup remains the authoritative application-state backup.
 
@@ -114,7 +114,7 @@ Medialogue does not perform an automatic in-place database restore from the web 
 4. Recreate/adapt deployment environment values from `config/application-config-export.json`. Hostnames/paths may need to change on the new host.
 5. Restore archived torrents to the configured archive mount by copying `torrent-archive/torrents/` into `/torrent-archive/torrents/` and `manifests/` into `/torrent-archive/manifests/`.
 6. Restore `config/live/medialogue.json` and `config/live/secrets.enc` to the configured `/config` volume and use the same `MEDIALOGUE_SECRET_KEY` recorded/protected with the backup.
-7. Start Medialogue. Restore only a database created by a compatible Medialogue schema; PostgreSQL databases are intentionally not imported.
+7. Start Medialogue. Recovery Bundles are supported only with the Medialogue build that created them; cross-build database restore is intentionally unsupported. PostgreSQL databases are intentionally not imported.
 8. Recreate the media bind mounts and remote-path mappings appropriate to the new host before scanning. Medialogue will not relocate media automatically.
 
 Never replace the SQLite file while Medialogue is running, and do not copy only its `-wal` or `-shm` sidecar files.
@@ -155,7 +155,7 @@ Audio Channels      HDR Type
 Release Attribute
 ```
 
-Every new condition uses a regular expression against the full raw release title, case-insensitive by default with an optional case-sensitive setting. Older imported or previously saved structured conditions remain supported internally for compatibility, but the editor no longer asks users to choose a parser field.
+User-defined Custom Format conditions are regular expressions against the full raw release title, case-insensitive by default with an optional case-sensitive setting. Parser-backed structured conditions are reserved for Medialogue's built-in formats and are not part of the user-defined format schema.
 
 When multiple rules match, only the highest matching rule offset is applied. A regex may provide an arbitrary numbered offset with the Python-style named group `(?P<score_offset>\d+)`; otherwise the rule's configured offset is used. The final contribution is the Quality Profile score plus that match offset.
 
@@ -326,7 +326,7 @@ python scripts/generate_api_contract.py
 
 The generated TypeScript lives under `frontend/src/api/generated/` and should not be edited by hand. `openapi-fetch` consumes its `paths` contract so every frontend API operation is checked for the HTTP method, path parameters, query parameters, request body, and response shape. The shared transport middleware preserves Medialogue's session-cookie, CSRF, and API-error behavior; there is no parallel handwritten request transport.
 
-The handwritten API layer is organized by subsystem under `frontend/src/api/modules/`, while DTO-to-view-model transformations live under `frontend/src/api/mappers/`. `frontend/src/api/client.ts` is intentionally only a compatibility barrel that combines the subsystem APIs into the existing flat `api` object, so UI callers do not depend on the internal file layout.
+The handwritten API layer is organized by subsystem under `frontend/src/api/modules/`, while DTO-to-view-model transformations live under `frontend/src/api/mappers/`. UI callers import the subsystem APIs they use directly.
 
 Frontend view models may still differ from transport DTOs; small mapping functions are used where the UI intentionally needs different defaults or representation. Runtime validation is deliberately limited to trust boundaries instead of re-validating every normal FastAPI response in the browser. Custom Format JSON imports are validated before submission and are validated again by Pydantic on the backend; structured `job.status` SSE payloads are validated before the UI uses their fields; TMDB and qBittorrent adapters validate external JSON structure before mapping it into Medialogue models.
 

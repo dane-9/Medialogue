@@ -23,7 +23,7 @@ Settings → Backup / Recovery creates a ZIP containing:
 - torrent archive data and recovery manifests;
 - a sensitive human-readable configuration export for disaster recovery;
 - a readable library inventory;
-- compatibility/version metadata.
+- current recovery-format and application-version metadata.
 
 The bundle contains credentials and database contents. Store it as sensitive backup material.
 
@@ -45,7 +45,7 @@ The bundle contains credentials and database contents. Store it as sensitive bac
 11. Select the Ready rows to recover and use **Review and submit**. The signed preview is short-lived and is revalidated before the job starts; if clients, paths, media folders, archive data, or qBittorrent contents changed, Medialogue requires a new preview.
 12. Confirm the bulk submission. Each torrent is validated again immediately before it is sent to qBittorrent.
 
-Bulk recovery restores the preserved qBittorrent save path, category, tags, applicable torrent settings, and captured per-file priorities. A file whose archived qBittorrent priority was `0` remains unselected. If old recovery evidence predates file-selection capture, the preview calls that out and qBittorrent's default file selection is used.
+Bulk recovery restores the preserved qBittorrent save path, category, tags, applicable torrent settings, and captured per-file priorities. A file whose archived qBittorrent priority was `0` remains unselected. Per-file selection evidence is mandatory; an archive without a complete current-format priority map is blocked and cannot be submitted.
 
 Medialogue does not create or move recovered media directories. The saved path is sent to qBittorrent only after it resolves through any configured qBittorrent remote-path mapping into the appropriate enabled Movies or Shows media folder. qBittorrent remains responsible for downloading and placement.
 

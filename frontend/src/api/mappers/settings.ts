@@ -3,7 +3,6 @@ import type {
   CustomFormatSection, MediaProfileSettings, QualityDefinition, QualityProfile,
 } from '../../types'
 import type { components } from '../generated/schema'
-import { regexLiteral, textValue } from './shared'
 
 type CustomFormatConditionDto = components['schemas']['CustomFormatConditionResponse']
 type CustomFormatDto = components['schemas']['CustomFormatResponse']
@@ -17,19 +16,10 @@ type CustomFormatConditionInputDto = components['schemas']['CustomFormatConditio
 type CustomFormatCreateDto = components['schemas']['CustomFormatCreate']
 
 export function mapCustomFormatCondition(value: CustomFormatConditionDto): CustomFormatCondition {
-  const rawValue = value.value
-  const normalizedValue = Array.isArray(rawValue)
-    ? rawValue.map((entry) => textValue(entry))
-    : rawValue === undefined || rawValue === null ? undefined : textValue(rawValue)
-  const fallbackPattern = Array.isArray(rawValue)
-    ? `^(?:${rawValue.map(regexLiteral).join('|')})$`
-    : rawValue === undefined || rawValue === null ? undefined : `^(?:${regexLiteral(rawValue)})$`
   return {
     id: value.id,
     name: value.name ?? undefined,
-    type: value.type,
-    value: normalizedValue,
-    pattern: value.pattern ?? fallbackPattern,
+    pattern: value.pattern ?? undefined,
     required: value.required,
     negate: value.negate,
     caseSensitive: value.case_sensitive,
@@ -168,9 +158,7 @@ export function customFormatConditionPayload(condition: CustomFormatCondition): 
   return {
     id: condition.id || undefined,
     name: condition.name || undefined,
-    type: condition.type,
-    value: undefined,
-    pattern: condition.pattern || (typeof condition.value === 'string' ? condition.value : ''),
+    pattern: condition.pattern || '',
     required: condition.required,
     negate: condition.negate,
     case_sensitive: condition.caseSensitive,
@@ -183,7 +171,6 @@ export function customFormatPayload(format: Pick<CustomFormat, 'name' | 'descrip
   return {
     name: format.name,
     description: format.description || null,
-    media_scope: 'both',
     enabled: format.enabled,
     conditions: format.conditions.map(customFormatConditionPayload),
     supersedes: format.supersedes,

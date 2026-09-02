@@ -20,10 +20,6 @@ async def liveness() -> LivenessResponse:
     return LivenessResponse(status="ok")
 
 
-@router.get("/api/v1/health", response_model=LivenessResponse)
-async def api_health() -> LivenessResponse:
-    return LivenessResponse(status="ok")
-
 
 @router.get("/readyz", response_model=ReadinessResponse)
 async def readiness(db: AsyncSession = Depends(get_db)) -> ReadinessResponse:
@@ -34,7 +30,6 @@ async def readiness(db: AsyncSession = Depends(get_db)) -> ReadinessResponse:
     return ReadinessResponse(status="ok", database="available")
 
 
-@router.get("/integrations/health", response_model=IntegrationHealthResponse, include_in_schema=False)
 @router.get("/api/v1/integrations/health", response_model=IntegrationHealthResponse)
 async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> IntegrationHealthResponse:
     roots = (await db.scalars(select(StorageRoot))).all()

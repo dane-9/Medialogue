@@ -344,13 +344,11 @@ async def lookup_shows(
     credits: dict[int, tuple[str | None, tuple[str, ...]]] = {}
     try:
         matches = await client.search_show(query, year)
-        credit_loader = getattr(client, "get_show_credits", None)
-        if callable(credit_loader):
-            for item in matches[:6]:
-                try:
-                    credits[item.tmdb_id] = await credit_loader(item.tmdb_id)
-                except Exception:
-                    credits[item.tmdb_id] = (None, ())
+        for item in matches[:6]:
+            try:
+                credits[item.tmdb_id] = await client.get_show_credits(item.tmdb_id)
+            except Exception:
+                credits[item.tmdb_id] = (None, ())
     except Exception as exc:
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Show lookup failed: {exc}", status_code=503) from exc
     finally:

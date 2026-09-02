@@ -10,12 +10,7 @@ from app.api.downloads import get_qbittorrent_client_factory
 from app.api.plex import get_plex_client_factory
 from app.api.tmdb import get_tmdb_client_factory
 from app.core.errors import AppError
-from app.core.problem_types import (
-    RETIRED_PROBLEM_REASONS,
-    problem_description,
-    problem_label,
-    problem_title,
-)
+from app.core.problem_types import problem_description, problem_label, problem_title
 from app.db import session as db_session
 from app.db.session import get_db
 from app.models.auth import AdminUser
@@ -409,10 +404,7 @@ async def run_problem_recheck(
 
 
 def _parse_severity(value: str) -> Severity:
-    aliases = {"high": Severity.ERROR, "medium": Severity.WARNING, "low": Severity.INFO}
     normalized = value.casefold()
-    if normalized in aliases:
-        return aliases[normalized]
     try:
         return Severity(normalized)
     except ValueError as exc:
@@ -626,9 +618,8 @@ async def list_problems(
     db: AsyncSession = Depends(get_db),
 ) -> Collection[ProblemResponse]:
     page_size = min(max(page_size, 1), 250)
-    visible_filter = Problem.reason.notin_(RETIRED_PROBLEM_REASONS)
-    query = select(Problem).where(visible_filter)
-    count_query = select(func.count()).select_from(Problem).where(visible_filter)
+    query = select(Problem)
+    count_query = select(func.count()).select_from(Problem)
     if reason:
         query = query.where(Problem.reason == reason)
         count_query = count_query.where(Problem.reason == reason)
@@ -686,7 +677,7 @@ async def count_problems(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
-    query = select(func.count()).select_from(Problem).where(Problem.reason.notin_(RETIRED_PROBLEM_REASONS))
+    query = select(func.count()).select_from(Problem)
     if status_filter:
         try:
             parsed = ProblemStatus(status_filter)
@@ -707,15 +698,15 @@ async def problem_summary(
     db: AsyncSession = Depends(get_db),
 ) -> ProblemSummaryResponse:
     open_count = int(
-        await db.scalar(select(func.count()).select_from(Problem).where(Problem.status == ProblemStatus.OPEN, Problem.reason.notin_(RETIRED_PROBLEM_REASONS))) or 0
+        await db.scalar(select(func.count()).select_from(Problem).where(Problem.status == ProblemStatus.OPEN)) or 0
     )
     suppressed_count = int(
-        await db.scalar(select(func.count()).select_from(Problem).where(Problem.status == ProblemStatus.DISMISSED, Problem.reason.notin_(RETIRED_PROBLEM_REASONS))) or 0
+        await db.scalar(select(func.count()).select_from(Problem).where(Problem.status == ProblemStatus.DISMISSED)) or 0
     )
     workflow_rows = (
         await db.execute(
             select(Problem.workflow, func.count())
-            .where(Problem.status == ProblemStatus.OPEN, Problem.reason.notin_(RETIRED_PROBLEM_REASONS))
+            .where(Problem.status == ProblemStatus.OPEN)
             .group_by(Problem.workflow)
         )
     ).all()
@@ -732,7 +723,7 @@ async def recheck_open_problems(
     qbittorrent_client_factory=Depends(get_qbittorrent_client_factory),
     plex_client_factory=Depends(get_plex_client_factory),
 ) -> ProblemRecheckAllResponse:
-    problems = (await db.scalars(select(Problem).where(Problem.status == ProblemStatus.OPEN, Problem.reason.notin_(RETIRED_PROBLEM_REASONS)))).all()
+    problems = (await db.scalars(select(Problem).where(Problem.status == ProblemStatus.OPEN))).all()
     queued: list[tuple[Problem, Job]] = []
     for problem in problems:
         await resolve_explicit_problem_action(
@@ -789,7 +780,7 @@ async def delete_problem(
 @router.get("/{problem_id}", response_model=ProblemResponse)
 async def get_problem(problem_id: UUID, _: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> ProblemResponse:
     problem = await db.get(Problem, problem_id)
-    if problem is None or problem.reason in RETIRED_PROBLEM_REASONS:
+    if problem is None:
         raise AppError("NOT_FOUND", "Problem was not found.", status_code=404)
     subjects = await _problem_subjects(db, [problem])
     return _response(problem, subjects, await _problem_posters(db, [problem]), await _problem_tmdb_ids(db, [problem]))

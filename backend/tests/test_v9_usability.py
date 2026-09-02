@@ -13,7 +13,7 @@ from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
 from app.main import create_app
-from app.models.domain import Event, MediaDirectory, MediaFile, MediaRole, MediaType, Movie, Problem, ProblemStatus, Severity, StorageRoot, classify_problem_workflow
+from app.models.domain import Event, MediaDirectory, MediaType, Movie, Problem, ProblemStatus, Severity, StorageRoot, classify_problem_workflow
 from app.services.reconciliation import open_problem
 
 
@@ -110,10 +110,10 @@ def test_problem_queue_paginates_and_supports_suppression_restore_and_single_del
     assert first.json()["pages"] == 3
     assert len(first.json()["items"]) == 100
 
-    medium = client.get("/api/v1/problems?status=open&severity=medium&page_size=250")
+    medium = client.get("/api/v1/problems?status=open&severity=warning&page_size=250")
     assert medium.status_code == 200, medium.text
     assert medium.json()["total"] == 275
-    assert client.get("/api/v1/problems?status=open&severity=high&page_size=250").json()["total"] == 0
+    assert client.get("/api/v1/problems?status=open&severity=error&page_size=250").json()["total"] == 0
 
     third = client.get("/api/v1/problems?status=open&page=3&page_size=100")
     assert third.status_code == 200
@@ -169,59 +169,6 @@ def test_problem_queue_paginates_and_supports_suppression_restore_and_single_del
     assert restored.status_code == 200, restored.text
     assert restored.json()["status"] == "open"
     assert restored.json()["workflow"] == "manual"
-
-
-def test_retired_container_mismatch_problem_is_hidden_from_problem_apis(client: TestClient) -> None:
-    _headers(client)
-
-    async def seed():
-        async with db_session.async_session_factory() as db:
-            directory = MediaDirectory(resolved_path="/shows/Example Show/Season 01")
-            db.add(directory)
-            await db.flush()
-            media_file = MediaFile(
-                media_directory_id=directory.id,
-                relative_path="Example.Show.S01E01.mkv",
-                filename="Example.Show.S01E01.mkv",
-                media_role=MediaRole.EPISODE_VIDEO,
-            )
-            db.add(media_file)
-            await db.flush()
-            db.add(
-                Problem(
-                    reason="EPISODE_CONTAINER_MISMATCH",
-                    entity_type="media_file",
-                    entity_id=media_file.id,
-                    message="Episode needs review.",
-                )
-            )
-            await db.commit()
-
-    asyncio.run(seed())
-    response = client.get("/api/v1/problems?status=open&reason=EPISODE_CONTAINER_MISMATCH")
-    assert response.status_code == 200, response.text
-    assert response.json()["total"] == 0
-    assert client.get("/api/v1/problems/count?status=open").json()["count"] == 0
-    assert client.get("/api/v1/problems/summary").json()["open"] == 0
-
-
-def test_retired_episode_mapping_problem_is_hidden_from_problem_apis(client: TestClient) -> None:
-    _headers(client)
-
-    async def seed():
-        async with db_session.async_session_factory() as db:
-            db.add(Problem(
-                reason="EPISODE_MAPPING_UNRESOLVED",
-                entity_type="media_file",
-                entity_id=uuid.uuid4(),
-                message="Retired parser diagnostic.",
-            ))
-            await db.commit()
-
-    asyncio.run(seed())
-    assert client.get("/api/v1/problems?status=open&reason=EPISODE_MAPPING_UNRESOLVED").json()["total"] == 0
-    assert client.get("/api/v1/problems/count?status=open").json()["count"] == 0
-    assert client.get("/api/v1/problems/summary").json()["open"] == 0
 
 
 def test_recheck_all_targets_only_existing_open_problems(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

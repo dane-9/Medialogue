@@ -19,7 +19,6 @@ from app.db.bootstrap import (
     ensure_builtin_custom_formats,
     ensure_quality_definitions,
     mark_running_jobs_interrupted,
-    remove_retired_problem_types,
 )
 from app.db import session as db_session
 from app.db.session import configure_database
@@ -63,12 +62,10 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
     # /config is the source of truth for integration configuration. Fresh
-    # installs intentionally start empty; there is no legacy DB import path.
+    # Fresh installs intentionally start from the single current schema baseline.
     get_integration_config_store().ensure_initialized()
     try:
         async with db_session.async_session_factory() as db:
-            await remove_retired_problem_types(db)
-            await db.commit()
             if settings.bootstrap_admin:
                 await ensure_default_admin(db, settings)
             await ensure_quality_definitions(db)

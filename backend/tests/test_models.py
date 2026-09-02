@@ -44,7 +44,7 @@ def test_tmdb_ids_are_unique_and_scope_supports_both() -> None:
     assert ("tmdb_id",) in movie_unique
     assert ("tmdb_id",) in show_unique
     assert MediaScope.BOTH.value == "both"
-    assert CustomFormat.__table__.c.media_scope is not None
+    assert "media_scope" not in CustomFormat.__table__.c
     assert set(Indexer.__table__.c.keys()) == {
         "id", "health", "last_checked_at", "last_success_at", "latency_ms",
         "last_error", "created_at", "updated_at",

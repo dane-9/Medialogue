@@ -211,15 +211,10 @@ async def resolve_problem(
         query = query.where(Problem.entity_id.is_(None))
     else:
         query = query.where(Problem.entity_id == entity_id)
-    problems = (await db.scalars(query.order_by(Problem.created_at.asc()))).all()
-    if problems:
-        resolved_at = utcnow()
-        for problem in problems:
-            problem.status = ProblemStatus.RESOLVED
-            problem.resolved_at = resolved_at
-        # Old builds could race and create duplicate OPEN rows. Resolve every
-        # matching row defensively so stale duplicates cannot survive forever.
-        problem = problems[0]
+    problem = await db.scalar(query)
+    if problem is not None:
+        problem.status = ProblemStatus.RESOLVED
+        problem.resolved_at = utcnow()
         await create_event(
             db,
             "problem.resolved",
@@ -228,8 +223,6 @@ async def resolve_problem(
             message=f"Resolved problem: {problem.message}",
             details={
                 "problem_id": str(problem.id),
-                "problem_ids": [str(item.id) for item in problems],
-                "count": len(problems),
                 "reason": reason,
                 "resolution": "evidence_changed",
             },
@@ -509,12 +502,13 @@ async def _plex_evidence_for_candidate(
     configuration.last_checked_at = utcnow()
     try:
         await client.health()
+        snapshot = await client.library_snapshot()
         configuration.health = "healthy"
         configuration.last_success_at = utcnow()
         configuration.last_error = None
         for relative_path in candidate.media_files:
             checked_path = str(Path(candidate.path) / relative_path)
-            match = await client.find_exact_path(checked_path)
+            match = snapshot.find_exact_path(checked_path)
             if match is None:
                 continue
             return PlexCandidateEvidence(
@@ -713,7 +707,6 @@ async def reconcile_movie_directory(
             source_id=directory.id,
             raw_name=observation.name,
             parse_snapshot={**folder_parse.to_dict(), "identity_confidence": confidence},
-            parser_version=folder_parse.parser_version,
         )
     )
 
@@ -731,7 +724,7 @@ async def reconcile_movie_directory(
             db, directory, folder_parse, media_type=MediaType.MOVIES, title=title, year=year, confidence=confidence
         )
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
-        return "review" if discovery.review_state.value == "pending" else "matched"
+        return "review" if discovery.new_media_state.value == "pending" else "matched"
 
     # Title + year is enough evidence to ask an authoritative identity source.
     # A folder-only parse naturally scores 0.80; do not block it before TMDB or
@@ -750,7 +743,7 @@ async def reconcile_movie_directory(
             year=year,
             confidence=confidence,
         )
-        return "review" if discovery.review_state.value == "pending" else "matched"
+        return "review" if discovery.new_media_state.value == "pending" else "matched"
 
     plex_evidence = await _plex_evidence_for_candidate(db, movie.title if movie else title, movie.year if movie else year, observation)
 
@@ -892,8 +885,7 @@ async def reconcile_movie_directory(
                 release_group=folder_parse.release_group,
                 release_state=state,
                 became_current_at=utcnow() if state == ReleaseState.CURRENT else None,
-                parser_version=folder_parse.parser_version,
-                parse_snapshot={**folder_parse.to_dict(), "identity_confidence": confidence},
+                    parse_snapshot={**folder_parse.to_dict(), "identity_confidence": confidence},
             )
             db.add(release)
             await db.flush()
@@ -922,8 +914,8 @@ async def reconcile_movie_directory(
         discovery = await db.scalar(
             select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
         )
-        if discovery is not None and discovery.review_state != NewMediaState.APPROVED:
-            discovery.review_state = NewMediaState.APPROVED
+        if discovery is not None and discovery.new_media_state != NewMediaState.APPROVED:
+            discovery.new_media_state = NewMediaState.APPROVED
             discovery.selected_tmdb_id = movie.tmdb_id
             discovery.approved_media_id = movie.id
             discovery.reviewed_at = utcnow()
@@ -1038,7 +1030,7 @@ async def associate_incoming_torrent(
         # ShowRelease has a single Season foreign key. A multi-season torrent
         # (S01-S04) cannot safely be represented as an incoming Season 1 pack;
         # its individual files will be associated when they exist and scan.
-        if len(parsed.identity.season_numbers) > 1:
+        if len(parsed.identity.seasons) > 1:
             return None
         statement = select(Show).where(func.lower(Show.title) == title.casefold())
         if parsed.identity.year is not None:
@@ -1184,7 +1176,6 @@ async def associate_incoming_torrent(
             parsed_edition=parsed.edition,
             effective_edition=parsed.edition,
             release_state=ReleaseState.MISSING,
-            parser_version=parsed.parser_version,
             parse_snapshot={
                 **parsed.to_dict(),
                 "identity_confidence": confidence,

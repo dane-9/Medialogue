@@ -252,7 +252,6 @@ class MovieRelease(TimestampMixin, Base):
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     original_custom_format_score: Mapped[int | None] = mapped_column(Integer)
     current_custom_format_score: Mapped[int | None] = mapped_column(Integer)
-    parser_version: Mapped[str | None] = mapped_column(String(64))
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     selection_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
 
@@ -391,16 +390,14 @@ class MediaDiscovery(TimestampMixin, Base):
     __tablename__ = "media_discoveries"
     __table_args__ = (
         UniqueConstraint("media_directory_id", name="uq_media_discoveries_directory"),
-        Index("ix_media_discoveries_state", "review_state"),
-        Index("ix_media_discoveries_type_state", "media_type", "review_state"),
+        Index("ix_media_discoveries_new_media_state", "new_media_state"),
+        Index("ix_media_discoveries_type_new_media_state", "media_type", "new_media_state"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     media_directory_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("media_directories.id", ondelete="CASCADE"), nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
-    # The attribute and column retain their historical name for database and API
-    # compatibility; application code presents this state as New Media.
-    review_state: Mapped[NewMediaState] = mapped_column(SAEnum(NewMediaState, native_enum=False), default=NewMediaState.PENDING, nullable=False)
+    new_media_state: Mapped[NewMediaState] = mapped_column(SAEnum(NewMediaState, native_enum=False), default=NewMediaState.PENDING, nullable=False)
     parsed_title: Mapped[str | None] = mapped_column(String(512))
     parsed_year: Mapped[int | None] = mapped_column(Integer)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
@@ -673,7 +670,6 @@ class ParseEvidence(Base):
     source_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     raw_name: Mapped[str] = mapped_column(Text, nullable=False)
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
-    parser_version: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
@@ -684,7 +680,6 @@ class CustomFormat(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    media_scope: Mapped[MediaScope] = mapped_column(SAEnum(MediaScope, native_enum=False), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     condition_definition: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -963,7 +958,6 @@ class InteractiveSearchResult(Base):
     seeders: Mapped[int | None] = mapped_column(Integer)
     leechers: Mapped[int | None] = mapped_column(Integer)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    parser_version: Mapped[str | None] = mapped_column(String(64))
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     quality: Mapped[str | None] = mapped_column(String(256))
     edition: Mapped[str | None] = mapped_column(String(128))

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.domain import MediaDirectory, MediaDiscovery, MediaType, NewMediaState
-from app.parser import PARSER_VERSION, ReleaseParseResult, parse_release
+from app.parser import ReleaseParseResult
 from app.services.tmdb import (
     TMDBMovieIdentityResolution,
     TMDBShowIdentityResolution,
@@ -32,58 +31,12 @@ async def retire_missing_new_media_discovery(db: AsyncSession, directory_id: UUI
     discovery = await db.scalar(
         select(MediaDiscovery).where(
             MediaDiscovery.media_directory_id == directory_id,
-            MediaDiscovery.review_state == NewMediaState.PENDING,
+            MediaDiscovery.new_media_state == NewMediaState.PENDING,
         )
     )
     if discovery is None:
         return False
     await db.delete(discovery)
-    return True
-
-
-def refresh_discovery_parse(discovery: MediaDiscovery) -> bool:
-    """Reparse queued New Media evidence after the parser grammar changes.
-
-    New Media rows intentionally survive reloads, which also means their parsed
-    title and TMDB candidates can outlive the parser version that created them.
-    Refreshing lazily keeps existing queues correct without a one-off database
-    migration for every parser improvement.
-    """
-
-    snapshot = discovery.parse_snapshot if isinstance(discovery.parse_snapshot, dict) else {}
-    raw_name = snapshot.get("raw_name") or snapshot.get("raw")
-    if not isinstance(raw_name, str) or not raw_name.strip():
-        raw_name = Path(discovery.media_directory.resolved_path).name
-    current = parse_release(raw_name)
-    version_changed = snapshot.get("parser_version") != PARSER_VERSION
-    identity_changed = (
-        discovery.parsed_title != current.identity.title_candidate
-        or discovery.parsed_year != current.identity.year
-    )
-    if not version_changed and not identity_changed:
-        return False
-
-    if identity_changed:
-        manually_selected = (
-            discovery.selected_tmdb_id is not None
-            and discovery.selected_tmdb_id != discovery.suggested_tmdb_id
-        )
-        selected = next(
-            (
-                item
-                for item in discovery.candidates
-                if isinstance(item, dict) and item.get("tmdb_id") == discovery.selected_tmdb_id
-            ),
-            None,
-        )
-        discovery.candidates = [selected] if manually_selected and selected is not None else []
-        discovery.suggested_tmdb_id = None
-        if not manually_selected:
-            discovery.selected_tmdb_id = None
-
-    discovery.parsed_title = current.identity.title_candidate
-    discovery.parsed_year = current.identity.year
-    discovery.parse_snapshot = current.to_dict()
     return True
 
 
@@ -136,7 +89,7 @@ async def stage_media_discovery(
         discovery = MediaDiscovery(
             media_directory_id=directory.id,
             media_type=media_type,
-            review_state=NewMediaState.PENDING,
+            new_media_state=NewMediaState.PENDING,
         )
         db.add(discovery)
         await db.flush()

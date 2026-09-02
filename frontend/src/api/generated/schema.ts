@@ -732,23 +732,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Api Health */
-        get: operations["api_health_api_v1_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/indexers": {
         parameters: {
             query?: never;
@@ -2853,9 +2836,6 @@ export interface components {
              * @default 0
              */
             score_offset: number;
-            type: components["schemas"]["CustomFormatConditionType"];
-            /** Value */
-            value?: string | string[] | null;
         };
         /** CustomFormatConditionResponse */
         CustomFormatConditionResponse: {
@@ -2878,9 +2858,6 @@ export interface components {
              * @default 0
              */
             score_offset: number;
-            type: components["schemas"]["CustomFormatConditionType"];
-            /** Value */
-            value?: unknown;
         };
         /**
          * CustomFormatConditionType
@@ -2898,8 +2875,6 @@ export interface components {
              * @default true
              */
             enabled: boolean;
-            /** @default both */
-            media_scope: components["schemas"]["CustomFormatScope"];
             /** Name */
             name: string;
             /** Supersedes */
@@ -2942,18 +2917,20 @@ export interface components {
             /**
              * Application
              * @default Medialogue
+             * @constant
              */
-            application: string;
+            application: "Medialogue";
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem-Output"][];
+            custom_formats: components["schemas"]["CustomFormatExportItem"][];
             /**
              * Schema Version
              * @default 1
+             * @constant
              */
-            schema_version: number;
+            schema_version: 1;
         };
         /** CustomFormatExportItem */
-        "CustomFormatExportItem-Input": {
+        CustomFormatExportItem: {
             /** Conditions */
             conditions: components["schemas"]["CustomFormatConditionInput"][];
             /** Description */
@@ -2963,49 +2940,30 @@ export interface components {
              * @default true
              */
             enabled: boolean;
-            /** @default both */
-            media_scope: components["schemas"]["CustomFormatScope"];
             /** Name */
             name: string;
             /**
              * Schema Version
-             * @default 1
+             * @constant
              */
-            schema_version: number;
-            /** Supersedes */
-            supersedes?: string[];
-        };
-        /** CustomFormatExportItem */
-        "CustomFormatExportItem-Output": {
-            /** Conditions */
-            conditions: components["schemas"]["CustomFormatConditionInput"][];
-            /** Description */
-            description?: string | null;
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled: boolean;
-            /** @default both */
-            media_scope: components["schemas"]["CustomFormatScope"];
-            /** Name */
-            name: string;
-            /**
-             * Schema Version
-             * @default 1
-             */
-            schema_version: number;
+            schema_version: 1;
             /** Supersedes */
             supersedes?: string[];
         };
         /** CustomFormatImportBundle */
         CustomFormatImportBundle: {
-            /** Application */
-            application: string;
+            /**
+             * Application
+             * @constant
+             */
+            application: "Medialogue";
             /** Custom Formats */
-            custom_formats: components["schemas"]["CustomFormatExportItem-Input"][];
-            /** Schema Version */
-            schema_version: number;
+            custom_formats: components["schemas"]["CustomFormatExportItem"][];
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
         };
         /** CustomFormatImportResponse */
         CustomFormatImportResponse: {
@@ -3044,7 +3002,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            media_scope: components["schemas"]["CustomFormatScope"];
             /** Name */
             name: string;
             /** Revision */
@@ -3061,11 +3018,6 @@ export interface components {
             /** Used By Profiles */
             used_by_profiles: number;
         };
-        /**
-         * CustomFormatScope
-         * @enum {string}
-         */
-        CustomFormatScope: "movies" | "shows" | "both";
         /** CustomFormatSection */
         CustomFormatSection: {
             /** Format Ids */
@@ -3077,6 +3029,7 @@ export interface components {
         };
         /** CustomFormatTestAllRequest */
         CustomFormatTestAllRequest: {
+            custom_format?: components["schemas"]["CustomFormatTestDefinition"] | null;
             /**
              * Include Disabled
              * @default false
@@ -3086,8 +3039,6 @@ export interface components {
             indexer?: string | null;
             /** Languages */
             languages?: string[];
-            /** @default both */
-            media_scope: components["schemas"]["CustomFormatScope"];
             /** Quality Profile Id */
             quality_profile_id?: string | null;
             /** Release Name */
@@ -3123,8 +3074,6 @@ export interface components {
             enabled: boolean;
             /** Id */
             id?: string | null;
-            /** @default both */
-            media_scope: components["schemas"]["CustomFormatScope"];
             /**
              * Name
              * @default Test Format
@@ -3161,7 +3110,6 @@ export interface components {
             enabled?: boolean | null;
             /** Expected Revision */
             expected_revision?: number | null;
-            media_scope?: components["schemas"]["CustomFormatScope"] | null;
             /** Name */
             name?: string | null;
             /** Supersedes */
@@ -4400,6 +4348,7 @@ export interface components {
             /** Manual Edition Override */
             manual_edition_override?: string | null;
             media_type: components["schemas"]["MediaType"];
+            new_media_state: components["schemas"]["NewMediaState"];
             /** Parsed Edition */
             parsed_edition?: string | null;
             /** Parsed Title */
@@ -4414,7 +4363,6 @@ export interface components {
             quality_profile_id?: string | null;
             /** Quality Profile Name */
             quality_profile_name?: string | null;
-            review_state: components["schemas"]["NewMediaState"];
             /** Root Name */
             root_name: string;
             selected?: components["schemas"]["MediaDiscoveryCandidate"] | null;
@@ -5447,8 +5395,6 @@ export interface components {
             export_directory: string;
             /** Export Directory Writable */
             export_directory_writable: boolean;
-            /** Migration Revision */
-            migration_revision?: string | null;
             /** Reasons */
             reasons?: string[];
             /** Retention Hours */
@@ -5487,11 +5433,6 @@ export interface components {
             download_client_id?: string | null;
             /** Download Client Name */
             download_client_name?: string | null;
-            /**
-             * File Selection Captured
-             * @default false
-             */
-            file_selection_captured: boolean;
             /** Info Hash */
             info_hash: string;
             /** Media Title */
@@ -7258,7 +7199,6 @@ export interface operations {
             query?: {
                 page?: number;
                 page_size?: number;
-                scope?: components["schemas"]["CustomFormatScope"] | null;
                 enabled?: boolean | null;
             };
             header?: never;
@@ -8605,26 +8545,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    api_health_api_v1_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LivenessResponse"];
                 };
             };
         };

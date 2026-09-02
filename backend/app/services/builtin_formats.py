@@ -36,7 +36,6 @@ class BuiltinFormat:
     name: str
     description: str
     conditions: tuple[BuiltinCondition, ...]
-    media_scope: str = "both"
     # Whether a fresh install starts with this format on. Descriptive formats
     # are on by default; opinionated or noisy ones start off so they never
     # silently change a ranking you did not ask for.
@@ -351,7 +350,6 @@ def condition_definition(builtin: BuiltinFormat, *, supersedes: tuple[str, ...] 
             {
                 "id": f"{builtin.key}-{index}",
                 "type": condition.type,
-                "value": None,
                 "name": condition.name or builtin.name,
                 "pattern": regex_pattern(condition),
                 "required": condition.required,

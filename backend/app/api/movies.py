@@ -206,13 +206,11 @@ async def lookup_movies(
     credits: dict[int, tuple[str | None, tuple[str, ...]]] = {}
     try:
         matches = await client.search_movie(query, year)
-        credit_loader = getattr(client, "get_movie_credits", None)
-        if callable(credit_loader):
-            for item in matches[:6]:
-                try:
-                    credits[item.tmdb_id] = await credit_loader(item.tmdb_id)
-                except Exception:
-                    credits[item.tmdb_id] = (None, ())
+        for item in matches[:6]:
+            try:
+                credits[item.tmdb_id] = await client.get_movie_credits(item.tmdb_id)
+            except Exception:
+                credits[item.tmdb_id] = (None, ())
     except Exception as exc:
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Movie lookup failed: {exc}", status_code=503) from exc
     finally:

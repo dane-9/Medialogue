@@ -162,7 +162,6 @@ async def get_indexer(
 
 
 @router.put("/{indexer_id}", response_model=IndexerResponse)
-@router.patch("/{indexer_id}", response_model=IndexerResponse, include_in_schema=False)
 async def update_indexer(
     indexer_id: UUID,
     payload: IndexerUpdate,
@@ -242,7 +241,6 @@ async def test_unsaved_indexer(
 
 
 @router.post("/{indexer_id}/test", response_model=IndexerTestResponse)
-@router.post("/{indexer_id}/health/refresh", response_model=IndexerTestResponse, include_in_schema=False)
 async def test_saved_indexer(
     indexer_id: UUID,
     _: object = Depends(require_csrf),

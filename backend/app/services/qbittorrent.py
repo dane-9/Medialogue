@@ -17,7 +17,7 @@ from time import perf_counter
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import QBittorrentClient, TorrentTrackerSnapshot
@@ -73,17 +73,6 @@ async def _selected_tracker_title(
         .order_by(InteractiveSearchResult.selected_at.desc())
         .limit(1)
     )
-    if selected is None:
-        # Compatibility for selections made before info hashes were persisted.
-        selected = await db.scalar(
-            select(InteractiveSearchResult)
-            .where(
-                InteractiveSearchResult.selected_at.is_not(None),
-                func.lower(InteractiveSearchResult.title) == torrent_name.casefold(),
-            )
-            .order_by(InteractiveSearchResult.selected_at.desc())
-            .limit(1)
-        )
     title = str(selected.title or "").strip() if selected is not None else ""
     return title or None
 
@@ -664,11 +653,11 @@ async def _poll_download_client(
                             detail_adapter = client_factory(
                                 client.url, client.username or "", client.password or ""
                             )
-                        if needs_archive and hasattr(detail_adapter, "get_torrent_recovery_snapshot"):
+                        if needs_archive:
                             recovery_snapshot = await detail_adapter.get_torrent_recovery_snapshot(info_hash)
                             tracker_snapshots = _snapshot_trackers(recovery_snapshot)
                             tracker_details_collected = True
-                        elif hasattr(detail_adapter, "get_torrent_trackers"):
+                        else:
                             tracker_snapshots = await detail_adapter.get_torrent_trackers(info_hash)
                             tracker_details_collected = True
                         torrent.metadata_json = {

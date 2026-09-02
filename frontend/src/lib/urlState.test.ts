@@ -4,7 +4,7 @@ import { updateUrlParams } from './urlState'
 
 describe('URL state batches', () => {
   it('changes a Problems workflow while clearing selection and pagination atomically', () => {
-    const current = new URLSearchParams('problem=problem-1&page=3&severity=high')
+    const current = new URLSearchParams('problem=problem-1&page=3&severity=error')
 
     const updated = updateUrlParams(current, {
       workflow: 'choice',

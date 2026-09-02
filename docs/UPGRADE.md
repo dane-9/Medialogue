@@ -1,15 +1,14 @@
-# Upgrade
+# Development build replacement
 
-The current Medialogue development line uses a clean SQLite schema baseline. It does **not** import PostgreSQL data or convert Plex, TMDB, qBittorrent, or indexer configuration from an older database. Those settings live under `/config`.
+Medialogue currently has no cross-build data migration contract. When the current development schema or persisted formats change, start the new build with fresh application data instead of carrying database/config state forward.
 
-## Recommended procedure for this build
+## Recommended procedure
 
 1. Stop Medialogue.
-2. Keep/back up `/config/medialogue.json`, `/config/secrets.enc`, `/torrent-archive`, and `MEDIALOGUE_SECRET_KEY` if you want to retain integration configuration and torrent recovery data.
-3. Because this build is intended for a fresh SQLite database, do not attempt to point it at or import an older PostgreSQL database.
-4. Pull/rebuild and start the target image. The entrypoint runs `alembic upgrade head` only to create/validate the current fresh schema baseline; there is no legacy integration-config migration.
-5. Sign in and verify Integration Health. If `/config/medialogue.json` and `/config/secrets.enc` were not retained, configure integrations again through the UI.
-6. Add/verify Storage Roots. Every newly added root remains inactive until one explicit successful scan initializes it.
+2. Remove the prior development database and file-backed integration configuration.
+3. Pull/rebuild and start the target image. The entrypoint creates/validates the single current SQLite schema baseline.
+4. Sign in and configure integrations again through the UI.
+5. Add Storage Roots. Every newly added root remains inactive until one explicit successful scan initializes it.
 
 ## SQLite database
 
@@ -17,4 +16,4 @@ The database is `/config/medialogue.db`. Keep `/config` on a local filesystem an
 
 ## `MEDIALOGUE_SECRET_KEY`
 
-Do not change `MEDIALOGUE_SECRET_KEY` while reusing `/config/secrets.enc`. The encrypted secrets file is intentionally bound to that key; Medialogue will fail clearly instead of silently discarding credentials.
+`MEDIALOGUE_SECRET_KEY` protects the current build's encrypted secrets file. Do not copy `secrets.enc` between development builds.

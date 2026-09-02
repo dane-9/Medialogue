@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api/client'
+import { integrationsApi } from '../api/modules/integrations'
+import { searchApi } from '../api/modules/search'
+import { settingsApi } from '../api/modules/settings'
+import { showsApi } from '../api/modules/shows'
 import type {
   DownloadClient,
   DownloadClientCategory,
@@ -102,7 +105,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
   useEffect(() => {
     let alive = true
     setSetupLoading(true)
-    Promise.all([api.showDownloadPreview(show.tmdbId), api.qualityProfiles(), api.downloadClients(), api.showDownloadPreferences()])
+    Promise.all([showsApi.showDownloadPreview(show.tmdbId), settingsApi.qualityProfiles(), integrationsApi.downloadClients(), showsApi.showDownloadPreferences()])
       .then(([showPreview, profileRows, clientRows, downloadPreferences]) => {
         if (!alive) return
         const showClients = clientRows.filter((client) => client.enabled && client.scope === 'shows')
@@ -130,7 +133,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
     let alive = true
     setCategoryLoading(true)
     setError('')
-    api.downloadClientCategories(clientId)
+    integrationsApi.downloadClientCategories(clientId)
       .then((rows) => {
         if (!alive) return
         setCategories(rows)
@@ -163,7 +166,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
     let timer = 0
     const refresh = async () => {
       try {
-        const value = await api.searchJob(activeJobId)
+        const value = await searchApi.searchJob(activeJobId)
         if (!alive) return
         setSeasonStates((current) => ({
           ...current,
@@ -215,7 +218,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
       },
     }))
     try {
-      const accepted = await api.startUnattachedShowSeasonSearch(show.tmdbId, profileId, season.seasonNumber)
+      const accepted = await showsApi.startUnattachedShowSeasonSearch(show.tmdbId, profileId, season.seasonNumber)
       setSeasonStates((states) => ({
         ...states,
         [season.seasonNumber]: {
@@ -258,7 +261,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
   const changeIncludeYear = (checked: boolean) => {
     setIncludeYearInFolder(checked)
     setError('')
-    void api.saveShowDownloadPreferences(checked).catch((reason) => {
+    void showsApi.saveShowDownloadPreferences(checked).catch((reason) => {
       setError(reason instanceof Error ? reason.message : 'Could not save the folder-year preference.')
     })
   }
@@ -281,7 +284,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
         continue
       }
       try {
-        const response = await api.downloadSearchResult(result.id, {
+        const response = await searchApi.downloadSearchResult(result.id, {
           download_client_id: clientId,
           category,
           show_folder_name: showFolderBaseName,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import { api } from './api/client'
+import { settingsApi } from './api/modules/settings'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
 import { useConfirm } from './components/Confirm'
@@ -26,8 +26,6 @@ import type {
 function freshCondition(): CustomFormatCondition {
   return {
     id: browserSafeId(),
-    type: 'release_title',
-    value: undefined,
     pattern: '',
     required: false,
     negate: false,
@@ -63,9 +61,7 @@ function cloneFormat(format: CustomFormat): CustomFormat {
 }
 
 function conditionValue(condition: CustomFormatCondition): string {
-  if (condition.pattern !== undefined) return condition.pattern
-  if (Array.isArray(condition.value)) return `^(?:${condition.value.join('|')})$`
-  return condition.value ?? ''
+  return condition.pattern ?? ''
 }
 
 function formatJsonDownload(name: string, payload: Record<string, unknown>) {
@@ -137,7 +133,7 @@ export default function CustomFormatsPageView() {
   const loadFormats = async (preferredId?: string) => {
     setLoading(true)
     try {
-      const [items, profileRows, layout] = await Promise.all([api.customFormats(), api.qualityProfiles(), api.customFormatLayout()])
+      const [items, profileRows, layout] = await Promise.all([settingsApi.customFormats(), settingsApi.qualityProfiles(), settingsApi.customFormatLayout()])
       setFormats(items)
       setProfiles(profileRows)
       setSections(layout)
@@ -202,10 +198,10 @@ export default function CustomFormatsPageView() {
     setError(''); setMessage('')
     try {
       const clone = { ...cloneFormat(source), name: copyName(source.name, formats.map((item) => item.name)) }
-      const saved = await api.createCustomFormat(clone)
+      const saved = await settingsApi.createCustomFormat(clone)
       const section = sections.find((item) => item.formatIds.includes(source.id))
       if (section) {
-        await api.saveCustomFormatLayout(sections.map((item) => item.id === section.id
+        await settingsApi.saveCustomFormatLayout(sections.map((item) => item.id === section.id
           ? { ...item, formatIds: item.formatIds.flatMap((id) => id === source.id ? [id, saved.id] : [id]) }
           : item))
       }
@@ -230,9 +226,9 @@ export default function CustomFormatsPageView() {
     try {
       const saved = draft.id
         ? draft.builtin
-          ? await api.setCustomFormatEnabled(draft.id, draft.enabled, draft.revision)
-          : await api.updateCustomFormat(draft.id, { ...draft, expectedRevision: draft.revision })
-        : await api.createCustomFormat(draft)
+          ? await settingsApi.setCustomFormatEnabled(draft.id, draft.enabled, draft.revision)
+          : await settingsApi.updateCustomFormat(draft.id, { ...draft, expectedRevision: draft.revision })
+        : await settingsApi.createCustomFormat(draft)
       if (editorSectionId) {
         const alreadyInDestination = sections.find((section) => section.id === editorSectionId)?.formatIds.includes(saved.id) ?? false
         const nextLayout = sections.map((section) => ({
@@ -243,7 +239,7 @@ export default function CustomFormatsPageView() {
               : [...section.formatIds.filter((id) => id !== saved.id), saved.id]
             : section.formatIds.filter((id) => id !== saved.id),
         }))
-        await api.saveCustomFormatLayout(nextLayout)
+        await settingsApi.saveCustomFormatLayout(nextLayout)
       }
       await loadFormats(saved.id)
       setEditorOpen(false)
@@ -262,7 +258,7 @@ export default function CustomFormatsPageView() {
     })) return
     setSaving(true); setError(''); setMessage('')
     try {
-      await api.deleteCustomFormat(draft.id)
+      await settingsApi.deleteCustomFormat(draft.id)
       await loadFormats()
       setEditorOpen(false)
       setMessage('Custom Format deleted.')
@@ -272,26 +268,26 @@ export default function CustomFormatsPageView() {
 
   const testOne = async () => {
     setTesting(true); setError(''); setTestAllResult(null)
-    try { setTestResult(await api.testCustomFormat(draft, releaseName, testIndexer || undefined)) }
+    try { setTestResult(await settingsApi.testCustomFormat(draft, releaseName, testIndexer || undefined)) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not test the Custom Format.') }
     finally { setTesting(false) }
   }
 
   const testAll = async () => {
     setTesting(true); setError(''); setTestResult(null)
-    try { setTestAllResult(await api.testAllCustomFormats(releaseName, draft, testIndexer || undefined, testProfileId || undefined)) }
+    try { setTestAllResult(await settingsApi.testAllCustomFormats(releaseName, draft, testIndexer || undefined, testProfileId || undefined)) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not test all Custom Formats.') }
     finally { setTesting(false) }
   }
 
   const exportOne = async () => {
     if (!draft.id) { setError('Save this Custom Format before exporting it.'); return }
-    try { formatJsonDownload(`${draft.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'custom-format'}.json`, await api.exportCustomFormat(draft.id)) }
+    try { formatJsonDownload(`${draft.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'custom-format'}.json`, await settingsApi.exportCustomFormat(draft.id)) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not export the Custom Format.') }
   }
 
   const exportAll = async () => {
-    try { formatJsonDownload('medialogue-custom-formats.json', await api.exportCustomFormats()) }
+    try { formatJsonDownload('medialogue-custom-formats.json', await settingsApi.exportCustomFormats()) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not export Custom Formats.') }
   }
 
@@ -302,7 +298,7 @@ export default function CustomFormatsPageView() {
     setError(''); setMessage('')
     try {
       const raw: unknown = JSON.parse(await file.text())
-      const result = await api.importCustomFormats(parseCustomFormatImportBundle(raw))
+      const result = await settingsApi.importCustomFormats(parseCustomFormatImportBundle(raw))
       await loadFormats(result.imported[0]?.id)
       setMessage(`Imported ${result.count} Custom Format${result.count === 1 ? '' : 's'}.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import Custom Formats.') }
@@ -333,7 +329,7 @@ export default function CustomFormatsPageView() {
     setFormats((current) => current.map((item) => item.id === format.id ? { ...item, enabled } : item))
     setError('')
     try {
-      const saved = await api.setCustomFormatEnabled(format.id, enabled, format.revision)
+      const saved = await settingsApi.setCustomFormatEnabled(format.id, enabled, format.revision)
       setFormats((current) => current.map((item) => item.id === saved.id ? saved : item))
       setMessage(`${format.name} turned ${enabled ? 'on' : 'off'}.`)
     } catch (reason) {
@@ -381,7 +377,7 @@ export default function CustomFormatsPageView() {
     if (sectionDraft.some((section) => !section.name.trim())) { setError('Every section needs a name.'); return }
     setSaving(true); setError('')
     try {
-      const saved = await api.saveCustomFormatLayout(sectionDraft.map((section) => ({ ...section, name: section.name.trim() })))
+      const saved = await settingsApi.saveCustomFormatLayout(sectionDraft.map((section) => ({ ...section, name: section.name.trim() })))
       setSections(saved); setOrganizerOpen(false); setMessage('Custom Format organization saved.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save Custom Format organization.') }
     finally { setSaving(false) }
@@ -448,7 +444,7 @@ export default function CustomFormatsPageView() {
       titleAction={<EnabledButton enabled={draft.enabled} onChange={(next) => setDraft((current) => ({ ...current, enabled: next }))} />}
       footer={<>
         {draft.id && !draft.builtin ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
-        {draft.id ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
+        {draft.id && !draft.builtin ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
         <span className="modal-foot-spacer" />
         {dirty && <span className="footer-state">Unsaved changes</span>}
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
@@ -525,7 +521,7 @@ export default function CustomFormatsPageView() {
                   </div>
                 </div>
                 <div className="cf-rule-fields">
-                  <label className="cf-rule-value"><span>Regular expression</span><Input value={conditionValue(condition)} onChange={(event) => updateCondition(condition.id, { pattern: event.target.value, value: undefined })} placeholder="\\b(remux|bdremux)\\b" readOnly={draft.builtin} /></label>
+                  <label className="cf-rule-value"><span>Regular expression</span><Input value={conditionValue(condition)} onChange={(event) => updateCondition(condition.id, { pattern: event.target.value })} placeholder="\\b(remux|bdremux)\\b" readOnly={draft.builtin} /></label>
                   <label className="cf-rule-offset"><span>Score offset</span><Input type="number" value={condition.scoreOffset} min={-100000} max={100000} onChange={(event) => updateCondition(condition.id, { scoreOffset: Number(event.target.value) || 0 })} readOnly={draft.builtin} /></label>
                 </div>
               </div>)}

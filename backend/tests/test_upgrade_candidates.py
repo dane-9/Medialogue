@@ -304,8 +304,7 @@ def test_cross_group_custom_format_with_real_in_its_text_is_not_treated_as_revis
         headers=headers,
         json={
             "name": "Unreal Bonus",
-            "media_scope": "movies",
-            "conditions": [{"type": "release_title", "pattern": r"\bUnreal\b", "required": True}],
+            "conditions": [{"pattern": r"\bUnreal\b", "required": True}],
         },
     ).json()
     profile = client.post(
@@ -960,16 +959,15 @@ def test_profile_policy_change_blocks_cached_upgrade_candidates(client: TestClie
     assert "search for upgrades again" in row["execution_block_reason"].casefold()
 
 
-def test_indexer_custom_format_is_scored_symmetrically_for_current_and_candidate(client: TestClient) -> None:
+def test_release_title_custom_format_is_scored_symmetrically_for_current_and_candidate(client: TestClient) -> None:
     headers = _login(client)
     _create_indexer(client, headers, scope="movies")
     custom_format = client.post(
         "/api/v1/custom-formats",
         headers=headers,
         json={
-            "name": "Preferred Indexer",
-            "media_scope": "movies",
-            "conditions": [{"type": "indexer", "value": "Upgrade Indexer", "required": True}],
+            "name": "Indexer Movie",
+            "conditions": [{"pattern": "Indexer\\.Movie", "required": True}],
         },
     ).json()
     default = next(profile for profile in client.get("/api/v1/quality-profiles").json() if profile["is_default"])
@@ -1028,8 +1026,7 @@ def test_upgrade_response_exposes_current_custom_format_breakdown(client: TestCl
         headers=headers,
         json={
             "name": "Group GRP",
-            "media_scope": "movies",
-            "conditions": [{"type": "release_group", "pattern": "^GRP$"}],
+            "conditions": [{"pattern": "-GRP$"}],
         },
     ).json()
     default = next(profile for profile in client.get("/api/v1/quality-profiles").json() if profile["is_default"])

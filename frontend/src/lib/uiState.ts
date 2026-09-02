@@ -1,4 +1,4 @@
-import type { CustomFormatConditionType, Problem } from '../types'
+import type { Problem } from '../types'
 
 export type MediaView = 'cards' | 'table'
 
@@ -41,10 +41,6 @@ export function duplicateLoserIds(releaseIds: readonly string[], winnerReleaseId
 
 export function duplicatePreviewReady(releaseIds: readonly string[], winnerReleaseId: string): boolean {
   return Boolean(winnerReleaseId) && releaseIds.includes(winnerReleaseId) && duplicateLoserIds(releaseIds, winnerReleaseId).length > 0
-}
-
-export function isRegexConditionType(_type: CustomFormatConditionType): boolean {
-  return true
 }
 
 let fallbackIdCounter = 0

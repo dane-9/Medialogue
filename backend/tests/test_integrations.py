@@ -380,7 +380,8 @@ async def test_plex_exact_path_match_is_strong_evidence():
         )
 
     client = PlexClient("http://plex", "token", transport=httpx.MockTransport(handler))
-    match = await client.find_exact_path("/media/movies/Inception/movie.mkv")
+    snapshot = await client.library_snapshot()
+    match = snapshot.find_exact_path("/media/movies/Inception/movie.mkv")
     await client.close()
     assert match is not None
     assert match.rating_key == "10"

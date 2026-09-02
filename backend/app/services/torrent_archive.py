@@ -49,7 +49,7 @@ from app.services.integration_state import ConfiguredDownloadClient
 from app.services.jobs import JobFailure, checkpoint_job, run_job
 
 
-MANIFEST_SCHEMA_VERSION = 2
+MANIFEST_SCHEMA_VERSION = 1
 _HASH_RE = re.compile(r"^[0-9A-Za-z_-]{1,128}$")
 QBittorrentClientFactory = Callable[[str, str, str], QBittorrentClient]
 
@@ -119,7 +119,7 @@ def _valid_torrent_payload(payload: bytes) -> bool:
 
 
 def verify_torrent_archive(torrent: Torrent) -> tuple[bool, str | None]:
-    """Cryptographically bind valid torrent bytes to a schema-v2 manifest."""
+    """Cryptographically bind valid torrent bytes to the current manifest schema."""
 
     if torrent.archive_state != TorrentArchiveState.ARCHIVED:
         return False, "database archive state is not archived"
@@ -134,7 +134,7 @@ def verify_torrent_archive(torrent: Torrent) -> tuple[bool, str | None]:
         if not isinstance(manifest, dict):
             return False, "manifest root is invalid"
         if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
-            return False, "manifest schema is outdated"
+            return False, "manifest schema is unsupported"
         if str(manifest.get("torrent_info_hash") or "").casefold() != torrent.info_hash.casefold():
             return False, "manifest info hash does not match the torrent"
         archive = manifest.get("archive")
@@ -148,8 +148,7 @@ def verify_torrent_archive(torrent: Torrent) -> tuple[bool, str | None]:
             return False, "manifest recovery section is missing"
         if not isinstance(recovery.get("properties"), dict):
             return False, "recovery properties are invalid"
-        if not isinstance(recovery.get("files"), list):
-            return False, "recovery file manifest is invalid"
+        recovery_file_priorities(manifest)
         if not isinstance(recovery.get("trackers"), list):
             return False, "recovery tracker manifest is invalid"
         return True, None
@@ -194,7 +193,6 @@ async def _movie_associations(db: AsyncSession, torrent: Torrent) -> list[dict[s
                 "quality": quality.name if quality else None,
                 "edition": release.effective_edition,
                 "release_group": release.release_group,
-                "parser_version": release.parser_version,
                 "parse_snapshot": release.parse_snapshot,
                 "paths": [
                     {
@@ -245,7 +243,6 @@ async def _show_associations(db: AsyncSession, torrent: Torrent) -> list[dict[st
                 "quality": quality.name if quality else None,
                 "edition": None,
                 "release_group": release.release_group,
-                "parser_version": release.parse_snapshot.get("parser_version") if release.parse_snapshot else None,
                 "parse_snapshot": release.parse_snapshot,
                 "paths": [
                     {
@@ -379,32 +376,6 @@ async def build_recovery_manifest(
             "tracker_summary": torrent.tracker_summary or {},
             "metadata": metadata,
         },
-        # Compatibility/convenience fields intentionally mirror the original
-        # architecture example while the richer arrays preserve many-to-many
-        # history.
-        "media_type": _first_nonempty(primary.get("media_type"), existing.get("media_type")),
-        "internal_media_id": _first_nonempty(primary.get("media_id"), existing.get("internal_media_id")),
-        "tmdb_id": _first_nonempty(primary.get("tmdb_id"), existing.get("tmdb_id")),
-        "tvdb_id": _first_nonempty(primary.get("tvdb_id"), existing.get("tvdb_id")),
-        "media_title": _first_nonempty(primary.get("title"), existing.get("media_title")),
-        "media_year": _first_nonempty(primary.get("year"), existing.get("media_year")),
-        "release_name": _first_nonempty(primary.get("release_name"), existing.get("release_name")),
-        "quality": _first_nonempty(primary.get("quality"), existing.get("quality")),
-        "edition": _first_nonempty(primary.get("edition"), existing.get("edition")),
-        "release_group": _first_nonempty(primary.get("release_group"), existing.get("release_group")),
-        "previous_reported_path": _first_nonempty(
-            next((path.get("reported_path") for item in associations for path in item.get("paths", []) if path.get("reported_path")), None),
-            original_client.get("reported_save_path"),
-            existing.get("previous_reported_path"),
-        ),
-        "previous_resolved_path": _first_nonempty(
-            next((path.get("resolved_path") for item in associations for path in item.get("paths", []) if path.get("resolved_path")), None),
-            original_client.get("resolved_save_path"),
-            existing.get("previous_resolved_path"),
-        ),
-        "download_client_name": _first_nonempty(
-            original_client.get("download_client_name"), existing.get("download_client_name")
-        ),
         "media_associations": associations,
         "download_client_observations": observations,
         "recovery": recovery,
@@ -477,10 +448,7 @@ async def ensure_torrent_archived(
                 torrent_bytes = candidate
         if torrent_bytes is None:
             adapter = client_factory(download_client.url, download_client.username or "", download_client.password or "")
-            export = getattr(adapter, "export_torrent", None)
-            if export is None:
-                raise RuntimeError("qBittorrent adapter does not support torrent export.")
-            torrent_bytes = await export(torrent.info_hash)
+            torrent_bytes = await adapter.export_torrent(torrent.info_hash)
             if not _valid_torrent_payload(torrent_bytes):
                 raise RuntimeError("qBittorrent returned an empty or invalid torrent export.")
             _atomic_write(archive_path, torrent_bytes)
@@ -493,9 +461,7 @@ async def ensure_torrent_archived(
         try:
             if adapter is None:
                 adapter = client_factory(download_client.url, download_client.username or "", download_client.password or "")
-            snapshot_method = getattr(adapter, "get_torrent_recovery_snapshot", None)
-            if snapshot_method is not None:
-                recovery_snapshot = await snapshot_method(torrent.info_hash)
+            recovery_snapshot = await adapter.get_torrent_recovery_snapshot(torrent.info_hash)
         except Exception as exc:
             snapshot_error = f"recovery snapshot: {exc}"
             error = f"{error}; {snapshot_error}" if error else snapshot_error
@@ -583,21 +549,27 @@ def read_manifest(torrent: Torrent) -> dict[str, Any]:
 
 
 def recovery_file_priorities(manifest: dict[str, Any]) -> dict[int, int]:
-    """Extract the portable qBittorrent file-selection state from a manifest."""
+    """Return the complete qBittorrent file-selection state from a current manifest."""
 
-    recovery = manifest.get("recovery") if isinstance(manifest.get("recovery"), dict) else {}
-    files = recovery.get("files") if isinstance(recovery.get("files"), list) else []
+    recovery = manifest.get("recovery")
+    if not isinstance(recovery, dict):
+        raise ValueError("manifest recovery section is missing")
+    files = recovery.get("files")
+    if not isinstance(files, list) or not files:
+        raise ValueError("recovery file selection is missing")
     priorities: dict[int, int] = {}
-    for item in files:
+    for position, item in enumerate(files):
         if not isinstance(item, dict):
-            continue
+            raise ValueError(f"recovery file entry {position} is invalid")
         try:
             file_id = int(item["index"])
             priority = int(item["priority"])
         except (KeyError, TypeError, ValueError):
-            continue
+            raise ValueError(f"recovery file entry {position} is missing a valid index or priority") from None
         if file_id < 0 or priority not in {0, 1, 6, 7}:
-            continue
+            raise ValueError(f"recovery file entry {position} has an unsupported index or priority")
+        if file_id in priorities:
+            raise ValueError(f"recovery file index {file_id} is duplicated")
         priorities[file_id] = priority
     return priorities
 
@@ -658,11 +630,15 @@ async def prepare_torrent_restore(
     torrent = await db.get(Torrent, torrent_id)
     if torrent is None:
         raise AppError("NOT_FOUND", "Torrent archive record was not found.", status_code=404)
-    if torrent.archive_state != TorrentArchiveState.ARCHIVED or not torrent.archive_path:
-        raise AppError("TORRENT_NOT_ARCHIVED", "This torrent does not have a complete recovery archive.", status_code=409)
+    archive_valid, archive_error = verify_torrent_archive(torrent)
+    if not archive_valid:
+        raise AppError(
+            "TORRENT_ARCHIVE_INVALID",
+            f"This torrent does not have a valid recovery archive: {archive_error}.",
+            status_code=409,
+        )
+    assert torrent.archive_path is not None
     archive_path = Path(torrent.archive_path)
-    if not archive_path.is_file():
-        raise AppError("TORRENT_ARCHIVE_FILE_MISSING", "The archived .torrent file is missing from the archive mount.", status_code=409)
 
     from app.services.integration_state import get_configured_download_client
 
@@ -671,10 +647,12 @@ async def prepare_torrent_restore(
         raise AppError("DOWNLOAD_CLIENT_NOT_FOUND", "The selected qBittorrent client is unavailable or disabled.", status_code=404)
 
     manifest = read_manifest(torrent)
-    raw_media_type = str(manifest.get("media_type") or "").lower()
-    if raw_media_type in {"movie", "movies"}:
+    associations = manifest.get("media_associations")
+    primary = associations[0] if isinstance(associations, list) and associations and isinstance(associations[0], dict) else {}
+    raw_media_type = str(primary.get("media_type") or "").lower()
+    if raw_media_type == "movies":
         media_type = MediaType.MOVIES
-    elif raw_media_type in {"show", "shows", "tv"}:
+    elif raw_media_type == "shows":
         media_type = MediaType.SHOWS
     else:
         media_type = client.scope
@@ -774,21 +752,19 @@ async def restore_torrent_archive(
         )
         added = True
         priorities = recovery_file_priorities(manifest)
-        if priorities:
-            try:
-                await adapter.set_file_priorities(torrent.info_hash, priorities)
-            except Exception:
-                # Do not leave a partially restored torrent running with the
-                # wrong file selection.  Removing the qBittorrent entry without
-                # deleting data is the least-destructive rollback; a later
-                # recovery attempt can safely retry after the underlying issue
-                # is corrected.
-                if added:
-                    try:
-                        await adapter.remove_torrent(torrent.info_hash, delete_files=False)
-                    except Exception:
-                        pass
-                raise
+        try:
+            await adapter.set_file_priorities(torrent.info_hash, priorities)
+        except Exception:
+            # Do not leave a partially restored torrent running with the wrong
+            # file selection. Removing the qBittorrent entry without deleting
+            # data is the least-destructive rollback; a later recovery attempt
+            # can safely retry after the underlying issue is corrected.
+            if added:
+                try:
+                    await adapter.remove_torrent(torrent.info_hash, delete_files=False)
+                except Exception:
+                    pass
+            raise
     except AppError:
         raise
     except Exception as exc:

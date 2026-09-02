@@ -11,7 +11,7 @@ from app.db import session as db_session
 from app.db.base import Base
 from app.main import create_app
 from app.db.bootstrap import ensure_builtin_custom_formats
-from app.models.domain import CustomFormat, MediaScope
+from app.models.domain import CustomFormat
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -69,11 +69,10 @@ def _create(client: TestClient, headers: dict[str, str], *, name: str = "Hybrid 
         json={
             "name": name,
             "description": "Prefer Hybrid remux releases",
-            "media_scope": "movies",
             "enabled": True,
             "conditions": [
-                {"type": "quality_modifier", "value": "REMUX", "required": True, "name": "Must be remux"},
-                {"type": "release_attribute", "value": "Hybrid", "name": "Hybrid"},
+                {"pattern": "REMUX", "required": True, "name": "Must be remux"},
+                {"pattern": "Hybrid", "name": "Hybrid"},
             ],
         },
     )
@@ -85,7 +84,6 @@ def test_custom_format_crud_has_no_intrinsic_score_and_uses_revision(client: Tes
     headers = _login(client)
     created = _create(client, headers)
     assert created["name"] == "Hybrid REMUX"
-    assert created["media_scope"] == "both"
     assert created["condition_count"] == 2
     assert created["used_by_profiles"] == 0
     assert created["revision"] == 1
@@ -119,8 +117,7 @@ def test_custom_format_crud_has_no_intrinsic_score_and_uses_revision(client: Tes
         headers=headers,
         json={
             "name": "hybrid bluray remux",
-            "media_scope": "movies",
-            "conditions": [{"type": "release_attribute", "value": "Hybrid"}],
+            "conditions": [{"pattern": "Hybrid"}],
         },
     )
     assert duplicate.status_code == 409, duplicate.text
@@ -135,14 +132,14 @@ def test_custom_format_supersedes_is_cycle_safe_and_visible_in_test_all(client: 
     broad = client.post(
         "/api/v1/custom-formats",
         headers=headers,
-        json={"name": "Broad DV", "conditions": [{"type": "release_title", "pattern": r"\bDV\b"}]},
+        json={"name": "Broad DV", "conditions": [{"pattern": r"\bDV\b"}]},
     ).json()
     specific_response = client.post(
         "/api/v1/custom-formats",
         headers=headers,
         json={
             "name": "Specific DV HDR",
-            "conditions": [{"type": "release_title", "pattern": r"^(?=.*\bDV\b)(?=.*\bHDR\b)"}],
+            "conditions": [{"pattern": r"^(?=.*\bDV\b)(?=.*\bHDR\b)"}],
             "supersedes": [broad["id"]],
         },
     )
@@ -153,7 +150,7 @@ def test_custom_format_supersedes_is_cycle_safe_and_visible_in_test_all(client: 
     tested = client.post(
         "/api/v1/custom-formats/test-all",
         headers=headers,
-        json={"release_name": "Movie.2026.DV.HDR-GROUP", "media_scope": "both"},
+        json={"release_name": "Movie.2026.DV.HDR-GROUP"},
     )
     assert tested.status_code == 200, tested.text
     broad_result = _format_named(tested.json(), "Broad DV")
@@ -183,7 +180,7 @@ def test_builtin_specific_formats_take_over_broader_dynamic_range_matches(client
     tested = client.post(
         "/api/v1/custom-formats/test-all",
         headers=headers,
-        json={"release_name": "Movie.2026.2160p.BluRay.REMUX.DV.HDR-GROUP", "media_scope": "movies"},
+        json={"release_name": "Movie.2026.2160p.BluRay.REMUX.DV.HDR-GROUP"},
     )
     assert tested.status_code == 200, tested.text
     payload = tested.json()
@@ -236,7 +233,6 @@ def test_withdrawn_builtin_is_deleted_instead_of_left_disabled(client: TestClien
         async with db_session.async_session_factory() as db:
             db.add(CustomFormat(
                 name="HDR (any)",
-                media_scope=MediaScope.BOTH,
                 enabled=False,
                 builtin=True,
                 builtin_key="hdr-any",
@@ -281,14 +277,12 @@ def test_custom_format_test_explains_every_condition_and_parser_output(client: T
             "indexer": "PTP",
             "custom_format": {
                 "name": "Reference",
-                "media_scope": "movies",
                 "conditions": [
-                    {"type": "release_title", "pattern": "Hybrid\\s+2160p", "required": True},
-                    {"type": "release_group", "pattern": "^FraMeSToR$"},
-                    {"type": "release_group", "pattern": "^LM$"},
-                    {"type": "hdr_type", "value": "DV", "required": True},
-                    {"type": "indexer", "value": "PTP", "required": True},
-                    {"type": "release_attribute", "value": "REPACK", "negate": True, "required": True},
+                    {"pattern": "Hybrid\\s+2160p", "required": True},
+                    {"pattern": "-LM$", "required": True},
+                    {"pattern": "\\bDV\\b", "required": True},
+                    {"pattern": "DTS-HD\\s+MA", "required": True},
+                    {"pattern": "REPACK", "negate": True, "required": True},
                 ],
             },
         },
@@ -296,7 +290,7 @@ def test_custom_format_test_explains_every_condition_and_parser_output(client: T
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["evaluation"]["matched"] is True
-    assert len(payload["evaluation"]["conditions"]) == 6
+    assert len(payload["evaluation"]["conditions"]) == 5
     assert payload["parsed"]["quality"]["canonical"] == "2160p BluRay REMUX"
     assert payload["parsed"]["edition"] is None
     assert payload["parsed"]["release_group"] == "LM"
@@ -311,15 +305,14 @@ def test_invalid_regex_is_rejected_before_persistence(client: TestClient) -> Non
         headers=headers,
         json={
             "name": "Bad regex",
-            "media_scope": "both",
-            "conditions": [{"type": "release_title", "pattern": "["}],
+            "conditions": [{"pattern": "["}],
         },
     )
     assert response.status_code == 422, response.text
     assert response.json()["error"]["code"] == "INVALID_CUSTOM_FORMAT"
 
 
-def test_test_all_ignores_legacy_media_scope_and_respects_enabled_state(client: TestClient) -> None:
+def test_test_all_respects_enabled_state(client: TestClient) -> None:
     headers = _login(client)
     movie = _create(client, headers, name="Movie Hybrid")
     show = client.post(
@@ -327,8 +320,7 @@ def test_test_all_ignores_legacy_media_scope_and_respects_enabled_state(client: 
         headers=headers,
         json={
             "name": "Show only",
-            "media_scope": "shows",
-            "conditions": [{"type": "release_attribute", "value": "Hybrid"}],
+            "conditions": [{"pattern": "Hybrid"}],
         },
     ).json()
     disabled = client.post(
@@ -336,16 +328,15 @@ def test_test_all_ignores_legacy_media_scope_and_respects_enabled_state(client: 
         headers=headers,
         json={
             "name": "Disabled",
-            "media_scope": "both",
             "enabled": False,
-            "conditions": [{"type": "release_attribute", "value": "Hybrid"}],
+            "conditions": [{"pattern": "Hybrid"}],
         },
     ).json()
 
     tested = client.post(
         "/api/v1/custom-formats/test-all",
         headers=headers,
-        json={"release_name": "Movie 2026 Hybrid 2160p UHD BluRay REMUX H.265-GROUP", "media_scope": "movies"},
+        json={"release_name": "Movie 2026 Hybrid 2160p UHD BluRay REMUX H.265-GROUP"},
     )
     assert tested.status_code == 200, tested.text
     ids = {item["custom_format_id"] for item in tested.json()["formats"]}
@@ -360,7 +351,7 @@ def test_test_all_uses_unsaved_editor_definition(client: TestClient) -> None:
     created = client.post(
         "/api/v1/custom-formats",
         headers=headers,
-        json={"name": "Editor Draft", "conditions": [{"type": "release_title", "pattern": "OLD"}]},
+        json={"name": "Editor Draft", "conditions": [{"pattern": "OLD"}]},
     ).json()
 
     tested = client.post(
@@ -372,9 +363,8 @@ def test_test_all_uses_unsaved_editor_definition(client: TestClient) -> None:
                 "id": created["id"],
                 "name": created["name"],
                 "description": created["description"],
-                "media_scope": "both",
                 "enabled": True,
-                "conditions": [{"type": "release_title", "pattern": "NEW"}],
+                "conditions": [{"pattern": "NEW"}],
                 "supersedes": [],
             },
         },
@@ -397,6 +387,7 @@ def test_application_owned_export_import_round_trip(client: TestClient) -> None:
     assert "score" not in bundle["custom_formats"][0]
     assert all("score" not in condition for condition in bundle["custom_formats"][0]["conditions"])
     assert all("score_offset" in condition for condition in bundle["custom_formats"][0]["conditions"])
+    assert all("type" not in condition for condition in bundle["custom_formats"][0]["conditions"])
 
     client.delete(f"/api/v1/custom-formats/{created['id']}", headers=headers)
     imported = client.post("/api/v1/custom-formats/import", headers=headers, json=bundle)
@@ -405,7 +396,7 @@ def test_application_owned_export_import_round_trip(client: TestClient) -> None:
     restored = imported.json()["imported"][0]
     assert restored["name"] == created["name"]
     assert restored["id"] != created["id"]
-    assert restored["conditions"][0]["type"] == "quality_modifier"
+    assert "type" not in restored["conditions"][0]
 
 
 def test_import_requires_explicit_medialogue_schema_marker(client: TestClient) -> None:
@@ -417,7 +408,7 @@ def test_import_requires_explicit_medialogue_schema_marker(client: TestClient) -
             "custom_formats": [
                 {
                     "name": "Looks compatible but is unmarked",
-                    "conditions": [{"type": "release_attribute", "value": "Hybrid"}],
+                    "conditions": [{"pattern": "Hybrid"}],
                 }
             ]
         },

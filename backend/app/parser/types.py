@@ -11,10 +11,8 @@ database layer.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
-
-PARSER_VERSION = "1.4.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,31 +25,10 @@ class IdentityInfo:
     episodes: tuple[int, ...] = ()
     episode_title: str | None = None
     # A release may cover more than one season (for example ``S01-S04``).
-    # ``season`` remains the primary/first season for compatibility, while
-    # callers making containment decisions must use this complete set.
+    # ``season`` is the primary season; ``seasons`` is the complete set.
     seasons: tuple[int, ...] = ()
     alternate_titles: tuple[str, ...] = ()
     geographic: str | None = None
-
-    @property
-    def title(self) -> str | None:
-        return self.title_candidate
-
-    @property
-    def episode(self) -> int | None:
-        return self.episodes[0] if self.episodes else None
-
-    @property
-    def episode_numbers(self) -> tuple[int, ...]:
-        return self.episodes
-
-    @property
-    def season_number(self) -> int | None:
-        return self.season
-
-    @property
-    def season_numbers(self) -> tuple[int, ...]:
-        return self.seasons or ((self.season,) if self.season is not None else ())
 
     @property
     def is_tv(self) -> bool:
@@ -60,9 +37,8 @@ class IdentityInfo:
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["episodes"] = list(self.episodes)
-        value["seasons"] = list(self.season_numbers)
+        value["seasons"] = list(self.seasons)
         value["alternate_titles"] = list(self.alternate_titles)
-        value["title"] = self.title_candidate
         return value
 
 
@@ -78,20 +54,12 @@ class QualityInfo:
     tv_standard: str | None = None
     raw_tokens: tuple[str, ...] = ()
 
-    @property
-    def name(self) -> str | None:
-        return self.canonical
-
     def __str__(self) -> str:
         return self.canonical or ""
-
-    def __getitem__(self, key: str) -> Any:
-        return getattr(self, key)
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["raw_tokens"] = list(self.raw_tokens)
-        value["name"] = self.canonical
         return value
 
 
@@ -100,8 +68,7 @@ class ReleaseAttributes:
     """Known name-derived release attributes.
 
     ``values`` retains canonical display names and the boolean fields make
-    common conditions cheap and obvious.  It also behaves like a small
-    collection for compatibility with callers that use ``"Hybrid" in``.
+    common conditions cheap and obvious.
     """
 
     values: tuple[str, ...] = ()
@@ -117,23 +84,6 @@ class ReleaseAttributes:
     repack_revision: int = 0
     proper_revision: int = 0
     rerip_revision: int = 0
-
-    def __contains__(self, value: object) -> bool:
-        return any(str(value).casefold() == item.casefold() for item in self.values)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.values)
-
-    def __len__(self) -> int:
-        return len(self.values)
-
-    def __getitem__(self, key: str) -> Any:
-        if key == "values":
-            return list(self.values)
-        return bool(getattr(self, key))
-
-    def get(self, value: str, default: bool = False) -> bool:
-        return value.casefold() in {item.casefold() for item in self.values} or default
 
     def as_list(self) -> list[str]:
         return list(self.values)
@@ -182,11 +132,6 @@ class HDRInfo:
     def __contains__(self, value: object) -> bool:
         return str(value).casefold() in {item.casefold() for item in self.values}
 
-    def __getitem__(self, key: str) -> Any:
-        if key == "values":
-            return list(self.values)
-        return bool(getattr(self, key))
-
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["values"] = list(self.values)
@@ -220,9 +165,7 @@ class AudioInfo:
 class ReleaseParseResult:
     """Complete parser output.
 
-    ``to_dict`` is stable JSON-friendly output intended for parser snapshots.
-    The parser version is part of every result so historical snapshots remain
-    interpretable when the grammar evolves.
+    ``to_dict`` is the canonical JSON-friendly parser snapshot.
     """
 
     raw_name: str
@@ -239,55 +182,16 @@ class ReleaseParseResult:
     languages: tuple[str, ...] = ()
     regions: tuple[str, ...] = ()
     unknown_tokens: tuple[str, ...] = ()
-    parser_version: str = PARSER_VERSION
     warnings: tuple[str, ...] = ()
-
-    @property
-    def title(self) -> str | None:
-        return self.identity.title_candidate
-
-    @property
-    def year(self) -> int | None:
-        return self.identity.year
-
-    @property
-    def season(self) -> int | None:
-        return self.identity.season
-
-    @property
-    def episodes(self) -> tuple[int, ...]:
-        return self.identity.episodes
-
-    @property
-    def resolution(self) -> str | None:
-        return self.quality.resolution
-
-    @property
-    def quality_name(self) -> str | None:
-        return self.quality.canonical
-
-    @property
-    def video_codec(self) -> str | None:
-        return self.video.codec
-
-    @property
-    def audio_codec(self) -> str | None:
-        return self.audio.codec
-
-    @property
-    def channels(self) -> str | None:
-        return self.audio.channels
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "raw_name": self.raw_name,
-            "raw": self.raw_name,
             "normalized_name": self.normalized_name,
             "identity": self.identity.to_dict(),
             "quality": self.quality.to_dict(),
             "edition": self.edition,
             "provider": self.provider,
-            "web_provider": self.provider,
             "release_group": self.release_group,
             "attributes": self.attributes.to_dict(),
             "hdr": self.hdr.to_dict(),
@@ -296,33 +200,5 @@ class ReleaseParseResult:
             "languages": list(self.languages),
             "regions": list(self.regions),
             "unknown_tokens": list(self.unknown_tokens),
-            "parser_version": self.parser_version,
             "warnings": list(self.warnings),
-            "title": self.title,
-            "year": self.year,
-            "season": self.season,
-            "episodes": list(self.episodes),
-            "quality_name": self.quality_name,
-            "video_codec": self.video_codec,
-            "audio_codec": self.audio_codec,
-            "channels": self.channels,
         }
-
-    def dict(self) -> dict[str, Any]:
-        """Pydantic-like convenience used by API code and tests."""
-
-        return self.to_dict()
-
-    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        return self.to_dict()
-
-    def model_dump_json(self, *args: Any, **kwargs: Any) -> str:
-        import json
-
-        return json.dumps(self.to_dict(), **kwargs)
-
-    def json(self, *args: Any, **kwargs: Any) -> str:
-        return self.model_dump_json(*args, **kwargs)
-
-    def jsonable(self) -> dict[str, Any]:
-        return self.to_dict()

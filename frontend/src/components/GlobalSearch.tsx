@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api/client'
+import { moviesApi } from '../api/modules/movies'
+import { showsApi } from '../api/modules/shows'
 import type { Movie, Show, TMDBMovieLookup, TMDBShowLookup } from '../types'
 import { evaluateShiftTap } from '../lib/doubleTap'
 import { rankResults } from '../lib/searchRank'
@@ -202,8 +203,8 @@ async function searchEverything(term: string): Promise<Result[]> {
 
 async function searchMovies(term: string): Promise<Result[]> {
   const [library, tmdb] = await Promise.all([
-    api.movies(term).catch(() => [] as Movie[]),
-    api.lookupMovies(term).catch(() => [] as TMDBMovieLookup[]),
+    moviesApi.movies(term).catch(() => [] as Movie[]),
+    moviesApi.lookupMovies(term).catch(() => [] as TMDBMovieLookup[]),
   ])
   const byTmdb = new Map<number, Movie>()
   library.forEach((movie) => { if (movie.tmdbId) byTmdb.set(movie.tmdbId, movie) })
@@ -239,8 +240,8 @@ async function searchMovies(term: string): Promise<Result[]> {
 
 async function searchShows(term: string): Promise<Result[]> {
   const [library, tmdb] = await Promise.all([
-    api.shows(term).catch(() => [] as Show[]),
-    api.lookupShows(term).catch(() => [] as TMDBShowLookup[]),
+    showsApi.shows(term).catch(() => [] as Show[]),
+    showsApi.lookupShows(term).catch(() => [] as TMDBShowLookup[]),
   ])
   const byTmdb = new Map<number, Show>()
   library.forEach((show) => { if (show.tmdbId) byTmdb.set(show.tmdbId, show) })

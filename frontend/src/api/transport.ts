@@ -20,13 +20,13 @@ function readCookie(name: string): string | undefined {
 }
 
 async function ensureCsrf(): Promise<string | undefined> {
-  const existing = readCookie('csrf_token') ?? readCookie('csrf') ?? readCookie('medialogue_csrf')
+  const existing = readCookie('medialogue_csrf')
   if (existing) return decodeURIComponent(existing)
   try {
     await fetch('/api/v1/auth/csrf', { credentials: 'include' })
   } catch {
   }
-  const refreshed = readCookie('csrf_token') ?? readCookie('csrf') ?? readCookie('medialogue_csrf')
+  const refreshed = readCookie('medialogue_csrf')
   return refreshed ? decodeURIComponent(refreshed) : undefined
 }
 
@@ -38,7 +38,7 @@ async function apiErrorFromResponse(response: Response, parsed?: unknown): Promi
     } catch {
     }
   }
-  const message = (payload?.error?.message ?? payload?.detail ?? payload?.message ?? response.statusText) || 'Request failed'
+  const message = payload?.error?.message || response.statusText || 'Request failed'
   return new ApiError(message, response.status, payload?.error?.code)
 }
 
