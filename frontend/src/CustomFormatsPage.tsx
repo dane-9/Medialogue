@@ -16,7 +16,6 @@ import type {
   CustomFormat,
   CustomFormatCondition,
   CustomFormatConditionEvaluation,
-  CustomFormatConditionType,
   CustomFormatEvaluation,
   CustomFormatSection,
   CustomFormatTestAllResult,
@@ -24,25 +23,6 @@ import type {
   QualityProfile,
 } from './types'
 
-const CONDITION_TYPES: Array<{ value: CustomFormatConditionType; label: string }> = [
-  { value: 'release_title', label: 'Release Title' },
-  { value: 'release_group', label: 'Release Group' },
-  { value: 'quality', label: 'Quality' },
-  { value: 'quality_modifier', label: 'Quality Modifier' },
-  { value: 'resolution', label: 'Resolution' },
-  { value: 'source', label: 'Source' },
-  { value: 'edition', label: 'Edition' },
-  { value: 'language', label: 'Language' },
-  { value: 'indexer', label: 'Indexer' },
-  { value: 'web_provider', label: 'WEB Provider' },
-  { value: 'video_codec', label: 'Video Codec' },
-  { value: 'audio_codec', label: 'Audio Codec' },
-  { value: 'audio_channels', label: 'Audio Channels' },
-  { value: 'hdr_type', label: 'HDR Type' },
-  { value: 'release_attribute', label: 'Release Attribute' },
-]
-
-const typeLabel = (type: string) => CONDITION_TYPES.find((item) => item.value === type)?.label ?? type
 function freshCondition(): CustomFormatCondition {
   return {
     id: browserSafeId(),
@@ -61,7 +41,6 @@ function freshFormat(): CustomFormat {
     id: '',
     name: 'New Custom Format',
     description: '',
-    mediaScope: 'both',
     enabled: true,
     schemaVersion: 1,
     conditions: [freshCondition()],
@@ -114,15 +93,15 @@ function EvaluationRows({ evaluation }: { evaluation: CustomFormatEvaluation }) 
       <span>{evaluation.scoreOffset ? `Match offset ${evaluation.scoreOffset > 0 ? '+' : ''}${evaluation.scoreOffset}` : 'No match offset'}</span>
     </div>
     {evaluation.error && <div className="cf-inline-error">{evaluation.error}</div>}
-    {evaluation.conditions.map((condition) => <ConditionEvaluationRow key={condition.conditionId} condition={condition} />)}
+    {evaluation.conditions.map((condition, index) => <ConditionEvaluationRow key={condition.conditionId} condition={condition} index={index} />)}
   </div>
 }
 
-function ConditionEvaluationRow({ condition }: { condition: CustomFormatConditionEvaluation }) {
+function ConditionEvaluationRow({ condition, index }: { condition: CustomFormatConditionEvaluation; index: number }) {
   return <div className={`cf-condition-result ${condition.effectiveResult ? 'pass' : 'fail'}`}>
     <div className="cf-result-icon"><Icon name={condition.effectiveResult ? 'check' : 'close'} size={14} /></div>
     <div className="cf-result-copy">
-      <strong>{condition.name || typeLabel(condition.conditionType)}</strong>
+      <strong>{condition.name || `Rule ${index + 1}`}</strong>
       <span>{condition.reason || (condition.matched ? 'Condition matched.' : 'Condition did not match.')}</span>
       <small>Evidence: {evidenceText(condition.evidence)} · Expected: {evidenceText(condition.expected)}{condition.scoreOffset ? ` · Offset ${condition.scoreOffset > 0 ? '+' : ''}${condition.scoreOffset}` : ''}{condition.negated ? ' · Negated' : ''}{condition.required ? ' · Required' : ' · Optional'}</small>
     </div>
@@ -172,10 +151,12 @@ export default function CustomFormatsPageView() {
       if (selected) {
         setSelectedId(selected.id)
         setDraft(selected)
+        setEditorSectionId(layout.find((section) => section.formatIds.includes(selected.id))?.id ?? layout[0]?.id ?? '')
         if (!preferredId) setEditorOpen(true)
       } else {
         setSelectedId('')
         setDraft(freshFormat())
+        setEditorSectionId(layout[0]?.id ?? '')
       }
       setError('')
     } catch (reason) {
@@ -241,6 +222,10 @@ export default function CustomFormatsPageView() {
   }
 
   const save = async () => {
+    if (draft.conditions.some((condition) => !conditionValue(condition).trim())) {
+      setError('Every match rule needs a regular expression.')
+      return
+    }
     setSaving(true); setError(''); setMessage('')
     try {
       const saved = draft.id
@@ -249,10 +234,13 @@ export default function CustomFormatsPageView() {
           : await api.updateCustomFormat(draft.id, { ...draft, expectedRevision: draft.revision })
         : await api.createCustomFormat(draft)
       if (editorSectionId) {
+        const alreadyInDestination = sections.find((section) => section.id === editorSectionId)?.formatIds.includes(saved.id) ?? false
         const nextLayout = sections.map((section) => ({
           ...section,
           formatIds: section.id === editorSectionId
-            ? [...section.formatIds.filter((id) => id !== saved.id), saved.id]
+            ? alreadyInDestination
+              ? section.formatIds
+              : [...section.formatIds.filter((id) => id !== saved.id), saved.id]
             : section.formatIds.filter((id) => id !== saved.id),
         }))
         await api.saveCustomFormatLayout(nextLayout)
@@ -291,7 +279,7 @@ export default function CustomFormatsPageView() {
 
   const testAll = async () => {
     setTesting(true); setError(''); setTestResult(null)
-    try { setTestAllResult(await api.testAllCustomFormats(releaseName, draft.mediaScope, testIndexer || undefined, testProfileId || undefined)) }
+    try { setTestAllResult(await api.testAllCustomFormats(releaseName, draft, testIndexer || undefined, testProfileId || undefined)) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not test all Custom Formats.') }
     finally { setTesting(false) }
   }
@@ -326,17 +314,11 @@ export default function CustomFormatsPageView() {
     return formats.filter((format) =>
       format.name.toLowerCase().includes(term)
       || (format.description ?? '').toLowerCase().includes(term)
-      || format.conditions.some((condition) => typeLabel(condition.type).toLowerCase().includes(term) || conditionValue(condition).toLowerCase().includes(term)))
+      || format.conditions.some((condition) => (condition.name ?? '').toLowerCase().includes(term) || conditionValue(condition).toLowerCase().includes(term)))
   }, [formats, filter])
 
   const closeEditor = () => { setEditorOpen(false); setSelectedId(''); setTestResult(null); setTestAllResult(null) }
-  const requiredConditions = draft.conditions.filter((condition) => condition.required).length
-  const optionalConditions = draft.conditions.length - requiredConditions
-  const ruleLogic = requiredConditions && optionalConditions
-    ? `All ${requiredConditions} required rules and at least one of the ${optionalConditions} optional rules must match.`
-    : requiredConditions
-      ? `All ${requiredConditions} required rule${requiredConditions === 1 ? '' : 's'} must match.`
-      : `Any one of the ${optionalConditions} rule${optionalConditions === 1 ? '' : 's'} can match.`
+  const hasEmptyRule = draft.conditions.some((condition) => !conditionValue(condition).trim())
 
   const openOrganizer = () => {
     setSectionDraft(sections.map((section) => ({ ...section, formatIds: [...section.formatIds] })))
@@ -470,13 +452,13 @@ export default function CustomFormatsPageView() {
         <span className="modal-foot-spacer" />
         {dirty && <span className="footer-state">Unsaved changes</span>}
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty || !draft.name.trim() || !draft.conditions.length}>{saving ? 'Saving…' : 'Save format'}</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty || !draft.name.trim() || !draft.conditions.length || hasEmptyRule}>{saving ? 'Saving…' : 'Save format'}</Button>
       </>}
     >
       <div className="cf-editor-shell">
         <aside className="cf-editor-rail">
           <nav aria-label="Custom Format editor sections">
-            <button className={editorView === 'details' ? 'active' : ''} onClick={() => setEditorView('details')}><span>1</span><div><strong>Details</strong><small>Name, scope and takeovers</small></div><Icon name="chevron" size={14} /></button>
+            <button className={editorView === 'details' ? 'active' : ''} onClick={() => setEditorView('details')}><span>1</span><div><strong>Details</strong><small>Name, section and takeovers</small></div><Icon name="chevron" size={14} /></button>
             <button className={editorView === 'conditions' ? 'active' : ''} onClick={() => setEditorView('conditions')}><span>2</span><div><strong>Match rules</strong><small>{draft.conditions.length} configured</small></div><Icon name="chevron" size={14} /></button>
             <button className={editorView === 'test' ? 'active' : ''} onClick={() => setEditorView('test')}><span>3</span><div><strong>Test</strong><small>Try a real release title</small></div><Icon name="chevron" size={14} /></button>
           </nav>
@@ -526,14 +508,13 @@ export default function CustomFormatsPageView() {
           </section>}
 
           {editorView === 'conditions' && <section className="cf-editor-panel cf-editor-rules-panel">
-            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><h3>Match rules</h3><p>Regular expressions run against the full release title.</p></div>
+            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><h3>Match rules</h3><p>New rules run against the full release title.</p></div>
             {draft.builtin && <div className="settings-note"><Icon name="lock" size={15} /><span>Built-in rules are read-only so matching improvements can arrive automatically. Duplicate this format if you need your own variation.</span></div>}
-            <div className="cf-logic-summary"><Icon name="activity" size={16} /><div><strong>How these rules combine:</strong><span>{draft.conditions.length ? ruleLogic : 'Add at least one rule. A format with no rules never matches.'}</span></div></div>
             {!draft.builtin && <div className="cf-add-rule"><div><strong>Add a regex rule</strong><span>Match text anywhere in the full release title.</span></div><Button variant="secondary" icon="plus" onClick={() => setDraft((current) => ({ ...current, conditions: [...current.conditions, { ...freshCondition(), name: `Rule ${current.conditions.length + 1}` }] }))}>Add rule</Button></div>}
             {draft.conditions.length ? <div className="cf-condition-list">
               {draft.conditions.map((condition, index) => <div className="cf-condition-card cf-rule-card" key={condition.id}>
                 <div className="condition-top">
-                  <div className="cf-rule-number"><span>{index + 1}</span><div>{draft.builtin ? <strong>{condition.name || typeLabel(condition.type)}</strong> : <Input className="cf-rule-title-input" aria-label={`Rule ${index + 1} name`} value={condition.name ?? ''} onChange={(event) => updateCondition(condition.id, { name: event.target.value || undefined })} placeholder={`Rule ${index + 1}`} />}</div></div>
+                  <div className="cf-rule-number"><span>{index + 1}</span><div>{draft.builtin ? <strong>{condition.name || `Rule ${index + 1}`}</strong> : <Input className="cf-rule-title-input" aria-label={`Rule ${index + 1} name`} value={condition.name ?? ''} onChange={(event) => updateCondition(condition.id, { name: event.target.value || undefined })} placeholder={`Rule ${index + 1}`} />}</div></div>
                   <div className="cf-rule-header-actions">
                     <div className="cf-rule-header-options" aria-label={`Rule ${index + 1} options`}>
                       <Tooltip asChild content="Every required rule must pass for this format to match."><button type="button" className={condition.required ? 'active' : ''} aria-pressed={condition.required} onClick={() => updateCondition(condition.id, { required: !condition.required })} disabled={draft.builtin}>Required</button></Tooltip>
@@ -544,18 +525,18 @@ export default function CustomFormatsPageView() {
                   </div>
                 </div>
                 <div className="cf-rule-fields">
-                  <label className="cf-rule-value"><span>Regular expression</span><Input value={conditionValue(condition)} onChange={(event) => updateCondition(condition.id, { pattern: event.target.value, value: undefined })} placeholder={condition.type === 'release_title' ? '\\b(remux|bdremux)\\b' : '^(?:AMZN|NF)$'} readOnly={draft.builtin} /></label>
+                  <label className="cf-rule-value"><span>Regular expression</span><Input value={conditionValue(condition)} onChange={(event) => updateCondition(condition.id, { pattern: event.target.value, value: undefined })} placeholder="\\b(remux|bdremux)\\b" readOnly={draft.builtin} /></label>
                   <label className="cf-rule-offset"><span>Score offset</span><Input type="number" value={condition.scoreOffset} min={-100000} max={100000} onChange={(event) => updateCondition(condition.id, { scoreOffset: Number(event.target.value) || 0 })} readOnly={draft.builtin} /></label>
                 </div>
               </div>)}
-            </div> : <div className="cf-test-placeholder"><Icon name="custom-format" size={18} /><strong>No match rules yet</strong><span>Choose an evidence type above and add the first rule.</span></div>}
+            </div> : <div className="cf-test-placeholder"><Icon name="custom-format" size={18} /><strong>No match rules yet</strong><span>Add the first regex rule to start matching release titles.</span></div>}
             <div className="cf-editor-next"><Button variant="secondary" onClick={() => setEditorView('details')}>Back</Button><Button variant="primary" onClick={() => setEditorView('test')} disabled={!draft.conditions.length}>Continue to test</Button></div>
           </section>}
 
           {editorView === 'test' && <section className="cf-editor-panel">
             <div className="cf-editor-panel-head"><h3>Try a real release title</h3><p>Testing uses the unsaved rules currently in this editor and does not change your library.</p></div>
             <label className="cf-release-test-input"><span>Release title</span><textarea className="input" value={releaseName} onChange={(event) => setReleaseName(event.target.value)} placeholder="Paste a full release title…" /></label>
-            <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="ghost" onClick={() => void testAll()} disabled={testing || !releaseName.trim()}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
+            <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="ghost" onClick={() => void testAll()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
             {!testResult && !testAllResult && <div className="cf-test-placeholder"><Icon name="activity" size={18} /><strong>Ready to test</strong><span>Run the title above to see every rule’s evidence and result.</span></div>}
             {testResult?.evaluation && <EvaluationRows evaluation={testResult.evaluation} />}
             {testAllResult && <div className="cf-test-all"><div className="cf-test-all-head"><span>Every format evaluated{testAllResult.qualityProfileName ? ` against ${testAllResult.qualityProfileName}` : ''}</span><span>{testAllResult.matchedCount} MATCHED{testAllResult.totalScore !== undefined ? ` · ${testAllResult.totalScore > 0 ? '+' : ''}${testAllResult.totalScore}` : ''}</span></div>{testAllResult.formats.map((evaluation) => <div className={`cf-test-all-row ${evaluation.rawMatched && !evaluation.matched ? 'suppressed' : ''}`} key={evaluation.customFormatId}><Icon name={evaluation.matched ? 'check' : evaluation.rawMatched ? 'pause' : 'close'} size={14} /><span>{evaluation.customFormatName}{evaluation.rawMatched && !evaluation.matched ? ` · suppressed by ${evaluation.suppressedByNames.join(', ')}` : ''}</span><small>{evaluation.contribution === undefined ? '-' : `${evaluation.contribution > 0 ? '+' : ''}${evaluation.contribution}`}</small></div>)}</div>}
@@ -585,8 +566,8 @@ function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { forma
     </div>
     <p className="cf-card-description">{format.description || 'No description provided.'}</p>
     <div className="cf-card-conditions cf-card-rules">
-      {format.conditions.slice(0, 6).map((condition) => <span className="cf-condition-chip" key={condition.id}>
-        {condition.name || typeLabel(condition.type)}
+      {format.conditions.slice(0, 6).map((condition, index) => <span className="cf-condition-chip" key={condition.id}>
+        {condition.name || `Rule ${index + 1}`}
       </span>)}
       {format.conditions.length > 6 && <span className="cf-condition-chip cf-condition-more">+{format.conditions.length - 6} more</span>}
       {format.supersedes.length > 0 && <span className="cf-condition-chip"><em>Supersedes</em>{format.supersedes.length}</span>}

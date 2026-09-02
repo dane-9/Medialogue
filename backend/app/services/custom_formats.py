@@ -228,6 +228,10 @@ class CustomFormatEvaluation:
     conditions: tuple[ConditionResult, ...]
     score: int = 0
     score_offset: int = 0
+    # Matching and scoring are separate concerns. A format can match for
+    # explainability while contributing nothing when the active Quality Profile
+    # has not selected it.
+    score_applies: bool = True
     group_results: dict[str, bool] = field(default_factory=dict)
     error: str | None = None
     raw_matched: bool | None = None
@@ -248,7 +252,7 @@ class CustomFormatEvaluation:
 
     @property
     def score_contribution(self) -> int:
-        return self.score + self.score_offset if self.matched else 0
+        return self.score + self.score_offset if self.matched and self.score_applies else 0
 
     def explain(self) -> dict[str, Any]:
         return self.to_dict()
@@ -528,6 +532,30 @@ def _score_for(
     return 0
 
 
+def _score_applies_to_format(
+    fmt: CustomFormat,
+    profile_scores: Mapping[str, int] | None,
+    overrides: Mapping[str, int] | None,
+) -> bool:
+    """Whether this format participates in the current scoring policy.
+
+    A zero score is still a deliberate selection because rule offsets may add
+    to it. Absence from both the Quality Profile and title overrides means the
+    format remains explainable but must not affect the total score.
+    """
+
+    if profile_scores is None and overrides is None:
+        return True
+    profile_scores = profile_scores or {}
+    overrides = overrides or {}
+    return (
+        fmt.id in profile_scores
+        or fmt.name in profile_scores
+        or fmt.id in overrides
+        or fmt.name in overrides
+    )
+
+
 def evaluate_custom_formats(
     custom_formats: Iterable[CustomFormat | Mapping[str, Any]],
     release: ReleaseParseResult | str | Mapping[str, Any],
@@ -550,11 +578,14 @@ def evaluate_custom_formats(
             continue
         evaluation_formats.append(fmt)
         evaluations.append(
-            evaluate_custom_format(
-                fmt,
-                parsed,
-                context=context,
-                score=_score_for(fmt, profile_scores, score_overrides),
+            replace(
+                evaluate_custom_format(
+                    fmt,
+                    parsed,
+                    context=context,
+                    score=_score_for(fmt, profile_scores, score_overrides),
+                ),
+                score_applies=_score_applies_to_format(fmt, profile_scores, score_overrides),
             )
         )
     # Resolve explicit takeovers only after every raw condition result exists.
@@ -576,9 +607,19 @@ def evaluate_custom_formats(
                 pending.extend(nested.supersedes)
         return found
 
-    closures = {format_id: closure(format_id) for format_id in raw_matches}
+    # In a Quality Profile scoring context, only selected/overridden formats
+    # are allowed to suppress another match. Otherwise an unselected specific
+    # format could silently erase the score of a broad format the profile did
+    # select. Without a scoring context every format remains active, preserving
+    # standalone matching/test behavior.
+    active_sources = {
+        fmt.id
+        for fmt, result in zip(evaluation_formats, evaluations)
+        if result.matched and result.score_applies
+    }
+    closures = {format_id: closure(format_id) for format_id in active_sources}
     roots = {
-        format_id for format_id in raw_matches
+        format_id for format_id in active_sources
         if not any(format_id in targets for source, targets in closures.items() if source != format_id)
     }
     suppressed: dict[str, set[str]] = defaultdict(set)

@@ -85,7 +85,7 @@ def test_custom_format_crud_has_no_intrinsic_score_and_uses_revision(client: Tes
     headers = _login(client)
     created = _create(client, headers)
     assert created["name"] == "Hybrid REMUX"
-    assert created["media_scope"] == "movies"
+    assert created["media_scope"] == "both"
     assert created["condition_count"] == 2
     assert created["used_by_profiles"] == 0
     assert created["revision"] == 1
@@ -319,7 +319,7 @@ def test_invalid_regex_is_rejected_before_persistence(client: TestClient) -> Non
     assert response.json()["error"]["code"] == "INVALID_CUSTOM_FORMAT"
 
 
-def test_test_all_respects_media_scope_and_enabled_state(client: TestClient) -> None:
+def test_test_all_ignores_legacy_media_scope_and_respects_enabled_state(client: TestClient) -> None:
     headers = _login(client)
     movie = _create(client, headers, name="Movie Hybrid")
     show = client.post(
@@ -350,9 +350,38 @@ def test_test_all_respects_media_scope_and_enabled_state(client: TestClient) -> 
     assert tested.status_code == 200, tested.text
     ids = {item["custom_format_id"] for item in tested.json()["formats"]}
     assert movie["id"] in ids
-    assert show["id"] not in ids
+    assert show["id"] in ids
     assert disabled["id"] not in ids
     assert _format_named(tested.json(), "Movie Hybrid")["matched"] is True
+
+
+def test_test_all_uses_unsaved_editor_definition(client: TestClient) -> None:
+    headers = _login(client)
+    created = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={"name": "Editor Draft", "conditions": [{"type": "release_title", "pattern": "OLD"}]},
+    ).json()
+
+    tested = client.post(
+        "/api/v1/custom-formats/test-all",
+        headers=headers,
+        json={
+            "release_name": "Movie.2026.NEW.2160p.WEB-DL-GROUP",
+            "custom_format": {
+                "id": created["id"],
+                "name": created["name"],
+                "description": created["description"],
+                "media_scope": "both",
+                "enabled": True,
+                "conditions": [{"type": "release_title", "pattern": "NEW"}],
+                "supersedes": [],
+            },
+        },
+    )
+    assert tested.status_code == 200, tested.text
+    result = _format_named(tested.json(), "Editor Draft")
+    assert result["matched"] is True
 
 
 def test_application_owned_export_import_round_trip(client: TestClient) -> None:

@@ -132,15 +132,10 @@ async def run_search_job(
             effective_profile = await load_effective_profile(
                 db, media_type=target.media_type, entity_id=profile_entity_id
             )
-        eligible_scopes = (
-            (MediaScope.MOVIES, MediaScope.BOTH)
-            if target.media_type == MediaType.MOVIES
-            else (MediaScope.SHOWS, MediaScope.BOTH)
-        )
         custom_format_rows = (
             await db.scalars(
                 select(CustomFormatModel)
-                .where(CustomFormatModel.enabled.is_(True), CustomFormatModel.media_scope.in_(eligible_scopes))
+                .where(CustomFormatModel.enabled.is_(True))
                 .order_by(CustomFormatModel.name)
             )
         ).all()
@@ -149,7 +144,7 @@ async def run_search_job(
                 "id": str(row.id),
                 "name": row.name,
                 "description": row.description,
-                "media_scope": row.media_scope.value,
+                "media_scope": "both",
                 "enabled": row.enabled,
                 "condition_definition": dict(row.condition_definition or {}),
                 "revision": row.revision,

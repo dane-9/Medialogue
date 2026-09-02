@@ -457,15 +457,10 @@ async def evaluate_current_release_score(
     from app.parser import parse_release
 
     effective = await load_effective_profile(db, media_type=media_type, entity_id=entity_id)
-    # Compare enum values in Python-friendly form so this remains portable in
-    # SQLite and the Python-side scoring model.
-    from app.models.domain import MediaScope
-
-    eligible = (MediaScope.MOVIES, MediaScope.BOTH) if media_type == MediaType.MOVIES else (MediaScope.SHOWS, MediaScope.BOTH)
     rows = (
         await db.scalars(
             select(CustomFormat)
-            .where(CustomFormat.enabled.is_(True), CustomFormat.media_scope.in_(eligible))
+            .where(CustomFormat.enabled.is_(True))
             .order_by(CustomFormat.name)
         )
     ).all()
@@ -475,7 +470,7 @@ async def evaluate_current_release_score(
                 "id": str(row.id),
                 "name": row.name,
                 "description": row.description,
-                "media_scope": row.media_scope.value,
+                "media_scope": "both",
                 "enabled": row.enabled,
                 "condition_definition": dict(row.condition_definition or {}),
             }

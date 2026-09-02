@@ -186,7 +186,8 @@ export default function QualityProfilesPage() {
     setBusy(true)
     try {
       const updated = await api.setDefaultQualityProfile(selected.id)
-      setProfiles((items) => items.map((item) => ({ ...item, isDefault: item.id === updated.id })))
+      const refreshed = await api.qualityProfiles()
+      setProfiles(refreshed)
       setMessage(`${updated.name} is now the default. Titles without a profile of their own use it.`)
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not set the default Quality Profile.') }
     finally { setBusy(false) }
@@ -353,7 +354,7 @@ export default function QualityProfilesPage() {
         {dirty && <span className="footer-state">Unsaved changes</span>}
         {!creating && selected && (selected.isDefault
           ? <span className="footer-state">Default profile</span>
-          : <Button variant="ghost" onClick={() => void makeDefault()} disabled={busy}>Set as Default</Button>)}
+          : <Button variant="ghost" onClick={() => void makeDefault()} disabled={busy || dirty} title={dirty ? 'Save or cancel your edits before changing the default profile.' : undefined}>Set as Default</Button>)}
         <Button variant="secondary" onClick={closeEditor} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || !name.trim() || !qualityIds.length}>{busy ? 'Saving…' : 'Save profile'}</Button>
       </>}
@@ -436,12 +437,14 @@ export default function QualityProfilesPage() {
               <label className="qp-select-all"><input type="checkbox" checked={formats.length > 0 && formats.every((format) => Object.prototype.hasOwnProperty.call(scores, format.id))} onChange={(event) => setFormatSelection(formats.map((format) => format.id), event.target.checked)} /><span>Select all formats</span></label>
             </div>
             <div className="qp-format-catalog">
-              {formatSections.map((section) => <section className="qp-format-section" key={section.id}>
-                <div className="qp-format-section-head"><strong>{section.name}</strong><label><input type="checkbox" checked={section.formatIds.length > 0 && section.formatIds.every((formatId) => Object.prototype.hasOwnProperty.call(scores, formatId))} onChange={(event) => setFormatSelection(section.formatIds, event.target.checked)} /><span>{section.formatIds.filter((formatId) => Object.prototype.hasOwnProperty.call(scores, formatId)).length}/{section.formatIds.length} selected</span></label></div>
+              {formatSections.map((section) => {
+                const visibleFormatIds = section.formats.map((format) => format.id)
+                return <section className="qp-format-section" key={section.id}>
+                <div className="qp-format-section-head"><strong>{section.name}</strong><label><input type="checkbox" checked={visibleFormatIds.length > 0 && visibleFormatIds.every((formatId) => Object.prototype.hasOwnProperty.call(scores, formatId))} onChange={(event) => setFormatSelection(visibleFormatIds, event.target.checked)} /><span>{visibleFormatIds.filter((formatId) => Object.prototype.hasOwnProperty.call(scores, formatId)).length}/{visibleFormatIds.length} selected</span></label></div>
                 <div className="qp-format-list">{section.formats.map((format) => {
                   const included = Object.prototype.hasOwnProperty.call(scores, format.id)
                   const score = scores[format.id] ?? 0
-                  const configuredOffsets = format.conditions.map((condition) => condition.scoreOffset).filter(Boolean)
+                  const configuredOffsets = format.conditions.filter((condition) => !condition.negate).map((condition) => condition.scoreOffset).filter(Boolean)
                   return <div className={`qp-format-row ${included ? 'selected' : ''}`} key={format.id}>
                     <label className="qp-format-check"><input type="checkbox" checked={included} onChange={() => toggleFormat(format.id)} /><span /></label>
                     <div className="qp-format-copy"><div><strong>{format.name}</strong>{format.builtin && <Badge tone="blue">Built-in</Badge>}{!format.enabled && <Badge tone="neutral">Off</Badge>}{configuredOffsets.length > 0 && <Badge tone="neutral">Offset {scoreLabel(Math.max(...configuredOffsets))}</Badge>}</div></div>
@@ -449,7 +452,7 @@ export default function QualityProfilesPage() {
                     <strong className={score < 0 ? 'score-negative' : score > 0 ? 'score-positive' : 'muted'}>{included ? scoreLabel(score) : '-'}</strong>
                   </div>
                 })}</div>
-              </section>)}
+              </section>})}
               {!formatSections.length && <div className="cf-test-placeholder"><Icon name="search" size={18} /><strong>No formats found</strong><span>Change the filter or show all formats.</span></div>}
             </div>
             <div className="cf-editor-next"><Button variant="secondary" onClick={() => setEditorView('qualities')}>Back to qualities</Button></div>

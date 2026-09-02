@@ -820,8 +820,6 @@ export interface TorrentArchiveItem {
   associationType?: TorrentAssociationType
 }
 
-export type CustomFormatScope = 'movies' | 'shows' | 'both'
-
 export type CustomFormatConditionType =
   | 'release_title'
   | 'release_group'
@@ -856,7 +854,6 @@ export interface CustomFormat {
   id: string
   name: string
   description?: string
-  mediaScope: CustomFormatScope
   enabled: boolean
   schemaVersion: number
   conditions: CustomFormatCondition[]

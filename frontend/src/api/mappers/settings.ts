@@ -44,7 +44,6 @@ export function mapCustomFormat(value: CustomFormatDto): CustomFormat {
     id: value.id,
     name: value.name,
     description: value.description ?? undefined,
-    mediaScope: value.media_scope,
     enabled: value.enabled,
     builtin: value.builtin ?? false,
     schemaVersion: value.schema_version,
@@ -180,11 +179,11 @@ export function customFormatConditionPayload(condition: CustomFormatCondition): 
   }
 }
 
-export function customFormatPayload(format: Pick<CustomFormat, 'name' | 'description' | 'mediaScope' | 'enabled' | 'conditions' | 'supersedes'>): CustomFormatCreateDto {
+export function customFormatPayload(format: Pick<CustomFormat, 'name' | 'description' | 'enabled' | 'conditions' | 'supersedes'>): CustomFormatCreateDto {
   return {
     name: format.name,
     description: format.description || null,
-    media_scope: format.mediaScope,
+    media_scope: 'both',
     enabled: format.enabled,
     conditions: format.conditions.map(customFormatConditionPayload),
     supersedes: format.supersedes,

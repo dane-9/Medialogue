@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,10 +128,6 @@ def _reconciled_layout(rows: list[CustomFormatModel], stored: dict[str, Any] | N
     return CustomFormatLayout(sections=sections)
 
 
-def _scope(value: CustomFormatScope | str) -> MediaScope:
-    return MediaScope(value.value if hasattr(value, "value") else str(value))
-
-
 def _normalized_conditions(values: list[Any]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for value in values:
@@ -169,7 +165,7 @@ def _evaluation_format_from_model(row: CustomFormatModel) -> EvaluationFormat:
             "id": str(row.id),
             "name": row.name,
             "description": row.description,
-            "media_scope": row.media_scope.value,
+            "media_scope": CustomFormatScope.BOTH.value,
             "enabled": row.enabled,
             "condition_definition": dict(row.condition_definition or {}),
         }
@@ -182,7 +178,7 @@ def _evaluation_format_from_test(value: CustomFormatTestDefinition) -> Evaluatio
             "id": str(value.id) if value.id else None,
             "name": value.name,
             "description": value.description,
-            "media_scope": value.media_scope.value,
+            "media_scope": CustomFormatScope.BOTH.value,
             "enabled": value.enabled,
             "condition_definition": _definition(value.conditions, value.supersedes),
         }
@@ -224,7 +220,7 @@ async def _response(db: AsyncSession, row: CustomFormatModel) -> CustomFormatRes
         id=row.id,
         name=row.name,
         description=row.description,
-        media_scope=CustomFormatScope(row.media_scope.value),
+        media_scope=CustomFormatScope.BOTH,
         enabled=row.enabled,
         builtin=row.builtin,
         schema_version=int((row.condition_definition or {}).get("schema_version", CUSTOM_FORMAT_SCHEMA_VERSION)),
@@ -313,11 +309,8 @@ async def list_custom_formats(
     page = max(1, page)
     page_size = min(max(1, page_size), 250)
     conditions = []
-    if scope is not None:
-        if scope == CustomFormatScope.BOTH:
-            conditions.append(CustomFormatModel.media_scope == MediaScope.BOTH)
-        else:
-            conditions.append(CustomFormatModel.media_scope.in_((_scope(scope), MediaScope.BOTH)))
+    # `scope` remains accepted for compatibility, but Custom Formats are now
+    # media-agnostic. Quality Profiles decide whether a score matters.
     if enabled is not None:
         conditions.append(CustomFormatModel.enabled.is_(enabled))
     count_query = select(func.count()).select_from(CustomFormatModel)
@@ -406,7 +399,7 @@ async def create_custom_format(
         {
             "name": name,
             "description": payload.description,
-            "media_scope": payload.media_scope.value,
+            "media_scope": CustomFormatScope.BOTH.value,
             "enabled": payload.enabled,
             "condition_definition": definition,
         }
@@ -416,7 +409,7 @@ async def create_custom_format(
         id=row_id,
         name=name,
         description=payload.description.strip() if payload.description else None,
-        media_scope=_scope(payload.media_scope),
+        media_scope=MediaScope.BOTH,
         enabled=payload.enabled,
         condition_definition=definition,
         revision=1,
@@ -429,7 +422,7 @@ async def create_custom_format(
         entity_type="custom_format",
         entity_id=row.id,
         message=f"Custom Format {row.name} was created.",
-        details={"media_scope": row.media_scope.value, "condition_count": len(fmt.conditions), "supersedes_count": len(payload.supersedes)},
+        details={"condition_count": len(fmt.conditions), "supersedes_count": len(payload.supersedes)},
     )
     # Even an unscored format can change an existing score through explicit
     # supersedence, and the durable breakdown should reflect newly available
@@ -458,18 +451,31 @@ async def test_custom_format(
 @router.post("/test-all", response_model=CustomFormatTestAllResponse)
 async def test_all_custom_formats(
     payload: CustomFormatTestAllRequest,
+    request: Request,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatTestAllResponse:
     query = select(CustomFormatModel)
-    if payload.media_scope == CustomFormatScope.MOVIES:
-        query = query.where(CustomFormatModel.media_scope.in_((MediaScope.MOVIES, MediaScope.BOTH)))
-    elif payload.media_scope == CustomFormatScope.SHOWS:
-        query = query.where(CustomFormatModel.media_scope.in_((MediaScope.SHOWS, MediaScope.BOTH)))
     if not payload.include_disabled:
         query = query.where(CustomFormatModel.enabled.is_(True))
     rows = (await db.scalars(query.order_by(func.lower(CustomFormatModel.name)))).all()
     formats = [_evaluation_format_from_model(row) for row in rows]
+    # The editor can include its unsaved definition when comparing all
+    # formats. Keep this as a compatibility extension rather than changing the
+    # public request contract just for editor state.
+    raw_payload = await request.json()
+    raw_draft = raw_payload.get("custom_format") if isinstance(raw_payload, dict) else None
+    if raw_draft is not None:
+        draft_definition = CustomFormatTestDefinition.model_validate(raw_draft)
+        draft = _evaluation_format_from_test(draft_definition)
+        _validate_evaluation_format(draft)
+        draft_id = str(draft_definition.id) if draft_definition.id else None
+        if draft_id:
+            formats = [draft if item.id == draft_id else item for item in formats]
+            if not any(item.id == draft_id for item in formats):
+                formats.append(draft)
+        else:
+            formats.append(draft)
     profile: QualityProfile | None = None
     profile_scores: dict[str, int] = {}
     if payload.quality_profile_id is not None:
@@ -486,7 +492,7 @@ async def test_all_custom_formats(
     result = evaluate_custom_formats(
         formats,
         payload.release_name,
-        profile_scores=profile_scores,
+        profile_scores=profile_scores if profile is not None else None,
         context={"indexer": payload.indexer, "languages": payload.languages},
         include_disabled=payload.include_disabled,
     )
@@ -540,7 +546,7 @@ async def import_custom_formats(
             {
                 "name": item.name.strip(),
                 "description": item.description,
-                "media_scope": item.media_scope.value,
+                "media_scope": CustomFormatScope.BOTH.value,
                 "enabled": item.enabled,
                 "condition_definition": definition,
             }
@@ -549,7 +555,7 @@ async def import_custom_formats(
         row = CustomFormatModel(
             name=item.name.strip(),
             description=item.description.strip() if item.description else None,
-            media_scope=_scope(item.media_scope),
+            media_scope=MediaScope.BOTH,
             enabled=item.enabled,
             condition_definition=definition,
             revision=1,
@@ -630,8 +636,9 @@ async def update_custom_format(
     if "description" in values:
         description = values["description"]
         row.description = str(description).strip() if description else None
-    if "media_scope" in values and values["media_scope"] is not None:
-        row.media_scope = _scope(values["media_scope"])
+    # Scope is no longer part of Custom Format behavior. Normalize edited
+    # legacy rows so persisted data converges on the media-agnostic model.
+    row.media_scope = MediaScope.BOTH
     if "enabled" in values and values["enabled"] is not None:
         row.enabled = bool(values["enabled"])
     if payload.conditions is not None or payload.supersedes is not None:
@@ -724,7 +731,7 @@ def _export_item(row: CustomFormatModel, names_by_id: dict[UUID, str]) -> Custom
     return CustomFormatExportItem(
         name=row.name,
         description=row.description,
-        media_scope=CustomFormatScope(row.media_scope.value),
+        media_scope=CustomFormatScope.BOTH,
         enabled=row.enabled,
         conditions=[condition.to_dict() for condition in fmt.conditions],
         supersedes=[names_by_id[item] for item in _supersedes_ids(row.condition_definition) if item in names_by_id],

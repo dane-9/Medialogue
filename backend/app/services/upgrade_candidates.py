@@ -522,15 +522,10 @@ async def _evaluation_policy(
     entity_id: UUID,
 ) -> tuple[EffectiveProfile, list[EvaluationFormat]]:
     profile = await load_effective_profile(db, media_type=media_type, entity_id=entity_id)
-    eligible = (
-        (MediaScope.MOVIES, MediaScope.BOTH)
-        if media_type == MediaType.MOVIES
-        else (MediaScope.SHOWS, MediaScope.BOTH)
-    )
     rows = (
         await db.scalars(
             select(CustomFormatModel)
-            .where(CustomFormatModel.enabled.is_(True), CustomFormatModel.media_scope.in_(eligible))
+            .where(CustomFormatModel.enabled.is_(True))
             .order_by(CustomFormatModel.name)
         )
     ).all()
@@ -540,7 +535,7 @@ async def _evaluation_policy(
                 "id": str(row.id),
                 "name": row.name,
                 "description": row.description,
-                "media_scope": row.media_scope.value,
+                "media_scope": "both",
                 "enabled": row.enabled,
                 "condition_definition": dict(row.condition_definition or {}),
             }

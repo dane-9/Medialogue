@@ -148,6 +148,8 @@ class CustomFormatTestRequest(BaseModel):
 
 class CustomFormatTestAllRequest(BaseModel):
     release_name: str = Field(min_length=1, max_length=8192)
+    # Kept for backwards compatibility with older clients. Custom Formats are
+    # now media-agnostic and profile selection decides where they matter.
     media_scope: CustomFormatScope = CustomFormatScope.BOTH
     indexer: str | None = Field(default=None, max_length=256)
     languages: list[str] = Field(default_factory=list, max_length=64)

@@ -104,6 +104,33 @@ def test_more_specific_format_supersedes_broad_match_and_scores_once():
     assert result.total_score == 50
 
 
+def test_unselected_specific_format_does_not_suppress_selected_broad_format():
+    broad = CustomFormat(
+        "Dolby Vision",
+        [{"type": "release_title", "pattern": r"\bDV\b"}],
+        id="broad-dv",
+    )
+    specific = CustomFormat(
+        "DV HDR10",
+        [{"type": "release_title", "pattern": r"^(?=.*\bDV\b)(?=.*\bHDR\b)"}],
+        id="specific-dv-hdr10",
+        supersedes=(broad.id,),
+    )
+
+    result = evaluate_custom_formats(
+        [broad, specific],
+        "Movie.2026.2160p.BluRay.REMUX.DV.HDR-GROUP",
+        profile_scores={broad.id: 45},
+    )
+
+    broad_result, specific_result = result.formats
+    assert broad_result.matched is True
+    assert broad_result.score_contribution == 45
+    assert specific_result.matched is True
+    assert specific_result.score_contribution == 0
+    assert result.total_score == 45
+
+
 def test_supersedence_is_transitive_from_the_most_specific_match():
     base = CustomFormat("Base", [{"type": "release_title", "pattern": "TAG"}], id="base")
     middle = CustomFormat("Middle", [{"type": "release_title", "pattern": "TAG"}], id="middle", supersedes=(base.id,))
@@ -113,6 +140,34 @@ def test_supersedence_is_transitive_from_the_most_specific_match():
     assert [item.matched for item in result.formats] == [False, False, True]
     assert result.formats[0].suppressed_by_names == ("Specific",)
     assert result.formats[1].suppressed_by_names == ("Specific",)
+
+
+def test_unselected_format_can_match_without_affecting_profile_score():
+    custom_format = CustomFormat(
+        "Revision",
+        [{"type": "release_title", "pattern": r"\bREPACK\b", "score_offset": 25}],
+        id="revision",
+    )
+
+    unselected = evaluate_custom_formats(
+        [custom_format],
+        "Show S01E01 REPACK 1080p WEB-DL-GRP",
+        profile_scores={},
+    )
+    assert unselected.formats[0].matched is True
+    assert unselected.formats[0].score_offset == 25
+    assert unselected.formats[0].score_contribution == 0
+    assert unselected.total_score == 0
+
+    # Explicitly selecting a format with a zero base score is different from
+    # not selecting it: its per-match offset is then allowed to contribute.
+    selected = evaluate_custom_formats(
+        [custom_format],
+        "Show S01E01 REPACK 1080p WEB-DL-GRP",
+        profile_scores={custom_format.id: 0},
+    )
+    assert selected.formats[0].score_contribution == 25
+    assert selected.total_score == 25
 
 
 def test_highest_matching_rule_offset_is_added_to_the_profile_score():
