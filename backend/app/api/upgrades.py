@@ -306,7 +306,8 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_episode_count=current_episode_count,
         season_episode_count=season_episode_count,
         current_matched_formats=_matched_formats(
-            ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("formats")
+            ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("breakdown")
+            or ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("formats")
         ),
         candidate_matched_formats=_matched_formats((snapshot.get("candidate") or {}).get("formats")),
         execution_eligible=execution_eligible,

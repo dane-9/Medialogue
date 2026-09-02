@@ -32,6 +32,7 @@ from app.schemas.quality_profiles import (
     QualityProfileUpdate,
 )
 from app.services.events import create_event
+from app.services.upgrade_candidates import invalidate_idle_upgrade_candidates
 from app.services.quality_profiles import (
     get_assignment,
     assigned_titles_by_type,
@@ -40,6 +41,7 @@ from app.services.quality_profiles import (
     resolve_default_profile,
     load_effective_profile,
     profile_name_exists,
+    refresh_all_release_scores,
     refresh_movie_release_scores,
     refresh_show_release_scores,
     validate_profile_references,
@@ -308,11 +310,11 @@ async def update_quality_profile(
     assignments = (
         await db.scalars(select(MediaProfileOverride).where(MediaProfileOverride.quality_profile_id == row.id))
     ).all()
-    for assignment in assignments:
-        if assignment.movie_id:
-            await refresh_movie_release_scores(db, assignment.movie_id)
-        elif assignment.show_id:
-            await refresh_show_release_scores(db, assignment.show_id)
+    # The edited profile may be the default inherited by titles that have no
+    # assignment row. Re-score the library so stored release totals always
+    # reflect the same effective policy the search/upgrade paths resolve.
+    await refresh_all_release_scores(db)
+    await invalidate_idle_upgrade_candidates(db)
     await create_event(
         db,
         "quality_profile.updated",
@@ -352,6 +354,9 @@ async def set_default_quality_profile(
             settings.pop("default_profile", None)
         candidate.settings = settings
         candidate.revision += 1
+    await db.flush()
+    await refresh_all_release_scores(db)
+    await invalidate_idle_upgrade_candidates(db)
     await db.commit()
     await db.refresh(row)
     return await _profile_response(db, row, row.id)
@@ -391,6 +396,7 @@ async def delete_quality_profile(
             await refresh_movie_release_scores(db, assignment.movie_id)
         elif assignment.show_id:
             await refresh_show_release_scores(db, assignment.show_id)
+    await invalidate_idle_upgrade_candidates(db)
     await create_event(
         db,
         "quality_profile.deleted",
@@ -561,6 +567,7 @@ async def _save_settings(
         await refresh_movie_release_scores(db, entity_id)
     else:
         await refresh_show_release_scores(db, entity_id)
+    await invalidate_idle_upgrade_candidates(db)
     await create_event(
         db,
         "quality_profile.assignment_updated",

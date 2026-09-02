@@ -17,15 +17,18 @@ from app.main import create_app
 from app.models.domain import (
     AccessMode,
     Episode,
+    EpisodeMediaMap,
     IdentityState,
     Job,
     JobStatus,
     MediaDirectory,
+    MediaFile,
     MediaProfileOverride,
     MediaType,
     Movie,
     MovieRelease,
     PresenceState,
+    QualityDefinition,
     ReleaseScope,
     Season,
     Show,
@@ -291,6 +294,98 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
         assert expected_type in revision_rows[0]["upgrade_types"]
         comparison = revision_rows[0]["comparison_snapshot"]
         assert comparison["candidate"]["same_release_group"] is True
+
+
+def test_cross_group_custom_format_with_real_in_its_text_is_not_treated_as_revision(client: TestClient) -> None:
+    headers = _login(client)
+    _create_indexer(client, headers, scope="movies")
+    custom_format = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={
+            "name": "Unreal Bonus",
+            "media_scope": "movies",
+            "conditions": [{"type": "release_title", "pattern": r"\bUnreal\b", "required": True}],
+        },
+    ).json()
+    profile = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={
+            "name": "Unreal Profile",
+            "custom_format_scores": [{"custom_format_id": custom_format["id"], "score": 500}],
+        },
+    ).json()
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(
+                name="Movies",
+                resolved_root_path="/media/movies",
+                media_type=MediaType.MOVIES,
+                access_mode=AccessMode.READ_WRITE,
+            )
+            movie = Movie(
+                title="Odd Movie",
+                sort_title="Odd Movie",
+                year=2024,
+                tmdb_id=1009,
+                identity_state=IdentityState.MATCHED,
+            )
+            db.add_all([root, movie])
+            await db.flush()
+            release = MovieRelease(
+                movie_id=movie.id,
+                raw_release_name="Odd Movie (2024)",
+                tracker_title="Odd.Movie.2024.1080p.WEB-DL.x264-GRP",
+            )
+            db.add(release)
+            await db.flush()
+            db.add(
+                MediaDirectory(
+                    storage_root_id=root.id,
+                    resolved_path="/media/movies/Odd Movie (2024)",
+                    movie_release_id=release.id,
+                )
+            )
+            db.add(
+                MediaProfileOverride(
+                    media_type=MediaType.MOVIES,
+                    movie_id=movie.id,
+                    quality_profile_id=UUID(profile["id"]),
+                    override_definition={},
+                    revision=1,
+                )
+            )
+            await db.commit()
+
+    asyncio.run(seed())
+    behavior = FakeBehavior(
+        movie_results=[
+            SearchResult(
+                title="Odd.Movie.2024.Unreal.1080p.WEB-DL.x264-OTHER",
+                guid="surreal-custom-format",
+                download_url="http://upgrade-indexer.test/download/surreal",
+                size=10,
+                seeders=20,
+                published=None,
+                leechers=1,
+            )
+        ]
+    )
+    _run_search(behavior)
+
+    rows = client.get("/api/v1/upgrade-candidates").json()
+    assert len(rows) == 1
+    assert rows[0]["upgrade_types"] == ["custom_format"]
+    matched = next(
+        item
+        for item in rows[0]["comparison_snapshot"]["candidate"]["formats"]
+        if item["custom_format_name"] == "Unreal Bonus"
+    )
+    assert matched["matched"] is True
+    assert matched["contribution"] == 500
+    assert matched["suppressed_for_upgrade"] is False
 
 
 def test_movie_upgrade_preserves_the_current_edition(client: TestClient) -> None:
@@ -679,3 +774,309 @@ def test_airing_guard_fails_closed_on_unknown_or_future_metadata() -> None:
     eligible, reason = _season_airing_eligible(season, [episode1, episode2], today=date(2026, 8, 31))
     assert eligible is False
     assert "still airing" in str(reason)
+
+
+def test_show_on_read_only_root_is_skipped_through_episode_media_maps(client: TestClient) -> None:
+    headers = _login(client)
+    _create_indexer(client, headers, scope="shows")
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(
+                name="Show Archive",
+                resolved_root_path="/archive/shows",
+                media_type=MediaType.SHOWS,
+                access_mode=AccessMode.READ_ONLY,
+            )
+            show = Show(title="Mapped Show", year=2024, tmdb_id=8101, identity_state=IdentityState.MATCHED)
+            db.add_all([root, show])
+            await db.flush()
+            season = Season(show_id=show.id, season_number=1, monitored=True, metadata_json={"episode_count": 1})
+            db.add(season)
+            await db.flush()
+            episode = Episode(
+                show_id=show.id,
+                season_id=season.id,
+                season_number=1,
+                episode_number=1,
+                air_date=date(2024, 1, 1),
+                monitored=True,
+                presence_state=PresenceState.PRESENT,
+            )
+            release = ShowRelease(
+                show_id=show.id,
+                season_id=season.id,
+                raw_release_name="Mapped.Show.S01E01.1080p.WEB-DL.x264-GRP",
+                release_scope=ReleaseScope.EPISODE,
+            )
+            db.add_all([episode, release])
+            await db.flush()
+            directory = MediaDirectory(
+                storage_root_id=root.id,
+                resolved_path="/archive/shows/Mapped Show/Season 01",
+            )
+            db.add(directory)
+            await db.flush()
+            media_file = MediaFile(
+                media_directory_id=directory.id,
+                relative_path="Mapped.Show.S01E01.1080p.WEB-DL.x264-GRP.mkv",
+                filename="Mapped.Show.S01E01.1080p.WEB-DL.x264-GRP.mkv",
+            )
+            db.add(media_file)
+            await db.flush()
+            db.add(EpisodeMediaMap(episode_id=episode.id, media_file_id=media_file.id, show_release_id=release.id))
+            await db.commit()
+
+    asyncio.run(seed())
+    behavior = FakeBehavior(
+        season_results={
+            1: [
+                SearchResult(
+                    title="Mapped.Show.S01.2160p.WEB-DL.x264-GRP",
+                    guid="mapped-show-upgrade",
+                    download_url="http://upgrade-indexer.test/mapped-show",
+                    size=100,
+                    seeders=10,
+                    published=None,
+                )
+            ]
+        }
+    )
+    _run_search(behavior)
+
+    assert client.get("/api/v1/upgrade-candidates?media_type=shows").json() == []
+    count = client.get("/api/v1/upgrade-candidates/count").json()
+    assert count["read_only_roots"] == ["Show Archive"]
+
+
+def test_show_season_is_not_upgradeable_when_any_current_release_is_unscorable(client: TestClient) -> None:
+    headers = _login(client)
+    _create_indexer(client, headers, scope="shows")
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(
+                name="Shows",
+                resolved_root_path="/media/shows",
+                media_type=MediaType.SHOWS,
+                access_mode=AccessMode.READ_WRITE,
+            )
+            show = Show(title="Mixed Quality", year=2024, tmdb_id=8102, identity_state=IdentityState.MATCHED)
+            unknown = QualityDefinition(name="Unknown Private Quality", rank=-999, enabled=True)
+            db.add_all([root, show, unknown])
+            await db.flush()
+            season = Season(show_id=show.id, season_number=1, monitored=True, metadata_json={"episode_count": 2})
+            db.add(season)
+            await db.flush()
+            db.add_all([
+                Episode(
+                    show_id=show.id, season_id=season.id, season_number=1, episode_number=1,
+                    air_date=date(2024, 1, 1), monitored=True, presence_state=PresenceState.PRESENT,
+                ),
+                Episode(
+                    show_id=show.id, season_id=season.id, season_number=1, episode_number=2,
+                    air_date=date(2024, 1, 8), monitored=True, presence_state=PresenceState.PRESENT,
+                ),
+            ])
+            recognized = ShowRelease(
+                show_id=show.id, season_id=season.id,
+                raw_release_name="Mixed.Quality.S01E01.1080p.WEB-DL.x264-GRP",
+                release_scope=ReleaseScope.EPISODE,
+            )
+            unscorable = ShowRelease(
+                show_id=show.id, season_id=season.id,
+                raw_release_name="Mixed.Quality.S01E02.1080p.WEB-DL.x264-GRP",
+                release_scope=ReleaseScope.EPISODE,
+                quality_definition_id=unknown.id,
+            )
+            db.add_all([recognized, unscorable])
+            await db.flush()
+            db.add_all([
+                MediaDirectory(storage_root_id=root.id, resolved_path="/media/shows/Mixed Quality/E01", show_release_id=recognized.id),
+                MediaDirectory(storage_root_id=root.id, resolved_path="/media/shows/Mixed Quality/E02", show_release_id=unscorable.id),
+            ])
+            await db.commit()
+
+    asyncio.run(seed())
+    behavior = FakeBehavior(
+        season_results={
+            1: [
+                SearchResult(
+                    title="Mixed.Quality.S01.2160p.WEB-DL.x264-GRP",
+                    guid="unsafe-partial-season",
+                    download_url="http://upgrade-indexer.test/unsafe-partial-season",
+                    size=100,
+                    seeders=10,
+                    published=None,
+                )
+            ]
+        }
+    )
+    _run_search(behavior)
+
+    assert client.get("/api/v1/upgrade-candidates?media_type=shows").json() == []
+
+
+def test_profile_policy_change_blocks_cached_upgrade_candidates(client: TestClient) -> None:
+    headers = _login(client)
+    profiles = client.get("/api/v1/quality-profiles").json()
+    default = next(profile for profile in profiles if profile["is_default"])
+
+    async def seed() -> str:
+        async with db_session.async_session_factory() as db:
+            movie = Movie(title="Stale Candidate", sort_title="Stale Candidate", year=2024, tmdb_id=8103)
+            db.add(movie)
+            await db.flush()
+            candidate = UpgradeCandidate(
+                target_key=f"movie-release:{movie.id}",
+                media_type=MediaType.MOVIES,
+                movie_id=movie.id,
+                current_release_ids=[],
+                current_release_name="Stale.Candidate.2024.1080p.WEB-DL-GRP",
+                current_quality="1080p WEB-DL",
+                indexer_name="Upgrade Indexer",
+                guid="stale",
+                title="Stale.Candidate.2024.2160p.WEB-DL-GRP",
+                quality="2160p WEB-DL",
+                execution_eligible=True,
+            )
+            db.add(candidate)
+            await db.commit()
+            return str(candidate.id)
+
+    candidate_id = asyncio.run(seed())
+    changed = client.patch(
+        f"/api/v1/quality-profiles/{default['id']}",
+        headers=headers,
+        json={
+            "season_pack_upgrades": not default["season_pack_upgrades"],
+            "expected_revision": default["revision"],
+        },
+    )
+    assert changed.status_code == 200, changed.text
+
+    row = next(item for item in client.get("/api/v1/upgrade-candidates").json() if item["id"] == candidate_id)
+    assert row["execution_eligible"] is False
+    assert "search for upgrades again" in row["execution_block_reason"].casefold()
+
+
+def test_indexer_custom_format_is_scored_symmetrically_for_current_and_candidate(client: TestClient) -> None:
+    headers = _login(client)
+    _create_indexer(client, headers, scope="movies")
+    custom_format = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={
+            "name": "Preferred Indexer",
+            "media_scope": "movies",
+            "conditions": [{"type": "indexer", "value": "Upgrade Indexer", "required": True}],
+        },
+    ).json()
+    default = next(profile for profile in client.get("/api/v1/quality-profiles").json() if profile["is_default"])
+    updated = client.patch(
+        f"/api/v1/quality-profiles/{default['id']}",
+        headers=headers,
+        json={
+            "custom_format_scores": [{"custom_format_id": custom_format["id"], "score": 500}],
+            "expected_revision": default["revision"],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(
+                name="Movies", resolved_root_path="/media/movies", media_type=MediaType.MOVIES,
+                access_mode=AccessMode.READ_WRITE,
+            )
+            movie = Movie(title="Indexer Movie", sort_title="Indexer Movie", year=2024, tmdb_id=8104)
+            db.add_all([root, movie])
+            await db.flush()
+            release = MovieRelease(
+                movie_id=movie.id,
+                raw_release_name="Indexer.Movie.2024.1080p.WEB-DL.x264-GRP",
+                tracker_title="Indexer.Movie.2024.1080p.WEB-DL.x264-GRP",
+                selection_snapshot={"indexer_name": "Upgrade Indexer"},
+            )
+            db.add(release)
+            await db.flush()
+            db.add(MediaDirectory(storage_root_id=root.id, resolved_path="/media/movies/Indexer Movie", movie_release_id=release.id))
+            await db.commit()
+
+    asyncio.run(seed())
+    _run_search(
+        FakeBehavior(movie_results=[
+            SearchResult(
+                title="Indexer.Movie.2024.1080p.WEB-DL.x264-GRP",
+                guid="same-indexer-same-score",
+                download_url="http://upgrade-indexer.test/same",
+                size=100,
+                seeders=10,
+                published=None,
+            )
+        ])
+    )
+
+    assert client.get("/api/v1/upgrade-candidates?media_type=movies").json() == []
+
+
+def test_upgrade_response_exposes_current_custom_format_breakdown(client: TestClient) -> None:
+    headers = _login(client)
+    _create_indexer(client, headers, scope="movies")
+    custom_format = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={
+            "name": "Group GRP",
+            "media_scope": "movies",
+            "conditions": [{"type": "release_group", "pattern": "^GRP$"}],
+        },
+    ).json()
+    default = next(profile for profile in client.get("/api/v1/quality-profiles").json() if profile["is_default"])
+    updated = client.patch(
+        f"/api/v1/quality-profiles/{default['id']}",
+        headers=headers,
+        json={
+            "custom_format_scores": [{"custom_format_id": custom_format["id"], "score": 100}],
+            "expected_revision": default["revision"],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(
+                name="Movies", resolved_root_path="/media/movies", media_type=MediaType.MOVIES,
+                access_mode=AccessMode.READ_WRITE,
+            )
+            movie = Movie(title="Breakdown Movie", sort_title="Breakdown Movie", year=2024, tmdb_id=8105)
+            db.add_all([root, movie])
+            await db.flush()
+            release = MovieRelease(
+                movie_id=movie.id,
+                raw_release_name="Breakdown.Movie.2024.1080p.WEB-DL.x264-GRP",
+                tracker_title="Breakdown.Movie.2024.1080p.WEB-DL.x264-GRP",
+            )
+            db.add(release)
+            await db.flush()
+            db.add(MediaDirectory(storage_root_id=root.id, resolved_path="/media/movies/Breakdown Movie", movie_release_id=release.id))
+            await db.commit()
+
+    asyncio.run(seed())
+    _run_search(
+        FakeBehavior(movie_results=[
+            SearchResult(
+                title="Breakdown.Movie.2024.2160p.WEB-DL.x264-GRP",
+                guid="quality-with-same-format",
+                download_url="http://upgrade-indexer.test/breakdown",
+                size=100,
+                seeders=10,
+                published=None,
+            )
+        ])
+    )
+
+    rows = client.get("/api/v1/upgrade-candidates?media_type=movies").json()
+    assert len(rows) == 1
+    assert rows[0]["current_custom_format_score"] == 100
+    assert any(item["custom_format_name"] == "Group GRP" and item["contribution"] == 100 for item in rows[0]["current_matched_formats"])

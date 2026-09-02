@@ -16,9 +16,11 @@ from app.models.domain import (
     AccessMode,
     CustomFormat as CustomFormatModel,
     Episode,
+    EpisodeMediaMap,
     Job,
     JobStatus,
     MediaDirectory,
+    MediaFile,
     MediaScope,
     MediaType,
     Movie,
@@ -36,7 +38,14 @@ from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, list_configured_indexers
 from app.services.jobs import run_job, update_job
 from app.services.movie_editions import same_edition
-from app.services.quality_profiles import EffectiveProfile, evaluate_current_release_score, load_effective_profile, minimum_quality_status
+from app.services.quality_profiles import (
+    EffectiveProfile,
+    evaluate_current_release_score,
+    load_effective_profile,
+    minimum_quality_status,
+    preferred_release_name,
+    release_indexer_name,
+)
 from app.services.search import SearchTarget, _published_at, _query_indexer
 
 TorznabClientFactory = Callable[..., TorznabClient]
@@ -158,17 +167,40 @@ def _current_revision_reasons(reference: CurrentReleaseEvidence, candidate_parse
     return reasons
 
 
-def _revision_dependent_format(format_definition: EvaluationFormat) -> bool:
-    """Whether a Custom Format's match depends on a revision marker."""
+def _is_revision_condition_match(condition: Any) -> bool:
+    if condition.negated or not condition.matched:
+        return False
+    if condition.condition_type not in {"release_title", "release_attribute"}:
+        return False
+    matched = str(condition.regex_match or condition.evidence or "").strip().casefold()
+    if not matched:
+        return False
+    return any(
+        matched == marker or (matched.startswith(marker) and matched[len(marker):].isdigit())
+        for marker in ("repack", "proper", "rerip")
+    )
 
-    for condition in format_definition.conditions:
-        if condition.negate:
-            continue
-        evidence = " ".join(
-            str(value or "")
-            for value in (condition.name, condition.value, condition.pattern)
-        ).casefold()
-        if any(marker in evidence for marker in ("repack", "proper", "rerip", "real")):
+
+def _revision_dependent_match(evaluation: Any) -> bool:
+    """Whether this successful CF match logically depends on a revision marker.
+
+    Looking at arbitrary condition names/pattern text produced false positives
+    (notably any unrelated word containing ``real``).  Suppression is an
+    upgrade-comparison rule, so it is based on the candidate's actual matched
+    evidence and on whether removing that revision evidence would make one of
+    the format's condition groups fail.
+    """
+
+    groups: dict[str, list[Any]] = {}
+    for condition in evaluation.conditions:
+        groups.setdefault(condition.group or condition.condition_type, []).append(condition)
+    for conditions in groups.values():
+        required = [condition for condition in conditions if condition.required]
+        if any(condition.effective_result and _is_revision_condition_match(condition) for condition in required):
+            return True
+        optional = [condition for condition in conditions if not condition.required]
+        passing_optional = [condition for condition in optional if condition.effective_result]
+        if passing_optional and all(_is_revision_condition_match(condition) for condition in passing_optional):
             return True
     return False
 
@@ -222,6 +254,31 @@ def _season_airing_eligible(season: Season, episodes: list[Episode], *, today: d
     return True, None
 
 
+async def invalidate_idle_upgrade_candidates(
+    db: AsyncSession,
+    *,
+    reason: str = "Scoring policy changed; search for upgrades again.",
+) -> int:
+    """Fail closed for cached recommendations after upgrade policy changes.
+
+    Upgrade candidates are search-time snapshots. Quality Profile assignments,
+    profile scoring, and Custom Format definitions can all change what qualifies
+    as an upgrade, so an idle snapshot must not remain executable afterwards.
+    Active destructive workflows are deliberately left untouched.
+    """
+
+    rows = (
+        await db.scalars(
+            select(UpgradeCandidate).where(UpgradeCandidate.execution_state.is_(None))
+        )
+    ).all()
+    for row in rows:
+        row.execution_eligible = False
+        row.execution_block_reason = reason
+    await db.flush()
+    return len(rows)
+
+
 def _read_only_root(releases: list[MovieRelease | ShowRelease]) -> str | None:
     """The name of the read-only media folder holding these releases, if any.
 
@@ -232,36 +289,18 @@ def _read_only_root(releases: list[MovieRelease | ShowRelease]) -> str | None:
     """
 
     for release in releases:
-        for directory in release.directories:
+        directories = list(release.directories)
+        if isinstance(release, ShowRelease):
+            directories.extend(
+                episode_map.media_file.media_directory
+                for episode_map in release.episode_maps
+                if episode_map.media_file is not None and episode_map.media_file.media_directory is not None
+            )
+        for directory in directories:
             root = directory.storage_root
             if root is not None and root.access_mode == AccessMode.READ_ONLY:
                 return root.name
     return None
-
-
-def _preferred_release_name(release: MovieRelease | ShowRelease) -> str:
-    """Use the selected indexer title, retaining the folder name as fallback."""
-
-    tracker_title = str(release.tracker_title or "").strip()
-    if not tracker_title and isinstance(release, MovieRelease):
-        tracker_title = str((release.selection_snapshot or {}).get("release_name") or "").strip()
-    if not tracker_title:
-        torrents = sorted(
-            release.torrents,
-            key=lambda item: (item.last_seen_at, item.id),
-            reverse=True,
-        )
-        tracker_title = next(
-            (
-                str((torrent.metadata_json or {}).get("tracker_title") or "").strip()
-                for torrent in torrents
-                if str((torrent.metadata_json or {}).get("tracker_title") or "").strip()
-            ),
-            "",
-        )
-    if tracker_title and not release.tracker_title:
-        release.tracker_title = tracker_title
-    return tracker_title or release.raw_release_name
 
 
 async def _release_evidence(
@@ -272,12 +311,13 @@ async def _release_evidence(
     release: MovieRelease | ShowRelease,
     quality_order: tuple[str, ...],
 ) -> CurrentReleaseEvidence | None:
-    release_name = _preferred_release_name(release)
+    release_name = preferred_release_name(release)
     score, score_snapshot = await evaluate_current_release_score(
         db,
         media_type=media_type,
         entity_id=entity_id,
         release_name=release_name,
+        indexer=await release_indexer_name(db, release),
     )
     parsed = parse_release(release_name)
     quality = (
@@ -400,6 +440,10 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
                     .options(
                         selectinload(ShowRelease.quality_definition),
                         selectinload(ShowRelease.directories).selectinload(MediaDirectory.storage_root),
+                        selectinload(ShowRelease.episode_maps)
+                        .selectinload(EpisodeMediaMap.media_file)
+                        .selectinload(MediaFile.media_directory)
+                        .selectinload(MediaDirectory.storage_root),
                         selectinload(ShowRelease.torrents),
                     )
                     .where(
@@ -423,7 +467,10 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
                 )
                 if item is not None:
                     evidence.append(item)
-            if not evidence:
+            # A season-pack replacement is destructive across the whole season.
+            # If even one current release cannot be scored under the active
+            # profile, do not silently omit it from the replacement set.
+            if len(evidence) != len(releases):
                 skipped_quality += 1
                 continue
             # Highest quality anywhere in the season is the hard floor for a pack.
@@ -538,7 +585,6 @@ def _score_candidate(
     )
     same_release_group = _same_release_group(target.reference, parsed)
     revision_context_matches = _revision_context_matches(target, parsed)
-    formats_by_id = {str(item.id): item for item in formats}
     format_snapshots: list[dict[str, Any]] = []
     for item in evaluation.formats:
         key = str(item.custom_format_id)
@@ -552,8 +598,7 @@ def _score_candidate(
         suppressed_revision = (
             item.matched
             and not revision_context_matches
-            and (definition := formats_by_id.get(key)) is not None
-            and _revision_dependent_format(definition)
+            and _revision_dependent_match(item)
         )
         evidence["contribution"] = 0 if suppressed_revision else int(item.score_contribution)
         evidence["suppressed_for_upgrade"] = bool(suppressed_revision)

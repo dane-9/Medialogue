@@ -4,17 +4,20 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.domain import (
     CustomFormat,
+    InteractiveSearchResult,
     MediaProfileOverride,
     MediaType,
+    MovieRelease,
     ProfileCustomFormatScore,
     QualityDefinition,
     QualityProfile,
+    ShowRelease,
 )
 from collections.abc import Sequence
 
@@ -526,16 +529,89 @@ async def evaluate_current_release_score(
     }
 
 
-async def refresh_movie_release_scores(db: AsyncSession, movie_id: UUID) -> int:
-    from app.models.domain import MovieRelease
+def preferred_release_name(release: MovieRelease | ShowRelease) -> str:
+    """Return the most faithful name Medialogue has for release scoring.
 
-    releases = (await db.scalars(select(MovieRelease).where(MovieRelease.movie_id == movie_id))).all()
+    Tracker/indexer titles retain tokens that may be absent after a client or
+    filesystem renames the payload.  Use the durable filesystem name only when
+    no tracker title can be recovered.
+    """
+
+    tracker_title = str(release.tracker_title or "").strip()
+    selection_snapshot = getattr(release, "selection_snapshot", None)
+    if not tracker_title and isinstance(selection_snapshot, dict):
+        tracker_title = str(selection_snapshot.get("release_name") or "").strip()
+
+    state = inspect(release)
+    if not tracker_title and "torrents" not in state.unloaded:
+        torrents = sorted(
+            release.torrents,
+            key=lambda item: (item.last_seen_at, item.id),
+            reverse=True,
+        )
+        tracker_title = next(
+            (
+                str((torrent.metadata_json or {}).get("tracker_title") or "").strip()
+                for torrent in torrents
+                if str((torrent.metadata_json or {}).get("tracker_title") or "").strip()
+            ),
+            "",
+        )
+    if tracker_title and not release.tracker_title:
+        release.tracker_title = tracker_title
+    return tracker_title or release.raw_release_name
+
+
+async def release_indexer_name(
+    db: AsyncSession,
+    release: MovieRelease | ShowRelease,
+) -> str | None:
+    """Recover the originating indexer so stored and upgrade scores agree."""
+
+    selection_snapshot = getattr(release, "selection_snapshot", None)
+    if isinstance(selection_snapshot, dict):
+        snapshot_name = str(selection_snapshot.get("indexer_name") or "").strip()
+        if snapshot_name:
+            return snapshot_name
+
+    state = inspect(release)
+    if "torrents" in state.unloaded:
+        return None
+    for torrent in sorted(release.torrents, key=lambda item: (item.last_seen_at, item.id), reverse=True):
+        metadata_name = str((torrent.metadata_json or {}).get("indexer_name") or "").strip()
+        if metadata_name:
+            return metadata_name
+
+    info_hashes = [torrent.info_hash for torrent in release.torrents if torrent.info_hash]
+    if not info_hashes:
+        return None
+    selected = await db.scalar(
+        select(InteractiveSearchResult)
+        .where(
+            InteractiveSearchResult.selected_at.is_not(None),
+            InteractiveSearchResult.submitted_info_hash.in_(info_hashes),
+        )
+        .order_by(InteractiveSearchResult.selected_at.desc())
+        .limit(1)
+    )
+    return str(selected.indexer_name).strip() if selected is not None and selected.indexer_name else None
+
+
+async def refresh_movie_release_scores(db: AsyncSession, movie_id: UUID) -> int:
+    releases = (
+        await db.scalars(
+            select(MovieRelease)
+            .options(selectinload(MovieRelease.torrents))
+            .where(MovieRelease.movie_id == movie_id)
+        )
+    ).all()
     for release in releases:
         score, snapshot = await evaluate_current_release_score(
             db,
             media_type=MediaType.MOVIES,
             entity_id=movie_id,
-            release_name=release.raw_release_name,
+            release_name=preferred_release_name(release),
+            indexer=await release_indexer_name(db, release),
         )
         release.current_custom_format_score = score
         parse_snapshot = dict(release.parse_snapshot or {})
@@ -545,15 +621,20 @@ async def refresh_movie_release_scores(db: AsyncSession, movie_id: UUID) -> int:
 
 
 async def refresh_show_release_scores(db: AsyncSession, show_id: UUID) -> int:
-    from app.models.domain import ShowRelease
-
-    releases = (await db.scalars(select(ShowRelease).where(ShowRelease.show_id == show_id))).all()
+    releases = (
+        await db.scalars(
+            select(ShowRelease)
+            .options(selectinload(ShowRelease.torrents))
+            .where(ShowRelease.show_id == show_id)
+        )
+    ).all()
     for release in releases:
         score, snapshot = await evaluate_current_release_score(
             db,
             media_type=MediaType.SHOWS,
             entity_id=show_id,
-            release_name=release.raw_release_name,
+            release_name=preferred_release_name(release),
+            indexer=await release_indexer_name(db, release),
         )
         release.current_custom_format_score = score
         parse_snapshot = dict(release.parse_snapshot or {})
@@ -563,16 +644,18 @@ async def refresh_show_release_scores(db: AsyncSession, show_id: UUID) -> int:
 
 
 async def refresh_all_release_scores(db: AsyncSession) -> dict[str, int]:
-    """Re-evaluate durable current scores for every title with profile settings.
+    """Re-evaluate durable current scores for every release in the library.
 
     Custom Format edits are infrequent in this single-user application, while
     keeping the stored current score truthful is important. Search-time
     snapshots are deliberately not touched by this operation.
     """
 
-    assignments = (await db.scalars(select(MediaProfileOverride))).all()
-    movie_ids = {row.movie_id for row in assignments if row.movie_id is not None}
-    show_ids = {row.show_id for row in assignments if row.show_id is not None}
+    # Include inherited/default-profile titles too.  Those titles deliberately
+    # have no MediaProfileOverride row, but their effective scoring policy still
+    # changes when the default profile or any Custom Format changes.
+    movie_ids = set((await db.scalars(select(MovieRelease.movie_id).distinct())).all())
+    show_ids = set((await db.scalars(select(ShowRelease.show_id).distinct())).all())
     movie_releases = 0
     show_releases = 0
     for movie_id in movie_ids:

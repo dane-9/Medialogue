@@ -859,6 +859,149 @@ def test_the_inherited_profile_follows_the_chosen_default(client: TestClient):
     assert inherited["quality_profile_inherited"] is True
 
 
+def test_switching_default_recomputes_stored_scores_for_inherited_titles(client: TestClient):
+    headers = login(client)
+    seed_movie(with_release=True)
+    cf = create_cf(client, headers)
+
+    async def current_score() -> int:
+        async with db_session.async_session_factory() as db:
+            release = await db.scalar(select(MovieRelease))
+            return int(release.current_custom_format_score or 0)
+
+    assert asyncio.run(current_score()) != 321
+    preferred = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={
+            "name": "Inherited Score",
+            "custom_format_scores": [{"custom_format_id": cf["id"], "score": 321}],
+        },
+    ).json()
+    promoted = client.post(f"/api/v1/quality-profiles/{preferred['id']}/default", headers=headers)
+    assert promoted.status_code == 200, promoted.text
+    assert asyncio.run(current_score()) == 321
+
+
+def test_editing_default_recomputes_stored_scores_for_inherited_titles(client: TestClient):
+    headers = login(client)
+    seed_movie(with_release=True)
+    cf = create_cf(client, headers)
+    profile = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={
+            "name": "Editable Default",
+            "custom_format_scores": [{"custom_format_id": cf["id"], "score": 100}],
+        },
+    ).json()
+    assert client.post(f"/api/v1/quality-profiles/{profile['id']}/default", headers=headers).status_code == 200
+
+    async def current_score() -> int:
+        async with db_session.async_session_factory() as db:
+            release = await db.scalar(select(MovieRelease))
+            return int(release.current_custom_format_score or 0)
+
+    assert asyncio.run(current_score()) == 100
+    changed = client.patch(
+        f"/api/v1/quality-profiles/{profile['id']}",
+        headers=headers,
+        json={
+            "custom_format_scores": [{"custom_format_id": cf["id"], "score": 250}],
+            "expected_revision": profile["revision"] + 1,
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert asyncio.run(current_score()) == 250
+
+
+def test_custom_format_edit_recomputes_inherited_title_without_assignment_row(client: TestClient):
+    headers = login(client)
+    seed_movie(with_release=True)
+    cf = create_cf(client, headers)
+    profile = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={
+            "name": "Inherited CF",
+            "custom_format_scores": [{"custom_format_id": cf["id"], "score": 333}],
+        },
+    ).json()
+    assert client.post(f"/api/v1/quality-profiles/{profile['id']}/default", headers=headers).status_code == 200
+
+    async def current_score() -> int:
+        async with db_session.async_session_factory() as db:
+            release = await db.scalar(select(MovieRelease))
+            return int(release.current_custom_format_score or 0)
+
+    assert asyncio.run(current_score()) == 333
+    changed = client.patch(
+        f"/api/v1/custom-formats/{cf['id']}",
+        headers=headers,
+        json={
+            "conditions": [{"type": "release_attribute", "value": "REPACK", "required": True}],
+            "expected_revision": cf["revision"],
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert asyncio.run(current_score()) == 0
+
+
+def test_stored_score_prefers_tracker_title_over_filesystem_name(client: TestClient):
+    headers = login(client)
+
+    async def seed() -> str:
+        async with db_session.async_session_factory() as db:
+            movie = Movie(title="Tracker Name", sort_title="Tracker Name", year=2024, tmdb_id=92001, identity_state=IdentityState.MATCHED)
+            db.add(movie)
+            await db.flush()
+            db.add(
+                MovieRelease(
+                    movie_id=movie.id,
+                    raw_release_name="Tracker Name (2024)",
+                    tracker_title="Tracker.Name.2024.TRACKER-TOKEN.1080p.WEB-DL.x264-GRP",
+                    release_state=ReleaseState.CURRENT,
+                )
+            )
+            await db.commit()
+            return "92001"
+
+    movie = asyncio.run(seed())
+    cf = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={
+            "name": "Tracker Token",
+            "media_scope": "movies",
+            "conditions": [{"type": "release_title", "pattern": r"\bTRACKER-TOKEN\b", "required": True}],
+        },
+    ).json()
+    profile = client.post(
+        "/api/v1/quality-profiles",
+        headers=headers,
+        json={
+            "name": "Tracker Scoring",
+            "custom_format_scores": [{"custom_format_id": cf["id"], "score": 444}],
+        },
+    ).json()
+    assigned = client.put(
+        f"/api/v1/movies/{movie}/profile-settings",
+        headers=headers,
+        json={"quality_profile_id": profile["id"], "expected_revision": 0},
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    async def release_score() -> tuple[int | None, str | None]:
+        async with db_session.async_session_factory() as db:
+            release = await db.scalar(select(MovieRelease))
+            snapshot = dict(release.parse_snapshot or {}).get("current_score_snapshot") or {}
+            return release.current_custom_format_score, snapshot.get("candidate_quality")
+
+    score, quality = asyncio.run(release_score())
+    assert score == 444
+    assert quality == "1080p WEB-DL"
+
+
 def test_only_one_profile_is_the_default_at_a_time(client: TestClient):
     headers = login(client)
     first = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "First", "custom_format_scores": []}).json()

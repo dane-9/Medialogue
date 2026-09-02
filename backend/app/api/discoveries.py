@@ -384,12 +384,16 @@ def _directory_observation(directory: MediaDirectory) -> DirectoryObservation:
     )
 
 
-async def _apply_new_media_profile(db: AsyncSession, movie: Movie, quality_profile_id: UUID | None) -> None:
-    """Give a newly created movie the profile chosen in New Media.
+async def _apply_new_media_profile(
+    db: AsyncSession,
+    media: Movie | Show,
+    quality_profile_id: UUID | None,
+) -> None:
+    """Give a newly created title the profile chosen in New Media.
 
-    Only for movies this import just created: adding a second edition of a title
-    you already own must not silently rewrite the scoring you set up for it.
-    A profile deleted between the choice and adding is skipped rather than
+    Only for titles this import just created: adding media to a title already in
+    the library must not silently rewrite scoring the user configured earlier.
+    A profile deleted between selection and approval is skipped rather than
     written as a dangling id.
     """
 
@@ -397,10 +401,12 @@ async def _apply_new_media_profile(db: AsyncSession, movie: Movie, quality_profi
         return
     if await db.scalar(select(QualityProfile.id).where(QualityProfile.id == quality_profile_id)) is None:
         return
+    is_movie = isinstance(media, Movie)
     db.add(
         MediaProfileOverride(
-            media_type=MediaType.MOVIES,
-            movie_id=movie.id,
+            media_type=MediaType.MOVIES if is_movie else MediaType.SHOWS,
+            movie_id=media.id if is_movie else None,
+            show_id=media.id if not is_movie else None,
             quality_profile_id=quality_profile_id,
             override_definition={},
         )
@@ -473,6 +479,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
             except Exception as exc:
                 await db.rollback()
                 raise AppError("TMDB_SHOW_METADATA_FAILED", f"Could not add the selected show: {exc}", status_code=503) from exc
+            await _apply_new_media_profile(db, media, discovery.quality_profile_id)
         await reconcile_show_directory(db, root, observation, show_hint=media)
 
     discovery.review_state = NewMediaState.APPROVED

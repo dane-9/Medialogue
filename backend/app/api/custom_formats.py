@@ -44,6 +44,7 @@ from app.services.custom_formats import (
 )
 from app.services.events import create_event
 from app.services.quality_profiles import refresh_all_release_scores
+from app.services.upgrade_candidates import invalidate_idle_upgrade_candidates
 
 router = APIRouter(prefix="/custom-formats", tags=["custom-formats"])
 
@@ -430,6 +431,11 @@ async def create_custom_format(
         message=f"Custom Format {row.name} was created.",
         details={"media_scope": row.media_scope.value, "condition_count": len(fmt.conditions), "supersedes_count": len(payload.supersedes)},
     )
+    # Even an unscored format can change an existing score through explicit
+    # supersedence, and the durable breakdown should reflect newly available
+    # formats. Keep stored current snapshots in sync with the evaluator.
+    await refresh_all_release_scores(db)
+    await invalidate_idle_upgrade_candidates(db)
     await db.commit()
     return await _response(db, row)
 
@@ -574,6 +580,8 @@ async def import_custom_formats(
             message=f"Custom Format {row.name} was imported.",
             details={"schema_version": CUSTOM_FORMAT_SCHEMA_VERSION},
         )
+    await refresh_all_release_scores(db)
+    await invalidate_idle_upgrade_candidates(db)
     await db.commit()
     imported = [await _response(db, row) for row in rows]
     return CustomFormatImportResponse(imported=imported, count=len(imported))
@@ -650,6 +658,7 @@ async def update_custom_format(
     )
     await db.flush()
     await refresh_all_release_scores(db)
+    await invalidate_idle_upgrade_candidates(db)
     await db.commit()
     return await _response(db, row)
 
@@ -705,6 +714,7 @@ async def delete_custom_format(
     await db.delete(row)
     await db.flush()
     await refresh_all_release_scores(db)
+    await invalidate_idle_upgrade_candidates(db)
     await db.commit()
     return DeleteResponse(id=custom_format_id)
 

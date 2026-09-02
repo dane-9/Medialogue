@@ -36,7 +36,7 @@ from app.services.events import create_event, publish_live_event, queue_live_eve
 from app.services.integration_state import get_configured_plex
 from app.services.tmdb import TMDBUnavailable, resolve_movie_identity_detailed
 from app.services.discoveries import retire_missing_new_media_discovery, stage_media_discovery
-from app.services.quality_profiles import evaluate_current_release_score
+from app.services.quality_profiles import evaluate_current_release_score, preferred_release_name
 
 
 _movie_locks: defaultdict[UUID, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -930,6 +930,7 @@ async def reconcile_movie_directory(
         await _persist_plex_candidate_evidence(db, movie, release, plex_evidence)
         # Plex metadata cannot dispute a TMDB/manual movie identity.
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "movie", movie.id)
+        selected: InteractiveSearchResult | None = None
         if torrent is not None:
             assoc = await db.scalar(
                 select(MovieReleaseTorrent).where(
@@ -956,12 +957,23 @@ async def reconcile_movie_directory(
             if selected is not None and release.selection_snapshot is None:
                 release.selection_snapshot = dict(selected.selection_snapshot or {})
                 release.original_custom_format_score = selected.custom_format_score
+            if selected is not None:
+                release.tracker_title = selected.title
+            elif not release.tracker_title:
+                release.tracker_title = str((torrent.metadata_json or {}).get("tracker_title") or "").strip() or None
 
         current_score, current_score_snapshot = await evaluate_current_release_score(
             db,
             media_type=MediaType.MOVIES,
             entity_id=movie.id,
-            release_name=release.raw_release_name,
+            release_name=preferred_release_name(release),
+            indexer=(
+                str(selected.indexer_name).strip()
+                if selected is not None and selected.indexer_name
+                else str((torrent.metadata_json or {}).get("indexer_name") or "").strip() or None
+                if torrent is not None
+                else None
+            ),
         )
         release.current_custom_format_score = current_score
         release.parse_snapshot = {**dict(release.parse_snapshot or {}), "current_score_snapshot": current_score_snapshot}
@@ -1071,6 +1083,7 @@ async def associate_incoming_torrent(
                 show_id=show.id,
                 season_id=season.id,
                 raw_release_name=torrent.name,
+                tracker_title=str((torrent.metadata_json or {}).get("tracker_title") or "").strip() or None,
                 release_scope=scope_value,
                 quality_definition_id=quality.id if quality else None,
                 release_group=parsed.release_group,
@@ -1088,7 +1101,8 @@ async def associate_incoming_torrent(
                 db,
                 media_type=MediaType.SHOWS,
                 entity_id=show.id,
-                release_name=release.raw_release_name,
+                release_name=preferred_release_name(release),
+                indexer=str((torrent.metadata_json or {}).get("indexer_name") or "").strip() or None,
             )
             release.current_custom_format_score = current_score
             release.parse_snapshot = {**release.parse_snapshot, "current_score_snapshot": snapshot}

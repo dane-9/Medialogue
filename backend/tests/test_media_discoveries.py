@@ -948,3 +948,34 @@ def test_a_profile_that_no_longer_exists_is_refused_rather_than_stored(client: T
     )
     assert refused.status_code == 404, refused.text
     assert refused.json()["error"]["code"] == "QUALITY_PROFILE_NOT_FOUND"
+
+
+def test_a_quality_profile_chosen_in_review_reaches_the_imported_show(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    show_root = tmp_path / "shows"
+    season = show_root / "Dollface.2019" / "Season 01"
+    season.mkdir(parents=True)
+    (season / "Dollface.S01E01.1080p.WEB-DL.mkv").write_bytes(b"episode")
+    storage = create_root(client, headers, show_root, "shows")
+    scan(client, headers, storage["id"])
+    discovery = next(
+        item
+        for item in client.get("/api/v1/discoveries?page_size=250").json()["items"]
+        if item["media_type"] == "shows"
+    )
+    profile = _quality_profile(client, headers, "1080p Shows")
+
+    chosen = client.patch(
+        f"/api/v1/discoveries/{discovery['id']}/quality-profile",
+        headers=headers,
+        json={"quality_profile_id": profile["id"]},
+    )
+    assert chosen.status_code == 200, chosen.text
+
+    approved = client.post(f"/api/v1/discoveries/{discovery['id']}/approve", headers=headers)
+    assert approved.status_code == 200, approved.text
+
+    show_id = client.get("/api/v1/shows").json()["items"][0]["id"]
+    settings = client.get(f"/api/v1/shows/{show_id}/profile-settings").json()
+    assert settings["quality_profile_id"] == profile["id"]

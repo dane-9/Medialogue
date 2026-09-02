@@ -46,7 +46,7 @@ from app.models.domain import (
 from app.parser import extract_episode_numbers, parse_release, parse_season_folder
 from app.services.discoveries import retire_missing_new_media_discovery, stage_media_discovery
 from app.services.events import create_event
-from app.services.quality_profiles import evaluate_current_release_score
+from app.services.quality_profiles import evaluate_current_release_score, preferred_release_name
 from app.services.reconciliation import open_problem, resolve_problem
 from app.services.episode_ordering import auto_select_episode_ordering
 from app.services.tmdb import TMDBUnavailable, resolve_show_identity_detailed, sync_show_metadata
@@ -281,7 +281,7 @@ async def _prepare_show_release(
         db,
         media_type=MediaType.SHOWS,
         entity_id=show.id,
-        release_name=release.raw_release_name,
+        release_name=preferred_release_name(release),
     )
     release.current_custom_format_score = current_score
     release.parse_snapshot = {**dict(release.parse_snapshot or {}), "current_score_snapshot": snapshot}

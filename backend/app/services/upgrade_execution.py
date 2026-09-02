@@ -351,6 +351,7 @@ async def associate_upgrade_torrent(
     torrent.metadata_json = {
         **(torrent.metadata_json or {}),
         "tracker_title": row.title,
+        "indexer_name": row.indexer_name,
     }
 
     if not incoming_ids:
