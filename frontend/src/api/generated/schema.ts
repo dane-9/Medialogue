@@ -3619,6 +3619,8 @@ export interface components {
             last_seen_at: string;
             /** Leeches */
             leeches?: number | null;
+            /** Leeches Total */
+            leeches_total?: number | null;
             /** Media State */
             media_state?: ("present" | "missing") | null;
             /** Media Title */
@@ -3648,6 +3650,8 @@ export interface components {
             scope: components["schemas"]["DownloadScope"];
             /** Seeds */
             seeds?: number | null;
+            /** Seeds Total */
+            seeds_total?: number | null;
             /** Show Id */
             show_id?: string | null;
             /** State */

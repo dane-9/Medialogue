@@ -163,7 +163,9 @@ class DownloadResponse(ORMModel):
     amount_left: int | None = None
     ratio: float | None = None
     seeds: int | None = None
+    seeds_total: int | None = None
     leeches: int | None = None
+    leeches_total: int | None = None
     availability: float | None = None
     archive_state: TorrentArchiveState
     tracker_state: Literal["healthy", "degraded", "unavailable", "unregistered", "unknown"] = "unknown"

@@ -382,10 +382,16 @@ export interface Download {
   incoming?: boolean
   incomingKind?: 'replacement' | 'release'
   uploadSpeed: string
+  /** Raw bytes/s behind the formatted speeds, for filtering on real activity. */
+  downloadSpeedBytes: number
+  uploadSpeedBytes: number
   amountLeft?: string
   ratio?: number
   seeds?: number
+  /** Whole swarm as the tracker reports it; qBittorrent shows it in parentheses. */
+  seedsTotal?: number
   leeches?: number
+  leechesTotal?: number
   availability?: number
   archiveState: TorrentArchiveState
   trackerState: 'healthy' | 'degraded' | 'unavailable' | 'unregistered' | 'unknown'

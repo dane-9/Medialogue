@@ -61,12 +61,16 @@ export function mapDownload(value: DownloadDto): Download {
     incoming: value.incoming ?? false,
     incomingKind: value.incoming_kind ?? undefined,
     uploadSpeed: value.upload_speed ? `${formatBytes(value.upload_speed)}/s` : '—',
+    downloadSpeedBytes: value.download_speed ?? 0,
+    uploadSpeedBytes: value.upload_speed ?? 0,
     amountLeft: value.amount_left === null || value.amount_left === undefined || value.amount_left <= 0
       ? undefined
       : formatBytes(value.amount_left),
     ratio: value.ratio ?? undefined,
     seeds: value.seeds ?? undefined,
+    seedsTotal: value.seeds_total ?? undefined,
     leeches: value.leeches ?? undefined,
+    leechesTotal: value.leeches_total ?? undefined,
     availability: value.availability ?? undefined,
     archiveState: value.archive_state,
     trackerState: value.tracker_state,

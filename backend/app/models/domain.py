@@ -537,8 +537,12 @@ class TorrentClientObservation(Base):
     eta_seconds: Mapped[int | None] = mapped_column(Integer)
     amount_left: Mapped[int | None] = mapped_column(BigInteger)
     ratio: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    #: Peers this client is connected to. ``*_total`` is the whole swarm as the
+    #: tracker reports it, which is what qBittorrent renders in parentheses.
     seeds: Mapped[int | None] = mapped_column(Integer)
+    seeds_total: Mapped[int | None] = mapped_column(Integer)
     leeches: Mapped[int | None] = mapped_column(Integer)
+    leeches_total: Mapped[int | None] = mapped_column(Integer)
     availability: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     category: Mapped[str | None] = mapped_column(String(256))
     tags: Mapped[list[str]] = mapped_column(JSONType, default=list, nullable=False)

@@ -1,8 +1,22 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving'
 
 const paths: Record<IconName, JSX.Element> = {
+  'chevrons-up': <path d="M18 11.5s-4.419-6-6-6s-6 6-6 6m12 7s-4.419-6-6-6s-6 6-6 6" />,
+  // Same artwork as chevrons-up, turned to point the other way.
+  'chevrons-down': <path transform="rotate(180 12 12)" d="M18 11.5s-4.419-6-6-6s-6 6-6 6m12 7s-4.419-6-6-6s-6 6-6 6" />,
+  stop: <path fill="currentColor" stroke="none" d="M24 6H8a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2" />,
+  // Split into two paths so each arrow carries its own colour: the upload arrow
+  // (pointing up) blue, the download arrow (pointing down) green.
+  transfer: <>
+    <path fill="var(--accent-text)" stroke="none" fillRule="evenodd" clipRule="evenodd" d="M6.793 3.007a1 1 0 0 1 1.414 0l3.5 3.5a1 1 0 0 1-1.414 1.415L8.5 6.129v9.585a1 1 0 1 1-2 0V6.13L4.707 7.922a1 1 0 1 1-1.414-1.415z" />
+    <path fill="var(--ok)" stroke="none" fillRule="evenodd" clipRule="evenodd" d="M16.5 8.714a1 1 0 0 1 1 1V19.3l1.793-1.793a1 1 0 0 1 1.414 1.415l-3.5 3.5a1 1 0 0 1-1.414 0l-3.5-3.5a1 1 0 0 1 1.414-1.415L15.5 19.3V9.714a1 1 0 0 1 1-1" />
+  </>,
+  'play-solid': <path fill="currentColor" stroke="none" d="M3 2.803a1 1 0 0 1 1.5-.865l9 5.195a1 1 0 0 1 0 1.733l-9 5.196a1 1 0 0 1-1.5-.866z" />,
+  checking: <path fill="currentColor" stroke="none" d="M21.074 12.154a.75.75 0 0 1 .672.82c-.49 4.93-4.658 8.776-9.724 8.776c-2.724 0-5.364-.933-7.238-2.68L3 20.85a.75.75 0 0 1-.75-.75v-3.96c0-.714.58-1.29 1.291-1.29h3.97a.75.75 0 0 1 .75.75l-2.413 2.407c1.558 1.433 3.78 2.243 6.174 2.243c4.29 0 7.817-3.258 8.232-7.424a.75.75 0 0 1 .82-.672m-18.82-1.128c.49-4.93 4.658-8.776 9.724-8.776c2.724 0 5.364.933 7.238 2.68L21 3.15a.75.75 0 0 1 .75.75v3.96c0 .714-.58 1.29-1.291 1.29h-3.97a.75.75 0 0 1-.75-.75l2.413-2.408c-1.558-1.432-3.78-2.242-6.174-2.242c-4.29 0-7.817 3.258-8.232 7.424a.75.75 0 1 1-1.492-.148" />,
+  shuffle: <path fill="currentColor" stroke="none" d="M3 7.25a.75.75 0 0 0-.75.75a.75.75 0 0 0 .75.75c2.139 0 3.386.46 4.277 1.107c.336.245.626.524.891.83c.248-.397.521-.835.853-1.289a6.6 6.6 0 0 0-.86-.755C6.988 7.79 5.36 7.25 3 7.25m15.25 5.248a.75.75 0 0 0-.531.22a.75.75 0 0 0 0 1.063l1.468 1.469H17c-2.139 0-3.386-.46-4.277-1.107a5.3 5.3 0 0 1-.891-.83c-.248.397-.521.835-.853 1.289c.257.265.538.521.86.755c1.172.852 2.8 1.393 5.161 1.393h2.188l-1.47 1.469a.75.75 0 0 0 0 1.062a.75.75 0 0 0 1.063 0l2.75-2.75a.75.75 0 0 0 .194-.468L21.75 16a1 1 0 0 0-.025-.129v-.064l-.02-.034a.75.75 0 0 0-.174-.304l-2.75-2.75a.75.75 0 0 0-.531-.221m0-7.998a.75.75 0 0 0-.531.219a.75.75 0 0 0 0 1.062l1.468 1.469H17c-2.361 0-3.989.54-5.16 1.393c-1.171.851-1.852 1.959-2.477 2.959s-1.194 1.892-2.086 2.54S5.14 15.25 3 15.25a.75.75 0 0 0-.75.75a.75.75 0 0 0 .75.75c2.361 0 3.989-.54 5.16-1.393c1.171-.851 1.852-1.959 2.477-2.959s1.194-1.892 2.086-2.54S14.86 8.75 17 8.75h2.188l-1.47 1.469a.75.75 0 0 0 0 1.062a.75.75 0 0 0 1.063 0l2.75-2.75a.75.75 0 0 0 .194-.469L21.75 8a1 1 0 0 0-.025-.129a1 1 0 0 0-.02-.098a.75.75 0 0 0-.174-.304l-2.75-2.75a.75.75 0 0 0-.531-.219" />,
+  moving: <path fill="currentColor" stroke="none" d="M1.635 29.658h4.674c.806 10.684 9.372 19.273 20.033 20.079v4.605c0 .921.714 1.658 1.635 1.658c.944 0 1.658-.737 1.658-1.658v-4.605c10.661-.806 19.227-9.395 20.033-20.08h4.674A1.65 1.65 0 0 0 56 28c0-.921-.737-1.635-1.658-1.635h-4.674c-.806-10.684-9.372-19.273-20.033-20.079V1.658C29.635.737 28.92 0 27.977 0c-.921 0-1.635.737-1.635 1.658v4.628c-10.661.806-19.227 9.395-20.033 20.08H1.635C.714 26.365.1 27.078.1 28s.614 1.658 1.535 1.658m26.342-10.753c.944 0 1.658-.737 1.658-1.658V10.04c8.658.782 15.381 7.575 16.142 16.325h-7.024c-.92 0-1.658.714-1.658 1.635s.737 1.658 1.658 1.658h7.024c-.76 8.727-7.484 15.52-16.142 16.303v-7.208c0-.92-.714-1.635-1.658-1.635c-.921 0-1.635.714-1.635 1.635v7.208c-8.658-.783-15.381-7.576-16.141-16.303h7.023c.92 0 1.658-.737 1.658-1.658s-.737-1.635-1.658-1.635H10.2c.76-8.75 7.483-15.543 16.141-16.325v7.207c0 .92.714 1.658 1.635 1.658" />,
   'upgrade-media': <>
     <path
       fill="currentColor"
@@ -231,6 +245,10 @@ const VIEW_BOXES: Partial<Record<IconName, string>> = {
   'quality-profile': '-70.27 -120.27 540.54 540.54',
   'custom-format': '-0.33 -0.27 24.52 24.52',
   spark: '0.4 -0.6 26.21 26.21',
+  stop: '0 0 32 32',
+  transfer: '0 0 24 25',
+  'play-solid': '0 0 16 16',
+  moving: '0 0 56 56',
 }
 
 const STROKE_SCALE: Partial<Record<IconName, number>> = {
@@ -252,6 +270,8 @@ const STROKE_SCALE: Partial<Record<IconName, number>> = {
   close: 0.69,
   copy: 1.063,
   spark: 1.092,
+  'chevrons-up': 0.833,
+  'chevrons-down': 0.833,
 }
 
 export function Icon({ name, size = 18, strokeWidth = 1.8, ...props }: { name: IconName; size?: number; strokeWidth?: number } & SVGProps<SVGSVGElement>) {

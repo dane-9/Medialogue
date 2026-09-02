@@ -116,7 +116,9 @@ def _portable_metadata(observed) -> dict[str, object]:
         "seeding_time_limit": observed.seeding_time_limit,
         "inactive_seeding_time_limit": observed.inactive_seeding_time_limit,
         "seeds": observed.seeds,
+        "seeds_total": observed.seeds_total,
         "leeches": observed.leeches,
+        "leeches_total": observed.leeches_total,
         "download_speed": observed.download_speed,
         "upload_speed": observed.upload_speed,
         "eta": observed.eta,
@@ -592,7 +594,9 @@ async def _poll_download_client(
                 row.amount_left = observed.amount_left
                 row.ratio = observed.ratio
                 row.seeds = observed.seeds
+                row.seeds_total = observed.seeds_total
                 row.leeches = observed.leeches
+                row.leeches_total = observed.leeches_total
                 row.availability = observed.availability
                 row.category = observed.category or None
                 row.tags = list(observed.tags)

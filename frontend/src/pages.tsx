@@ -29,7 +29,7 @@ import { Dropdown } from './components/Dropdown'
 import { useConfirm } from './components/Confirm'
 import { Modal } from './components/Modal'
 import { PageTopbar, usePlexAvailable } from './components/Shell'
-import { Badge, Button, EmptyState, EnabledButton, Input, Panel, Progress, Segmented, Select, Slider, Stat } from './components/ui'
+import { Badge, Button, EmptyState, EnabledButton, Input, Panel, Progress, Segmented, Select, Slider } from './components/ui'
 import { ApiError } from './api/transport'
 import { authApi } from './api/modules/auth'
 import { discoveryApi } from './api/modules/discovery'
@@ -265,7 +265,7 @@ export function MoviesPage() {
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid">{filtered.map((movie) => <MovieCard key={movie.id} movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={runMovieCardAction} />)}</div> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
-    {!error && !loading && !filtered.length && <EmptyState title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
+    {!error && !loading && !filtered.length && <EmptyState icon="clapper" title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><MovieBulkContextMenu position={context} count={selected.size} profiles={profiles} tags={tags} busy={bulkBusy} onRun={runBulk} onCreateTag={createTag} onClear={() => { setSelected(new Set()); setContext(null) }} /></>}
   </Page>
 }
@@ -639,7 +639,7 @@ export function ShowsPage() {
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
-    {!error && !loading && !filtered.length && <EmptyState title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
+    {!error && !loading && !filtered.length && <EmptyState icon="tv-screen" title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
 
@@ -778,9 +778,43 @@ function ShowProfilePanel({ resourceId }: { resourceId: string }) {
   return <Panel title="Quality Profile" eyebrow="SHOW SEARCH SCORING"><div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>{settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (show override)' : ' (profile)'}</span></div>}{message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div></Panel>
 }
 
+// The Downloads status rail, in qBittorrent's spirit: one row per filter with a
+// live count. Groups are ordered so the everyday activity filters come first
+// and the two health filters (which the stat cards used to carry) sit apart.
+type DownloadFilterKey =
+  | 'all' | 'downloading' | 'seeding' | 'completed' | 'running' | 'stopped'
+  | 'active' | 'stalled' | 'checking' | 'moving' | 'error'
+  | 'attention' | 'backed-up'
+
+const DOWNLOAD_FILTERS: {
+  key: DownloadFilterKey
+  label: string
+  group: 'Status' | 'Health'
+  icon: Parameters<typeof Icon>[0]['name']
+  tone: 'neutral' | 'blue' | 'green' | 'amber' | 'red' | 'violet' | 'teal'
+  match: (item: Download) => boolean
+}[] = [
+  { key: 'all', label: 'All', group: 'Status', icon: 'shuffle', tone: 'amber', match: () => true },
+  { key: 'downloading', label: 'Downloading', group: 'Status', icon: 'chevrons-down', tone: 'green', match: (item) => item.state === 'Downloading' },
+  { key: 'seeding', label: 'Seeding', group: 'Status', icon: 'chevrons-up', tone: 'blue', match: (item) => item.state === 'Seeding' },
+  { key: 'completed', label: 'Completed', group: 'Status', icon: 'check', tone: 'violet', match: (item) => item.progress >= 100 },
+  { key: 'running', label: 'Running', group: 'Status', icon: 'play-solid', tone: 'green', match: (item) => item.state === 'Downloading' || item.state === 'Checking' },
+  { key: 'stopped', label: 'Stopped', group: 'Status', icon: 'stop', tone: 'neutral', match: (item) => item.state === 'Paused' },
+  // The transfer icon colours its own arrows, so the row tone is left neutral.
+  { key: 'active', label: 'Active', group: 'Status', icon: 'transfer', tone: 'neutral', match: (item) => item.downloadSpeedBytes > 0 || item.uploadSpeedBytes > 0 },
+  { key: 'stalled', label: 'Stalled', group: 'Status', icon: 'clock', tone: 'amber', match: (item) => item.activity === 'stalled' },
+  { key: 'checking', label: 'Checking', group: 'Status', icon: 'checking', tone: 'teal', match: (item) => item.state === 'Checking' },
+  // Nothing in the qBittorrent poll reports a relocation, so this stays at zero
+  // until a moving state is actually ingested.
+  { key: 'moving', label: 'Moving', group: 'Status', icon: 'moving', tone: 'blue', match: () => false },
+  { key: 'error', label: 'Errored', group: 'Status', icon: 'alert', tone: 'red', match: (item) => item.state === 'Error' },
+  { key: 'attention', label: 'Needs attention', group: 'Health', icon: 'security', tone: 'red', match: (item) => item.state === 'Error' || item.archiveState === 'failed' || item.trackerState === 'unregistered' },
+  { key: 'backed-up', label: 'Backed up', group: 'Health', icon: 'backup', tone: 'green', match: (item) => item.archiveState === 'archived' },
+]
+
 export function DownloadsPage() {
   const [items, setItems] = useState<Download[]>([])
-  const [filter, setFilter] = useState<Download['state'] | 'Active' | 'All'>('All')
+  const [filter, setFilter] = useState<DownloadFilterKey>('all')
   const [sort, setSort] = useState<{ key: keyof Download; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -793,11 +827,7 @@ export function DownloadsPage() {
   useEffect(() => { void load() }, [])
   useLiveLibraryRefresh(() => load(false), 5000)
   const filtered = useMemo(() => {
-    const visible = filter === 'All'
-      ? items
-      : filter === 'Active'
-        ? items.filter((item) => item.state === 'Downloading' || item.state === 'Checking')
-        : items.filter((item) => item.state === filter)
+    const visible = items.filter(DOWNLOAD_FILTERS.find((entry) => entry.key === filter)?.match ?? (() => true))
     return [...visible].sort((left, right) => {
       const a = String(left[sort.key]); const b = String(right[sort.key]); const comparison = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
       return sort.direction === 'asc' ? comparison : -comparison
@@ -805,20 +835,59 @@ export function DownloadsPage() {
   }, [items, filter, sort])
   const setSortKey = (key: keyof Download) => setSort((current) => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' })
   const sortLabel = (key: keyof Download, label: string) => <button className="table-sort" onClick={() => setSortKey(key)}>{label}{sort.key === key && <span>{sort.direction === 'asc' ? ' ↑' : ' ↓'}</span>}</button>
-  const downloading = items.filter((item) => item.state === 'Downloading')
-  const checking = items.filter((item) => item.state === 'Checking')
-  const seeding = items.filter((item) => item.state === 'Seeding')
-  const paused = items.filter((item) => item.state === 'Paused')
-  const attention = items.filter((item) => item.state === 'Error' || item.archiveState === 'failed' || item.trackerState === 'unregistered')
-  const backedUp = items.filter((item) => item.archiveState === 'archived')
   const activityLabel = (item: Download) => item.activity === 'metadata' ? 'Fetching metadata' : item.activity.charAt(0).toUpperCase() + item.activity.slice(1)
   const activityTone = (item: Download): 'neutral' | 'green' | 'amber' | 'red' | 'blue' => item.state === 'Error' ? 'red' : item.state === 'Seeding' ? 'green' : item.state === 'Paused' ? 'neutral' : item.activity === 'stalled' ? 'amber' : 'blue'
+  // The row is a single line, so what used to sit on a second line moves into
+  // the hover tooltip for that cell rather than being dropped.
+  const releaseNote = (item: Download) => [item.quality, item.edition, item.client].filter(Boolean).join(' · ') || item.client
+  const progressNote = (item: Download) => item.amountLeft ? `${item.amountLeft} left of ${item.size}` : `${item.size} complete`
+  const mediaNote = (item: Download) => item.incoming
+    ? item.incomingKind === 'replacement' ? 'Incoming replacement' : 'Incoming release'
+    : item.reconciliationState ?? item.mediaState ?? item.kind
+  // qBittorrent renders peer counts as "connected (swarm total)". The total is
+  // only shown when the tracker actually reported one.
+  const peerCount = (connected?: number, total?: number) => total === undefined ? `${connected ?? 0}` : `${connected ?? 0} (${total})`
+  const stateIcon = (item: Download) => item.state === 'Downloading' ? 'download' : item.state === 'Checking' ? 'refresh' : item.state === 'Seeding' ? 'activity' : item.state === 'Error' ? 'alert' : 'check'
   return <Page title="Downloads" subtitle="Live Medialogue-managed qBittorrent activity. Historical and archived-only torrents stay in release history and Torrent Archive." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
-    <div className="stats-row"><Stat label="Active" value={String(downloading.length + checking.length)} detail="Downloading or checking" tone="blue" /><Stat label="Checking" value={String(checking.length)} detail="Verifying downloaded data" tone="blue" /><Stat label="Seeding" value={String(seeding.length)} detail="Loaded and complete" tone="green" /><Stat label="Paused" value={String(paused.length)} detail="Waiting in qBittorrent" /><Stat label="Backed up" value={String(backedUp.length)} detail="Recovery data verified" tone="green" />{attention.length > 0 && <Stat label="Needs attention" value={String(attention.length)} detail="Tracker, archive, or torrent error" tone="red" />}</div>
-    <div className="toolbar"><div className="filter-tabs">{(['Active', 'Downloading', 'Checking', 'Seeding', 'Paused', 'Error', 'All'] as const).map((item) => <button key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>{item}</button>)}</div><div className="toolbar-spacer" /><Link className="button button-ghost" to="/settings"><Icon name="settings" size={16} />Client settings</Link></div>
+    <div className="downloads-layout">
+      <aside className="downloads-rail">
+        {(['Status', 'Health'] as const).map((group) => <div className="downloads-rail-group" key={group}>
+          <div className="downloads-rail-title">{group}</div>
+          {DOWNLOAD_FILTERS.filter((entry) => entry.group === group).map((entry) => <button
+            type="button"
+            key={entry.key}
+            className={`downloads-rail-item ${filter === entry.key ? 'active' : ''}`}
+            aria-pressed={filter === entry.key}
+            onClick={() => setFilter(entry.key)}
+          >
+            <span className={`downloads-rail-icon tone-${entry.tone}`}><Icon name={entry.icon} size={14} /></span>
+            <span className="rail-label">{entry.label}</span>
+            <span className="rail-count">{items.filter(entry.match).length}</span>
+          </button>)}
+        </div>)}
+        <Link className="button button-ghost downloads-rail-settings" to="/settings"><Icon name="settings" size={16} />Client settings</Link>
+      </aside>
+      <div className="downloads-main">
     {error && <EmptyState icon="download" title="Could not load downloads" detail={error} action={<Button variant="ghost" icon="refresh" onClick={() => void load()}>Try again</Button>} />}
     {!error && !loading && !filtered.length && <EmptyState icon="download" title={items.length ? 'No activity matches this filter' : 'No managed torrents are currently loaded'} detail={items.length ? 'Try another activity filter.' : 'Historical and archived-only torrents are intentionally kept out of this live view.'} />}
-    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>{sortLabel('state', 'Activity')}</th><th>{sortLabel('progress', 'Progress')}</th><th>Transfer</th><th>{sortLabel('eta', 'ETA')}</th><th>qBittorrent</th><th>Backup</th><th>Media</th><th>{sortLabel('path', 'Save path')}</th><th /></tr></thead><tbody>{loading ? <tr><td colSpan={10} className="table-loading">Reading live qBittorrent activity…</td></tr> : filtered.map((download) => <tr key={download.id}><td><div className="release-cell"><span className={`state-icon state-${download.state.toLowerCase()}`}><Icon name={download.state === 'Downloading' ? 'download' : download.state === 'Checking' ? 'refresh' : download.state === 'Seeding' ? 'activity' : download.state === 'Error' ? 'alert' : 'check'} size={14} /></span><strong>{download.name}</strong><small>{[download.quality, download.edition, download.client].filter(Boolean).join(' · ')}</small></div></td><td><Badge tone={activityTone(download)}>{activityLabel(download)}</Badge></td><td><div className="download-progress"><Progress value={download.progress} tone={download.state === 'Seeding' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span>{Math.round(download.progress)}%</span></div>{download.amountLeft && <small>{download.amountLeft} left</small>}</td><td><div className="release-cell"><strong>↓ {download.speed}</strong><small>↑ {download.uploadSpeed}</small></div></td><td className="muted">{download.eta}</td><td><Tooltip content={`${download.seeds ?? 0} seeds · ${download.leeches ?? 0} leeches${download.availability === undefined ? '' : ` · ${download.availability.toFixed(2)} availability`}${download.ratio === undefined ? '' : ` · ratio ${download.ratio.toFixed(2)}`}`}><Badge tone={download.trackerState === 'unregistered' || download.trackerState === 'unavailable' ? 'red' : download.trackerState === 'degraded' ? 'amber' : download.trackerState === 'healthy' ? 'green' : 'neutral'}>{download.trackerState === 'unknown' ? 'No tracker data' : download.trackerState}</Badge></Tooltip></td><td><Tooltip content={download.archiveState === 'archived' ? 'The .torrent and recovery manifest passed integrity verification.' : download.archiveState === 'failed' ? 'Recovery data could not be archived or failed verification.' : 'Recovery data has not been archived yet.'}><Badge tone={download.archiveState === 'archived' ? 'green' : download.archiveState === 'failed' ? 'red' : 'amber'}>{download.archiveState === 'archived' ? 'Backed up' : download.archiveState === 'failed' ? 'Failed' : 'Pending'}</Badge></Tooltip></td><td>{download.mediaTitle ? <div className="release-cell"><strong>{download.mediaTitle}</strong><small>{download.incoming ? download.incomingKind === 'replacement' ? 'Incoming replacement' : 'Incoming release' : download.reconciliationState ?? download.mediaState ?? download.kind}</small></div> : <div className="release-cell"><strong>Reconciling</strong><small>No media association yet</small></div>}</td><td className="path-cell">{download.path}</td><td>{(download.movieId || download.showId) && <Link className="icon-button" to={download.movieId ? `/movies/${download.movieId}` : `/shows/${download.showId}`} aria-label={`Open ${download.mediaTitle ?? download.name}`}><Icon name="chevron" size={15} /></Link>}</td></tr>)}</tbody></table></Panel>}
+    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>Size</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('state', 'Status')}</th><th>{sortLabel('seeds', 'Seeds')}</th><th>{sortLabel('leeches', 'Peers')}</th><th>Down speed</th><th>Up speed</th><th>{sortLabel('eta', 'ETA')}</th><th>Tracker</th><th>Backup</th><th>Media</th><th>{sortLabel('path', 'Save path')}</th><th /></tr></thead><tbody>{loading ? <tr><td colSpan={14} className="table-loading">Reading live qBittorrent activity…</td></tr> : filtered.map((download) => <tr key={download.id}>
+      <td><Tooltip className="download-name" content={releaseNote(download)}><span className={`state-icon state-${download.state.toLowerCase()}`}><Icon name={stateIcon(download)} size={14} /></span><strong>{download.name}</strong></Tooltip></td>
+      <td className="download-size">{download.size}</td>
+      <td><Tooltip className="download-progress" content={progressNote(download)}><Progress value={download.progress} tone={download.state === 'Seeding' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span>{Math.round(download.progress)}%</span></Tooltip></td>
+      <td><Badge tone={activityTone(download)}>{activityLabel(download)}</Badge></td>
+      <td className="download-count">{peerCount(download.seeds, download.seedsTotal)}</td>
+      <td className="download-count">{peerCount(download.leeches, download.leechesTotal)}</td>
+      <td className="download-speed down">{download.speed}</td>
+      <td className="download-speed up">{download.uploadSpeed}</td>
+      <td className="download-eta">{download.eta}</td>
+      <td><Tooltip content={[`Tracker ${download.trackerState}`, download.availability === undefined ? '' : `availability ${download.availability.toFixed(2)}`, download.ratio === undefined ? '' : `ratio ${download.ratio.toFixed(2)}`].filter(Boolean).join(' · ')}><Badge tone={download.trackerState === 'unregistered' || download.trackerState === 'unavailable' ? 'red' : download.trackerState === 'degraded' ? 'amber' : download.trackerState === 'healthy' ? 'green' : 'neutral'}>{download.trackerState === 'unknown' ? 'No tracker data' : download.trackerState}</Badge></Tooltip></td>
+      <td><Tooltip content={download.archiveState === 'archived' ? 'The .torrent and recovery manifest passed integrity verification.' : download.archiveState === 'failed' ? 'Recovery data could not be archived or failed verification.' : 'Recovery data has not been archived yet.'}><Badge tone={download.archiveState === 'archived' ? 'green' : download.archiveState === 'failed' ? 'red' : 'amber'}>{download.archiveState === 'archived' ? 'Backed up' : download.archiveState === 'failed' ? 'Failed' : 'Pending'}</Badge></Tooltip></td>
+      <td>{download.mediaTitle ? <Tooltip className="download-media" content={mediaNote(download)}><strong>{download.mediaTitle}</strong></Tooltip> : <Tooltip className="download-media" content="No media association yet"><span className="download-media-pending">Reconciling</span></Tooltip>}</td>
+      <td className="path-cell">{download.path}</td>
+      <td>{(download.movieId || download.showId) && <Link className="icon-button" to={download.movieId ? `/movies/${download.movieId}` : `/shows/${download.showId}`} aria-label={`Open ${download.mediaTitle ?? download.name}`}><Icon name="chevron" size={15} /></Link>}</td>
+    </tr>)}</tbody></table></Panel>}
+      </div>
+    </div>
   </Page>
 }
 

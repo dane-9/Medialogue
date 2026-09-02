@@ -100,7 +100,9 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
         "amount_left",
         "ratio",
         "seeds",
+        "seeds_total",
         "leeches",
+        "leeches_total",
         "availability",
     } <= torrent_observation_columns
     assert {

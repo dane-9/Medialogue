@@ -45,6 +45,8 @@
   --err: #d57373;
   --err-soft: rgba(213, 115, 115, .14);
   --err-line: rgba(213, 115, 115, .38);
+  --violet: #a78bd0;
+  --teal: #6fc2b8;
 
   --overlay: rgba(0, 0, 0, .68);
   --shadow-panel: 0 0 8px rgba(0, 0, 0, .34);
@@ -618,7 +620,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .data-table tr:last-child td { border-bottom: 0; }
 .data-table tbody tr:hover { background: var(--raised); }
-.table-sort { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; }
+.table-sort { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; letter-spacing: inherit; text-transform: inherit; }
 .table-sort:hover { color: var(--text); }
 .table-loading { height: 120px; color: var(--muted); text-align: center; }
 .table-title { display: flex; align-items: center; gap: var(--s3); color: var(--text); font-weight: 500; }
@@ -1274,9 +1276,34 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   margin: var(--s3) 0;
 }
 
-.download-progress { display: flex; align-items: center; gap: var(--s2); min-width: 120px; }
-.download-progress .progress { width: 72px; }
+/* Downloads is a dense, qBittorrent-style activity table: every cell is one
+   line, and the detail that used to sit on a second line moves to the cell's
+   tooltip. Row height is set here rather than on .data-table so the other
+   tables keep their roomier default. */
+.downloads-table th { padding: 0 var(--s2); }
+.downloads-table td { height: 34px; padding: 0 var(--s2); }
+/* The table is width:100%, so any width beyond the columns' own needs is shared
+   out and every gap grows. Letting Save path soak it up keeps the data columns
+   packed together the way qBittorrent's are. */
+.downloads-table .path-cell { width: 100%; max-width: none; }
+.download-name { display: flex; align-items: center; gap: var(--s2); min-width: 0; max-width: 340px; }
+.download-name strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.downloads-table .state-icon { width: auto; height: auto; border-radius: 0; background: transparent; }
+.downloads-table .state-downloading, .downloads-table .state-checking { color: var(--accent-text); }
+.downloads-table .state-seeding { color: var(--ok); }
+.downloads-table .state-paused, .downloads-table .state-completed { color: var(--faint); }
+.downloads-table .state-error { color: var(--err); }
+.download-progress { display: inline-flex; align-items: center; gap: var(--s2); min-width: 108px; }
+.download-progress .progress { width: 64px; }
 .download-progress span { color: var(--muted); font: var(--t-micro) var(--mono); }
+.download-size, .download-eta { color: var(--muted); font: var(--t-micro) var(--mono); white-space: nowrap; }
+.download-count, .download-speed { font: var(--t-micro) var(--mono); white-space: nowrap; }
+.download-count { color: var(--muted); }
+.download-speed.down { color: var(--accent-text); }
+.download-speed.up { color: var(--muted); }
+.download-media { display: block; overflow: hidden; max-width: 190px; text-overflow: ellipsis; white-space: nowrap; }
+.download-media strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.download-media-pending { color: var(--faint); font-size: var(--t-sm); }
 .release-cell { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); max-width: 260px; }
 .release-cell strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .release-cell small {
@@ -1286,7 +1313,87 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font: var(--t-micro) var(--mono);
 }
 .client-name { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; }
-.downloads-table { min-width: 1180px; }
+.downloads-table { min-width: 1420px; }
+
+/* Downloads puts its filters in a left rail rather than stat cards plus a tab
+   strip, so the table starts at the top of the page instead of a third of the
+   way down it. The rail is sticky: the table scrolls, the filters stay put. */
+.downloads-layout {
+  --downloads-rail: 161px;
+  display: grid;
+  /* Mirrors .upgrade-scroll, which appends its Releases rail outside the normal
+     content width so the columns beside it keep exactly the space they had.
+     Upgrade Media grows rightwards; this grows leftwards, so the extra width is
+     taken back off the left edge. */
+  width: calc(100% + var(--downloads-rail) + var(--s4));
+  margin-left: calc(-1 * (var(--downloads-rail) + var(--s4)));
+  grid-template-columns: var(--downloads-rail) minmax(0, 1fr);
+  gap: 0 var(--s4);
+  align-items: start;
+}
+.downloads-main { min-width: 0; }
+.downloads-rail {
+  position: sticky;
+  top: var(--s4);
+  display: grid;
+  gap: var(--s4);
+  padding: var(--s3) 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.downloads-rail-group { display: grid; gap: 1px; }
+.downloads-rail-title {
+  padding: 0 var(--s1) var(--s2);
+  color: var(--faint);
+  font: 500 var(--t-micro) var(--mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.downloads-rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--s1);
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: transparent;
+  font: var(--t-sm) var(--sans);
+  text-align: left;
+}
+.downloads-rail-item:hover { color: var(--text); background: var(--raised); }
+.downloads-rail-item.active { color: var(--text); background: var(--accent-soft); }
+.downloads-rail-icon { display: grid; flex: none; place-items: center; width: 16px; }
+.downloads-rail-icon.tone-neutral { color: var(--faint); }
+.downloads-rail-icon.tone-blue { color: var(--accent-text); }
+.downloads-rail-icon.tone-green { color: var(--ok); }
+.downloads-rail-icon.tone-amber { color: var(--warn); }
+.downloads-rail-icon.tone-red { color: var(--err); }
+.downloads-rail-icon.tone-violet { color: var(--violet); }
+.downloads-rail-icon.tone-teal { color: var(--teal); }
+.rail-label { overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
+.rail-count { flex: none; color: var(--faint); font: var(--t-micro) var(--mono); }
+.downloads-rail-settings { justify-content: center; margin-top: var(--s1); }
+.downloads-rail-item.active .rail-count { color: var(--accent-text); }
+
+@media (max-width: 1500px) {
+  /* Not enough slack beside .page-content to break out without sliding under
+     the nav, so the rail comes back inside the normal content width. */
+  .downloads-layout { width: 100%; margin-left: 0; }
+}
+@media (max-width: 1100px) {
+  /* Too narrow for a rail: the filters go back to a horizontal strip above the
+     table, which still costs less height than the cards did. */
+  .downloads-layout { width: 100%; margin-left: 0; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+  .downloads-rail { position: static; grid-auto-flow: row; }
+  .downloads-rail-group { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
+  .downloads-rail-title { padding: 0 var(--s2) 0 0; }
+  .downloads-rail-item { width: auto; }
+  .rail-label { flex: none; }
+}
 
 .incoming-replacement {
   display: flex;
@@ -1559,6 +1666,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .panel > .toolbar { padding: var(--s4); margin-bottom: 0; }
 .panel > .empty-state,
 .split-rail > .empty-state > .empty-state,
+.problems-list > .empty-state,
+.problems-detail > .empty-state,
 .qbit-client-list > .empty-state { margin: var(--s4); padding: var(--s5) var(--s4); }
 .recovery-settings { display: block; }
 .recovery-job { display: grid; gap: var(--s2); min-width: 320px; }

@@ -1,5 +1,10 @@
+import { setDefaultResultOrder } from 'node:dns'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+
+// Keep the dev server local-only while avoiding the Windows/Firefox mismatch
+// where `localhost` resolves to ::1 in one process and 127.0.0.1 in another.
+setDefaultResultOrder('ipv4first')
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '')

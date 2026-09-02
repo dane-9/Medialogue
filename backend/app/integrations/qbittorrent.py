@@ -270,8 +270,14 @@ class TorrentObservation:
     seeding_time: int | None = None
     seeding_time_limit: int | None = None
     inactive_seeding_time_limit: int | None = None
+    # qBittorrent reports two different numbers per side: how many peers this
+    # client is connected to (num_seeds/num_leechs) and how many the swarm holds
+    # in total (num_complete/num_incomplete). Its UI shows them as "connected
+    # (total)", so both are kept rather than collapsed into one.
     seeds: int | None = None
+    seeds_total: int | None = None
     leeches: int | None = None
+    leeches_total: int | None = None
     download_speed: int | None = None
     upload_speed: int | None = None
     eta: int | None = None
@@ -711,7 +717,9 @@ class QBittorrentClient:
             seeding_time_limit=item.seeding_time_limit,
             inactive_seeding_time_limit=item.inactive_seeding_time_limit,
             seeds=item.num_seeds if item.num_seeds is not None else item.num_complete,
+            seeds_total=item.num_complete,
             leeches=item.num_leechs if item.num_leechs is not None else item.num_incomplete,
+            leeches_total=item.num_incomplete,
             download_speed=item.dlspeed,
             upload_speed=item.upspeed,
             eta=item.eta,

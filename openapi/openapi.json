@@ -2625,6 +2625,17 @@
             ],
             "title": "Leeches"
           },
+          "leeches_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leeches Total"
+          },
           "media_state": {
             "anyOf": [
               {
@@ -2787,6 +2798,17 @@
               }
             ],
             "title": "Seeds"
+          },
+          "seeds_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seeds Total"
           },
           "show_id": {
             "anyOf": [
