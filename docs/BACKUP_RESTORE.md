@@ -41,9 +41,9 @@ The export requires the current account password in the recovery form. The passw
 8. Verify storage/integration health; newly added roots still require one explicit initialization scan.
 9. Open **Settings → Backup / Recovery → Bulk torrent re-import** and choose **Inspect recovery plan**.
 10. Review every row before selecting anything. Medialogue classifies archived torrents as:
-   - **Ready** — archive bytes exist, the original qBittorrent client (or a unique name/scope replacement) is available, the saved qBittorrent path still resolves inside an enabled media folder, and the torrent is not already present;
-   - **Already present** — the target qBittorrent client already reports that info hash, so Medialogue will not submit it again;
-   - **Blocked** — required archive/client/path context is missing or unsafe. Correct the configuration and inspect again.
+   - **Ready** - archive bytes exist, the original qBittorrent client (or a unique name/scope replacement) is available, the saved qBittorrent path still resolves inside an enabled media folder, and the torrent is not already present;
+   - **Already present** - the target qBittorrent client already reports that info hash, so Medialogue will not submit it again;
+   - **Blocked** - required archive/client/path context is missing or unsafe. Correct the configuration and inspect again.
 11. Select the Ready rows to recover and use **Review and submit**. The signed preview is short-lived and is revalidated before the job starts; if clients, paths, media folders, archive data, or qBittorrent contents changed, Medialogue requires a new preview.
 12. Confirm the bulk submission. Each torrent is validated again immediately before it is sent to qBittorrent.
 

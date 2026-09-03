@@ -839,7 +839,17 @@ export function DownloadsPage() {
   const activityTone = (item: Download): 'neutral' | 'green' | 'amber' | 'red' | 'blue' => item.state === 'Error' ? 'red' : item.state === 'Seeding' ? 'green' : item.state === 'Paused' ? 'neutral' : item.activity === 'stalled' ? 'amber' : 'blue'
   // The row is a single line, so what used to sit on a second line moves into
   // the hover tooltip for that cell rather than being dropped.
-  const releaseNote = (item: Download) => [item.quality, item.edition, item.client].filter(Boolean).join(' · ') || item.client
+  const releaseNote = (item: Download) => <>
+    {item.mediaTitle ? <div className="download-tip-media">
+      <span className="download-tip-poster"><PosterImage reference={item.mediaPosterRef} title={item.mediaTitle} /></span>
+      <span className="download-tip-copy">
+        <strong>{item.mediaTitle}</strong>
+        {item.mediaYear !== undefined && <span>{item.mediaYear}</span>}
+        {item.mediaRootName && <span className="download-tip-root"><Icon name="folder" size={11} />{item.mediaRootName}</span>}
+      </span>
+    </div> : <p>Reconciling · no media association yet</p>}
+    <p>{[item.quality, item.edition, item.client].filter(Boolean).join(' · ') || item.client}</p>
+  </>
   const progressNote = (item: Download) => item.amountLeft ? `${item.amountLeft} left of ${item.size}` : `${item.size} complete`
   const mediaNote = (item: Download) => item.incoming
     ? item.incomingKind === 'replacement' ? 'Incoming replacement' : 'Incoming release'
@@ -847,7 +857,6 @@ export function DownloadsPage() {
   // qBittorrent renders peer counts as "connected (swarm total)". The total is
   // only shown when the tracker actually reported one.
   const peerCount = (connected?: number, total?: number) => total === undefined ? `${connected ?? 0}` : `${connected ?? 0} (${total})`
-  const stateIcon = (item: Download) => item.state === 'Downloading' ? 'download' : item.state === 'Checking' ? 'refresh' : item.state === 'Seeding' ? 'activity' : item.state === 'Error' ? 'alert' : 'check'
   return <Page title="Downloads" subtitle="Live Medialogue-managed qBittorrent activity. Historical and archived-only torrents stay in release history and Torrent Archive." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
     <div className="downloads-layout">
       <aside className="downloads-rail">
@@ -870,10 +879,12 @@ export function DownloadsPage() {
       <div className="downloads-main">
     {error && <EmptyState icon="download" title="Could not load downloads" detail={error} action={<Button variant="ghost" icon="refresh" onClick={() => void load()}>Try again</Button>} />}
     {!error && !loading && !filtered.length && <EmptyState icon="download" title={items.length ? 'No activity matches this filter' : 'No managed torrents are currently loaded'} detail={items.length ? 'Try another activity filter.' : 'Historical and archived-only torrents are intentionally kept out of this live view.'} />}
-    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>Size</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('state', 'Status')}</th><th>{sortLabel('seeds', 'Seeds')}</th><th>{sortLabel('leeches', 'Peers')}</th><th>Down speed</th><th>Up speed</th><th>{sortLabel('eta', 'ETA')}</th><th>Tracker</th><th>Backup</th><th>Media</th><th>{sortLabel('path', 'Save path')}</th><th /></tr></thead><tbody>{loading ? <tr><td colSpan={14} className="table-loading">Reading live qBittorrent activity…</td></tr> : filtered.map((download) => <tr key={download.id}>
-      <td><Tooltip className="download-name" content={releaseNote(download)}><span className={`state-icon state-${download.state.toLowerCase()}`}><Icon name={stateIcon(download)} size={14} /></span><strong>{download.name}</strong></Tooltip></td>
+    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>Size</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('state', 'Status')}</th><th>{sortLabel('seeds', 'Seeds')}</th><th>{sortLabel('leeches', 'Peers')}</th><th>Down speed</th><th>Up speed</th><th>{sortLabel('eta', 'ETA')}</th><th>Tracker</th><th>Backup</th></tr></thead><tbody>{loading ? <tr><td colSpan={11} className="table-loading">Reading live qBittorrent activity…</td></tr> : filtered.map((download) => <tr key={download.id}>
+      <td><span className="download-name"><Tooltip className="download-kind-tip" delay={250} content={releaseNote(download)}>{(download.movieId || download.showId)
+        ? <Link className={`kind-box download-kind kind-${download.kind === 'Show' ? 'show' : 'movie'}`} to={download.movieId ? `/movies/${download.movieId}` : `/shows/${download.showId}`} aria-label={`Open ${download.mediaTitle ?? download.name}`}><Icon name={download.kind === 'Show' ? 'tv-screen' : 'clapper'} size={11} /></Link>
+        : <span className={`kind-box download-kind kind-${download.kind === 'Show' ? 'show' : 'movie'} unmatched`}><Icon name={download.kind === 'Show' ? 'tv-screen' : 'clapper'} size={11} /></span>}</Tooltip><Tooltip className="download-name-tip" delay={250} content={<p>{download.path}</p>}><strong>{download.name}</strong></Tooltip></span></td>
       <td className="download-size">{download.size}</td>
-      <td><Tooltip className="download-progress" content={progressNote(download)}><Progress value={download.progress} tone={download.state === 'Seeding' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span>{Math.round(download.progress)}%</span></Tooltip></td>
+      <td><Tooltip className="download-progress" content={progressNote(download)}><Progress value={download.progress} tone={download.state === 'Seeding' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span className="download-progress-value">{Math.round(download.progress)}%</span></Tooltip></td>
       <td><Badge tone={activityTone(download)}>{activityLabel(download)}</Badge></td>
       <td className="download-count">{peerCount(download.seeds, download.seedsTotal)}</td>
       <td className="download-count">{peerCount(download.leeches, download.leechesTotal)}</td>
@@ -882,9 +893,6 @@ export function DownloadsPage() {
       <td className="download-eta">{download.eta}</td>
       <td><Tooltip content={[`Tracker ${download.trackerState}`, download.availability === undefined ? '' : `availability ${download.availability.toFixed(2)}`, download.ratio === undefined ? '' : `ratio ${download.ratio.toFixed(2)}`].filter(Boolean).join(' · ')}><Badge tone={download.trackerState === 'unregistered' || download.trackerState === 'unavailable' ? 'red' : download.trackerState === 'degraded' ? 'amber' : download.trackerState === 'healthy' ? 'green' : 'neutral'}>{download.trackerState === 'unknown' ? 'No tracker data' : download.trackerState}</Badge></Tooltip></td>
       <td><Tooltip content={download.archiveState === 'archived' ? 'The .torrent and recovery manifest passed integrity verification.' : download.archiveState === 'failed' ? 'Recovery data could not be archived or failed verification.' : 'Recovery data has not been archived yet.'}><Badge tone={download.archiveState === 'archived' ? 'green' : download.archiveState === 'failed' ? 'red' : 'amber'}>{download.archiveState === 'archived' ? 'Backed up' : download.archiveState === 'failed' ? 'Failed' : 'Pending'}</Badge></Tooltip></td>
-      <td>{download.mediaTitle ? <Tooltip className="download-media" content={mediaNote(download)}><strong>{download.mediaTitle}</strong></Tooltip> : <Tooltip className="download-media" content="No media association yet"><span className="download-media-pending">Reconciling</span></Tooltip>}</td>
-      <td className="path-cell">{download.path}</td>
-      <td>{(download.movieId || download.showId) && <Link className="icon-button" to={download.movieId ? `/movies/${download.movieId}` : `/shows/${download.showId}`} aria-label={`Open ${download.mediaTitle ?? download.name}`}><Icon name="chevron" size={15} /></Link>}</td>
     </tr>)}</tbody></table></Panel>}
       </div>
     </div>
@@ -1297,7 +1305,7 @@ function plexIdentitySides(problem: Problem) {
   const folderName = localPath ? localPath.split(/[\\/]/).filter(Boolean).pop() : undefined
   // Not problem.subject unconditionally: when the entity cannot be resolved the
   // mapper falls back to the reason label, which rendered as "Identity conflict
-  // (1973)" — the name of the problem, presented as the name of the title.
+  // (1973)" - the name of the problem, presented as the name of the title.
   const resolvedSubject = problem.subject && problem.subject !== problem.label && problem.subject !== localPath
     ? problem.subject
     : undefined
@@ -3888,7 +3896,7 @@ function upgradeStateTone(item: UpgradeCandidate): 'neutral' | 'green' | 'amber'
 }
 
 function formatUpgradeBytes(bytes?: number) {
-  if (bytes === undefined || bytes === null || !Number.isFinite(bytes)) return '—'
+  if (bytes === undefined || bytes === null || !Number.isFinite(bytes)) return '-'
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let value = Math.max(0, bytes)

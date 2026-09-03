@@ -45,9 +45,9 @@ describe('formatAge', () => {
   })
 
   it('renders a dash for a missing or unparseable date', () => {
-    expect(formatAge(undefined, NOW)).toBe('—')
-    expect(formatAge(null, NOW)).toBe('—')
-    expect(formatAge('not a date', NOW)).toBe('—')
+    expect(formatAge(undefined, NOW)).toBe('-')
+    expect(formatAge(null, NOW)).toBe('-')
+    expect(formatAge('not a date', NOW)).toBe('-')
   })
 })
 

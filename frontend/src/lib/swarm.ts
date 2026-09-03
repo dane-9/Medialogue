@@ -11,7 +11,7 @@ export function swarmHealth(seeders?: number | null): SwarmHealth {
 }
 
 export function formatPeers(seeders?: number | null, leechers?: number | null): string {
-  const seed = seeders === undefined || seeders === null ? '—' : String(seeders)
-  const leech = leechers === undefined || leechers === null ? '—' : String(leechers)
+  const seed = seeders === undefined || seeders === null ? '-' : String(seeders)
+  const leech = leechers === undefined || leechers === null ? '-' : String(leechers)
   return `${seed}/${leech}`
 }

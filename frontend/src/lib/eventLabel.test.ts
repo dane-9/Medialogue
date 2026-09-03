@@ -29,6 +29,6 @@ describe('eventStamp', () => {
   })
 
   it('does not throw on a malformed timestamp', () => {
-    expect(eventStamp('not a date')).toBe('—')
+    expect(eventStamp('not a date')).toBe('-')
   })
 })

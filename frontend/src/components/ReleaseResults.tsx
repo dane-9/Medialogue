@@ -13,7 +13,8 @@ import { DEFAULT_DESC, DEFAULT_SORT, sortReleases, type SortKey } from '../lib/r
 
 export function formatBytes(bytes?: number) {
   if (!bytes) return '-'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  // IEC units, matching the 1024 divisor below and what qBittorrent displays.
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
   let value = bytes
   let unit = 0
   while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
@@ -162,7 +163,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
                 <ul>{formats.map((name) => <li key={name}>{name}</li>)}</ul>
               </>
             : 'No Custom Formats matched'}
-        >{score === undefined ? '—' : signed(score)}</Tooltip>
+        >{score === undefined ? '-' : signed(score)}</Tooltip>
         <span className="release-numeric">{formatBytes(result.size)}</span>
         <span className="release-numeric">
           <Tooltip

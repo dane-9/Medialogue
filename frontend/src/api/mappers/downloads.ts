@@ -6,8 +6,9 @@ type DownloadDto = components['schemas']['DownloadResponse']
 
 export function formatBytes(value: unknown): string {
   const bytes = numberValue(value, 0)
-  if (!bytes) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  if (!bytes) return '-'
+  // IEC units, matching the 1024 divisor below and what qBittorrent displays.
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
   let amount = bytes
   let unit = 0
   while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1 }
@@ -28,7 +29,7 @@ export function mapDownload(value: DownloadDto): Download {
   }
   const etaSeconds = value.eta_seconds
   const eta = etaSeconds === null || etaSeconds === undefined || etaSeconds < 0 || etaSeconds >= 8640000
-    ? '—'
+    ? '-'
     : etaSeconds < 60
       ? `${etaSeconds}s`
       : etaSeconds < 3600
@@ -47,7 +48,7 @@ export function mapDownload(value: DownloadDto): Download {
     progress,
     size: formatBytes(value.total_size),
     eta,
-    speed: value.download_speed ? `${formatBytes(value.download_speed)}/s` : '—',
+    speed: value.download_speed ? `${formatBytes(value.download_speed)}/s` : '-',
     path: value.resolved_save_path ?? value.reported_save_path ?? 'Unknown path',
     quality: value.quality ?? undefined,
     edition: value.edition ?? undefined,
@@ -55,12 +56,15 @@ export function mapDownload(value: DownloadDto): Download {
     showId: value.show_id ?? undefined,
     releaseId: value.release_id ?? undefined,
     mediaTitle: value.media_title ?? undefined,
+    mediaPosterRef: value.media_poster_ref ?? undefined,
+    mediaRootName: value.media_root_name ?? undefined,
+    mediaYear: value.media_year ?? undefined,
     mediaState: value.media_state ?? undefined,
     reconciliationState: value.reconciliation_state ?? undefined,
     reconciliationDetail: value.reconciliation_detail ?? undefined,
     incoming: value.incoming ?? false,
     incomingKind: value.incoming_kind ?? undefined,
-    uploadSpeed: value.upload_speed ? `${formatBytes(value.upload_speed)}/s` : '—',
+    uploadSpeed: value.upload_speed ? `${formatBytes(value.upload_speed)}/s` : '-',
     downloadSpeedBytes: value.download_speed ?? 0,
     uploadSpeedBytes: value.upload_speed ?? 0,
     amountLeft: value.amount_left === null || value.amount_left === undefined || value.amount_left <= 0

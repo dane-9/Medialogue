@@ -149,6 +149,9 @@ class DownloadResponse(ORMModel):
     show_id: UUID | None = None
     release_id: UUID | None = None
     media_title: str | None = None
+    media_poster_ref: str | None = None
+    media_root_name: str | None = None
+    media_year: int | None = None
     quality: str | None = None
     edition: str | None = None
     media_state: Literal["present", "missing"] | None = None

@@ -917,7 +917,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .split.split-narrow::after { content: ''; }
 .qbit-editor, .settings-panel { min-width: 0; }
 
-.release-icon, .incoming-icon, .state-icon {
+.release-icon, .incoming-icon {
   display: grid;
   place-items: center;
   width: var(--control);
@@ -927,7 +927,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   color: var(--accent-text);
   background: var(--accent-soft);
 }
-.state-icon { width: var(--control-sm); height: var(--control-sm); }
 
 .cf-list-state { padding: var(--s4); color: var(--muted); font-size: var(--t-sm); }
 .cf-file-input { display: none; }
@@ -1282,28 +1281,89 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    tables keep their roomier default. */
 .downloads-table th { padding: 0 var(--s2); }
 .downloads-table td { height: 34px; padding: 0 var(--s2); }
-/* The table is width:100%, so any width beyond the columns' own needs is shared
-   out and every gap grows. Letting Save path soak it up keeps the data columns
-   packed together the way qBittorrent's are. */
-.downloads-table .path-cell { width: 100%; max-width: none; }
-.download-name { display: flex; align-items: center; gap: var(--s2); min-width: 0; max-width: 340px; }
+/* Every column is an explicit width. table-layout:fixed makes the browser honour
+   them exactly instead of sizing to content, and width:auto sizes the table to
+   their sum so nothing is redistributed when the window is wider. Change a
+   number here and only that column moves. */
+.downloads-table { table-layout: fixed; width: auto; }
+.downloads-table th:nth-child(1),  .downloads-table td:nth-child(1)  { width: 575px; }  /* Release */
+.downloads-table th:nth-child(2),  .downloads-table td:nth-child(2)  { width: 60px; }   /* Size */
+.downloads-table th:nth-child(3),  .downloads-table td:nth-child(3)  { width: 145px; }  /* Progress */
+.downloads-table th:nth-child(4),  .downloads-table td:nth-child(4)  { width: 135px; }  /* Status */
+.downloads-table th:nth-child(5),  .downloads-table td:nth-child(5)  { width: 70px; }   /* Seeds */
+.downloads-table th:nth-child(6),  .downloads-table td:nth-child(6)  { width: 70px; }   /* Peers */
+.downloads-table th:nth-child(7),  .downloads-table td:nth-child(7)  { width: 95px; }   /* Down speed */
+.downloads-table th:nth-child(8),  .downloads-table td:nth-child(8)  { width: 95px; }   /* Up speed */
+.downloads-table th:nth-child(9),  .downloads-table td:nth-child(9)  { width: 65px; }   /* ETA */
+.downloads-table th:nth-child(10), .downloads-table td:nth-child(10) { width: 125px; }  /* Tracker */
+.downloads-table th:nth-child(11), .downloads-table td:nth-child(11) { width: 100px; }  /* Backup */
+/* Fixed layout clips rather than ellipsises unless the cell says otherwise. */
+.downloads-table td { overflow: hidden; }
+.download-name { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.download-name-tip { flex: 1; min-width: 0; }
+.download-name strong { display: block; min-width: 0; }
+/* Identity header for the kind marker's tooltip. The poster box is positioned
+   because .poster-image fills its nearest positioned ancestor. */
+.download-tip-media { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s2); }
+.download-tip-poster {
+  position: relative;
+  display: grid;
+  width: 44px;
+  flex: none;
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+.download-tip-copy { display: grid; gap: 2px; min-width: 0; }
+.download-tip-copy strong { color: var(--text); font: 600 var(--t-sm) var(--sans); }
+.download-tip-copy span { color: var(--muted); font: var(--t-xs) var(--mono); }
+.download-tip-root { display: flex; align-items: center; gap: var(--s1); color: var(--faint) !important; }
+/* The tooltip trigger wraps only the icon, so the bubble anchors to the icon's
+   17px box rather than centring on the whole 450px Release cell. */
+.download-kind-tip { display: flex; flex: none; }
+/* Kind marker, shrunk for the row: dimmed while nothing is matched to it yet. */
+.download-kind { width: 17px; height: 17px; }
+.download-kind.unmatched { color: var(--faint); border-color: var(--line-strong); background: transparent; }
+/* The marker is the link to the title, so it reacts to the pointer. */
+a.download-kind { cursor: pointer; transition: filter .12s; }
+a.download-kind:hover { filter: brightness(1.35); }
 .download-name strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.downloads-table .state-icon { width: auto; height: auto; border-radius: 0; background: transparent; }
-.downloads-table .state-downloading, .downloads-table .state-checking { color: var(--accent-text); }
-.downloads-table .state-seeding { color: var(--ok); }
-.downloads-table .state-paused, .downloads-table .state-completed { color: var(--faint); }
-.downloads-table .state-error { color: var(--err); }
-.download-progress { display: inline-flex; align-items: center; gap: var(--s2); min-width: 108px; }
-.download-progress .progress { width: 64px; }
-.download-progress span { color: var(--muted); font: var(--t-micro) var(--mono); }
-.download-size, .download-eta { color: var(--muted); font: var(--t-micro) var(--mono); white-space: nowrap; }
-.download-count, .download-speed { font: var(--t-micro) var(--mono); white-space: nowrap; }
+/* qBittorrent-style bar: full column width, tall enough to hold the percentage
+   centred inside it. No min-width and no fixed bar width, so column 3 is the
+   only thing controlling the size. */
+.download-progress { position: relative; display: block; width: 100%; min-width: 0; }
+.download-progress .progress { width: 100%; height: 18px; border-radius: var(--r-sm); }
+/* Darkened fills so the label stays legible over the filled part of the bar;
+   the track behind it is already dark. */
+.download-progress .progress span { background: color-mix(in srgb, var(--accent) 74%, #0d1218); }
+.download-progress .progress-green span { background: color-mix(in srgb, var(--ok) 74%, #0d1218); }
+.download-progress .progress-amber span { background: color-mix(in srgb, var(--warn) 74%, #0d1218); }
+.download-progress-value {
+  position: absolute;
+  display: grid;
+  inset: 0;
+  place-items: center;
+  color: var(--text);
+  /* Sans rather than the table's mono: at 10px inside the bar the monospace
+     digits read as cramped and mismatched. Tabular figures keep the number from
+     shifting as it ticks up. */
+  font: 500 var(--t-xs) var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+/* Same face as the progress percentage: sans with tabular figures, so the
+   numeric columns read as one set and digits do not shift as values tick. */
+.download-size, .download-eta, .download-count, .download-speed {
+  font: 500 var(--t-xs) var(--sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.download-size, .download-eta { color: var(--muted); }
 .download-count { color: var(--muted); }
 .download-speed.down { color: var(--accent-text); }
 .download-speed.up { color: var(--muted); }
-.download-media { display: block; overflow: hidden; max-width: 190px; text-overflow: ellipsis; white-space: nowrap; }
-.download-media strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
-.download-media-pending { color: var(--faint); font-size: var(--t-sm); }
 .release-cell { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); max-width: 260px; }
 .release-cell strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .release-cell small {
@@ -1313,7 +1373,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   font: var(--t-micro) var(--mono);
 }
 .client-name { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; }
-.downloads-table { min-width: 1420px; }
+
 
 /* Downloads puts its filters in a left rail rather than stat cards plus a tab
    strip, so the table starts at the top of the page instead of a third of the
@@ -2654,7 +2714,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .problems-priority.priority-low { color: var(--muted); background: rgba(138,138,144,.08); }
 .problems-detail { min-width: 0; background: var(--surface); }
 .problems-detail-head { display: flex; align-items: center; gap: var(--s3); min-height: 66px; padding: var(--s3) 18px; border-bottom: 1px solid var(--line); }
-/* Not :first-child — the back button is, even when hidden on wide screens, so
+/* Not :first-child - the back button is, even when hidden on wide screens, so
    the title never grew and the actions sat next to it instead of far right. */
 .problems-detail-head > div:not(.problems-detail-actions) { flex: 1; min-width: 0; }
 /* The title and its severity read as one line: the pill qualifies the heading,
@@ -3424,8 +3484,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
    decision under it rather than two columns competing for the same width. */
 .new-media-folder-copy { display: grid; flex: 1; gap: var(--s2); min-width: 0; }
 /* Only as wide as the control it holds. As a stretched grid item it covered the
-   rest of the row, and its click handler — there to keep the dropdown from
-   selecting the row — swallowed every click in that empty space. */
+   rest of the row, and its click handler - there to keep the dropdown from
+   selecting the row - swallowed every click in that empty space. */
 .new-media-profile-cell { justify-self: start; }
 .new-media-profile-cell .dropdown-trigger { min-width: 175px; width: auto; max-width: 220px; height: 20px; padding: 0 4px 0 var(--s2); border-radius: 3px; font: var(--t-micro) var(--mono); }
 .new-media-profile-cell .dropdown-trigger > svg { width: 11px; height: 11px; }

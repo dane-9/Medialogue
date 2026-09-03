@@ -23,8 +23,10 @@ from app.models.domain import (
     MovieReleaseTorrent,
     Problem,
     ProblemStatus,
+    MediaDirectory,
     ShowRelease,
     ShowReleaseTorrent,
+    StorageRoot,
     Torrent,
     TorrentClientObservation,
 )
@@ -161,7 +163,20 @@ async def _download_response(
     media_state = None
     reconciliation_state = None
     reconciliation_detail = None
+    root_name = None
     if release is not None:
+        # Which configured media folder the release sits under, resolved through
+        # its directories the same way Upgrade Media does it.
+        root_name = await db.scalar(
+            select(StorageRoot.name)
+            .join(MediaDirectory, MediaDirectory.storage_root_id == StorageRoot.id)
+            .where(
+                MediaDirectory.movie_release_id == release.id
+                if isinstance(release, MovieRelease)
+                else MediaDirectory.show_release_id == release.id
+            )
+            .limit(1)
+        )
         media_state = "present" if any(item.exists for item in release.directories) else "missing"
         reconciliation_state = association.association_type.value
         problem = await db.scalar(
@@ -201,6 +216,21 @@ async def _download_response(
             release.movie.title
             if isinstance(release, MovieRelease)
             else release.show.title
+            if isinstance(release, ShowRelease)
+            else None
+        ),
+        media_root_name=root_name,
+        media_poster_ref=(
+            release.movie.poster_ref
+            if isinstance(release, MovieRelease)
+            else release.show.poster_ref
+            if isinstance(release, ShowRelease)
+            else None
+        ),
+        media_year=(
+            release.movie.year
+            if isinstance(release, MovieRelease)
+            else release.show.year
             if isinstance(release, ShowRelease)
             else None
         ),

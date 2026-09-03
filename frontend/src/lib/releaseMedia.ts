@@ -31,7 +31,7 @@ export function releaseVideoCodec(parser: Snapshot): string | undefined {
   return text(section(parser, 'video')?.codec)
 }
 
-/** "TrueHD Atmos 7.1" — codec, object audio, then channels, skipping unknowns. */
+/** "TrueHD Atmos 7.1" - codec, object audio, then channels, skipping unknowns. */
 export function releaseAudio(parser: Snapshot): string | undefined {
   const audio = section(parser, 'audio')
   const codec = text(audio?.codec)

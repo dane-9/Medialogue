@@ -29,8 +29,8 @@ describe('formatPeers', () => {
   })
 
   it('shows a dash rather than claiming zero for a count it does not have', () => {
-    expect(formatPeers(20, undefined)).toBe('20/—')
-    expect(formatPeers(undefined, undefined)).toBe('—/—')
+    expect(formatPeers(20, undefined)).toBe('20/-')
+    expect(formatPeers(undefined, undefined)).toBe('-/-')
   })
 
   it('keeps a genuine zero distinct from a missing count', () => {

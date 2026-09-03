@@ -43,7 +43,7 @@ export function eventLabel(eventType: string): string {
 
 export function eventStamp(createdAt: string): string {
   const at = new Date(createdAt)
-  if (Number.isNaN(at.getTime())) return '—'
+  if (Number.isNaN(at.getTime())) return '-'
   const date = at.toLocaleDateString(undefined, { day: '2-digit', month: 'short' })
   const time = at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
   const year = at.getFullYear() === new Date().getFullYear() ? '' : ` ${at.getFullYear()}`

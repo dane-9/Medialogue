@@ -7,8 +7,8 @@ export interface UpgradeTokenContext {
   quality?: string
 
   /** Section a format sits under on the Custom Formats page, keyed by lower-cased
-   *  format name. Names the reason after what the format is about — "Dynamic
-   *  Range", "Video", "Audio" — instead of the generic mechanism. */
+   *  format name. Names the reason after what the format is about - "Dynamic
+   *  Range", "Video", "Audio" - instead of the generic mechanism. */
   formatSections?: Record<string, string>
 }
 
@@ -160,7 +160,7 @@ const SCENE_TAGS: Record<string, string> = {
 
 const words = (value: string) => tokenWords(value)
 
-/** "Dynamic Range: DV HDR10 +50" — the section the format is filed under reads
+/** "Dynamic Range: DV HDR10 +50" - the section the format is filed under reads
  *  as its kind. Formats with no section keep the generic label, which is still
  *  true of every one of them. The score closes the line so the renderer can
  *  tint it; UPGRADE_REASON_SCORE is that agreement in one place. */

@@ -257,8 +257,8 @@ The frontend should receive one aggregate status document containing:
 
 Recommended endpoints:
 
-- `GET /api/v1/system/status` — aggregate current state.
-- `POST /api/v1/system/status/check` — queue a complete status evaluation and return its job identifier.
+- `GET /api/v1/system/status` - aggregate current state.
+- `POST /api/v1/system/status/check` - queue a complete status evaluation and return its job identifier.
 
 History does not require a separate endpoint initially. The Events page can filter health notice opened, changed, and resolved events.
 

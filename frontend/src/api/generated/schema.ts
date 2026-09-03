@@ -3621,10 +3621,16 @@ export interface components {
             leeches?: number | null;
             /** Leeches Total */
             leeches_total?: number | null;
+            /** Media Poster Ref */
+            media_poster_ref?: string | null;
+            /** Media Root Name */
+            media_root_name?: string | null;
             /** Media State */
             media_state?: ("present" | "missing") | null;
             /** Media Title */
             media_title?: string | null;
+            /** Media Year */
+            media_year?: number | null;
             /** Movie Id */
             movie_id?: string | null;
             /** Name */

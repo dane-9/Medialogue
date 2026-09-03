@@ -376,6 +376,9 @@ export interface Download {
   showId?: string
   releaseId?: string
   mediaTitle?: string
+  mediaPosterRef?: string
+  mediaRootName?: string
+  mediaYear?: number
   mediaState?: string
   reconciliationState?: string
   reconciliationDetail?: string

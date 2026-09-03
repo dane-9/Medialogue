@@ -18,9 +18,9 @@ const UNITS: Array<[size: number, name: string]> = [
 ]
 
 export function formatAge(published?: string | null, now: number = Date.now()): string {
-  if (!published) return '—'
+  if (!published) return '-'
   const at = Date.parse(published)
-  if (Number.isNaN(at)) return '—'
+  if (Number.isNaN(at)) return '-'
 
   const elapsed = now - at
   if (elapsed < MINUTE) return 'just now'

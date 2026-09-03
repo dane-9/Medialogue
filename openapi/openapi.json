@@ -2636,6 +2636,28 @@
             ],
             "title": "Leeches Total"
           },
+          "media_poster_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Poster Ref"
+          },
+          "media_root_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Root Name"
+          },
           "media_state": {
             "anyOf": [
               {
@@ -2661,6 +2683,17 @@
               }
             ],
             "title": "Media Title"
+          },
+          "media_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Year"
           },
           "movie_id": {
             "anyOf": [
