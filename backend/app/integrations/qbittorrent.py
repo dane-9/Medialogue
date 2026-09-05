@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -10,6 +11,8 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 def _bencode_value_end(payload: bytes, position: int) -> int:
@@ -146,6 +149,8 @@ class _TorrentPayload(BaseModel):
     seeding_time: int | None = None
     seeding_time_limit: int | None = None
     inactive_seeding_time_limit: int | None = None
+    share_limit_action: int | None = None
+    share_limits_mode: int | None = None
     num_complete: int | None = None
     num_incomplete: int | None = None
     num_seeds: int | None = None
@@ -591,12 +596,17 @@ class QBittorrentClient:
                 await self._move_to_top_when_visible(info_hash)
 
     async def _move_to_top_when_visible(self, info_hash: str) -> None:
-        for attempt in range(8):
-            if await self.get_torrent(info_hash) is not None:
-                await self._request("POST", "/api/v2/torrents/topPrio", data={"hashes": info_hash.lower()})
-                return
-            if attempt < 7:
-                await asyncio.sleep(0.25)
+        # The add already succeeded. Optional queue placement must not make
+        # callers roll back the media/upgrade association for an active torrent.
+        try:
+            for attempt in range(8):
+                if await self.get_torrent(info_hash) is not None:
+                    await self._request("POST", "/api/v2/torrents/topPrio", data={"hashes": info_hash.lower()})
+                    return
+                if attempt < 7:
+                    await asyncio.sleep(0.25)
+        except (QBittorrentError, httpx.HTTPError):
+            logger.warning("Torrent was added, but queue priority could not be set (%s)", info_hash)
 
     async def _post_hashes(self, path: str, hashes: Sequence[str], *, fallback: str | None = None, **extra: Any) -> None:
         """POST a hash list to a torrents endpoint.
@@ -639,21 +649,39 @@ class QBittorrentClient:
     async def set_download_limit(self, hashes: Sequence[str], limit: int) -> None:
         """``limit`` is bytes/s; 0 or below means unlimited."""
 
-        await self._post_hashes("/api/v2/torrents/downloadLimit", hashes, limit=max(0, limit))
+        await self._post_hashes("/api/v2/torrents/setDownloadLimit", hashes, limit=max(0, limit))
 
     async def set_upload_limit(self, hashes: Sequence[str], limit: int) -> None:
-        await self._post_hashes("/api/v2/torrents/uploadLimit", hashes, limit=max(0, limit))
+        await self._post_hashes("/api/v2/torrents/setUploadLimit", hashes, limit=max(0, limit))
 
     async def set_share_limits(self, hashes: Sequence[str], ratio_limit: float) -> None:
-        """-1 restores the global limit; -2 means no limit at all."""
+        """Change only the ratio: -2 uses the global limit; -1 is unlimited."""
 
-        await self._post_hashes(
-            "/api/v2/torrents/setShareLimits",
-            hashes,
-            ratioLimit=ratio_limit,
-            seedingTimeLimit=-2,
-            inactiveSeedingTimeLimit=-2,
+        if not hashes:
+            return
+        response = await self._request(
+            "GET", "/api/v2/torrents/info",
+            params={"hashes": "|".join(value.lower() for value in hashes)},
         )
+        torrents = _validated_json(response, _TORRENT_LIST, "torrent share limits")
+        # qBittorrent requires time limits alongside the ratio. Read the live
+        # values and preserve each torrent's settings, including sentinels.
+        for torrent in torrents:
+            if torrent.seeding_time_limit is None or torrent.inactive_seeding_time_limit is None:
+                raise QBittorrentError("qBittorrent did not provide the existing seeding time limits")
+        for torrent in torrents:
+            extra = {}
+            if torrent.share_limit_action is not None:
+                extra["shareLimitAction"] = torrent.share_limit_action
+            if torrent.share_limits_mode is not None:
+                extra["shareLimitsMode"] = torrent.share_limits_mode
+            await self._post_hashes(
+                "/api/v2/torrents/setShareLimits", [torrent.hash],
+                ratioLimit=ratio_limit,
+                seedingTimeLimit=torrent.seeding_time_limit,
+                inactiveSeedingTimeLimit=torrent.inactive_seeding_time_limit,
+                **extra,
+            )
 
     async def remove_torrent(self, info_hash: str, *, delete_files: bool = False) -> None:
         await self._request(

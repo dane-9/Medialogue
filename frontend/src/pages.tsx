@@ -888,13 +888,13 @@ function DownloadContextMenu({ position, count, busy, allStopped, onRun }: {
   const prompts = {
     download_limit: { title: 'Limit download', hint: 'KiB/s, 0 for unlimited', mode: 'numeric' as const },
     upload_limit: { title: 'Limit upload', hint: 'KiB/s, 0 for unlimited', mode: 'numeric' as const },
-    share_ratio: { title: 'Share ratio limit', hint: '-1 uses the global limit', mode: 'decimal' as const },
+    share_ratio: { title: 'Share ratio limit', hint: '-2 uses the global limit, -1 for unlimited', mode: 'decimal' as const },
   }
 
   const apply = () => {
     if (!prompt) return
     const parsed = Number(value)
-    if (prompt === 'share_ratio') return void onRun(prompt, Number.isFinite(parsed) ? parsed : -1)
+    if (prompt === 'share_ratio') return void onRun(prompt, value.trim() && Number.isFinite(parsed) ? parsed : -2)
     void onRun(prompt, Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 1024) : 0)
   }
 

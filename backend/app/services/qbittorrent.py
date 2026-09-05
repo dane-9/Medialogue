@@ -410,8 +410,8 @@ async def run_torrent_action(
         elif action == "upload_limit":
             await adapter.set_upload_limit(info_hashes, int(value or 0))
         elif action == "share_ratio":
-            # -1 hands the torrent back to qBittorrent's global limit.
-            await adapter.set_share_limits(info_hashes, float(value if value is not None else -1))
+            # -2 hands the torrent back to qBittorrent's global limit.
+            await adapter.set_share_limits(info_hashes, float(value if value is not None else -2))
         else:
             raise QBittorrentError(f"Unsupported torrent action: {action}")
     finally:
