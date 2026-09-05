@@ -825,8 +825,14 @@ def test_indexer_download_client_restriction_round_trips_and_defaults_open(clien
     indexer = _create_indexer(client, headers, name="Unrestricted", url="https://indexer.test/api")
     assert indexer["download_client_ids"] == []
 
-    first = uuid.uuid4()
-    second = uuid.uuid4()
+    client_ids = []
+    for scope in ("movies", "shows"):
+        created = client.post("/api/v1/download-clients", headers=headers, json={
+            "name": scope, "url": f"http://qbit-{scope}.test:8080", "scope": scope, "password": "test",
+        })
+        assert created.status_code == 201, created.text
+        client_ids.append(uuid.UUID(created.json()["id"]))
+    first, second = client_ids
     updated = client.put(
         f"/api/v1/indexers/{indexer['id']}",
         headers=headers,
@@ -838,4 +844,9 @@ def test_indexer_download_client_restriction_round_trips_and_defaults_open(clien
     untouched = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"priority": 30})
     assert set(untouched.json()["download_client_ids"]) == {str(first), str(second)}
     cleared = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"download_client_ids": []})
-    assert cleared.json()["download_client_ids"] == []
+    assert cleared.status_code == 422
+    mismatch = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"scope": "shows"})
+    assert mismatch.status_code == 422
+    assert mismatch.json()["error"]["code"] == "DOWNLOAD_CLIENT_SCOPE_MISMATCH"
+    valid = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"scope": "shows", "download_client_ids": [str(second)]})
+    assert valid.status_code == 200, valid.text

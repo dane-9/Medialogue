@@ -531,13 +531,21 @@ async def _save_settings(
     entity_id: UUID,
     payload: MediaProfileSettingsUpdate,
 ) -> None:
-    if payload.quality_profile_id is not None and await db.get(QualityProfile, payload.quality_profile_id) is None:
+    selected_profile = (
+        await db.get(QualityProfile, payload.quality_profile_id)
+        if payload.quality_profile_id is not None else await load_default_profile(db)
+    )
+    if payload.quality_profile_id is not None and selected_profile is None:
         raise AppError("INVALID_QUALITY_PROFILE", "Quality Profile does not exist.", status_code=422)
     try:
         await validate_profile_references(
             db,
             minimum_quality_definition_id=payload.minimum_quality_definition_override_id,
             score_format_ids=list(payload.custom_format_score_overrides),
+            quality_definition_ids=(
+                [item.id for item in await _profile_qualities(db, selected_profile)]
+                if selected_profile is not None else None
+            ),
         )
     except ValueError as exc:
         raise AppError("INVALID_PROFILE_OVERRIDE", str(exc), status_code=422) from exc

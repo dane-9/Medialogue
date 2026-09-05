@@ -25,6 +25,7 @@ from app.models.domain import (
     MediaType,
     Movie,
     MovieRelease,
+    QualityDefinition,
     ReleaseScope,
     ReleaseState,
     Season,
@@ -56,7 +57,7 @@ class CurrentReleaseEvidence:
     release_id: UUID
     release_name: str
     quality: str
-    quality_preference: int
+    quality_preference: float
     custom_format_score: int
     score_snapshot: dict[str, Any]
     parse_snapshot: dict[str, Any]
@@ -326,6 +327,18 @@ async def _release_evidence(
         else parsed.quality.canonical
     )
     preference = _quality_preference(quality, quality_order)
+    if quality is not None and quality == parsed.quality.canonical and preference is None:
+        # A profile limits replacement qualities, not the inventory we search
+        # upgrades for. Place an excluded current quality just above the first
+        # allowed quality of equal/lower global rank to prevent downgrades.
+        definitions = (await db.scalars(select(QualityDefinition))).all()
+        ranks = {item.name: item.rank for item in definitions}
+        if quality in ranks:
+            preference = next(
+                (index - 0.5 for index, name in enumerate(quality_order)
+                 if name not in ranks or ranks[name] <= ranks[quality]),
+                float(len(quality_order)),
+            )
     if quality is None or preference is None:
         return None
     return CurrentReleaseEvidence(

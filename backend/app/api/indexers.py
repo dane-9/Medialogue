@@ -93,7 +93,7 @@ async def list_indexers(
     )
 
 
-def _require_download_clients(client_ids: list) -> None:
+def _require_download_clients(client_ids: list, scope: str) -> None:
     """An indexer with no download client cannot deliver what it finds.
 
     Enforced here as well as in the UI because the API is reachable directly.
@@ -102,9 +102,14 @@ def _require_download_clients(client_ids: list) -> None:
     until qBittorrent was set up, which is a worse deadlock than the problem.
     """
 
-    if client_ids:
-        return
-    if not get_integration_config_store().list_download_clients():
+    clients = {item.id: item for item in get_integration_config_store().list_download_clients()}
+    for client_id in client_ids:
+        client = clients.get(client_id)
+        if client is None:
+            raise AppError("DOWNLOAD_CLIENT_NOT_FOUND", "The selected download client no longer exists.", status_code=422)
+        if scope != "both" and client.scope != scope:
+            raise AppError("DOWNLOAD_CLIENT_SCOPE_MISMATCH", f"{client.name} does not support the indexer's {scope} scope.", status_code=422)
+    if client_ids or not clients:
         return
     raise AppError(
         "DOWNLOAD_CLIENT_REQUIRED",
@@ -119,7 +124,7 @@ async def create_indexer(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> IndexerResponse:
-    _require_download_clients(payload.download_client_ids)
+    _require_download_clients(payload.download_client_ids, payload.scope.value)
     store = get_integration_config_store()
     config = store.save_indexer(
         IndexerConfig(
@@ -190,7 +195,7 @@ async def update_indexer(
         download_client_ids=(list(payload.download_client_ids) if payload.download_client_ids is not None else list(current.download_client_ids)),
         revision=current.revision,
     )
-    _require_download_clients(updated.download_client_ids)
+    _require_download_clients(updated.download_client_ids, updated.scope)
     try:
         get_integration_config_store().save_indexer(updated, expected_revision=payload.expected_revision)
     except ValueError as exc:

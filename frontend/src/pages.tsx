@@ -21,7 +21,7 @@ import { parserWarningMessage } from './lib/parserWarnings'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
 import { qualityMark } from './lib/qualityMark'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Field, Note, SaveFooter, SectionHead, Secret, failed, ok, pending } from './components/settings'
+import { Field, Note, SaveFooter, SectionHead, Secret, SettingsGroup, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
@@ -492,7 +492,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
     try {
       const [value, profileRows, qualityRows, formatRows] = await Promise.all([settingsApi.movieProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions(), settingsApi.customFormats()])
       setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setFormats(formatRows)
-      setProfileId(value.qualityProfileId ?? '')
+      setProfileId(value.qualityProfileInherited ? '' : value.qualityProfileId ?? '')
       setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : '')
       setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '')
       setOverrides(Object.fromEntries(value.customFormatScores.filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])))
@@ -518,7 +518,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   const formatById = new Map(formats.map((item) => [item.id, item]))
   const available = formats.filter((item) => !Object.prototype.hasOwnProperty.call(overrides, item.id))
   return <Panel title="Quality Profile & Overrides" eyebrow="SEARCH SCORING">
-    <div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>
+    <div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.filter((quality) => (profiles.find((profile) => profileId ? profile.id === profileId : profile.isDefault)?.qualities ?? []).some((item) => item.id === quality.id)).map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>
     <div className="settings-note"><Icon name="info" size={16} /><span>Overrides replace this title's profile score for the selected Custom Format. They never alter the Custom Format definition or another title.</span></div>
     <div className="score-section"><div className="section-title"><div><div className="eyebrow">TITLE OVERRIDES</div><h3>Differences from profile</h3></div><div className="search-client-chooser"><Select value={newOverride} onChange={(event) => setNewOverride(event.target.value)}><option value="">Add override…</option>{available.map((format) => <option value={format.id} key={format.id}>{format.name}</option>)}</Select><Button variant="ghost" icon="plus" disabled={!newOverride} onClick={() => { if (newOverride) { const inherited = effectiveRows.find((item) => item.customFormatId === newOverride)?.profileScore ?? 0; setOverrides((value) => ({ ...value, [newOverride]: inherited })); setNewOverride('') } }}>Add</Button></div></div>
       {Object.entries(overrides).map(([formatId, score]) => { const inherited = effectiveRows.find((item) => item.customFormatId === formatId)?.profileScore ?? 0; return <div className="score-row" key={formatId}><span><strong>{formatById.get(formatId)?.name ?? effectiveRows.find((item) => item.customFormatId === formatId)?.customFormatName ?? 'Custom Format'}</strong><small>Profile {inherited > 0 ? '+' : ''}{inherited} → override {score > 0 ? '+' : ''}{score}</small></span><Input type="number" value={String(score)} onChange={(event) => setOverrides((value) => ({ ...value, [formatId]: Number(event.target.value) || 0 }))} /><strong className={score < 0 ? 'score-negative' : 'score-positive'}>{score > 0 ? '+' : ''}{score}</strong><button className="icon-button" onClick={() => setOverrides((value) => { const next = { ...value }; delete next[formatId]; return next })}><Icon name="close" size={14} /></button></div> })}
@@ -772,10 +772,10 @@ function ShowProfilePanel({ resourceId }: { resourceId: string }) {
   const [minimumOverrideId, setMinimumOverrideId] = useState('')
   const [minimumScoreOverride, setMinimumScoreOverride] = useState('')
   const [message, setMessage] = useState('')
-  const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([settingsApi.showProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : ''); setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
+  const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([settingsApi.showProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileInherited ? '' : value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : ''); setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
   useEffect(() => { void load() }, [resourceId])
   const save = async () => { try { const value = await settingsApi.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride), custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
-  return <Panel title="Quality Profile" eyebrow="SHOW SEARCH SCORING"><div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>{settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (show override)' : ' (profile)'}</span></div>}{message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div></Panel>
+  return <Panel title="Quality Profile" eyebrow="SHOW SEARCH SCORING"><div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.filter((quality) => (profiles.find((profile) => profileId ? profile.id === profileId : profile.isDefault)?.qualities ?? []).some((item) => item.id === quality.id)).map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>{settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (show override)' : ' (profile)'}</span></div>}{message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div></Panel>
 }
 
 // The Downloads status rail, in qBittorrent's spirit: one row per filter with a
@@ -2564,7 +2564,7 @@ export function TorrentArchivePage() {
   return <Page title="Torrent Archive" subtitle="Kept separately from qBittorrent, so it survives a torrent being removed there." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
     <div className="archive-callout"><div className="archive-callout-icon"><Icon name="archive" size={22} /></div><div><strong>{health.status === 'healthy' ? 'Archive mount is healthy' : 'Archive mount needs attention'}</strong><span>{health.archived ?? items.filter((item) => item.archiveState === 'archived').length} archived · {health.missing_or_failed ?? items.filter((item) => item.archiveState !== 'archived').length} pending/failed · retention: indefinite · {health.path ?? '/torrent-archive'}</span></div><Badge tone={archiveTone}>{health.status === 'healthy' ? 'Protected' : health.status ?? 'Unknown'}</Badge></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
-    {restoreItem && <Panel title="Restore archived torrent" eyebrow="EXPLICIT QBITTORRENT RESTORE"><div className="settings-form"><label><span className="field-label">Torrent</span><Input value={restoreItem.torrentName} readOnly /></label><label><span className="field-label">qBittorrent client</span><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></label><label><span className="field-label">qBittorrent save path</span><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></label></div><div className="settings-note"><Icon name="info" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
+    {restoreItem && <Panel title="Restore archived torrent" eyebrow="EXPLICIT QBITTORRENT RESTORE"><div className="settings-form"><SettingsGroup legend="Destination"><Field label="Torrent" help="The archived torrent being resubmitted."><Input value={restoreItem.torrentName} readOnly /></Field><Field label="qBittorrent client" help="Which client receives the restored torrent."><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></Field><Field label="qBittorrent save path" help="Must resolve inside a configured media folder."><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></Field></SettingsGroup></div><div className="settings-note"><Icon name="info" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
     <Panel className="table-panel" title="Archived torrents" eyebrow="RECOVERY INVENTORY" action={<div className="search-field compact"><Icon name="search" size={14} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter archive…" /></div>}>
       {error ? <EmptyState title="Could not load torrent archive" detail={error} /> : !loading && !items.length ? <EmptyState icon="archive" title="No torrent recovery records yet" detail="Relevant qBittorrent torrents will be archived automatically when they are observed." /> : <table className="data-table"><thead><tr><th>Release</th><th>Media</th><th>Info hash</th><th>Source</th><th>Size</th><th>Archive</th><th>qBit</th><th /></tr></thead><tbody>{items.map((torrent) => <tr key={torrent.id}><td><strong>{torrent.releaseName ?? torrent.torrentName}</strong>{torrent.quality && <span className="table-sub">{torrent.quality}{torrent.edition ? ` · ${torrent.edition}` : ''}</span>}</td><td>{torrent.mediaTitle ?? 'Unassociated'}{torrent.tmdbId && <span className="table-sub">TMDB {torrent.tmdbId}</span>}</td><Tooltip asChild content={torrent.infoHash}><td className="mono">{shortHash(torrent.infoHash)}</td></Tooltip><td>{torrent.originalDownloadClient ?? 'Unknown client'}</td><td>{formatSize(torrent.totalSize)}</td><td><Badge tone={torrent.archiveState === 'archived' ? 'green' : torrent.archiveState === 'failed' ? 'red' : 'amber'}>{torrent.archiveState.replaceAll('_', ' ')}</Badge></td><td><Badge tone={torrent.qbitPresent ? 'green' : 'neutral'}>{torrent.qbitPresent ? 'Present' : 'Removed'}</Badge></td><td><div className="button-row">{torrent.archiveState === 'archived' ? <Button variant="ghost" icon="download" onClick={() => beginRestore(torrent)}>Restore</Button> : <Button variant="ghost" icon="refresh" onClick={() => void retryArchive(torrent)} disabled={busy}>Retry</Button>}</div></td></tr>)}</tbody></table>}
     </Panel>
@@ -2655,17 +2655,18 @@ function SecuritySettings() {
       detail={security?.default_password_warning ? 'change this before exposing the host' : undefined}
       detailTone={security?.default_password_warning ? 'err' : undefined} />
     <div className="settings-form">
-      <Field label="Current password" help="Required to prove this session belongs to you.">
-        <Secret value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" />
-      </Field>
-      <div />
-      <Field label="New password" error={tooShort ? 'Must contain at least 12 characters.' : undefined}
-        help={<><strong>At least 12 characters.</strong> Length matters more than symbols, a passphrase of four uncommon words beats a short complex string.</>}>
-        <Secret value={newPassword} onChange={(event) => setNewPassword(event.target.value)} aria-invalid={tooShort} />
-      </Field>
-      <Field label="Confirm new password" error={mismatch ? 'Does not match the new password.' : undefined} help="Must match exactly.">
-        <Secret value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} aria-invalid={mismatch} />
-      </Field>
+      <SettingsGroup legend="Change password">
+        <Field label="Current password" help="Required to prove this session belongs to you.">
+          <Secret value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" />
+        </Field>
+        <Field label="New password" error={tooShort ? 'Must contain at least 12 characters.' : undefined}
+          help={<><strong>At least 12 characters.</strong> Length matters more than symbols, a passphrase of four uncommon words beats a short complex string.</>}>
+          <Secret value={newPassword} onChange={(event) => setNewPassword(event.target.value)} aria-invalid={tooShort} />
+        </Field>
+        <Field label="Confirm new password" error={mismatch ? 'Does not match the new password.' : undefined} help="Must match exactly.">
+          <Secret value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} aria-invalid={mismatch} />
+        </Field>
+      </SettingsGroup>
     </div>
     <div className="settings-note"><Icon name="lock" size={15} /><span>Changing the password revokes every other active session immediately. You stay signed in on this device.</span></div>
     <Note message={message} />
@@ -3027,47 +3028,50 @@ function StorageSettings() {
           </div>
         </div>
 
-        <div className={`settings-form form-cards scope-${mediaType}`}>
-          <Field label="Media type" help="Which library the files found here belong to.">
-            <Segmented
-              ariaLabel="Media type"
-              value={mediaType}
-              onChange={changeMediaType}
-              options={[{ value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
-            />
-          </Field>
-          <Field label="Name" help="Shown in Medialogue only.">
-            <Input value={name} onChange={(event) => setName(event.target.value)} />
-          </Field>
-          <Field label="Access" help="Read-only is recommended. Read/write allows deletion.">
-            <Segmented
-              ariaLabel="Access"
-              value={accessMode}
-              onChange={setAccessMode}
-              options={[{ value: 'read_only', label: 'Read-only' }, { value: 'read_write', label: 'Read/write' }]}
-            />
-          </Field>
-
-          <Field label="New media" help={approveNewMedia
-            ? 'Newly detected titles wait in New Media until you approve them.'
-            : 'Newly detected titles are added to your library as soon as a scan finds them.'}>
-            <Segmented
-              ariaLabel="New media"
-              value={approveNewMedia ? 'review' : 'auto'}
-              onChange={(mode) => setApproveNewMedia(mode === 'review')}
-              options={[{ value: 'review', label: 'Approve before adding' }, { value: 'auto', label: 'Add automatically' }]}
-            />
-          </Field>
-          <Field label="Missing grace checks" help="How many scans in a row must miss a file before it counts as missing.">
-            <Slider
-              ariaLabel="Missing grace checks"
-              min={1}
-              max={5}
-              value={missingGraceChecks}
-              onChange={setMissingGraceChecks}
-              format={(value) => `${value} ${value === 1 ? 'scan' : 'scans'}`}
-            />
-          </Field>
+        <div className={`settings-form scope-${mediaType}`}>
+          <SettingsGroup legend="Folder">
+            <Field label="Media type" help="Which library the files found here belong to.">
+              <Segmented
+                ariaLabel="Media type"
+                value={mediaType}
+                onChange={changeMediaType}
+                options={[{ value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
+              />
+            </Field>
+            <Field label="Name" help="Shown in Medialogue only.">
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
+            <Field label="Access" help="Read-only is recommended. Read/write allows deletion.">
+              <Segmented
+                ariaLabel="Access"
+                value={accessMode}
+                onChange={setAccessMode}
+                options={[{ value: 'read_only', label: 'Read-only' }, { value: 'read_write', label: 'Read/write' }]}
+              />
+            </Field>
+          </SettingsGroup>
+          <SettingsGroup legend="Scanning">
+            <Field label="New media" help={approveNewMedia
+              ? 'Newly detected titles wait in New Media until you approve them.'
+              : 'Newly detected titles are added to your library as soon as a scan finds them.'}>
+              <Segmented
+                ariaLabel="New media"
+                value={approveNewMedia ? 'review' : 'auto'}
+                onChange={(mode) => setApproveNewMedia(mode === 'review')}
+                options={[{ value: 'review', label: 'Approve before adding' }, { value: 'auto', label: 'Add automatically' }]}
+              />
+            </Field>
+            <Field label="Missing grace checks" help="How many scans in a row must miss a file before it counts as missing.">
+              <Slider
+                ariaLabel="Missing grace checks"
+                min={1}
+                max={5}
+                value={missingGraceChecks}
+                onChange={setMissingGraceChecks}
+                format={(value) => `${value} ${value === 1 ? 'scan' : 'scans'}`}
+              />
+            </Field>
+          </SettingsGroup>
         </div>
         <Note message={message} />
       </div>
@@ -3135,21 +3139,25 @@ function StorageSettings() {
       <div className="provider-modal-editor">
         <SectionHead title={selectedMapping ? selectedMapping.name : 'Map a Reported Path'} description="Translate the path reported by qBittorrent into the equivalent path visible to Medialogue." status={selectedMapping ? mappingEnabled ? 'On' : 'Off' : 'New mapping'} statusTone={mappingEnabled ? 'green' : 'neutral'} />
         <div className="settings-form">
-          <Field label="Name" help="Shown in Medialogue only.">
-            <Input value={mappingName} onChange={(event) => updateMappingDraft(() => setMappingName(event.target.value))} />
-          </Field>
-          <Field label="qBittorrent client" help="Which client's reported paths this mapping rewrites. Leave as all clients when every instance uses the same layout.">
-            <Select value={mappingClientId} onChange={(event) => updateMappingDraft(() => setMappingClientId(event.target.value))}><option value="">All qBittorrent clients</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select>
-          </Field>
-          <Field label="Remote prefix" help="The path prefix exactly as qBittorrent reports it. Copy it from a download's save path.">
-            <Input value={remotePrefix} onChange={(event) => updateMappingDraft(() => setRemotePrefix(event.target.value))} placeholder="/downloads/movies" />
-          </Field>
-          <Field label="Medialogue prefix" help="The equivalent path from Medialogue's point of view.">
-            <Input value={localPrefix} onChange={(event) => updateMappingDraft(() => setLocalPrefix(event.target.value))} placeholder="/media/movies" />
-          </Field>
-          <Field label="Media folder" badge="optional" wide help="Limit the rewritten path to one media folder, or leave unset to try them all.">
-            <Select value={mappingRootId} onChange={(event) => updateMappingDraft(() => setMappingRootId(event.target.value))}><option value="">No specific media folder</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
-          </Field>
+          <SettingsGroup legend="Mapping">
+            <Field label="Name" help="Shown in Medialogue only.">
+              <Input value={mappingName} onChange={(event) => updateMappingDraft(() => setMappingName(event.target.value))} />
+            </Field>
+            <Field label="qBittorrent client" help="Which client's reported paths this mapping rewrites. Leave as all clients when every instance uses the same layout.">
+              <Select value={mappingClientId} onChange={(event) => updateMappingDraft(() => setMappingClientId(event.target.value))}><option value="">All qBittorrent clients</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</Select>
+            </Field>
+          </SettingsGroup>
+          <SettingsGroup legend="Paths">
+            <Field label="Remote prefix" help="The path prefix exactly as qBittorrent reports it. Copy it from a download's save path.">
+              <Input value={remotePrefix} onChange={(event) => updateMappingDraft(() => setRemotePrefix(event.target.value))} placeholder="/downloads/movies" />
+            </Field>
+            <Field label="Medialogue prefix" help="The equivalent path from Medialogue's point of view.">
+              <Input value={localPrefix} onChange={(event) => updateMappingDraft(() => setLocalPrefix(event.target.value))} placeholder="/media/movies" />
+            </Field>
+            <Field label="Media folder" badge="optional" help="Limit the rewritten path to one media folder, or leave unset to try them all.">
+              <Select value={mappingRootId} onChange={(event) => updateMappingDraft(() => setMappingRootId(event.target.value))}><option value="">No specific media folder</option>{roots.map((root) => <option value={root.id} key={root.id}>{root.name} · {root.resolved_root_path}</option>)}</Select>
+            </Field>
+          </SettingsGroup>
         </div>
         <Note message={message} />
       </div>
@@ -3185,11 +3193,13 @@ function MetadataSettings() {
       description="Identity source for newly discovered titles. When off, discoveries stay unmatched."
       status={!configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
       action={<EnabledButton enabled={enabled} onChange={(next) => { setEnabled(next); setDirty(true) }} />} />
-    <div className="settings-form form-cards">
-      <Field label="API key"
-        help={<>Your TMDB API Read Access Token. Held server-side. {configuration?.api_key_configured ? 'Leave blank to keep the current one.' : 'Required for automatic matching.'}</>}>
-        <Secret value={apiKey} onChange={(event) => { setApiKey(event.target.value); setDirty(true) }} placeholder={configuration?.api_key_configured ? 'Stored server-side · leave blank to preserve' : 'Required for automatic matching'} />
-      </Field>
+    <div className="settings-form">
+      <SettingsGroup legend="Connection">
+        <Field label="API key"
+          help={<>Your TMDB API Read Access Token. Held server-side. {configuration?.api_key_configured ? 'Leave blank to keep the current one.' : 'Required for automatic matching.'}</>}>
+          <Secret value={apiKey} onChange={(event) => { setApiKey(event.target.value); setDirty(true) }} placeholder={configuration?.api_key_configured ? 'Stored server-side · leave blank to preserve' : 'Required for automatic matching'} />
+        </Field>
+      </SettingsGroup>
     </div>
     {configuration?.last_error && <Note message={{ tone: 'error', text: configuration.last_error }} />}
     <Note message={message} />
@@ -3240,14 +3250,16 @@ function PlexSettings() {
       description="Read-only verification. Nothing inside Plex is ever modified."
       status={loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
       action={<EnabledButton enabled={enabled} onChange={(next) => { setEnabled(next); setDirty(true) }} />} />
-    <div className="settings-form form-cards">
-      <Field label="URL" help={<>Plex Media Server address, including port. Example: <code>http://plex:32400</code></>}>
-        <Input placeholder="http://plex:32400" value={url} onChange={(event) => { setUrl(event.target.value); setDirty(true) }} />
-      </Field>
-      <Field label="API token"
-        help={<>Your <code>X-Plex-Token</code>. Held server-side. {configuration?.token_configured ? 'Leave blank to keep the current one.' : 'Required.'}</>}>
-        <Secret placeholder={configuration?.token_configured ? 'Stored server-side · leave blank to preserve' : 'Required'} value={token} onChange={(event) => { setToken(event.target.value); setDirty(true) }} />
-      </Field>
+    <div className="settings-form">
+      <SettingsGroup legend="Connection">
+        <Field label="URL" help={<>Plex Media Server address, including port. Example: <code>http://plex:32400</code></>}>
+          <Input placeholder="http://plex:32400" value={url} onChange={(event) => { setUrl(event.target.value); setDirty(true) }} />
+        </Field>
+        <Field label="API token"
+          help={<>Your <code>X-Plex-Token</code>. Held server-side. {configuration?.token_configured ? 'Leave blank to keep the current one.' : 'Required.'}</>}>
+          <Secret placeholder={configuration?.token_configured ? 'Stored server-side · leave blank to preserve' : 'Required'} value={token} onChange={(event) => { setToken(event.target.value); setDirty(true) }} />
+        </Field>
+      </SettingsGroup>
     </div>
     {configuration?.last_error && <Note message={{ tone: 'error', text: configuration.last_error }} />}
     <Note message={message} />
@@ -3476,67 +3488,75 @@ function QBittorrentSettings() {
       <Button variant="primary" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save client'}</Button>
     </>}>
       <div className="qbit-editor provider-modal-editor">
-        <div className={`settings-form form-rows scope-${draft.scope}`}>
-          <Field label="Display name" help="Shown in Medialogue only.">
-            <Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="qbit-movies-1" />
-          </Field>
-          <Field label="URL" help={<>Web UI address, including port. Example: <code>http://qbittorrent:8080</code></>}>
-            <Input value={draft.url} onChange={(event) => updateDraft('url', event.target.value)} placeholder="http://qbittorrent:8080" />
-          </Field>
-          <Field label="Username" help="Web UI account. Blank if this host needs no login.">
-            <Input value={draft.username} onChange={(event) => updateDraft('username', event.target.value)} autoComplete="off" />
-          </Field>
-          <Field label="Password"
-            help={selected?.password_configured ? 'Held server-side. Leave blank to keep the current one.' : 'Held server-side and never sent back to the browser.'}>
-            <Secret value={draft.password} onChange={(event) => updateDraft('password', event.target.value)} placeholder={selected?.password_configured ? 'Stored server-side · leave blank to preserve' : 'Required for authenticated clients'} />
-          </Field>
-          <Field label="Scope" help="Which library this client receives grabs for. Every client is always read.">
-            <Segmented
-              ariaLabel="Scope"
-              value={draft.scope}
-              onChange={(next) => updateDraft('scope', next)}
-              options={[{ value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
-            />
-          </Field>
-          <Field label="Default category" help="Preselected for manual downloads. qBittorrent owns its save path.">
-            <Input value={draft.category} onChange={(event) => updateDraft('category', event.target.value)} placeholder="movies" />
-          </Field>
-          <Field label="Tags" help="Applied to torrents Medialogue adds. Comma-separated.">
-            <Input value={draft.tags} onChange={(event) => updateDraft('tags', event.target.value)} placeholder="movies, managed" />
-          </Field>
-          <Field label="Polling interval" help="How often progress is polled. Does not affect download speed.">
-            <Select value={String(draft.pollIntervalSeconds)} onChange={(event) => updateDraft('pollIntervalSeconds', Number(event.target.value))}><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></Select>
-          </Field>
-          <Field label="Recent priority" help="Queue position for releases posted during the last 21 days.">
-            <Segmented
-              ariaLabel="Recent priority"
-              value={draft.recentPriority}
-              onChange={(next) => updateDraft('recentPriority', next)}
-              options={[{ value: 'last', label: 'Last' }, { value: 'first', label: 'First' }]}
-            />
-          </Field>
-          <Field label="Older priority" help="Queue position for releases older than 21 days.">
-            <Segmented
-              ariaLabel="Older priority"
-              value={draft.olderPriority}
-              onChange={(next) => updateDraft('olderPriority', next)}
-              options={[{ value: 'last', label: 'Last' }, { value: 'first', label: 'First' }]}
-            />
-          </Field>
-          <Field label="Content layout" help="How qBittorrent lays the download out on disk.">
-            <Segmented
-              ariaLabel="Content layout"
-              value={draft.contentLayout}
-              onChange={(next) => updateDraft('contentLayout', next)}
-              options={[{ value: 'default', label: 'Default' }, { value: 'original', label: 'Original' }, { value: 'subfolder', label: 'Subfolder' }]}
-            />
-          </Field>
-          <Field label="Sequential order" help="Download pieces in order.">
-            <Segmented ariaLabel="Sequential order" value={draft.sequentialOrder ? 'on' : 'off'} onChange={(next) => updateDraft('sequentialOrder', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
-          </Field>
-          <Field label="First and last first" help="Prioritize the first and last pieces.">
-            <Segmented ariaLabel="First and last first" value={draft.firstLastFirst ? 'on' : 'off'} onChange={(next) => updateDraft('firstLastFirst', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
-          </Field>
+        <div className={`settings-form scope-${draft.scope}`}>
+          <SettingsGroup legend="Connection">
+            <Field label="Display name" help="Shown in Medialogue only.">
+              <Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="qbit-movies-1" />
+            </Field>
+            <Field label="URL" help={<>Web UI address, including port. Example: <code>http://qbittorrent:8080</code></>}>
+              <Input value={draft.url} onChange={(event) => updateDraft('url', event.target.value)} placeholder="http://qbittorrent:8080" />
+            </Field>
+            <Field label="Username" help="Web UI account. Blank if this host needs no login.">
+              <Input value={draft.username} onChange={(event) => updateDraft('username', event.target.value)} autoComplete="off" />
+            </Field>
+            <Field label="Password"
+              help={selected?.password_configured ? 'Held server-side. Leave blank to keep the current one.' : 'Held server-side and never sent back to the browser.'}>
+              <Secret value={draft.password} onChange={(event) => updateDraft('password', event.target.value)} placeholder={selected?.password_configured ? 'Stored server-side · leave blank to preserve' : 'Required for authenticated clients'} />
+            </Field>
+            <Field label="Polling interval" help="How often progress is polled. Does not affect download speed.">
+              <Select value={String(draft.pollIntervalSeconds)} onChange={(event) => updateDraft('pollIntervalSeconds', Number(event.target.value))}><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></Select>
+            </Field>
+          </SettingsGroup>
+
+          <SettingsGroup legend="Library">
+            <Field label="Scope" help="Which library this client receives grabs for. Every client is always read.">
+              <Segmented
+                ariaLabel="Scope"
+                value={draft.scope}
+                onChange={(next) => updateDraft('scope', next)}
+                options={[{ value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
+              />
+            </Field>
+            <Field label="Default category" help="Preselected for manual downloads. qBittorrent owns its save path.">
+              <Input value={draft.category} onChange={(event) => updateDraft('category', event.target.value)} placeholder="movies" />
+            </Field>
+            <Field label="Tags" help="Applied to torrents Medialogue adds. Comma-separated.">
+              <Input value={draft.tags} onChange={(event) => updateDraft('tags', event.target.value)} placeholder="movies, managed" />
+            </Field>
+          </SettingsGroup>
+
+          <SettingsGroup legend="Download behaviour">
+            <Field label="Recent priority" help="Queue position for releases posted during the last 21 days.">
+              <Segmented
+                ariaLabel="Recent priority"
+                value={draft.recentPriority}
+                onChange={(next) => updateDraft('recentPriority', next)}
+                options={[{ value: 'last', label: 'Last' }, { value: 'first', label: 'First' }]}
+              />
+            </Field>
+            <Field label="Older priority" help="Queue position for releases older than 21 days.">
+              <Segmented
+                ariaLabel="Older priority"
+                value={draft.olderPriority}
+                onChange={(next) => updateDraft('olderPriority', next)}
+                options={[{ value: 'last', label: 'Last' }, { value: 'first', label: 'First' }]}
+              />
+            </Field>
+            <Field label="Content layout" help="How qBittorrent lays the download out on disk.">
+              <Segmented
+                ariaLabel="Content layout"
+                value={draft.contentLayout}
+                onChange={(next) => updateDraft('contentLayout', next)}
+                options={[{ value: 'default', label: 'Default' }, { value: 'original', label: 'Original' }, { value: 'subfolder', label: 'Subfolder' }]}
+              />
+            </Field>
+            <Field label="Sequential order" help="Download pieces in order.">
+              <Segmented ariaLabel="Sequential order" value={draft.sequentialOrder ? 'on' : 'off'} onChange={(next) => updateDraft('sequentialOrder', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+            </Field>
+            <Field label="First and last first" help="Prioritize the first and last pieces.">
+              <Segmented ariaLabel="First and last first" value={draft.firstLastFirst ? 'on' : 'off'} onChange={(next) => updateDraft('firstLastFirst', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+            </Field>
+          </SettingsGroup>
         </div>
 
         {selected?.last_error && <Note message={{ tone: 'error', text: `Last connection error: ${selected.last_error}` }} />}
@@ -3687,7 +3707,14 @@ function IndexerSettings() {
     setError('')
     setEditorOpen(true)
   }
-  const updateDraft = <K extends keyof IndexerDraft>(key: K, value: IndexerDraft[K]) => { setDirty(true); setDraft((current) => ({ ...current, [key]: value })) }
+  const compatibleClients = clients.filter((client) => draft.scope === 'both' || client.scope === draft.scope)
+  const updateDraft = <K extends keyof IndexerDraft>(key: K, value: IndexerDraft[K]) => {
+    setDirty(true)
+    setDraft((current) => ({
+      ...current, [key]: value,
+      ...(key === 'scope' ? { downloadClientIds: current.downloadClientIds.filter((id) => clients.some((client) => client.id === id && (value === 'both' || client.scope === value))) } : {}),
+    }))
+  }
 
   const save = async () => {
     if (!draft.name.trim() || !draft.torznabUrl.trim()) { setError('Name and Torznab URL are required.'); return }
@@ -3696,6 +3723,7 @@ function IndexerSettings() {
     // Grabs need somewhere to go. Not enforced when nothing is configured to
     // choose from, or a fresh install could never add its first indexer.
     if (clients.length && !draft.downloadClientIds.length) { setError('Choose at least one download client for this indexer.'); return }
+    if (draft.downloadClientIds.some((id) => !compatibleClients.some((client) => client.id === id))) { setError('Choose download clients matching this indexer’s scope.'); return }
     setBusy(true); setError(''); setMessage('Saving indexer…')
     try {
       const base = {
@@ -3847,91 +3875,102 @@ function IndexerSettings() {
       <Button variant="primary" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save indexer'}</Button>
     </>}>
       <div className="qbit-editor provider-modal-editor">
-        <div className={`settings-form form-rows ${draft.scope === 'movies' ? 'scope-movies' : draft.scope === 'shows' ? 'scope-shows' : ''}`}>
-          <Field label="Display name" help="Shown in Medialogue and on every search result.">
-            <Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="TorrentLeech" />
-          </Field>
-          <Field label="Scope" help="Which searches query this indexer.">
-            <Segmented
-              ariaLabel="Scope"
-              value={draft.scope}
-              onChange={(next) => updateDraft('scope', next as IndexerScope)}
-              options={[{ value: 'both', label: 'Both' }, { value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
-            />
-          </Field>
-          <Field label="Torznab URL" help={indexerPresets[preset].urlHelp}>
-            <Input value={draft.torznabUrl} onChange={(event) => updateDraft('torznabUrl', event.target.value)} placeholder={indexerPresets[preset].urlPlaceholder} />
-          </Field>
-          <Field label="API key"
-            help={`${indexerPresets[preset].keyHelp} ${selected?.apiKeyConfigured ? 'Held server-side. Leave blank to keep the current one.' : 'Held server-side and never sent back to the browser.'}`}>
-            <Secret value={draft.apiKey} onChange={(event) => updateDraft('apiKey', event.target.value)} placeholder={selected?.apiKeyConfigured ? 'Stored server-side · leave blank to preserve' : 'Required'} />
-          </Field>
-          <Field label="Timeout" help="How long to wait before this indexer is skipped. Others still return results.">
-            <Select value={String(draft.timeoutSeconds)} onChange={(event) => updateDraft('timeoutSeconds', Number(event.target.value))}><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></Select>
-          </Field>
-          <Field label="Enable RSS" help="Participate in periodic RSS release discovery.">
-            <Segmented ariaLabel="Enable RSS" value={draft.enableRss ? 'on' : 'off'} onChange={(next) => updateDraft('enableRss', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
-          </Field>
-          <Field label="Interactive search" help="Answer user-triggered movie, season, and episode searches.">
-            <Segmented ariaLabel="Interactive search" value={draft.enableInteractiveSearch ? 'on' : 'off'} onChange={(next) => updateDraft('enableInteractiveSearch', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
-          </Field>
-          <Field label="Categories" help="Category IDs sent with searches. Blank lets the indexer decide.">
-            <Input value={draft.categories} onChange={(event) => updateDraft('categories', event.target.value)} placeholder="2000, 5000" />
-          </Field>
-          <Field label="Minimum seeders" help="Results with fewer seeders are rejected. Unknown counts stay.">
-            <Input type="number" min="0" value={String(draft.minimumSeeders)} onChange={(event) => updateDraft('minimumSeeders', Math.max(0, Number(event.target.value) || 0))} />
-          </Field>
-          <Field label="Indexer priority" help="Tie-breaker from 1 (highest) to 50 (lowest). All are still searched.">
-            <Input type="number" min="1" max="50" value={String(draft.priority)} onChange={(event) => updateDraft('priority', Math.min(50, Math.max(1, Number(event.target.value) || 25)))} />
-          </Field>
-          <Field label="MULTI languages" help="What a MULTI-tagged release here actually contains. Comma-separated.">
-            <Input value={draft.multiLanguages} onChange={(event) => updateDraft('multiLanguages', event.target.value)} placeholder="English, French" />
-          </Field>
-          <Field label="Download clients" help="Which download clients receive grabs from this indexer. At least one is required.">
-            {clients.length ? <div className="client-choice">
-              {/* Checkboxes, not badges: these were styled as the same read-only
-                  status pills used elsewhere, so nothing said they were
-                  selectable, and clients named after media types read as a
-                  second, broken copy of the Scope control above. */}
-              {clients.map((client) => {
-                const chosen = draft.downloadClientIds.includes(client.id)
-                return <button
-                  key={client.id}
-                  type="button"
-                  role="checkbox"
-                  aria-checked={chosen}
-                  className={`client-choice-option ${chosen ? 'chosen' : ''}`}
-                  onClick={() => updateDraft('downloadClientIds', chosen
-                    ? draft.downloadClientIds.filter((id) => id !== client.id)
-                    : [...draft.downloadClientIds, client.id])}
-                >
-                  <span className="client-choice-box">{chosen && <Icon name="check" size={11} />}</span>
-                  <span className="client-choice-name">{client.name}</span>
-                  <span className="client-choice-scope">{client.scope === 'movies' ? 'Movies' : client.scope === 'shows' ? 'Shows' : 'Both'}</span>
-                </button>
-              })}
-            </div> : <span className="field-help">No download clients are configured yet.</span>}
-          </Field>
-          <Field label="Badge colour" help="Tints this indexer's badge in search results.">
-            <div className="color-field">
-              <input
-                type="color"
-                aria-label="Badge colour"
-                value={draft.color || '#7C8CF8'}
-                onChange={(event) => updateDraft('color', event.target.value)}
+        <div className={`settings-form ${draft.scope === 'movies' ? 'scope-movies' : draft.scope === 'shows' ? 'scope-shows' : ''}`}>
+          <SettingsGroup legend="Connection">
+            <Field label="Display name" help="Shown in Medialogue and on every search result.">
+              <Input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="TorrentLeech" />
+            </Field>
+            <Field label="Torznab URL" help={indexerPresets[preset].urlHelp}>
+              <Input value={draft.torznabUrl} onChange={(event) => updateDraft('torznabUrl', event.target.value)} placeholder={indexerPresets[preset].urlPlaceholder} />
+            </Field>
+            <Field label="API key"
+              help={`${indexerPresets[preset].keyHelp} ${selected?.apiKeyConfigured ? 'Held server-side. Leave blank to keep the current one.' : 'Held server-side and never sent back to the browser.'}`}>
+              <Secret value={draft.apiKey} onChange={(event) => updateDraft('apiKey', event.target.value)} placeholder={selected?.apiKeyConfigured ? 'Stored server-side · leave blank to preserve' : 'Required'} />
+            </Field>
+            <Field label="Timeout" help="How long to wait before this indexer is skipped. Others still return results.">
+              <Select value={String(draft.timeoutSeconds)} onChange={(event) => updateDraft('timeoutSeconds', Number(event.target.value))}><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></Select>
+            </Field>
+          </SettingsGroup>
+
+          <SettingsGroup legend="Searching">
+            <Field label="Scope" help="Which searches query this indexer.">
+              <Segmented
+                ariaLabel="Scope"
+                value={draft.scope}
+                onChange={(next) => updateDraft('scope', next as IndexerScope)}
+                options={[{ value: 'both', label: 'Both' }, { value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
               />
-              <Input
-                value={draft.color}
-                onChange={(event) => updateDraft('color', event.target.value)}
-                placeholder="Default"
-                spellCheck={false}
-              />
-              <span className="release-pill release-pill-indexer" style={indexerBadgePreview(draft.color)}>
-                <i>Indexer</i>{draft.name.trim() || 'Preview'}
-              </span>
-              {draft.color ? <button type="button" className="button button-danger" onClick={() => updateDraft('color', '')}>Clear</button> : null}
-            </div>
-          </Field>
+            </Field>
+            <Field label="Enable RSS" help="Participate in periodic RSS release discovery.">
+              <Segmented ariaLabel="Enable RSS" value={draft.enableRss ? 'on' : 'off'} onChange={(next) => updateDraft('enableRss', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+            </Field>
+            <Field label="Interactive search" help="Answer user-triggered movie, season, and episode searches.">
+              <Segmented ariaLabel="Interactive search" value={draft.enableInteractiveSearch ? 'on' : 'off'} onChange={(next) => updateDraft('enableInteractiveSearch', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+            </Field>
+            <Field label="Categories" help="Category IDs sent with searches. Blank lets the indexer decide.">
+              <Input value={draft.categories} onChange={(event) => updateDraft('categories', event.target.value)} placeholder="2000, 5000" />
+            </Field>
+          </SettingsGroup>
+
+          <SettingsGroup legend="Results">
+            <Field label="Minimum seeders" help="Results with fewer seeders are rejected. Unknown counts stay.">
+              <Input type="number" min="0" value={String(draft.minimumSeeders)} onChange={(event) => updateDraft('minimumSeeders', Math.max(0, Number(event.target.value) || 0))} />
+            </Field>
+            <Field label="Indexer priority" help="Tie-breaker from 1 (highest) to 50 (lowest). All are still searched.">
+              <Input type="number" min="1" max="50" value={String(draft.priority)} onChange={(event) => updateDraft('priority', Math.min(50, Math.max(1, Number(event.target.value) || 25)))} />
+            </Field>
+            <Field label="MULTI languages" help="What a MULTI-tagged release here actually contains. Comma-separated.">
+              <Input value={draft.multiLanguages} onChange={(event) => updateDraft('multiLanguages', event.target.value)} placeholder="English, French" />
+            </Field>
+            <Field label="Badge colour" wide help="Tints this indexer's badge in search results.">
+              <div className="color-field">
+                <input
+                  type="color"
+                  aria-label="Badge colour"
+                  value={draft.color || '#7C8CF8'}
+                  onChange={(event) => updateDraft('color', event.target.value)}
+                />
+                <Input
+                  value={draft.color}
+                  onChange={(event) => updateDraft('color', event.target.value)}
+                  placeholder="Default"
+                  spellCheck={false}
+                />
+                <span className="release-pill release-pill-indexer" style={indexerBadgePreview(draft.color)}>
+                  <i>Indexer</i>{draft.name.trim() || 'Preview'}
+                </span>
+                {draft.color ? <button type="button" className="button button-danger" onClick={() => updateDraft('color', '')}>Clear</button> : null}
+              </div>
+            </Field>
+          </SettingsGroup>
+
+          <SettingsGroup legend="Grabs">
+            <Field label="Download clients" wide help="Which download clients receive grabs from this indexer. At least one is required.">
+              {compatibleClients.length ? <div className="client-choice">
+                {/* Checkboxes, not badges: these were styled as the same read-only
+                    status pills used elsewhere, so nothing said they were
+                    selectable, and clients named after media types read as a
+                    second, broken copy of the Scope control above. */}
+                {compatibleClients.map((client) => {
+                  const chosen = draft.downloadClientIds.includes(client.id)
+                  return <button
+                    key={client.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={chosen}
+                    className={`client-choice-option ${chosen ? 'chosen' : ''}`}
+                    onClick={() => updateDraft('downloadClientIds', chosen
+                      ? draft.downloadClientIds.filter((id) => id !== client.id)
+                      : [...draft.downloadClientIds, client.id])}
+                  >
+                    <span className="client-choice-box">{chosen && <Icon name="check" size={11} />}</span>
+                    <span className="client-choice-name">{client.name}</span>
+                    <span className="client-choice-scope">{client.scope === 'movies' ? 'Movies' : client.scope === 'shows' ? 'Shows' : 'Both'}</span>
+                  </button>
+                })}
+              </div> : <span className="field-help">No download clients match this scope. Configure a matching client in qBittorrent settings.</span>}
+            </Field>
+          </SettingsGroup>
         </div>
 
         {selected?.lastError && <Note message={{ tone: 'error', text: `Last connection error: ${selected.lastError}` }} />}
@@ -4047,9 +4086,11 @@ function BackupRecoverySettings() {
     {capabilities && <div className="settings-section">
       <div><h3>Database backup</h3><p>Medialogue uses SQLite's online backup API to create a consistent database file while the application is running.</p></div>
       <div className="settings-form">
-        <Field label="SQLite version" help="SQLite library version used to create the online backup."><Input readOnly value={capabilities.sqliteVersion ?? 'Unknown'} /></Field>
-        <Field label="Database file" help="Application-owned database included in the Recovery Bundle."><Input readOnly value={capabilities.databasePath ?? 'Unavailable'} /></Field>
-        <Field label="Temporary download retention" help="How long a finished bundle stays downloadable before it is deleted from the server."><Input readOnly value={`${capabilities.retentionHours} hours`} /></Field>
+        <SettingsGroup>
+          <Field label="SQLite version" help="SQLite library version used to create the online backup."><Input readOnly value={capabilities.sqliteVersion ?? 'Unknown'} /></Field>
+          <Field label="Database file" help="Application-owned database included in the Recovery Bundle."><Input readOnly value={capabilities.databasePath ?? 'Unavailable'} /></Field>
+          <Field label="Temporary download retention" help="How long a finished bundle stays downloadable before it is deleted from the server."><Input readOnly value={`${capabilities.retentionHours} hours`} /></Field>
+        </SettingsGroup>
       </div>
     </div>}
     {capabilities?.reasons.length ? <Note message={{ tone: 'error', text: capabilities.reasons.join(' ') }} /> : null}
@@ -4792,12 +4833,18 @@ export function UpgradeMediaPage() {
       onClose={() => { if (!busyId) setConfirming(false) }}
       footer={<><Button variant="ghost" disabled={Boolean(busyId)} onClick={() => setConfirming(false)}>Cancel</Button><Button variant="primary" icon="download" disabled={Boolean(busyId) || !clientId || !category || categoryLoading} onClick={() => void executeChosen()}>{busyId ? 'Submitting…' : 'Start upgrade'}</Button></>}
     >
-      <div className="upgrade-modal-copy">
+      <div className="upgrade-modal-copy modal-copy-inset">
         <p>Every current release stays untouched and authoritative while its replacement downloads and validates.</p>
       </div>
       <div className="settings-form upgrade-destination-form">
-        <label><span className="field-label">qBittorrent client</span><Select value={clientId} onChange={(event) => setClientId(event.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></label>
-        <label><span className="field-label">Category</span><Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select></label>
+        <SettingsGroup legend="Destination">
+          <Field label="qBittorrent client" help="Which client receives every grab in this upgrade.">
+            <Select value={clientId} onChange={(event) => setClientId(event.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select>
+          </Field>
+          <Field label="Category" help="qBittorrent owns the save path this category resolves to.">
+            <Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select>
+          </Field>
+        </SettingsGroup>
         <div className="wizard-destination-path"><span>qBittorrent placement</span><strong>{categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
       </div>
     </Modal>}

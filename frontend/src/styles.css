@@ -522,7 +522,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .field-error { display: flex; align-items: center; gap: var(--s1); color: var(--err); font-size: var(--t-xs); }
 .field-error svg { flex: none; }
 .field .input[aria-invalid="true"] { border-color: var(--err); }
-.settings-form .field-wide { grid-column: 1 / -1; }
 
 .secret { position: relative; display: flex; min-width: 0; }
 .secret .input { padding-right: var(--s6); }
@@ -1741,77 +1740,85 @@ a.download-kind:hover { filter: brightness(1.35); }
 .session-row > div { min-width: 0; }
 .session-row strong, .session-row small { display: block; }
 .session-row small { margin-top: var(--s1); color: var(--muted); font-size: var(--t-xs); }
-.settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 1.3; gap: var(--s3); }
+.settings-form { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1.3; gap: var(--s5); align-content: start; }
 
-.form-rows {
-  --card-pad-x: var(--s3);
-  --card-pad-y: var(--s3);
-  --card-width: 480px;
+/* Settings read as titled groups of labelled rows: a legend names the group, a
+   card frames it, and every row keeps its control on one right-hand edge so the
+   eye can scan names down the left and values down the right. */
+.settings-group { display: grid; gap: var(--s2); align-content: start; min-width: 0; }
+.settings-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--accent-text);
+  font: 600 var(--t-micro)/1 var(--sans);
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.settings-legend::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line-strong), transparent); }
+.settings-card {
+  min-width: 0;
+  padding: 0 var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.settings-card > .field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'head control' 'help control' 'error error';
+  align-items: center;
+  gap: var(--s1) var(--s4);
+  min-height: 52px;
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--line);
+}
+.settings-card > .field:first-child { border-top: 0; }
+.settings-card > .field:not(:has(.field-help)) { grid-template-areas: 'head control' 'error error'; }
+.settings-card .field-head { grid-area: head; justify-content: flex-start; }
+.settings-card .field-head > span:first-child {
+  color: var(--text);
+  font: var(--t-md)/1.35 var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.settings-card .field-help { grid-area: help; margin: 0; color: var(--faint); font-size: var(--t-xs); line-height: 1.45; }
+.settings-card .field-error { grid-area: error; }
+.settings-card .field > :not(.field-head):not(.field-help):not(.field-error) { grid-area: control; justify-self: end; min-width: 0; }
+.settings-card .field > .input,
+.settings-card .field > .secret,
+.settings-card .field > .select,
+.settings-card .field > .slider { width: 280px; max-width: 100%; }
+.settings-card .field > .select { min-width: 0; }
+/* Every row ends on one right edge, so values scan down a single column. */
+.settings-card .field > .slider .slider-value { text-align: right; }
+
+/* Controls too wide to sit beside their label drop below it and span the row. */
+.settings-card > .field-wide {
   grid-template-columns: minmax(0, 1fr);
-  gap: calc(var(--card-pad-y) * 2 + var(--s4));
+  grid-template-areas: 'head' 'help' 'control' 'error';
+  align-items: stretch;
+  gap: var(--s2);
 }
-.form-rows .field { display: grid; grid-template-columns: minmax(0, 1fr) var(--card-width) minmax(0, 1fr); grid-template-rows: auto auto auto; row-gap: var(--s2); }
+.settings-card > .field-wide:not(:has(.field-help)) { grid-template-areas: 'head' 'control' 'error'; }
+.settings-card > .field-wide > :not(.field-head):not(.field-help):not(.field-error) { justify-self: stretch; width: 100%; max-width: none; }
 
-.form-rows .field::before {
-  content: '';
-  z-index: 0;
-  grid-row: 1 / -1;
-  grid-column: 2;
-  margin: calc(var(--card-pad-y) * -1) calc(var(--card-pad-x) * -1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
-}
-.form-rows .field:focus-within::before { border-color: var(--line-strong); }
-.form-rows .field > * { position: relative; z-index: 1; }
-.form-rows .field-head { grid-row: 1; grid-column: 1; width: max-content; max-width: var(--label-width); align-self: center; justify-self: end; padding-right: calc(var(--card-pad-x) + var(--s4)); justify-content: flex-end; text-align: left; }
-.form-rows .field > :not(.field-head):not(.field-help):not(.field-error) { grid-row: 1; grid-column: 2; }
-.form-rows .field-help { grid-row: 2; grid-column: 2; margin: 0; }
-.form-rows .field-error { grid-row: 3; grid-column: 2; }
-.form-rows .field-wide { grid-column: 2; }
-
-.form-cards {
-  --card-pad-x: var(--s4);
-  --card-pad-y: var(--s3);
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: calc(var(--card-pad-x) * 2 + var(--s4));
-  row-gap: calc(var(--card-pad-y) * 2);
-}
-.form-cards .field { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; row-gap: var(--s2); }
-
-.form-cards .field-head { grid-row: 1; grid-column: 1; margin-bottom: calc(var(--card-pad-y) + var(--s1)); }
-.form-cards .field::before {
-  content: '';
-  z-index: 0;
-  grid-row: 2 / -1;
-  grid-column: 1;
-  margin: calc(var(--card-pad-y) * -1) calc(var(--card-pad-x) * -1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
-}
-.form-cards .field:focus-within::before { border-color: var(--line-strong); }
-.form-cards .field > * { position: relative; z-index: 1; }
-.form-cards .field > :not(.field-head):not(.field-help):not(.field-error) { grid-row: 2; grid-column: 1; }
-.form-cards .field-help { grid-row: 3; grid-column: 1; margin: 0; }
-.form-cards .field-error { grid-row: 4; grid-column: 1; }
-.form-cards .field-wide { grid-column: 1 / -1; }
-@media (max-width: 860px) {
-  .form-cards { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 720px) {
+  .settings-card > .field {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'head' 'help' 'control' 'error';
+    align-items: stretch;
+    gap: var(--s2);
+  }
+  .settings-card > .field:not(:has(.field-help)) { grid-template-areas: 'head' 'control' 'error'; }
+  .settings-card .field > :not(.field-head):not(.field-help):not(.field-error) { justify-self: stretch; }
+  .settings-card .field > .input,
+  .settings-card .field > .secret,
+  .settings-card .field > .select,
+  .settings-card .field > .slider { width: 100%; }
 }
 
-@media (max-width: 860px) {
-  .form-rows .field { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; }
-  .form-rows .field-head { grid-row: 1; grid-column: 1; justify-self: start; padding-right: 0; justify-content: flex-start; text-align: left; }
-  .form-rows .field::before { grid-row: 2 / -1; grid-column: 1; }
-  .form-rows .field > :not(.field-head):not(.field-help):not(.field-error) { grid-row: 2; grid-column: 1; }
-  .form-rows .field-help { grid-row: 3; grid-column: 1; }
-  .form-rows .field-error { grid-row: 4; grid-column: 1; }
-}
-.settings-form label { display: block; min-width: 0; }
-.settings-form label:last-child { grid-column: span 2; }
 .settings-footer {
   display: flex;
   align-items: center;
@@ -2065,8 +2072,6 @@ a.download-kind:hover { filter: brightness(1.35); }
 .settings-panel .empty-state, .settings-form .empty-state { margin: 0 var(--s4) var(--s4); }
 .provider-modal-editor { padding: 0; }
 .provider-modal-editor > .settings-form { padding: var(--s4); }
-.settings-form.form-cards { padding: calc(var(--card-pad-y) + var(--s4)) calc(var(--card-pad-x) + var(--s4)); }
-.settings-form.form-rows { padding: calc(var(--card-pad-y) + var(--s4)) var(--s4); }
 .provider-modal-editor > .root-browser,
 .provider-modal-editor > .settings-note { margin-inline: var(--s4); }
 .provider-modal-editor > .root-browser { margin-top: var(--s4); }
@@ -2086,8 +2091,6 @@ a.download-kind:hover { filter: brightness(1.35); }
 
 @media (max-width: 560px) {
   .settings-nav { grid-template-columns: 1fr; }
-  .settings-form { grid-template-columns: 1fr; }
-  .settings-form .field-wide { grid-column: 1; }
   .settings-section { flex-direction: column; gap: var(--s3); }
   .settings-footer { flex-wrap: wrap; }
   .settings-footer .footer-state { width: 100%; margin-right: 0; text-align: right; }
@@ -3906,8 +3909,7 @@ select.input { background-color: var(--input-bg); }
 .panel,
 .settings-nav,
 .settings-panel,
-.form-rows .field::before,
-.form-cards .field::before,
+.settings-card,
 .provider-card,
 .cf-card,
 .root-list,
@@ -4262,7 +4264,7 @@ select.input { background-color: var(--input-bg); }
 .upgrade-current-release-pill { color: var(--muted); border-color: var(--line-strong); background: var(--raised-2); }
 .upgrade-result-recommended { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
 .upgrade-result-selected { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
-.upgrade-destination-form { padding: 0; }
+.upgrade-destination-form { padding: 0 var(--s4) var(--s4); }
 /* The score closes each cell, so both sides can be compared down a column. */
 .upgrade-score-col { display: flex; width: 96px; flex: none; align-self: center; justify-content: flex-end; margin-left: auto; }
 .upgrade-score { display: flex; flex: none; align-items: baseline; gap: 4px; cursor: pointer; }

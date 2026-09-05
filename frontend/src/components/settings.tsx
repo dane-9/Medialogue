@@ -18,6 +18,13 @@ export function Field({ label, help, badge, error, wide, children }: PropsWithCh
   </div>
 }
 
+export function SettingsGroup({ legend, className = '', children }: PropsWithChildren<{ legend?: string; className?: string }>) {
+  return <div className={`settings-group ${className}`}>
+    {legend && <div className="settings-legend">{legend}</div>}
+    <div className="settings-card">{children}</div>
+  </div>
+}
+
 export function Secret({ ...props }: InputHTMLAttributes<HTMLInputElement>) {
   const [shown, setShown] = useState(false)
   return <div className="secret">

@@ -215,7 +215,7 @@ async def load_effective_profile(
             override_minimum_id = None
         if override_minimum_id:
             qd = await db.get(QualityDefinition, override_minimum_id)
-            if qd is not None and qd.enabled:
+            if qd is not None and qd.enabled and qd.name in quality_order:
                 override_minimum_name = qd.name
             else:
                 override_minimum_id = None
