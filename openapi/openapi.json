@@ -1660,6 +1660,73 @@
         "title": "DiscoveryMode",
         "type": "string"
       },
+      "DownloadActionRequest": {
+        "description": "Apply one qBittorrent action to a set of live download rows.",
+        "properties": {
+          "action": {
+            "enum": [
+              "start",
+              "stop",
+              "recheck",
+              "reannounce",
+              "queue_top",
+              "queue_up",
+              "queue_down",
+              "queue_bottom",
+              "download_limit",
+              "upload_limit",
+              "share_ratio"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "download_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Download Ids",
+            "type": "array"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "download_ids",
+          "action"
+        ],
+        "title": "DownloadActionRequest",
+        "type": "object"
+      },
+      "DownloadActionResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "integer"
+          },
+          "clients": {
+            "title": "Clients",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applied",
+          "clients"
+        ],
+        "title": "DownloadActionResponse",
+        "type": "object"
+      },
       "DownloadClientCategoryResponse": {
         "properties": {
           "is_default": {
@@ -2465,6 +2532,47 @@
         "title": "DownloadClientsHealth",
         "type": "object"
       },
+      "DownloadFacetsResponse": {
+        "description": "Rail counts and the category/tracker lists for one client.",
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "trackers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trackers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "counts",
+          "categories",
+          "tags",
+          "trackers"
+        ],
+        "title": "DownloadFacetsResponse",
+        "type": "object"
+      },
       "DownloadResponse": {
         "properties": {
           "activity": {
@@ -2888,6 +2996,17 @@
               }
             ],
             "title": "Total Size"
+          },
+          "tracker_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker Host"
           },
           "tracker_state": {
             "default": "unknown",
@@ -15199,6 +15318,45 @@
               ],
               "title": "State"
             }
+          },
+          {
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Filters",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "pattern": "^(asc|desc)$",
+              "title": "Direction",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -15224,6 +15382,98 @@
           }
         },
         "summary": "List Downloads",
+        "tags": [
+          "downloads"
+        ]
+      }
+    },
+    "/api/v1/downloads/actions": {
+      "post": {
+        "operationId": "apply_download_action_api_v1_downloads_actions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Download Action",
+        "tags": [
+          "downloads"
+        ]
+      }
+    },
+    "/api/v1/downloads/facets": {
+      "get": {
+        "description": "Counts for every rail row, plus the category and tracker lists.\n\nOne query returning a few narrow columns; the counting itself is trivial in\nPython and avoids a separate aggregate per row of the rail.",
+        "operationId": "download_facets_api_v1_downloads_facets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "client_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Client Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadFacetsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Facets",
         "tags": [
           "downloads"
         ]

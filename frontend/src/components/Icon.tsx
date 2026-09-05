@@ -1,8 +1,53 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving' | 'tracker' | 'queue-top' | 'queue-bottom' | 'queue-up' | 'queue-down' | 'share-ratio' | 'tag' | 'category'
 
 const paths: Record<IconName, JSX.Element> = {
+  // Queue moves: the full mark (outline chevron above a solid arrow) means
+  // top/bottom, the solid arrow alone means one step up/down. The down variants
+  // are the same artwork turned around.
+  'queue-top': <g fill="currentColor" stroke="none">
+    <path fillRule="evenodd" clipRule="evenodd" d="M4.43 13.488a.75.75 0 0 0 1.058.081L12 7.988l6.512 5.581a.75.75 0 1 0 .976-1.138l-7-6a.75.75 0 0 0-.976 0l-7 6a.75.75 0 0 0-.081 1.057" />
+    <path d="M5 17.75a.75.75 0 0 1-.488-1.32l7-6a.75.75 0 0 1 .976 0l7 6A.75.75 0 0 1 19 17.75z" />
+  </g>,
+  'queue-bottom': <g fill="currentColor" stroke="none" transform="rotate(180 12 12)">
+    <path fillRule="evenodd" clipRule="evenodd" d="M4.43 13.488a.75.75 0 0 0 1.058.081L12 7.988l6.512 5.581a.75.75 0 1 0 .976-1.138l-7-6a.75.75 0 0 0-.976 0l-7 6a.75.75 0 0 0-.081 1.057" />
+    <path d="M5 17.75a.75.75 0 0 1-.488-1.32l7-6a.75.75 0 0 1 .976 0l7 6A.75.75 0 0 1 19 17.75z" />
+  </g>,
+  'queue-up': <path fill="currentColor" stroke="none" d="M5 17.75a.75.75 0 0 1-.488-1.32l7-6a.75.75 0 0 1 .976 0l7 6A.75.75 0 0 1 19 17.75z" />,
+  'queue-down': <path fill="currentColor" stroke="none" transform="rotate(180 12 12)" d="M5 17.75a.75.75 0 0 1-.488-1.32l7-6a.75.75 0 0 1 .976 0l7 6A.75.75 0 0 1 19 17.75z" />,
+  // The mask id is fixed: every instance draws the same artwork, so a repeated
+  // id resolves to an identical mask rather than the wrong one.
+  'share-ratio': <>
+    <defs>
+      <mask id="medialogue-share-ratio">
+        <g fill="none">
+          <rect width="36" height="36" x="6" y="6" fill="#fff" stroke="#fff" strokeLinejoin="round" strokeWidth="4" rx="3" />
+          <path fill="#000" fillRule="evenodd" clipRule="evenodd" d="M24 22.5a2.5 2.5 0 1 0 0-5a2.5 2.5 0 0 0 0 5m0 8a2.5 2.5 0 1 0 0-5a2.5 2.5 0 0 0 0 5" />
+          <path stroke="#000" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M15.5 17v14m17-14v14" />
+        </g>
+      </mask>
+    </defs>
+    <path fill="currentColor" stroke="none" d="M0 0h48v48H0z" mask="url(#medialogue-share-ratio)" />
+  </>,
+  // Mirrored horizontally, so the point faces the other way: scale(-1 1) flips
+  // about x=0, and the translate brings the 24-wide artwork back into view.
+  tag: <path
+    fill="currentColor"
+    stroke="none"
+    transform="translate(24 0) scale(-1 1)"
+    d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8 8a2 2 0 0 0 2.828 0l7.172-7.172a2 2 0 0 0 0-2.828zM7 9a2 2 0 1 1 .001-4.001A2 2 0 0 1 7 9"
+  />,
+  category: <path
+    fill="currentColor"
+    stroke="none"
+    d="M4 11h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1m10 0h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1M4 21h6a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1m13 0c2.206 0 4-1.794 4-4s-1.794-4-4-4s-4 1.794-4 4s1.794 4 4 4"
+  />,
+  tracker: <g>
+    <path d="M12 13.5a1.5 1.5 0 1 0 0-3a1.5 1.5 0 0 0 0 3" />
+    <path d="M12 6a6 6 0 1 0 4.243 1.757" />
+    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10s10-4.477 10-10a9.97 9.97 0 0 0-2.929-7.071L12 12" />
+  </g>,
   'chevrons-up': <path d="M18 11.5s-4.419-6-6-6s-6 6-6 6m12 7s-4.419-6-6-6s-6 6-6 6" />,
   // Same artwork as chevrons-up, turned to point the other way.
   'chevrons-down': <path transform="rotate(180 12 12)" d="M18 11.5s-4.419-6-6-6s-6 6-6 6m12 7s-4.419-6-6-6s-6 6-6 6" />,
@@ -249,6 +294,7 @@ const VIEW_BOXES: Partial<Record<IconName, string>> = {
   transfer: '0 0 24 25',
   'play-solid': '0 0 16 16',
   moving: '0 0 56 56',
+  'share-ratio': '0 0 48 48',
 }
 
 const STROKE_SCALE: Partial<Record<IconName, number>> = {
@@ -272,6 +318,7 @@ const STROKE_SCALE: Partial<Record<IconName, number>> = {
   spark: 1.092,
   'chevrons-up': 0.833,
   'chevrons-down': 0.833,
+  tracker: 0.833,
 }
 
 export function Icon({ name, size = 18, strokeWidth = 1.8, ...props }: { name: IconName; size?: number; strokeWidth?: number } & SVGProps<SVGSVGElement>) {

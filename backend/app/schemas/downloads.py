@@ -125,6 +125,33 @@ class DownloadClientSavedTestRequest(BaseModel):
     password: str | None = Field(default=None, max_length=4096)
 
 
+class DownloadActionRequest(BaseModel):
+    """Apply one qBittorrent action to a set of live download rows."""
+
+    download_ids: list[UUID] = Field(min_length=1, max_length=500)
+    action: Literal[
+        "start", "stop", "recheck", "reannounce",
+        "queue_top", "queue_up", "queue_down", "queue_bottom",
+        "download_limit", "upload_limit", "share_ratio",
+    ]
+    #: Bytes/s for the rate limits, a ratio for share_ratio. Ignored otherwise.
+    value: float | None = None
+
+
+class DownloadFacetsResponse(BaseModel):
+    """Rail counts and the category/tracker lists for one client."""
+
+    counts: dict[str, int]
+    categories: list[str]
+    tags: list[str]
+    trackers: list[str]
+
+
+class DownloadActionResponse(BaseModel):
+    applied: int
+    clients: int
+
+
 class DownloadResponse(ORMModel):
     id: UUID
     torrent_id: UUID
@@ -172,3 +199,4 @@ class DownloadResponse(ORMModel):
     availability: float | None = None
     archive_state: TorrentArchiveState
     tracker_state: Literal["healthy", "degraded", "unavailable", "unregistered", "unknown"] = "unknown"
+    tracker_host: str | None = None

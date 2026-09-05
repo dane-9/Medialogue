@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 from time import perf_counter
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import select
+import asyncio
+import uuid
+from collections import defaultdict
+from dataclasses import dataclass
+from collections.abc import Sequence
+from typing import Any
+
+from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,11 +36,15 @@ from app.models.domain import (
     ShowReleaseTorrent,
     StorageRoot,
     Torrent,
+    TorrentArchiveState,
     TorrentClientObservation,
 )
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.downloads import (
+    DownloadActionRequest,
+    DownloadFacetsResponse,
+    DownloadActionResponse,
     DownloadClientCategoryResponse,
     DownloadClientCreate,
     DownloadClientResponse,
@@ -45,7 +57,9 @@ from app.schemas.downloads import (
 )
 from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
 from app.services.qbittorrent import (
+    refresh_observations_after_action,
     run_all_download_client_polls,
+    run_torrent_action,
     run_download_client_poll,
     test_download_client_connection,
 )
@@ -85,6 +99,28 @@ def _activity_state(observation: TorrentClientObservation) -> str:
     return "seeding"
 
 
+def _host_only(raw: str | None) -> str | None:
+    """Bare host for an announce endpoint, as qBittorrent groups by."""
+
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    value = raw.strip()
+    if value.startswith("**"):
+        return None
+    parsed = urlsplit(value if "//" in value else f"//{value}")
+    return parsed.hostname or value
+
+
+def _tracker_host(torrent: Torrent) -> str | None:
+    """Bare host for the torrent's announce endpoint, as qBittorrent groups by.
+
+    ``tracker_summary['tracker']`` is already redacted of any passkey; only the
+    scheme and port are dropped here so the label reads as a plain hostname.
+    """
+
+    return _host_only((torrent.tracker_summary or {}).get("tracker"))
+
+
 def _client_response(client: ConfiguredDownloadClient) -> DownloadClientResponse:
     return DownloadClientResponse(
         id=client.id,
@@ -114,34 +150,205 @@ def _client_response(client: ConfiguredDownloadClient) -> DownloadClientResponse
     )
 
 
-async def _download_response(
+def _activity_expression():
+    """SQL mirror of :func:`_activity_state`.
+
+    Filtering and sorting by activity has to happen in the database now that a
+    page is sliced before responses are built, so the same precedence is
+    expressed once here and reused by the list and facet endpoints.
+    """
+
+    state = func.lower(func.coalesce(TorrentClientObservation.state, ""))
+    progress = func.coalesce(TorrentClientObservation.progress, 0)
+    return case(
+        (state.like("checking%"), "checking"),
+        (or_(state.like("%error%"), state.like("%missing%")), "error"),
+        (state == "metadl", "metadata"),
+        (state.like("%queued%"), "queued"),
+        (and_(state.like("%stall%"), progress < 1), "stalled"),
+        (or_(state.like("%pause%"), state.like("%stopped%")), "paused"),
+        (progress < 1, "downloading"),
+        else_="seeding",
+    )
+
+
+def _tracker_state_expression():
+    return func.coalesce(Torrent.tracker_summary["state"].as_string(), "unknown")
+
+
+def _tracker_host_expression():
+    return Torrent.tracker_summary["tracker"].as_string()
+
+
+def _tag_entries():
+    """Table-valued json_each over an observation's tag array."""
+
+    return func.json_each(TorrentClientObservation.tags).table_valued("value").alias("tag_entry")
+
+
+def _has_any_tag():
+    entries = _tag_entries()
+    return select(literal(1)).select_from(entries).exists()
+
+
+def _non_historical_condition():
+    """Exclude torrents whose associations are all historical.
+
+    Expressed as EXISTS rather than an id list so it stays a single statement
+    and is not bounded by SQLite's variable limit.
+    """
+
+    def any_of(table, only_active: bool):
+        clauses = [table.torrent_id == Torrent.id]
+        if only_active:
+            clauses.append(table.association_type != AssociationType.HISTORICAL)
+        return select(literal(1)).where(*clauses).exists()
+
+    has_any = or_(any_of(MovieReleaseTorrent, False), any_of(ShowReleaseTorrent, False))
+    has_active = or_(any_of(MovieReleaseTorrent, True), any_of(ShowReleaseTorrent, True))
+    return or_(~has_any, has_active)
+
+
+#: Rail rows that map to a plain predicate. Category and tracker rows are keyed
+#: by value at request time and handled separately.
+def _filter_condition(key: str):
+    activity = _activity_expression()
+    progress = func.coalesce(TorrentClientObservation.progress, 0)
+    download_speed = func.coalesce(TorrentClientObservation.download_speed, 0)
+    upload_speed = func.coalesce(TorrentClientObservation.upload_speed, 0)
+    tracker_state = _tracker_state_expression()
+    tracker_host = _tracker_host_expression()
+
+    if key in {"all", "category:all", "tracker:all"}:
+        return None
+    if key == "downloading":
+        return activity.in_(("downloading", "metadata", "stalled"))
+    if key == "seeding":
+        return activity == "seeding"
+    if key == "completed":
+        return progress >= 1
+    if key == "running":
+        return activity.in_(("downloading", "metadata", "stalled", "checking"))
+    if key == "stopped":
+        return activity.in_(("paused", "queued"))
+    if key == "active":
+        return or_(download_speed > 0, upload_speed > 0)
+    if key == "stalled":
+        return activity == "stalled"
+    if key == "checking":
+        return activity == "checking"
+    if key == "error":
+        return activity == "error"
+    if key == "moving":
+        # No qBittorrent field reports a relocation, so this can never match.
+        return literal(False)
+    if key == "attention":
+        return or_(
+            activity == "error",
+            Torrent.archive_state == TorrentArchiveState.FAILED,
+            tracker_state == "unregistered",
+        )
+    if key == "backed-up":
+        return Torrent.archive_state == TorrentArchiveState.ARCHIVED
+    if key == "category:none":
+        return or_(TorrentClientObservation.category.is_(None), TorrentClientObservation.category == "")
+    if key.startswith("category:"):
+        return TorrentClientObservation.category == key.removeprefix("category:")
+    if key in {"tag:all"}:
+        return None
+    if key == "tag:none":
+        return ~_has_any_tag()
+    if key.startswith("tag:"):
+        entries = _tag_entries()
+        return select(literal(1)).select_from(entries).where(entries.c.value == key.removeprefix("tag:")).exists()
+    if key == "tracker:none":
+        return or_(tracker_host.is_(None), tracker_host == "")
+    if key == "tracker:error":
+        return tracker_state.in_(("unregistered", "unavailable"))
+    if key == "tracker:warning":
+        return tracker_state == "degraded"
+    if key.startswith("tracker:"):
+        return tracker_host.like(f"%{key.removeprefix('tracker:')}%")
+    return None
+
+
+#: Sort keys the table offers, mapped to what the database can order by.
+def _sort_expression(key: str):
+    return {
+        "name": Torrent.name,
+        "sizeBytes": Torrent.total_size,
+        "progress": TorrentClientObservation.progress,
+        "state": _activity_expression(),
+        "seeds": TorrentClientObservation.seeds,
+        "leeches": TorrentClientObservation.leeches,
+        "downloadSpeedBytes": TorrentClientObservation.download_speed,
+        "uploadSpeedBytes": TorrentClientObservation.upload_speed,
+        "etaSeconds": TorrentClientObservation.eta_seconds,
+        "trackerState": _tracker_state_expression(),
+        "archiveState": Torrent.archive_state,
+    }.get(key)
+
+
+@dataclass(slots=True)
+class _DownloadPageContext:
+    """Everything one page of download rows needs, fetched in bulk.
+
+    Building this once per request keeps the endpoint at a fixed number of
+    queries instead of three per row. The old code also built a response for
+    every row before paginating, so a client holding 5000 torrents cost roughly
+    15000 queries to return 50 of them.
+    """
+
+    associations: dict[uuid.UUID, tuple[Any, Any]]
+    problems: dict[uuid.UUID, Problem]
+    root_names: dict[uuid.UUID, str]
+
+
+def _select_association(target: dict[uuid.UUID, tuple[Any, Any]], rows: Sequence[Any]) -> None:
+    """Keep the first non-historical association per torrent, else the first."""
+
+    for association, release in rows:
+        current = target.get(association.torrent_id)
+        if current is None:
+            target[association.torrent_id] = (association, release)
+        elif (
+            current[0].association_type == AssociationType.HISTORICAL
+            and association.association_type != AssociationType.HISTORICAL
+        ):
+            target[association.torrent_id] = (association, release)
+
+
+async def _load_page_context(
     db: AsyncSession,
-    observation: TorrentClientObservation,
-    torrent: Torrent,
-    client: ConfiguredDownloadClient,
-) -> DownloadResponse:
-    association = None
-    release = None
-    if client.scope.value == "movies":
-        association_rows = (
+    rows: Sequence[tuple[TorrentClientObservation, Torrent]],
+    clients: dict[uuid.UUID, ConfiguredDownloadClient],
+) -> _DownloadPageContext:
+    movie_ids: list[uuid.UUID] = []
+    show_ids: list[uuid.UUID] = []
+    for observation, torrent in rows:
+        client = clients.get(observation.download_client_id)
+        if client is None:
+            continue
+        (movie_ids if client.scope.value == "movies" else show_ids).append(torrent.id)
+
+    associations: dict[uuid.UUID, tuple[Any, Any]] = {}
+    if movie_ids:
+        movie_rows = (
             await db.execute(
-            select(MovieReleaseTorrent, MovieRelease)
-            .join(MovieRelease, MovieRelease.id == MovieReleaseTorrent.movie_release_id)
-            .options(
-                selectinload(MovieRelease.quality_definition),
-                selectinload(MovieRelease.directories),
-                selectinload(MovieRelease.movie),
-            )
-            .where(MovieReleaseTorrent.torrent_id == torrent.id)
-            .order_by(MovieReleaseTorrent.created_at.desc())
+                select(MovieReleaseTorrent, MovieRelease)
+                .join(MovieRelease, MovieRelease.id == MovieReleaseTorrent.movie_release_id)
+                .options(
+                    selectinload(MovieRelease.quality_definition),
+                    selectinload(MovieRelease.directories),
+                    selectinload(MovieRelease.movie),
+                )
+                .where(MovieReleaseTorrent.torrent_id.in_(movie_ids))
+                .order_by(MovieReleaseTorrent.created_at.desc())
             )
         ).all()
-        selected = next(
-            (item for item in association_rows if item[0].association_type != AssociationType.HISTORICAL),
-            association_rows[0] if association_rows else None,
-        )
-    else:
-        association_rows = (
+        _select_association(associations, movie_rows)
+    if show_ids:
+        show_rows = (
             await db.execute(
                 select(ShowReleaseTorrent, ShowRelease)
                 .join(ShowRelease, ShowRelease.id == ShowReleaseTorrent.show_release_id)
@@ -150,42 +357,66 @@ async def _download_response(
                     selectinload(ShowRelease.directories),
                     selectinload(ShowRelease.show),
                 )
-                .where(ShowReleaseTorrent.torrent_id == torrent.id)
+                .where(ShowReleaseTorrent.torrent_id.in_(show_ids))
                 .order_by(ShowReleaseTorrent.created_at.desc())
             )
         ).all()
-        selected = next(
-            (item for item in association_rows if item[0].association_type != AssociationType.HISTORICAL),
-            association_rows[0] if association_rows else None,
-        )
-    if selected is not None:
-        association, release = selected
+        _select_association(associations, show_rows)
+
+    release_ids = [release.id for _, release in associations.values()]
+    problems: dict[uuid.UUID, Problem] = {}
+    root_names: dict[uuid.UUID, str] = {}
+    if release_ids:
+        problem_rows = (
+            await db.scalars(
+                select(Problem)
+                .where(
+                    Problem.entity_type.in_(("movie_release", "show_release")),
+                    Problem.entity_id.in_(release_ids),
+                    Problem.status == ProblemStatus.OPEN,
+                )
+                .order_by(Problem.created_at.desc())
+            )
+        ).all()
+        for problem in problem_rows:
+            problems.setdefault(problem.entity_id, problem)
+
+        directory_rows = (
+            await db.execute(
+                select(MediaDirectory.movie_release_id, MediaDirectory.show_release_id, StorageRoot.name)
+                .join(StorageRoot, MediaDirectory.storage_root_id == StorageRoot.id)
+                .where(
+                    or_(
+                        MediaDirectory.movie_release_id.in_(release_ids),
+                        MediaDirectory.show_release_id.in_(release_ids),
+                    )
+                )
+            )
+        ).all()
+        for movie_release_id, show_release_id, name in directory_rows:
+            key = movie_release_id or show_release_id
+            if key is not None:
+                root_names.setdefault(key, name)
+
+    return _DownloadPageContext(associations=associations, problems=problems, root_names=root_names)
+
+
+def _download_response(
+    observation: TorrentClientObservation,
+    torrent: Torrent,
+    client: ConfiguredDownloadClient,
+    context: _DownloadPageContext,
+) -> DownloadResponse:
+    association, release = context.associations.get(torrent.id, (None, None))
     media_state = None
     reconciliation_state = None
     reconciliation_detail = None
     root_name = None
     if release is not None:
-        # Which configured media folder the release sits under, resolved through
-        # its directories the same way Upgrade Media does it.
-        root_name = await db.scalar(
-            select(StorageRoot.name)
-            .join(MediaDirectory, MediaDirectory.storage_root_id == StorageRoot.id)
-            .where(
-                MediaDirectory.movie_release_id == release.id
-                if isinstance(release, MovieRelease)
-                else MediaDirectory.show_release_id == release.id
-            )
-            .limit(1)
-        )
+        root_name = context.root_names.get(release.id)
         media_state = "present" if any(item.exists for item in release.directories) else "missing"
         reconciliation_state = association.association_type.value
-        problem = await db.scalar(
-            select(Problem).where(
-                Problem.entity_type == ("movie_release" if client.scope.value == "movies" else "show_release"),
-                Problem.entity_id == release.id,
-                Problem.status == ProblemStatus.OPEN,
-            ).order_by(Problem.created_at.desc())
-        )
+        problem = context.problems.get(release.id)
         if problem is not None:
             reconciliation_state = "conflict"
             reconciliation_detail = problem_description(problem.reason, problem.message)
@@ -263,6 +494,7 @@ async def _download_response(
         availability=float(observation.availability) if observation.availability is not None else None,
         archive_state=torrent.archive_state,
         tracker_state=str((torrent.tracker_summary or {}).get("state") or "unknown"),
+        tracker_host=_tracker_host(torrent),
     )
 
 
@@ -582,6 +814,160 @@ async def poll_all_clients(
     return JobAcceptedResponse(job_id=job.id)
 
 
+@router.post("/downloads/actions", response_model=DownloadActionResponse)
+async def apply_download_action(
+    payload: DownloadActionRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_qbittorrent_client_factory),
+) -> DownloadActionResponse:
+    rows = (
+        await db.execute(
+            select(TorrentClientObservation, Torrent)
+            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+            .where(
+                TorrentClientObservation.id.in_(payload.download_ids),
+                TorrentClientObservation.is_present.is_(True),
+            )
+        )
+    ).all()
+    if not rows:
+        raise AppError("NOT_FOUND", "No live downloads matched the request.", status_code=404)
+
+    # An info hash only means something to the client holding it, so the batch
+    # is split per client and each group is sent to its own qBittorrent.
+    by_client: dict[UUID, list[str]] = {}
+    for observation, torrent in rows:
+        by_client.setdefault(observation.download_client_id, []).append(torrent.info_hash)
+
+    applied = 0
+    for client_id, hashes in by_client.items():
+        client = await get_configured_download_client(db, client_id)
+        if client is None or not client.enabled:
+            continue
+        try:
+            await run_torrent_action(client, payload.action, hashes, value=payload.value, client_factory=client_factory)
+        except Exception as exc:
+            raise AppError("UPSTREAM_ERROR", f"{client.name}: {exc}", status_code=502) from exc
+        applied += len(hashes)
+        # qBittorrent applies most of these immediately, but not instantly; a
+        # short pause makes the refreshed snapshot show the new state rather
+        # than the one the action just replaced.
+        await asyncio.sleep(0.35)
+        await refresh_observations_after_action(db, client, hashes, client_factory=client_factory)
+    if not applied:
+        raise AppError("CONFLICT", "No enabled download client owns the selected downloads.", status_code=409)
+    return DownloadActionResponse(applied=applied, clients=len(by_client))
+
+
+@router.get("/downloads/facets", response_model=DownloadFacetsResponse)
+async def download_facets(
+    client_id: UUID | None = None,
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> DownloadFacetsResponse:
+    """Counts for every rail row, plus the category and tracker lists.
+
+    One query returning a few narrow columns; the counting itself is trivial in
+    Python and avoids a separate aggregate per row of the rail.
+    """
+
+    conditions = [TorrentClientObservation.is_present.is_(True), _non_historical_condition()]
+    if client_id is not None:
+        conditions.append(TorrentClientObservation.download_client_id == client_id)
+
+    rows = (
+        await db.execute(
+            select(
+                _activity_expression(),
+                func.coalesce(TorrentClientObservation.progress, 0),
+                func.coalesce(TorrentClientObservation.download_speed, 0),
+                func.coalesce(TorrentClientObservation.upload_speed, 0),
+                TorrentClientObservation.category,
+                TorrentClientObservation.tags,
+                Torrent.archive_state,
+                _tracker_state_expression(),
+                _tracker_host_expression(),
+            )
+            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+            .where(*conditions)
+        )
+    ).all()
+
+    counts: dict[str, int] = defaultdict(int)
+    categories: set[str] = set()
+    tag_names: set[str] = set()
+    trackers: set[str] = set()
+    for activity, progress, down, up, category, tags, archive_state, tracker_state, tracker_host in rows:
+        counts["all"] += 1
+        counts["category:all"] += 1
+        counts["tag:all"] += 1
+        counts["tracker:all"] += 1
+        if activity in {"downloading", "metadata", "stalled"}:
+            counts["downloading"] += 1
+        if activity == "seeding":
+            counts["seeding"] += 1
+        if float(progress) >= 1:
+            counts["completed"] += 1
+        if activity in {"downloading", "metadata", "stalled", "checking"}:
+            counts["running"] += 1
+        if activity in {"paused", "queued"}:
+            counts["stopped"] += 1
+        if down > 0 or up > 0:
+            counts["active"] += 1
+        if activity == "stalled":
+            counts["stalled"] += 1
+        if activity == "checking":
+            counts["checking"] += 1
+        if activity == "error":
+            counts["error"] += 1
+        if activity == "error" or archive_state == TorrentArchiveState.FAILED or tracker_state == "unregistered":
+            counts["attention"] += 1
+        if archive_state == TorrentArchiveState.ARCHIVED:
+            counts["backed-up"] += 1
+
+        if category:
+            categories.add(category)
+            counts[f"category:{category}"] += 1
+        else:
+            counts["category:none"] += 1
+
+        row_tags = [str(tag) for tag in (tags or []) if str(tag).strip()]
+        if row_tags:
+            for tag in row_tags:
+                tag_names.add(tag)
+                counts[f"tag:{tag}"] += 1
+        else:
+            counts["tag:none"] += 1
+
+        host = _host_only(tracker_host)
+        if host:
+            trackers.add(host)
+            counts[f"tracker:{host}"] += 1
+        else:
+            counts["tracker:none"] += 1
+        if tracker_state in {"unregistered", "unavailable"}:
+            counts["tracker:error"] += 1
+        if tracker_state == "degraded":
+            counts["tracker:warning"] += 1
+
+    # Rows the UI always draws must report a number even when nothing matches.
+    for key in (
+        "all", "downloading", "seeding", "completed", "running", "stopped", "active",
+        "stalled", "checking", "moving", "error", "attention", "backed-up",
+        "category:all", "category:none", "tag:all", "tag:none", "tracker:all", "tracker:none",
+        "tracker:error", "tracker:warning",
+    ):
+        counts.setdefault(key, 0)
+
+    return DownloadFacetsResponse(
+        counts=dict(counts),
+        categories=sorted(categories, key=str.casefold),
+        tags=sorted(tag_names, key=str.casefold),
+        trackers=sorted(trackers, key=str.casefold),
+    )
+
+
 @router.get("/downloads", response_model=Collection[DownloadResponse])
 async def list_downloads(
     page: int = Query(1, ge=1),
@@ -589,6 +975,9 @@ async def list_downloads(
     client_id: UUID | None = None,
     scope: DownloadScope | None = None,
     state: str | None = None,
+    filters: list[str] = Query(default_factory=list),
+    sort: str | None = None,
+    direction: str = Query("asc", pattern="^(asc|desc)$"),
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[DownloadResponse]:
@@ -598,6 +987,10 @@ async def list_downloads(
     # Downloads is intentionally a live operational view. Removed observations
     # remain durable evidence elsewhere but never appear here.
     conditions.append(TorrentClientObservation.is_present.is_(True))
+    # A historical association is preserved in release/torrent history, not in
+    # the live activity workspace. Unassociated in-scope torrents remain visible
+    # while Medialogue is still identifying/reconciling them.
+    conditions.append(_non_historical_condition())
     if state:
         conditions.append(TorrentClientObservation.state == state)
     if scope:
@@ -605,29 +998,44 @@ async def list_downloads(
         if not eligible_ids:
             return Collection(items=[], page=page, page_size=page_size, total=0, pages=0)
         conditions.append(TorrentClientObservation.download_client_id.in_(eligible_ids))
-    query = (
+    # Rail selections intersect: one per group, all of them narrowing together.
+    for key in filters:
+        condition = _filter_condition(key)
+        if condition is not None:
+            conditions.append(condition)
+
+    base = (
         select(TorrentClientObservation, Torrent)
         .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
         .where(*conditions)
-        .order_by(TorrentClientObservation.last_seen_at.desc())
     )
-    rows = (await db.execute(query)).all()
-    configured_by_id = {
-        item.id: item for item in await list_configured_download_clients(db)
-    }
-    responses = [
-        await _download_response(db, observation, torrent, configured)
-        for observation, torrent in rows
-        if (configured := configured_by_id.get(observation.download_client_id)) is not None
-    ]
-    # A historical association is preserved in release/torrent history, not in
-    # the live activity workspace. Unassociated in-scope torrents remain visible
-    # while Medialogue is still identifying/reconciling them.
-    responses = [item for item in responses if item.reconciliation_state != "historical"]
-    total = len(responses)
-    start = (page - 1) * page_size
+    total = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(TorrentClientObservation)
+            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+            .where(*conditions)
+        )
+        or 0
+    )
+
+    order = _sort_expression(sort) if sort else None
+    if order is None:
+        order = TorrentClientObservation.last_seen_at.desc()
+    else:
+        order = order.desc() if direction == "desc" else order.asc()
+    page_rows = (
+        await db.execute(base.order_by(order).offset((page - 1) * page_size).limit(page_size))
+    ).all()
+
+    configured_by_id = {item.id: item for item in await list_configured_download_clients(db)}
+    page_rows = [row for row in page_rows if row[0].download_client_id in configured_by_id]
+    context = await _load_page_context(db, page_rows, configured_by_id)
     return Collection(
-        items=responses[start : start + page_size],
+        items=[
+            _download_response(observation, torrent, configured_by_id[observation.download_client_id], context)
+            for observation, torrent in page_rows
+        ],
         page=page,
         page_size=page_size,
         total=total,

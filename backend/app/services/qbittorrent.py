@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from time import perf_counter
@@ -20,7 +21,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.qbittorrent import QBittorrentClient, TorrentTrackerSnapshot
+from app.integrations.qbittorrent import QBittorrentClient, QBittorrentError, TorrentTrackerSnapshot
 from app.models.domain import (
     IntegrationType,
     InteractiveSearchResult,
@@ -83,17 +84,86 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _detail_check_due(metadata: dict[str, object], now: datetime, *, seconds: int = 300) -> bool:
-    raw = metadata.get("tracker_checked_at")
+#: How stale a torrent's tracker health may get. The per-poll batch is sized to
+#: hold this regardless of library size, so the guarantee does not weaken as a
+#: client grows; only the number of requests per cycle does.
+_TRACKER_MAX_STALENESS_SECONDS = 300
+
+#: Floor for the per-poll batch, so a small client refreshes everything every
+#: cycle instead of trickling a couple of torrents at a time.
+_TRACKER_MIN_REQUESTS_PER_POLL = 50
+
+
+def _tracker_request_budget(torrent_count: int, poll_interval_seconds: int) -> int:
+    """How many tracker detail calls this poll may make.
+
+    Sized so every torrent is revisited within _TRACKER_MAX_STALENESS_SECONDS:
+    spreading that work evenly across the polls in the window keeps the request
+    rate flat without letting any torrent go unchecked for longer than a fixed
+    budget would have allowed.
+    """
+
+    if torrent_count <= 0:
+        return 0
+    polls_in_window = max(1, _TRACKER_MAX_STALENESS_SECONDS // max(1, poll_interval_seconds))
+    per_poll = -(-torrent_count // polls_in_window)  # ceil
+    return max(_TRACKER_MIN_REQUESTS_PER_POLL, per_poll)
+
+
+def _tracker_check_age(metadata: dict[str, object] | None, now: datetime) -> float:
+    """Seconds since this torrent's tracker detail was last fetched.
+
+    A torrent that has never been checked sorts first.
+    """
+
+    raw = (metadata or {}).get("tracker_checked_at")
     if not isinstance(raw, str):
-        return True
+        return float("inf")
     try:
         previous = datetime.fromisoformat(raw)
-        if previous.tzinfo is None:
-            previous = previous.replace(tzinfo=timezone.utc)
-        return (now - previous).total_seconds() >= seconds
     except ValueError:
-        return True
+        return float("inf")
+    if previous.tzinfo is None:
+        previous = previous.replace(tzinfo=timezone.utc)
+    return (now - previous).total_seconds()
+
+
+async def _tracker_detail_batch(
+    db: AsyncSession,
+    info_hashes: Sequence[str],
+    now: datetime,
+    *,
+    budget: int,
+) -> set[str]:
+    """Which torrents get their tracker detail refreshed this cycle.
+
+    Staleness decides the order and a fixed budget decides how many, rather
+    than each torrent carrying its own deadline. Deadlines bunch up: every
+    torrent seen in the same first poll shares a check time and so falls due in
+    the same later poll, producing one burst of N requests instead of a steady
+    trickle. Spending a constant budget on the oldest entries keeps the request
+    rate flat and still covers the whole client in ceil(N / budget) polls.
+    """
+
+    if not info_hashes or budget <= 0:
+        return set()
+    lowered = [value.lower() for value in info_hashes]
+    rows: list[tuple[str, dict | None]] = []
+    # Chunked so a very large client cannot exceed SQLite's variable limit.
+    for index in range(0, len(lowered), 500):
+        chunk = lowered[index : index + 500]
+        rows.extend(
+            (row[0], row[1])
+            for row in (
+                await db.execute(
+                    select(Torrent.info_hash, Torrent.metadata_json).where(Torrent.info_hash.in_(chunk))
+                )
+            ).all()
+        )
+    known = {info_hash: metadata for info_hash, metadata in rows}
+    # A torrent with no row yet has never been checked, so it leads the queue.
+    ordered = sorted(lowered, key=lambda value: -_tracker_check_age(known.get(value), now))
+    return set(ordered[:budget])
 
 
 def _portable_metadata(observed) -> dict[str, object]:
@@ -240,6 +310,114 @@ async def get_download_client(db: AsyncSession, client_id: UUID) -> ConfiguredDo
     return await get_configured_download_client(db, client_id)
 
 
+async def refresh_observations_after_action(
+    db: AsyncSession,
+    client: ConfiguredDownloadClient,
+    info_hashes: Sequence[str],
+    *,
+    client_factory: QBittorrentClientFactory = QBittorrentClient,
+) -> int:
+    """Re-read the live fields for torrents an action just touched.
+
+    The regular poll is what reconciles media, archives and tracker health, and
+    it only runs on the client's own interval. A user action needs the table to
+    reflect the change now, so this fetches the current snapshot and updates the
+    display fields only - no reconciliation, no archiving, no problems raised.
+    """
+
+    wanted = {value.lower() for value in info_hashes}
+    if not wanted:
+        return 0
+    adapter = client_factory(client.url, client.username or "", client.password or "")
+    try:
+        observations = await adapter.list_torrents()
+    except Exception:
+        # The action itself already succeeded; a failed refresh only means the
+        # table catches up on the next poll instead.
+        return 0
+    finally:
+        await adapter.close()
+
+    observed_by_hash = {item.info_hash.lower(): item for item in observations if item.info_hash.lower() in wanted}
+    if not observed_by_hash:
+        return 0
+    rows = (
+        await db.execute(
+            select(TorrentClientObservation, Torrent)
+            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+            .where(
+                TorrentClientObservation.download_client_id == client.id,
+                Torrent.info_hash.in_(list(observed_by_hash)),
+            )
+        )
+    ).all()
+    updated = 0
+    for row, torrent in rows:
+        observed = observed_by_hash.get(torrent.info_hash.lower())
+        if observed is None:
+            continue
+        row.state = observed.state
+        row.progress = observed.progress
+        row.download_speed = observed.download_speed
+        row.upload_speed = observed.upload_speed
+        row.eta_seconds = observed.eta
+        row.amount_left = observed.amount_left
+        row.ratio = observed.ratio
+        row.seeds = observed.seeds
+        row.seeds_total = observed.seeds_total
+        row.leeches = observed.leeches
+        row.leeches_total = observed.leeches_total
+        row.availability = observed.availability
+        row.last_seen_at = utcnow()
+        torrent.metadata_json = {
+            **(torrent.metadata_json or {}),
+            "progress": float(observed.progress),
+            "checking": observed.checking,
+        }
+        updated += 1
+    await db.commit()
+    return updated
+
+
+async def run_torrent_action(
+    client: ConfiguredDownloadClient,
+    action: str,
+    info_hashes: Sequence[str],
+    *,
+    value: float | None = None,
+    client_factory: QBittorrentClientFactory = QBittorrentClient,
+) -> None:
+    """Apply one qBittorrent action to a batch of torrents on one client.
+
+    Grouping by client matters: an info hash is only meaningful to the
+    qBittorrent instance that holds it, so callers resolve ownership first.
+    """
+
+    adapter = client_factory(client.url, client.username or "", client.password or "")
+    try:
+        if action == "start":
+            await adapter.start_torrents(info_hashes)
+        elif action == "stop":
+            await adapter.stop_torrents(info_hashes)
+        elif action == "recheck":
+            await adapter.recheck_torrents(info_hashes)
+        elif action == "reannounce":
+            await adapter.reannounce_torrents(info_hashes)
+        elif action.startswith("queue_"):
+            await adapter.set_queue_position(info_hashes, action.removeprefix("queue_"))
+        elif action == "download_limit":
+            await adapter.set_download_limit(info_hashes, int(value or 0))
+        elif action == "upload_limit":
+            await adapter.set_upload_limit(info_hashes, int(value or 0))
+        elif action == "share_ratio":
+            # -1 hands the torrent back to qBittorrent's global limit.
+            await adapter.set_share_limits(info_hashes, float(value if value is not None else -1))
+        else:
+            raise QBittorrentError(f"Unsupported torrent action: {action}")
+    finally:
+        await adapter.close()
+
+
 async def test_download_client_connection(
     client: ConfiguredDownloadClient,
     *,
@@ -376,6 +554,12 @@ async def _poll_download_client(
     }
 
     current_hashes: set[str] = set()
+    detail_due = await _tracker_detail_batch(
+        db,
+        [item.info_hash for item in observations],
+        checked_at,
+        budget=_tracker_request_budget(len(observations), client.poll_interval_seconds or 30),
+    )
     relevant_count = added = completed = ignored = removed = processing_errors = 0
     completed_upgrade_torrent_ids: set[UUID] = set()
     detail_adapter = None
@@ -651,7 +835,7 @@ async def _poll_download_client(
                 tracker_snapshots: tuple[TorrentTrackerSnapshot, ...] = ()
                 tracker_details_collected = False
                 needs_archive = not torrent_archive_complete(torrent)
-                if needs_archive or _detail_check_due(torrent.metadata_json or {}, checked_at):
+                if needs_archive or info_hash in detail_due:
                     try:
                         if detail_adapter is None:
                             detail_adapter = client_factory(

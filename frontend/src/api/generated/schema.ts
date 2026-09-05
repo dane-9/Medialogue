@@ -705,6 +705,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/downloads/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Download Action */
+        post: operations["apply_download_action_api_v1_downloads_actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/downloads/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Facets
+         * @description Counts for every rail row, plus the category and tracker lists.
+         *
+         *     One query returning a few narrow columns; the counting itself is trivial in
+         *     Python and avoids a separate aggregate per row of the rail.
+         */
+        get: operations["download_facets_api_v1_downloads_facets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/downloads/poll": {
         parameters: {
             query?: never;
@@ -3293,6 +3333,28 @@ export interface components {
          * @enum {string}
          */
         DiscoveryMode: "automatic" | "review";
+        /**
+         * DownloadActionRequest
+         * @description Apply one qBittorrent action to a set of live download rows.
+         */
+        DownloadActionRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "start" | "stop" | "recheck" | "reannounce" | "queue_top" | "queue_up" | "queue_down" | "queue_bottom" | "download_limit" | "upload_limit" | "share_ratio";
+            /** Download Ids */
+            download_ids: string[];
+            /** Value */
+            value?: number | null;
+        };
+        /** DownloadActionResponse */
+        DownloadActionResponse: {
+            /** Applied */
+            applied: number;
+            /** Clients */
+            clients: number;
+        };
         /** DownloadClientCategoryResponse */
         DownloadClientCategoryResponse: {
             /**
@@ -3562,6 +3624,22 @@ export interface components {
             /** Total Clients */
             total_clients: number;
         };
+        /**
+         * DownloadFacetsResponse
+         * @description Rail counts and the category/tracker lists for one client.
+         */
+        DownloadFacetsResponse: {
+            /** Categories */
+            categories: string[];
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Tags */
+            tags: string[];
+            /** Trackers */
+            trackers: string[];
+        };
         /** DownloadResponse */
         DownloadResponse: {
             /**
@@ -3671,6 +3749,8 @@ export interface components {
             torrent_id: string;
             /** Total Size */
             total_size: number | null;
+            /** Tracker Host */
+            tracker_host?: string | null;
             /**
              * Tracker State
              * @default unknown
@@ -8582,6 +8662,9 @@ export interface operations {
                 client_id?: string | null;
                 scope?: components["schemas"]["DownloadScope"] | null;
                 state?: string | null;
+                filters?: string[];
+                sort?: string | null;
+                direction?: string;
             };
             header?: never;
             path?: never;
@@ -8596,6 +8679,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Collection_DownloadResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_download_action_api_v1_downloads_actions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_facets_api_v1_downloads_facets_get: {
+        parameters: {
+            query?: {
+                client_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadFacetsResponse"];
                 };
             };
             /** @description Validation Error */

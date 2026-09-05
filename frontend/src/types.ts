@@ -362,6 +362,7 @@ export interface Download {
   id: string
   name: string
   client: string
+  clientId: string
   kind: 'Movie' | 'Show'
   state: 'Downloading' | 'Checking' | 'Seeding' | 'Completed' | 'Paused' | 'Error'
   activity: 'downloading' | 'checking' | 'metadata' | 'queued' | 'stalled' | 'seeding' | 'paused' | 'error'
@@ -388,6 +389,9 @@ export interface Download {
   /** Raw bytes/s behind the formatted speeds, for filtering on real activity. */
   downloadSpeedBytes: number
   uploadSpeedBytes: number
+  /** Raw values behind the formatted size and ETA, so those columns sort correctly. */
+  sizeBytes: number
+  etaSeconds: number
   amountLeft?: string
   ratio?: number
   seeds?: number
@@ -398,6 +402,8 @@ export interface Download {
   availability?: number
   archiveState: TorrentArchiveState
   trackerState: 'healthy' | 'degraded' | 'unavailable' | 'unregistered' | 'unknown'
+  trackerHost?: string
+  category?: string
 }
 
 export type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision'

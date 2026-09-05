@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -596,6 +597,63 @@ class QBittorrentClient:
                 return
             if attempt < 7:
                 await asyncio.sleep(0.25)
+
+    async def _post_hashes(self, path: str, hashes: Sequence[str], *, fallback: str | None = None, **extra: Any) -> None:
+        """POST a hash list to a torrents endpoint.
+
+        qBittorrent 5 renamed several actions (pause/resume became stop/start).
+        ``fallback`` is the older path to retry on 404 so both generations work.
+        """
+
+        data = {"hashes": "|".join(item.lower() for item in hashes), **extra}
+        try:
+            await self._request("POST", path, data=data)
+        except QBittorrentError:
+            if not fallback:
+                raise
+            await self._request("POST", fallback, data=data)
+
+    async def start_torrents(self, hashes: Sequence[str]) -> None:
+        await self._post_hashes("/api/v2/torrents/start", hashes, fallback="/api/v2/torrents/resume")
+
+    async def stop_torrents(self, hashes: Sequence[str]) -> None:
+        await self._post_hashes("/api/v2/torrents/stop", hashes, fallback="/api/v2/torrents/pause")
+
+    async def recheck_torrents(self, hashes: Sequence[str]) -> None:
+        await self._post_hashes("/api/v2/torrents/recheck", hashes)
+
+    async def reannounce_torrents(self, hashes: Sequence[str]) -> None:
+        await self._post_hashes("/api/v2/torrents/reannounce", hashes)
+
+    async def set_queue_position(self, hashes: Sequence[str], move: str) -> None:
+        paths = {
+            "top": "/api/v2/torrents/topPrio",
+            "up": "/api/v2/torrents/increasePrio",
+            "down": "/api/v2/torrents/decreasePrio",
+            "bottom": "/api/v2/torrents/bottomPrio",
+        }
+        if move not in paths:
+            raise QBittorrentError(f"Unknown queue move: {move}")
+        await self._post_hashes(paths[move], hashes)
+
+    async def set_download_limit(self, hashes: Sequence[str], limit: int) -> None:
+        """``limit`` is bytes/s; 0 or below means unlimited."""
+
+        await self._post_hashes("/api/v2/torrents/downloadLimit", hashes, limit=max(0, limit))
+
+    async def set_upload_limit(self, hashes: Sequence[str], limit: int) -> None:
+        await self._post_hashes("/api/v2/torrents/uploadLimit", hashes, limit=max(0, limit))
+
+    async def set_share_limits(self, hashes: Sequence[str], ratio_limit: float) -> None:
+        """-1 restores the global limit; -2 means no limit at all."""
+
+        await self._post_hashes(
+            "/api/v2/torrents/setShareLimits",
+            hashes,
+            ratioLimit=ratio_limit,
+            seedingTimeLimit=-2,
+            inactiveSeedingTimeLimit=-2,
+        )
 
     async def remove_torrent(self, info_hash: str, *, delete_files: bool = False) -> None:
         await self._request(
