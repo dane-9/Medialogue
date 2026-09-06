@@ -351,7 +351,6 @@ export default function QualityProfilesPage() {
         {!creating && selected && !selected.isDefault && <Button variant="danger" onClick={() => void remove()} disabled={busy}>Delete</Button>}
         {/* Delete stays hard left, away from the buttons people reach for. */}
         <span className="modal-foot-spacer" />
-        {dirty && <span className="footer-state">Unsaved changes</span>}
         {!creating && selected && (selected.isDefault
           ? <span className="footer-state">Default profile</span>
           : <Button variant="ghost" onClick={() => void makeDefault()} disabled={busy || dirty} title={dirty ? 'Save or cancel your edits before changing the default profile.' : undefined}>Set as Default</Button>)}
@@ -437,11 +436,10 @@ export default function QualityProfilesPage() {
           </section>}
 
           {editorView === 'formats' && <section className="cf-editor-panel qp-formats-panel">
-            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><h3>Format scores</h3><p>When a format matches, it adds the score you set here plus the highest offset among its matched rules. Saving re-sorts each section, highest score first.</p></div>
+            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><h3>Format scores</h3><p>When a format matches, it adds the score you set here plus the highest offset among its matched rules.</p></div>
             <div className="qp-format-toolbar">
               <div className="search-field"><Icon name="search" size={15} /><Input value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} placeholder="Filter formats…" /></div>
               <div className="qp-view-switch"><button className={scoreView === 'all' ? 'active' : ''} onClick={() => setScoreView('all')}>All</button><button className={scoreView === 'selected' ? 'active' : ''} onClick={() => setScoreView('selected')}>Selected <span>{selectedFormatCount}</span></button></div>
-              <label className="qp-select-all"><input type="checkbox" checked={formats.length > 0 && formats.every((format) => Object.prototype.hasOwnProperty.call(scores, format.id))} onChange={(event) => setFormatSelection(formats.map((format) => format.id), event.target.checked)} /><span>Select all formats</span></label>
             </div>
             <div className="qp-format-catalog">
               {formatSections.map((section) => {

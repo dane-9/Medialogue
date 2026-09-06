@@ -446,7 +446,6 @@ export default function CustomFormatsPageView() {
         {draft.id && !draft.builtin ? <Button variant="danger" onClick={() => void remove()} disabled={saving}>Delete</Button> : null}
         {draft.id && !draft.builtin ? <Button variant="ghost" icon="download" onClick={() => void exportOne()} disabled={saving}>Export</Button> : null}
         <span className="modal-foot-spacer" />
-        {dirty && <span className="footer-state">Unsaved changes</span>}
         <Button variant="secondary" onClick={closeEditor} disabled={saving}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={saving || !dirty || !draft.name.trim() || !draft.conditions.length || hasEmptyRule}>{saving ? 'Saving…' : 'Save format'}</Button>
       </>}

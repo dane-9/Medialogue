@@ -93,7 +93,6 @@ export function SaveFooter({ dirty, saving, onSave, onRevert, children }: PropsW
   onRevert?: () => void
 }>) {
   return <div className="settings-footer">
-    {dirty && <span className="footer-state">Unsaved changes</span>}
     {children}
     {onRevert && <Button variant="ghost" onClick={onRevert} disabled={!dirty || saving}>Revert</Button>}
     <Button variant="primary" onClick={onSave} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save changes'}</Button>

@@ -3158,7 +3158,6 @@ function StorageSettings() {
       footer={<>
       {selectedMapping && <Button variant="danger" onClick={() => void removeMapping(selectedMapping)} disabled={mappingBusy}>Delete</Button>}
       <span className="modal-foot-spacer" />
-      {(mappingDirty || !selectedMapping) && <span className="footer-state">{mappingDirty ? 'Unsaved changes' : 'Ready to add'}</span>}
       <Button variant="ghost" onClick={closeMapping} disabled={mappingBusy}>Cancel</Button>
       <Button variant="primary" onClick={() => void saveMapping()} disabled={mappingBusy || Boolean(selectedMapping && !mappingDirty)}>{mappingBusy ? 'Saving…' : selectedMapping ? 'Save mapping' : 'Add mapping'}</Button>
     </>}>
@@ -3508,7 +3507,6 @@ function QBittorrentSettings() {
       footer={<>
       {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
       <span className="modal-foot-spacer" />
-      {dirty && <span className="footer-state">Unsaved changes</span>}
       <Button variant="ghost" onClick={closeEditor} disabled={busy}>Cancel</Button>
       <Button variant="primary" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save client'}</Button>
     </>}>
@@ -3895,7 +3893,6 @@ function IndexerSettings() {
       footer={<>
       {selected && <Button variant="danger" onClick={remove} disabled={busy}>Delete</Button>}
       <span className="modal-foot-spacer" />
-      {dirty && <span className="footer-state">Unsaved changes</span>}
       <Button variant="ghost" onClick={closeEditor} disabled={busy}>Cancel</Button>
       <Button variant="primary" onClick={save} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save indexer'}</Button>
     </>}>
