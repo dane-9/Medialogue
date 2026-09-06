@@ -437,7 +437,7 @@ export default function QualityProfilesPage() {
           </section>}
 
           {editorView === 'formats' && <section className="cf-editor-panel qp-formats-panel">
-            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><h3>Format scores</h3><p>Profile base score + matched rule offset = contribution. Saving orders each section from highest to lowest score.</p></div>
+            <div className="cf-editor-panel-head cf-editor-panel-head-compact"><h3>Format scores</h3><p>When a format matches, it adds the score you set here plus the highest offset among its matched rules. Saving re-sorts each section, highest score first.</p></div>
             <div className="qp-format-toolbar">
               <div className="search-field"><Icon name="search" size={15} /><Input value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} placeholder="Filter formats…" /></div>
               <div className="qp-view-switch"><button className={scoreView === 'all' ? 'active' : ''} onClick={() => setScoreView('all')}>All</button><button className={scoreView === 'selected' ? 'active' : ''} onClick={() => setScoreView('selected')}>Selected <span>{selectedFormatCount}</span></button></div>

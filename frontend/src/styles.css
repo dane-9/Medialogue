@@ -2526,22 +2526,25 @@ a.download-kind:hover { filter: brightness(1.35); }
   -webkit-line-clamp: 4;
   min-height: 6em;
 }
-.cf-card-conditions { display: flex; flex-wrap: wrap; gap: var(--s1); flex: 1; align-content: flex-start; }
+.cf-card-conditions { --chip-h: 22px; display: flex; flex-wrap: wrap; gap: var(--s1); flex: 1; align-content: flex-start; }
 /* Custom Format cards only: their description now takes four lines, so the rule
    chips below it are held to two rows. Quality Profile cards share the chip and
    grid classes and must keep their original free-growing layout. */
 .cf-card-rules {
   flex: none;
   overflow: hidden;
-  max-height: calc((22px * 2) + var(--s1));
+  max-height: calc((var(--chip-h) * 2) + var(--s1));
 }
-.cf-card-rules .cf-condition-chip { height: 22px; padding: 0 var(--s2); }
+/* One explicit height for every chip on both card types. Left to the content,
+   a Quality Profile chip is taller than a Custom Format one purely because it
+   carries a score <code>, so the two grids never lined up. */
 .cf-condition-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--s1);
   max-width: 100%;
-  padding: 2px var(--s2);
+  height: var(--chip-h, 22px);
+  padding: 0 var(--s2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   color: var(--muted);
