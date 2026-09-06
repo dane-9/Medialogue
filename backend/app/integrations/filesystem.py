@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import stat
 
 VIDEO_SUFFIXES = {".mkv", ".mp4", ".m4v", ".avi", ".ts", ".m2ts"}
+
+
+class OutsideMediaRootError(PermissionError):
+    """An intentionally excluded path, not a failed filesystem read."""
+
+
+def _raise_walk_error(error: OSError) -> None:
+    raise error
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,11 +34,11 @@ class FilesystemObserver:
             raise NotADirectoryError(root)
         observations: list[DirectoryObservation] = []
         for entry in sorted(base.iterdir()):
-            if not entry.is_dir():
+            if not stat.S_ISDIR(entry.stat().st_mode):
                 continue
             try:
                 observations.append(self.inspect_directory(entry, base))
-            except PermissionError:
+            except OutsideMediaRootError:
                 # A symlink escaping the configured root is never followed.
                 continue
         return observations
@@ -38,18 +48,23 @@ class FilesystemObserver:
         try:
             resolved.relative_to(allowed_root)
         except ValueError as exc:
-            raise PermissionError("directory is outside the configured media folder") from exc
+            raise OutsideMediaRootError("directory is outside the configured media folder") from exc
 
         media: list[str] = []
         has_dvd = False
         has_bluray = False
-        for entry in resolved.rglob("*"):
-            relative = entry.relative_to(resolved)
-            upper_parts = {part.upper() for part in relative.parts}
-            has_dvd = has_dvd or "VIDEO_TS" in upper_parts
-            has_bluray = has_bluray or "BDMV" in upper_parts
-            if entry.is_file() and entry.suffix.casefold() in VIDEO_SUFFIXES:
-                media.append(relative.as_posix())
+        # pathlib glob can suppress traversal errors. An incomplete inventory
+        # must fail the scan before reconciliation marks anything missing.
+        for parent, directories, files in os.walk(resolved, onerror=_raise_walk_error, followlinks=False):
+            file_names = set(files)
+            for name in directories + files:
+                entry = Path(parent) / name
+                relative = entry.relative_to(resolved)
+                upper_parts = {part.upper() for part in relative.parts}
+                has_dvd = has_dvd or "VIDEO_TS" in upper_parts
+                has_bluray = has_bluray or "BDMV" in upper_parts
+                if name in file_names and stat.S_ISREG(entry.stat().st_mode) and entry.suffix.casefold() in VIDEO_SUFFIXES:
+                    media.append(relative.as_posix())
         return DirectoryObservation(
             path=str(resolved),
             name=resolved.name,

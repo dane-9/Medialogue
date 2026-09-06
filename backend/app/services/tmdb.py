@@ -425,13 +425,10 @@ async def sync_show_metadata(
         grouped: dict[int, tuple[str | None, tuple[TMDBEpisodeMetadata, ...]]] | None = None
         season_plan = list(details.seasons)
         if show.tmdb_episode_group_id:
-            try:
-                group = await client.get_episode_group(show.tmdb_episode_group_id)
-            except Exception:
-                # An unreachable group must not wipe a show's structure; keep
-                # whatever is already stored and try again on the next refresh.
-                group = None
-            if group is not None and group.seasons:
+            group = await client.get_episode_group(show.tmdb_episode_group_id)
+            if not group.seasons:
+                raise ValueError("The selected episode ordering contains no seasons")
+            if group.seasons:
                 grouped = {number: (title, episodes) for number, title, episodes in group.seasons}
                 season_plan = [
                     TMDBSeasonMetadata(
@@ -444,6 +441,16 @@ async def sync_show_metadata(
                     for number, title, episodes in group.seasons
                 ]
 
+        # Fetch the entire plan before renumbering. A failed season/group read
+        # must never leave temporary negative episode numbers in the database.
+        metadata_by_season = {
+            season.season_number: (
+                list(grouped[season.season_number][1]) if grouped is not None
+                else await client.get_season(show.tmdb_id, season.season_number)
+            )
+            for season in season_plan
+        }
+
         # Renumbering in place would trip uq_episodes_show_season_number the
         # moment an episode takes a slot another one still holds. Park every
         # existing episode on a negative number first; the mapping is injective,
@@ -451,7 +458,20 @@ async def sync_show_metadata(
         # below. This runs in both directions, because switching back to the
         # default structure renumbers just as much as switching away from it.
         existing = (await db.scalars(select(Episode).where(Episode.show_id == show.id))).all()
-        for episode in existing:
+        by_tmdb = {episode.tmdb_id: episode for episode in existing if episode.tmdb_id is not None}
+        by_slot = {(episode.season_number, episode.episode_number): episode for episode in existing}
+        assignments = {}
+        for items in metadata_by_season.values():
+            for item in items:
+                episode = by_tmdb.get(item.tmdb_id) if item.tmdb_id is not None else None
+                if episode is None:
+                    placeholder = by_slot.get((item.season_number, item.episode_number))
+                    if placeholder is not None and (placeholder.tmdb_id is None or item.tmdb_id is None):
+                        episode = placeholder
+                assignments[(item.season_number, item.episode_number)] = episode
+        # Episodes absent from the response retain their original numbers.
+        moving = {episode.id: episode for episode in assignments.values() if episode is not None}
+        for episode in moving.values():
             episode.season_number = -1000 - abs(episode.season_number)
             episode.episode_number = -abs(episode.episode_number)
         if existing:
@@ -483,29 +503,9 @@ async def sync_show_metadata(
                 "provider": "tmdb",
             }
             season_count += 1
-            if grouped is not None:
-                episode_metadata = list(grouped.get(season_meta.season_number, (None, ()))[1])
-            else:
-                try:
-                    episode_metadata = await client.get_season(show.tmdb_id, season_meta.season_number)
-                except Exception:
-                    # One unavailable season must not discard metadata already
-                    # refreshed for the rest of the show.
-                    continue
+            episode_metadata = metadata_by_season[season_meta.season_number]
             for item in episode_metadata:
-                episode = None
-                if item.tmdb_id is not None:
-                    episode = await db.scalar(
-                        select(Episode).where(Episode.show_id == show.id, Episode.tmdb_id == item.tmdb_id)
-                    )
-                if episode is None:
-                    episode = await db.scalar(
-                        select(Episode).where(
-                            Episode.show_id == show.id,
-                            Episode.season_number == item.season_number,
-                            Episode.episode_number == item.episode_number,
-                        )
-                    )
+                episode = assignments[(item.season_number, item.episode_number)]
                 if episode is None:
                     episode = Episode(
                         show_id=show.id,

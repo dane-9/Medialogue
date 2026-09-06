@@ -1142,17 +1142,8 @@ async def mark_absent_show_directories(
                         release.release_state = ReleaseState.MISSING
         for episode_id in affected:
             episode = await db.get(Episode, episode_id)
-            if episode is not None and episode.presence_state != PresenceState.MISSING:
-                episode.presence_state = PresenceState.MISSING
-                await create_event(
-                    db,
-                    "episode.missing",
-                    entity_type="episode",
-                    entity_id=episode.id,
-                    message=f"S{episode.season_number:02d}E{episode.episode_number:02d} is missing.",
-                    severity=Severity.WARNING,
-                    details={"reason": "PATH_NOT_FOUND", "path": directory.resolved_path, "grace_checks": threshold},
-                )
+            if episode is not None:
+                await _refresh_episode_presence(db, episode)
     return {"started": started, "missing": missing, "restored": restored, "threshold": threshold}
 
 

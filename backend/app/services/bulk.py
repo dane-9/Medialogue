@@ -25,6 +25,7 @@ from app.services.events import create_event
 from app.services.jobs import checkpoint_job, run_job
 from app.services.plex import get_plex_configuration, recheck_movie_plex
 from app.services.quality_profiles import refresh_movie_release_scores
+from app.services.upgrade_candidates import invalidate_idle_upgrade_candidates
 
 
 def _resource_id(movie: Movie) -> str:
@@ -202,6 +203,8 @@ async def change_movie_profile(
                 "overrides_preserved": True,
             },
         )
+    if changed:
+        await invalidate_idle_upgrade_candidates(db)
     return changed
 
 
