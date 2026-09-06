@@ -33,6 +33,23 @@ export function formatAge(published?: string | null, now: number = Date.now()): 
   return 'just now'
 }
 
+export function formatUntil(expires?: string | null, now: number = Date.now()): string {
+  if (!expires) return '-'
+  const at = Date.parse(expires)
+  if (Number.isNaN(at)) return '-'
+
+  const remaining = at - now
+  if (remaining <= 0) return 'expired'
+  if (remaining < MINUTE) return 'in under a minute'
+
+  for (const [size, name] of UNITS) {
+    if (remaining < size) continue
+    const count = Math.floor(remaining / size)
+    return `in ${count} ${name}${count === 1 ? '' : 's'}`
+  }
+  return 'in under a minute'
+}
+
 export function ageValue(published?: string | null): number {
   if (!published) return 0
   const at = Date.parse(published)

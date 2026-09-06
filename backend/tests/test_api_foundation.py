@@ -134,6 +134,35 @@ def test_login_session_and_csrf(client: TestClient) -> None:
     assert created.status_code == 201
 
 
+def test_repeat_login_from_one_browser_keeps_a_single_session(client: TestClient) -> None:
+    """A browser signing in again replaces its own row instead of orphaning it."""
+
+    for _ in range(3):
+        login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
+        assert login.status_code == 200, login.text
+
+    sessions = client.get("/api/v1/auth/sessions")
+    assert sessions.status_code == 200, sessions.text
+    body = sessions.json()
+    assert len(body) == 1
+    assert body[0]["current"] is True
+
+
+def test_login_from_a_second_browser_leaves_the_first_signed_in(client: TestClient) -> None:
+    """Only the cookie actually presented is retired, never another browser's."""
+
+    first = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
+    assert first.status_code == 200, first.text
+
+    with TestClient(client.app) as other_browser:
+        second = other_browser.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
+        assert second.status_code == 200, second.text
+
+    sessions = client.get("/api/v1/auth/sessions").json()
+    assert len(sessions) == 2
+    assert [entry["current"] for entry in sessions].count(True) == 1
+
+
 def test_error_envelope_serializes_validation_context(client: TestClient) -> None:
     login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
     invalid = client.post(

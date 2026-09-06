@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { badgeColor } from './lib/badgeColor'
 import { eventLabel, eventStamp } from './lib/eventLabel'
-import { formatAge } from './lib/age'
+import { ageValue, formatAge, formatUntil } from './lib/age'
 import { isGeneratedRootName, nextRootName } from './lib/rootName'
 import { moveItem } from './lib/reorder'
 import { CONFIDENT, newMediaRoots } from './lib/newMediaTriage'
@@ -2564,7 +2564,7 @@ export function TorrentArchivePage() {
   return <Page title="Torrent Archive" subtitle="Kept separately from qBittorrent, so it survives a torrent being removed there." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
     <div className="archive-callout"><div className="archive-callout-icon"><Icon name="archive" size={22} /></div><div><strong>{health.status === 'healthy' ? 'Archive mount is healthy' : 'Archive mount needs attention'}</strong><span>{health.archived ?? items.filter((item) => item.archiveState === 'archived').length} archived · {health.missing_or_failed ?? items.filter((item) => item.archiveState !== 'archived').length} pending/failed · retention: indefinite · {health.path ?? '/torrent-archive'}</span></div><Badge tone={archiveTone}>{health.status === 'healthy' ? 'Protected' : health.status ?? 'Unknown'}</Badge></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
-    {restoreItem && <Panel title="Restore archived torrent" eyebrow="EXPLICIT QBITTORRENT RESTORE"><div className="settings-form"><SettingsGroup legend="Destination"><Field label="Torrent" help="The archived torrent being resubmitted."><Input value={restoreItem.torrentName} readOnly /></Field><Field label="qBittorrent client" help="Which client receives the restored torrent."><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></Field><Field label="qBittorrent save path" help="Must resolve inside a configured media folder."><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></Field></SettingsGroup></div><div className="settings-note"><Icon name="info" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
+    {restoreItem && <Panel title="Restore archived torrent" eyebrow="EXPLICIT QBITTORRENT RESTORE"><div className="settings-form"><SettingsGroup><Field label="Torrent" help="The archived torrent being resubmitted."><Input value={restoreItem.torrentName} readOnly /></Field><Field label="qBittorrent client" help="Which client receives the restored torrent."><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></Field><Field label="qBittorrent save path" help="Must resolve inside a configured media folder."><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></Field></SettingsGroup></div><div className="settings-note"><Icon name="info" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
     <Panel className="table-panel" title="Archived torrents" eyebrow="RECOVERY INVENTORY" action={<div className="search-field compact"><Icon name="search" size={14} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter archive…" /></div>}>
       {error ? <EmptyState title="Could not load torrent archive" detail={error} /> : !loading && !items.length ? <EmptyState icon="archive" title="No torrent recovery records yet" detail="Relevant qBittorrent torrents will be archived automatically when they are observed." /> : <table className="data-table"><thead><tr><th>Release</th><th>Media</th><th>Info hash</th><th>Source</th><th>Size</th><th>Archive</th><th>qBit</th><th /></tr></thead><tbody>{items.map((torrent) => <tr key={torrent.id}><td><strong>{torrent.releaseName ?? torrent.torrentName}</strong>{torrent.quality && <span className="table-sub">{torrent.quality}{torrent.edition ? ` · ${torrent.edition}` : ''}</span>}</td><td>{torrent.mediaTitle ?? 'Unassociated'}{torrent.tmdbId && <span className="table-sub">TMDB {torrent.tmdbId}</span>}</td><Tooltip asChild content={torrent.infoHash}><td className="mono">{shortHash(torrent.infoHash)}</td></Tooltip><td>{torrent.originalDownloadClient ?? 'Unknown client'}</td><td>{formatSize(torrent.totalSize)}</td><td><Badge tone={torrent.archiveState === 'archived' ? 'green' : torrent.archiveState === 'failed' ? 'red' : 'amber'}>{torrent.archiveState.replaceAll('_', ' ')}</Badge></td><td><Badge tone={torrent.qbitPresent ? 'green' : 'neutral'}>{torrent.qbitPresent ? 'Present' : 'Removed'}</Badge></td><td><div className="button-row">{torrent.archiveState === 'archived' ? <Button variant="ghost" icon="download" onClick={() => beginRestore(torrent)}>Restore</Button> : <Button variant="ghost" icon="refresh" onClick={() => void retryArchive(torrent)} disabled={busy}>Retry</Button>}</div></td></tr>)}</tbody></table>}
     </Panel>
@@ -2647,6 +2647,8 @@ function SecuritySettings() {
   }
   const tooShort = newPassword.length > 0 && newPassword.length < 12
   const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword
+  const otherSessions = sessions.filter((session) => !session.current)
+  const orderedSessions = [...sessions].sort((a, b) => Number(b.current) - Number(a.current) || ageValue(b.created_at) - ageValue(a.created_at))
   return <>
     <SectionHead title="Administrator Security"
       description="Medialogue uses a single local administrator account and secure session cookies. There is no self-service recovery, a lost password is reset from the server."
@@ -2673,16 +2675,38 @@ function SecuritySettings() {
     <div className="settings-footer">
       <Button variant="primary" onClick={() => void change()} disabled={busy || !currentPassword || tooShort || mismatch || !newPassword}>{busy ? 'Changing…' : 'Change password'}</Button>
     </div>
-    <div className="settings-section">
-      <div><h3>Active sessions</h3><p>Review signed-in browser sessions and revoke any device you no longer recognize. Session tokens are opaque and never shown here.</p></div>
-      <div className="session-list">
-        {sessions.map((session) => <div className="session-row" key={session.id}>
-          <div><strong>{session.current ? 'This device' : 'Other device'}</strong><small>Created {new Date(session.created_at).toLocaleString()} · expires {new Date(session.expires_at).toLocaleString()}</small></div>
-          {session.current ? <Badge tone="green">Current</Badge> : <Button variant="ghost" onClick={() => void revokeSession(session.id)} disabled={busy}>Revoke</Button>}
-        </div>)}
-        {!sessions.length && <div className="history-empty">No active sessions found.</div>}
-        <div className="settings-footer"><Button variant="ghost" onClick={() => void revokeOthers()} disabled={busy || sessions.every((session) => session.current)}>Revoke other sessions</Button></div>
-      </div>
+    <SectionHead title="Active Sessions" divided
+      description="Every signed-in browser holds its own session cookie. Revoke any you no longer recognise. The tokens themselves are opaque and never shown here."
+      status={sessions.length ? `${sessions.length} signed in` : undefined}
+      statusTone={otherSessions.length ? 'amber' : 'green'}
+      action={otherSessions.length > 0 && <Button variant="secondary" icon="logout" onClick={() => void revokeOthers()} disabled={busy}>
+        Revoke {otherSessions.length} other{otherSessions.length === 1 ? '' : 's'}
+      </Button>} />
+    <div className="session-list">
+      {/* Sorted so the browser you are reading this in is always the first row,
+          and the rest fall in order of how recently they were used. */}
+      {orderedSessions.map((session) => {
+        const expired = Date.parse(session.expires_at) <= Date.now()
+        return <div className={`session-row ${session.current ? 'session-row-current' : ''}`} key={session.id}>
+          <span className="session-row-icon"><Icon name={session.current ? 'check' : 'security'} size={17} /></span>
+          <span className="session-row-copy">
+            <span className="session-row-title">
+              <strong>{session.current ? 'This browser' : 'Other browser'}</strong>
+              {session.current && <Badge tone="green">Current</Badge>}
+              {expired && <Badge tone="red">Expired</Badge>}
+            </span>
+            {/* No "last used": the server freezes last_seen_at at creation so
+                authenticated reads stay write-free, so it only ever repeats the
+                sign-in time. */}
+            <span className="session-row-facts">
+              <span>Signed in {formatAge(session.created_at)}</span>
+              <span>Expires {formatUntil(session.expires_at)}</span>
+            </span>
+          </span>
+          {!session.current && <Button variant="ghost" onClick={() => void revokeSession(session.id)} disabled={busy}>Revoke</Button>}
+        </div>
+      })}
+      {!sessions.length && <p className="provider-empty-copy">No active sessions were returned. Reload the page if you are still signed in.</p>}
     </div>
   </>
 }
@@ -3030,6 +3054,9 @@ function StorageSettings() {
 
         <div className={`settings-form scope-${mediaType}`}>
           <SettingsGroup legend="Folder">
+            <Field label="Name" help="Shown in Medialogue only.">
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
             <Field label="Media type" help="Which library the files found here belong to.">
               <Segmented
                 ariaLabel="Media type"
@@ -3037,9 +3064,6 @@ function StorageSettings() {
                 onChange={changeMediaType}
                 options={[{ value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
               />
-            </Field>
-            <Field label="Name" help="Shown in Medialogue only.">
-              <Input value={name} onChange={(event) => setName(event.target.value)} />
             </Field>
             <Field label="Access" help="Read-only is recommended. Read/write allows deletion.">
               <Segmented
@@ -3129,15 +3153,16 @@ function StorageSettings() {
     </div>
     {!mappings.length && <p className="provider-empty-copy">No mappings configured. Only add one when qBittorrent reports a path that differs from the path visible inside Medialogue.</p>}
 
-    {addingMapping && <Modal wide title={selectedMapping ? selectedMapping.name : 'Add remote path mapping'} eyebrow={selectedMapping ? 'EDIT REMOTE PATH MAPPING' : undefined} onClose={closeMapping} footer={<>
-      <EnabledButton enabled={mappingEnabled} onChange={(next) => updateMappingDraft(() => setMappingEnabled(next))} />
+    {addingMapping && <Modal wide title={selectedMapping ? selectedMapping.name : 'Add remote path mapping'} onClose={closeMapping}
+      titleAction={<EnabledButton enabled={mappingEnabled} onChange={(next) => updateMappingDraft(() => setMappingEnabled(next))} />}
+      footer={<>
       {selectedMapping && <Button variant="danger" onClick={() => void removeMapping(selectedMapping)} disabled={mappingBusy}>Delete</Button>}
+      <span className="modal-foot-spacer" />
       {(mappingDirty || !selectedMapping) && <span className="footer-state">{mappingDirty ? 'Unsaved changes' : 'Ready to add'}</span>}
       <Button variant="ghost" onClick={closeMapping} disabled={mappingBusy}>Cancel</Button>
       <Button variant="primary" onClick={() => void saveMapping()} disabled={mappingBusy || Boolean(selectedMapping && !mappingDirty)}>{mappingBusy ? 'Saving…' : selectedMapping ? 'Save mapping' : 'Add mapping'}</Button>
     </>}>
       <div className="provider-modal-editor">
-        <SectionHead title={selectedMapping ? selectedMapping.name : 'Map a Reported Path'} description="Translate the path reported by qBittorrent into the equivalent path visible to Medialogue." status={selectedMapping ? mappingEnabled ? 'On' : 'Off' : 'New mapping'} statusTone={mappingEnabled ? 'green' : 'neutral'} />
         <div className="settings-form">
           <SettingsGroup legend="Mapping">
             <Field label="Name" help="Shown in Medialogue only.">
@@ -3194,7 +3219,7 @@ function MetadataSettings() {
       status={!configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
       action={<EnabledButton enabled={enabled} onChange={(next) => { setEnabled(next); setDirty(true) }} />} />
     <div className="settings-form">
-      <SettingsGroup legend="Connection">
+      <SettingsGroup>
         <Field label="API key"
           help={<>Your TMDB API Read Access Token. Held server-side. {configuration?.api_key_configured ? 'Leave blank to keep the current one.' : 'Required for automatic matching.'}</>}>
           <Secret value={apiKey} onChange={(event) => { setApiKey(event.target.value); setDirty(true) }} placeholder={configuration?.api_key_configured ? 'Stored server-side · leave blank to preserve' : 'Required for automatic matching'} />
@@ -3251,7 +3276,7 @@ function PlexSettings() {
       status={loading ? 'Loading' : !configuration?.configured ? 'Not configured' : configuration.health} statusTone={healthTone}
       action={<EnabledButton enabled={enabled} onChange={(next) => { setEnabled(next); setDirty(true) }} />} />
     <div className="settings-form">
-      <SettingsGroup legend="Connection">
+      <SettingsGroup>
         <Field label="URL" help={<>Plex Media Server address, including port. Example: <code>http://plex:32400</code></>}>
           <Input placeholder="http://plex:32400" value={url} onChange={(event) => { setUrl(event.target.value); setDirty(true) }} />
         </Field>
@@ -3942,9 +3967,6 @@ function IndexerSettings() {
                 {draft.color ? <button type="button" className="button button-danger" onClick={() => updateDraft('color', '')}>Clear</button> : null}
               </div>
             </Field>
-          </SettingsGroup>
-
-          <SettingsGroup legend="Grabs">
             <Field label="Download clients" wide help="Which download clients receive grabs from this indexer. At least one is required.">
               {compatibleClients.length ? <div className="client-choice">
                 {/* Checkboxes, not badges: these were styled as the same read-only
@@ -3968,7 +3990,7 @@ function IndexerSettings() {
                     <span className="client-choice-scope">{client.scope === 'movies' ? 'Movies' : client.scope === 'shows' ? 'Shows' : 'Both'}</span>
                   </button>
                 })}
-              </div> : <span className="field-help">No download clients match this scope. Configure a matching client in qBittorrent settings.</span>}
+              </div> : <span className="client-choice-empty">No download clients match this scope. Configure a matching client in qBittorrent settings.</span>}
             </Field>
           </SettingsGroup>
         </div>
@@ -4837,7 +4859,7 @@ export function UpgradeMediaPage() {
         <p>Every current release stays untouched and authoritative while its replacement downloads and validates.</p>
       </div>
       <div className="settings-form upgrade-destination-form">
-        <SettingsGroup legend="Destination">
+        <SettingsGroup>
           <Field label="qBittorrent client" help="Which client receives every grab in this upgrade.">
             <Select value={clientId} onChange={(event) => setClientId(event.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select>
           </Field>

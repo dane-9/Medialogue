@@ -58,12 +58,23 @@ async def _create_auth_session(
     admin: AdminUser,
     *,
     commit: bool = True,
+    replacing: str | None = None,
 ) -> LoginResponse:
     """Create the shared opaque session + CSRF cookie pair for login/bootstrap."""
 
     settings = get_settings()
     now = datetime.now(timezone.utc)
     await db.execute(delete(AuthSession).where(AuthSession.expires_at <= now))
+    if replacing:
+        # Signing in again from a browser that already holds a session replaces
+        # its cookie, orphaning the old row until its absolute expiry. Left
+        # alone those pile up and read as unknown devices in Active Sessions.
+        await db.execute(
+            delete(AuthSession).where(
+                AuthSession.token_digest == digest_token(replacing),
+                AuthSession.admin_id == admin.id,
+            )
+        )
     raw_session = new_token()
     raw_csrf = new_token()
     db.add(
@@ -123,7 +134,9 @@ async def login(
         raise AppError("INVALID_CREDENTIALS", "Username or password is incorrect.", status_code=401)
 
     login_rate_limiter.clear(key)
-    return await _create_auth_session(db, response, admin)
+    return await _create_auth_session(
+        db, response, admin, replacing=request.cookies.get(settings.session_cookie_name)
+    )
 
 
 @router.get("/bootstrap/status", response_model=BootstrapStatusResponse)

@@ -5,7 +5,7 @@ import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
 import { useConfirm } from './components/Confirm'
 import { Badge, Button, EmptyState, EnabledButton, Input, Select } from './components/ui'
-import { Field } from './components/settings'
+import { Field, SettingsGroup } from './components/settings'
 import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
 import { browserSafeId } from './lib/uiState'
@@ -465,40 +465,42 @@ export default function CustomFormatsPageView() {
           {editorView === 'details' && <section className="cf-editor-panel">
             <div className="cf-editor-panel-head"><h3>Describe this format</h3><p>Give the rule set a clear purpose and choose where it belongs.</p></div>
             <div className="cf-editor-fields">
-              <Field label="Format name" help="Shown on cards, Quality Profiles and evaluation results.">
-                <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Dolby Vision with HDR10 fallback" readOnly={draft.builtin} autoFocus={!draft.id} />
-              </Field>
-              <Field label="Section" help="The header this format appears under on the Custom Formats page.">
-                <Select value={editorSectionId} onChange={(event) => setEditorSectionId(event.target.value)}>
-                  {sections.map((section) => <option value={section.id} key={section.id}>{section.name}</option>)}
-                </Select>
-              </Field>
-              <Field label="Description" wide>
-                <textarea className="input cf-description-input" value={draft.description ?? ''} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="e.g. Lossless audio commonly found in remuxes and high-quality releases." readOnly={draft.builtin} />
-              </Field>
-              <Field label="Supersedes" help="When this format matches, selected broader formats remain diagnostic matches but contribute no score." wide>
-                <div className="cf-supersedes-list">
-                  {formats.filter((format) => format.id !== draft.id).map((format) => {
-                    const checked = draft.supersedes.includes(format.id)
-                    return <label className={checked ? 'selected' : ''} key={format.id}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={draft.builtin}
-                        onChange={() => setDraft((current) => ({
-                          ...current,
-                          supersedes: checked
-                            ? current.supersedes.filter((id) => id !== format.id)
-                            : [...current.supersedes, format.id],
-                        }))}
-                      />
-                      <span>{format.name}</span>
-                      {format.builtin && <small>Built-in</small>}
-                    </label>
-                  })}
-                  {!formats.some((format) => format.id !== draft.id) && <span className="cf-supersedes-empty">No other Custom Formats are available.</span>}
-                </div>
-              </Field>
+              <SettingsGroup>
+                <Field label="Format name" help="Shown on cards, Quality Profiles and evaluation results.">
+                  <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Dolby Vision with HDR10 fallback" readOnly={draft.builtin} autoFocus={!draft.id} />
+                </Field>
+                <Field label="Section" help="The header this format appears under on the Custom Formats page.">
+                  <Select value={editorSectionId} onChange={(event) => setEditorSectionId(event.target.value)}>
+                    {sections.map((section) => <option value={section.id} key={section.id}>{section.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Description" wide help="Optional. Explains to anyone reading the card what this rule set is for.">
+                  <textarea className="input cf-description-input" value={draft.description ?? ''} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="e.g. Lossless audio commonly found in remuxes and high-quality releases." readOnly={draft.builtin} />
+                </Field>
+                <Field label="Supersedes" help="When this format matches, selected broader formats remain diagnostic matches but contribute no score." wide>
+                  <div className="cf-supersedes-list">
+                    {formats.filter((format) => format.id !== draft.id).map((format) => {
+                      const checked = draft.supersedes.includes(format.id)
+                      return <label className={checked ? 'selected' : ''} key={format.id}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={draft.builtin}
+                          onChange={() => setDraft((current) => ({
+                            ...current,
+                            supersedes: checked
+                              ? current.supersedes.filter((id) => id !== format.id)
+                              : [...current.supersedes, format.id],
+                          }))}
+                        />
+                        <span>{format.name}</span>
+                        {format.builtin && <small>Built-in</small>}
+                      </label>
+                    })}
+                    {!formats.some((format) => format.id !== draft.id) && <span className="cf-supersedes-empty">No other Custom Formats are available.</span>}
+                  </div>
+                </Field>
+              </SettingsGroup>
             </div>
             <div className="cf-editor-next"><Button variant="primary" onClick={() => setEditorView('conditions')}>Continue to match rules</Button></div>
           </section>}
@@ -531,7 +533,13 @@ export default function CustomFormatsPageView() {
 
           {editorView === 'test' && <section className="cf-editor-panel">
             <div className="cf-editor-panel-head"><h3>Try a real release title</h3><p>Testing uses the unsaved rules currently in this editor and does not change your library.</p></div>
-            <label className="cf-release-test-input"><span>Release title</span><textarea className="input" value={releaseName} onChange={(event) => setReleaseName(event.target.value)} placeholder="Paste a full release title…" /></label>
+            <div className="cf-editor-fields">
+              <SettingsGroup>
+                <Field label="Release title" wide help="Pasted exactly as the indexer reports it. Rules run against this whole string.">
+                  <textarea className="input cf-release-test-textarea" value={releaseName} onChange={(event) => setReleaseName(event.target.value)} placeholder="Paste a full release title…" />
+                </Field>
+              </SettingsGroup>
+            </div>
             <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="ghost" onClick={() => void testAll()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
             {!testResult && !testAllResult && <div className="cf-test-placeholder"><Icon name="activity" size={18} /><strong>Ready to test</strong><span>Run the title above to see every rule’s evidence and result.</span></div>}
             {testResult?.evaluation && <EvaluationRows evaluation={testResult.evaluation} />}

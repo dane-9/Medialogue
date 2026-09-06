@@ -7,8 +7,8 @@ import { Tooltip } from './components/Tooltip'
 import { useConfirm } from './components/Confirm'
 import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
-import { Field } from './components/settings'
-import { Badge, Button, EmptyState, Input, Select } from './components/ui'
+import { Field, SettingsGroup } from './components/settings'
+import { Badge, Button, EmptyState, Input, Segmented, Select } from './components/ui'
 import { useUrlState } from './lib/urlState'
 import type { CustomFormat, CustomFormatSection, QualityDefinition, QualityProfile } from './types'
 
@@ -372,23 +372,30 @@ export default function QualityProfilesPage() {
           {editorView === 'details' && <section className="cf-editor-panel qp-details-panel">
             <div className="cf-editor-panel-head"><h3>Profile details</h3><p>Name this ranking policy and optionally configure quality warnings and score acceptance.</p></div>
             <div className="qp-details-fields">
-              <Field label="Profile name" help="Shown when assigning this profile to a movie or show.">
-                <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Remux first" autoFocus={creating} />
-              </Field>
-              <Field label="Minimum quality warning" help="Qualities lower than this are marked with a warning.">
-                <Select value={minimumId} onChange={(event) => setMinimumId(event.target.value)}>
-                  <option value="">No minimum warning</option>
-                  {minimumQualityGroups.map((group) => <optgroup label={group.name} key={group.name}>
-                    {group.qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}
-                  </optgroup>)}
-                </Select>
-              </Field>
-              <Field label="Minimum acceptable Custom Format score" help="Releases below this total remain visible but are rejected for automatic selection. Manual download remains available.">
-                <Input type="number" value={minimumScore} onChange={(event) => setMinimumScore(event.target.value)} placeholder="No minimum score" />
-              </Field>
-              <Field label="Season pack upgrades" help="When enabled, a completed season can qualify for consolidation into one season pack. The pack must still meet the highest quality already present in that season.">
-                <label className="inline-check"><input type="checkbox" checked={seasonPackUpgrades} onChange={(event) => setSeasonPackUpgrades(event.target.checked)} /><span><strong>Count season-pack consolidation as an upgrade</strong><small>Discovery only. Medialogue will not download an upgrade automatically.</small></span></label>
-              </Field>
+              <SettingsGroup>
+                <Field label="Profile name" help="Shown when assigning this profile to a movie or show.">
+                  <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Remux first" autoFocus={creating} />
+                </Field>
+                <Field label="Minimum quality warning" help="Qualities lower than this are marked with a warning.">
+                  <Select value={minimumId} onChange={(event) => setMinimumId(event.target.value)}>
+                    <option value="">No minimum warning</option>
+                    {minimumQualityGroups.map((group) => <optgroup label={group.name} key={group.name}>
+                      {group.qualities.map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}
+                    </optgroup>)}
+                  </Select>
+                </Field>
+                <Field label="Minimum Custom Format score" help="Releases below this total remain visible but are rejected for automatic selection. Manual download remains available.">
+                  <Input type="number" value={minimumScore} onChange={(event) => setMinimumScore(event.target.value)} placeholder="No minimum score" />
+                </Field>
+                <Field label="Season pack upgrades" help="Counts consolidating a completed season into one season pack as an upgrade. The pack must still meet the highest quality already present in that season. Discovery only, Medialogue never downloads it automatically.">
+                  <Segmented
+                    ariaLabel="Season pack upgrades"
+                    value={seasonPackUpgrades ? 'on' : 'off'}
+                    onChange={(next) => setSeasonPackUpgrades(next === 'on')}
+                    options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]}
+                  />
+                </Field>
+              </SettingsGroup>
             </div>
             <div className="cf-editor-next"><Button variant="primary" onClick={() => setEditorView('qualities')} disabled={!name.trim()}>Continue to qualities</Button></div>
           </section>}
@@ -425,7 +432,7 @@ export default function QualityProfilesPage() {
               })}
               {!visibleQualities.length && <div className="qp-quality-empty"><Icon name="search" size={17} /><span>No qualities match “{qualityFilter.trim()}”.</span></div>}
             </div>
-            {!qualityIds.length && <div className="settings-note error"><Icon name="alert" size={15} /><span>Select at least one quality before saving this profile.</span></div>}
+            {!qualityIds.length && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>Select at least one quality before saving this profile.</span></div>}
             <div className="cf-editor-next"><Button variant="secondary" onClick={() => setEditorView('details')}>Back to details</Button><Button variant="primary" onClick={() => setEditorView('formats')} disabled={!qualityIds.length}>Continue to format scores</Button></div>
           </section>}
 

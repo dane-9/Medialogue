@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageValue, formatAge } from './age'
+import { ageValue, formatAge, formatUntil } from './age'
 
 const NOW = Date.parse('2026-08-24T12:00:00Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -59,5 +59,36 @@ describe('ageValue', () => {
   it('sorts an unknown age as the oldest', () => {
     expect(ageValue(undefined)).toBe(0)
     expect(ageValue('not a date')).toBe(0)
+  })
+})
+
+describe('formatUntil', () => {
+  const ahead = (ms: number) => new Date(NOW + ms).toISOString()
+
+  it('counts down in a single coarse unit', () => {
+    expect(formatUntil(ahead(14 * HOUR), NOW)).toBe('in 14 hours')
+    expect(formatUntil(ahead(2 * WEEK), NOW)).toBe('in 2 weeks')
+  })
+
+  it('uses the singular for exactly one of a unit', () => {
+    expect(formatUntil(ahead(DAY), NOW)).toBe('in 1 day')
+  })
+
+  it('rounds down, so nothing looks further away than it is', () => {
+    expect(formatUntil(ahead(2 * DAY - MINUTE), NOW)).toBe('in 1 day')
+  })
+
+  it('reports anything already past as expired', () => {
+    expect(formatUntil(ahead(-HOUR), NOW)).toBe('expired')
+    expect(formatUntil(new Date(NOW).toISOString(), NOW)).toBe('expired')
+  })
+
+  it('collapses the final minute rather than counting seconds', () => {
+    expect(formatUntil(ahead(30_000), NOW)).toBe('in under a minute')
+  })
+
+  it('renders a dash for a missing or unparseable date', () => {
+    expect(formatUntil(undefined, NOW)).toBe('-')
+    expect(formatUntil('not a date', NOW)).toBe('-')
   })
 })
