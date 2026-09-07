@@ -352,7 +352,7 @@ export default function QualityProfilesPage() {
         {/* Delete stays hard left, away from the buttons people reach for. */}
         <span className="modal-foot-spacer" />
         {!creating && selected && (selected.isDefault
-          ? <span className="footer-state">Default profile</span>
+          ? <span className="footer-state ok">Default profile</span>
           : <Button variant="ghost" onClick={() => void makeDefault()} disabled={busy || dirty} title={dirty ? 'Save or cancel your edits before changing the default profile.' : undefined}>Set as Default</Button>)}
         <Button variant="secondary" onClick={closeEditor} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || !name.trim() || !qualityIds.length}>{busy ? 'Saving…' : 'Save profile'}</Button>

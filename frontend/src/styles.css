@@ -559,6 +559,8 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   text-transform: uppercase;
 }
 .footer-state.clean { color: var(--faint); }
+/* A settled, good state rather than something needing attention. */
+.footer-state.ok { color: var(--ok); }
 .autosave-tag {
   display: inline-flex;
   align-items: center;
