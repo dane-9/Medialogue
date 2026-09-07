@@ -19,7 +19,7 @@ import { splitQuality } from './lib/quality'
 import { pathParts } from './lib/pathParts'
 import { parserWarningMessage } from './lib/parserWarnings'
 import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
-import { qualityMark } from './lib/qualityMark'
+import { editionLabel, qualityMark } from './lib/qualityMark'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, Note, SaveFooter, SectionHead, Secret, SettingsGroup, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
@@ -277,12 +277,15 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
 
 function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'search' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
   const plexAvailable = usePlexAvailable()
-  const mark = qualityMark(movie.quality, movie.edition)
+  const tier = qualityMark(movie.quality)
+  const edition = editionLabel(movie.edition)
   const run = (action: 'search' | 'plex' | 'monitor' | 'unmonitor') => (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onAction(movie, action) }
   return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <Link className="media-card-link" to={`/movies/${movie.id}`} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}>
       <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
-      <div className="media-card-body"><div className="media-card-title"><strong>{movie.title}</strong><span className="media-card-sub">{movie.year || 'Year unknown'}{mark && <em className="media-card-quality">{mark}</em>}</span></div><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}<QbitStatusBadge status={movie.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{movie.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div></div>
+      <div className="media-card-body"><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}<QbitStatusBadge status={movie.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{movie.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="media-card-title"><strong>{movie.title}</strong>{/* An edition is long enough that sharing a row with the tier truncated one
+        of them, so it takes the year's row and the tier drops to its own. */}
+        <span className="media-card-sub">{movie.year || 'Year unknown'}{edition && <em className="media-card-quality">{edition}</em>}{!edition && tier && <em className="media-card-quality">{tier}</em>}</span>{edition && tier && <span className="media-card-sub media-card-tier">{tier}</span>}</div></div>
     </Link>
     <div className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Interactive search"><button className="icon-button" aria-label={`Search for ${movie.title}`} disabled={busy} onClick={run('search')}><Icon name="search" size={14} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={14} /></button></Tooltip>}<Tooltip asChild content={movie.monitored === false ? 'Monitor' : 'Unmonitor'}><button className="icon-button" aria-label={movie.monitored === false ? `Monitor ${movie.title}` : `Unmonitor ${movie.title}`} disabled={busy} onClick={run(movie.monitored === false ? 'monitor' : 'unmonitor')}><Icon name={movie.monitored === false ? 'eye' : 'eye-off'} size={14} /></button></Tooltip></div>
   </article>
@@ -646,15 +649,14 @@ export function ShowsPage() {
 function ShowCard({ show }: { show: Show }) {
   const plexAvailable = usePlexAvailable()
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
-  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="media-card-body"><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
+  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="media-card-body"><div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
                   pill fills to the proportion present and is coloured by whether any
                   are missing. A separate bar repeated what the numbers already said. */}
               <div className={`episode-progress ${percent === 100 ? 'complete' : 'incomplete'}`} title={`${show.episodesPresent} of ${show.episodesTotal} episodes present`}>
                 <span className="episode-progress-fill" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
                 <span className="episode-progress-label">Episodes</span>
                 <strong>{show.episodesPresent} / {show.episodesTotal}</strong>
-              </div>
-              <div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div></div></Link></article>
+              </div></div></Link></article>
 }
 
 export function ShowDetailPage({ id }: { id: string }) {

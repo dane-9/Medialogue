@@ -82,8 +82,6 @@
   --rail: 260px;
 
   --card-w: 180px;
-  --card-poster-h: 200px;
-  --card-body-h: auto;
 
   --sans: "Segoe UI", Tahoma, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -940,6 +938,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .media-card {
   position: relative;
+  aspect-ratio: 2 / 3;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -960,7 +959,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .media-attention:hover::after { border-color: var(--warn); }
 .media-selected { border-color: var(--accent); }
-.media-card-link { display: block; color: inherit; }
+.media-card-link { position: absolute; inset: 0; display: block; color: inherit; }
 .media-card-link:hover { color: inherit; }
 .media-card-actions {
   position: absolute;
@@ -977,26 +976,58 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .media-card-actions .icon-button:hover { color: var(--text); background: var(--raised-2); }
 
 .poster {
-  position: relative;
-  height: var(--card-poster-h);
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   padding: var(--s3);
   background: var(--raised);
 }
+/* The caption sits on the artwork now, so the scrim has to carry it over a
+   bright poster while leaving most of the image untouched. It is always on:
+   gating legibility on hover would leave the grid unreadable at rest and would
+   never resolve on a touch screen. Hover only deepens what is already there. */
 .poster::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(0deg, rgba(23, 29, 37, .90), transparent 55%);
+  background: linear-gradient(0deg, rgba(12, 16, 21, .95) 0%, rgba(12, 16, 21, .82) 20%, rgba(12, 16, 21, .34) 44%, transparent 66%);
+  transition: opacity .16s ease, background .16s ease;
+}
+/* A second, taller wash fades in under the caption on hover, so the card reads
+   as lifting toward you rather than simply changing colour. */
+.poster::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(0deg, rgba(12, 16, 21, .92) 0%, rgba(12, 16, 21, .62) 32%, rgba(12, 16, 21, .18) 58%, transparent 82%);
+  transition: opacity .16s ease;
+  pointer-events: none;
+}
+.media-card:hover .poster::before,
+.media-card:focus-within .poster::before { opacity: 1; }
+/* The art itself drifts in a little, which reads as depth without moving the
+   caption sitting on top of it. */
+.media-card .poster-image { transition: transform .28s ease; }
+.media-card:hover .poster-image,
+.media-card:focus-within .poster-image { transform: scale(1.04); }
+@media (prefers-reduced-motion: reduce) {
+  .poster::after,
+  .poster::before,
+  .media-card .poster-image { transition: none; }
+  .media-card:hover .poster-image,
+  .media-card:focus-within .poster-image { transform: none; }
 }
 .poster-noise { display: none; }
 .poster-title, .poster-year { position: relative; z-index: 1; }
 .poster-title { max-width: 100%; font: 600 var(--t-md)/1.3 var(--sans); }
 .poster-year { margin-top: var(--s1); color: var(--muted); font: var(--t-xs) var(--sans); }
-.poster-fallback-title { position: relative; z-index: 1; max-width: 100%; color: var(--muted); font: 600 var(--t-md)/1.3 var(--sans); }
+.poster-fallback-title { position: relative; z-index: 1; max-width: 100%; margin-bottom: 22%; color: var(--muted); font: 600 var(--t-md)/1.3 var(--sans); text-align: center; overflow-wrap: anywhere; }
 
 .poster-image { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
 .table-poster .poster-image, .detail-poster .poster-image, .tmdb-candidate-poster img {
@@ -1007,17 +1038,48 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   object-fit: cover;
 }
 
-.media-card-body { display: grid; gap: var(--s2); min-height: var(--card-body-h); padding: var(--s3); }
+.media-card-body {
+  position: absolute;
+  z-index: 2;
+  inset-inline: 0;
+  bottom: 0;
+  display: grid;
+  gap: 6px;
+  padding: var(--s3);
+}
 
 .media-card-title { display: grid; gap: 2px; min-width: 0; }
-.media-card-title strong { overflow: hidden; color: var(--text); font-size: var(--t-md); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
-.media-card-title span { color: var(--faint); font: var(--t-micro) var(--sans); }
-.media-card-sub { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+/* Two lines rather than an ellipsis: a truncated title is the one thing a
+   poster grid cannot afford to lose. */
+.media-card-title strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: #fff;
+  font: 500 var(--t-sm)/1.35 var(--sans);
+  white-space: normal;
+}
+.media-card-title span { color: rgba(255, 255, 255, .72); font: var(--t-micro) var(--sans); }
+/* An inline box rather than a flex row: a flex item cannot use a second line,
+   so a long edition could only ever be ellipsised away. Clamped at two lines so
+   the caption still cannot creep up the poster. */
+.media-card-sub {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+}
 
-.media-card-quality { overflow: hidden; color: var(--muted); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.media-card-quality { color: rgba(255, 255, 255, .72); font-style: normal; }
+/* The tier on its own row, one step back from the year and edition above it. */
+.media-card-tier { color: rgba(255, 255, 255, .58); }
 
-.media-card-quality::before { color: var(--faint); margin-right: var(--s1); font-family: var(--sans); content: "·"; }
+.media-card-quality::before { color: rgba(255, 255, 255, .45); margin: 0 var(--s1); font-family: var(--sans); content: "·"; }
 .media-card-meta { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
+.media-card-meta .badge { border-color: rgba(255, 255, 255, .18); backdrop-filter: blur(6px); }
+.media-card-body .episode-progress { backdrop-filter: blur(6px); }
 .media-card-primary-badge { min-height: 22px; padding-inline: var(--s2); font-weight: 600; }
 .media-card-secondary-badge { opacity: .72; }
 
@@ -4079,9 +4141,7 @@ select.input { background-color: var(--input-bg); }
   transform: translateY(-1px);
 }
 .media-selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.media-card-body { border-top: 1px solid #343a43; background: #2c323b; }
 .episode-progress { border-color: #414a52; border-radius: 2px; background: #20242b; }
-.media-card-title strong { color: #dcdedf; }
 .media-card-actions .icon-button {
   border-color: #414a52;
   border-radius: 2px;
