@@ -12422,7 +12422,10 @@ export interface operations {
     };
     search_upgrade_candidates_api_v1_upgrade_candidates_search_post: {
         parameters: {
-            query?: never;
+            query?: {
+                movie_id?: string | null;
+                show_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12436,6 +12439,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

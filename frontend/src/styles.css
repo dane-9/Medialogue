@@ -1081,7 +1081,14 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 .media-card-meta .badge { border-color: rgba(255, 255, 255, .18); backdrop-filter: blur(6px); }
 .media-card-body .episode-progress { backdrop-filter: blur(6px); }
 .media-card-primary-badge { min-height: 22px; padding-inline: var(--s2); font-weight: 600; }
-.media-card-secondary-badge { opacity: .72; }
+.media-card-secondary-badge { opacity: .72; transition: opacity .16s ease; }
+/* Held back at rest so the artwork leads, brought fully forward once the card
+   is the one being looked at. */
+.media-card:hover .media-card-secondary-badge,
+.media-card:focus-within .media-card-secondary-badge { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .media-card-secondary-badge { transition: none; }
+}
 
 /* The pill is the progress bar: it fills to the proportion of episodes present
    and takes its colour from whether any are missing, so one element carries the

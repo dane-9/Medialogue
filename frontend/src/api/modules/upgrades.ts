@@ -156,8 +156,10 @@ export const upgradesApi = {
       body: { result_id: resultId },
     })),
   ),
-  searchUpgrades: async () => {
-    const value = await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/search'))
+  searchUpgrades: async (target?: { movieId?: string; showId?: string }) => {
+    const value = await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/search', {
+      params: { query: { movie_id: target?.movieId ?? null, show_id: target?.showId ?? null } },
+    }))
     return { jobId: value.job_id }
   },
   setUpgradeQualityProfile: async (candidateId: string, qualityProfileId: string | null) => {

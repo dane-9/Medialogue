@@ -238,15 +238,21 @@ export function MoviesPage() {
     return row
   }
 
-  const runMovieCardAction = async (movie: Movie, action: 'search' | 'plex' | 'monitor' | 'unmonitor') => {
+  const runMovieCardAction = async (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => {
     setCardBusy(movie.id)
     try {
-      const accepted = action === 'search'
-        ? await moviesApi.startMovieSearch(movie.id)
+      const accepted = action === 'upgrade'
+        ? await upgradesApi.searchUpgrades({ movieId: movie.id })
         : action === 'plex'
           ? await moviesApi.recheckMoviePlex(movie.id)
           : await moviesApi.bulkMovies({ movie_ids: [movie.id], action })
-      if ('job_id' in accepted) setMessage(`${action === 'search' ? 'Movie search' : action === 'plex' ? 'Plex recheck' : action} queued as job ${accepted.job_id.slice(0, 8)}….`)
+      if ('jobId' in accepted) {
+        setMessage(`Checking ${movie.title} for upgrades…`)
+        const [job] = await systemApi.waitForJobs([accepted.jobId])
+        const found = Number(job?.summary?.candidates_found ?? 0)
+        if (job?.state === 'completed') setMessage(found ? `${found} upgrade ${found === 1 ? 'candidate' : 'candidates'} found for ${movie.title}. Review ${found === 1 ? 'it' : 'them'} in Upgrade Media.` : `No upgrade found for ${movie.title}.`)
+        else setMessage(`Upgrade check for ${movie.title} ${job?.state ?? 'failed'}. Check Tasks for details.`)
+      } else if ('job_id' in accepted) setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}….`)
       else setMessage(`${action} applied to ${movie.title}.`)
       await loadMovies()
     } catch (reason) {
@@ -275,11 +281,11 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
   return <div className="tag-chip-row">{movie.tags.map((tag) => <span key={tag.id} className="tag-chip" role={onTagClick ? 'button' : undefined} tabIndex={onTagClick ? 0 : undefined} onClick={(event) => { if (!onTagClick) return; event.preventDefault(); event.stopPropagation(); onTagClick(tag.name) }} onKeyDown={(event) => { if (onTagClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onTagClick(tag.name) } }}>{tag.name}</span>)}</div>
 }
 
-function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'search' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
+function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
   const plexAvailable = usePlexAvailable()
   const tier = qualityMark(movie.quality)
   const edition = editionLabel(movie.edition)
-  const run = (action: 'search' | 'plex' | 'monitor' | 'unmonitor') => (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onAction(movie, action) }
+  const run = (action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onAction(movie, action) }
   return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <Link className="media-card-link" to={`/movies/${movie.id}`} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}>
       <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
@@ -287,7 +293,7 @@ function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { m
         of them, so it takes the year's row and the tier drops to its own. */}
         <span className="media-card-sub">{movie.year || 'Year unknown'}{edition && <em className="media-card-quality">{edition}</em>}{!edition && tier && <em className="media-card-quality">{tier}</em>}</span>{edition && tier && <span className="media-card-sub media-card-tier">{tier}</span>}</div></div>
     </Link>
-    <div className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Interactive search"><button className="icon-button" aria-label={`Search for ${movie.title}`} disabled={busy} onClick={run('search')}><Icon name="search" size={14} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={14} /></button></Tooltip>}<Tooltip asChild content={movie.monitored === false ? 'Monitor' : 'Unmonitor'}><button className="icon-button" aria-label={movie.monitored === false ? `Monitor ${movie.title}` : `Unmonitor ${movie.title}`} disabled={busy} onClick={run(movie.monitored === false ? 'monitor' : 'unmonitor')}><Icon name={movie.monitored === false ? 'eye' : 'eye-off'} size={14} /></button></Tooltip></div>
+    <div className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={14} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={14} /></button></Tooltip>}<Tooltip asChild content={movie.monitored === false ? 'Monitor' : 'Unmonitor'}><button className="icon-button" aria-label={movie.monitored === false ? `Monitor ${movie.title}` : `Unmonitor ${movie.title}`} disabled={busy} onClick={run(movie.monitored === false ? 'monitor' : 'unmonitor')}><Icon name={movie.monitored === false ? 'eye' : 'eye-off'} size={14} /></button></Tooltip></div>
   </article>
 }
 
@@ -605,6 +611,8 @@ export function ShowsPage() {
   const [sort, setSort] = useState('title')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [cardBusy, setCardBusy] = useState<string | null>(null)
   const [countSpecials, setCountSpecials] = useState(true)
   const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
@@ -635,20 +643,35 @@ export function ShowsPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not change Specials counting.') }
     finally { setSpecialsBusy(false) }
   }
+  const checkShowForUpgrade = async (show: Show) => {
+    setCardBusy(show.id); setMessage('')
+    try {
+      const accepted = await upgradesApi.searchUpgrades({ showId: show.id })
+      setMessage(`Checking ${show.title} for upgrades…`)
+      const [job] = await systemApi.waitForJobs([accepted.jobId])
+      const found = Number(job?.summary?.candidates_found ?? 0)
+      if (job?.state === 'completed') setMessage(found ? `${found} upgrade ${found === 1 ? 'candidate' : 'candidates'} found for ${show.title}. Review ${found === 1 ? 'it' : 'them'} in Upgrade Media.` : `No upgrade found for ${show.title}.`)
+      else setMessage(`Upgrade check for ${show.title} ${job?.state ?? 'failed'}. Check Tasks for details.`)
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : `Could not check ${show.title} for upgrades.`)
+    } finally { setCardBusy(null) }
+  }
   const totalEpisodes = items.reduce((sum, show) => sum + show.episodesTotal, 0)
   const needsReview = (show: Show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0
   const filtered = useMemo(() => items.filter((show) => filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter)), [items, filter])
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files.">
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load Shows" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
+    {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
     {!error && !loading && !filtered.length && <EmptyState icon="tv-screen" title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
 
-function ShowCard({ show }: { show: Show }) {
+function ShowCard({ show, busy, onCheckUpgrade }: { show: Show; busy: boolean; onCheckUpgrade: (show: Show) => Promise<void> }) {
   const plexAvailable = usePlexAvailable()
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
+  const checkUpgrade = (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onCheckUpgrade(show) }
   return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="media-card-body"><div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
                   pill fills to the proportion present and is coloured by whether any
                   are missing. A separate bar repeated what the numbers already said. */}
@@ -656,7 +679,7 @@ function ShowCard({ show }: { show: Show }) {
                 <span className="episode-progress-fill" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
                 <span className="episode-progress-label">Episodes</span>
                 <strong>{show.episodesPresent} / {show.episodesTotal}</strong>
-              </div></div></Link></article>
+              </div></div></Link><div className="media-card-actions" aria-label={`Actions for ${show.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${show.title} for upgrades`} disabled={busy} onClick={checkUpgrade}><Icon name="upgrade-media" size={14} /></button></Tooltip></div></article>
 }
 
 export function ShowDetailPage({ id }: { id: string }) {

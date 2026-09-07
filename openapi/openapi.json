@@ -21004,6 +21004,42 @@
     "/api/v1/upgrade-candidates/search": {
       "post": {
         "operationId": "search_upgrade_candidates_api_v1_upgrade_candidates_search_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "movie_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Movie Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Show Id"
+            }
+          }
+        ],
         "responses": {
           "202": {
             "content": {
@@ -21014,6 +21050,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Search Upgrade Candidates",

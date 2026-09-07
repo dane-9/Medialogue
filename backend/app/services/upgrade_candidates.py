@@ -927,6 +927,8 @@ async def _worker(
     *,
     client_factory: TorznabClientFactory,
     today: date,
+    movie_id: UUID | None = None,
+    show_id: UUID | None = None,
 ) -> None:
     await update_job(db, job, status=JobStatus.RUNNING, progress={"completed": 0, "total": 0, "percent": 0})
     await db.commit()
@@ -935,17 +937,31 @@ async def _worker(
     show_targets, skipped_airing, show_skipped_quality, show_read_only = await _show_targets(db, today=today)
     read_only_roots = sorted(movie_read_only | show_read_only)
     targets = [*movie_targets, *show_targets]
+    if movie_id is not None:
+        targets = [target for target in targets if target.movie_id == movie_id]
+    elif show_id is not None:
+        targets = [target for target in targets if target.media_type == MediaType.SHOWS and target.profile_entity_id == show_id]
     valid_keys = {target.target_key for target in targets}
     inactive = (
         UpgradeCandidate.execution_state.is_(None)
         | UpgradeCandidate.execution_state.in_(["completed", "failed"])
     )
+    scope = None
+    if movie_id is not None:
+        scope = UpgradeCandidate.movie_id == movie_id
+    elif show_id is not None:
+        season_ids = select(Season.id).where(Season.show_id == show_id)
+        scope = UpgradeCandidate.season_id.in_(season_ids)
     if valid_keys:
-        await db.execute(
-            delete(UpgradeCandidate).where(UpgradeCandidate.target_key.not_in(valid_keys), inactive)
-        )
+        stale = delete(UpgradeCandidate).where(UpgradeCandidate.target_key.not_in(valid_keys), inactive)
+        if scope is not None:
+            stale = stale.where(scope)
+        await db.execute(stale)
     else:
-        await db.execute(delete(UpgradeCandidate).where(inactive))
+        stale = delete(UpgradeCandidate).where(inactive)
+        if scope is not None:
+            stale = stale.where(scope)
+        await db.execute(stale)
     await db.commit()
 
     indexers = await list_configured_indexers(db)
@@ -1018,13 +1034,22 @@ async def run_upgrade_search_job(
     *,
     client_factory: TorznabClientFactory = TorznabClient,
     today: date | None = None,
+    movie_id: UUID | None = None,
+    show_id: UUID | None = None,
 ) -> None:
     """Evaluate the library and retain its recommendation plus every search result."""
 
     run_date = today or utcnow().date()
 
     async def worker(db: AsyncSession, job: Job) -> None:
-        await _worker(db, job, client_factory=client_factory, today=run_date)
+        await _worker(
+            db,
+            job,
+            client_factory=client_factory,
+            today=run_date,
+            movie_id=movie_id,
+            show_id=show_id,
+        )
 
     await run_job(
         job_id,

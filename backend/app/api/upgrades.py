@@ -61,6 +61,9 @@ from app.services.quality_profiles import (
     refresh_show_release_scores,
 )
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
+from app.services.jobs import create_job
+from app.services.runtime_jobs import launch_runtime_job
+from app.services.upgrade_candidates import run_upgrade_search_job
 from app.services.upgrade_execution import (
     cleanup_preview,
     commit_cleanup,
@@ -498,7 +501,35 @@ async def count_upgrade_candidates(
 async def search_upgrade_candidates(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
+    movie_id: UUID | None = Query(default=None),
+    show_id: UUID | None = Query(default=None),
+    client_factory=Depends(indexers_api.get_torznab_client_factory),
 ) -> UpgradeSearchResponse:
+    if movie_id is not None and show_id is not None:
+        raise AppError("INVALID_UPGRADE_TARGET", "Choose either a Movie or a Show to check for upgrades, not both.", status_code=422)
+    if movie_id is not None or show_id is not None:
+        if movie_id is not None and await db.get(Movie, movie_id) is None:
+            raise AppError("MOVIE_NOT_FOUND", "Movie was not found.", status_code=404)
+        if show_id is not None and await db.get(Show, show_id) is None:
+            raise AppError("SHOW_NOT_FOUND", "Show was not found.", status_code=404)
+        target = {"movie_id": str(movie_id)} if movie_id is not None else {"show_id": str(show_id)}
+        job = await create_job(
+            db,
+            "search_media_upgrades",
+            cancellable=False,
+            summary={"trigger": "manual", "target": target},
+        )
+        await db.commit()
+        launch_runtime_job(
+            job.id,
+            lambda: run_upgrade_search_job(
+                job.id,
+                client_factory=client_factory,
+                movie_id=movie_id,
+                show_id=show_id,
+            ),
+        )
+        return UpgradeSearchResponse(job_id=job.id)
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "search_media_upgrades"))
     if schedule is None:
         await ensure_default_schedules(db)
