@@ -18,8 +18,9 @@ import { qualityLabel } from './lib/qualityLabel'
 import { splitQuality } from './lib/quality'
 import { pathParts } from './lib/pathParts'
 import { parserWarningMessage } from './lib/parserWarnings'
-import { releaseAudio, releaseFlags, releaseHdr, releaseVideoCodec } from './lib/releaseMedia'
 import { editionLabel, qualityMark } from './lib/qualityMark'
+import { releaseScoreBreakdown } from './lib/releaseScore'
+import { profileFormChanged, profileFormState } from './lib/profileForm'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, Note, SaveFooter, SectionHead, Secret, SettingsGroup, failed, ok, pending } from './components/settings'
 import type { Message, StatusTone } from './components/settings'
@@ -46,7 +47,7 @@ import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import { isTaskOverdue } from './lib/taskTiming'
-import type { EpisodeOrdering, CustomFormat, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchResult, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults, UpgradeType } from './types'
+import type { EpisodeOrdering, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchResult, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults, UpgradeType } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
 import jackettIcon from './assets/jackett.svg'
@@ -253,7 +254,9 @@ export function MoviesPage() {
         if (job?.state === 'completed') setMessage(found ? `${found} upgrade ${found === 1 ? 'candidate' : 'candidates'} found for ${movie.title}. Review ${found === 1 ? 'it' : 'them'} in Upgrade Media.` : `No upgrade found for ${movie.title}.`)
         else setMessage(`Upgrade check for ${movie.title} ${job?.state ?? 'failed'}. Check Tasks for details.`)
       } else if ('job_id' in accepted) setMessage(`Plex recheck queued as job ${accepted.job_id.slice(0, 8)}….`)
-      else setMessage(`${action} applied to ${movie.title}.`)
+      // Monitor/unmonitor needs no notice: the mark on the card already shows
+      // the new state as soon as the reload lands.
+      else setMessage('')
       await loadMovies()
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : `Could not ${action} ${movie.title}.`)
@@ -266,7 +269,7 @@ export function MoviesPage() {
     return matchesFilter && movie.title.toLowerCase().includes(query.toLowerCase())
   }), [movies, filter, query])
   return <Page title="Movies" subtitle="Your library, exactly where it was downloaded.">
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} />{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div>{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
@@ -281,6 +284,28 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
   return <div className="tag-chip-row">{movie.tags.map((tag) => <span key={tag.id} className="tag-chip" role={onTagClick ? 'button' : undefined} tabIndex={onTagClick ? 0 : undefined} onClick={(event) => { if (!onTagClick) return; event.preventDefault(); event.stopPropagation(); onTagClick(tag.name) }} onKeyDown={(event) => { if (onTagClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onTagClick(tag.name) } }}>{tag.name}</span>)}</div>
 }
 
+function MonitorMark({ monitored, title, busy, onToggle }: { monitored: boolean; title?: string; busy?: boolean; onToggle?: (monitored: boolean) => void }) {
+  // Short enough to sit on one line: a tooltip box is as wide as its max-width
+  // the moment its text wraps, so a long string leaves the corner empty.
+  const help = monitored
+    ? (onToggle ? 'Monitored. Click to stop.' : 'Monitored')
+    : (onToggle ? 'Not monitored. Click to monitor.' : 'Not monitored')
+  const className = `monitor-mark ${monitored ? 'on' : 'off'}`
+  const glyph = <Icon name={monitored ? 'monitored' : 'monitored-off'} size={13} />
+  return <Tooltip asChild content={help}>
+    {onToggle
+      ? <button
+          type="button"
+          className={className}
+          aria-pressed={monitored}
+          aria-label={`${monitored ? 'Stop monitoring' : 'Monitor'}${title ? ` ${title}` : ''}`}
+          disabled={busy}
+          onClick={(event) => { event.preventDefault(); event.stopPropagation(); onToggle(!monitored) }}
+        >{glyph}</button>
+      : <span className={className} aria-label={monitored ? 'Monitored' : 'Not monitored'}>{glyph}</span>}
+  </Tooltip>
+}
+
 function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
   const plexAvailable = usePlexAvailable()
   const tier = qualityMark(movie.quality)
@@ -288,18 +313,17 @@ function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { m
   const run = (action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onAction(movie, action) }
   return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <Link className="media-card-link" to={`/movies/${movie.id}`} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}>
-      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
-      <div className="media-card-body"><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}<QbitStatusBadge status={movie.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{movie.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="media-card-title"><strong>{movie.title}</strong>{/* An edition is long enough that sharing a row with the tier truncated one
+      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}<span className="poster-marks">{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}<span className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={13} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={13} /></button></Tooltip>}</span><MonitorMark monitored={movie.monitored !== false} title={movie.title} busy={busy} onToggle={(next) => void onAction(movie, next ? 'monitor' : 'unmonitor')} /></span>{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
+      <div className="media-card-body"><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}<QbitStatusBadge status={movie.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{movie.title}</strong>{/* An edition is long enough that sharing a row with the tier truncated one
         of them, so it takes the year's row and the tier drops to its own. */}
         <span className="media-card-sub">{movie.year || 'Year unknown'}{edition && <em className="media-card-quality">{edition}</em>}{!edition && tier && <em className="media-card-quality">{tier}</em>}</span>{edition && tier && <span className="media-card-sub media-card-tier">{tier}</span>}</div></div>
     </Link>
-    <div className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={14} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={14} /></button></Tooltip>}<Tooltip asChild content={movie.monitored === false ? 'Monitor' : 'Unmonitor'}><button className="icon-button" aria-label={movie.monitored === false ? `Monitor ${movie.title}` : `Unmonitor ${movie.title}`} disabled={busy} onClick={run(movie.monitored === false ? 'monitor' : 'unmonitor')}><Icon name={movie.monitored === false ? 'eye' : 'eye-off'} size={14} /></button></Tooltip></div>
   </article>
 }
 
 function MovieTable({ items, selected, onToggle, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) {
   const plexAvailable = usePlexAvailable()
-  return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Title</th><th>State</th><th>Current release</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody>{items.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /></span>{movie.title}<span className="muted">{movie.year}</span>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><QbitStatusBadge status={movie.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}<td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td>{selected.has(movie.id) ? <Icon name="check" size={15} /> : <Icon name="chevron" size={15} />}</td></tr>)}</tbody></table></Panel>
+  return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Title</th><th>State</th><th>Current release</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody>{items.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /></span><MonitorMark monitored={movie.monitored !== false} />{movie.title}<span className="muted">{movie.year}</span></Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><QbitStatusBadge status={movie.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}<td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td>{selected.has(movie.id) ? <Icon name="check" size={15} /> : <Icon name="chevron" size={15} />}</td></tr>)}</tbody></table></Panel>
 }
 
 function QbitStatusBadge({ status, compact = false, showState = false }: { status: MediaTorrentStatus; compact?: boolean; showState?: boolean }) {
@@ -403,30 +427,43 @@ function ReleaseEvidenceRow({ release }: { release: MovieRelease; torrents?: Tor
   const separateFile = filename && folder && filename.replace(/\.[^.]+$/, '').toLowerCase() !== folder.toLowerCase() ? filename : undefined
   const score = release.currentCustomFormatScore
   const scoreChanged = release.originalCustomFormatScore !== undefined && score !== undefined && release.originalCustomFormatScore !== score
-  // Quality alone cannot separate two REMUXes of one movie; HDR flavour, audio
-  // track and Proper/Repack are what actually differ between them.
-  const pills = [
-    release.quality,
-    release.edition,
-    ...releaseHdr(release.parser),
-    releaseAudio(release.parser),
-    releaseVideoCodec(release.parser),
-  ].filter(Boolean) as string[]
-  const flags = releaseFlags(release.parser)
+  const breakdown = releaseScoreBreakdown(release.parser)
   return <div className="release-evidence-row">
-    <div className="release-icon"><Icon name="clapper" size={18} /></div>
+    <Tooltip asChild content={directory?.storageRoot ? `Media folder: ${directory.storageRoot}` : 'No media folder recorded'}>
+      <div className={`release-icon ${directory?.storageRoot ? 'release-icon-labelled' : ''}`}>
+        <Icon name="clapper" size={18} />
+        {directory?.storageRoot && <span>{directory.storageRoot}</span>}
+      </div>
+    </Tooltip>
     <div className="release-main">
       <strong title={directory?.path}>{folder ?? release.name}</strong>
       {separateFile && <small title={separateFile}>{separateFile}</small>}
-      <div className="release-pills">
-        {directory?.storageRoot && <Tooltip content={`Media folder: ${directory.storageRoot}`}><span className="release-pill release-pill-folder"><Icon name="folder" size={11} />{directory.storageRoot}</span></Tooltip>}
-        {pills.map((pill) => <span className="release-pill" key={pill}>{pill}</span>)}
-        {flags.map((flag) => <Tooltip key={flag} content={flag === 'Proper' ? 'Re-released to fix a problem with the original' : flag === 'Repack' ? 'Repackaged by the release group' : 'Built from more than one source'}><span className="release-pill release-pill-flag">{flag}</span></Tooltip>)}
-        {(score !== undefined && score !== 0) || scoreChanged
-          ? <Tooltip content={scoreChanged ? `Custom Format score: ${release.originalCustomFormatScore} when downloaded, ${score} under the current profile` : 'Custom Format score under the current profile'}><span className={`release-pill ${scoreChanged ? 'release-pill-warn' : ''}`}>Score {score ?? 0}{scoreChanged ? ` (was ${release.originalCustomFormatScore})` : ''}</span></Tooltip>
-          : null}
-      </div>
     </div>
+    {/* A number belongs in a column, not in a pill among the format tags: as a
+        pill it read as another attribute of the release rather than as the
+        figure you compare between releases. Hovering shows what built it. */}
+    <Tooltip asChild placement="below" delay={250} content={<span className="cf-breakdown">
+      <span className="cf-breakdown-head"><strong>Custom Formats</strong><small>{breakdown.profileName ?? 'Current profile'}</small></span>
+      {breakdown.matched.length
+        ? <span className="cf-breakdown-rows">
+            {breakdown.matched.map((format) => <span key={format.id} className="cf-breakdown-row cf-breakdown-pair">
+              <span>{format.name}</span>
+              <b className={format.contribution > 0 ? 'cf-plus' : format.contribution < 0 ? 'cf-minus' : 'cf-zero'}>{format.contribution > 0 ? '+' : ''}{format.contribution}</b>
+            </span>)}
+          </span>
+        : <small>No Custom Formats matched this release.</small>}
+      <span className="cf-breakdown-row cf-breakdown-pair cf-breakdown-total">
+        <span>Total</span>
+        <b>{breakdown.total ?? score ?? 0}</b>
+      </span>
+      {scoreChanged && <small>Scored {release.originalCustomFormatScore} when downloaded.</small>}
+    </span>}>
+      <div className="release-score">
+        <em>CF score</em>
+        <strong className={score === undefined ? '' : score < 0 ? 'score-negative' : score > 0 ? 'score-positive' : 'score-zero'}>{score ?? '—'}</strong>
+        {scoreChanged && <small>was {release.originalCustomFormatScore}</small>}
+      </div>
+    </Tooltip>
     {/* Only exceptions get called out on the right. Saying "current, 100%" on
         every healthy row taught nobody what either number meant. */}
     <div className="release-tags">
@@ -465,7 +502,7 @@ function TorrentHistoryEntry({ torrent, nested = false }: { torrent: TorrentArch
 
 function TorrentHistoryPanel({ items }: { items?: TorrentArchiveItem[] }) {
   const groups = torrentHistoryGroups(items ?? [])
-  return <Panel title="Torrent history" eyebrow="RECOVERY EVIDENCE">{groups.length ? groups.map((group) => {
+  return <Panel title="Torrent history">{groups.length ? groups.map((group) => {
     const first = group[0]
     if (group.length === 1) return <TorrentHistoryEntry key={first.id} torrent={first} />
     const presentCount = group.filter((item) => item.qbitPresent).length
@@ -489,21 +526,20 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   const [settings, setSettings] = useState<MediaProfileSettings | null>(null)
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [qualities, setQualities] = useState<QualityDefinition[]>([])
-  const [formats, setFormats] = useState<CustomFormat[]>([])
   const [profileId, setProfileId] = useState('')
   const [minimumOverrideId, setMinimumOverrideId] = useState('')
   const [minimumScoreOverride, setMinimumScoreOverride] = useState('')
   const [overrides, setOverrides] = useState<Record<string, number>>({})
-  const [newOverride, setNewOverride] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const load = async () => {
     try {
-      const [value, profileRows, qualityRows, formatRows] = await Promise.all([settingsApi.movieProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions(), settingsApi.customFormats()])
-      setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setFormats(formatRows)
-      setProfileId(value.qualityProfileInherited ? '' : value.qualityProfileId ?? '')
-      setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : '')
-      setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '')
+      const [value, profileRows, qualityRows] = await Promise.all([settingsApi.movieProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions()])
+      setSettings(value); setProfiles(profileRows); setQualities(qualityRows)
+      const form = profileFormState(value)
+      setProfileId(form.profileId)
+      setMinimumOverrideId(form.minimumOverrideId)
+      setMinimumScoreOverride(form.minimumScoreOverride)
       setOverrides(Object.fromEntries(value.customFormatScores.filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])))
       setMessage('')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load profile settings.') }
@@ -519,24 +555,33 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
         custom_format_score_overrides: overrides,
         expected_revision: settings?.revision ?? 0,
       })
-      setSettings(value); setMessage('Profile and overrides saved. Stored release scores were re-evaluated.')
+      setSettings(value); setMessage('Profile saved. Stored release scores were re-evaluated.')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save profile settings.') }
     finally { setBusy(false) }
   }
-  const effectiveRows = settings?.customFormatScores ?? []
-  const formatById = new Map(formats.map((item) => [item.id, item]))
-  const available = formats.filter((item) => !Object.prototype.hasOwnProperty.call(overrides, item.id))
-  return <Panel title="Quality Profile & Overrides" eyebrow="SEARCH SCORING">
-    <div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.filter((quality) => (profiles.find((profile) => profileId ? profile.id === profileId : profile.isDefault)?.qualities ?? []).some((item) => item.id === quality.id)).map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>
-    <div className="settings-note"><Icon name="info" size={16} /><span>Overrides replace this title's profile score for the selected Custom Format. They never alter the Custom Format definition or another title.</span></div>
-    <div className="score-section"><div className="section-title"><div><div className="eyebrow">TITLE OVERRIDES</div><h3>Differences from profile</h3></div><div className="search-client-chooser"><Select value={newOverride} onChange={(event) => setNewOverride(event.target.value)}><option value="">Add override…</option>{available.map((format) => <option value={format.id} key={format.id}>{format.name}</option>)}</Select><Button variant="ghost" icon="plus" disabled={!newOverride} onClick={() => { if (newOverride) { const inherited = effectiveRows.find((item) => item.customFormatId === newOverride)?.profileScore ?? 0; setOverrides((value) => ({ ...value, [newOverride]: inherited })); setNewOverride('') } }}>Add</Button></div></div>
-      {Object.entries(overrides).map(([formatId, score]) => { const inherited = effectiveRows.find((item) => item.customFormatId === formatId)?.profileScore ?? 0; return <div className="score-row" key={formatId}><span><strong>{formatById.get(formatId)?.name ?? effectiveRows.find((item) => item.customFormatId === formatId)?.customFormatName ?? 'Custom Format'}</strong><small>Profile {inherited > 0 ? '+' : ''}{inherited} → override {score > 0 ? '+' : ''}{score}</small></span><Input type="number" value={String(score)} onChange={(event) => setOverrides((value) => ({ ...value, [formatId]: Number(event.target.value) || 0 }))} /><strong className={score < 0 ? 'score-negative' : 'score-positive'}>{score > 0 ? '+' : ''}{score}</strong><button className="icon-button" onClick={() => setOverrides((value) => { const next = { ...value }; delete next[formatId]; return next })}><Icon name="close" size={14} /></button></div> })}
-      {!Object.keys(overrides).length && !minimumOverrideId && minimumScoreOverride === '' && <span className="muted">No per-title overrides. This movie inherits its assigned profile exactly.</span>}
+  const dirty = profileFormChanged(settings, { profileId, minimumOverrideId, minimumScoreOverride })
+  return <Panel title="Quality profile" className="profile-panel"
+    action={<Button variant="primary" onClick={() => void save()} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save profile settings'}</Button>}>
+    <div className="settings-form profile-form">
+      <SettingsGroup>
+        <Field label="Quality profile" help="Which profile ranks and scores releases for this movie.">
+          <Select value={profileId} onChange={(event) => setProfileId(event.target.value)}>
+            <option value="">{defaultProfileLabel(profiles)}</option>
+            {profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Minimum quality" help={settings?.minimumQuality ? `Currently ${settings.minimumQuality.name}${settings.minimumQualityOverridden ? ', set here' : ', from the profile'}.` : 'Releases below this are rejected for automatic selection.'}>
+          <Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}>
+            <option value="">Same as profile</option>
+            {qualities.filter((quality) => (profiles.find((profile) => profileId ? profile.id === profileId : profile.isDefault)?.qualities ?? []).some((item) => item.id === quality.id)).map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Minimum Custom Format score" help={settings?.minimumCustomFormatScore !== undefined ? `Currently ${settings.minimumCustomFormatScore}${settings.minimumCustomFormatScoreOverridden ? ', set here' : ', from the profile'}.` : 'Leave blank to use the profile’s own minimum.'}>
+          <Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Same as profile' : `Same as profile (${settings.profileMinimumCustomFormatScore})`} />
+        </Field>
+      </SettingsGroup>
     </div>
-    {settings?.minimumQuality && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum: {settings.minimumQuality.name}{settings.minimumQualityOverridden ? ' (title override)' : ' (profile)'}</span></div>}
-    {settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (title override)' : ' (profile)'}</span></div>}
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
-    <div className="settings-footer"><Button variant="primary" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save profile settings'}</Button></div>
   </Panel>
 }
 
@@ -552,6 +597,16 @@ export function MovieDetailPage({ id }: { id: string }) {
   }
   useEffect(() => { void load() }, [id])
   useLiveLibraryRefresh(() => load(false))
+  const setMonitored = async (monitored: boolean) => {
+    setBusy(true); setMessage(monitored ? 'Monitoring…' : 'Unmonitoring…')
+    try {
+      await moviesApi.bulkMovies({ movie_ids: [id], action: monitored ? 'monitor' : 'unmonitor' })
+      await load()
+      setMessage(monitored ? 'Now monitored. Medialogue will look for upgrades.' : 'No longer monitored. Nothing is searched for automatically.')
+    }
+    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not change monitoring.') }
+    finally { setBusy(false) }
+  }
   const recheckPlex = async () => {
     setBusy(true); setMessage('Starting Plex recheck…')
     try {
@@ -592,10 +647,61 @@ export function MovieDetailPage({ id }: { id: string }) {
   const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
   const currentSummary = <div className="release-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
-  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies" action={<><Button variant="ghost" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button>{plexAvailable && <Button variant="ghost" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}<Button variant="primary" icon="search">Interactive search</Button></>}>
+  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies">
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
-    <div className="detail-layout"><div><Panel className="detail-hero"><div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /><span className="poster-title">{movie.title}</span><span className="poster-year">{movie.year}</span></div><div className="detail-intro"><div className="eyebrow">MOVIE {movie.tmdbId ? `· TMDB ${movie.tmdbId}` : ''}</div><h2>{movie.title} <span className="detail-year">({movie.year})</span></h2><div className="badge-row"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge>{plexAvailable && <Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge>}<Badge tone="blue">{movie.confidence}% match</Badge>{movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}</div>{movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}<p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p><div className="detail-actions"><Button variant="ghost" icon="external">Change match</Button></div></div></Panel>{movie.incoming && <IncomingReplacement incoming={movie.incoming} />}<Panel title="Current releases" eyebrow="REGISTERED MEDIA">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : currentSummary}</Panel><MovieProfilePanel resourceId={id} /><Panel title="Release history" eyebrow="PRESERVED EVIDENCE">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel><TorrentHistoryPanel items={movie.torrentHistory} /></div><aside className="detail-side"><Panel title="At a glance" eyebrow="STATUS"><DetailFact label="Library state" value={movie.status} tone={statusTone(movie.status)} />{plexAvailable && <DetailFact label="Plex verification" value={movie.plex} tone={statusTone(movie.plex)} />}<DetailFact label="Media folder" value={movie.storageRoot ?? 'Unknown folder'} /><DetailFact label="Last observed" value={formatEvidenceDate(movie.lastObservedAt)} /></Panel><Panel title="Problems" eyebrow={evidence.length ? `${evidence.length} NEED ATTENTION` : 'NEEDS ATTENTION'}>{evidence.length ? evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}><div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div><div><strong>{item.title}</strong><span>{item.detail}</span></div></div>) : <div className="problem-mini"><div className="problem-icon"><Icon name="check" size={14} /></div><div><strong>No unresolved problems</strong><span>{plexAvailable ? 'Identity, qBittorrent, Plex, and path evidence agree.' : 'Identity, qBittorrent, and path evidence agree.'}</span></div></div>}</Panel></aside></div>
+    <div className="detail-single">
+      <div className="detail-top">
+      <Panel className="detail-hero">
+        <div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /></div>
+        <div className="detail-intro">
+          <h2>{movie.title} <span className="detail-year">({movie.year})</span></h2>
+          {/* Only states worth acting on. "Present" is the default for a movie
+              you are looking at, and a confidence figure told nobody anything
+              they could do something about. */}
+          {(needsAttention(movie.status) || plexAvailable || movie.monitored === false) && <div className="badge-row">
+            {needsAttention(movie.status) && <Badge tone={statusTone(movie.status)}>{movie.status}</Badge>}
+            {plexAvailable && <Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge>}
+            {movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}
+          </div>}
+          {movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}
+          <p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p>
+          {/* The facts the sidebar used to hold, inline and unlabelled where the
+              label would only repeat the value. */}
+          <div className="detail-facts">
+            <span><em>Last observed</em><strong>{formatEvidenceDate(movie.lastObservedAt)}</strong></span>
+            {movie.tmdbId ? <span><em>TMDB</em><strong>{movie.tmdbId}</strong></span> : null}
+          </div>
+          {/* Everything you can do to this movie sits in one row, beside the
+              title it acts on, rather than split across the page header. */}
+          <div className="detail-actions">
+            <Button variant="primary" icon="search">Interactive search</Button>
+            <Button variant="secondary" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button>
+            {plexAvailable && <Button variant="secondary" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}
+            <Button variant="secondary" icon="external">Change match</Button>
+            {/* The hero already reported this state; now it can be changed
+                from the same place it is shown. */}
+            <Button variant="secondary" icon={movie.monitored === false ? 'monitored' : 'monitored-off'} onClick={() => void setMonitored(movie.monitored === false)} disabled={busy}>
+              {movie.monitored === false ? 'Monitor' : 'Unmonitor'}
+            </Button>
+          </div>
+        </div>
+      </Panel>
+      <MovieProfilePanel resourceId={id} />
+      </div>
+      {/* Problems appear only when there are problems. A titled panel saying
+          nothing is wrong was the common case and pure furniture. */}
+      {evidence.length > 0 && <Panel title="Problems" note={`${evidence.length} NEED ATTENTION`}>
+        {evidence.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}>
+          <div className={`problem-icon severity-${item.severity}`}><Icon name="alert" size={14} /></div>
+          <div><strong>{item.title}</strong><span>{item.detail}</span></div>
+        </div>)}
+      </Panel>}
+      {movie.incoming && <IncomingReplacement incoming={movie.incoming} />}
+      <Panel title="Current releases">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : currentSummary}</Panel>
+      <Panel title="Release history">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel>
+      <TorrentHistoryPanel items={movie.torrentHistory} />
+    </div>
   </Page>
 }
 
@@ -613,7 +719,8 @@ export function ShowsPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [cardBusy, setCardBusy] = useState<string | null>(null)
-  const [countSpecials, setCountSpecials] = useState(true)
+  // Matches the server default, so the chip does not flash on before the fetch.
+  const [countSpecials, setCountSpecials] = useState(false)
   const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
@@ -660,10 +767,10 @@ export function ShowsPage() {
   const needsReview = (show: Show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0
   const filtered = useMemo(() => items.filter((show) => filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter)), [items, filter])
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files.">
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load Shows" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span>{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
+    {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span><MonitorMark monitored={show.monitored !== false} />{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
     {!error && !loading && !filtered.length && <EmptyState icon="tv-screen" title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
@@ -672,14 +779,14 @@ function ShowCard({ show, busy, onCheckUpgrade }: { show: Show; busy: boolean; o
   const plexAvailable = usePlexAvailable()
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
   const checkUpgrade = (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onCheckUpgrade(show) }
-  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="media-card-body"><div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}{show.monitored === false && <Badge tone="neutral" className="media-card-secondary-badge">Unmonitored</Badge>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
+  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-marks"><span className="media-card-actions" aria-label={`Actions for ${show.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${show.title} for upgrades`} disabled={busy} onClick={checkUpgrade}><Icon name="upgrade-media" size={13} /></button></Tooltip></span><MonitorMark monitored={show.monitored !== false} /></span></div><div className="media-card-body"><div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
                   pill fills to the proportion present and is coloured by whether any
                   are missing. A separate bar repeated what the numbers already said. */}
               <div className={`episode-progress ${percent === 100 ? 'complete' : 'incomplete'}`} title={`${show.episodesPresent} of ${show.episodesTotal} episodes present`}>
                 <span className="episode-progress-fill" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
                 <span className="episode-progress-label">Episodes</span>
                 <strong>{show.episodesPresent} / {show.episodesTotal}</strong>
-              </div></div></Link><div className="media-card-actions" aria-label={`Actions for ${show.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${show.title} for upgrades`} disabled={busy} onClick={checkUpgrade}><Icon name="upgrade-media" size={14} /></button></Tooltip></div></article>
+              </div></div></Link></article>
 }
 
 export function ShowDetailPage({ id }: { id: string }) {
@@ -800,7 +907,29 @@ function ShowProfilePanel({ resourceId }: { resourceId: string }) {
   const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([settingsApi.showProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileInherited ? '' : value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : ''); setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
   useEffect(() => { void load() }, [resourceId])
   const save = async () => { try { const value = await settingsApi.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride), custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
-  return <Panel title="Quality Profile" eyebrow="SHOW SEARCH SCORING"><div className="field-grid"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></label><label><span className="field-label">Minimum quality override</span><Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}><option value="">Inherit profile</option>{qualities.filter((quality) => (profiles.find((profile) => profileId ? profile.id === profileId : profile.isDefault)?.qualities ?? []).some((item) => item.id === quality.id)).map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}</Select></label><label><span className="field-label">Minimum score override</span><Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Inherit: no minimum' : `Inherit: ${settings.profileMinimumCustomFormatScore}`} /></label></div>{settings?.minimumCustomFormatScore !== undefined && <div className="settings-note"><Icon name="info" size={16} /><span>Effective minimum Custom Format score: {settings.minimumCustomFormatScore}{settings.minimumCustomFormatScoreOverridden ? ' (show override)' : ' (profile)'}</span></div>}{message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}<div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div></Panel>
+  return <Panel title="Quality profile">
+    <div className="settings-form profile-form">
+      <SettingsGroup>
+        <Field label="Quality profile" help="Which profile ranks and scores releases for this show.">
+          <Select value={profileId} onChange={(event) => setProfileId(event.target.value)}>
+            <option value="">{defaultProfileLabel(profiles)}</option>
+            {profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Minimum quality" help="Releases below this are rejected for automatic selection.">
+          <Select value={minimumOverrideId} onChange={(event) => setMinimumOverrideId(event.target.value)}>
+            <option value="">Same as profile</option>
+            {qualities.filter((quality) => (profiles.find((profile) => profileId ? profile.id === profileId : profile.isDefault)?.qualities ?? []).some((item) => item.id === quality.id)).map((quality) => <option value={quality.id} key={quality.id}>{quality.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Minimum Custom Format score" help={settings?.minimumCustomFormatScore !== undefined ? `Currently ${settings.minimumCustomFormatScore}${settings.minimumCustomFormatScoreOverridden ? ', set here' : ', from the profile'}.` : 'Leave blank to use the profile’s own minimum.'}>
+          <Input type="number" value={minimumScoreOverride} onChange={(event) => setMinimumScoreOverride(event.target.value)} placeholder={settings?.profileMinimumCustomFormatScore === undefined ? 'Same as profile' : `Same as profile (${settings.profileMinimumCustomFormatScore})`} />
+        </Field>
+      </SettingsGroup>
+    </div>
+    {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
+    <div className="settings-footer"><Button variant="primary" onClick={() => void save()}>Save profile settings</Button></div>
+  </Panel>
 }
 
 // The Downloads status rail, in qBittorrent's spirit: one row per filter with a

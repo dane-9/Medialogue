@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.integration_config import get_integration_config_store
 from app.core.identity import identity_titles_equivalent
 from app.integrations.filesystem import DirectoryObservation
 from app.models.domain import (
@@ -158,6 +159,11 @@ async def _ensure_season(db: AsyncSession, show: Show, season_number: int) -> Se
             season_number=season_number,
             title=f"Season {season_number}",
             monitored=True,
+            # Season 0 follows the library-wide Specials setting, the same
+            # as a season created from TMDB metadata. Taking the column
+            # default here made a scanned Specials folder count even with
+            # the setting off.
+            counted=season_number != 0 or get_integration_config_store().get_count_specials(),
             metadata_json={},
         )
         db.add(season)

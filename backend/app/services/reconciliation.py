@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.integration_config import get_integration_config_store
 from app.core.identity import identity_titles_equivalent
 from app.integrations.filesystem import DirectoryObservation, FilesystemObserver
 from app.integrations.plex import PlexClient, PlexMediaMatch
@@ -1048,6 +1049,11 @@ async def associate_incoming_torrent(
                 season_number=season_number,
                 title=f"Season {season_number}",
                 monitored=True,
+                # Season 0 follows the library-wide Specials setting, the same
+                # as a season created from TMDB metadata. Taking the column
+                # default here made a scanned Specials folder count even with
+                # the setting off.
+                counted=season_number != 0 or get_integration_config_store().get_count_specials(),
                 metadata_json={},
             )
             db.add(season)

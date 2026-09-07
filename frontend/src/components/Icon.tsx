@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving' | 'tracker' | 'queue-top' | 'queue-bottom' | 'queue-up' | 'queue-down' | 'share-ratio' | 'tag' | 'category'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving' | 'tracker' | 'queue-top' | 'queue-bottom' | 'queue-up' | 'queue-down' | 'share-ratio' | 'tag' | 'category' | 'monitored' | 'monitored-off'
 
 const paths: Record<IconName, JSX.Element> = {
   // Queue moves: the full mark (outline chevron above a solid arrow) means
@@ -202,6 +202,29 @@ const paths: Record<IconName, JSX.Element> = {
     stroke="none"
     d="M2.05 11.68c-.07.21-.07.43 0 .63c.02.07 2.32 6.68 9.95 6.68c.91 0 1.73-.1 2.49-.26L4.13 8.37c-1.49 1.65-2.06 3.28-2.08 3.31m19.9.64c.07-.21.07-.43 0-.63c-.02-.07-2.32-6.68-9.95-6.68c-1.84 0-3.36.39-4.61.97L2.71 1.29L1.3 2.7l4.32 4.32l3.69 3.69l3.98 3.98l3.33 3.33l4.68 4.68l1.41-1.41l-4.32-4.32c2.61-1.95 3.55-4.61 3.56-4.65M12 9c1.64 0 3 1.36 3 3c0 .46-.11.89-.3 1.29l-3.98-3.98c.39-.19.83-.3 1.29-.3Z"
   />,
+  // A camera watching the title. The mask id is fixed: every instance draws the
+  // same artwork, so a repeated id resolves to an identical mask.
+  monitored: <path
+    fill="currentColor"
+    stroke="none"
+    d="M18.618 7.462L6.403 2.085a1 1 0 0 0-.77-.016a1 1 0 0 0-.552.537l-3 7a1 1 0 0 0 .525 1.313L9.563 13.9L8.323 17H4v-3H2v8h2v-3h4.323c.823 0 1.552-.494 1.856-1.258l1.222-3.054l3.419 1.465a1 1 0 0 0 1.311-.518l3-6.857a1 1 0 0 0-.513-1.316m1.312 8.91l-1.858-.742l1.998-5l1.858.741z"
+  />,
+  // The slash is cut out of the camera by the mask, then drawn over it, so the
+  // stroke keeps a clean gap on both sides whatever colour it inherits.
+  'monitored-off': <>
+    <mask id="medialogue-monitored-off">
+      <rect width="24" height="24" fill="#fff" />
+      <path d="M3 3L19 19" stroke="#000" strokeWidth="4.5" strokeLinecap="round" />
+    </mask>
+    <g mask="url(#medialogue-monitored-off)">
+      <path
+        fill="currentColor"
+        stroke="none"
+        d="M18.618 7.462L6.403 2.085a1 1 0 0 0-.77-.016a1 1 0 0 0-.552.537l-3 7a1 1 0 0 0 .525 1.313L9.563 13.9L8.323 17H4v-3H2v8h2v-3h4.323c.823 0 1.552-.494 1.856-1.258l1.222-3.054l3.419 1.465a1 1 0 0 0 1.311-.518l3-6.857a1 1 0 0 0-.513-1.316m1.312 8.91l-1.858-.742l1.998-5l1.858.741z"
+      />
+    </g>
+    <path d="M3 3L19 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </>,
   copy: <>
     <path d="M18.327 7.286h-8.044a1.93 1.93 0 0 0-1.925 1.938v10.088c0 1.07.862 1.938 1.925 1.938h8.044a1.93 1.93 0 0 0 1.925-1.938V9.224c0-1.07-.862-1.938-1.925-1.938" />
     <path d="M15.642 7.286V4.688c0-.514-.203-1.007-.564-1.37a1.92 1.92 0 0 0-1.361-.568H5.673c-.51 0-1 .204-1.36.568a1.95 1.95 0 0 0-.565 1.37v10.088c0 .514.203 1.007.564 1.37s.85.568 1.361.568h2.685" />

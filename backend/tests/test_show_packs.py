@@ -962,25 +962,30 @@ def test_specials_toggle_applies_across_every_show_and_is_remembered(client: Tes
         configured = create_show_root(client, headers, root)
         scan(client, headers, configured["id"])
 
-        assert client.get("/api/v1/shows/specials-counting").json()["count_specials"] is True
-        before = client.get("/api/v1/shows").json()["items"][0]["episode_count"]
-
-        off = client.put("/api/v1/shows/specials-counting", headers=headers, json={"count_specials": False})
-        assert off.status_code == 200, off.text
-        assert off.json()["count_specials"] is False
-        assert off.json()["seasons_changed"] >= 1
-
+        # Specials do not count out of the box, and a freshly scanned Season 0
+        # is created uncounted rather than needing the switch thrown once.
         assert client.get("/api/v1/shows/specials-counting").json()["count_specials"] is False
-        after = client.get("/api/v1/shows").json()["items"][0]["episode_count"]
-        assert after < before
-
-        show = detail(client)
-        specials = next(item for item in show["seasons"] if item["season_number"] == 0)
-        assert specials["counted"] is False
-        assert specials["monitored"] is True
+        without_specials = client.get("/api/v1/shows").json()["items"][0]["episode_count"]
+        fresh = next(item for item in detail(client)["seasons"] if item["season_number"] == 0)
+        assert fresh["counted"] is False
+        assert fresh["monitored"] is True
 
         on = client.put("/api/v1/shows/specials-counting", headers=headers, json={"count_specials": True})
         assert on.status_code == 200, on.text
-        assert client.get("/api/v1/shows").json()["items"][0]["episode_count"] == before
+        assert on.json()["count_specials"] is True
+        assert on.json()["seasons_changed"] >= 1
+
+        assert client.get("/api/v1/shows/specials-counting").json()["count_specials"] is True
+        with_specials = client.get("/api/v1/shows").json()["items"][0]["episode_count"]
+        assert with_specials > without_specials
+
+        show = detail(client)
+        specials = next(item for item in show["seasons"] if item["season_number"] == 0)
+        assert specials["counted"] is True
+        assert specials["monitored"] is True
+
+        off = client.put("/api/v1/shows/specials-counting", headers=headers, json={"count_specials": False})
+        assert off.status_code == 200, off.text
+        assert client.get("/api/v1/shows").json()["items"][0]["episode_count"] == without_specials
     finally:
         shutil.rmtree(root, ignore_errors=True)

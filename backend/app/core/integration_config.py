@@ -123,7 +123,10 @@ class IntegrationConfigStore:
             "download_clients": [],
             "indexers": [],
             "library": {
-                "count_specials": True,
+                # Off by default: Specials are usually extras rather than the
+                # episodes people track, so counting them made a complete show
+                # look incomplete out of the box.
+                "count_specials": False,
                 "show_folder_include_year": False,
             },
         }
