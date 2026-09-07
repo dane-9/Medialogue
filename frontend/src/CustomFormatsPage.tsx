@@ -10,6 +10,8 @@ import { Modal } from './components/Modal'
 import { PageTopbar } from './components/Shell'
 import { browserSafeId } from './lib/uiState'
 import { copyName } from './lib/copyName'
+import { conditionTypeLabel } from './lib/conditionType'
+import { highlightMatch } from './lib/highlightMatch'
 import { useUrlState } from './lib/urlState'
 import { parseCustomFormatImportBundle } from './validation/customFormats'
 import type {
@@ -26,6 +28,7 @@ import type {
 function freshCondition(): CustomFormatCondition {
   return {
     id: browserSafeId(),
+    type: 'release_title',
     pattern: '',
     required: false,
     negate: false,
@@ -81,12 +84,16 @@ function evidenceText(value: unknown): string {
   try { return JSON.stringify(value) } catch { return String(value) }
 }
 
+const signedOffset = (value: number) => `${value > 0 ? '+' : ''}${value}`
+
 function EvaluationRows({ evaluation }: { evaluation: CustomFormatEvaluation }) {
   return <div className="cf-evaluation">
     <div className={`cf-evaluation-summary ${evaluation.matched ? 'matched' : 'not-matched'}`}>
       <Icon name={evaluation.matched ? 'check' : 'close'} size={15} />
       <strong>{evaluation.matched ? 'Matches this format' : evaluation.rawMatched ? `Suppressed by ${evaluation.suppressedByNames.join(', ')}` : 'Does not match this format'}</strong>
-      <span>{evaluation.scoreOffset ? `Match offset ${evaluation.scoreOffset > 0 ? '+' : ''}${evaluation.scoreOffset}` : 'No match offset'}</span>
+      {/* "No match offset" read as "no match", contradicting the verdict beside
+          it. Name the thing it actually is: a score offset. */}
+      <span>{evaluation.scoreOffset ? `Score offset ${signedOffset(evaluation.scoreOffset)}` : 'No score offset'}</span>
     </div>
     {evaluation.error && <div className="cf-inline-error">{evaluation.error}</div>}
     {evaluation.conditions.map((condition, index) => <ConditionEvaluationRow key={condition.conditionId} condition={condition} index={index} />)}
@@ -94,13 +101,32 @@ function EvaluationRows({ evaluation }: { evaluation: CustomFormatEvaluation }) 
 }
 
 function ConditionEvaluationRow({ condition, index }: { condition: CustomFormatConditionEvaluation; index: number }) {
-  return <div className={`cf-condition-result ${condition.effectiveResult ? 'pass' : 'fail'}`}>
-    <div className="cf-result-icon"><Icon name={condition.effectiveResult ? 'check' : 'close'} size={14} /></div>
-    <div className="cf-result-copy">
+  const passed = condition.effectiveResult
+  // Show the text the rule actually searched, with the part it matched marked.
+  // For most rules that is the release title; a typed rule reads a parsed field
+  // instead, so the field is named rather than pretending it read the title.
+  const field = conditionTypeLabel(condition.conditionType)
+  const subject = evidenceText(condition.evidence)
+  const parts = highlightMatch(subject, condition.regexMatch)
+
+  return <div className={`cf-condition-result ${passed ? 'pass' : 'fail'}`}>
+    <div className="cf-result-head">
+      <span className="cf-result-icon"><Icon name={passed ? 'check' : 'close'} size={14} /></span>
       <strong>{condition.name || `Rule ${index + 1}`}</strong>
-      <span>{condition.reason || (condition.matched ? 'Condition matched.' : 'Condition did not match.')}</span>
-      <small>Evidence: {evidenceText(condition.evidence)} · Expected: {evidenceText(condition.expected)}{condition.scoreOffset ? ` · Offset ${condition.scoreOffset > 0 ? '+' : ''}${condition.scoreOffset}` : ''}{condition.negated ? ' · Negated' : ''}{condition.required ? ' · Required' : ' · Optional'}</small>
+      <span className="cf-result-flags">
+        {condition.negated && <span className="cf-result-flag">Negated</span>}
+        {condition.required && <span className="cf-result-flag">Required</span>}
+        {condition.scoreOffset ? <span className="cf-result-flag">Offset {signedOffset(condition.scoreOffset)}</span> : null}
+      </span>
     </div>
+    <p className="cf-result-subject">
+      {condition.conditionType !== 'release_title' && <span className="cf-result-field">{field}</span>}
+      {parts
+        ? <code>{parts.before}<mark>{parts.hit}</mark>{parts.after}</code>
+        : <code className="cf-result-nohit">{subject}</code>}
+    </p>
+    {/* A failure has to say why; on a pass the marked text already shows it. */}
+    {!passed && condition.reason && <p className="cf-result-reason">{condition.reason}</p>}
   </div>
 }
 
@@ -539,7 +565,7 @@ export default function CustomFormatsPageView() {
                 </Field>
               </SettingsGroup>
             </div>
-            <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="ghost" onClick={() => void testAll()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
+            <div className="cf-test-actions"><Button variant="primary" icon="activity" onClick={() => void testOne()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>{testing ? 'Testing…' : 'Test this format'}</Button><Button variant="secondary" onClick={() => void testAll()} disabled={testing || !releaseName.trim() || !draft.conditions.length || hasEmptyRule}>Compare every format</Button><div className="toolbar-spacer" /><Select value={testProfileId} onChange={(event) => setTestProfileId(event.target.value)}><option value="">No profile scoring</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></div>
             {!testResult && !testAllResult && <div className="cf-test-placeholder"><Icon name="activity" size={18} /><strong>Ready to test</strong><span>Run the title above to see every rule’s evidence and result.</span></div>}
             {testResult?.evaluation && <EvaluationRows evaluation={testResult.evaluation} />}
             {testAllResult && <div className="cf-test-all"><div className="cf-test-all-head"><span>Every format evaluated{testAllResult.qualityProfileName ? ` against ${testAllResult.qualityProfileName}` : ''}</span><span>{testAllResult.matchedCount} MATCHED{testAllResult.totalScore !== undefined ? ` · ${testAllResult.totalScore > 0 ? '+' : ''}${testAllResult.totalScore}` : ''}</span></div>{testAllResult.formats.map((evaluation) => <div className={`cf-test-all-row ${evaluation.rawMatched && !evaluation.matched ? 'suppressed' : ''}`} key={evaluation.customFormatId}><Icon name={evaluation.matched ? 'check' : evaluation.rawMatched ? 'pause' : 'close'} size={14} /><span>{evaluation.customFormatName}{evaluation.rawMatched && !evaluation.matched ? ` · suppressed by ${evaluation.suppressedByNames.join(', ')}` : ''}</span><small>{evaluation.contribution === undefined ? '-' : `${evaluation.contribution > 0 ? '+' : ''}${evaluation.contribution}`}</small></div>)}</div>}

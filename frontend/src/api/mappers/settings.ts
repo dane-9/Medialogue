@@ -19,6 +19,7 @@ export function mapCustomFormatCondition(value: CustomFormatConditionDto): Custo
   return {
     id: value.id,
     name: value.name ?? undefined,
+    type: value.type ?? 'release_title',
     pattern: value.pattern ?? undefined,
     required: value.required,
     negate: value.negate,
@@ -158,6 +159,7 @@ export function customFormatConditionPayload(condition: CustomFormatCondition): 
   return {
     id: condition.id || undefined,
     name: condition.name || undefined,
+    type: condition.type ?? 'release_title',
     pattern: condition.pattern || '',
     required: condition.required,
     negate: condition.negate,

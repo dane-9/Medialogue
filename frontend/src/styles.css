@@ -1649,14 +1649,15 @@ a.download-kind:hover { filter: brightness(1.35); }
 .cf-evaluation-summary strong { flex: 1; font-size: var(--t-sm); font-weight: 500; }
 .cf-evaluation-summary span { color: var(--muted); font: var(--t-micro) var(--sans); }
 .cf-condition-result {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
   gap: var(--s2);
-  padding: var(--s2) var(--s3);
+  padding: var(--s3);
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: var(--t-xs);
 }
+.cf-result-head { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.cf-result-head strong { flex: 1; min-width: 0; color: var(--text); font-size: var(--t-sm); font-weight: 500; }
 .cf-result-icon {
   display: grid;
   place-items: center;
@@ -1667,10 +1668,45 @@ a.download-kind:hover { filter: brightness(1.35); }
 }
 .cf-condition-result.pass .cf-result-icon { color: var(--ok); background: var(--ok-soft); }
 .cf-condition-result.fail .cf-result-icon { color: var(--err); background: var(--err-soft); }
-.cf-result-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.cf-result-copy strong { color: var(--text); font-size: var(--t-xs); font-weight: 500; }
-.cf-result-copy span { color: var(--muted); font-size: var(--t-xs); line-height: 1.5; }
-.cf-result-copy small { color: var(--faint); font: var(--t-micro)/1.5 var(--sans); overflow-wrap: anywhere; }
+/* Only the flags that are not the default appear, so a plain optional rule
+   carries no chips at all. */
+.cf-result-flags { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--s1); }
+.cf-result-flag {
+  padding: 2px var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--faint);
+  font: var(--t-micro) var(--sans);
+  white-space: nowrap;
+}
+.cf-result-reason { margin: 0; color: var(--err); font-size: var(--t-xs); line-height: 1.5; }
+/* The text the rule searched, shown whole so the match can be seen in context. */
+.cf-result-subject { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2); margin: 0; min-width: 0; }
+.cf-result-subject code {
+  min-width: 0;
+  color: var(--muted);
+  font: var(--t-xs)/1.6 var(--mono);
+  overflow-wrap: anywhere;
+}
+.cf-result-nohit { color: var(--faint) !important; }
+/* Named only when the rule read a parsed field rather than the release title,
+   because the highlight would otherwise imply the title was searched. */
+.cf-result-field {
+  flex: none;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  color: var(--faint);
+  background: var(--raised-2);
+  font: var(--t-micro) var(--sans);
+}
+.cf-result-subject mark {
+  padding: 1px 3px;
+  border-radius: var(--r-sm);
+  color: var(--ok);
+  background: var(--ok-soft);
+  font-weight: 600;
+}
+.cf-condition-result.fail .cf-result-subject mark { color: var(--err); background: var(--err-soft); }
 .cf-inline-error { padding: var(--s2) var(--s3); border-top: 1px solid var(--line); color: var(--err); font-size: var(--t-xs); }
 .cf-test-placeholder {
   display: flex;

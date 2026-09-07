@@ -853,6 +853,9 @@ export type CustomFormatConditionType =
 export interface CustomFormatCondition {
   id: string
   name?: string
+  /** Which parsed field the pattern runs against. Built-ins match typed fields
+      such as the audio codec, so this has to survive an edit round trip. */
+  type: CustomFormatConditionType
   pattern?: string
   required: boolean
   negate: boolean

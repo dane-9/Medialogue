@@ -772,6 +772,10 @@
             "minimum": -100000.0,
             "title": "Score Offset",
             "type": "integer"
+          },
+          "type": {
+            "$ref": "#/components/schemas/CustomFormatConditionType",
+            "default": "release_title"
           }
         },
         "title": "CustomFormatConditionInput",
@@ -832,6 +836,10 @@
             "default": 0,
             "title": "Score Offset",
             "type": "integer"
+          },
+          "type": {
+            "$ref": "#/components/schemas/CustomFormatConditionType",
+            "default": "release_title"
           }
         },
         "required": [

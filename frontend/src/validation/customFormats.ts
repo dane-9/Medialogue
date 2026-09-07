@@ -6,9 +6,30 @@ type RefinementContext = {
   addIssue(issue: { code: 'custom'; path: PropertyKey[]; message: string }): void
 }
 
+// Mirrors CustomFormatConditionType. Bundles exported before the field
+// existed carry no type, and those have always meant the raw release title.
+const conditionTypeSchema = z.enum([
+  'release_title',
+  'release_group',
+  'quality',
+  'quality_modifier',
+  'resolution',
+  'source',
+  'edition',
+  'language',
+  'indexer',
+  'web_provider',
+  'video_codec',
+  'audio_codec',
+  'audio_channels',
+  'hdr_type',
+  'release_attribute',
+]).default('release_title')
+
 const conditionSchema = z.object({
   id: z.string().max(128).nullable().optional(),
   name: z.string().max(256).nullable().optional(),
+  type: conditionTypeSchema,
   pattern: z.string().max(4096).nullable().optional(),
   required: z.boolean().default(false),
   negate: z.boolean().default(false),

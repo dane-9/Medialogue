@@ -267,6 +267,75 @@ def test_builtin_can_be_disabled_and_reenabled_with_enabled_only_patch(client: T
     assert reenabled.status_code == 200, reenabled.text
     assert reenabled.json()["enabled"] is True
 
+RELEASE = "Inception 2010 Hybrid 2160p UHD BluRay REMUX DV HDR HEVC DTS-HD MA 5.1-LM"
+
+
+def test_condition_type_survives_the_round_trip(client: TestClient) -> None:
+    """A built-in read back over the API keeps the field its pattern runs against."""
+
+    headers = _login(client)
+    listing = client.get("/api/v1/custom-formats", params={"page_size": 200}, headers=headers)
+    assert listing.status_code == 200, listing.text
+    builtin = next(item for item in listing.json()["items"] if item["name"] == "DTS-HD MA")
+
+    condition = builtin["conditions"][0]
+    assert condition["type"] == "audio_codec"
+
+
+def test_testing_a_typed_builtin_matches_its_parsed_field(client: TestClient) -> None:
+    """The tester must evaluate an audio_codec pattern against the audio codec.
+
+    Echoed back without its type it became a raw-title regex, and an anchored
+    field pattern can never match a whole release name.
+    """
+
+    headers = _login(client)
+    response = client.post(
+        "/api/v1/custom-formats/test",
+        headers=headers,
+        json={
+            "release_name": RELEASE,
+            "custom_format": {
+                "name": "DTS-HD MA",
+                "conditions": [{"type": "audio_codec", "pattern": r"^(?:DTS\-HD\ MA)$"}],
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    evaluation = response.json()["evaluation"]
+    assert evaluation["matched"] is True
+    assert evaluation["conditions"][0]["condition_type"] == "audio_codec"
+
+
+def test_a_condition_without_a_type_still_means_the_release_title(client: TestClient) -> None:
+    headers = _login(client)
+    response = client.post(
+        "/api/v1/custom-formats/test",
+        headers=headers,
+        json={
+            "release_name": RELEASE,
+            "custom_format": {"name": "Untyped", "conditions": [{"pattern": r"DTS-HD\s+MA"}]},
+        },
+    )
+    assert response.status_code == 200, response.text
+    evaluation = response.json()["evaluation"]
+    assert evaluation["matched"] is True
+    assert evaluation["conditions"][0]["condition_type"] == "release_title"
+
+
+def test_an_unknown_condition_type_is_rejected(client: TestClient) -> None:
+    headers = _login(client)
+    response = client.post(
+        "/api/v1/custom-formats/test",
+        headers=headers,
+        json={
+            "release_name": RELEASE,
+            "custom_format": {"name": "Bogus", "conditions": [{"type": "not_a_field", "pattern": "x"}]},
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
 def test_custom_format_test_explains_every_condition_and_parser_output(client: TestClient) -> None:
     headers = _login(client)
     response = client.post(
@@ -387,7 +456,9 @@ def test_application_owned_export_import_round_trip(client: TestClient) -> None:
     assert "score" not in bundle["custom_formats"][0]
     assert all("score" not in condition for condition in bundle["custom_formats"][0]["conditions"])
     assert all("score_offset" in condition for condition in bundle["custom_formats"][0]["conditions"])
-    assert all("type" not in condition for condition in bundle["custom_formats"][0]["conditions"])
+    # The type travels with the condition now: without it a typed format would
+    # import back as a raw-title regex and stop matching.
+    assert all(condition["type"] == "release_title" for condition in bundle["custom_formats"][0]["conditions"])
 
     client.delete(f"/api/v1/custom-formats/{created['id']}", headers=headers)
     imported = client.post("/api/v1/custom-formats/import", headers=headers, json=bundle)
@@ -396,7 +467,31 @@ def test_application_owned_export_import_round_trip(client: TestClient) -> None:
     restored = imported.json()["imported"][0]
     assert restored["name"] == created["name"]
     assert restored["id"] != created["id"]
-    assert "type" not in restored["conditions"][0]
+    assert restored["conditions"][0]["type"] == "release_title"
+
+
+def test_a_typed_format_survives_export_and_import(client: TestClient) -> None:
+    """The field a pattern runs against must outlive a round trip through a file."""
+
+    headers = _login(client)
+    created = client.post(
+        "/api/v1/custom-formats",
+        headers=headers,
+        json={
+            "name": "Lossless audio",
+            "conditions": [{"type": "audio_codec", "pattern": r"^(?:FLAC)$"}],
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["conditions"][0]["type"] == "audio_codec"
+
+    bundle = client.get(f"/api/v1/custom-formats/{created.json()['id']}/export").json()
+    assert bundle["custom_formats"][0]["conditions"][0]["type"] == "audio_codec"
+
+    client.delete(f"/api/v1/custom-formats/{created.json()['id']}", headers=headers)
+    imported = client.post("/api/v1/custom-formats/import", headers=headers, json=bundle)
+    assert imported.status_code == 201, imported.text
+    assert imported.json()["imported"][0]["conditions"][0]["type"] == "audio_codec"
 
 
 def test_import_requires_explicit_medialogue_schema_marker(client: TestClient) -> None:

@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .common import ORMModel
 
@@ -41,6 +41,10 @@ class StrictCustomFormatModel(BaseModel):
 class CustomFormatConditionInput(StrictCustomFormatModel):
     id: str | None = Field(default=None, max_length=128)
     name: str | None = Field(default=None, max_length=256)
+    # Which parsed field the pattern runs against. Built-in formats match typed
+    # fields such as the audio codec, so a client echoing a condition back must
+    # be able to preserve that; omitting it still means the raw release title.
+    type: CustomFormatConditionType = CustomFormatConditionType.RELEASE_TITLE
     pattern: str | None = Field(default=None, max_length=1024)
     required: bool = False
     negate: bool = False
@@ -75,12 +79,20 @@ class CustomFormatUpdate(StrictCustomFormatModel):
 class CustomFormatConditionResponse(ORMModel):
     id: str
     name: str | None
+    type: CustomFormatConditionType = CustomFormatConditionType.RELEASE_TITLE
     pattern: str | None = None
     required: bool
     negate: bool
     case_sensitive: bool
     group: str | None = None
     score_offset: int = 0
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def default_missing_type(cls, value: Any) -> Any:
+        # Conditions stored before the type was carried over the API read back
+        # as an empty string; those have always meant the raw release title.
+        return value or CustomFormatConditionType.RELEASE_TITLE
 
 
 class CustomFormatResponse(ORMModel):

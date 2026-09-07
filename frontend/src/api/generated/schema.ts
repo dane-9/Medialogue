@@ -3028,6 +3028,8 @@ export interface components {
              * @default 0
              */
             score_offset: number;
+            /** @default release_title */
+            type: components["schemas"]["CustomFormatConditionType"];
         };
         /** CustomFormatConditionResponse */
         CustomFormatConditionResponse: {
@@ -3050,6 +3052,8 @@ export interface components {
              * @default 0
              */
             score_offset: number;
+            /** @default release_title */
+            type: components["schemas"]["CustomFormatConditionType"];
         };
         /**
          * CustomFormatConditionType

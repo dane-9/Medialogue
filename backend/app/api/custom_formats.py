@@ -19,6 +19,7 @@ from app.schemas.custom_formats import (
     CUSTOM_FORMAT_SCHEMA_VERSION,
     CustomFormatConditionInput,
     CustomFormatConditionResponse,
+    CustomFormatConditionType,
     CustomFormatCreate,
     CustomFormatEvaluationResponse,
     CustomFormatExportBundle,
@@ -124,8 +125,11 @@ def _normalized_conditions(values: list[CustomFormatConditionInput | FormatCondi
     normalized: list[dict[str, Any]] = []
     for value in values:
         if isinstance(value, CustomFormatConditionInput):
+            # The submitted type is authoritative. Forcing release_title here
+            # silently rewrote every typed built-in condition, so testing or
+            # duplicating one ran its field pattern against the whole title.
             raw = value.model_dump(mode="json", exclude_none=True)
-            raw["type"] = "release_title"
+            raw.setdefault("type", CustomFormatConditionType.RELEASE_TITLE.value)
             normalized.append(FormatCondition.from_dict(raw).to_dict())
             continue
         if isinstance(value, FormatCondition):
@@ -713,6 +717,7 @@ def _export_item(row: CustomFormatModel, names_by_id: dict[UUID, str]) -> Custom
             CustomFormatConditionInput(
                 id=condition.id,
                 name=condition.name,
+                type=condition.type or CustomFormatConditionType.RELEASE_TITLE,
                 pattern=condition.pattern,
                 required=condition.required,
                 negate=condition.negate,
