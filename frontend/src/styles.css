@@ -2620,17 +2620,20 @@ a.download-kind:hover { filter: brightness(1.35); }
 .cf-editor-rail nav button > svg { color: var(--faint); }
 .cf-editor-owned { display: flex; align-items: center; gap: var(--s2); padding: var(--s2); margin-top: auto; color: var(--faint); font-size: var(--t-micro); }
 .cf-editor-content { min-width: 0; overflow-y: auto; scrollbar-gutter: stable; background: var(--surface); }
-.cf-editor-panel { display: grid; align-content: start; gap: var(--s4); min-height: 100%; padding: 28px 32px 24px; }
+.cf-editor-panel { --editor-col: 760px; display: grid; align-content: start; gap: var(--s4); min-height: 100%; padding: 28px 32px 24px; }
+/* Notes are part of the same column as the rule cards and field groups; left
+   uncapped this one ran the full panel width and overhung everything below. */
+.cf-editor-panel > .settings-note { max-width: var(--editor-col); }
 .cf-editor-panel-head { max-width: 680px; }
 .cf-editor-panel-head h3 { margin: 5px 0 6px; color: var(--text); font-size: var(--t-xl); font-weight: 600; }
 .cf-editor-panel-head p { margin: 0; color: var(--muted); font-size: var(--t-sm); line-height: 1.55; }
-.cf-editor-panel-head-compact { display: flex; max-width: 760px; align-items: baseline; justify-content: space-between; gap: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.cf-editor-panel-head-compact { display: flex; max-width: var(--editor-col); align-items: baseline; justify-content: space-between; gap: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
 .cf-editor-panel-head-compact h3 { margin: 0; font-size: var(--t-lg); }
 .cf-editor-panel-head-compact p { font-size: var(--t-xs); text-align: right; }
 .cf-editor-rules-panel { gap: var(--s3); padding-top: 20px; }
 /* The editors use the same titled-group stack as Settings, so a Custom Format
    and a download client read as the same kind of form. */
-.cf-editor-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s5); max-width: 760px; }
+.cf-editor-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s5); max-width: var(--editor-col); }
 .cf-supersedes-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s1); max-height: 190px; overflow-y: auto; padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raised); }
 .cf-supersedes-list label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s2); min-height: 32px; padding: var(--s1) var(--s2); border: 1px solid transparent; border-radius: var(--r-sm); color: var(--muted); font-size: var(--t-xs); }
 .cf-supersedes-list label:hover { color: var(--text); background: var(--surface); }
@@ -2640,16 +2643,16 @@ a.download-kind:hover { filter: brightness(1.35); }
 .cf-test-all-row.suppressed { color: var(--muted); }
 .cf-description-input { min-height: 96px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 .cf-release-test-textarea { min-height: 88px; padding: 11px 12px; resize: vertical; font: var(--t-sm)/1.5 var(--mono); }
-.cf-editor-next { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); max-width: 760px; padding-top: var(--s2); }
-.cf-logic-summary { display: flex; align-items: center; gap: var(--s2); max-width: 760px; padding: var(--s3); border: 1px solid var(--accent-line); border-radius: var(--r-lg); color: var(--accent-text); background: var(--accent-soft); }
+.cf-editor-next { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); max-width: var(--editor-col); padding-top: var(--s2); }
+.cf-logic-summary { display: flex; align-items: center; gap: var(--s2); max-width: var(--editor-col); padding: var(--s3); border: 1px solid var(--accent-line); border-radius: var(--r-lg); color: var(--accent-text); background: var(--accent-soft); }
 .cf-logic-summary > div { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 4px; }
 .cf-logic-summary strong { color: var(--text); font-size: var(--t-xs); font-weight: 600; }
 .cf-logic-summary span { color: #acb2b8; font-size: var(--t-xs); line-height: 1.5; }
-.cf-add-rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--s2); max-width: 760px; padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
+.cf-add-rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--s2); max-width: var(--editor-col); padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
 .cf-add-rule > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .cf-add-rule strong { color: var(--text); font-size: var(--t-sm); font-weight: 600; }
 .cf-add-rule span { color: var(--muted); font-size: var(--t-xs); }
-.cf-rule-card { max-width: 760px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); }
+.cf-rule-card { max-width: var(--editor-col); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); }
 .cf-rule-card .condition-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); }
 .cf-rule-number { display: flex; min-width: 0; align-items: center; gap: var(--s2); }
 .cf-rule-number > span { display: grid; width: 25px; height: 25px; flex: none; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--faint); font: 600 var(--t-micro) var(--sans); }
@@ -2670,7 +2673,7 @@ a.download-kind:hover { filter: brightness(1.35); }
 .cf-rule-fields label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: var(--muted); font-size: var(--t-xs); }
 .cf-rule-fields label > span { color: var(--muted); font: var(--t-xs)/1.4 var(--sans); letter-spacing: 0; text-transform: none; }
 .cf-rule-fields label em { color: var(--faint); font-style: normal; font-weight: 400; text-transform: lowercase; }
-.cf-parser-details { max-width: 760px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); }
+.cf-parser-details { max-width: var(--editor-col); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); }
 .cf-parser-details summary { padding: var(--s3); color: var(--muted); font-size: var(--t-xs); cursor: pointer; }
 .cf-parser-details pre { max-height: 260px; padding: var(--s3); margin: 0; overflow: auto; border-top: 1px solid var(--line); color: var(--muted); font: var(--t-micro)/1.55 var(--mono); }
 
@@ -2734,13 +2737,13 @@ a.download-kind:hover { filter: brightness(1.35); }
 .qp-editor-modal .modal-body { min-height: 0; overflow: hidden; }
 .qp-editor-shell { height: min(700px, calc(88vh - 154px)); min-height: 500px; }
 .qp-details-panel { gap: var(--s5); }
-.qp-details-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s5); max-width: 760px; }
+.qp-details-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s5); max-width: var(--editor-col); }
 .qp-qualities-panel { gap: var(--s3); padding-top: 20px; }
-.qp-quality-toolbar { display: flex; max-width: 760px; align-items: center; justify-content: space-between; gap: var(--s3); }
+.qp-quality-toolbar { display: flex; max-width: var(--editor-col); align-items: center; justify-content: space-between; gap: var(--s3); }
 .qp-quality-toolbar .search-field { min-width: 220px; flex: 1; }
 .qp-quality-toolbar > span { color: var(--muted); font-size: var(--t-xs); }
 .qp-quality-toolbar > span strong { color: var(--text); font-family: var(--sans); }
-.qp-quality-list { display: grid; max-width: 760px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.qp-quality-list { display: grid; max-width: var(--editor-col); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .qp-quality-row { display: grid; grid-template-columns: 24px 22px minmax(0, 1fr) 70px 72px; align-items: center; gap: var(--s2); min-height: 42px; padding: 4px var(--s3); color: var(--faint); background: var(--surface); transition: opacity .12s ease, background .12s ease; }
 .qp-quality-row + .qp-quality-row { border-top: 1px solid var(--line); }
 .qp-quality-row.selected { color: var(--text); background: var(--raised); }
