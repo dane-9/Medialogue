@@ -406,7 +406,7 @@ export interface Download {
   category?: string
 }
 
-export type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision'
+export type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision' | 'replacement'
 export type UpgradeExecutionState = 'submitted' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
 
 export interface UpgradeCurrentRelease {
@@ -805,6 +805,14 @@ export interface EventHistoryItem {
 }
 
 export interface TorrentArchiveItem {
+  includedInRemoteBackup?: boolean
+  remoteBackupAt?: string
+  archiveVerified?: boolean
+  archiveError?: string
+  capturedAt?: string
+  sourceState?: string
+  sourceCheckedAt?: string
+  recoveryClients?: string[]
   id: string
   releaseId?: string
   infoHash: string

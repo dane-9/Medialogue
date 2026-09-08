@@ -120,6 +120,8 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
         "plex_library_sync",
         "search_media_upgrades",
         "scheduled_housekeeping",
+        "remote_backup",
+        "search_media_replacements",
     }
     task = next(item for item in listed if item["job_type"] == "integration_health_sweep")
     assert task["name"] == "Check Integration Health"

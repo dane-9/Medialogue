@@ -33,6 +33,14 @@ class TorrentArchiveSummary(BaseModel):
     previous_reported_path: str | None = None
     previous_resolved_path: str | None = None
     qbit_present: bool = False
+    archive_verified: bool = False
+    archive_error: str | None = None
+    captured_at: str | None = None
+    source_state: str = "unknown"
+    source_checked_at: str | None = None
+    recovery_clients: list[str] = Field(default_factory=list)
+    included_in_remote_backup: bool = False
+    remote_backup_at: str | None = None
 
 
 class TorrentArchiveDetail(TorrentArchiveSummary):

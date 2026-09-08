@@ -194,6 +194,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backups/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Google Callback */
+        get: operations["google_callback_api_v1_backups_google_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/google/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Google */
+        post: operations["connect_google_api_v1_backups_google_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/google/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect Google */
+        post: operations["disconnect_google_api_v1_backups_google_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/google/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Snapshots */
+        get: operations["list_snapshots_api_v1_backups_google_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/recovery-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Recovery Key */
+        post: operations["generate_recovery_key_api_v1_backups_recovery_key_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Backup */
+        post: operations["start_backup_api_v1_backups_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Backup Settings */
+        put: operations["save_backup_settings_api_v1_backups_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backup Status */
+        get: operations["backup_status_api_v1_backups_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/custom-formats": {
         parameters: {
             query?: never;
@@ -1867,6 +2003,91 @@ export interface paths {
         patch: operations["update_mapping_api_v1_remote_path_mappings__mapping_id__patch"];
         trace?: never;
     };
+    "/api/v1/replacements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Queue */
+        get: operations["queue_api_v1_replacements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/replacements/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review */
+        post: operations["review_api_v1_replacements_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/replacements/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search */
+        post: operations["search_api_v1_replacements_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/replacements/{candidate_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish */
+        post: operations["finish_api_v1_replacements__candidate_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/replacements/{candidate_id}/retire-torrents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire */
+        post: operations["retire_api_v1_replacements__candidate_id__retire_torrents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -2363,6 +2584,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/torrent-archive/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Archive Records
+         * @description Recover missing catalogue rows from portable manifests, without contacting clients.
+         */
+        post: operations["rebuild_archive_records_api_v1_torrent_archive_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/torrent-archive/{torrent_id}": {
         parameters: {
             query?: never;
@@ -2702,6 +2943,31 @@ export interface components {
              * Format: date-time
              */
             last_seen_at: string;
+        };
+        /** BackupSettingsRequest */
+        BackupSettingsRequest: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Interval Seconds
+             * @default 86400
+             */
+            interval_seconds: number;
+            /**
+             * Keep Daily
+             * @default 7
+             */
+            keep_daily: number;
+            /**
+             * Keep Weekly
+             * @default 4
+             */
+            keep_weekly: number;
+            /** Recovery Key */
+            recovery_key?: string | null;
         };
         /** BootstrapRequest */
         BootstrapRequest: {
@@ -5831,6 +6097,21 @@ export interface components {
             /** Storage Root Id */
             storage_root_id?: string | null;
         };
+        /** ReplacementReviewRequest */
+        ReplacementReviewRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "ignore" | "snooze" | "restore";
+            /** Torrent Ids */
+            torrent_ids: string[];
+        };
+        /** ReplacementSearchRequest */
+        ReplacementSearchRequest: {
+            /** Target Key */
+            target_key?: string | null;
+        };
         /** ScheduledTaskResponse */
         ScheduledTaskResponse: {
             /** Active Job Id */
@@ -6772,13 +7053,22 @@ export interface components {
         };
         /** TorrentArchiveDetail */
         TorrentArchiveDetail: {
+            /** Archive Error */
+            archive_error?: string | null;
             /** Archive Path */
             archive_path?: string | null;
             archive_state: components["schemas"]["TorrentArchiveState"];
+            /**
+             * Archive Verified
+             * @default false
+             */
+            archive_verified: boolean;
             /** Associations */
             associations?: {
                 [key: string]: unknown;
             }[];
+            /** Captured At */
+            captured_at?: string | null;
             /** Completed At */
             completed_at?: string | null;
             /** Edition */
@@ -6793,6 +7083,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Included In Remote Backup
+             * @default false
+             */
+            included_in_remote_backup: boolean;
             /** Info Hash */
             info_hash: string;
             /**
@@ -6828,10 +7123,21 @@ export interface components {
             qbit_present: boolean;
             /** Quality */
             quality?: string | null;
+            /** Recovery Clients */
+            recovery_clients?: string[];
             /** Release Group */
             release_group?: string | null;
             /** Release Name */
             release_name?: string | null;
+            /** Remote Backup At */
+            remote_backup_at?: string | null;
+            /** Source Checked At */
+            source_checked_at?: string | null;
+            /**
+             * Source State
+             * @default unknown
+             */
+            source_state: string;
             /** Tmdb Id */
             tmdb_id?: number | null;
             /** Torrent Name */
@@ -6868,9 +7174,18 @@ export interface components {
         TorrentArchiveState: "not_archived" | "archived" | "failed";
         /** TorrentArchiveSummary */
         TorrentArchiveSummary: {
+            /** Archive Error */
+            archive_error?: string | null;
             /** Archive Path */
             archive_path?: string | null;
             archive_state: components["schemas"]["TorrentArchiveState"];
+            /**
+             * Archive Verified
+             * @default false
+             */
+            archive_verified: boolean;
+            /** Captured At */
+            captured_at?: string | null;
             /** Completed At */
             completed_at?: string | null;
             /** Edition */
@@ -6885,6 +7200,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Included In Remote Backup
+             * @default false
+             */
+            included_in_remote_backup: boolean;
             /** Info Hash */
             info_hash: string;
             /**
@@ -6912,10 +7232,21 @@ export interface components {
             qbit_present: boolean;
             /** Quality */
             quality?: string | null;
+            /** Recovery Clients */
+            recovery_clients?: string[];
             /** Release Group */
             release_group?: string | null;
             /** Release Name */
             release_name?: string | null;
+            /** Remote Backup At */
+            remote_backup_at?: string | null;
+            /** Source Checked At */
+            source_checked_at?: string | null;
+            /**
+             * Source State
+             * @default unknown
+             */
+            source_state: string;
             /** Tmdb Id */
             tmdb_id?: number | null;
             /** Torrent Name */
@@ -7087,7 +7418,7 @@ export interface components {
              */
             updated_at: string;
             /** Upgrade Types */
-            upgrade_types: ("quality" | "custom_format" | "season_pack" | "repack" | "proper" | "revision")[];
+            upgrade_types: ("quality" | "custom_format" | "season_pack" | "repack" | "proper" | "revision" | "replacement")[];
             /** Validated At */
             validated_at?: string | null;
         };
@@ -7581,6 +7912,203 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_callback_api_v1_backups_google_callback_get: {
+        parameters: {
+            query: {
+                code?: string;
+                state: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_google_api_v1_backups_google_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    disconnect_google_api_v1_backups_google_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_snapshots_api_v1_backups_google_snapshots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    generate_recovery_key_api_v1_backups_recovery_key_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    start_backup_api_v1_backups_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+        };
+    };
+    save_backup_settings_api_v1_backups_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backup_status_api_v1_backups_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -11101,6 +11629,162 @@ export interface operations {
             };
         };
     };
+    queue_api_v1_replacements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    review_api_v1_replacements_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplacementReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_v1_replacements_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplacementSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_api_v1_replacements__candidate_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_api_v1_replacements__candidate_id__retire_torrents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_search_job_api_v1_search_jobs__job_id__get: {
         parameters: {
             query?: {
@@ -12235,6 +12919,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_archive_records_api_v1_torrent_archive_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

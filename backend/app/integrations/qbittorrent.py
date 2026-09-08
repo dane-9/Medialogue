@@ -530,8 +530,12 @@ class QBittorrentClient:
         first_last_first: bool = False,
         content_layout: str = "default",
         add_to_top: bool = False,
+        stopped: bool = False,
     ) -> None:
         data: dict[str, str] = {}
+        if stopped:
+            # qBittorrent 4 uses paused; qBittorrent 5 uses stopped.
+            data.update({"paused": "true", "stopped": "true"})
         if save_path:
             data["savepath"] = save_path
         if category:
@@ -625,6 +629,22 @@ class QBittorrentClient:
 
     async def start_torrents(self, hashes: Sequence[str]) -> None:
         await self._post_hashes("/api/v2/torrents/start", hashes, fallback="/api/v2/torrents/resume")
+
+    async def restore_torrent_settings(self, info_hash: str, settings: dict) -> None:
+        """Apply captured limits after file selection has been restored."""
+        for key, method in (("download_limit", self.set_download_limit), ("upload_limit", self.set_upload_limit)):
+            value = settings.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                await method([info_hash], value)
+        limit_keys = ("ratio_limit", "seeding_time_limit", "inactive_seeding_time_limit")
+        if all(isinstance(settings.get(key), (int, float)) for key in limit_keys):
+            await self._post_hashes("/api/v2/torrents/setShareLimits", [info_hash],
+                ratioLimit=settings["ratio_limit"], seedingTimeLimit=settings["seeding_time_limit"],
+                inactiveSeedingTimeLimit=settings["inactive_seeding_time_limit"])
+        if isinstance(settings.get("super_seeding"), bool):
+            await self._post_hashes("/api/v2/torrents/setSuperSeeding", [info_hash], value=str(settings["super_seeding"]).lower())
+        if settings.get("force_start") is True:
+            await self._post_hashes("/api/v2/torrents/setForceStart", [info_hash], value="true")
 
     async def stop_torrents(self, hashes: Sequence[str]) -> None:
         await self._post_hashes("/api/v2/torrents/stop", hashes, fallback="/api/v2/torrents/pause")

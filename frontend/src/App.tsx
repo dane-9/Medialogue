@@ -1,3 +1,4 @@
+import ReplaceMediaPage from "./ReplaceMediaPage"
 import { Component, FormEvent, useEffect, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
@@ -54,6 +55,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/shows" element={<ShowsPage />} />
     <Route path="/shows/:id" element={<ShowDetailRoute />} />
     <Route path="/downloads" element={<DownloadsPage />} />
+    <Route path="/replace-media" element={<ReplaceMediaPage />} />
     <Route path="/upgrade-media" element={<UpgradeMediaPage />} />
     <Route path="/new-media" element={<NewMediaPage />} />
     <Route path="/problems" element={<ProblemsPage />} />
@@ -152,7 +154,7 @@ function FirstRunSetupPage({ onSetup }: { onSetup: () => void }) {
     <div className="login-panel">
       <img className="login-brand-banner" src={medialogueBanner} alt="Medialogue" />
       <div className="login-form">
-        <div className="heading-copy"><div className="eyebrow">FIRST RUN</div><h1>Set up your administrator account</h1><p>Read the one-time setup token from the container, then choose the password used for normal sign-in.</p></div>
+        <div className="heading-copy"><details><summary>Restore an existing backup</summary><p>Download your encrypted snapshot from Google Drive, then run <code>python backend/scripts/restore_backup.py backup.mlbackup restored</code> from a Medialogue checkout. Enter your recovery key when prompted.</p><p>The tool verifies and stages the backup. Stop Medialogue, restore the staged files and original application secret as instructed, then restart and sign in with your previous account.</p></details><div className="eyebrow">FIRST RUN</div><h1>Set up your administrator account</h1><p>Read the one-time setup token from the container, then choose the password used for normal sign-in.</p></div>
         <form onSubmit={submit} className="login-form">
           <label><span className="field-label">Setup token</span><Input value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="off" spellCheck={false} /></label>
           <label><span className="field-label">Administrator username</span><Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label>

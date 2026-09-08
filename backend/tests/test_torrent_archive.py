@@ -137,6 +137,13 @@ class ArchiveQBitClient:
             raise RuntimeError("file priority restore failed")
         self.behavior.file_priorities.append({"info_hash": info_hash, "priorities": dict(priorities)})
 
+    async def restore_torrent_settings(self, info_hash: str, settings: dict):
+        assert self.behavior.file_priorities, "Settings must follow file selection"
+
+    async def start_torrents(self, hashes):
+        assert self.behavior.added[-1]["stopped"] is True
+        assert self.behavior.file_priorities, "Do not start downloads before restoring file selection"
+
     async def remove_torrent(self, info_hash: str, *, delete_files: bool = False):
         self.behavior.removed.append({"info_hash": info_hash, "delete_files": delete_files})
 

@@ -79,7 +79,7 @@ class UpgradeCandidateResponse(BaseModel):
     seeders: int | None = None
     leechers: int | None = None
     published_at: datetime | None = None
-    upgrade_types: list[Literal["quality", "custom_format", "season_pack", "repack", "proper", "revision"]]
+    upgrade_types: list[Literal["quality", "custom_format", "season_pack", "repack", "proper", "revision", "replacement"]]
     added_custom_formats: list[dict[str, Any]]
     #: Every Custom Format that matched, per side, with what it contributed.
     #: Read from the comparison snapshot so the row can explain its score

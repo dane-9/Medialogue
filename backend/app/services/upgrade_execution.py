@@ -104,7 +104,7 @@ async def _current_releases(db: AsyncSession, row: UpgradeCandidate) -> list[Mov
     releases = list((await db.scalars(select(model).where(model.id.in_(release_ids)))).all())
     if len(releases) != len(release_ids):
         raise AppError("UPGRADE_TARGET_STALE", "The current release changed since this candidate was found.", status_code=409)
-    if any(release.release_state != ReleaseState.CURRENT for release in releases):
+    if any(release.release_state not in ([ReleaseState.CURRENT, ReleaseState.MISSING] if row.target_key.startswith("replace:") else [ReleaseState.CURRENT]) for release in releases):
         raise AppError("UPGRADE_TARGET_STALE", "The current release changed since this candidate was found. Search for upgrades again.", status_code=409)
     return releases
 
@@ -202,6 +202,10 @@ async def submit_upgrade_candidate(
         raise AppError("UPGRADE_NOT_DOWNLOADABLE", "The indexer did not provide a downloadable torrent for this candidate.", status_code=409)
 
     releases = await _current_releases(db, row)
+    active = (await db.scalars(select(UpgradeCandidate).where(UpgradeCandidate.id != row.id,
+        UpgradeCandidate.execution_state.in_(ACTIVE_EXECUTION_STATES)))).all()
+    if any(set(other.current_release_ids or []) & set(row.current_release_ids or []) for other in active):
+        raise AppError("REPLACEMENT_ALREADY_RUNNING", "Another upgrade or replacement is already handling this media.", status_code=409)
     if row.media_type == MediaType.MOVIES:
         current = releases[0]
         assert isinstance(current, MovieRelease)
@@ -212,8 +216,12 @@ async def submit_upgrade_candidate(
                 _movie_edition_error(current.effective_edition, candidate_edition),
                 status_code=409,
             )
-    await _assert_writable_target(db, row, releases)
-    await _assert_old_torrents_archived(db, row)
+    if row.target_key.startswith("replace:"):
+        from app.services.replacements import revalidate_replacement
+        await revalidate_replacement(db, row)
+    else:
+        await _assert_writable_target(db, row, releases)
+        await _assert_old_torrents_archived(db, row)
 
     indexer = await get_configured_indexer(db, row.indexer_id) if row.indexer_id else None
     if indexer is None or not indexer.enabled or not indexer.api_key:
@@ -250,11 +258,15 @@ async def submit_upgrade_candidate(
         }
         if row.download_url.casefold().startswith("magnet:"):
             submitted_info_hash = magnet_info_hash(row.download_url)
+            if row.target_key.startswith("replace:") and (not submitted_info_hash or submitted_info_hash.lower() in row.comparison_snapshot.get("excluded_hashes", [])):
+                raise AppError("REPLACEMENT_SAME_TORRENT", "The indexer returned an existing or unidentified torrent. Choose another result.", status_code=409)
             await adapter.add_url(row.download_url, **options)
         else:
             torznab = torznab_client_factory(indexer.torznab_url, indexer.api_key, timeout=float(indexer.timeout_seconds))
             torrent_bytes = await torznab.fetch_torrent(row.download_url)
             submitted_info_hash = torrent_payload_info_hash(torrent_bytes)
+            if row.target_key.startswith("replace:") and (not submitted_info_hash or submitted_info_hash.lower() in row.comparison_snapshot.get("excluded_hashes", [])):
+                raise AppError("REPLACEMENT_SAME_TORRENT", "The indexer returned an existing or unidentified torrent. Choose another result.", status_code=409)
             safe_name = "".join(char if char.isalnum() or char in " ._-" else "_" for char in row.title).strip()
             await adapter.add_torrent(torrent_bytes, filename=f"{safe_name[:180] or 'upgrade'}.torrent", **options)
     except AppError:
@@ -484,6 +496,7 @@ async def advance_upgrade_handoff(
     torrent: Torrent,
     *,
     qbittorrent_client_factory: QBittorrentClientFactory,
+    allow_torrent_removal: bool = False,
 ) -> UpgradeCandidate | None:
     row = await db.scalar(
         select(UpgradeCandidate).where(
@@ -498,7 +511,8 @@ async def advance_upgrade_handoff(
         row.execution_state = "handoff_attention"
         row.execution_error = "The replacement completed without a validated incoming release association."
         return row
-    if torrent.archive_state != TorrentArchiveState.ARCHIVED:
+    from app.services.torrent_archive import torrent_archive_complete
+    if torrent.archive_state != TorrentArchiveState.ARCHIVED or (row.target_key.startswith("replace:") and not torrent_archive_complete(torrent)):
         row.execution_state = "handoff_attention"
         row.execution_error = "The replacement completed, but its torrent backup is not complete. The current torrent was kept."
         return row
@@ -510,6 +524,10 @@ async def advance_upgrade_handoff(
             row.execution_error = "The replacement completed but did not become the validated current Movie release."
             return row
         old = list((await db.scalars(select(MovieRelease).where(MovieRelease.id.in_(_ids(row.current_release_ids))))).all())
+        if row.target_key.startswith("replace:"):
+            for item in old:
+                if item.release_state == ReleaseState.MISSING:
+                    item.release_state = ReleaseState.REPLACED
         if any(item.release_state != ReleaseState.REPLACED for item in old):
             row.execution_state = "handoff_attention"
             row.execution_error = "The replacement completed, but the previous Movie release was not safely superseded."
@@ -531,6 +549,13 @@ async def advance_upgrade_handoff(
 
     now = utcnow()
     row.validated_at = row.validated_at or now
+    if row.target_key.startswith("replace:"):
+        for old_torrent, _ in await _old_live_torrents(db, row, exclude_torrent_id=torrent.id):
+            old_torrent.metadata_json = {**old_torrent.metadata_json, "replacement_candidate_id": str(row.id)}
+    if row.target_key.startswith("replace:") and not allow_torrent_removal:
+        row.execution_state = "cleanup_required"
+        row.execution_error = None
+        return row
     live_old = await _old_live_torrents(db, row, exclude_torrent_id=torrent.id)
     for old_torrent, _observation in live_old:
         if old_torrent.archive_state != TorrentArchiveState.ARCHIVED:
@@ -709,6 +734,8 @@ async def _replacement_cleanup_guard(db: AsyncSession, row: UpgradeCandidate) ->
 async def _cleanup_core(db: AsyncSession, row: UpgradeCandidate) -> dict[str, Any]:
     old_ids = _ids(row.current_release_ids)
     blocked, replacement_guard = await _replacement_cleanup_guard(db, row)
+    if row.target_key.startswith("replace:") and await _old_live_torrents(db, row, exclude_torrent_id=row.torrent_id):
+        blocked.append("Retire the old torrent entries before deleting their media files.")
     targets: list[dict[str, Any]] = []
     media_file_ids: set[UUID] = set()
 

@@ -149,6 +149,8 @@ async def download_recovery_export(
     job = await db.get(Job, job_id)
     if job is None or job.job_type != "recovery_export":
         raise AppError("NOT_FOUND", "Recovery export job was not found.", status_code=404)
+    if (job.summary or {}).get("remote_backup"):
+        raise AppError("REMOTE_BACKUP_EXPORT_PRIVATE", "Scheduled snapshots are available only as encrypted backups in Google Drive.", status_code=409)
     if job.status != JobStatus.COMPLETED:
         raise AppError("RECOVERY_EXPORT_NOT_READY", "Recovery Bundle is not ready for download.", status_code=409)
     bundle = _validated_bundle_path(job)

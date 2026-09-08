@@ -27,6 +27,7 @@ from app.services.torrent_archive import (
     run_torrent_archive_restore,
     run_torrent_archive_retry,
     select_archive_client,
+    verify_torrent_archive,
 )
 
 
@@ -67,6 +68,11 @@ async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
             .where(TorrentClientObservation.torrent_id == torrent.id, TorrentClientObservation.is_present.is_(True))
         )
     )
+    verified, verification_error = verify_torrent_archive(torrent)
+    recovery = (manifest.get("client_recovery") or {}).get(str(original.get("download_client_id"))) or manifest.get("recovery") or {}
+    from app.services.remote_backups import read_backup_settings
+    from app.services.torrent_archive import recovery_revision
+    remote = read_backup_settings()
     return TorrentArchiveSummary(
         id=torrent.id,
         info_hash=torrent.info_hash,
@@ -88,10 +94,57 @@ async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
         edition=primary.get("edition"),
         release_group=primary.get("release_group"),
         original_download_client=original.get("download_client_name"),
-        previous_reported_path=_manifest_previous_path(primary, original, "reported_path"),
+        previous_reported_path=(recovery.get("properties") or {}).get("save_path") or _manifest_previous_path(primary, original, "reported_path"),
         previous_resolved_path=_manifest_previous_path(primary, original, "resolved_path"),
         qbit_present=qbit_present,
+        archive_verified=verified,
+        archive_error=verification_error,
+        captured_at=recovery.get("captured_at"),
+        source_state=(torrent.tracker_summary or {}).get("state", "unknown") if qbit_present else "unknown",
+        source_checked_at=(torrent.tracker_summary or {}).get("checked_at"),
+        recovery_clients=list((manifest.get("client_recovery") or {}).keys()),
+        included_in_remote_backup=bool(manifest and (remote.get("coverage") or {}).get(torrent.info_hash.lower()) == recovery_revision(manifest)),
+        remote_backup_at=remote.get("last_success_at"),
     )
+
+
+@router.post("/torrent-archive/rebuild")
+async def rebuild_archive_records(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
+    """Recover missing catalogue rows from portable manifests, without contacting clients."""
+    import json
+    from pathlib import Path
+    from app.core.config import get_settings
+    from app.services.torrent_archive import archive_paths, _atomic_write
+    root = Path(get_settings().torrent_archive_dir).resolve()
+    imported = skipped = 0
+    errors = []
+    for path in sorted((root / "manifests").glob("*/*.json")):
+        try:
+            if path.is_symlink() or not path.resolve().is_relative_to(root):
+                raise ValueError("Manifest is outside the archive directory")
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            info_hash = str(manifest["torrent_info_hash"]).lower()
+            torrent_path, expected_manifest = archive_paths(info_hash)
+            if expected_manifest.resolve() != path.resolve() or not torrent_path.resolve().is_relative_to(root):
+                raise ValueError("Manifest path does not match its torrent hash")
+            if await db.scalar(select(Torrent).where(Torrent.info_hash == info_hash)):
+                skipped += 1
+                continue
+            torrent = Torrent(info_hash=info_hash, name=str(manifest.get("torrent_name") or info_hash),
+                              archive_state=TorrentArchiveState.ARCHIVED, archive_path=str(torrent_path),
+                              manifest_path=str(path), manifest_schema_version=manifest.get("schema_version"),
+                              metadata_json={"rebuilt_from_archive": True}, tracker_summary={"state": "unknown"})
+            valid, error = verify_torrent_archive(torrent)
+            if not valid:
+                raise ValueError(error)
+            async with db.begin_nested():
+                db.add(torrent)
+                await db.flush()
+            imported += 1
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            errors.append({"manifest": path.name, "error": str(exc)})
+    await db.commit()
+    return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
 @router.get("/torrent-archive", response_model=Collection[TorrentArchiveSummary])

@@ -79,6 +79,8 @@ class UpgradeTarget:
     execution_eligible: bool
     execution_block_reason: str | None
     season_pack_upgrades: bool
+    replacement: bool = False
+    excluded_hashes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,11 +357,11 @@ async def _release_evidence(
     )
 
 
-async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int, set[str]]:
+async def _movie_targets(db: AsyncSession, *, replacement: bool = False) -> tuple[list[UpgradeTarget], int, set[str]]:
     movies = (
         await db.scalars(
             select(Movie)
-            .where(Movie.monitored.is_(True))
+            .where(Movie.monitored.is_(True) if not replacement else True)
             .order_by(Movie.sort_title, Movie.id)
         )
     ).all()
@@ -376,7 +378,7 @@ async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int, se
                     selectinload(MovieRelease.directories).selectinload(MediaDirectory.storage_root),
                     selectinload(MovieRelease.torrents),
                 )
-                .where(MovieRelease.movie_id == movie.id, MovieRelease.release_state == ReleaseState.CURRENT)
+                .where(MovieRelease.movie_id == movie.id, MovieRelease.release_state.in_([ReleaseState.CURRENT, ReleaseState.MISSING] if replacement else [ReleaseState.CURRENT]))
                 .order_by(MovieRelease.first_seen_at, MovieRelease.id)
             )
         ).all()
@@ -392,7 +394,7 @@ async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int, se
                 skipped_quality += 1
                 continue
             read_only = _read_only_root([release])
-            if read_only is not None:
+            if read_only is not None and not replacement:
                 skipped_read_only.add(read_only)
                 continue
             targets.append(
@@ -422,9 +424,9 @@ async def _movie_targets(db: AsyncSession) -> tuple[list[UpgradeTarget], int, se
     return targets, skipped_quality, skipped_read_only
 
 
-async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeTarget], int, int, set[str]]:
+async def _show_targets(db: AsyncSession, *, today: date, replacement: bool = False) -> tuple[list[UpgradeTarget], int, int, set[str]]:
     shows = (
-        await db.scalars(select(Show).where(Show.monitored.is_(True)).order_by(Show.title, Show.id))
+        await db.scalars(select(Show).where(Show.monitored.is_(True) if not replacement else True).order_by(Show.title, Show.id))
     ).all()
     targets: list[UpgradeTarget] = []
     skipped_airing = 0
@@ -435,7 +437,7 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
         seasons = (
             await db.scalars(
                 select(Season)
-                .where(Season.show_id == show.id, Season.monitored.is_(True))
+                .where(Season.show_id == show.id, Season.monitored.is_(True) if not replacement else True)
                 .order_by(Season.season_number)
             )
         ).all()
@@ -462,7 +464,7 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
                     .where(
                         ShowRelease.show_id == show.id,
                         ShowRelease.season_id == season.id,
-                        ShowRelease.release_state == ReleaseState.CURRENT,
+                        ShowRelease.release_state.in_([ReleaseState.CURRENT, ReleaseState.MISSING] if replacement else [ReleaseState.CURRENT]),
                     )
                     .order_by(ShowRelease.first_seen_at, ShowRelease.id)
                 )
@@ -497,7 +499,7 @@ async def _show_targets(db: AsyncSession, *, today: date) -> tuple[list[UpgradeT
                 ),
             )[0]
             read_only = _read_only_root(list(releases))
-            if read_only is not None:
+            if read_only is not None and not replacement:
                 skipped_read_only.add(read_only)
                 continue
             targets.append(
@@ -568,6 +570,18 @@ def _score_candidate(
     if not result.title.strip() or not result.download_url:
         return None
     parsed = parse_release(result.title)
+    if target.replacement:
+        from app.core.identity import identity_titles_equivalent
+        if not identity_titles_equivalent(parsed.identity.title_candidate, target.search_target.title):
+            return None
+        if target.media_type == MediaType.MOVIES and target.search_target.year and parsed.identity.year != target.search_target.year:
+            return None
+        from app.integrations.qbittorrent import magnet_info_hash
+        result_hash = magnet_info_hash(result.download_url) if result.download_url.lower().startswith("magnet:") else None
+        if result_hash and result_hash.lower() in target.excluded_hashes:
+            return None
+        if result.seeders is not None and result.seeders < max(1, indexer.minimum_seeders):
+            return None
     if target.media_type == MediaType.MOVIES and not same_edition(target.reference.edition, parsed.edition):
         return None
     if target.media_type == MediaType.SHOWS:
@@ -641,6 +655,14 @@ def _score_candidate(
     if score >= target.reference.custom_format_score or "quality" in reasons or "season_pack" in reasons:
         reasons.extend(revision_reasons)
     reasons = list(dict.fromkeys(reasons))
+    if target.replacement:
+        if score < max(item.custom_format_score for item in target.releases):
+            return None
+        if profile.minimum_custom_format_score is not None and score < profile.minimum_custom_format_score:
+            return None
+        if minimum_quality_status(quality, profile.minimum_quality_name, profile.quality_order) is False:
+            return None
+        reasons.append("replacement")
     if not reasons:
         return None
 
@@ -690,6 +712,8 @@ def _score_candidate(
             "formats": format_snapshots,
         },
         "upgrade_types": reasons,
+        "replacement": target.replacement,
+        "excluded_hashes": list(target.excluded_hashes),
         "execution_eligible": target.execution_eligible,
         "execution_block_reason": target.execution_block_reason,
     }
@@ -734,6 +758,13 @@ def _rejection_reasons(
     if not result.download_url:
         return ["The indexer did not provide a downloadable torrent."]
     parsed = parse_release(result.title)
+    if target.replacement:
+        from app.integrations.qbittorrent import magnet_info_hash
+        result_hash = magnet_info_hash(result.download_url) if result.download_url.lower().startswith("magnet:") else None
+        if result_hash and result_hash.lower() in target.excluded_hashes:
+            return ["This is an existing torrent, not a new recovery source."]
+        if result.seeders is not None and result.seeders < 1:
+            return ["No seeders were reported for this replacement."]
     if target.media_type == MediaType.MOVIES and not same_edition(target.reference.edition, parsed.edition):
         return [f"Different movie edition: {parsed.edition or 'Theatrical Cut' }."]
     if target.media_type == MediaType.SHOWS:
@@ -748,7 +779,7 @@ def _rejection_reasons(
         return ["The release quality is not recognized by this Quality Profile."]
     if preference > target.reference.quality_preference:
         return ["The release is lower quality than the current upgrade floor."]
-    return ["The release does not improve quality, Custom Format score, or revision status."]
+    return ["The release does not meet the replacement identity, quality, or equal-or-higher CF score requirements."] if target.replacement else ["The release does not improve quality, Custom Format score, or revision status."]
 
 
 def _stored_search_result(
@@ -953,12 +984,12 @@ async def _worker(
         season_ids = select(Season.id).where(Season.show_id == show_id)
         scope = UpgradeCandidate.season_id.in_(season_ids)
     if valid_keys:
-        stale = delete(UpgradeCandidate).where(UpgradeCandidate.target_key.not_in(valid_keys), inactive)
+        stale = delete(UpgradeCandidate).where(~UpgradeCandidate.target_key.startswith("replace:"), UpgradeCandidate.target_key.not_in(valid_keys), inactive)
         if scope is not None:
             stale = stale.where(scope)
         await db.execute(stale)
     else:
-        stale = delete(UpgradeCandidate).where(inactive)
+        stale = delete(UpgradeCandidate).where(~UpgradeCandidate.target_key.startswith("replace:"), inactive)
         if scope is not None:
             stale = stale.where(scope)
         await db.execute(stale)

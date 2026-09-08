@@ -79,6 +79,7 @@ from app.services.torrent_archive import (
     read_manifest,
     recovery_file_priorities,
     restore_torrent_archive,
+    manifest_for_client,
 )
 
 
@@ -405,6 +406,11 @@ async def build_recovery_reimport_plan(
         media_type = _manifest_media_type(manifest)
         client, observation, match_warnings = _client_for_manifest(manifest, clients, media_type)
         warnings.extend(match_warnings)
+        if client is not None:
+            try:
+                manifest = manifest_for_client(manifest, client.id)
+            except ValueError as exc:
+                reasons.append(str(exc))
         save_path = _restore_save_path(manifest, observation)
         category: str | None = None
         tags: list[str] = []
@@ -873,7 +879,28 @@ async def _job_progress(job_id: UUID, percent: int, stage: str, detail: str | No
         await db.commit()
 
 
-async def run_recovery_export(
+_export_lock = asyncio.Lock()
+
+
+def _snapshot_sources(settings: Settings) -> list[Path]:
+    config = Path(settings.config_dir)
+    return [*_safe_archive_files(Path(settings.torrent_archive_dir)),
+            *[path for path in (config / name for name in (
+                "medialogue.json", "secrets.enc", "setup-state.json", "custom-format-layout.json")) if path.is_file()]]
+
+
+def _snapshot_fingerprint(settings: Settings) -> dict[str, str]:
+    return {str(path): _sha256(path) for path in _snapshot_sources(settings) if not path.name.endswith(".tmp")}
+
+
+async def run_recovery_export(job_id: UUID, **kwargs) -> None:
+    async with _export_lock:
+        from app.services.recovery_checkpoint import archive_checkpoint
+        async with archive_checkpoint:
+            await _run_recovery_export(job_id, **kwargs)
+
+
+async def _run_recovery_export(
     job_id: UUID,
     *,
     database_backup_runner: DatabaseBackupRunner = run_sqlite_backup,
@@ -897,16 +924,24 @@ async def run_recovery_export(
             await update_job(db, job, status=JobStatus.RUNNING, progress={"percent": 2, "stage": "preparing"})
             await db.commit()
 
+        source_fingerprint = await asyncio.to_thread(_snapshot_fingerprint, settings)
         async with db_session.async_session_factory() as db:
             db_meta = database_metadata_override or await database_backup_metadata(db)
             if db_meta.get("backend") != "sqlite" and database_metadata_override is None:
                 raise RuntimeError("Recovery backups require SQLite.")
-            configuration = await build_configuration_export(db, settings)
-            inventory = await build_library_inventory(db)
 
         await _job_progress(job_id, 8, "database_backup", "Creating consistent SQLite online backup")
         database_file = temp_root / "database" / "medialogue.db"
         database_backup_result = await database_backup_runner(database_file, settings)
+        # Inventories must describe the backed-up database, not later live writes.
+        from sqlalchemy.ext.asyncio import create_async_engine
+        snapshot_engine = create_async_engine(f"sqlite+aiosqlite:///{database_file.as_posix()}")
+        try:
+            async with AsyncSession(snapshot_engine) as snapshot_db:
+                configuration = await build_configuration_export(snapshot_db, settings)
+                inventory = await build_library_inventory(snapshot_db)
+        finally:
+            await snapshot_engine.dispose()
         await _job_progress(job_id, 58, "inventory", "Writing configuration and library inventory")
 
         _write_json(temp_root / "config" / "application-config-export.json", configuration)
@@ -923,7 +958,18 @@ async def run_recovery_export(
                 shutil.copy2(source, destination)
         _write_json(temp_root / "inventory" / "library-inventory.json", inventory)
 
-        torrent_root = Path(settings.torrent_archive_dir)
+        live_torrent_root = Path(settings.torrent_archive_dir)
+        torrent_root = temp_root / "archive-staging"
+        torrent_root.mkdir()
+        for source in _safe_archive_files(live_torrent_root):
+            if source.name.endswith(".tmp"):
+                continue
+            destination = torrent_root / source.relative_to(live_torrent_root)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(shutil.copy2, source, destination)
+        if source_fingerprint != await asyncio.to_thread(_snapshot_fingerprint, settings):
+            raise RuntimeError("Archive or configuration changed while capturing the backup. Retry to create a consistent snapshot.")
+        # Packaging reads only staged files, never the changing live archive.
         archive_files = _safe_archive_files(torrent_root)
         archive_inventory = await asyncio.to_thread(_archive_inventory, torrent_root, archive_files)
         _write_json(temp_root / "inventory" / "torrent-archive-inventory.json", archive_inventory)
@@ -949,6 +995,11 @@ async def run_recovery_export(
                 "Treat it like a password/database backup."
             ),
             "download_expires_at": expires_at.isoformat(),
+            "checksums": {
+                path.relative_to(temp_root).as_posix(): await asyncio.to_thread(_sha256, path)
+                for folder in ("database", "config", "inventory")
+                for path in sorted((temp_root / folder).rglob("*")) if path.is_file()
+            },
         }
         _write_json(temp_root / "backup-metadata.json", metadata)
 
@@ -972,7 +1023,7 @@ async def run_recovery_export(
             summary.update(
                 {
                     "message": "Recovery Bundle is ready for download.",
-                    "download_ready": True,
+                    "download_ready": not bool(summary.get("remote_backup")),
                     "download_url": f"/api/v1/recovery/exports/{job_id}/download",
                     "bundle_filename": final_path.name,
                     "bundle_path": str(final_path),

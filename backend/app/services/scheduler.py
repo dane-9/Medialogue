@@ -23,6 +23,8 @@ from app.services.runtime_jobs import launch_runtime_job
 logger = logging.getLogger(__name__)
 ACTIVE_STATES = (JobStatus.QUEUED, JobStatus.RUNNING)
 DEFAULT_SCHEDULES = {
+    "search_media_replacements": {"name": "Search for Media Replacements", "description": "Finds equivalent or better releases for confirmed lost tracker sources. Never downloads automatically.", "interval_seconds": 86400, "interval_options": [21600, 43200, 86400, 604800], "configurable": True, "enabled": False},
+    "remote_backup": {"name": "Back Up to Google Drive", "description": "Creates and verifies an encrypted recovery snapshot in Google Drive.", "interval_seconds": 86400, "interval_options": [3600, 21600, 43200, 86400, 604800], "configurable": True, "enabled": False},
     "integration_health_sweep": {
         "name": "Check Integration Health",
         "description": "Checks configured integrations and media-folder availability.",
@@ -148,7 +150,13 @@ async def _finish_schedule(schedule_id: UUID, job_id: UUID) -> None:
 async def _run_schedule(schedule_id: UUID, job_id: UUID) -> None:
     try:
         job_type = await _schedule_job_type(schedule_id)
-        if job_type == "integration_health_sweep":
+        if job_type == "search_media_replacements":
+            from app.services.replacements import run_replacement_search
+            await run_replacement_search(job_id)
+        elif job_type == "remote_backup":
+            from app.services.remote_backups import run_remote_backup
+            await run_remote_backup(job_id)
+        elif job_type == "integration_health_sweep":
             await run_integration_health_sweep(job_id)
         elif job_type == "scheduled_housekeeping":
             await run_scheduled_housekeeping(job_id)

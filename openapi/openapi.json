@@ -98,6 +98,50 @@
         "title": "AuthSessionResponse",
         "type": "object"
       },
+      "BackupSettingsRequest": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "interval_seconds": {
+            "default": 86400,
+            "maximum": 2592000.0,
+            "minimum": 3600.0,
+            "title": "Interval Seconds",
+            "type": "integer"
+          },
+          "keep_daily": {
+            "default": 7,
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Keep Daily",
+            "type": "integer"
+          },
+          "keep_weekly": {
+            "default": 4,
+            "maximum": 104.0,
+            "minimum": 0.0,
+            "title": "Keep Weekly",
+            "type": "integer"
+          },
+          "recovery_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Key"
+          }
+        },
+        "title": "BackupSettingsRequest",
+        "type": "object"
+      },
       "BootstrapRequest": {
         "properties": {
           "password": {
@@ -8862,6 +8906,53 @@
         "title": "RemotePathMappingUpdate",
         "type": "object"
       },
+      "ReplacementReviewRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "ignore",
+              "snooze",
+              "restore"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "torrent_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 250,
+            "minItems": 1,
+            "title": "Torrent Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "torrent_ids",
+          "action"
+        ],
+        "title": "ReplacementReviewRequest",
+        "type": "object"
+      },
+      "ReplacementSearchRequest": {
+        "properties": {
+          "target_key": {
+            "anyOf": [
+              {
+                "maxLength": 150,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Key"
+          }
+        },
+        "title": "ReplacementSearchRequest",
+        "type": "object"
+      },
       "ScheduledTaskResponse": {
         "properties": {
           "active_job_id": {
@@ -11663,6 +11754,17 @@
       },
       "TorrentArchiveDetail": {
         "properties": {
+          "archive_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archive Error"
+          },
           "archive_path": {
             "anyOf": [
               {
@@ -11677,6 +11779,11 @@
           "archive_state": {
             "$ref": "#/components/schemas/TorrentArchiveState"
           },
+          "archive_verified": {
+            "default": false,
+            "title": "Archive Verified",
+            "type": "boolean"
+          },
           "associations": {
             "items": {
               "additionalProperties": true,
@@ -11684,6 +11791,17 @@
             },
             "title": "Associations",
             "type": "array"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
           },
           "completed_at": {
             "anyOf": [
@@ -11717,6 +11835,11 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "included_in_remote_backup": {
+            "default": false,
+            "title": "Included In Remote Backup",
+            "type": "boolean"
           },
           "info_hash": {
             "title": "Info Hash",
@@ -11832,6 +11955,13 @@
             ],
             "title": "Quality"
           },
+          "recovery_clients": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Clients",
+            "type": "array"
+          },
           "release_group": {
             "anyOf": [
               {
@@ -11853,6 +11983,33 @@
               }
             ],
             "title": "Release Name"
+          },
+          "remote_backup_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Backup At"
+          },
+          "source_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Checked At"
+          },
+          "source_state": {
+            "default": "unknown",
+            "title": "Source State",
+            "type": "string"
           },
           "tmdb_id": {
             "anyOf": [
@@ -11967,6 +12124,17 @@
       },
       "TorrentArchiveSummary": {
         "properties": {
+          "archive_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archive Error"
+          },
           "archive_path": {
             "anyOf": [
               {
@@ -11980,6 +12148,22 @@
           },
           "archive_state": {
             "$ref": "#/components/schemas/TorrentArchiveState"
+          },
+          "archive_verified": {
+            "default": false,
+            "title": "Archive Verified",
+            "type": "boolean"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
           },
           "completed_at": {
             "anyOf": [
@@ -12013,6 +12197,11 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "included_in_remote_backup": {
+            "default": false,
+            "title": "Included In Remote Backup",
+            "type": "boolean"
           },
           "info_hash": {
             "title": "Info Hash",
@@ -12115,6 +12304,13 @@
             ],
             "title": "Quality"
           },
+          "recovery_clients": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Clients",
+            "type": "array"
+          },
           "release_group": {
             "anyOf": [
               {
@@ -12136,6 +12332,33 @@
               }
             ],
             "title": "Release Name"
+          },
+          "remote_backup_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Backup At"
+          },
+          "source_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Checked At"
+          },
+          "source_state": {
+            "default": "unknown",
+            "title": "Source State",
+            "type": "string"
           },
           "tmdb_id": {
             "anyOf": [
@@ -12773,7 +12996,8 @@
                 "season_pack",
                 "repack",
                 "proper",
-                "revision"
+                "revision",
+                "replacement"
               ],
               "type": "string"
             },
@@ -13720,6 +13944,237 @@
         "summary": "Revoke Session",
         "tags": [
           "authentication"
+        ]
+      }
+    },
+    "/api/v1/backups/google/callback": {
+      "get": {
+        "operationId": "google_callback_api_v1_backups_google_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 4096,
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "title": "State",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Google Callback",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/google/connect": {
+      "post": {
+        "operationId": "connect_google_api_v1_backups_google_connect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Connect Google Api V1 Backups Google Connect Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Connect Google",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/google/disconnect": {
+      "post": {
+        "operationId": "disconnect_google_api_v1_backups_google_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Disconnect Google Api V1 Backups Google Disconnect Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Disconnect Google",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/google/snapshots": {
+      "get": {
+        "operationId": "list_snapshots_api_v1_backups_google_snapshots_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Snapshots Api V1 Backups Google Snapshots Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Snapshots",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/recovery-key": {
+      "post": {
+        "operationId": "generate_recovery_key_api_v1_backups_recovery_key_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Generate Recovery Key Api V1 Backups Recovery Key Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Generate Recovery Key",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/run": {
+      "post": {
+        "operationId": "start_backup_api_v1_backups_run_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Backup",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/settings": {
+      "put": {
+        "operationId": "save_backup_settings_api_v1_backups_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Backup Settings Api V1 Backups Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Backup Settings",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/status": {
+      "get": {
+        "operationId": "backup_status_api_v1_backups_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Backup Status Api V1 Backups Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Backup Status",
+        "tags": [
+          "backups"
         ]
       }
     },
@@ -19061,6 +19516,203 @@
         ]
       }
     },
+    "/api/v1/replacements": {
+      "get": {
+        "operationId": "queue_api_v1_replacements_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Queue Api V1 Replacements Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Queue",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
+    "/api/v1/replacements/review": {
+      "post": {
+        "operationId": "review_api_v1_replacements_review_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplacementReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Api V1 Replacements Review Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
+    "/api/v1/replacements/search": {
+      "post": {
+        "operationId": "search_api_v1_replacements_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplacementSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
+    "/api/v1/replacements/{candidate_id}/finish": {
+      "post": {
+        "operationId": "finish_api_v1_replacements__candidate_id__finish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Finish Api V1 Replacements  Candidate Id  Finish Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Finish",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
+    "/api/v1/replacements/{candidate_id}/retire-torrents": {
+      "post": {
+        "operationId": "retire_api_v1_replacements__candidate_id__retire_torrents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Retire Api V1 Replacements  Candidate Id  Retire Torrents Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
     "/api/v1/search-jobs/{job_id}": {
       "get": {
         "operationId": "get_search_job_api_v1_search_jobs__job_id__get",
@@ -20741,6 +21393,30 @@
           }
         },
         "summary": "List Torrent Archive",
+        "tags": [
+          "torrent-archive"
+        ]
+      }
+    },
+    "/api/v1/torrent-archive/rebuild": {
+      "post": {
+        "description": "Recover missing catalogue rows from portable manifests, without contacting clients.",
+        "operationId": "rebuild_archive_records_api_v1_torrent_archive_rebuild_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Rebuild Archive Records Api V1 Torrent Archive Rebuild Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rebuild Archive Records",
         "tags": [
           "torrent-archive"
         ]

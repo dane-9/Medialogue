@@ -339,7 +339,7 @@ async def list_upgrade_candidates(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[UpgradeCandidateResponse]:
-    statement = select(UpgradeCandidate)
+    statement = select(UpgradeCandidate).where(~UpgradeCandidate.target_key.startswith("replace:"))
     if media_type is not None:
         statement = statement.where(UpgradeCandidate.media_type == media_type)
     rows = (
@@ -481,6 +481,7 @@ async def count_upgrade_candidates(
             select(func.count())
             .select_from(UpgradeCandidate)
             .where(
+                ~UpgradeCandidate.target_key.startswith("replace:"),
                 UpgradeCandidate.execution_state.is_(None),
                 UpgradeCandidate.execution_eligible.is_(True),
             )

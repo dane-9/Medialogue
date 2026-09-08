@@ -16,6 +16,7 @@ const primary = [
   { to: '/movies', label: 'Movies', icon: 'clapper' as const },
   { to: '/shows', label: 'Shows', icon: 'tv-screen' as const },
   { to: '/new-media', label: 'New Media', icon: 'new-media' as const },
+  { to: '/replace-media', label: 'Replace Media', icon: 'refresh' as const },
   { to: '/upgrade-media', label: 'Upgrade Media', icon: 'upgrade-media' as const },
   { to: '/downloads', label: 'Downloads', icon: 'download' as const },
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
@@ -135,7 +136,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     }
   }, [refreshNewMediaCount])
 
-  const currentTitle = location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/new-media') ? 'New Media' : location.pathname.startsWith('/upgrade-media') ? 'Upgrade Media' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/tasks') ? 'Tasks' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
+  const currentTitle = location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/new-media') ? 'New Media' : location.pathname.startsWith('/replace-media') ? 'Replace Media' : location.pathname.startsWith('/upgrade-media') ? 'Upgrade Media' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/torrent-archive') ? 'Torrent Archive' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/tasks') ? 'Tasks' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
 
   return <PlexAvailableContext.Provider value={plexAvailable}><PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
     <aside className="sidebar">

@@ -36,7 +36,7 @@ from app.models.domain import (
 from app.services.events import create_event, publish_live_event
 from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
 from app.services.jobs import JobFailure, checkpoint_job, run_job
-from app.services.torrent_archive import ensure_torrent_archived, refresh_torrent_manifest, torrent_archive_complete
+from app.services.torrent_archive import ensure_torrent_archived, refresh_torrent_manifest, torrent_archive_complete, read_manifest
 from app.services.torrent_tracking import (
     deactivate_client_tracker_health,
     persist_tracker_health,
@@ -834,20 +834,16 @@ async def _poll_download_client(
                 recovery_snapshot = None
                 tracker_snapshots: tuple[TorrentTrackerSnapshot, ...] = ()
                 tracker_details_collected = False
-                needs_archive = not torrent_archive_complete(torrent)
+                needs_archive = not torrent_archive_complete(torrent) or str(client.id) not in (read_manifest(torrent).get("client_recovery") or {})
                 if needs_archive or info_hash in detail_due:
                     try:
                         if detail_adapter is None:
                             detail_adapter = client_factory(
                                 client.url, client.username or "", client.password or ""
                             )
-                        if needs_archive:
-                            recovery_snapshot = await detail_adapter.get_torrent_recovery_snapshot(info_hash)
-                            tracker_snapshots = _snapshot_trackers(recovery_snapshot)
-                            tracker_details_collected = True
-                        else:
-                            tracker_snapshots = await detail_adapter.get_torrent_trackers(info_hash)
-                            tracker_details_collected = True
+                        recovery_snapshot = await detail_adapter.get_torrent_recovery_snapshot(info_hash)
+                        tracker_snapshots = _snapshot_trackers(recovery_snapshot)
+                        tracker_details_collected = True
                         torrent.metadata_json = {
                             **(torrent.metadata_json or {}),
                             "tracker_checked_at": checked_at.isoformat(),
@@ -902,7 +898,7 @@ async def _poll_download_client(
                         recovery_snapshot=recovery_snapshot,
                     )
                 else:
-                    await refresh_torrent_manifest(db, torrent, recovery_snapshot=recovery_snapshot)
+                    await refresh_torrent_manifest(db, torrent, recovery_snapshot=recovery_snapshot, download_client_id=client.id)
 
                 if observed.complete and upgrade_execution:
                     # Remove the old qBittorrent torrent only after the entire
@@ -1004,7 +1000,11 @@ async def poll_download_client(
     """Poll one qBit instance with a per-client non-overlap lock."""
 
     async with _client_locks[client.id]:
-        return await _poll_download_client(db, client, client_factory=client_factory)
+        from app.services.recovery_checkpoint import archive_checkpoint
+        async with archive_checkpoint:
+            result = await _poll_download_client(db, client, client_factory=client_factory)
+            await db.commit()
+            return result
 
 
 async def poll_due_download_clients(
