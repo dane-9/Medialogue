@@ -54,6 +54,19 @@ class FakeTMDBClient:
         stable_id = 194764 if title.casefold() == "dollface" else 200000
         return [TMDBShowMatch(stable_id, title, title, year, f"Overview for {title}", None)]
 
+    async def get_movie(self, tmdb_id: int):
+        titles = {27205: ("Inception", 2010), 329865: ("Arrival", 2016)}
+        title, year = titles.get(tmdb_id, (f"Movie {tmdb_id}", 2000))
+        return TMDBMovieMatch(
+            tmdb_id=tmdb_id,
+            title=title,
+            original_title=title,
+            year=year,
+            overview=f"Overview for {title}.",
+            poster_path=None,
+            original_language="en",
+        )
+
     async def get_show(self, tmdb_id: int):
         return TMDBShowDetails(
             tmdb_id=tmdb_id,
@@ -81,6 +94,15 @@ def fake_tmdb(monkeypatch):
     import app.services.tmdb as tmdb_service
 
     monkeypatch.setattr(tmdb_service, "TMDBClient", FakeTMDBClient)
+
+
+@pytest.fixture(autouse=True)
+def fake_tmdb_api(client):
+    from app.api.tmdb import get_tmdb_client_factory
+
+    client.app.dependency_overrides[get_tmdb_client_factory] = lambda: FakeTMDBClient
+    yield
+    client.app.dependency_overrides.pop(get_tmdb_client_factory, None)
 
 
 def _configure_tmdb(client: TestClient, headers: dict[str, str]) -> None:
@@ -459,3 +481,65 @@ def test_show_can_be_added_from_tmdb_and_seeds_missing_episode_inventory(client:
         assert [episode["presence_state"] for episode in detail.json()["seasons"][0]["episodes"]] == ["missing", "missing"]
     finally:
         client.app.dependency_overrides.clear()
+
+
+def _login(client: TestClient) -> dict[str, str]:
+    login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
+    assert login.status_code == 200, login.text
+    return {"X-CSRF-Token": login.json()["csrf_token"]}
+
+
+def _add_movie(client: TestClient, headers: dict[str, str], tmdb_id: int) -> dict:
+    created = client.post("/api/v1/movies", headers=headers, json={"tmdb_id": tmdb_id})
+    assert created.status_code == 201, created.text
+    return created.json()
+
+
+def test_change_match_repoints_a_movie_and_keeps_its_identity(client: TestClient) -> None:
+    """Re-matching swaps the TMDB title but not the library record itself."""
+
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    movie = _add_movie(client, headers, 27205)
+    assert movie["title"] == "Inception"
+
+    rematched = client.post(
+        f"/api/v1/movies/{movie['id']}/rematch",
+        headers=headers,
+        json={"tmdb_id": 329865},
+    )
+    assert rematched.status_code == 200, rematched.text
+    body = rematched.json()
+    # Same row, different title: nothing on disk or in the library is recreated.
+    assert body["id"] == movie["id"]
+    assert body["title"] == "Arrival"
+    assert body["year"] == 2016
+    assert body["tmdb_id"] == 329865
+    # Marked manual, so a later metadata refresh cannot quietly undo the choice.
+    assert body["identity_state"] == "manual"
+
+
+def test_change_match_refuses_a_tmdb_id_another_movie_already_holds(client: TestClient) -> None:
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    first = _add_movie(client, headers, 27205)
+    _add_movie(client, headers, 329865)
+
+    clash = client.post(
+        f"/api/v1/movies/{first['id']}/rematch",
+        headers=headers,
+        json={"tmdb_id": 329865},
+    )
+    assert clash.status_code == 409, clash.text
+    assert clash.json()["error"]["code"] == "TMDB_ID_ALREADY_USED"
+    # The rejected attempt leaves the original untouched.
+    assert client.get(f"/api/v1/movies/{first['id']}").json()["title"] == "Inception"
+
+
+def test_change_match_requires_csrf(client: TestClient) -> None:
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    movie = _add_movie(client, headers, 27205)
+
+    unprotected = client.post(f"/api/v1/movies/{movie['id']}/rematch", json={"tmdb_id": 329865})
+    assert unprotected.status_code == 403, unprotected.text

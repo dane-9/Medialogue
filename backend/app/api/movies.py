@@ -13,7 +13,7 @@ from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
 from app.core.problem_types import problem_description, problem_title
 from app.db.session import get_db
-from app.models.auth import AdminUser
+from app.models.auth import AdminUser, AuthSession
 from app.models.domain import (
     AssociationType,
     Event,
@@ -33,11 +33,13 @@ from app.models.domain import (
 )
 from app.schemas.common import Collection
 from app.schemas.jobs import EventResponse
+from app.services.movie_identity import apply_movie_identity
 from app.schemas.movies import (
     MediaDirectoryResponse,
     MovieCreate,
     MovieDetailResponse,
     MovieReleaseResponse,
+    MovieRematchRequest,
     MovieSummaryResponse,
     TMDBMovieLookupResponse,
 )
@@ -478,6 +480,30 @@ async def get_movie(
         root_affected_count=root_affected_count,
         last_observed_at=max((directory.last_seen_at for directory in active_directories), default=None),
     )
+
+
+@router.post("/{resource_id}/rematch", response_model=MovieDetailResponse)
+async def rematch_movie(
+    resource_id: UUID,
+    payload: MovieRematchRequest,
+    _: AuthSession = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    tmdb_client_factory=Depends(get_tmdb_client_factory),
+) -> MovieDetailResponse:
+    """Point an existing Movie at a different TMDB title.
+
+    Identity only. The library record keeps its id, files, releases and
+    torrents; nothing on disk is touched. Previously this was reachable only by
+    resolving an identity Problem, so a movie that had simply matched the wrong
+    title could not be corrected at all.
+    """
+
+    movie = await db.get(Movie, resource_id)
+    if movie is None:
+        raise AppError("NOT_FOUND", "Movie was not found.", status_code=404)
+    await apply_movie_identity(db, movie, payload.tmdb_id, tmdb_client_factory=tmdb_client_factory)
+    await db.commit()
+    return await get_movie(resource_id=str(resource_id), _=None, db=db)
 
 
 @router.get("/{resource_id}/events", response_model=Collection[EventResponse])

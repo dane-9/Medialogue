@@ -144,6 +144,12 @@ class MovieSummaryResponse(BaseModel):
     torrent_status: MediaTorrentStatusResponse = Field(default_factory=MediaTorrentStatusResponse)
 
 
+class MovieRematchRequest(BaseModel):
+    """Re-point a Movie at a different TMDB title."""
+
+    tmdb_id: int = Field(gt=0)
+
+
 class MovieDetailResponse(MovieSummaryResponse):
     overview: str | None
     poster_ref: str | None

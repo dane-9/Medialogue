@@ -37,6 +37,10 @@ export const moviesApi = {
       })),
     }
   },
+  rematchMovie: async (id: string, tmdbId: number) => mapMovie(await openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/rematch', {
+    params: { path: { resource_id: id } },
+    body: { tmdb_id: tmdbId },
+  }))),
   recheckMoviePlex: (id: string) => openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/actions/recheck-plex', { params: { path: { resource_id: id } } })),
   startMovieSearch: (id: string) => openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/interactive-search', { params: { path: { resource_id: id } } })),
   startUnattachedMovieSearch: (tmdbId: number, qualityProfileId: string) => openApiData(openApiClient.POST('/api/v1/interactive-search/movies', { body: { tmdb_id: tmdbId, quality_profile_id: qualityProfileId } })),

@@ -3294,6 +3294,81 @@ a.download-kind:hover { filter: brightness(1.35); }
 .wizard-destination > label > small { grid-column: 2; color: var(--faint); font-size: var(--t-xs); line-height: 1.45; }
 .wizard-destination { display: grid; gap: var(--s3); padding: 13px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: #24282f; }
 
+/* Change match: a TMDB search over a list of candidate titles. */
+.change-match-modal { height: min(720px, calc(100vh - 48px)); max-height: none; }
+.change-match-modal .modal-body { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+.change-match-body { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: var(--s3); padding: var(--s4); overflow: hidden; }
+.change-match-body > .settings-note { margin: 0; }
+.change-match-search { display: flex; align-items: center; gap: var(--s2); }
+.change-match-search .search-field { flex: 1; min-width: 0; }
+.change-match-results { display: grid; align-content: start; gap: var(--s2); min-height: 0; flex: 1; overflow-y: auto; scrollbar-gutter: stable; }
+.change-match-option {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: inherit;
+  background: var(--raised);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.change-match-option:hover:not(:disabled) { border-color: var(--line-strong); background: var(--raised-2); }
+.change-match-option.selected { border-color: var(--accent); background: var(--accent-soft); }
+.change-match-option:disabled { cursor: default; opacity: .6; }
+.change-match-poster { display: grid; width: 46px; height: 69px; place-items: center; overflow: hidden; border-radius: var(--r-sm); color: var(--faint); background: var(--surface); }
+.change-match-poster img { width: 100%; height: 100%; object-fit: cover; }
+.change-match-copy { display: grid; gap: 3px; min-width: 0; }
+.change-match-copy strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.change-match-copy small { color: var(--faint); font: var(--t-micro) var(--sans); }
+/* Three lines of synopsis is enough to tell two same-titled films apart. */
+.change-match-copy > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+}
+.change-match-current { flex: none; color: var(--faint); font: var(--t-micro) var(--sans); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .change-match-option { transition: none; }
+}
+
+/* Interactive search for a movie already in the library: the destination sits
+   above a results list that fills whatever height is left. */
+/* Same box as the download wizard's search step and the upgrade results
+   browser, so every release list in the app opens at one size. */
+.movie-search-modal { width: min(1103px, calc(100vw - 32px)); height: min(860px, calc(100vh - 48px)); max-height: none; }
+.movie-search-modal .modal-body { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+.movie-search-body { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: var(--s3); padding: var(--s4); overflow: hidden; }
+.movie-search-destination {
+  display: grid;
+  /* The save path takes 40% of the row; the client and category share what is
+     left, since a path is the longest value here and the one that wraps. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40%;
+  /* Top-aligned, so the three labels sit on one line whatever height the
+     content below each of them turns out to be. */
+  align-items: start;
+  gap: var(--s3) var(--s5);
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: #24282f;
+}
+/* The rule and padding belong to the wizard, where this block sits beneath the
+   selects. Alongside them it is just a third column. */
+.movie-search-destination .wizard-destination-path { padding-top: 0; border-top: 0; }
+@media (max-width: 820px) {
+  .movie-search-destination { grid-template-columns: minmax(0, 1fr); }
+}
+.movie-search-body > .settings-note { margin: 0; }
+.movie-search-body .release-list { min-height: 180px; }
+
 .wizard-destination-path {
   display: grid;
   gap: 5px;
@@ -3302,7 +3377,7 @@ a.download-kind:hover { filter: brightness(1.35); }
   border-top: 1px solid var(--line);
 }
 .wizard-destination-path > span { color: var(--faint); font: 600 var(--t-micro)/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase; }
-.wizard-destination-path > strong { overflow-wrap: anywhere; font: 600 var(--t-sm)/1.45 var(--mono); }
+.wizard-destination-path > strong { overflow-wrap: anywhere; font: var(--t-sm)/1.45 var(--mono); }
 .wizard-destination-path > small { color: var(--muted); font-size: var(--t-xs); line-height: 1.4; }
 .wizard-destination > span { color: var(--faint); font: 600 var(--t-micro)/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase; }
 .wizard-destination > strong { overflow-wrap: anywhere; font: 600 var(--t-sm)/1.45 var(--mono); }
@@ -3561,7 +3636,9 @@ a.download-kind:hover { filter: brightness(1.35); }
 
 .client-field { display: flex; align-items: center; gap: var(--s2); }
 .client-field > .select { flex: 1; min-width: 0; }
-.client-field > .release-refresh { height: 34px; width: 34px; }
+/* Matches the dropdown beside it. Pinned at 34px it stood 2px proud of the
+   control it belongs to. */
+.client-field > .release-refresh { height: var(--control); width: var(--control); }
 .client-health { font-weight: 600; text-transform: capitalize; }
 .client-health.ok { color: var(--ok); }
 .client-health.bad { color: var(--warn); }

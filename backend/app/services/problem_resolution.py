@@ -25,6 +25,7 @@ from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job
 from app.parser import EDITION_OPTIONS
 from app.services.reconciliation import reconcile_movie_directory, refresh_movie_duplicate_problem
 from app.services.shows import reconcile_show_directory
+from app.services.movie_identity import apply_movie_identity
 from app.services.tmdb import get_tmdb_configuration, sync_show_metadata
 
 CONFIRMATION_TTL_SECONDS = 10 * 60
@@ -184,10 +185,11 @@ async def _confirm_movie_match(
         target = await db.get(Movie, problem.entity_id) if problem.entity_id else None
         if target is None:
             raise AppError("NOT_FOUND", "Affected Movie no longer exists.", status_code=404)
-        if movie is not None and movie.id != target.id:
-            raise AppError("TMDB_ID_ALREADY_USED", "That TMDB Movie is already represented by another library record.", status_code=409)
-        movie = target
-    elif problem.entity_type == "media_directory":
+        # Same write as the Movie page's Change match, through one helper, so
+        # the two ways of re-pointing a Movie cannot drift apart.
+        await apply_movie_identity(db, target, tmdb_id, metadata=metadata)
+        return
+    if problem.entity_type == "media_directory":
         directory = await db.get(MediaDirectory, problem.entity_id) if problem.entity_id else None
         if directory is None:
             raise AppError("NOT_FOUND", "Affected media directory no longer exists.", status_code=404)
@@ -219,16 +221,7 @@ async def _confirm_movie_match(
     else:
         raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "This problem cannot be resolved as a Movie match.", status_code=409)
 
-    movie.title = metadata.title
-    movie.sort_title = metadata.title.casefold()
-    movie.year = metadata.year
-    movie.tmdb_id = metadata.tmdb_id
-    movie.overview = metadata.overview
-    movie.poster_ref = metadata.poster_path
-    movie.identity_state = IdentityState.MANUAL
-    movie.manual_identity_override = True
-    movie.metadata_refreshed_at = utcnow()
-    movie.revision += 1
+    await apply_movie_identity(db, movie, tmdb_id, metadata=metadata)
 
 
 async def _confirm_show_match(

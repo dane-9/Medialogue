@@ -15,6 +15,8 @@ import { needsAttention, statusTone } from './lib/status'
 import { diffReleaseTokens } from './lib/releaseTokens'
 import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason, UPGRADE_REASON_SCORE } from './lib/upgradeTokenReason'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
+import { MovieInteractiveSearch } from './components/MovieInteractiveSearch'
+import { ChangeMatchModal } from './components/ChangeMatchModal'
 import { formatPeers, swarmHealth } from './lib/swarm'
 import { qualityLabel } from './lib/qualityLabel'
 import { splitQuality } from './lib/quality'
@@ -593,6 +595,8 @@ export function MovieDetailPage({ id }: { id: string }) {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [matchOpen, setMatchOpen] = useState(false)
   const load = async (reportError = true) => {
     try { setMovie(await moviesApi.movie(id)); if (reportError) setError('') }
     catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Movie not found.') }
@@ -677,10 +681,10 @@ export function MovieDetailPage({ id }: { id: string }) {
           {/* Everything you can do to this movie sits in one row, beside the
               title it acts on, rather than split across the page header. */}
           <div className="detail-actions">
-            <Button variant="primary" icon="search">Interactive search</Button>
+            <Button variant="primary" icon="search" onClick={() => setSearchOpen(true)}>Interactive search</Button>
             <Button variant="secondary" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button>
             {plexAvailable && <Button variant="secondary" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}
-            <Button variant="secondary" icon="external">Change match</Button>
+            <Button variant="secondary" icon="external" onClick={() => setMatchOpen(true)}>Change match</Button>
             {/* The hero already reported this state; now it can be changed
                 from the same place it is shown. */}
             <Button variant="secondary" icon={movie.monitored === false ? 'monitored' : 'monitored-off'} onClick={() => void setMonitored(movie.monitored === false)} disabled={busy}>
@@ -704,6 +708,20 @@ export function MovieDetailPage({ id }: { id: string }) {
       <Panel title="Release history">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel>
       <TorrentHistoryPanel items={movie.torrentHistory} />
     </div>
+    {searchOpen && <MovieInteractiveSearch
+      movieId={id}
+      title={`${movie.title}${movie.year ? ` (${movie.year})` : ''}`}
+      onClose={() => setSearchOpen(false)}
+      onStarted={(text) => { setMessage(text); void load() }}
+    />}
+    {matchOpen && <ChangeMatchModal
+      movieId={id}
+      title={movie.title}
+      year={movie.year}
+      currentTmdbId={movie.tmdbId}
+      onClose={() => setMatchOpen(false)}
+      onMatched={(text) => { setMessage(text); void load() }}
+    />}
   </Page>
 }
 
@@ -5025,7 +5043,7 @@ export function UpgradeMediaPage() {
             <Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select>
           </Field>
         </SettingsGroup>
-        <div className="wizard-destination-path"><span>qBittorrent placement</span><strong>{categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
+        <div className="wizard-destination-path"><span>Save path</span><strong>{categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
       </div>
     </Modal>}
 

@@ -6786,6 +6786,21 @@
         "title": "MovieReleaseResponse",
         "type": "object"
       },
+      "MovieRematchRequest": {
+        "description": "Re-point a Movie at a different TMDB title.",
+        "properties": {
+          "tmdb_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Tmdb Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tmdb_id"
+        ],
+        "title": "MovieRematchRequest",
+        "type": "object"
+      },
       "MovieSummaryResponse": {
         "properties": {
           "confidence": {
@@ -18184,6 +18199,60 @@
         "summary": "Set Movie Release Editions",
         "tags": [
           "duplicates"
+        ]
+      }
+    },
+    "/api/v1/movies/{resource_id}/rematch": {
+      "post": {
+        "description": "Point an existing Movie at a different TMDB title.\n\nIdentity only. The library record keeps its id, files, releases and\ntorrents; nothing on disk is touched. Previously this was reachable only by\nresolving an identity Problem, so a movie that had simply matched the wrong\ntitle could not be corrected at all.",
+        "operationId": "rematch_movie_api_v1_movies__resource_id__rematch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MovieRematchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovieDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rematch Movie",
+        "tags": [
+          "movies"
         ]
       }
     },
