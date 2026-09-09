@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -538,23 +539,84 @@ def test_movie_upgrade_retires_cross_seeds_and_automatically_cleans_old_media(cl
                 name="Upgrade.Movie.2024.1080p.WEB-DL-GRP",
                 archive_state=TorrentArchiveState.ARCHIVED,
                 archive_path=str(tmp_path / "archive" / "old-cross-seed.torrent"),
+                metadata_json={"content_path": str(old_dir)},
             )
             db.add(cross_seed)
             await db.flush()
-            db.add_all([
-                MovieReleaseTorrent(
-                    movie_release_id=old_release_id,
-                    torrent_id=cross_seed.id,
-                    association_type=AssociationType.ATTACHED,
-                ),
-                TorrentClientObservation(
-                    torrent_id=cross_seed.id,
-                    download_client_id=UUID(qbit["id"]),
-                    state="uploading",
-                    progress=1,
-                    is_present=True,
-                ),
-            ])
+            # Deliberately leave this torrent unassociated. Ownership of the
+            # old directory must still identify it as a cross-seed.
+            db.add(TorrentClientObservation(
+                torrent_id=cross_seed.id,
+                download_client_id=UUID(qbit["id"]),
+                resolved_save_path=str(old_dir),
+                state="uploading",
+                progress=1,
+                is_present=True,
+            ))
+
+            hardlink_dir = old_dir.parent / "cross-seed-layout"
+            hardlink_dir.mkdir()
+            hardlink_file = hardlink_dir / "alternate-tracker-name.mkv"
+            hardlink_file.hardlink_to(old_dir / "Upgrade.Movie.2024.1080p.WEB-DL-GRP.mkv")
+            hardlink_manifest = tmp_path / "archive" / "old-hardlink-cross-seed.json"
+            hardlink_manifest.parent.mkdir(exist_ok=True)
+            hardlink_manifest.write_text(json.dumps({
+                "recovery": {
+                    "files": [{
+                        "index": 0,
+                        "name": hardlink_file.name,
+                        "size": hardlink_file.stat().st_size,
+                        "priority": 1,
+                    }],
+                },
+            }))
+            hardlink_cross_seed = Torrent(
+                info_hash="old-hardlink-cross-seed-hash",
+                name="Alternate.Tracker.Release.Name",
+                archive_state=TorrentArchiveState.ARCHIVED,
+                archive_path=str(tmp_path / "archive" / "old-hardlink-cross-seed.torrent"),
+                manifest_path=str(hardlink_manifest),
+                metadata_json={"content_path": str(hardlink_dir)},
+            )
+            db.add(hardlink_cross_seed)
+            await db.flush()
+            db.add(TorrentClientObservation(
+                torrent_id=hardlink_cross_seed.id,
+                download_client_id=UUID(qbit["id"]),
+                resolved_save_path=str(hardlink_dir),
+                state="uploading",
+                progress=1,
+                is_present=True,
+            ))
+
+            broad_manifest = tmp_path / "archive" / "broad-content-root.json"
+            broad_manifest.write_text(json.dumps({
+                "recovery": {
+                    "files": [{
+                        "index": 0,
+                        "name": "Upgrade.Movie.2024.2160p.WEB-DL-GRP.mkv",
+                        "size": (new_dir / "Upgrade.Movie.2024.2160p.WEB-DL-GRP.mkv").stat().st_size,
+                        "priority": 1,
+                    }],
+                },
+            }))
+            unrelated = Torrent(
+                info_hash="unrelated-broad-root-hash",
+                name="Unrelated torrent using a broad content root",
+                archive_state=TorrentArchiveState.ARCHIVED,
+                manifest_path=str(broad_manifest),
+                metadata_json={"content_path": str(old_dir.parent)},
+            )
+            db.add(unrelated)
+            await db.flush()
+            db.add(TorrentClientObservation(
+                torrent_id=unrelated.id,
+                download_client_id=UUID(qbit["id"]),
+                resolved_save_path=str(old_dir.parent),
+                state="uploading",
+                progress=1,
+                is_present=True,
+            ))
             await db.commit()
 
     asyncio.run(add_cross_seed())
@@ -589,6 +651,7 @@ def test_movie_upgrade_retires_cross_seeds_and_automatically_cleans_old_media(cl
         assert {(item["info_hash"], item["delete_files"]) for item in behavior.removals} == {
             ("old-upgrade-hash", False),
             ("old-cross-seed-hash", False),
+            ("old-hardlink-cross-seed-hash", False),
         }
         assert not old_dir.exists(), "the start acknowledgement authorizes old-media cleanup after validation"
         assert new_dir.exists()
