@@ -4627,7 +4627,7 @@ export function UpgradeMediaPage() {
     }
     setExcluded(new Set())
     setConfirming(false)
-    if (submitted) setMessage(`Submitted ${submitted} ${submitted === 1 ? 'upgrade' : 'upgrades'}. Each current release stays authoritative until its replacement validates.`)
+    if (submitted) setMessage(`Started ${submitted} ${submitted === 1 ? 'upgrade' : 'upgrades'}. Old torrents and media will be removed automatically after each replacement validates.`)
     if (failures.length) setError(failures.join(' · '))
     setBusyId('')
   }
@@ -4749,7 +4749,7 @@ export function UpgradeMediaPage() {
 
   return <Page
     title="Upgrade Media"
-    subtitle="Review the best known replacement for each release. Downloads and destructive cleanup always require explicit actions."
+    subtitle="Review the best known replacement for each release. Starting an upgrade authorizes its validated replacement and automatic retirement of the old release."
   >
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
@@ -5032,7 +5032,13 @@ export function UpgradeMediaPage() {
       footer={<><Button variant="ghost" disabled={Boolean(busyId)} onClick={() => setConfirming(false)}>Cancel</Button><Button variant="primary" icon="download" disabled={Boolean(busyId) || !clientId || !category || categoryLoading} onClick={() => void executeChosen()}>{busyId ? 'Submitting…' : 'Start upgrade'}</Button></>}
     >
       <div className="upgrade-modal-copy modal-copy-inset">
-        <p>Every current release stays untouched and authoritative while its replacement downloads and validates.</p>
+        <p>By starting this upgrade, you authorize Medialogue to complete the full replacement workflow for every selected title:</p>
+        <ol className="upgrade-confirm-steps">
+          <li><strong>Download and validate the upgrade.</strong><span>The current release remains untouched unless the replacement completes and is verified on disk.</span></li>
+          <li><strong>Retire the old torrents.</strong><span>All torrent entries associated with the old release, including recognized cross-seeds, are removed from qBittorrent.</span></li>
+          <li><strong>Remove the old media.</strong><span>The superseded release folder or files are deleted automatically after safety checks pass.</span></li>
+        </ol>
+        <p>If Medialogue cannot verify the replacement or safely identify the old files, it stops and asks for attention without deleting them.</p>
       </div>
       <div className="settings-form upgrade-destination-form">
         <SettingsGroup>

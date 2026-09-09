@@ -187,10 +187,10 @@ export const upgradesApi = {
       updatedEntities: value.updated_entities,
     }
   },
-  executeUpgrade: async (candidateId: string, downloadClientId: string, category?: string) => mapUpgradeCandidate(
+  executeUpgrade: async (candidateId: string, downloadClientId: string, category?: string, deleteOldMedia = true) => mapUpgradeCandidate(
     await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/{candidate_id}/upgrade', {
       params: { path: { candidate_id: candidateId } },
-      body: { download_client_id: downloadClientId, category: category || null },
+      body: { download_client_id: downloadClientId, category: category || null, delete_old_media: deleteOldMedia },
     })),
   ),
   retryUpgradeHandoff: async (candidateId: string) => mapUpgradeCandidate(

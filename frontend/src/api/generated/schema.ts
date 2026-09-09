@@ -7535,6 +7535,8 @@ export interface components {
         UpgradeExecuteRequest: {
             /** Category */
             category?: string | null;
+            /** Delete Old Media */
+            delete_old_media: boolean;
             /**
              * Download Client Id
              * Format: uuid

@@ -13249,6 +13249,10 @@
             ],
             "title": "Category"
           },
+          "delete_old_media": {
+            "title": "Delete Old Media",
+            "type": "boolean"
+          },
           "download_client_id": {
             "format": "uuid",
             "title": "Download Client Id",
@@ -13256,7 +13260,8 @@
           }
         },
         "required": [
-          "download_client_id"
+          "download_client_id",
+          "delete_old_media"
         ],
         "title": "UpgradeExecuteRequest",
         "type": "object"

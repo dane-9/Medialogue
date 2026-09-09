@@ -188,6 +188,7 @@ async def submit_upgrade_candidate(
     *,
     download_client_id: UUID,
     category: str | None,
+    delete_old_media: bool,
     torznab_client_factory: TorznabClientFactory,
     qbittorrent_client_factory: QBittorrentClientFactory,
 ) -> UpgradeCandidate:
@@ -291,6 +292,10 @@ async def submit_upgrade_candidate(
     row.old_torrents_removed_at = None
     row.cleanup_completed_at = None
     row.execution_error = None
+    row.comparison_snapshot = {
+        **(row.comparison_snapshot or {}),
+        "delete_old_media_after_upgrade": bool(delete_old_media and not row.target_key.startswith("replace:")),
+    }
     await create_event(
         db,
         "upgrade.submitted",
@@ -601,9 +606,27 @@ async def advance_upgrade_handoff(
         "upgrade.replacement_validated",
         entity_type="upgrade_candidate",
         entity_id=row.id,
-        message="Replacement validated and old qBittorrent torrent removed. Old media is awaiting explicit cleanup confirmation.",
+        message="Replacement validated and old qBittorrent torrents removed without deleting their files.",
         details={"candidate_id": str(row.id), "torrent_id": str(torrent.id), "old_release_ids": list(row.current_release_ids or [])},
     )
+    if bool((row.comparison_snapshot or {}).get("delete_old_media_after_upgrade")):
+        core = await _cleanup_core(db, row)
+        if core["blocked"]:
+            row.execution_state = "handoff_attention"
+            row.execution_error = (
+                "Replacement validated and old torrents were retired, but automatic old-media cleanup was blocked: "
+                + " ".join(core["blocked"])
+            )
+            await create_event(
+                db,
+                "upgrade.cleanup_blocked",
+                entity_type="upgrade_candidate",
+                entity_id=row.id,
+                message="Automatic removal of superseded media was blocked by a safety check.",
+                details={"candidate_id": str(row.id), "blocked": list(core["blocked"])},
+            )
+        else:
+            await _perform_cleanup(db, row, core, automatic=True)
     publish_live_event("upgrade.execution", entity_type="upgrade_candidate", entity_id=row.id, data={"candidate_id": str(row.id), "state": row.execution_state})
     return row
 
@@ -862,34 +885,13 @@ async def cleanup_preview(db: AsyncSession, candidate_id: UUID) -> dict[str, Any
     }
 
 
-async def commit_cleanup(db: AsyncSession, candidate_id: UUID, confirmation_token: str) -> dict[str, Any]:
-    payload = verify_confirmation_payload(confirmation_token, get_settings().secret_key)
-    if payload is None or payload.get("purpose") != "upgrade_media_cleanup":
-        raise AppError("INVALID_CONFIRMATION", "Upgrade cleanup confirmation is invalid.", status_code=409)
-    try:
-        token_candidate_id = UUID(str(payload["candidate_id"]))
-        expiry = int(payload["exp"])
-        digest = str(payload["inventory_hash"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise AppError("INVALID_CONFIRMATION", "Upgrade cleanup confirmation is malformed.", status_code=409) from exc
-    if token_candidate_id != candidate_id:
-        raise AppError("INVALID_CONFIRMATION", "Upgrade cleanup confirmation belongs to another candidate.", status_code=409)
-    if expiry < int(time.time()):
-        raise AppError("CONFIRMATION_EXPIRED", "Upgrade cleanup preview expired. Review the filesystem again.", status_code=409)
-
-    row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.id == candidate_id).with_for_update())
-    if row is None:
-        raise AppError("NOT_FOUND", "Upgrade candidate was not found.", status_code=404)
-    if row.execution_state != "cleanup_required":
-        raise AppError("UPGRADE_CLEANUP_NOT_READY", "This upgrade is no longer waiting for media cleanup.", status_code=409)
-    core = await _cleanup_core(db, row)
-    if _cleanup_digest(core) != digest:
-        raise AppError("DELETE_PREVIEW_STALE", "Old media changed since the cleanup preview. Review it again before deleting anything.", status_code=409)
-    if core["blocked"]:
-        raise AppError("UPGRADE_CLEANUP_BLOCKED", "Old media cleanup contains shared or unsafe paths and cannot be executed automatically.", status_code=409)
-
-    await consume_confirmation_jti(db, payload)
-
+async def _perform_cleanup(
+    db: AsyncSession,
+    row: UpgradeCandidate,
+    core: dict[str, Any],
+    *,
+    automatic: bool,
+) -> dict[str, Any]:
     deleted: list[str] = []
     for target in core["targets"]:
         path = Path(str(target["path"]))
@@ -960,8 +962,47 @@ async def commit_cleanup(db: AsyncSession, candidate_id: UUID, confirmation_toke
         "upgrade.cleanup_completed",
         entity_type="upgrade_candidate",
         entity_id=row.id,
-        message="Deleted explicitly reviewed superseded media after the replacement handoff.",
-        details={"candidate_id": str(row.id), "deleted_paths": deleted, "old_release_ids": list(row.current_release_ids or [])},
+        message=(
+            "Automatically deleted superseded media authorized when the upgrade was started."
+            if automatic
+            else "Deleted explicitly reviewed superseded media after the replacement handoff."
+        ),
+        details={
+            "candidate_id": str(row.id),
+            "deleted_paths": deleted,
+            "old_release_ids": list(row.current_release_ids or []),
+            "automatic": automatic,
+        },
     )
     publish_live_event("upgrade.execution", entity_type="upgrade_candidate", entity_id=row.id, data={"candidate_id": str(row.id), "state": row.execution_state})
     return {"candidate_id": row.id, "state": row.execution_state, "deleted_paths": deleted}
+
+
+async def commit_cleanup(db: AsyncSession, candidate_id: UUID, confirmation_token: str) -> dict[str, Any]:
+    payload = verify_confirmation_payload(confirmation_token, get_settings().secret_key)
+    if payload is None or payload.get("purpose") != "upgrade_media_cleanup":
+        raise AppError("INVALID_CONFIRMATION", "Upgrade cleanup confirmation is invalid.", status_code=409)
+    try:
+        token_candidate_id = UUID(str(payload["candidate_id"]))
+        expiry = int(payload["exp"])
+        digest = str(payload["inventory_hash"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AppError("INVALID_CONFIRMATION", "Upgrade cleanup confirmation is malformed.", status_code=409) from exc
+    if token_candidate_id != candidate_id:
+        raise AppError("INVALID_CONFIRMATION", "Upgrade cleanup confirmation belongs to another candidate.", status_code=409)
+    if expiry < int(time.time()):
+        raise AppError("CONFIRMATION_EXPIRED", "Upgrade cleanup preview expired. Review the filesystem again.", status_code=409)
+
+    row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.id == candidate_id).with_for_update())
+    if row is None:
+        raise AppError("NOT_FOUND", "Upgrade candidate was not found.", status_code=404)
+    if row.execution_state != "cleanup_required":
+        raise AppError("UPGRADE_CLEANUP_NOT_READY", "This upgrade is no longer waiting for media cleanup.", status_code=409)
+    core = await _cleanup_core(db, row)
+    if _cleanup_digest(core) != digest:
+        raise AppError("DELETE_PREVIEW_STALE", "Old media changed since the cleanup preview. Review it again before deleting anything.", status_code=409)
+    if core["blocked"]:
+        raise AppError("UPGRADE_CLEANUP_BLOCKED", "Old media cleanup contains shared or unsafe paths and cannot be executed automatically.", status_code=409)
+
+    await consume_confirmation_jti(db, payload)
+    return await _perform_cleanup(db, row, core, automatic=False)

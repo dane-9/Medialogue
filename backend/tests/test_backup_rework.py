@@ -331,7 +331,7 @@ def test_replacement_queue_search_review_and_submission_share_existing_execution
     client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: fake_qbit.factory
     try:
         response = client.post(f"/api/v1/upgrade-candidates/{candidate_id}/upgrade", headers=headers,
-            json={"download_client_id": qbit["id"], "category": "movies"})
+            json={"download_client_id": qbit["id"], "category": "movies", "delete_old_media": False})
         assert response.status_code == 200, response.text
         assert response.json()["execution_state"] == "submitted"
         assert len(fake_qbit.submissions) == 1

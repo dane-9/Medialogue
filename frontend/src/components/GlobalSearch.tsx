@@ -140,10 +140,10 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
         <div className="filter-tabs">
           <button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>All</button>
           <button className={scope === 'movie' ? 'active' : ''} onClick={() => setScope('movie')}>
-            <span className="kind-box kind-movie"><Icon name="clapper" size={12} /></span>Movies
+            <span className="kind-box kind-movie"><Icon name="clapper" size={12} />Movies</span>
           </button>
           <button className={scope === 'show' ? 'active' : ''} onClick={() => setScope('show')}>
-            <span className="kind-box kind-show"><Icon name="tv-screen" size={12} /></span>Shows
+            <span className="kind-box kind-show"><Icon name="tv-screen" size={12} />Shows</span>
           </button>
         </div>
         <button className="icon-button" onClick={onClose} aria-label="Close search"><Icon name="close" size={18} /></button>

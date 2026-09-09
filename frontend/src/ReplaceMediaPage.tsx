@@ -73,7 +73,7 @@ export default function ReplaceMediaPage() {
       <label>Download client<Select value={selectedClient} onChange={e => setSelectedClient(e.target.value)}><option value="">Select client…</option>{clients.filter(c => c.enabled && c.scope === review.media_type).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></label>
       <div className="button-row"><Button onClick={() => { setReview(null); setResults(null) }}>Cancel</Button><Button variant="primary" disabled={busy || !selectedClient} onClick={() => void act(async () => {
         if (!await confirm({ title: 'Download this replacement?', body: `${review.candidate_title} will be submitted to the selected qBittorrent client.`, confirmLabel: 'Download replacement', tone: 'primary' })) return
-        await upgradesApi.executeUpgrade(review.candidate_id!, selectedClient); setReview(null); setResults(null); setMessage('Replacement submitted. Follow its progress in Downloads or refresh this queue.')
+        await upgradesApi.executeUpgrade(review.candidate_id!, selectedClient, undefined, false); setReview(null); setResults(null); setMessage('Replacement submitted. Follow its progress in Downloads or refresh this queue.')
       })}>Download replacement</Button></div>
       {results && <table className="data-table"><thead><tr><th>Available release</th><th>Source</th><th>CF score</th><th>Reported seeders</th><th /></tr></thead><tbody>{results.results.map(result => <tr key={result.id}>
         <td>{result.title}{!result.eligible && <p>{result.rejectionReasons.join(' ')}</p>}<small>{result.matchedFormatNames.join(', ')}</small></td><td>{result.indexerName}</td><td>{result.customFormatScore ?? 'Unknown'}</td><td>{result.seeders ?? 'Unknown'}</td>

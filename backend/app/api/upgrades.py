@@ -713,6 +713,7 @@ async def execute_upgrade(
         candidate_id,
         download_client_id=payload.download_client_id,
         category=payload.category,
+        delete_old_media=payload.delete_old_media,
         torznab_client_factory=torznab_factory,
         qbittorrent_client_factory=qbittorrent_client_factory,
     )

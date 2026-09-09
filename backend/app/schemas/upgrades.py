@@ -176,6 +176,7 @@ class UpgradeQualityProfileUpdateResponse(BaseModel):
 class UpgradeExecuteRequest(BaseModel):
     download_client_id: UUID
     category: str | None = Field(default=None, max_length=256)
+    delete_old_media: bool
 
 
 class UpgradeCleanupCommitRequest(BaseModel):

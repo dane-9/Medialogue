@@ -2585,6 +2585,17 @@ a.download-kind:hover { filter: brightness(1.35); }
 }
 
 .kind-box { display: grid; width: 20px; height: 20px; flex: none; place-items: center; border: 1px solid; border-radius: var(--r-sm); }
+/* With a label inside, the box grows to hold both rather than sitting beside
+   the word it belongs to. */
+.kind-box:not(:empty):has(> :not(svg)),
+.filter-tabs .kind-box {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  align-items: center;
+  gap: var(--s1);
+  padding: 3px var(--s2);
+}
 
 .kind-movie { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
 .kind-show { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
@@ -4553,6 +4564,9 @@ select.input { background-color: var(--input-bg); }
 /* .modal-body carries no padding of its own; forms bring theirs, prose does not. */
 .modal-copy-inset { padding: var(--s4); margin-bottom: 0; }
 .upgrade-modal-copy p { margin: 0; color: var(--muted); line-height: 1.5; }
+.upgrade-confirm-steps { display: grid; gap: var(--s3); margin: 0; padding-left: 1.35rem; }
+.upgrade-confirm-steps li { padding-left: var(--s1); color: var(--text); }
+.upgrade-confirm-steps li span { display: block; margin-top: 2px; color: var(--muted); line-height: 1.45; }
 .upgrade-results-current { display: grid; padding: var(--s3) 0; border-bottom: 1px solid var(--line); background: var(--raised); }
 /* The list's own grid, so the current release lines its columns up with the
    header beneath it: format box under FORMAT, score under CF SCORE. */

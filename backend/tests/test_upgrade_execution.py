@@ -523,13 +523,41 @@ async def _seed_show_upgrade(
         )
 
 
-def test_movie_upgrade_submission_handoff_and_explicit_cleanup(client) -> None:
+def test_movie_upgrade_retires_cross_seeds_and_automatically_cleans_old_media(client) -> None:
     test_client, tmp_path = client
     headers = _login(test_client)
     qbit, indexer = _create_integrations(test_client, headers)
     candidate_id, _movie_id, old_release_id, old_torrent_id, old_dir, new_dir = asyncio.run(
         _seed_movie_upgrade(tmp_path, qbit, indexer)
     )
+
+    async def add_cross_seed() -> None:
+        async with db_session.async_session_factory() as db:
+            cross_seed = Torrent(
+                info_hash="old-cross-seed-hash",
+                name="Upgrade.Movie.2024.1080p.WEB-DL-GRP",
+                archive_state=TorrentArchiveState.ARCHIVED,
+                archive_path=str(tmp_path / "archive" / "old-cross-seed.torrent"),
+            )
+            db.add(cross_seed)
+            await db.flush()
+            db.add_all([
+                MovieReleaseTorrent(
+                    movie_release_id=old_release_id,
+                    torrent_id=cross_seed.id,
+                    association_type=AssociationType.ATTACHED,
+                ),
+                TorrentClientObservation(
+                    torrent_id=cross_seed.id,
+                    download_client_id=UUID(qbit["id"]),
+                    state="uploading",
+                    progress=1,
+                    is_present=True,
+                ),
+            ])
+            await db.commit()
+
+    asyncio.run(add_cross_seed())
 
     behavior = FakeQBitBehavior()
     from app.api import downloads as downloads_api
@@ -539,7 +567,7 @@ def test_movie_upgrade_submission_handoff_and_explicit_cleanup(client) -> None:
         response = test_client.post(
             f"/api/v1/upgrade-candidates/{candidate_id}/upgrade",
             headers=headers,
-            json={"download_client_id": qbit["id"], "category": "movies"},
+            json={"download_client_id": qbit["id"], "category": "movies", "delete_old_media": True},
         )
         assert response.status_code == 200, response.text
         assert response.json()["execution_state"] == "submitted"
@@ -556,27 +584,14 @@ def test_movie_upgrade_submission_handoff_and_explicit_cleanup(client) -> None:
             old_release_id,
             new_dir,
             behavior,
+            expected_handoff_state="completed",
         ))
-        assert behavior.removals == [{"info_hash": "old-upgrade-hash", "delete_files": False}]
-        assert old_dir.exists(), "old media must still exist after qBittorrent handoff"
+        assert {(item["info_hash"], item["delete_files"]) for item in behavior.removals} == {
+            ("old-upgrade-hash", False),
+            ("old-cross-seed-hash", False),
+        }
+        assert not old_dir.exists(), "the start acknowledgement authorizes old-media cleanup after validation"
         assert new_dir.exists()
-
-        preview = test_client.get(f"/api/v1/upgrade-candidates/{candidate_id}/cleanup-preview")
-        assert preview.status_code == 200, preview.text
-        payload = preview.json()
-        assert payload["eligible"] is True
-        assert [target["path"] for target in payload["targets"]] == [str(old_dir)]
-        assert payload["total_bytes"] > 0
-
-        cleanup = test_client.post(
-            f"/api/v1/upgrade-candidates/{candidate_id}/cleanup",
-            headers=headers,
-            json={"confirmation_token": payload["confirmation_token"]},
-        )
-        assert cleanup.status_code == 200, cleanup.text
-        assert cleanup.json()["state"] == "completed"
-        assert str(old_dir) in cleanup.json()["deleted_paths"]
-        assert not old_dir.exists()
         assert new_dir.exists(), "replacement media must not be part of old-media cleanup"
 
         async def verify_database() -> None:
@@ -661,7 +676,7 @@ def test_cleanup_refuses_when_replacement_disappears_after_preview(client) -> No
         response = test_client.post(
             f"/api/v1/upgrade-candidates/{candidate_id}/upgrade",
             headers=headers,
-            json={"download_client_id": qbit["id"], "category": "movies"},
+            json={"download_client_id": qbit["id"], "category": "movies", "delete_old_media": False},
         )
         assert response.status_code == 200, response.text
         asyncio.run(_simulate_movie_download_and_handoff(
@@ -707,7 +722,7 @@ def test_show_season_pack_upgrade_keeps_new_pack_and_deletes_only_reviewed_old_f
         response = test_client.post(
             f"/api/v1/upgrade-candidates/{candidate_id}/upgrade",
             headers=headers,
-            json={"download_client_id": qbit["id"], "category": "shows"},
+            json={"download_client_id": qbit["id"], "category": "shows", "delete_old_media": False},
         )
         assert response.status_code == 200, response.text
         assert response.json()["execution_state"] == "submitted"
@@ -853,7 +868,7 @@ def test_handoff_attention_can_retry_old_torrent_removal_without_touching_media(
         response = test_client.post(
             f"/api/v1/upgrade-candidates/{candidate_id}/upgrade",
             headers=headers,
-            json={"download_client_id": qbit["id"], "category": "movies"},
+            json={"download_client_id": qbit["id"], "category": "movies", "delete_old_media": False},
         )
         assert response.status_code == 200, response.text
         asyncio.run(_simulate_movie_download_and_handoff(
