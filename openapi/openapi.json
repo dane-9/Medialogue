@@ -2871,6 +2871,10 @@
             "title": "Name",
             "type": "string"
           },
+          "payload_group_id": {
+            "title": "Payload Group Id",
+            "type": "string"
+          },
           "progress": {
             "anyOf": [
               {
@@ -3087,6 +3091,7 @@
         "required": [
           "id",
           "torrent_id",
+          "payload_group_id",
           "client_id",
           "client_name",
           "scope",

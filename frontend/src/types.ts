@@ -360,6 +360,8 @@ export interface TMDBShowLookup {
 
 export interface Download {
   id: string
+  payloadGroupId?: string
+  infoHash?: string
   name: string
   client: string
   clientId: string
@@ -371,6 +373,8 @@ export interface Download {
   eta: string
   speed: string
   path: string
+  /** Untrimmed resolved qBittorrent content path used to identify shared payloads. */
+  payloadPath?: string
   quality?: string
   edition?: string
   movieId?: string

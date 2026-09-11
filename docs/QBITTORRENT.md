@@ -33,9 +33,23 @@ Medialogue does not send a normal search download through an import/move pipelin
 
 Unrelated torrents outside configured/accessible media roots are ignored.
 
+## Cross-seeds
+
+Downloads treats the physical payload as the primary row. Torrents associated
+with the same release, reporting the same resolved content path, or proven to
+use the same selected hard-linked files are grouped into one expandable row.
+The expanded view retains each torrent's tracker, info hash, client, activity,
+and upload speed. Actions on the payload row apply to every visible member.
+
+Payload health is aggregated conservatively. One unregistered or unavailable
+tracker does not make a cross-seeded release unavailable while another torrent
+source remains healthy, degraded, or has not yet produced conclusive terminal
+failure evidence. Replace Media is opened only after every torrent associated
+with that release has confirmed recent terminal tracker failure.
+
 ## Removal
 
-When Medialogue removes an associated torrent as part of an explicitly confirmed workflow, qBittorrent is called without deleting data. Filesystem deletion, if selected, is separately previewed and committed by Medialogue.
+When Medialogue removes an associated torrent as part of an explicitly confirmed workflow, qBittorrent is called without deleting data. Starting a normal Upgrade Media workflow authorizes Medialogue to retire every recognized old cross-seed and delete the superseded media automatically after replacement validation and safety checks. Replace Media retains its separate keep/retire/cleanup choices.
 
 ## Disaster recovery re-import
 

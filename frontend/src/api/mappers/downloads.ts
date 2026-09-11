@@ -61,6 +61,8 @@ export function mapDownload(value: DownloadDto): Download {
 
   return {
     id: value.id,
+    payloadGroupId: value.payload_group_id,
+    infoHash: value.info_hash,
     name: value.name,
     client: value.client_name,
     clientId: value.client_id,
@@ -72,6 +74,7 @@ export function mapDownload(value: DownloadDto): Download {
     eta,
     speed: value.download_speed ? `${formatBytes(value.download_speed)}/s` : '-',
     path: mediaFolderPath(value.resolved_save_path ?? value.reported_save_path),
+    payloadPath: value.resolved_save_path ?? value.reported_save_path ?? undefined,
     quality: value.quality ?? undefined,
     edition: value.edition ?? undefined,
     movieId: value.movie_id ?? undefined,

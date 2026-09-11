@@ -1122,6 +1122,61 @@ function DownloadContextMenu({ position, count, busy, allStopped, onRun }: {
   </div>
 }
 
+type DownloadPayloadGroup = {
+  id: string
+  download: Download
+  members: Download[]
+}
+
+export function downloadPayloadGroups(items: Download[]): DownloadPayloadGroup[] {
+  const grouped = new Map<string, Download[]>()
+  for (const item of items) {
+    const path = item.payloadPath?.replace(/[\\/]+$/, '').toLocaleLowerCase()
+    // The physical payload is authoritative. This also groups a torrent whose
+    // tracker/name prevented a release association with an already-associated
+    // cross-seed using the exact same qBittorrent content path.
+    const key = item.payloadGroupId ?? (path && path !== 'unknown path'
+      ? `${item.kind}:payload:${path}`
+      : item.releaseId
+        ? `${item.kind}:release:${item.releaseId}`
+        : `torrent:${item.id}`)
+    grouped.set(key, [...(grouped.get(key) ?? []), item])
+  }
+  return [...grouped.entries()].map(([id, members]) => {
+    const preferred = members.find((item) => item.trackerState === 'healthy') ?? members[0]
+    const activityOrder: Download['activity'][] = ['downloading', 'metadata', 'checking', 'stalled', 'seeding', 'queued', 'paused', 'error']
+    const activity = activityOrder.find((value) => members.some((item) => item.activity === value)) ?? preferred.activity
+    const trackerState: Download['trackerState'] = members.some((item) => item.trackerState === 'healthy') ? 'healthy'
+      : members.some((item) => item.trackerState === 'degraded') ? 'degraded'
+        : members.some((item) => item.trackerState === 'unknown') ? 'unknown'
+          : members.every((item) => item.trackerState === 'unregistered') ? 'unregistered' : 'unavailable'
+    const state: Download['state'] = activity === 'seeding' ? 'Seeding'
+      : activity === 'checking' ? 'Checking'
+        : activity === 'paused' || activity === 'queued' ? 'Paused'
+          : activity === 'error' ? 'Error' : 'Downloading'
+    const downloadSpeedBytes = members.reduce((total, item) => total + item.downloadSpeedBytes, 0)
+    const uploadSpeedBytes = members.reduce((total, item) => total + item.uploadSpeedBytes, 0)
+    const archiveState = members.every((item) => item.archiveState === 'archived') ? 'archived'
+      : members.some((item) => item.archiveState === 'failed') ? 'failed' : 'not_archived'
+    return {
+      id,
+      members,
+      download: {
+        ...preferred,
+        activity,
+        state,
+        trackerState,
+        archiveState,
+        progress: Math.max(...members.map((item) => item.progress)),
+        downloadSpeedBytes,
+        uploadSpeedBytes,
+        speed: downloadSpeedBytes ? `${formatBytes(downloadSpeedBytes)}/s` : '-',
+        uploadSpeed: uploadSpeedBytes ? `${formatBytes(uploadSpeedBytes)}/s` : '-',
+      },
+    }
+  })
+}
+
 export function DownloadsPage() {
   const [items, setItems] = useState<Download[]>([])
   const [total, setTotal] = useState(0)
@@ -1139,6 +1194,7 @@ export function DownloadsPage() {
   // One selection per group, intersected: a status, a category and a tracker can
   // all be active at once. Clicking the active row again clears that group.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [anchorId, setAnchorId] = useState('')
@@ -1191,7 +1247,8 @@ export function DownloadsPage() {
       setPages(payload.pages)
       // A torrent removed in qBittorrent must not stay in the selection and
       // reappear in the next action's payload.
-      setSelected((current) => new Set([...current].filter((id) => payload.items.some((row) => row.id === id))))
+      const currentGroups = downloadPayloadGroups(payload.items)
+      setSelected((current) => new Set([...current].filter((id) => currentGroups.some((group) => group.id === id))))
       setError('')
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load downloads.') }
@@ -1236,7 +1293,7 @@ export function DownloadsPage() {
     () => [...DOWNLOAD_FILTERS, ...categoryEntries(facets.categories), ...tagEntries(facets.tags), ...trackerEntries(facets.trackers)],
     [facets],
   )
-  const filtered = items
+  const filtered = useMemo(() => downloadPayloadGroups(items), [items])
 
   // Plain click replaces, ctrl/cmd toggles, shift extends from the last anchor
   // across the rows as currently sorted and filtered.
@@ -1268,7 +1325,10 @@ export function DownloadsPage() {
     if (!selected.size) return
     setActionBusy(true)
     try {
-      await downloadsApi.applyDownloadAction([...selected], action, value)
+      const downloadIds = filtered
+        .filter((group) => selected.has(group.id))
+        .flatMap((group) => group.members.map((member) => member.id))
+      await downloadsApi.applyDownloadAction(downloadIds, action, value)
       setError('')
       setContext(null)
       // The endpoint refreshes the affected rows before responding, so this
@@ -1349,22 +1409,25 @@ export function DownloadsPage() {
           <strong>{client.name}</strong>
         </span>
         <small>{(() => {
-          const count = items.filter((item) => item.clientId === client.id).length
-          return `${count} torrent${count === 1 ? '' : 's'}`
+          const count = downloadPayloadGroups(items.filter((item) => item.clientId === client.id)).length
+          return `${count} payload${count === 1 ? '' : 's'}`
         })()}</small>
       </button>)}
     </div>}
     {error && <EmptyState icon="download" title="Could not load downloads" detail={error} action={<Button variant="ghost" icon="refresh" onClick={() => void load()}>Try again</Button>} />}
     {!error && !loading && !filtered.length && <EmptyState icon="download" title={(facets.counts.all ?? 0) ? 'No activity matches this filter' : 'No managed torrents are currently loaded'} detail={(facets.counts.all ?? 0) ? 'Try another activity filter.' : 'Historical and archived-only torrents are intentionally kept out of this live view.'} />}
-    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>{sortLabel('sizeBytes', 'Size')}</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('state', 'Status')}</th><th>{sortLabel('seeds', 'Seeds')}</th><th>{sortLabel('leeches', 'Peers')}</th><th>{sortLabel('downloadSpeedBytes', 'Down speed')}</th><th>{sortLabel('uploadSpeedBytes', 'Up speed')}</th><th>{sortLabel('etaSeconds', 'ETA')}</th><th>{sortLabel('trackerState', 'Tracker')}</th><th>{sortLabel('archiveState', 'Local archive')}</th></tr></thead><tbody>{loading ? <tr><td colSpan={11} className="table-loading">Reading live qBittorrent activity…</td></tr> : filtered.map((download) => <tr
-      key={download.id}
-      className={selected.has(download.id) ? 'row-selected' : ''}
-      onClick={(event) => rowClick(event, download.id)}
-      onContextMenu={(event) => openContext(event, download.id)}
+    {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>{sortLabel('sizeBytes', 'Size')}</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('state', 'Status')}</th><th>{sortLabel('seeds', 'Seeds')}</th><th>{sortLabel('leeches', 'Peers')}</th><th>{sortLabel('downloadSpeedBytes', 'Down speed')}</th><th>{sortLabel('uploadSpeedBytes', 'Up speed')}</th><th>{sortLabel('etaSeconds', 'ETA')}</th><th>{sortLabel('trackerState', 'Tracker')}</th><th>{sortLabel('archiveState', 'Local archive')}</th></tr></thead><tbody>{loading ? <tr><td colSpan={11} className="table-loading">Reading live qBittorrent activity…</td></tr> : filtered.map((group) => {
+      const download = group.download
+      const isCrossSeeded = group.members.length > 1
+      const remainingSources = group.members.filter((member) => member.trackerState !== 'unregistered' && member.trackerState !== 'unavailable').length
+      return <Fragment key={group.id}><tr
+      className={selected.has(group.id) ? 'row-selected' : ''}
+      onClick={(event) => rowClick(event, group.id)}
+      onContextMenu={(event) => openContext(event, group.id)}
     >
-      <td><span className="download-name"><Tooltip className="download-kind-tip" delay={250} content={releaseNote(download)}>{(download.movieId || download.showId)
+      <td><span className="download-name">{isCrossSeeded && <button type="button" className={`download-cross-seed-toggle ${expanded.has(group.id) ? 'open' : ''}`} aria-label={`${expanded.has(group.id) ? 'Collapse' : 'Expand'} ${download.name} cross-seeds`} aria-expanded={expanded.has(group.id)} onClick={(event) => { event.stopPropagation(); setExpanded((current) => { const next = new Set(current); if (!next.delete(group.id)) next.add(group.id); return next }) }}><Icon name="caret" size={11} /></button>}<Tooltip className="download-kind-tip" delay={250} content={releaseNote(download)}>{(download.movieId || download.showId)
         ? <Link className={`kind-box download-kind kind-${download.kind === 'Show' ? 'show' : 'movie'}`} to={download.movieId ? `/movies/${download.movieId}` : `/shows/${download.showId}`} aria-label={`Open ${download.mediaTitle ?? download.name}`}><Icon name={download.kind === 'Show' ? 'tv-screen' : 'clapper'} size={11} /></Link>
-        : <span className={`kind-box download-kind kind-${download.kind === 'Show' ? 'show' : 'movie'} unmatched`}><Icon name={download.kind === 'Show' ? 'tv-screen' : 'clapper'} size={11} /></span>}</Tooltip><Tooltip className="download-name-tip" delay={250} content={<span className="download-path">{download.path}</span>}><strong>{download.name}</strong></Tooltip></span></td>
+        : <span className={`kind-box download-kind kind-${download.kind === 'Show' ? 'show' : 'movie'} unmatched`}><Icon name={download.kind === 'Show' ? 'tv-screen' : 'clapper'} size={11} /></span>}</Tooltip><Tooltip className="download-name-tip" delay={250} content={<span className="download-path">{download.path}</span>}><strong>{download.name}</strong></Tooltip>{isCrossSeeded && <span className="download-cross-seed-count">Cross-seeded · {group.members.length} torrents</span>}</span></td>
       <td className="download-size">{download.size}</td>
       <td><Tooltip className="download-progress" content={progressNote(download)}><Progress value={download.progress} tone={download.state === 'Seeding' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span className="download-progress-value">{Math.round(download.progress)}%</span></Tooltip></td>
       <td><Badge tone={activityTone(download)}>{activityLabel(download)}</Badge></td>
@@ -1373,12 +1436,13 @@ export function DownloadsPage() {
       <td className="download-speed down">{download.speed}</td>
       <td className="download-speed up">{download.uploadSpeed}</td>
       <td className="download-eta">{download.eta}</td>
-      <td><Tooltip content={[`Tracker ${download.trackerState}`, download.availability === undefined ? '' : `availability ${download.availability.toFixed(2)}`, download.ratio === undefined ? '' : `ratio ${download.ratio.toFixed(2)}`].filter(Boolean).join(' · ')}><Badge tone={download.trackerState === 'unregistered' || download.trackerState === 'unavailable' ? 'red' : download.trackerState === 'degraded' ? 'amber' : download.trackerState === 'healthy' ? 'green' : 'neutral'}>{download.trackerState === 'unknown' ? 'No tracker data' : download.trackerState}</Badge></Tooltip></td>
+      <td><Tooltip content={[isCrossSeeded ? `${remainingSources} of ${group.members.length} torrent sources are not confirmed lost` : `Tracker ${download.trackerState}`, download.availability === undefined ? '' : `availability ${download.availability.toFixed(2)}`, download.ratio === undefined ? '' : `ratio ${download.ratio.toFixed(2)}`].filter(Boolean).join(' · ')}><Badge tone={download.trackerState === 'unregistered' || download.trackerState === 'unavailable' ? 'red' : download.trackerState === 'degraded' ? 'amber' : download.trackerState === 'healthy' ? 'green' : 'neutral'}>{isCrossSeeded ? `${remainingSources}/${group.members.length} sources` : download.trackerState === 'unknown' ? 'No tracker data' : download.trackerState}</Badge></Tooltip></td>
       <td><Tooltip content={download.archiveState === 'archived' ? 'The .torrent and recovery manifest passed integrity verification.' : download.archiveState === 'failed' ? 'Recovery data could not be archived or failed verification.' : 'Recovery data has not been archived yet.'}><Badge tone={download.archiveState === 'archived' ? 'green' : download.archiveState === 'failed' ? 'red' : 'amber'}>{download.archiveState === 'archived' ? 'Archived locally' : download.archiveState === 'failed' ? 'Failed' : 'Pending'}</Badge></Tooltip></td>
-    </tr>)}</tbody></table></Panel>}
+    </tr>{isCrossSeeded && expanded.has(group.id) && <tr className="download-cross-seed-detail"><td colSpan={11}><div className="download-cross-seed-members">{group.members.map((member) => <div key={member.id} className="download-cross-seed-member"><span><Icon name="tracker" size={13} /><strong>{member.trackerHost ?? 'Unknown tracker'}</strong></span><code>{member.infoHash?.slice(0, 12) ?? 'unknown hash'}…</code><span>{member.client}</span><Badge tone={member.trackerState === 'healthy' ? 'green' : member.trackerState === 'degraded' ? 'amber' : member.trackerState === 'unknown' ? 'neutral' : 'red'}>{member.trackerState}</Badge><span>{activityLabel(member)}</span><span className="download-speed up">{member.uploadSpeed}</span></div>)}</div></td></tr>}</Fragment>
+    })}</tbody></table></Panel>}
       {pages > 1 && <div className="pagination-bar">
         <Button variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage((current) => current - 1)}>Previous</Button>
-        <span>Page {page} of {pages} · {total} torrents</span>
+        <span>Page {page} of {pages} · {filtered.length} payloads ({total} torrents)</span>
         <Button variant="ghost" disabled={page >= pages || loading} onClick={() => setPage((current) => current + 1)}>Next</Button>
       </div>}
       </div>
@@ -1389,7 +1453,7 @@ export function DownloadsPage() {
         position={context}
         count={selected.size}
         busy={actionBusy}
-        allStopped={items.filter((item) => selected.has(item.id)).every((item) => item.state === 'Paused')}
+        allStopped={filtered.filter((group) => selected.has(group.id)).flatMap((group) => group.members).every((item) => item.state === 'Paused')}
         onRun={runAction}
       />
     </>}

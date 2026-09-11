@@ -18,7 +18,7 @@ from app.models.domain import MediaType, Torrent, TorrentClientObservation, Torr
 from app.services.backup_crypto import new_recovery_key, encrypt_backup, decrypt_backup
 from app.services.remote_backups import DriveBackups, retained_ids
 from app.services.torrent_archive import manifest_for_client, recovery_file_priorities, recovery_revision
-from app.services.replacements import lost_sources
+from app.services.replacements import lost_sources, releases_without_any_healthy_source
 from app.services.upgrade_candidates import CurrentReleaseEvidence, UpgradeTarget, _score_candidate
 from app.services.search import SearchTarget
 from app.integrations.torznab import SearchResult
@@ -137,6 +137,18 @@ async def test_source_failure_requires_recent_terminal_evidence_on_all_live_clie
         db.expire(torrent, ["observations"])
         assert not await lost_sources(db)
     await engine.dispose()
+
+
+def test_cross_seed_release_is_not_lost_while_any_torrent_source_is_healthy():
+    failed = SimpleNamespace(id=uuid4())
+    healthy = SimpleNamespace(id=uuid4())
+    release = SimpleNamespace(torrents=[failed, healthy])
+
+    assert releases_without_any_healthy_source([release], {failed.id: failed}) == []
+    assert releases_without_any_healthy_source(
+        [release],
+        {failed.id: failed, healthy.id: healthy},
+    ) == [failed, healthy]
 
 
 def test_replacement_allows_equivalent_but_blocks_quality_score_edition_and_hash_regressions():

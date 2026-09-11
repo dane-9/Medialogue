@@ -5,6 +5,10 @@ terminal errors such as “unregistered torrent” or “torrent deleted.” It 
 candidate comparison and download handoff code with Upgrade Media, but an
 equivalent release is eligible even when it provides no quality or CF upgrade.
 
+Cross-seeded releases are evaluated as one payload: failure of one torrent or
+tracker is retained as member-level evidence but does not create a replacement
+target while any other associated torrent source remains usable or uncertain.
+
 ## Detection
 
 Every recently observed live client must have exclusively confirmed terminal

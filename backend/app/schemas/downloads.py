@@ -155,6 +155,7 @@ class DownloadActionResponse(BaseModel):
 class DownloadResponse(ORMModel):
     id: UUID
     torrent_id: UUID
+    payload_group_id: str
     client_id: UUID
     client_name: str
     scope: DownloadScope

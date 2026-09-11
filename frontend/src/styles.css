@@ -1543,6 +1543,17 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 .downloads-table tbody tr.row-selected,
 .downloads-table tbody tr.row-selected:hover { background: var(--accent-soft); }
 .downloads-table tbody tr.row-selected .download-name strong { color: var(--text); }
+.download-cross-seed-toggle { display: inline-grid; width: 20px; height: 20px; flex: none; place-items: center; padding: 0; border: 0; border-radius: var(--r-sm); color: var(--muted); background: transparent; cursor: pointer; }
+.download-cross-seed-toggle:hover { color: var(--text); background: var(--control-hover); }
+.download-cross-seed-toggle svg { transition: transform 120ms ease; }
+.download-cross-seed-toggle.open svg { transform: rotate(90deg); }
+.download-cross-seed-count { flex: none; color: var(--accent); font-size: 11px; font-weight: 650; }
+.downloads-table tbody tr.download-cross-seed-detail { background: var(--raised); }
+.downloads-table tbody tr.download-cross-seed-detail td { height: auto; padding: var(--s2) var(--s4) var(--s3) 46px; overflow: visible; }
+.download-cross-seed-members { display: grid; gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--line); }
+.download-cross-seed-member { display: grid; grid-template-columns: minmax(180px, 1fr) 120px 130px 110px 110px 90px; align-items: center; gap: var(--s3); min-height: 32px; padding: 0 var(--s3); background: var(--panel); color: var(--muted); font-size: 12px; }
+.download-cross-seed-member > span:first-child { display: flex; min-width: 0; align-items: center; gap: var(--s2); color: var(--text); }
+.download-cross-seed-member code { color: var(--muted); font-size: 11px; }
 /* Every column is an explicit width. table-layout:fixed makes the browser honour
    them exactly instead of sizing to content, and width:auto sizes the table to
    their sum so nothing is redistributed when the window is wider. Change a

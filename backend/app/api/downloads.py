@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlsplit
 from time import perf_counter
 from uuid import UUID, uuid4
@@ -302,6 +303,66 @@ class _DownloadPageContext:
     associations: dict[uuid.UUID, tuple[Any, Any]]
     problems: dict[uuid.UUID, Problem]
     root_names: dict[uuid.UUID, str]
+    payload_groups: dict[uuid.UUID, str]
+
+
+def _payload_group_ids(
+    rows: Sequence[tuple[TorrentClientObservation, Torrent]],
+    associations: dict[uuid.UUID, tuple[Any, Any]],
+) -> dict[uuid.UUID, str]:
+    """Group a page by release, exact payload path, or selected hard-linked files."""
+
+    from app.services.upgrade_execution import _archived_file_signatures, _payload_file_identities
+
+    torrent_ids = {torrent.id for _observation, torrent in rows}
+    parent = {torrent_id: torrent_id for torrent_id in torrent_ids}
+
+    def find(value: uuid.UUID) -> uuid.UUID:
+        while parent[value] != value:
+            parent[value] = parent[parent[value]]
+            value = parent[value]
+        return value
+
+    def union(first: uuid.UUID, second: uuid.UUID) -> None:
+        left, right = find(first), find(second)
+        if left != right:
+            parent[max(left, right, key=str)] = min(left, right, key=str)
+
+    release_owner: dict[uuid.UUID, uuid.UUID] = {}
+    path_owner: dict[str, uuid.UUID] = {}
+    identities: dict[uuid.UUID, set[tuple[int, int]]] = {}
+    for observation, torrent in rows:
+        association = associations.get(torrent.id)
+        if association is not None:
+            release_id = association[1].id
+            if release_id in release_owner:
+                union(torrent.id, release_owner[release_id])
+            else:
+                release_owner[release_id] = torrent.id
+
+        # A save-path fallback can be the whole library. Only the real
+        # qBittorrent content path is specific enough to establish ownership.
+        if not str((torrent.metadata_json or {}).get("content_path") or "").strip():
+            continue
+        resolved = str(observation.resolved_save_path or "").strip()
+        if not resolved:
+            continue
+        path_key = str(Path(resolved).resolve(strict=False)).casefold()
+        if path_key in path_owner:
+            union(torrent.id, path_owner[path_key])
+        else:
+            path_owner[path_key] = torrent.id
+        signatures = _archived_file_signatures(torrent, observation.download_client_id)
+        if signatures:
+            identities[torrent.id] = _payload_file_identities([Path(resolved)], file_signatures=signatures)
+
+    identity_rows = [(torrent_id, values) for torrent_id, values in identities.items() if values]
+    for position, (torrent_id, values) in enumerate(identity_rows):
+        for other_id, other_values in identity_rows[position + 1:]:
+            if values & other_values:
+                union(torrent_id, other_id)
+
+    return {torrent_id: f"payload:{find(torrent_id)}" for torrent_id in torrent_ids}
 
 
 def _select_association(target: dict[uuid.UUID, tuple[Any, Any]], rows: Sequence[Any]) -> None:
@@ -398,7 +459,12 @@ async def _load_page_context(
             if key is not None:
                 root_names.setdefault(key, name)
 
-    return _DownloadPageContext(associations=associations, problems=problems, root_names=root_names)
+    return _DownloadPageContext(
+        associations=associations,
+        problems=problems,
+        root_names=root_names,
+        payload_groups=_payload_group_ids(rows, associations),
+    )
 
 
 def _download_response(
@@ -423,6 +489,7 @@ def _download_response(
     return DownloadResponse(
         id=observation.id,
         torrent_id=torrent.id,
+        payload_group_id=context.payload_groups.get(torrent.id, f"payload:{torrent.id}"),
         client_id=client.id,
         client_name=client.name,
         scope=DownloadScope(client.scope.value),

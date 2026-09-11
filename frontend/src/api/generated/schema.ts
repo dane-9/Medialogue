@@ -4008,6 +4008,8 @@ export interface components {
             movie_id?: string | null;
             /** Name */
             name: string;
+            /** Payload Group Id */
+            payload_group_id: string;
             /** Progress */
             progress: number | null;
             /** Quality */

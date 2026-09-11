@@ -55,6 +55,22 @@ async def lost_sources(db: AsyncSession) -> dict[UUID, Torrent]:
     return lost
 
 
+def releases_without_any_healthy_source(releases, lost: dict[UUID, Torrent]) -> list[Torrent]:
+    """Return failed torrents only for payloads whose every cross-seed failed.
+
+    A release is still available while any torrent attached to it has a usable
+    tracker source. One tracker/indexer losing its copy must not place the
+    shared media payload in Replace Media.
+    """
+
+    affected: list[Torrent] = []
+    for release in releases:
+        torrents = list(release.torrents)
+        if torrents and all(torrent.id in lost for torrent in torrents):
+            affected.extend(torrents)
+    return affected
+
+
 async def replacement_targets(db: AsyncSession):
     lost = await lost_sources(db)
     movies, _, _ = await _movie_targets(db, replacement=True)
@@ -64,7 +80,7 @@ async def replacement_targets(db: AsyncSession):
         model = MovieRelease if target.media_type == MediaType.MOVIES else ShowRelease
         releases = (await db.scalars(select(model).options(selectinload(model.torrents)).where(
             model.id.in_([item.release_id for item in target.releases])))).all()
-        affected = [torrent for release in releases for torrent in release.torrents if torrent.id in lost]
+        affected = releases_without_any_healthy_source(releases, lost)
         if not affected:
             continue
         excluded = tuple(sorted({torrent.info_hash.lower() for release in releases for torrent in release.torrents}))
