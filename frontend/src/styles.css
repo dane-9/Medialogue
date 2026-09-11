@@ -4736,3 +4736,10 @@ select.input { background-color: var(--input-bg); }
 @media (max-width: 760px) {
   .upgrade-media-summary { grid-template-columns: 1fr; }
 }
+
+.blocklist-panel { overflow-x: auto; }
+.blocklist-table { min-width: 980px; }
+.blocklist-select { width: 36px; text-align: center !important; }
+.blocklist-select input { width: 15px; height: 15px; accent-color: var(--accent); }
+.blocklist-reason { max-width: 360px; color: var(--muted); white-space: normal !important; }
+.blocklist-actions { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; }

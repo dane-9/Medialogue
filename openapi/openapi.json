@@ -142,6 +142,149 @@
         "title": "BackupSettingsRequest",
         "type": "object"
       },
+      "BlocklistBulkDeleteRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "BlocklistBulkDeleteRequest",
+        "type": "object"
+      },
+      "BlocklistDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "BlocklistDeleteResponse",
+        "type": "object"
+      },
+      "BlocklistEntryResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "indexer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexer Name"
+          },
+          "info_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Info Hash"
+          },
+          "media_resource_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Resource Id"
+          },
+          "media_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Title"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_title": {
+            "title": "Source Title",
+            "type": "string"
+          },
+          "target_entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Entity Id"
+          },
+          "target_entity_type": {
+            "title": "Target Entity Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "media_type",
+          "target_entity_type",
+          "target_entity_id",
+          "source_title",
+          "info_hash",
+          "indexer_name",
+          "quality",
+          "reason",
+          "created_at"
+        ],
+        "title": "BlocklistEntryResponse",
+        "type": "object"
+      },
       "BootstrapRequest": {
         "properties": {
           "password": {
@@ -182,6 +325,42 @@
           "required"
         ],
         "title": "BootstrapStatusResponse",
+        "type": "object"
+      },
+      "Collection_BlocklistEntryResponse_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BlocklistEntryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "default": 1,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 50,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "pages"
+        ],
+        "title": "Collection[BlocklistEntryResponse]",
         "type": "object"
       },
       "Collection_CustomFormatResponse_": {
@@ -9452,6 +9631,34 @@
       },
       "SearchResultResponse": {
         "properties": {
+          "blocklist_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocklist Id"
+          },
+          "blocklist_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocklist Reason"
+          },
+          "blocklisted": {
+            "default": false,
+            "title": "Blocklisted",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -14200,6 +14407,190 @@
         "summary": "Backup Status",
         "tags": [
           "backups"
+        ]
+      }
+    },
+    "/api/v1/blocklist": {
+      "delete": {
+        "operationId": "clear_blocklist_api_v1_blocklist_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlocklistDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Clear Blocklist",
+        "tags": [
+          "blocklist"
+        ]
+      },
+      "get": {
+        "operationId": "list_blocklist_api_v1_blocklist_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 250,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection_BlocklistEntryResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Blocklist",
+        "tags": [
+          "blocklist"
+        ]
+      }
+    },
+    "/api/v1/blocklist/count": {
+      "get": {
+        "operationId": "blocklist_count_api_v1_blocklist_count_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Blocklist Count Api V1 Blocklist Count Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Blocklist Count",
+        "tags": [
+          "blocklist"
+        ]
+      }
+    },
+    "/api/v1/blocklist/delete": {
+      "post": {
+        "operationId": "delete_blocklist_entries_api_v1_blocklist_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlocklistBulkDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlocklistDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Blocklist Entries",
+        "tags": [
+          "blocklist"
+        ]
+      }
+    },
+    "/api/v1/blocklist/{entry_id}": {
+      "delete": {
+        "operationId": "delete_blocklist_entry_api_v1_blocklist__entry_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlocklistDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Blocklist Entry",
+        "tags": [
+          "blocklist"
         ]
       }
     },

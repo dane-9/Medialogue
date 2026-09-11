@@ -51,6 +51,11 @@ with that release has confirmed recent terminal tracker failure.
 
 When Medialogue removes an associated torrent as part of an explicitly confirmed workflow, qBittorrent is called without deleting data. Starting a normal Upgrade Media workflow authorizes Medialogue to retire every recognized old cross-seed and delete the superseded media automatically after replacement validation and safety checks. Replace Media retains its separate keep/retire/cleanup choices.
 
+Terminal failures of incomplete torrents submitted by Medialogue follow a
+different cleanup path. qBittorrent removes the partial payload when it is
+exclusive, but preserves files when another observed torrent reports the exact
+same resolved payload path. See [Failed Downloads and Blocklist](FAILED_DOWNLOADS.md).
+
 ## Disaster recovery re-import
 
 The torrent archive preserves qBittorrent recovery context independently of live client presence. After restoring a Medialogue Recovery Bundle, **Settings → Backup / Recovery** can build a read-only bulk re-import plan before anything is submitted.

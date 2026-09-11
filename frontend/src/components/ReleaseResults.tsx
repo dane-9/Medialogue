@@ -101,7 +101,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
     {sorted.map((result) => {
       const selected = selectedId === result.id
       const score = result.customFormatScore
-      const selectable = !disabled && (isSelectable?.(result) ?? true)
+      const selectable = !disabled && !result.blocklisted && (isSelectable?.(result) ?? true)
       const { resolution, type } = splitQuality(result.quality, parsedResolution(result.parser))
       const formats = matchedFormatNames(result)
       const warnings = result.warnings ?? []
@@ -146,6 +146,9 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
                 : null}
             {tag ? <em>{tag}</em> : null}
             {renderTags?.(result)}
+            {result.blocklisted
+              ? <Tooltip className="release-pill release-blocked" content={result.blocklistReason ?? 'This release previously failed.'}><Icon name="lock" size={11} />Blocklisted</Tooltip>
+              : null}
             {warnings.length
               ? <Tooltip
                   className={`release-pill ${result.qualityAllowed && !scoreRejected ? 'release-warned' : 'release-blocked'}`}

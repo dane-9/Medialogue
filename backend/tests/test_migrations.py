@@ -140,7 +140,11 @@ def test_migration_history_is_the_single_fresh_baseline() -> None:
     backend_dir = _backend_dir()
     versions_dir = backend_dir / "alembic" / "versions"
     migrations = sorted(path for path in versions_dir.glob("*.py") if path.name != "__init__.py")
-    assert [path.name for path in migrations] == ["0001_fresh_baseline.py", "0002_confirmation_nonces.py"]
+    assert [path.name for path in migrations] == [
+        "0001_fresh_baseline.py",
+        "0002_confirmation_nonces.py",
+        "0003_release_blocklist.py",
+    ]
 
     source = migrations[0].read_text(encoding="utf-8")
     assert 'revision = "0001"' in source

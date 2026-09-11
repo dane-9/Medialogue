@@ -634,10 +634,28 @@ export interface InteractiveSearchResult {
   customFormatSnapshot: Record<string, unknown>
   parser: Record<string, unknown>
   warnings: string[]
+  blocklisted: boolean
+  blocklistId?: string
+  blocklistReason?: string
   selectedAt?: string
   selectedDownloadClientId?: string
   createdAt: string
   expiresAt: string
+}
+
+export interface BlocklistEntry {
+  id: string
+  mediaType: 'movies' | 'shows'
+  targetEntityType: string
+  targetEntityId?: string
+  mediaResourceId?: string
+  mediaTitle?: string
+  sourceTitle: string
+  infoHash?: string
+  indexerName?: string
+  quality?: string
+  reason: string
+  createdAt: string
 }
 
 export interface InteractiveSearchIndexerStatus {

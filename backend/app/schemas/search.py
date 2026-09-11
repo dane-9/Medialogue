@@ -89,6 +89,9 @@ class SearchResultResponse(BaseModel):
     custom_format_snapshot: dict[str, Any]
     parser: dict[str, Any]
     warnings: list[str]
+    blocklisted: bool = False
+    blocklist_id: UUID | None = None
+    blocklist_reason: str | None = None
     selected_at: datetime | None
     selected_download_client_id: UUID | None
     created_at: datetime

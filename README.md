@@ -4,7 +4,7 @@ Medialogue is a dark, desktop-first movie/show inventory and download-management
 
 ## Documentation
 
-Detailed deployment and administration guides are under [`docs/`](docs/README.md): Installation, Upgrade, Backup/Restore, Path Mapping, qBittorrent, Plex, Prowlarr/Torznab, Custom Formats, and Troubleshooting.
+Detailed deployment and administration guides are under [`docs/`](docs/README.md): Installation, Upgrade, Backup/Restore, Path Mapping, qBittorrent, Failed Downloads and Blocklist, Plex, Prowlarr/Torznab, Custom Formats, and Troubleshooting.
 
 
 ## TrueNAS SCALE + Dockge

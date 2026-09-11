@@ -330,6 +330,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/blocklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Blocklist */
+        get: operations["list_blocklist_api_v1_blocklist_get"];
+        put?: never;
+        post?: never;
+        /** Clear Blocklist */
+        delete: operations["clear_blocklist_api_v1_blocklist_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blocklist/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Blocklist Count */
+        get: operations["blocklist_count_api_v1_blocklist_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blocklist/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Blocklist Entries */
+        post: operations["delete_blocklist_entries_api_v1_blocklist_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blocklist/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Blocklist Entry */
+        delete: operations["delete_blocklist_entry_api_v1_blocklist__entry_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/custom-formats": {
         parameters: {
             query?: never;
@@ -2994,6 +3063,48 @@ export interface components {
             /** Recovery Key */
             recovery_key?: string | null;
         };
+        /** BlocklistBulkDeleteRequest */
+        BlocklistBulkDeleteRequest: {
+            /** Ids */
+            ids: string[];
+        };
+        /** BlocklistDeleteResponse */
+        BlocklistDeleteResponse: {
+            /** Deleted */
+            deleted: number;
+        };
+        /** BlocklistEntryResponse */
+        BlocklistEntryResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Indexer Name */
+            indexer_name: string | null;
+            /** Info Hash */
+            info_hash: string | null;
+            /** Media Resource Id */
+            media_resource_id?: string | null;
+            /** Media Title */
+            media_title?: string | null;
+            media_type: components["schemas"]["MediaType"];
+            /** Quality */
+            quality: string | null;
+            /** Reason */
+            reason: string;
+            /** Source Title */
+            source_title: string;
+            /** Target Entity Id */
+            target_entity_id: string | null;
+            /** Target Entity Type */
+            target_entity_type: string;
+        };
         /** BootstrapRequest */
         BootstrapRequest: {
             /** Password */
@@ -3010,6 +3121,25 @@ export interface components {
         BootstrapStatusResponse: {
             /** Required */
             required: boolean;
+        };
+        /** Collection[BlocklistEntryResponse] */
+        Collection_BlocklistEntryResponse_: {
+            /** Items */
+            items: components["schemas"]["BlocklistEntryResponse"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
         };
         /** Collection[CustomFormatResponse] */
         Collection_CustomFormatResponse_: {
@@ -6321,6 +6451,15 @@ export interface components {
         };
         /** SearchResultResponse */
         SearchResultResponse: {
+            /** Blocklist Id */
+            blocklist_id?: string | null;
+            /** Blocklist Reason */
+            blocklist_reason?: string | null;
+            /**
+             * Blocklisted
+             * @default false
+             */
+            blocklisted: boolean;
             /**
              * Created At
              * Format: date-time
@@ -8146,6 +8285,144 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_blocklist_api_v1_blocklist_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection_BlocklistEntryResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_blocklist_api_v1_blocklist_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlocklistDeleteResponse"];
+                };
+            };
+        };
+    };
+    blocklist_count_api_v1_blocklist_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
+    delete_blocklist_entries_api_v1_blocklist_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlocklistBulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlocklistDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_blocklist_entry_api_v1_blocklist__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlocklistDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

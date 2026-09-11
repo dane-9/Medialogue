@@ -6,6 +6,7 @@
 - [Backup / Restore](BACKUP_RESTORE.md)
 - [Remote Path Mapping](PATH_MAPPING.md)
 - [qBittorrent Setup](QBITTORRENT.md)
+- [Failed Downloads and Blocklist](FAILED_DOWNLOADS.md)
 - [Plex Setup](PLEX.md)
 - [Prowlarr / Torznab Setup](PROWLARR.md)
 - [Custom Formats](CUSTOM_FORMATS.md)

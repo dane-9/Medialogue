@@ -15,7 +15,7 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.integrations.qbittorrent import magnet_info_hash, torrent_payload_info_hash
 from app.models.auth import AdminUser
-from app.models.domain import Episode, InteractiveSearchResult, Job, MediaProfileOverride, MediaType, Movie, QualityProfile, Season, Show
+from app.models.domain import Episode, InteractiveSearchResult, Job, MediaProfileOverride, MediaType, Movie, QualityProfile, ReleaseBlocklist, Season, Show
 from app.parser import parse_release
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.search import (
@@ -34,6 +34,7 @@ from app.services.download_paths import join_qbit_path, show_folder_with_year
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.core.integration_config import get_integration_config_store
 from app.services.jobs import create_job
+from app.services.blocklist import blocklist_for_results, matching_blocklist_entry
 from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
 from app.services.shows import add_show_from_tmdb
@@ -45,7 +46,9 @@ router = APIRouter(tags=["interactive search"])
 def _search_result_response(
     row: InteractiveSearchResult,
     colors: dict[UUID, str | None] | None = None,
+    blocklist: dict[UUID, ReleaseBlocklist] | None = None,
 ) -> SearchResultResponse:
+    blocked = (blocklist or {}).get(row.id)
     return SearchResultResponse(
         id=row.id,
         job_id=row.job_id,
@@ -74,6 +77,9 @@ def _search_result_response(
         custom_format_snapshot=dict(row.custom_format_snapshot or {}),
         parser=dict(row.parse_snapshot or {}),
         warnings=list(row.warnings or []),
+        blocklisted=blocked is not None,
+        blocklist_id=blocked.id if blocked else None,
+        blocklist_reason=blocked.reason if blocked else None,
         selected_at=row.selected_at,
         selected_download_client_id=row.selected_download_client_id,
         created_at=row.created_at,
@@ -382,13 +388,14 @@ async def get_search_job(
         item.id: item.color
         for item in get_integration_config_store().list_indexers()
     }
+    result_blocklist = await blocklist_for_results(db, list(rows))
     return SearchJobResponse(
         id=job.id,
         status=job.status.value,
         target=dict(summary.get("target") or {}),
         progress=dict(job.progress or {}),
         indexers=statuses,
-        results=[_search_result_response(row, indexer_colors) for row in rows],
+        results=[_search_result_response(row, indexer_colors, result_blocklist) for row in rows],
         result_total=total,
         error=dict(job.error) if job.error else None,
         created_at=job.created_at,
@@ -423,6 +430,22 @@ async def download_search_result(
             "QUALITY_NOT_ALLOWED_BY_PROFILE",
             f"{result.quality or 'This release quality'} is not enabled in the assigned Quality Profile.",
             status_code=409,
+        )
+    blocked = await matching_blocklist_entry(
+        db,
+        media_type=result.media_type,
+        target_entity_type=result.target_entity_type,
+        target_entity_id=result.target_entity_id,
+        source_title=result.title,
+        indexer_id=result.indexer_id,
+        indexer_name=result.indexer_name,
+    )
+    if blocked is not None:
+        raise AppError(
+            "RELEASE_BLOCKLISTED",
+            "This release previously failed. Remove it from the Blocklist before downloading it again.",
+            status_code=409,
+            details={"blocklist_id": str(blocked.id), "reason": blocked.reason},
         )
     indexer = await get_configured_indexer(db, result.indexer_id) if result.indexer_id else None
     if indexer is None or not indexer.api_key:
@@ -592,6 +615,14 @@ async def download_search_result(
     try:
         if result.download_url.casefold().startswith("magnet:"):
             submitted_info_hash = magnet_info_hash(result.download_url)
+            blocked = await matching_blocklist_entry(
+                db, media_type=result.media_type, target_entity_type=result.target_entity_type,
+                target_entity_id=result.target_entity_id, source_title=result.title,
+                indexer_id=result.indexer_id, indexer_name=result.indexer_name,
+                info_hash=submitted_info_hash,
+            )
+            if blocked is not None:
+                raise AppError("RELEASE_BLOCKLISTED", "This torrent hash is blocklisted for this media.", status_code=409)
             await qbittorrent_client.add_url(
                 result.download_url,
                 **qbittorrent_options,
@@ -604,12 +635,24 @@ async def download_search_result(
             )
             torrent_bytes = await torznab.fetch_torrent(result.download_url)
             submitted_info_hash = torrent_payload_info_hash(torrent_bytes)
+            blocked = await matching_blocklist_entry(
+                db, media_type=result.media_type, target_entity_type=result.target_entity_type,
+                target_entity_id=result.target_entity_id, source_title=result.title,
+                indexer_id=result.indexer_id, indexer_name=result.indexer_name,
+                info_hash=submitted_info_hash,
+            )
+            if blocked is not None:
+                raise AppError("RELEASE_BLOCKLISTED", "This torrent hash is blocklisted for this media.", status_code=409)
             safe_filename = "".join(character if character.isalnum() or character in " ._-" else "_" for character in result.title).strip()
             await qbittorrent_client.add_torrent(
                 torrent_bytes,
                 filename=f"{safe_filename[:180] or 'download'}.torrent",
                 **qbittorrent_options,
             )
+    except AppError:
+        if unattached_show_season:
+            await db.rollback()
+        raise
     except Exception as exc:
         if unattached_show_season:
             await db.rollback()

@@ -10,7 +10,7 @@ import { ApiError } from './api/transport'
 import { authApi } from './api/modules/auth'
 import { AppShell } from './components/Shell'
 import { Button, Input } from './components/ui'
-import { CustomFormatsPage, DownloadsPage, EventHistoryPage, MovieDetailPage, MoviesPage, NewMediaPage, ProblemsPage, SettingsPage, ShowDetailPage, ShowsPage, TasksPage, TorrentArchivePage, UpgradeMediaPage } from './pages'
+import { BlocklistPage, CustomFormatsPage, DownloadsPage, EventHistoryPage, MovieDetailPage, MoviesPage, NewMediaPage, ProblemsPage, SettingsPage, ShowDetailPage, ShowsPage, TasksPage, TorrentArchivePage, UpgradeMediaPage } from './pages'
 import QualityProfilesPage from './QualityProfilesPage'
 
 function App() {
@@ -55,6 +55,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/shows" element={<ShowsPage />} />
     <Route path="/shows/:id" element={<ShowDetailRoute />} />
     <Route path="/downloads" element={<DownloadsPage />} />
+    <Route path="/blocklist" element={<BlocklistPage />} />
     <Route path="/replace-media" element={<ReplaceMediaPage />} />
     <Route path="/upgrade-media" element={<UpgradeMediaPage />} />
     <Route path="/new-media" element={<NewMediaPage />} />

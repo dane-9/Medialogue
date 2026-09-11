@@ -562,6 +562,7 @@ async def _poll_download_client(
     )
     relevant_count = added = completed = ignored = removed = processing_errors = 0
     completed_upgrade_torrent_ids: set[UUID] = set()
+    failed_downloads: list[tuple[TorrentClientObservation, Torrent]] = []
     detail_adapter = None
     for observed in observations:
         info_hash = observed.info_hash.lower()
@@ -794,6 +795,10 @@ async def _poll_download_client(
                     "scope": client.scope.value,
                     **_portable_metadata(observed),
                 }
+                from app.services.blocklist import clear_recovered_failure_marker, terminal_incomplete_failure
+                clear_recovered_failure_marker(torrent, row)
+                if terminal_incomplete_failure(row, torrent):
+                    failed_downloads.append((row, torrent))
                 current_progress = float(observed.progress)
                 if (
                     previous_progress is None
@@ -924,6 +929,34 @@ async def _poll_download_client(
                 },
             )
             continue
+
+    if failed_downloads:
+        from app.services.blocklist import handle_failed_download
+
+        failure_adapter = client_factory(client.url, client.username or "", client.password or "")
+        try:
+            for failed_observation, failed_torrent in failed_downloads:
+                try:
+                    async with db.begin_nested():
+                        await handle_failed_download(
+                            db,
+                            torrent=failed_torrent,
+                            observation=failed_observation,
+                            client_name=client.name,
+                            adapter=failure_adapter,
+                        )
+                        if not failed_observation.is_present:
+                            await deactivate_client_tracker_health(db, failed_torrent.id, client.id)
+                            await cancel_incoming_torrent(db, failed_torrent)
+                            await reconcile_torrent_disagreements(db, failed_torrent, qbit_present=False)
+                except Exception:
+                    processing_errors += 1
+                    logger.exception(
+                        "Failed-download handling failed",
+                        extra={"torrent_id": str(failed_torrent.id), "client_id": str(client.id)},
+                    )
+        finally:
+            await failure_adapter.close()
 
     if completed_upgrade_torrent_ids:
         from app.services.upgrade_execution import advance_upgrade_handoff

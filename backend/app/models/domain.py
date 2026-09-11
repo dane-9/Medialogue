@@ -591,6 +591,31 @@ class TorrentTrackerObservation(Base):
     torrent: Mapped[Torrent] = relationship(back_populates="tracker_observations")
 
 
+class ReleaseBlocklist(Base):
+    """A removable policy entry created from an immutable download failure."""
+
+    __tablename__ = "release_blocklist"
+    __table_args__ = (
+        Index("ix_release_blocklist_created", "created_at"),
+        Index("ix_release_blocklist_target", "target_entity_type", "target_entity_id"),
+        Index("ix_release_blocklist_hash", "info_hash"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
+    target_entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_entity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    torrent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("torrents.id", ondelete="SET NULL"))
+    info_hash: Mapped[str | None] = mapped_column(String(128))
+    source_title: Mapped[str] = mapped_column(Text, nullable=False)
+    indexer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("indexers.id", ondelete="SET NULL"))
+    indexer_name: Mapped[str | None] = mapped_column(String(256))
+    quality: Mapped[str | None] = mapped_column(String(256))
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    failure_event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class MovieReleaseTorrent(Base):
     __tablename__ = "movie_release_torrents"
     __table_args__ = (UniqueConstraint("movie_release_id", "torrent_id", name="uq_movie_release_torrent"),)
