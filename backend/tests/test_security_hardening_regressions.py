@@ -17,7 +17,6 @@ from app.core.security import consume_confirmation_jti
 from app.schemas.custom_formats import CustomFormatConditionInput
 
 
-LEGACY_PLACEHOLDER = "replace-with-a-long-random-secret"
 
 
 def _production_settings(config_dir: Path, *, secret_key: str = "") -> Settings:
@@ -36,7 +35,6 @@ def test_compose_style_blank_secret_is_treated_as_unset_and_generates_persistent
     monkeypatch.setenv("MEDIALOGUE_ENVIRONMENT", "production")
     monkeypatch.setenv("MEDIALOGUE_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("MEDIALOGUE_SECRET_KEY", "")
-    monkeypatch.delenv("SECRET_KEY", raising=False)
 
     settings = Settings(_env_file=None)
     assert is_placeholder_secret(settings.secret_key)
@@ -59,95 +57,21 @@ def test_short_explicit_non_placeholder_secret_is_still_rejected() -> None:
         Settings(secret_key="too-short")
 
 
-def test_legacy_secret_key_environment_name_is_honored_without_generating_a_new_key(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    legacy = "operator-legacy-secret-key-123456789"
-    monkeypatch.setenv("SECRET_KEY", legacy)
-    settings = _production_settings(tmp_path)
-
-    assert ensure_runtime_secret(settings) == legacy
-    assert settings.secret_key == legacy
-    assert not application_secret_path(settings).exists()
-
-
-def test_explicit_prefixed_secret_takes_precedence_over_legacy_environment_name(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    preferred = "preferred-medialogue-secret-123456789"
-    monkeypatch.setenv("MEDIALOGUE_SECRET_KEY", preferred)
-    monkeypatch.setenv("SECRET_KEY", "legacy-secret-that-must-not-win-123456789")
-    monkeypatch.setenv("MEDIALOGUE_ENVIRONMENT", "production")
-    monkeypatch.setenv("MEDIALOGUE_CONFIG_DIR", str(tmp_path))
-
-    settings = Settings(_env_file=None)
-
-    assert ensure_runtime_secret(settings) == preferred
-    assert settings.secret_key == preferred
-    assert not application_secret_path(settings).exists()
-
-
-def test_legacy_placeholder_encrypted_store_is_migrated_before_normal_startup(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("SECRET_KEY", raising=False)
-    legacy_store = IntegrationConfigStore(tmp_path, LEGACY_PLACEHOLDER)
-    legacy_store.ensure_initialized()
-    legacy_store.save_tmdb(api_key="legacy-tmdb-key", enabled=True)
-
-    settings = _production_settings(tmp_path)
-    generated = ensure_runtime_secret(settings)
-
-    assert generated != LEGACY_PLACEHOLDER
-    assert application_secret_path(settings).read_text(encoding="utf-8") == generated
-    migrated = IntegrationConfigStore(tmp_path, generated)
-    assert migrated.get_tmdb() is not None
-    assert migrated.get_tmdb().api_key == "legacy-tmdb-key"
-
-    with pytest.raises(RuntimeError, match="MEDIALOGUE_SECRET_KEY changed"):
-        IntegrationConfigStore(tmp_path, LEGACY_PLACEHOLDER).get_tmdb()
-
-
 def test_existing_unknown_encrypted_store_does_not_persist_an_unrelated_generated_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("SECRET_KEY", raising=False)
     old_key = "operator-custom-old-key-123456789"
     store = IntegrationConfigStore(tmp_path, old_key)
     store.ensure_initialized()
     store.save_tmdb(api_key="must-survive", enabled=True)
 
     settings = _production_settings(tmp_path)
-    with pytest.raises(RuntimeError, match="previous application key"):
+    with pytest.raises(RuntimeError, match="application key they were saved with"):
         ensure_runtime_secret(settings)
 
     assert not application_secret_path(settings).exists()
     assert IntegrationConfigStore(tmp_path, old_key).get_tmdb().api_key == "must-survive"
-
-
-def test_interrupted_legacy_migration_is_repaired_from_persisted_target_key(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("SECRET_KEY", raising=False)
-    legacy_store = IntegrationConfigStore(tmp_path, LEGACY_PLACEHOLDER)
-    legacy_store.ensure_initialized()
-    legacy_store.save_tmdb(api_key="legacy-tmdb-key", enabled=True)
-
-    settings = _production_settings(tmp_path)
-    target = "persisted-generated-target-key-12345678901234567890"
-    key_path = application_secret_path(settings)
-    key_path.write_text(target, encoding="utf-8")
-    if os.name != "nt":
-        os.chmod(key_path, 0o600)
-
-    resolved = ensure_runtime_secret(settings)
-    assert resolved == target
-    assert IntegrationConfigStore(tmp_path, target).get_tmdb().api_key == "legacy-tmdb-key"
 
 
 class _NonceSession:

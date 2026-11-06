@@ -544,43 +544,6 @@ class IntegrationConfigStore:
         secrets["indexer_api_keys"] = keys
         self._save(config, secrets)
 
-def validate_existing_integration_secret(config_dir: str | Path, secret_key: str) -> bool:
-    """Return whether ``secret_key`` decrypts an already-existing secrets file.
-
-    This helper never creates files and is used only during startup key
-    migration/recovery. Configuration-schema validation remains the normal
-    store's responsibility after the runtime key has been resolved.
-    """
-
-    store = IntegrationConfigStore(config_dir, secret_key)
-    if not store.secrets_path.exists():
-        return False
-    try:
-        store._read_secrets()
-    except RuntimeError:
-        return False
-    return True
-
-
-def migrate_existing_integration_secret(
-    config_dir: str | Path,
-    old_secret_key: str,
-    new_secret_key: str,
-) -> None:
-    """Atomically rewrite an existing integration pair under ``new_secret_key``.
-
-    The caller must first establish that the old key is the correct key. `_load`
-    re-validates that assumption before any file is changed. `_save` uses the
-    store's existing atomic replacement path, and the final read verifies that
-    the newly written encrypted payload is usable.
-    """
-
-    old_store = IntegrationConfigStore(config_dir, old_secret_key)
-    config, secrets = old_store._load()
-    new_store = IntegrationConfigStore(config_dir, new_secret_key)
-    new_store._save(config, secrets)
-    new_store._load()
-
 
 _store_lock = threading.Lock()
 _store_key: tuple[str, str] | None = None
