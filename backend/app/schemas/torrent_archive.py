@@ -53,8 +53,3 @@ class TorrentArchiveDetail(TorrentArchiveSummary):
     associations: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class TorrentRestoreRequest(BaseModel):
-    download_client_id: UUID
-    save_path: str = Field(min_length=1)
-    category: str | None = None
-    tags: list[str] | None = None

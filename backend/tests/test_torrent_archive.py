@@ -378,19 +378,6 @@ def test_tracked_torrent_is_archived_with_manifest_and_survives_qbit_removal(arc
         assert torrent_path.is_file()
         assert manifest_path.is_file()
 
-        restored = client.post(
-            f"/api/v1/torrent-archive/{item['id']}/restore",
-            headers=headers,
-            json={"download_client_id": configured["id"], "save_path": str(media_root)},
-        )
-        assert restored.status_code == 202, restored.text
-        restored_job = _wait_job(client, restored.json()["job_id"])
-        assert restored_job["status"] == "completed", restored_job
-        assert restored_job["summary"]["resolved_save_path"] == str(media_root)
-        assert behavior.added[-1]["torrent"] == behavior.torrent_bytes
-        assert behavior.added[-1]["save_path"] == str(media_root)
-        assert behavior.added[-1]["category"] == "movies"
-        assert behavior.added[-1]["tags"] == ("managed",)
     finally:
         client.app.dependency_overrides.clear()
 
@@ -440,13 +427,22 @@ def test_restore_rejects_destination_outside_configured_roots(archive_client) ->
         assert polled.status_code == 202, polled.text
         assert _wait_job(client, polled.json()["job_id"])["status"] == "completed"
         item = client.get("/api/v1/torrent-archive").json()["items"][0]
-        response = client.post(
-            f"/api/v1/torrent-archive/{item['id']}/restore",
-            headers=headers,
-            json={"download_client_id": configured["id"], "save_path": "/unmanaged/location"},
-        )
-        assert response.status_code == 422
-        assert response.json()["error"]["code"] == "RESTORE_PATH_OUTSIDE_CONFIGURED_ROOTS"
+
+        # The check every re-add runs before contacting qBittorrent.
+        from uuid import UUID
+        from app.core.errors import AppError
+        from app.db import session as db_session
+        from app.services.torrent_archive import prepare_torrent_restore
+
+        async def outside() -> str:
+            async with db_session.async_session_factory() as db:
+                try:
+                    await prepare_torrent_restore(db, UUID(item["id"]), UUID(configured["id"]), "/unmanaged/location")
+                except AppError as exc:
+                    return exc.code
+            return "accepted"
+
+        assert asyncio.run(outside()) == "RESTORE_PATH_OUTSIDE_CONFIGURED_ROOTS"
         assert behavior.added == []
     finally:
         client.app.dependency_overrides.clear()

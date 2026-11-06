@@ -2,15 +2,13 @@
 
 A finished upgrade's row is cleared on the next upgrade search, so the history
 reads the completion events instead. Each completion event carries a snapshot
-of what was replaced (``details["history"]``) taken when it finished; older
-events without one fall back to the candidate row while it still exists.
+of what was replaced (``details["history"]``) taken when it finished.
 """
 
 from __future__ import annotations
 
 from datetime import timezone
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,18 +65,9 @@ async def finished_history(db: AsyncSession, *, replacements: bool, limit: int =
     items: list[dict[str, Any]] = []
     for event in events:
         details = event.details or {}
-        snapshot = dict(details.get("history") or {})
-        if not snapshot:
-            candidate_id = details.get("candidate_id")
-            row = None
-            try:
-                row = await db.get(UpgradeCandidate, UUID(str(candidate_id))) if candidate_id else None
-            except ValueError:
-                row = None
-            if row is None:
-                # Nothing left to name it by; Event History still has it.
-                continue
-            snapshot = await history_snapshot(db, row)
+        snapshot = details.get("history")
+        if not isinstance(snapshot, dict):
+            continue
         if bool(snapshot.get("replacement")) != replacements:
             continue
         items.append({

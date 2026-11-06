@@ -29,7 +29,6 @@ def client():
         secret_key="part20-secret-key-123456789",
         config_dir=str(config_dir),
         torrent_archive_dir=str(archive_dir),
-        recovery_export_dir=str(config_dir / "recovery-exports"),
     )
     engine = create_async_engine(database_url)
 

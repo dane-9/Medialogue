@@ -566,7 +566,9 @@ def read_manifest(torrent: Torrent) -> dict[str, Any]:
 
 def recovery_revision(manifest: dict[str, Any]) -> str:
     """Fingerprint recovery inputs, excluding volatile progress and observation times."""
-    snapshots = manifest.get("client_recovery") or {"legacy": manifest.get("recovery") or {}}
+    # A manifest written before any client snapshot was captured has only the
+    # top-level one.
+    snapshots = manifest.get("client_recovery") or {"default": manifest.get("recovery") or {}}
     stable = {}
     for client_id, recovery in snapshots.items():
         properties = recovery.get("properties") or {}
@@ -586,8 +588,8 @@ def recovery_revision(manifest: dict[str, Any]) -> str:
 def manifest_for_client(manifest: dict[str, Any], client_id: UUID | str) -> dict[str, Any]:
     """Select client-specific evidence; never borrow another client's selection.
 
-    Legacy archives remain readable. New archives with multiple client snapshots
-    require an exact client match or a unique name/scope observation match.
+    A manifest with no client snapshots uses its top-level one. With several,
+    an exact client match or a unique name/scope observation match is required.
     """
     snapshots = manifest.get("client_recovery") or {}
     if not snapshots:
@@ -932,60 +934,6 @@ async def run_torrent_archive_retry(
             failure_code="TORRENT_ARCHIVE_FAILED",
             failure_message="Recovery archive retry failed.",
         )
-
-
-async def run_torrent_archive_restore(
-    job_id: UUID,
-    torrent_id: UUID,
-    download_client_id: UUID,
-    save_path: str,
-    *,
-    category: str | None,
-    tags: list[str] | None,
-    client_factory: QBittorrentClientFactory,
-) -> None:
-    """Submit an archived torrent to qBittorrent as a durable Job."""
-
-    async def worker(db, job) -> None:
-        await checkpoint_job(
-            db,
-            job,
-            status=JobStatus.RUNNING,
-            progress={"current": 0, "total": 1, "percent": 0, "stage": "restoring", "detail": "Submitting archived torrent to qBittorrent…"},
-        )
-        try:
-            result = await restore_torrent_archive(
-                db,
-                torrent_id,
-                download_client_id,
-                save_path,
-                category=category,
-                tags=tags,
-                client_factory=client_factory,
-            )
-            await checkpoint_job(db, job, status=JobStatus.COMPLETED, progress={"current": 1, "total": 1, "percent": 100, "stage": "completed", "detail": "Archived torrent submitted to qBittorrent."}, summary=result)
-        except asyncio.CancelledError:
-            raise
-        except AppError as exc:
-            raise JobFailure(
-                exc.code,
-                exc.message,
-                details=exc.details,
-                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": exc.message},
-            ) from exc
-        except Exception as exc:
-            raise JobFailure(
-                "QBITTORRENT_RESTORE_FAILED",
-                str(exc),
-                progress={"current": 0, "total": 1, "percent": 0, "stage": "failed", "detail": "Torrent restore failed."},
-            ) from exc
-
-    await run_job(
-        job_id,
-        worker,
-        failure_code="QBITTORRENT_RESTORE_FAILED",
-        failure_message="Torrent restore failed.",
-    )
 
 
 async def rebuild_catalogue_from_manifests(db: AsyncSession) -> dict[str, Any]:

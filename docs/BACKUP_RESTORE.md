@@ -90,7 +90,3 @@ Restoring settings is manual. Unzip the newest `database/medialogue-database-<ti
 3. make the files owned by the configured `PUID`/`PGID`, and start Medialogue.
 
 This brings back qBittorrent clients, indexers, media folders, quality profiles, custom formats and the library, so step 2 of the restore above is already done. Restore a database copy only into the same Medialogue version that made it, or a newer one, which migrates it on start.
-
-## Upgrading from the encrypted backups
-
-Earlier versions made encrypted `.mlbackup` snapshots with a recovery key, and a Recovery Bundle ZIP export. Both have been replaced by the plain Drive copy above. The first backup run after upgrading creates the new folder layout alongside any old snapshots. Old `.mlbackup` files can still be opened with `backend/scripts/restore_backup.py` from an earlier release, together with their recovery key.

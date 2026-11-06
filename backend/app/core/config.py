@@ -38,8 +38,6 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:////config/medialogue.db"
     config_dir: str = "/config"
     torrent_archive_dir: str = "/torrent-archive"
-    recovery_export_dir: str = "/config/recovery-exports"
-    recovery_export_retention_hours: int = 1
     google_drive_client_id: str = ""
     google_drive_client_secret: str = ""
     google_drive_redirect_uri: str = ""

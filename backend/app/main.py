@@ -27,7 +27,6 @@ from app.models.auth import AdminUser
 from app.api.dependencies import require_admin
 from app.services.integration_state import ensure_configured_integration_states
 from app.services.qbittorrent import poll_due_download_clients
-from app.services.recovery import cleanup_expired_recovery_exports
 from app.services.runtime_jobs import cancel_all_runtime_jobs
 from app.services.scheduler import ensure_default_schedules, run_scheduler_loop
 
@@ -98,7 +97,6 @@ async def lifespan(_: FastAPI):
             await db.commit()
     except Exception:
         logger.warning("database bootstrap skipped", exc_info=True)
-    cleanup_expired_recovery_exports(settings)
     stop_event = asyncio.Event()
     poll_task = asyncio.create_task(_qbittorrent_poll_loop(stop_event))
     scheduler_task = asyncio.create_task(run_scheduler_loop(stop_event))

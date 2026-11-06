@@ -14,17 +14,11 @@ from app.models.auth import AdminUser
 from app.models.domain import Torrent, TorrentArchiveState, TorrentClientObservation
 from app.schemas.common import Collection
 from app.schemas.jobs import JobAcceptedResponse
-from app.schemas.torrent_archive import (
-    TorrentArchiveDetail,
-    TorrentArchiveSummary,
-    TorrentRestoreRequest,
-)
+from app.schemas.torrent_archive import TorrentArchiveDetail, TorrentArchiveSummary
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.torrent_archive import (
-    prepare_torrent_restore,
     read_manifest,
-    run_torrent_archive_restore,
     run_torrent_archive_retry,
     select_archive_client,
     verify_torrent_archive,
@@ -247,48 +241,5 @@ async def retry_torrent_archive(
     launch_runtime_job(
         job.id,
         lambda: run_torrent_archive_retry(job.id, torrent.id, client_factory=client_factory),
-    )
-    return JobAcceptedResponse(job_id=job.id)
-
-
-@router.post(
-    "/torrent-archive/{torrent_id}/restore",
-    response_model=JobAcceptedResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def restore_archived_torrent(
-    torrent_id: UUID,
-    payload: TorrentRestoreRequest,
-    _: object = Depends(require_csrf),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_torrent_archive_qbit_factory),
-) -> JobAcceptedResponse:
-    prepared = await prepare_torrent_restore(db, torrent_id, payload.download_client_id, payload.save_path)
-    torrent = prepared["torrent"]
-    client = prepared["client"]
-    job = await create_job(
-        db,
-        "torrent_restore",
-        summary={
-            "torrent_id": str(torrent.id),
-            "client_name": client.name,
-            "save_path": payload.save_path,
-            "resolved_save_path": prepared["resolved_save_path"],
-            "message": f"Submitting {torrent.name} to qBittorrent…",
-        },
-    )
-    await db.commit()
-    publish_job_status(job)
-    launch_runtime_job(
-        job.id,
-        lambda: run_torrent_archive_restore(
-            job.id,
-            torrent_id,
-            payload.download_client_id,
-            payload.save_path,
-            category=payload.category,
-            tags=payload.tags,
-            client_factory=client_factory,
-        ),
     )
     return JobAcceptedResponse(job_id=job.id)

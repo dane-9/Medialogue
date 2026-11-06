@@ -16,7 +16,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MEDIALOGUE_ENVIRONMENT=production \
     MEDIALOGUE_CONFIG_DIR=/config \
     MEDIALOGUE_TORRENT_ARCHIVE_DIR=/torrent-archive \
-    MEDIALOGUE_RECOVERY_EXPORT_DIR=/config/recovery-exports \
     MEDIALOGUE_DATABASE_URL=sqlite+aiosqlite:////config/medialogue.db
 WORKDIR /app
 RUN apt-get update \
@@ -38,7 +37,7 @@ RUN pip install --no-cache-dir -r requirements.lock \
     && test "$(alembic heads | grep -c '(head)')" -eq 1 \
     && alembic heads | grep -q '^0002 (head)$' \
     && test -x /usr/local/bin/medialogue-entrypoint \
-    && mkdir -p /config/recovery-exports /torrent-archive \
+    && mkdir -p /config /torrent-archive \
     && chown -R appuser:appuser /app /config /torrent-archive
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)" || exit 1

@@ -9,11 +9,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import shutil
 import sqlite3
-import stat
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -51,44 +49,6 @@ RECOVERY_REIMPORT_CONFIRMATION_TTL_SECONDS = 15 * 60
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def recovery_export_root(settings: Settings | None = None) -> Path:
-    return Path((settings or get_settings()).recovery_export_dir)
-
-
-def _ensure_private_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-    try:
-        path.chmod(0o700)
-    except OSError:
-        pass
-
-
-def cleanup_expired_recovery_exports(settings: Settings | None = None) -> int:
-    settings = settings or get_settings()
-    root = recovery_export_root(settings)
-    if not root.is_dir():
-        return 0
-    cutoff = utcnow() - timedelta(hours=max(1, settings.recovery_export_retention_hours))
-    removed = 0
-    for path in root.glob("medialogue-recovery-*.zip"):
-        try:
-            modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-            if modified < cutoff:
-                path.unlink(missing_ok=True)
-                removed += 1
-        except OSError:
-            continue
-    for path in root.glob(".recovery-tmp-*"):
-        try:
-            modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-            if modified < cutoff:
-                shutil.rmtree(path, ignore_errors=True)
-                removed += 1
-        except OSError:
-            continue
-    return removed
 
 
 def sqlite_database_path(settings: Settings | None = None) -> Path:

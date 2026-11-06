@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete
@@ -8,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.domain import Job, JobStatus
 from app.services.jobs import checkpoint_job, run_job, update_job
-from app.services.recovery import cleanup_expired_recovery_exports
 from app.services.search import cleanup_expired_search_results
 
 
@@ -71,7 +69,6 @@ async def run_scheduled_housekeeping(job_id) -> None:
         )
         deleted = await prune_scheduled_job_history(db)
         expired_search_results = await cleanup_expired_search_results(db)
-        expired_recovery_exports = await asyncio.to_thread(cleanup_expired_recovery_exports)
         from app.services.torrent_archive import prune_retired_archives
         pruned = await prune_retired_archives(db)
         await update_job(
@@ -87,7 +84,6 @@ async def run_scheduled_housekeeping(job_id) -> None:
                 **dict(job.summary or {}),
                 "deleted_jobs": deleted,
                 "deleted_search_results": expired_search_results,
-                "deleted_recovery_exports": expired_recovery_exports,
                 "pruned_torrents": pruned["pruned"],
             },
         )

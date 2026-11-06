@@ -13347,51 +13347,6 @@
         "title": "TorrentArchiveSummary",
         "type": "object"
       },
-      "TorrentRestoreRequest": {
-        "properties": {
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
-          },
-          "download_client_id": {
-            "format": "uuid",
-            "title": "Download Client Id",
-            "type": "string"
-          },
-          "save_path": {
-            "minLength": 1,
-            "title": "Save Path",
-            "type": "string"
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
-          }
-        },
-        "required": [
-          "download_client_id",
-          "save_path"
-        ],
-        "title": "TorrentRestoreRequest",
-        "type": "object"
-      },
       "UpgradeCandidateCount": {
         "properties": {
           "count": {
@@ -22681,59 +22636,6 @@
           }
         },
         "summary": "Get Torrent Archive Item",
-        "tags": [
-          "torrent-archive"
-        ]
-      }
-    },
-    "/api/v1/torrent-archive/{torrent_id}/restore": {
-      "post": {
-        "operationId": "restore_archived_torrent_api_v1_torrent_archive__torrent_id__restore_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "torrent_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Torrent Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TorrentRestoreRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Restore Archived Torrent",
         "tags": [
           "torrent-archive"
         ]

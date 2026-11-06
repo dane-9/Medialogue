@@ -2734,23 +2734,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/torrent-archive/{torrent_id}/restore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Restore Archived Torrent */
-        post: operations["restore_archived_torrent_api_v1_torrent_archive__torrent_id__restore_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/torrent-archive/{torrent_id}/retry": {
         parameters: {
             query?: never;
@@ -7631,20 +7614,6 @@ export interface components {
             total_size?: number | null;
             /** Tvdb Id */
             tvdb_id?: number | null;
-        };
-        /** TorrentRestoreRequest */
-        TorrentRestoreRequest: {
-            /** Category */
-            category?: string | null;
-            /**
-             * Download Client Id
-             * Format: uuid
-             */
-            download_client_id: string;
-            /** Save Path */
-            save_path: string;
-            /** Tags */
-            tags?: string[] | null;
         };
         /** UpgradeCandidateCount */
         UpgradeCandidateCount: {
@@ -13498,41 +13467,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TorrentArchiveDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    restore_archived_torrent_api_v1_torrent_archive__torrent_id__restore_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                torrent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TorrentRestoreRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobAcceptedResponse"];
                 };
             };
             /** @description Validation Error */
