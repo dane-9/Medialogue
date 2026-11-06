@@ -19,7 +19,7 @@ from app.models.domain import (EpisodeMediaMap, Job, JobStatus, MediaDirectory, 
                                TorrentTrackerObservation, UpgradeCandidate)
 from app.services.integration_state import list_configured_indexers, get_configured_indexer
 from app.services.jobs import run_job, update_job
-from app.services.release_source import source_of_releases, source_of_torrents
+from app.services.release_source import ReleaseSource, source_of_releases, source_of_torrents
 from app.services.format_breakdown import comparison_formats
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
     _persist_candidate, _evaluation_policy, _score_candidate)
@@ -293,7 +293,13 @@ async def replacing_title_ids(db: AsyncSession) -> set[str]:
     return ids
 
 
-async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
+async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:
+    """Every title Replace Media lists, with its status.
+
+    ``details=False`` skips what only the page shows (sources, score
+    breakdowns, live downloads, folders), for the polled sidebar count.
+    """
+
     now = datetime.now(timezone.utc)
     lost = await lost_sources(db)
     targets = await replacement_targets(db, lost=lost)
@@ -327,7 +333,7 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
         movie = movies.get(target.movie_id) if target.movie_id else None
         season, show = seasons.get(target.season_id, (None, None)) if target.season_id else (None, None)
         in_progress = bool(row and row.execution_state in ACTIVE_STATES)
-        source = await source_of_torrents(db, torrents)
+        source = await source_of_torrents(db, torrents) if details else ReleaseSource()
         items.append(_item(
             lost_evidence=_lost_evidence(lost.get(torrent.id, torrent) for torrent in torrents),
             # Cross-seeds share one payload, so the largest torrent is the size.
@@ -353,8 +359,8 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
             candidate_size=row.size if row else None, leechers=row.leechers if row else None,
             indexer_id=str(row.indexer_id) if row and row.indexer_id else None,
             execution_state=row.execution_state if row else None, error=row.execution_error if row else None,
-            **(await _download_live(db, row) if row else {}),
-            **(await _breakdown(db, row, current_score_snapshot=target.reference.score_snapshot) if row else {}),
+            **(await _download_live(db, row) if row and details else {}),
+            **(await _breakdown(db, row, current_score_snapshot=target.reference.score_snapshot) if row and details else {}),
             searching=not in_progress and (target.target_key in searching_keys or (bulk_search and not dismissed)),
         ))
 
@@ -374,7 +380,7 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
                                         .where(Season.id == row.season_id))).first() if row.season_id else None
         season, show = season_show if season_show else (None, None)
         current_ids = [UUID(value) for value in row.current_release_ids or []]
-        source = await source_of_releases(
+        source = ReleaseSource() if not details else await source_of_releases(
             db,
             movie_release_ids=current_ids if row.media_type == MediaType.MOVIES else (),
             show_release_ids=current_ids if row.media_type != MediaType.MOVIES else (),
@@ -395,10 +401,11 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
             seeders=row.seeders, indexer=row.indexer_name, candidate_size=row.size, leechers=row.leechers,
             indexer_id=str(row.indexer_id) if row.indexer_id else None,
             execution_state=row.execution_state, error=row.execution_error,
-            **await _download_live(db, row),
-            **await _breakdown(db, row),
+            **(await _download_live(db, row) if details else {}),
+            **(await _breakdown(db, row) if details else {}),
         ))
-    await _attach_root_names(db, items)
+    if details:
+        await _attach_root_names(db, items)
     return sorted(items, key=lambda item: (item["dismissed"], not item["needs_attention"], item["title"].casefold()))
 
 

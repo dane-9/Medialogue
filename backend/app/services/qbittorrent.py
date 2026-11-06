@@ -997,6 +997,10 @@ async def _poll_download_client(
                             "progress": current_progress,
                             "percent": round(current_progress * 100, 2),
                             "state": observed.state,
+                            # Pages that show speed and ETA update from the event
+                            # instead of re-reading their lists.
+                            "download_speed": observed.download_speed,
+                            "eta_seconds": observed.eta,
                             "scope": client.scope.value,
                             "reported_path": reported_content,
                             "resolved_path": resolved_content,

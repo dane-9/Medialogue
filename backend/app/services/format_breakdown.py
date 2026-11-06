@@ -65,11 +65,24 @@ def _matched_formats(rows: list[dict], details: dict[str, tuple[str, str | None]
     return sorted(matched, key=lambda item: (-item["contribution"], item["custom_format_name"].casefold()))
 
 
-async def comparison_formats(db: AsyncSession, snapshot: dict[str, Any] | None) -> tuple[list[dict], list[dict]]:
-    """(current release's matched formats, candidate's matched formats)."""
-
+def _comparison_rows(snapshot: dict[str, Any] | None) -> tuple[list[dict], list[dict]]:
     snapshot = snapshot or {}
     current = _matched_rows(((snapshot.get("current") or {}).get("score_snapshot") or {}).get("breakdown"))
     candidate = _matched_rows((snapshot.get("candidate") or {}).get("formats"))
-    details = await _format_details(db, current, candidate)
-    return _matched_formats(current, details), _matched_formats(candidate, details)
+    return current, candidate
+
+
+async def comparison_formats_many(
+    db: AsyncSession, snapshots: list[dict[str, Any] | None]
+) -> list[tuple[list[dict], list[dict]]]:
+    """``comparison_formats`` for each snapshot, with one format query for all."""
+
+    pairs = [_comparison_rows(snapshot) for snapshot in snapshots]
+    details = await _format_details(db, *(rows for pair in pairs for rows in pair))
+    return [(_matched_formats(current, details), _matched_formats(candidate, details)) for current, candidate in pairs]
+
+
+async def comparison_formats(db: AsyncSession, snapshot: dict[str, Any] | None) -> tuple[list[dict], list[dict]]:
+    """(current release's matched formats, candidate's matched formats)."""
+
+    return (await comparison_formats_many(db, [snapshot]))[0]

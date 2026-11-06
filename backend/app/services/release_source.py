@@ -36,28 +36,64 @@ def _tracker_host(torrent: Torrent) -> str | None:
     return parsed.hostname or value
 
 
+#: Rows per IN (...) query, under SQLite's bound-parameter limit.
+CHUNK = 500
+
+
+def _hashes(torrents: Iterable[Torrent]) -> list[str]:
+    return [torrent.info_hash.lower() for torrent in torrents if torrent.info_hash]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceLookup:
+    """Which indexer sent each info hash: by an upgrade, or by a search."""
+
+    upgrades: dict[str, ReleaseSource]
+    searches: dict[str, ReleaseSource]
+
+    def source(self, torrents: Iterable[Torrent]) -> ReleaseSource:
+        """The source of the first of these torrents that can name one.
+
+        An upgrade's indexer wins over a search's, and either over the tracker.
+        """
+
+        torrents = list(torrents)
+        hashes = _hashes(torrents)
+        for table in (self.upgrades, self.searches):
+            found = next((table[value] for value in hashes if value in table), None)
+            if found is not None:
+                return found
+        tracker = next((host for host in (_tracker_host(torrent) for torrent in torrents) if host), None)
+        return ReleaseSource(tracker=tracker)
+
+
+async def source_lookup(db: AsyncSession, torrents: Iterable[Torrent]) -> SourceLookup:
+    """Everything ``SourceLookup.source`` needs for these torrents, in a few queries."""
+
+    hashes = sorted(set(_hashes(torrents)))
+    upgrades: dict[str, ReleaseSource] = {}
+    searches: dict[str, ReleaseSource] = {}
+    for start in range(0, len(hashes), CHUNK):
+        chunk = hashes[start:start + CHUNK]
+        for value, name, indexer_id in (await db.execute(
+            select(func.lower(UpgradeCandidate.submitted_info_hash), UpgradeCandidate.indexer_name, UpgradeCandidate.indexer_id)
+            .where(func.lower(UpgradeCandidate.submitted_info_hash).in_(chunk), UpgradeCandidate.indexer_name.is_not(None))
+        )).all():
+            upgrades.setdefault(value, ReleaseSource(indexer_name=name, indexer_id=indexer_id))
+        for value, name, indexer_id in (await db.execute(
+            select(func.lower(InteractiveSearchResult.submitted_info_hash), InteractiveSearchResult.indexer_name,
+                   InteractiveSearchResult.indexer_id)
+            .where(func.lower(InteractiveSearchResult.submitted_info_hash).in_(chunk))
+        )).all():
+            searches.setdefault(value, ReleaseSource(indexer_name=name, indexer_id=indexer_id))
+    return SourceLookup(upgrades=upgrades, searches=searches)
+
+
 async def source_of_torrents(db: AsyncSession, torrents: Iterable[Torrent]) -> ReleaseSource:
     """The source of the first of these torrents that can name one."""
 
     torrents = list(torrents)
-    hashes = [torrent.info_hash.lower() for torrent in torrents if torrent.info_hash]
-    if hashes:
-        upgrade = (await db.execute(
-            select(UpgradeCandidate.indexer_name, UpgradeCandidate.indexer_id)
-            .where(func.lower(UpgradeCandidate.submitted_info_hash).in_(hashes), UpgradeCandidate.indexer_name.is_not(None))
-            .limit(1)
-        )).first()
-        if upgrade:
-            return ReleaseSource(indexer_name=upgrade[0], indexer_id=upgrade[1])
-        result = (await db.execute(
-            select(InteractiveSearchResult.indexer_name, InteractiveSearchResult.indexer_id)
-            .where(func.lower(InteractiveSearchResult.submitted_info_hash).in_(hashes))
-            .limit(1)
-        )).first()
-        if result:
-            return ReleaseSource(indexer_name=result[0], indexer_id=result[1])
-    tracker = next((host for host in (_tracker_host(torrent) for torrent in torrents) if host), None)
-    return ReleaseSource(tracker=tracker)
+    return (await source_lookup(db, torrents)).source(torrents)
 
 
 async def source_of_releases(db: AsyncSession, *, movie_release_ids: Iterable[UUID] = (),

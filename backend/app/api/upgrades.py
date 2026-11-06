@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import PurePath, PurePosixPath
 
+from typing import Any, Iterable, Iterator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -19,6 +21,7 @@ from app.models.auth import AdminUser
 from app.models.domain import (
     AccessMode,
     Episode,
+    EpisodeMediaMap,
     MediaDirectory,
     MediaFile,
     MediaType,
@@ -38,8 +41,8 @@ from app.models.domain import (
     UpgradeCandidate,
 )
 from app.parser import parse_release
-from app.services.format_breakdown import comparison_formats
-from app.services.release_source import source_of_releases
+from app.services.format_breakdown import comparison_formats_many
+from app.services.release_source import CHUNK, SourceLookup, source_lookup
 from app.schemas.upgrades import (
     MediaHistoryItem,
     UpgradeCandidateCount,
@@ -62,7 +65,7 @@ from app.services.events import create_event
 from app.services.movie_editions import edition_label, edition_slot, same_edition
 from app.services.quality_profiles import (
     get_assignment,
-    load_effective_profile,
+    resolve_default_profile,
     refresh_movie_release_scores,
     refresh_show_release_scores,
 )
@@ -92,33 +95,159 @@ def _indexer_color(indexer_id: UUID | None) -> str | None:
     return None
 
 
-async def _current_size(db: AsyncSession, row: UpgradeCandidate) -> int | None:
+def _in_chunks(values: Iterable[Any], size: int = CHUNK) -> Iterator[list[Any]]:
+    values = list(values)
+    for start in range(0, len(values), size):
+        yield values[start:start + size]
+
+
+def _release_ids(row: UpgradeCandidate) -> list[UUID]:
+    return [UUID(value) for value in row.current_release_ids or []]
+
+
+@dataclass
+class _Lookups:
+    """What building candidate responses reads, fetched once for all rows.
+
+    Built one row at a time this cost a dozen-odd queries per candidate, and a
+    live page re-reads the whole list, so it is fetched here by kind instead.
+    """
+
+    movies: dict[UUID, Movie] = field(default_factory=dict)
+    seasons: dict[UUID, Season] = field(default_factory=dict)
+    shows: dict[UUID, Show] = field(default_factory=dict)
+    #: Movie -> edition slots of its current releases.
+    movie_edition_slots: dict[UUID, set[Any]] = field(default_factory=dict)
+    #: Movie release -> its effective edition.
+    release_editions: dict[UUID, str | None] = field(default_factory=dict)
+    #: Movie release -> (folder path, exists, media folder name) per directory.
+    movie_directories: dict[UUID, list[tuple[str, bool, str | None]]] = field(default_factory=dict)
+    season_episode_counts: dict[UUID, int] = field(default_factory=dict)
+    #: Show release -> (episode, file exists, relative path, folder path, media folder name) per mapped file.
+    show_files: dict[UUID, list[tuple[UUID, bool, str, str | None, str | None]]] = field(default_factory=dict)
+    #: Release (movie or show) -> its torrents.
+    release_torrents: dict[UUID, list[Torrent]] = field(default_factory=dict)
+    sources: SourceLookup = field(default_factory=lambda: SourceLookup(upgrades={}, searches={}))
+    observations: dict[tuple[UUID, UUID], TorrentClientObservation] = field(default_factory=dict)
+    assignments: dict[tuple[MediaType, UUID], MediaProfileOverride] = field(default_factory=dict)
+    profiles: dict[UUID, QualityProfile] = field(default_factory=dict)
+    default_profile: QualityProfile | None = None
+    indexer_colors: dict[UUID, str | None] = field(default_factory=dict)
+    formats: dict[UUID, tuple[list[dict], list[dict]]] = field(default_factory=dict)
+
+
+async def _lookups(db: AsyncSession, rows: list[UpgradeCandidate]) -> _Lookups:
+    found = _Lookups()
+    movie_ids = {row.movie_id for row in rows if row.media_type == MediaType.MOVIES and row.movie_id}
+    season_ids = {row.season_id for row in rows if row.media_type != MediaType.MOVIES and row.season_id}
+    movie_release_ids = {value for row in rows if row.media_type == MediaType.MOVIES for value in _release_ids(row)}
+    show_release_ids = {value for row in rows if row.media_type != MediaType.MOVIES for value in _release_ids(row)}
+
+    for chunk in _in_chunks(movie_ids):
+        found.movies.update((movie.id, movie) for movie in await db.scalars(select(Movie).where(Movie.id.in_(chunk))))
+        for movie_id, edition in await db.execute(
+            select(MovieRelease.movie_id, MovieRelease.effective_edition).where(
+                MovieRelease.movie_id.in_(chunk), MovieRelease.release_state == ReleaseState.CURRENT
+            )
+        ):
+            found.movie_edition_slots.setdefault(movie_id, set()).add(edition_slot(edition))
+    for chunk in _in_chunks(season_ids):
+        found.seasons.update((season.id, season) for season in await db.scalars(select(Season).where(Season.id.in_(chunk))))
+        found.season_episode_counts.update(
+            (season_id, int(count or 0)) for season_id, count in await db.execute(
+                select(Episode.season_id, func.count()).where(Episode.season_id.in_(chunk)).group_by(Episode.season_id)
+            )
+        )
+    show_ids = {season.show_id for season in found.seasons.values()}
+    for chunk in _in_chunks(show_ids):
+        found.shows.update((show.id, show) for show in await db.scalars(select(Show).where(Show.id.in_(chunk))))
+
+    for chunk in _in_chunks(movie_release_ids):
+        found.release_editions.update((await db.execute(
+            select(MovieRelease.id, MovieRelease.effective_edition).where(MovieRelease.id.in_(chunk))
+        )).tuples().all())
+        for release_id, path, exists, root_name in await db.execute(
+            select(MediaDirectory.movie_release_id, MediaDirectory.resolved_path, MediaDirectory.exists, StorageRoot.name)
+            .outerjoin(StorageRoot, StorageRoot.id == MediaDirectory.storage_root_id)
+            .where(MediaDirectory.movie_release_id.in_(chunk))
+        ):
+            found.movie_directories.setdefault(release_id, []).append((path, bool(exists), root_name))
+        for release_id, torrent in await db.execute(
+            select(MovieReleaseTorrent.movie_release_id, Torrent)
+            .join(Torrent, Torrent.id == MovieReleaseTorrent.torrent_id)
+            .where(MovieReleaseTorrent.movie_release_id.in_(chunk))
+        ):
+            found.release_torrents.setdefault(release_id, []).append(torrent)
+    for chunk in _in_chunks(show_release_ids):
+        for release_id, episode_id, exists, relative_path, path, root_name in await db.execute(
+            select(EpisodeMediaMap.show_release_id, EpisodeMediaMap.episode_id, MediaFile.exists,
+                   MediaFile.relative_path, MediaDirectory.resolved_path, StorageRoot.name)
+            .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
+            .outerjoin(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+            .outerjoin(StorageRoot, StorageRoot.id == MediaDirectory.storage_root_id)
+            .where(EpisodeMediaMap.show_release_id.in_(chunk))
+        ):
+            found.show_files.setdefault(release_id, []).append((episode_id, bool(exists), relative_path, path, root_name))
+        for release_id, torrent in await db.execute(
+            select(ShowReleaseTorrent.show_release_id, Torrent)
+            .join(Torrent, Torrent.id == ShowReleaseTorrent.torrent_id)
+            .where(ShowReleaseTorrent.show_release_id.in_(chunk))
+        ):
+            found.release_torrents.setdefault(release_id, []).append(torrent)
+    found.sources = await source_lookup(db, (torrent for torrents in found.release_torrents.values() for torrent in torrents))
+
+    downloading = {row.torrent_id for row in rows if row.torrent_id is not None and row.selected_download_client_id is not None}
+    for chunk in _in_chunks(downloading):
+        for observation in await db.scalars(
+            select(TorrentClientObservation).where(TorrentClientObservation.torrent_id.in_(chunk))
+        ):
+            found.observations[(observation.torrent_id, observation.download_client_id)] = observation
+
+    for chunk in _in_chunks(set(found.movies)):
+        for assignment in await db.scalars(select(MediaProfileOverride).where(
+            MediaProfileOverride.media_type == MediaType.MOVIES, MediaProfileOverride.movie_id.in_(chunk)
+        )):
+            found.assignments[(MediaType.MOVIES, assignment.movie_id)] = assignment
+    for chunk in _in_chunks(set(found.shows)):
+        for assignment in await db.scalars(select(MediaProfileOverride).where(
+            MediaProfileOverride.media_type != MediaType.MOVIES, MediaProfileOverride.show_id.in_(chunk)
+        )):
+            found.assignments[(assignment.media_type, assignment.show_id)] = assignment
+    profiles = list(await db.scalars(select(QualityProfile)))
+    found.profiles = {profile.id: profile for profile in profiles}
+    found.default_profile = resolve_default_profile(profiles)
+
+    found.indexer_colors = {item.id: item.color for item in get_integration_config_store().list_indexers()}
+    formats = await comparison_formats_many(db, [dict(row.comparison_snapshot or {}) for row in rows])
+    found.formats = {row.id: pair for row, pair in zip(rows, formats)}
+    return found
+
+
+def _current_size(row: UpgradeCandidate, found: _Lookups) -> int | None:
     """Size of the releases an upgrade replaces, from their torrents.
 
     Cross-seeds of one release share a payload, so each release counts its
     largest torrent once. Unknown when no current release has a torrent.
     """
 
-    release_ids = [UUID(value) for value in row.current_release_ids or []]
-    if not release_ids:
-        return None
-    if row.media_type == MediaType.MOVIES:
-        link, column = MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id
-    else:
-        link, column = ShowReleaseTorrent, ShowReleaseTorrent.show_release_id
-    rows = (
-        await db.execute(
-            select(column, func.max(Torrent.total_size))
-            .join(Torrent, Torrent.id == link.torrent_id)
-            .where(column.in_(release_ids), Torrent.total_size.is_not(None))
-            .group_by(column)
-        )
-    ).all()
-    sizes = [int(size) for _release_id, size in rows if size]
+    sizes = []
+    for release_id in dict.fromkeys(_release_ids(row)):
+        known = [int(torrent.total_size) for torrent in found.release_torrents.get(release_id, []) if torrent.total_size]
+        if known:
+            sizes.append(max(known))
     return sum(sizes) if sizes else None
 
 
 async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidateResponse:
+    return _build_response(row, await _lookups(db, [row]))
+
+
+async def _responses(db: AsyncSession, rows: list[UpgradeCandidate]) -> list[UpgradeCandidateResponse]:
+    found = await _lookups(db, rows)
+    return [_build_response(row, found) for row in rows]
+
+
+def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateResponse:
     media_title = "Unknown media"
     media_year: int | None = None
     tmdb_id: int | None = None
@@ -133,47 +262,26 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     movie_has_multiple_editions = False
     profile_media_type = row.media_type
     profile_entity_id: UUID | None = None
+    release_ids = _release_ids(row)
     if row.media_type == MediaType.MOVIES:
-        movie = await db.get(Movie, row.movie_id) if row.movie_id else None
+        movie = found.movies.get(row.movie_id) if row.movie_id else None
         if movie is not None:
             profile_entity_id = movie.id
             media_title = movie.title
             media_year = movie.year
             tmdb_id = movie.tmdb_id
             poster_ref = movie.poster_ref
-            edition_values = await db.scalars(
-                select(MovieRelease.effective_edition).where(
-                    MovieRelease.movie_id == movie.id,
-                    MovieRelease.release_state == ReleaseState.CURRENT,
-                )
-            )
-            movie_has_multiple_editions = len({edition_slot(value) for value in edition_values}) > 1
-        release_ids = [UUID(value) for value in row.current_release_ids]
+            movie_has_multiple_editions = len(found.movie_edition_slots.get(movie.id, set())) > 1
         if release_ids:
-            current_edition = await db.scalar(
-                select(MovieRelease.effective_edition).where(MovieRelease.id == release_ids[0])
-            )
-            current_paths = list(
-                dict.fromkeys(
-                    await db.scalars(
-                        select(MediaDirectory.resolved_path).where(
-                            MediaDirectory.movie_release_id.in_(release_ids),
-                            MediaDirectory.exists.is_(True),
-                        )
-                    )
-                )
-            )
-            root_name = await db.scalar(
-                select(StorageRoot.name)
-                .join(MediaDirectory, MediaDirectory.storage_root_id == StorageRoot.id)
-                .where(MediaDirectory.movie_release_id.in_(release_ids))
-                .limit(1)
-            )
+            current_edition = found.release_editions.get(release_ids[0])
+            directories = [entry for release_id in release_ids for entry in found.movie_directories.get(release_id, [])]
+            current_paths = list(dict.fromkeys(path for path, exists, _root in directories if exists and path))
+            root_name = next((root for _path, _exists, root in directories if root), None)
             if current_paths:
                 release_folder = PurePath(current_paths[0]).name or None
     else:
-        season = await db.get(Season, row.season_id) if row.season_id else None
-        show = await db.get(Show, season.show_id) if season is not None else None
+        season = found.seasons.get(row.season_id) if row.season_id else None
+        show = found.shows.get(season.show_id) if season is not None else None
         if show is not None:
             profile_entity_id = show.id
             media_title = show.title
@@ -184,52 +292,22 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
             season_number = season.season_number
             # What the season holds, so a pack that fills gaps can be told
             # apart from one that swaps like for like.
-            season_episode_count = int(
-                await db.scalar(select(func.count()).select_from(Episode).where(Episode.season_id == season.id)) or 0
-            ) or None
-        release_ids = [UUID(value) for value in row.current_release_ids]
+            season_episode_count = found.season_episode_counts.get(season.id) or None
         if release_ids:
             # Show MediaDirectory is the Show container. Keep only paths that
             # actually contain one of the old release's mapped media files.
-            from app.models.domain import EpisodeMediaMap
-            current_paths = list(
-                dict.fromkeys(
-                    await db.scalars(
-                        select(MediaDirectory.resolved_path)
-                        .join(MediaFile, MediaFile.media_directory_id == MediaDirectory.id)
-                        .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
-                        .where(EpisodeMediaMap.show_release_id.in_(release_ids), MediaFile.exists.is_(True))
-                    )
-                )
-            )
+            files = [entry for release_id in release_ids for entry in found.show_files.get(release_id, [])]
+            present = [entry for entry in files if entry[1]]
+            current_paths = list(dict.fromkeys(path for _episode, _exists, _relative, path, _root in present if path))
             # The media folder this candidate belongs to, so the page can group
             # by folder the way New Media does.
-            root_name = await db.scalar(
-                select(StorageRoot.name)
-                .join(MediaDirectory, MediaDirectory.storage_root_id == StorageRoot.id)
-                .join(MediaFile, MediaFile.media_directory_id == MediaDirectory.id)
-                .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
-                .where(EpisodeMediaMap.show_release_id.in_(release_ids))
-                .limit(1)
-            )
-            current_episode_count = int(
-                await db.scalar(
-                    select(func.count(func.distinct(EpisodeMediaMap.episode_id)))
-                    .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
-                    .where(EpisodeMediaMap.show_release_id.in_(release_ids), MediaFile.exists.is_(True))
-                )
-                or 0
-            ) or None
-            relative_paths = await db.scalars(
-                select(MediaFile.relative_path)
-                .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
-                .where(EpisodeMediaMap.show_release_id.in_(release_ids), MediaFile.exists.is_(True))
-            )
+            root_name = next((entry[4] for entry in files if entry[4]), None)
+            current_episode_count = len({entry[0] for entry in present}) or None
             # Reported only when the whole season agrees on one folder, so a
             # season split across folders falls back to the show container
             # rather than showing whichever one happened to come first.
             folders = set()
-            for value in relative_paths:
+            for _episode, _exists, value, _path, _root in present:
                 parts = PurePosixPath(value.replace("\\", "/")).parts
                 if len(parts) > 1:
                     folders.add(parts[0])
@@ -240,32 +318,31 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     download_speed = None
     download_eta_seconds = None
     if row.torrent_id is not None and row.selected_download_client_id is not None:
-        observation = await db.scalar(
-            select(TorrentClientObservation).where(
-                TorrentClientObservation.torrent_id == row.torrent_id,
-                TorrentClientObservation.download_client_id == row.selected_download_client_id,
-            )
-        )
+        observation = found.observations.get((row.torrent_id, row.selected_download_client_id))
         if observation is not None:
             progress = float(observation.progress) if observation.progress is not None else None
             download_state = observation.state
             download_speed = int(observation.download_speed) if observation.download_speed is not None else None
             download_eta_seconds = int(observation.eta_seconds) if observation.eta_seconds is not None else None
 
-    effective_profile = (
-        await load_effective_profile(db, media_type=profile_media_type, entity_id=profile_entity_id)
-        if profile_entity_id is not None
-        else None
-    )
+    # As load_effective_profile has it: no explicit assignment inherits the default.
+    profile_name: str | None = None
+    profile_id: UUID | None = None
+    profile_inherited = True
+    if profile_entity_id is not None:
+        assignment = found.assignments.get((profile_media_type, profile_entity_id))
+        profile = found.profiles.get(assignment.quality_profile_id) if assignment and assignment.quality_profile_id else None
+        profile_inherited = profile is None
+        if profile is None:
+            profile = found.default_profile
+        profile_name = profile.name if profile else None
+        profile_id = profile.id if profile else None
 
     snapshot = dict(row.comparison_snapshot or {})
     candidate_snapshot = snapshot.get("candidate") or {}
-    current_formats, candidate_formats = await comparison_formats(db, snapshot)
-    current_ids = [UUID(value) for value in row.current_release_ids or []]
-    source = await source_of_releases(
-        db,
-        movie_release_ids=current_ids if row.media_type == MediaType.MOVIES else (),
-        show_release_ids=current_ids if row.media_type != MediaType.MOVIES else (),
+    current_formats, candidate_formats = found.formats.get(row.id, ([], []))
+    source = found.sources.source(
+        torrent for release_id in release_ids for torrent in found.release_torrents.get(release_id, [])
     )
     candidate_edition = (
         candidate_snapshot.get("edition")
@@ -297,21 +374,19 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_release_ids=[UUID(value) for value in row.current_release_ids],
         current_release_name=row.current_release_name,
         current_quality=row.current_quality,
-        current_size=await _current_size(db, row),
+        current_size=_current_size(row, found),
         current_indexer=source.indexer_name,
-        current_indexer_color=_indexer_color(source.indexer_id),
+        current_indexer_color=found.indexer_colors.get(source.indexer_id) if source.indexer_id else None,
         current_tracker=source.tracker,
         current_edition=current_edition,
         movie_has_multiple_editions=movie_has_multiple_editions,
         current_custom_format_score=row.current_custom_format_score,
-        quality_profile_id=(
-            None if effective_profile is None or effective_profile.profile_inherited else effective_profile.profile_id
-        ),
-        quality_profile_name=effective_profile.profile_name if effective_profile else None,
-        quality_profile_inherited=effective_profile.profile_inherited if effective_profile else True,
+        quality_profile_id=None if profile_inherited else profile_id,
+        quality_profile_name=profile_name,
+        quality_profile_inherited=profile_inherited,
         indexer_id=row.indexer_id,
         indexer_name=row.indexer_name,
-        indexer_color=_indexer_color(row.indexer_id),
+        indexer_color=found.indexer_colors.get(row.indexer_id) if row.indexer_id else None,
         title=row.title,
         quality=row.quality,
         candidate_edition=candidate_edition,
@@ -381,7 +456,7 @@ async def list_upgrade_candidates(
         )
     ).all()
     replacing = await _titles_in_replace_media(db)
-    return [await _response(db, row) for row in rows if not _left_to_replace_media(row, replacing)]
+    return await _responses(db, [row for row in rows if not _left_to_replace_media(row, replacing)])
 
 
 async def _titles_in_replace_media(db: AsyncSession) -> set[str]:

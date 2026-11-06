@@ -63,7 +63,7 @@ async def queue(_: AdminUser = Depends(require_admin), db: AsyncSession = Depend
 async def count(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> ReplacementCountResponse:
     """Items waiting on the user, for the sidebar badge."""
 
-    return ReplacementCountResponse(count=sum(1 for item in await replacement_queue(db) if item["needs_attention"]))
+    return ReplacementCountResponse(count=sum(1 for item in await replacement_queue(db, details=False) if item["needs_attention"]))
 
 
 @router.post("/search", response_model=JobAcceptedResponse, status_code=202)

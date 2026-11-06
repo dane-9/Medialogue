@@ -107,6 +107,10 @@ export default function ReplaceMediaPage() {
   }
   const loadRef = useRef(load)
   loadRef.current = load
+  // Whether anything is downloading, so progress events only cost a reload
+  // while there is progress to show.
+  const downloadingRef = useRef(false)
+  downloadingRef.current = items.some((item) => item.execution_state === 'downloading' || item.execution_state === 'submitted')
 
   // Live: search progress, handoff state and tracker changes refresh the list.
   useEffect(() => {
@@ -125,11 +129,18 @@ export default function ReplaceMediaPage() {
       else { setBulkProgress(null); reload() }
     }
     stream.addEventListener('job.status', onJob)
+    // Live progress, speed and ETA: at most one reload every five seconds.
+    let progressTimer: number | undefined
+    stream.addEventListener('download.progress', () => {
+      if (!downloadingRef.current || progressTimer !== undefined) return
+      progressTimer = window.setTimeout(() => { progressTimer = undefined; void loadRef.current() }, 5000)
+    })
     ;['upgrade.execution', 'upgrade.candidate', 'torrent.tracker_unregistered', 'torrent.tracker_recovered',
       'download.completed', 'replacement.finished'].forEach((name) => stream.addEventListener(name, reload))
     const fallback = window.setInterval(() => { if (document.visibilityState !== 'hidden') void loadRef.current() }, 60_000)
     return () => {
       if (timer !== undefined) window.clearTimeout(timer)
+      if (progressTimer !== undefined) window.clearTimeout(progressTimer)
       window.clearInterval(fallback)
       stream.close()
     }

@@ -4829,7 +4829,66 @@ export function UpgradeMediaPage() {
   }
 
   useEffect(() => { void load() }, [])
-  useLiveLibraryRefresh(() => load(true), 5000)
+
+  // Live updates. Progress events patch the downloading rows in place; only a
+  // change of state (an upgrade submitted, finished or failed, a library
+  // change) re-reads the list, and only the list and its count. Clients,
+  // profiles and formats change through this page's own actions, which load().
+  const loadLiveRef = useRef(async () => {})
+  loadLiveRef.current = async () => {
+    try {
+      const [nextItems, nextCount] = await Promise.all([upgradesApi.upgradeCandidates(), upgradesApi.upgradeCandidateCount()])
+      setItems(nextItems)
+      setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
+    } catch {
+      // A missed refresh is retried by the next event or the poll.
+    }
+  }
+  useEffect(() => {
+    let timer: number | undefined
+    const visible = () => document.visibilityState !== 'hidden'
+    const reload = () => {
+      if (timer !== undefined) return
+      timer = window.setTimeout(() => { timer = undefined; if (visible()) void loadLiveRef.current() }, 500)
+    }
+    const onProgress = (event: MessageEvent<string>) => {
+      let payload: { data?: Record<string, unknown> }
+      try { payload = JSON.parse(event.data) } catch { return }
+      const data = payload?.data
+      if (!data || typeof data.torrent_id !== 'string') return
+      const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
+      setItems((current) => {
+        let changed = false
+        const next = current.map((item) => {
+          if (item.torrentId !== data.torrent_id) return item
+          if (typeof data.client_id === 'string' && item.selectedDownloadClientId && item.selectedDownloadClientId !== data.client_id) return item
+          changed = true
+          return {
+            ...item,
+            downloadProgress: number(data.progress) ?? item.downloadProgress,
+            downloadState: typeof data.state === 'string' ? data.state : item.downloadState,
+            downloadSpeed: number(data.download_speed) ?? item.downloadSpeed,
+            downloadEtaSeconds: number(data.eta_seconds) ?? item.downloadEtaSeconds,
+          }
+        })
+        return changed ? next : current
+      })
+    }
+    const structural = libraryInvalidationEvents.filter((name) => name !== 'download.progress')
+    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    stream.addEventListener('download.progress', onProgress)
+    structural.forEach((name) => stream.addEventListener(name, reload))
+    // A safety net for missed events, not the refresh itself.
+    const poll = window.setInterval(() => { if (visible()) void loadLiveRef.current() }, 30_000)
+    const onVisibility = () => { if (visible()) reload() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer)
+      window.clearInterval(poll)
+      document.removeEventListener('visibilitychange', onVisibility)
+      stream.close()
+    }
+  }, [])
 
   useEffect(() => {
     if (!confirming || !clientId) { setCategories([]); setCategory(''); return }
