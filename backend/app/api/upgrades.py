@@ -379,7 +379,38 @@ async def list_upgrade_candidates(
             )
         )
     ).all()
-    return [await _response(db, row) for row in rows]
+    replacing = await _titles_in_replace_media(db)
+    return [await _response(db, row) for row in rows if not _left_to_replace_media(row, replacing)]
+
+
+async def _titles_in_replace_media(db: AsyncSession) -> set[str]:
+    """Movies and seasons Replace Media is handling (lost source, not ignored).
+
+    A title whose source is lost is fixed there: its search accepts anything
+    equal or better, so a better release arrives as the replacement, and two
+    downloads for one title would race to retire the same old release.
+    """
+
+    from app.services.replacements import replacement_queue
+
+    return {
+        key
+        for item in await replacement_queue(db)
+        if not item["dismissed"]
+        for key in (item.get("movie_id"), item.get("season_id"))
+        if key
+    }
+
+
+def _left_to_replace_media(row: UpgradeCandidate, replacing: set[str]) -> bool:
+    """Whether Upgrade Media leaves this row to Replace Media.
+
+    An upgrade already under way stays, so its progress is never hidden.
+    """
+
+    if row.execution_state:
+        return False
+    return str(row.movie_id or "") in replacing or str(row.season_id or "") in replacing
 
 
 def _search_result_rows(row: UpgradeCandidate) -> list[dict[str, Any]]:
@@ -504,18 +535,18 @@ async def count_upgrade_candidates(
     once the queue has been worked through.
     """
 
-    count = int(
-        await db.scalar(
-            select(func.count())
-            .select_from(UpgradeCandidate)
+    pending = (
+        await db.scalars(
+            select(UpgradeCandidate)
             .where(
                 ~UpgradeCandidate.target_key.startswith("replace:"),
                 UpgradeCandidate.execution_state.is_(None),
                 UpgradeCandidate.execution_eligible.is_(True),
             )
         )
-        or 0
-    )
+    ).all()
+    replacing = await _titles_in_replace_media(db) if pending else set()
+    count = sum(1 for row in pending if not _left_to_replace_media(row, replacing))
     read_only = list(
         await db.scalars(
             select(StorageRoot.name)
