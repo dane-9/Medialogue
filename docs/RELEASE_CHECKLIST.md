@@ -54,6 +54,6 @@ There is no global operations toggle. New storage roots remain inert until their
 
 ## Backup before upgrade
 
-Create a Recovery Bundle before upgrading an existing installation. Keep it outside the Medialogue host and treat it as sensitive because it contains database contents and integration credentials.
+Before upgrading an existing installation, select **Backups → Google Drive → Back up now** so the newest torrents and a fresh database copy are in Drive. Without Google Drive, stop Medialogue and copy `/config` and `/torrent-archive` somewhere outside the host. Treat either copy as sensitive: it contains database contents and integration credentials.
 
 See [Upgrade](UPGRADE.md) and [Backup / Restore](BACKUP_RESTORE.md).

@@ -52,7 +52,7 @@ Medialogue only scans media folders explicitly configured in Settings.
 - `/config/medialogue.db` is the authoritative SQLite store for library state, history, jobs, Problems, observations, and integration **runtime health**.
 - `/config/medialogue.json` is the source of truth for Plex, TMDB, qBittorrent-client, and indexer configuration. It contains no passwords/tokens/API keys.
 - `/config/secrets.enc` stores those integration secrets encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`. Keep the same secret key with the config volume; changing it makes the encrypted secrets unreadable.
-- `/config` also stores the setup marker and temporary Recovery Bundle ZIPs under `/config/recovery-exports`.
+- `/config` also stores the setup marker, the Google Drive connection (`backup-settings.enc`), and backup ZIPs while an upload is being read (`/config/uploads`).
 - `/torrent-archive` stores archived `.torrent` files and versioned recovery manifests independently from live qBittorrent state.
 - Media roots are user-owned filesystem state. Medialogue never renames, moves, copies, hardlinks, reorganizes, or creates metadata sidecars beside media.
 
@@ -60,7 +60,7 @@ The example Compose file mounts `/media` as **read-only**, which is sufficient f
 
 ## Torrent archive and recovery manifests
 
-Every in-scope torrent observed through a configured qBittorrent client is backed up to the dedicated `/torrent-archive` mount while qBittorrent can still export its `.torrent` metadata. Archive failures are non-destructive and are retried on later observations; they are also visible in the Torrent Archive UI.
+Every in-scope torrent observed through a configured qBittorrent client is backed up to the dedicated `/torrent-archive` mount while qBittorrent can still export its `.torrent` metadata. Archive failures are non-destructive and are retried on later observations; they are also visible on **Backups → Torrents**.
 
 Archive files are keyed by info hash and sharded to keep directories manageable:
 
@@ -74,53 +74,17 @@ Recovery manifests are versioned (`schema_version: 1`) and retain the torrent id
 
 Torrent backups are retained independently from the logical Movie/Show record. `Remove From App Only`, a replaced release, or a torrent being removed from qBittorrent does not delete the archived `.torrent` or its recovery manifest. When the database association disappears, later manifest refreshes preserve the last known media identity/path evidence already recorded on disk.
 
-The **Torrent Archive** page is the global expert view. A Movie detail page also shows its associated torrent history. Archived torrents can be submitted back to an explicitly selected qBittorrent client. Restore requires an explicit save path and Medialogue verifies that the resolved destination is inside an enabled media folder matching that client's Movie/Show scope before sending anything to qBittorrent.
+**Backups → Torrents** lists every archived torrent and every library release that has none, with whether each is on Google Drive. A Movie detail page also shows its associated torrent history.
 
 The `/torrent-archive` mount should therefore be durable and writable. It is recovery data, not disposable cache.
 
-## Recovery Bundle export
+## Backups
 
-**Settings → Backup / Recovery** can create a complete disaster-recovery ZIP. The export runs as a persistent background Job, so its state remains visible across navigation and browser refresh. A completed bundle is available through a temporary authenticated download endpoint for the configured retention period (1 hour by default).
+The **Backups** page copies the torrent archive to a **Medialogue Backups** folder in Google Drive within minutes of each change, and the database and configuration on their own schedule. After losing the server, download that folder from Drive, upload it on **Backups → Restore**, and re-add the torrents: each goes back to its original save path, category, tags and file selection, and downloads again.
 
-The bundle contains:
+Files in Drive are not encrypted. Torrent files carry tracker passkeys, and the database copies carry the application secret with the encrypted integration credentials, so keep the folder private.
 
-```text
-medialogue-recovery-<job-id>.zip
-├── backup-metadata.json
-├── database/
-│   └── medialogue.db
-├── torrent-archive/
-│   └── torrents/...
-├── manifests/...
-├── config/
-│   ├── application-config-export.json
-│   └── live/
-│       ├── medialogue.json
-│       ├── secrets.enc
-│       └── setup-state.json (when present)
-└── inventory/
-    ├── library-inventory.json
-    └── torrent-archive-inventory.json
-```
-
-The database backup is a consistent SQLite file created with SQLite's online backup API. It can be produced while Medialogue is running and is verified with `PRAGMA integrity_check` before packaging. Export also verifies the database file, torrent-archive mount, and export directory.
-
-`backup-metadata.json` records the application and SQLite versions, current recovery/torrent-manifest format versions, export timestamp, and temporary-download expiry. Recovery Bundles include the live file-backed integration configuration (`config/live/medialogue.json` and `config/live/secrets.enc`) plus a human-readable sensitive configuration export, the runtime database URL, and the application secret key. **The Recovery Bundle is therefore highly sensitive and should be protected like a database/password backup.**
-
-The library inventory is deliberately readable without SQLite tooling and records Movies, Shows, releases, Episodes, paths, media files, torrent associations, Plex observations, parse evidence, and Problems. It is secondary evidence; the SQLite backup remains the authoritative application-state backup.
-
-### Restoring a Recovery Bundle
-
-Medialogue does not perform an automatic in-place database restore from the web UI. Restore is intentionally an administrator operation:
-
-1. Stop Medialogue.
-2. Keep the current `/config/medialogue.db` separately if it may still be needed.
-3. Copy `database/medialogue.db` from the bundle to `/config/medialogue.db` and give it the configured `PUID`/`PGID` ownership.
-4. Recreate/adapt deployment environment values from `config/application-config-export.json`. Hostnames/paths may need to change on the new host.
-5. Restore archived torrents to the configured archive mount by copying `torrent-archive/torrents/` into `/torrent-archive/torrents/` and `manifests/` into `/torrent-archive/manifests/`.
-6. Restore `config/live/medialogue.json` and `config/live/secrets.enc` to the configured `/config` volume and use the same `MEDIALOGUE_SECRET_KEY` recorded/protected with the backup.
-7. Start Medialogue. Recovery Bundles are supported only with the Medialogue build that created them; cross-build database restore is intentionally unsupported. PostgreSQL databases are intentionally not imported.
-8. Recreate the media bind mounts and remote-path mappings appropriate to the new host before scanning. Medialogue will not relocate media automatically.
+See [Backup / Restore](docs/BACKUP_RESTORE.md) for setup, what is copied, and the restore steps.
 
 Never replace the SQLite file while Medialogue is running, and do not copy only its `-wal` or `-shm` sidecar files.
 

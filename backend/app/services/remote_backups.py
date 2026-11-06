@@ -359,12 +359,26 @@ async def _rebuild_mirror(drive: DriveBackups, folders: dict[str, str]) -> dict[
     return mirror
 
 
-async def mirror_archive(drive: DriveBackups, state: dict, folders: dict[str, str], *, rebuilt: bool) -> dict[str, Any]:
-    """Upload every torrent and manifest that is new or changed since the last run."""
+async def mirror_archive(drive: DriveBackups, state: dict, folders: dict[str, str], *, rebuilt: bool,
+                         retired: set[str] = frozenset()) -> dict[str, Any]:
+    """Upload every torrent and manifest that is new or changed since the last run.
+
+    ``retired`` are info hashes pruned from the archive long enough ago to
+    leave Drive too. Nothing else is ever deleted from Drive: a file missing
+    locally for any other reason stays.
+    """
 
     mirror: dict[str, dict] = {} if rebuilt else dict(state.get("mirror") or {})
     if not mirror:
         mirror = await _rebuild_mirror(drive, folders)
+    removed = 0
+    for key in [key for key in mirror if key.split("/", 1)[1].rsplit(".", 1)[0].lower() in retired]:
+        try:
+            await drive.trash(mirror[key]["id"])
+        except DriveMissing:
+            pass
+        del mirror[key]
+        removed += 1
     work: list[tuple[str, Path, os.stat_result]] = []
     unchanged = 0
     for kind in MIRRORED:
@@ -416,7 +430,7 @@ async def mirror_archive(drive: DriveBackups, state: dict, folders: dict[str, st
         await asyncio.gather(*(push(*item) for item in work[start:start + 50]))
         update_backup_settings({"mirror": mirror})
     update_backup_settings({"mirror": mirror})
-    return {**counts, "errors": errors, "torrents": sum(1 for key in mirror if key.startswith("torrents/"))}
+    return {**counts, "removed": removed, "errors": errors, "torrents": sum(1 for key in mirror if key.startswith("torrents/"))}
 
 
 # --- Database ---------------------------------------------------------------
@@ -519,7 +533,10 @@ async def run_remote_backup(job_id: UUID) -> None:
             folders, rebuilt = await drive_folders(drive, state)
             update_backup_settings({"folders": folders})
             await _finish(job_id, progress={"percent": 15, "stage": "torrents"})
-            mirrored = await mirror_archive(drive, read_backup_settings(), folders, rebuilt=rebuilt)
+            from app.services.torrent_archive import drive_retired_hashes
+            async with db_session.async_session_factory() as db:
+                retired = await drive_retired_hashes(db)
+            mirrored = await mirror_archive(drive, read_backup_settings(), folders, rebuilt=rebuilt, retired=retired)
             now = datetime.now(timezone.utc).isoformat()
             changes: dict[str, Any] = {"last_sync_at": now}
             database = None

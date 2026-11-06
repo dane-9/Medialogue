@@ -7541,7 +7541,7 @@ export interface components {
          * TorrentArchiveState
          * @enum {string}
          */
-        TorrentArchiveState: "not_archived" | "archived" | "failed";
+        TorrentArchiveState: "not_archived" | "archived" | "failed" | "pruned";
         /** TorrentArchiveSummary */
         TorrentArchiveSummary: {
             /** Archive Error */

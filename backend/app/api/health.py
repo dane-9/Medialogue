@@ -38,7 +38,9 @@ async def integration_health(_: AdminUser = Depends(require_admin), db: AsyncSes
     clients = sorted(await list_configured_download_clients(db), key=lambda item: item.name.casefold())
     indexers = sorted(await list_configured_indexers(db), key=lambda item: item.name.casefold())
     archive_health = archive_mount_health()
-    archive_total = int(await db.scalar(select(func.count()).select_from(Torrent)) or 0)
+    archive_total = int(await db.scalar(
+        select(func.count()).select_from(Torrent).where(Torrent.archive_state != TorrentArchiveState.PRUNED)
+    ) or 0)
     archive_complete = int(
         await db.scalar(
             select(func.count()).select_from(Torrent).where(Torrent.archive_state == TorrentArchiveState.ARCHIVED)

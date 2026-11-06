@@ -156,7 +156,8 @@ async def list_torrent_archive(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[TorrentArchiveSummary]:
-    clauses = []
+    # A pruned torrent is gone from the archive; it is only listed when asked for.
+    clauses = [] if archive_state == TorrentArchiveState.PRUNED.value else [Torrent.archive_state != TorrentArchiveState.PRUNED]
     if query:
         needle = f"%{query.strip()}%"
         clauses.append(or_(Torrent.name.ilike(needle), Torrent.info_hash.ilike(needle)))

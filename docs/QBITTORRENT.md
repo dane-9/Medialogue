@@ -58,7 +58,7 @@ same resolved payload path. See [Failed Downloads and Blocklist](FAILED_DOWNLOAD
 
 ## Disaster recovery re-import
 
-The torrent archive preserves qBittorrent recovery context independently of live client presence. After restoring a Medialogue Recovery Bundle, **Settings → Backup / Recovery** can build a read-only bulk re-import plan before anything is submitted.
+The torrent archive preserves qBittorrent recovery context independently of live client presence. After uploading a backup on **Backups → Restore**, Medialogue builds a read-only re-import plan before anything is submitted. See [Backup / Restore](BACKUP_RESTORE.md).
 
 For each archived torrent, the plan verifies the target qBittorrent client and media scope, original qBittorrent save path, remote-path resolution, enabled media folder containment, category, tags, current qBittorrent presence, and captured per-file selection. Only explicitly selected Ready rows are submitted after a second confirmation.
 

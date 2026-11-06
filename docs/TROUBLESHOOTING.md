@@ -39,9 +39,19 @@ Plex Unavailable is different from Plex Conflict. Local media remains attached w
 
 Check per-indexer status in the search job. Indexers time out independently; successful results are retained.
 
-## Recovery export is unsupported
+## Backups to Google Drive fail
 
-Open Settings → Backup / Recovery and inspect the capability reasons. Export requires a readable file-backed SQLite database, a readable torrent archive, and a writable export directory.
+Open **Backups → Google Drive**; the last error is shown there and on the backup task in **Tasks**.
+
+- **Google Drive is not set up on this server**: the three `MEDIALOGUE_GOOGLE_DRIVE_*` variables are missing. Set them and restart.
+- **Google Drive authorization failed. Reconnect your account.**: Google stopped accepting the saved token, often because the OAuth app is in testing mode. Select **Reconnect**.
+- **N file(s) could not be uploaded**: the rest went up; the next run retries the failed files.
+
+## Uploading a backup ZIP fails
+
+- **Request too large** from a reverse proxy: raise its request body limit (nginx `client_max_body_size`) or upload from the local network.
+- **No torrents or manifests were found in that ZIP**: upload the **Medialogue Backups** folder as Google Drive downloads it, not a database copy.
+
 ## Medialogue exits during startup with `cannot import name '__version__' from 'alembic'`
 
 This was caused by an older packaging configuration accidentally treating Medialogue's `backend/alembic/` migration-script directory as a Python package. A stale `backend/alembic/__init__.py` left behind by GitHub web uploads could then collide with the real Alembic dependency.

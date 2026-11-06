@@ -1,92 +1,96 @@
 # Backup and Restore
 
-Medialogue has three persistent recovery layers.
+Medialogue's backup exists for one situation: the server dies and the media on it is lost. Medialogue keeps every torrent your library came from, copies it to Google Drive, and can re-add all of them to qBittorrent on a new server so everything downloads again into the same folders.
 
-## File-backed integration configuration
+Everything lives on the **Backups** page, which has three tabs: **Torrents**, **Google Drive** and **Restore**.
 
-`/config/medialogue.json` is the source of truth for Plex, TMDB, qBittorrent-client, and indexer settings. Passwords, tokens, and API keys are stored separately in `/config/secrets.enc`, encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`.
+## What is kept
 
-Back up both files together and retain the matching `MEDIALOGUE_SECRET_KEY`. If the key was generated, back up `/config/application-secret` with the config dataset. A copied `secrets.enc` file is intentionally unusable with a different secret key.
+### The torrent archive
 
-## Torrent archive
+`/torrent-archive` holds, for every relevant torrent qBittorrent reports:
 
-`/torrent-archive` retains archived `.torrent` files and manifests even when a torrent is removed from qBittorrent or a logical Movie/Show record is removed from the app. One `.torrent` is stored per info hash, with separate recovery settings and file selections for each observed client. Detail polling refreshes those selections. Legacy manifests remain readable.
+- `torrents/<shard>/<info hash>.torrent`, the torrent file itself;
+- `manifests/<shard>/<info hash>.json`, the manifest: which movie or show it belongs to, the save path, category and tags it had in each qBittorrent client, which files were selected, and the client's per-torrent settings.
 
-Do not treat this directory as disposable cache.
+Archiving happens automatically as qBittorrent is polled. The archive holds what is on the server, so a restore brings back exactly that:
 
-The archive screen distinguishes **Verified locally**, **Included in last backup**, and the last observed **Tracker source** status. Remote coverage compares the saved recovery inputs with the last verified uploaded snapshot; it does not continuously check whether somebody deleted that snapshot in Drive. A writable mount is only **Storage available**.
+- A torrent is **kept** while a release in the library still uses it, or any qBittorrent client still lists it. Every cross-seed of a release is kept, so a restore can still download it if one tracker drops the torrent. A movie or show removed from Medialogue keeps its torrents while qBittorrent still has them.
+- A torrent is **removed** from the archive once every qBittorrent client that had it has confirmed removing it and no release you still have uses it. That happens after an upgrade or replacement cleans up the old release, or after you remove something from both Medialogue and qBittorrent. The daily **Housekeeping** task does this, and Event History records each one.
+- A client being offline never counts as a removal, and neither do missing files: a dead disk never costs a torrent its backup.
 
-Use **Details** to inspect client-specific settings and selected files. Filters identify incomplete local archives, removed torrents, and changes awaiting a remote backup. **Rebuild archive catalogue** imports verified manifests missing from the database without contacting qBittorrent or inventing live client presence. It restores torrent recovery records and historical media descriptions, not the complete Movie/Show database.
+Do not treat this directory as a disposable cache.
 
-## Scheduled Google Drive backups
+### The Google Drive copy
 
-1. Enable the Google Drive API and create a Google OAuth **Web application** client.
-2. Configure `MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID`, `MEDIALOGUE_GOOGLE_DRIVE_CLIENT_SECRET`, and `MEDIALOGUE_GOOGLE_DRIVE_REDIRECT_URI` in the deployment environment. The redirect URI must exactly match the OAuth client's authorized URI and end in `/api/v1/backups/google/callback`. Use HTTPS, or localhost for local development. Both supplied Compose files pass these variables through.
-3. Restart Medialogue. Open **Settings → Backups → Connect Google Drive** and authorize access. Medialogue requests the limited `drive.file` scope and creates a visible **Medialogue Backups** folder.
-4. Generate a recovery key, save it outside this server, acknowledge that it is saved, and save the backup settings. An existing recovery key can also be entered when rebuilding an installation. The UI does not show a saved key again.
-5. Choose a schedule, save it, and select **Back up now**. The default retention is seven daily and four weekly restore points. Scheduling stays manual until explicitly enabled.
-
-Snapshots are self-contained encrypted `.mlbackup` files. Encryption uses a random 256-bit recovery key and streaming AES-GCM, independently of `MEDIALOGUE_SECRET_KEY`. OAuth tokens and the working recovery key are encrypted locally in `/config/backup-settings.enc`; that file is intentionally excluded from exported snapshots. Restoring an installation requires reconnecting Google Drive. Keep using the same OAuth application to discover its previous app-owned snapshots.
-
-The snapshot coordinates torrent observation commits with archive capture, uses SQLite's online backup API, generates inventories from the copied database, and packages staged archive files. Concurrent configuration changes invalidate capture rather than producing a mixed snapshot. Remote upload happens after local capture releases the observer. The plaintext intermediate is removed after encryption and is not available through the manual export download endpoint.
-
-Uploads resume after transient connection failures and refresh expired access tokens. A snapshot counts as successful only after Google's stored SHA-256 and size match the encrypted local file. Retention then moves older verified snapshots owned by this installation to Drive trash; it always preserves the new successful snapshot. A failed upload or verification does not prune prior backups. Daily and weekly slots may refer to the same snapshot. Snapshots from another installation and unverified files are not automatically pruned.
-
-**Browse restore points** lists snapshots accessible to the connected OAuth application and opens them in Drive for download. **Disconnect** stops scheduled backups and removes the local account token without deleting Drive files. Tasks exposes backup/search progress and schedule controls. Google authorization expiry or revoked access appears as an actionable reconnect error; testing-mode OAuth apps may require renewed authorization, so configure the OAuth application for ongoing unattended use.
-
-Google integration references: [OAuth web-server flow](https://developers.google.com/identity/protocols/oauth2/web-server), [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), and [resumable uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
-
-## Decrypt and inspect a downloaded snapshot
-
-From a checkout with the backend dependencies installed:
+When Google Drive is connected and backups are turned on, Medialogue keeps a **Medialogue Backups** folder in your Drive:
 
 ```text
-python backend/scripts/restore_backup.py medialogue-snapshot.mlbackup restored
+Medialogue Backups/
+├── torrents/   <info hash>.torrent
+├── manifests/  <info hash>.json
+└── database/   medialogue-database-<time>.zip
 ```
 
-The tool prompts for the saved recovery key without echoing it. It verifies authentication, archive checksums, and SQLite integrity before publishing the staged directory. It rejects path traversal and existing destinations. For an unencrypted manual Recovery Bundle, pass its `.zip` filename instead; no recovery key is needed. Staging has a 100 GiB extracted-size limit.
+- **Torrents and manifests** are copied every 10 minutes (configurable in **Tasks**). Only new or changed files are uploaded, and each upload is checked against the checksum Drive reports. A manifest is uploaded again only when something a restore uses changes (paths, file selection, settings), not when live statistics are refreshed.
+- **Database copies** hold the library database (a consistent SQLite online backup) and the configuration: `medialogue.json`, `secrets.enc`, `setup-state.json`, `custom-format-layout.json` and `application-secret`. They are made on their own schedule (daily by default, set on the **Google Drive** tab) and the newest few are kept (7 by default). Older copies are moved to Drive's trash only after a new one is confirmed.
 
-The first-run setup screen also provides these recovery instructions. Staging never overwrites a running installation. Follow the restore overview below using the staged files; obtain the original application secret from `config/application-config-export.json` → `runtime_sensitive.secret_key`. This application secret unlocks the restored integration credentials and is distinct from the backup's recovery key.
+A torrent removed from the archive stays in Drive for 30 days, then the next backup deletes it from Drive too, in case an upgrade or removal needs undoing. Nothing else is ever deleted from Drive. If the Drive folder itself is deleted, the next run recreates it and uploads everything again.
 
-## Recovery Bundle
+> **Nothing in Drive is encrypted.** Torrent files contain your tracker passkeys, and the database copies contain the application secret together with `secrets.enc`, so they reveal the qBittorrent, indexer, Plex and TMDB credentials. Anyone who can open the folder can use them. Keep the folder private.
 
-Settings → Backup / Recovery creates a ZIP containing:
+## Setting up Google Drive
 
-- a consistent `database/medialogue.db` created with SQLite's online backup API;
-- `config/live/medialogue.json` and `config/live/secrets.enc`;
-- torrent archive data and recovery manifests;
-- a sensitive human-readable configuration export for disaster recovery;
-- a readable library inventory;
-- current recovery-format and application-version metadata.
+1. In Google Cloud, enable the Google Drive API and create an OAuth client of type **Web application**.
+2. Set `MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID`, `MEDIALOGUE_GOOGLE_DRIVE_CLIENT_SECRET` and `MEDIALOGUE_GOOGLE_DRIVE_REDIRECT_URI` in the deployment environment. The redirect URI is Medialogue's address followed by `/api/v1/backups/google/callback`, and must match the OAuth client's authorized redirect URI exactly. Use HTTPS, or localhost for local development. Both Compose files pass these variables through.
+3. Restart Medialogue, open **Backups → Google Drive → Connect Google Drive**, and allow access. Medialogue asks only for the `drive.file` scope, which covers the files it creates.
+4. Select **Turn on backups**. The first copy starts within a minute.
 
-The bundle contains credentials and database contents. Store it as sensitive backup material.
+The Google account token is stored encrypted in `/config/backup-settings.enc`. **Disconnect** stops backups and forgets the token; nothing already in Drive is deleted. If Google stops accepting the token (for example, an OAuth app left in testing mode expires its grants), the Google Drive tab shows the error and **Reconnect** fixes it.
 
-The export requires the current account password in the recovery form. The password is checked before any export job or capability is created, and it is not stored in browser state.
+## Checking what is protected
 
-## Restore overview
+The **Torrents** tab lists every archived torrent and every release in the library that has none. The header shows how many library releases can be restored, the archive counts, and the archive folder; it turns red if the folder is unavailable.
 
-1. Stop Medialogue.
-2. Preserve the current `/config/medialogue.db` separately if it may still be needed.
-3. Restore `database/medialogue.db` from the bundle to `/config/medialogue.db` with ownership matching the configured `PUID`/`PGID`.
-4. Restore `config/live/medialogue.json` and `config/live/secrets.enc` to `/config` and configure the same `MEDIALOGUE_SECRET_KEY`.
-5. Copy the staged `torrent-archive/torrents` directory to `/torrent-archive/torrents`, and the staged top-level `manifests` directory to `/torrent-archive/manifests`.
-6. Recreate deployment paths/media mounts and remote path mappings for the new host.
-7. Start Medialogue.
-8. Verify storage/integration health; newly added roots still require one explicit initialization scan.
-9. Open **Settings → Backup / Recovery → Bulk torrent re-import** and choose **Inspect recovery plan**.
-10. Review every row before selecting anything. Medialogue classifies archived torrents as:
-   - **Ready** - archive bytes exist, the original qBittorrent client (or a unique name/scope replacement) is available, the saved qBittorrent path still resolves inside an enabled media folder, and the torrent is not already present;
-   - **Already present** - the target qBittorrent client already reports that info hash, so Medialogue will not submit it again;
-   - **Blocked** - required archive/client/path context is missing or unsafe. Correct the configuration and inspect again.
-11. Select the Ready rows to recover and use **Review and submit**. The signed preview is short-lived and is revalidated before the job starts; if clients, paths, media folders, archive data, or qBittorrent contents changed, Medialogue requires a new preview.
-12. Confirm the bulk submission. Each torrent is validated again immediately before it is sent to qBittorrent.
+The **Backup** column shows, for each row:
 
-Bulk recovery restores the preserved qBittorrent save path, category, tags, applicable torrent settings, and captured per-file priorities. A file whose archived qBittorrent priority was `0` remains unselected. Per-file selection evidence is mandatory; an archive without a complete current-format priority map is blocked and cannot be submitted.
+- **On Drive**: archived and copied to Google Drive;
+- **Only here**: archived on this server, waiting for the next copy;
+- **Not archived**: the torrent file could not be saved yet. Use the retry button on the row while the torrent is still in qBittorrent;
+- **No torrent**: a release in the library that Medialogue never saw a torrent for, for example files added by hand. These cannot be downloaded again.
 
-Torrents are added stopped, then file priorities and supported settings are applied before starting. Captured stopped/paused state is retained. Supported settings include automatic management, sequential/first-last options, speed limits, complete share limits, force-start, and super-seeding. Queue position, transfer totals, renamed file paths, tracker edits, and private resume data are not replayed. A setting/selection/start failure attempts to remove the new torrent entry without deleting files.
+The **Not restorable** filter shows everything that is not yet safely on Drive.
 
-Medialogue does not create or move recovered media directories. The saved path is sent to qBittorrent only after it resolves through any configured qBittorrent remote-path mapping into the appropriate enabled Movies or Shows media folder. qBittorrent remains responsible for downloading and placement.
+## Restoring after losing the server
 
-Bulk recovery is never automatic. Inspecting a plan is read-only, and a signed preview plus an explicit confirmation is required before any torrent is submitted.
+1. **Install Medialogue** on the new server and complete first-run setup.
+2. **Add the media folders and qBittorrent clients again**, with the same container paths as before. If the paths qBittorrent reports differ from Medialogue's, add the remote path mappings too.
+3. **In Google Drive, download the Medialogue Backups folder.** Drive delivers a folder as a ZIP, split into several ZIPs when it is large.
+4. **Open Backups → Restore → Upload backup ZIP** and choose the ZIP, or all of its parts at once. Medialogue takes the `.torrent` files and manifests from it and lists them on the Torrents tab. Database copies and anything else in the ZIP are ignored. Uploading the same ZIP again changes nothing.
+5. **Check what can be re-added.** The plan opens by itself after an upload. Each torrent is one of:
+   - **Ready**: it can go back to its original client and save path;
+   - **Already in qBittorrent**: it is skipped;
+   - **Blocked**: something is missing, with the reason shown. For example, its save path is not inside an enabled media folder, or no matching qBittorrent client exists. Fix the setup and check again.
+6. **Select the ready torrents and re-add them.** Each one goes back with its original save path, category, tags and file selection (files that were not downloaded stay unselected), and qBittorrent downloads it again.
 
-Medialogue deliberately does not offer a one-click in-place database restore in the web UI.
+A fresh install usually has new qBittorrent client IDs. Each torrent goes to its original client when that still exists. Otherwise it goes to a client with the same name and media type, or, when there is exactly one client for that media type, to that one.
+
+Re-adding is never automatic. The plan is read-only, expires after 15 minutes, and is checked again before anything is sent. Torrents are added stopped, given their file selection and settings, then started (unless they were paused before). Queue position, transfer totals, renamed files and tracker edits are not restored. Medialogue never moves or deletes media during a restore.
+
+### Uploads behind a reverse proxy
+
+A backup ZIP can be large. Allow large request bodies on `/api/v1/backups/restore/upload`: nginx's default `client_max_body_size` is 1 MB, and Cloudflare's proxy caps uploads at 100 MB, so upload from the local network if needed. The upload is staged in `/config/uploads` while it is read, and removed afterwards.
+
+### Restoring settings and the library database
+
+Restoring settings is manual. Unzip the newest `database/medialogue-database-<time>.zip` from the downloaded folder, then, with Medialogue stopped:
+
+1. copy `database/medialogue.db` to `/config/medialogue.db`;
+2. copy the files under `config/` to `/config`, including `application-secret`, which unlocks `secrets.enc`;
+3. make the files owned by the configured `PUID`/`PGID`, and start Medialogue.
+
+This brings back qBittorrent clients, indexers, media folders, quality profiles, custom formats and the library, so step 2 of the restore above is already done. Restore a database copy only into the same Medialogue version that made it, or a newer one, which migrates it on start.
+
+## Upgrading from the encrypted backups
+
+Earlier versions made encrypted `.mlbackup` snapshots with a recovery key, and a Recovery Bundle ZIP export. Both have been replaced by the plain Drive copy above. The first backup run after upgrading creates the new folder layout alongside any old snapshots. Old `.mlbackup` files can still be opened with `backend/scripts/restore_backup.py` from an earlier release, together with their recovery key.

@@ -14,7 +14,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
@@ -34,6 +34,7 @@ from app.models.domain import (
     MovieRelease,
     MovieReleaseTorrent,
     QualityDefinition,
+    ReleaseState,
     RemotePathMapping,
     Show,
     ShowRelease,
@@ -499,7 +500,7 @@ async def ensure_torrent_archived(
         error = f"archive verification: {verification_error}"
         torrent.archive_state = TorrentArchiveState.FAILED
     torrent.metadata_json = {
-        **(torrent.metadata_json or {}),
+        **{key: value for key, value in (torrent.metadata_json or {}).items() if key != "archive_pruned_at"},
         "archive_error": error,
         "archive_last_attempt_at": _iso(utcnow()),
         "archive_sha256": torrent_sha256,
@@ -1035,3 +1036,77 @@ async def rebuild_catalogue_from_manifests(db: AsyncSession) -> dict[str, Any]:
         except (ValueError, KeyError, TypeError, OSError) as exc:
             errors.append({"manifest": path.name, "error": str(exc)})
     return {"imported": imported, "skipped": skipped, "repaired": repaired, "errors": errors}
+
+
+#: Release states that still mean "this is on the server". A release whose
+#: files went missing is still yours: a dead disk must never cost its backup.
+KEPT_RELEASE_STATES = (ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.CONFLICT, ReleaseState.DUPLICATE)
+#: How long Google Drive keeps a pruned torrent after it leaves the archive.
+DRIVE_GRACE = timedelta(days=30)
+
+
+async def prune_retired_archives(db: AsyncSession) -> dict[str, Any]:
+    """Drop archived torrents that nothing on the server uses any more.
+
+    A torrent is kept while any library release still uses it (cross-seeds
+    included) or any qBittorrent client still lists it. It is pruned only on
+    evidence: every client it was seen in confirmed removing it, and no
+    release that is still yours uses it. A client being unreachable, or files
+    going missing, never prunes anything. Its Drive copy stays for
+    ``DRIVE_GRACE`` before the backup removes it.
+    """
+
+    kept: set[UUID] = set()
+    for link, release, column in (
+        (MovieReleaseTorrent, MovieRelease, MovieReleaseTorrent.movie_release_id),
+        (ShowReleaseTorrent, ShowRelease, ShowReleaseTorrent.show_release_id),
+    ):
+        kept.update(await db.scalars(
+            select(link.torrent_id).join(release, release.id == column)
+            .where(release.release_state.in_(KEPT_RELEASE_STATES))
+        ))
+    observations: dict[UUID, list[TorrentClientObservation]] = {}
+    for observation in await db.scalars(select(TorrentClientObservation)):
+        observations.setdefault(observation.torrent_id, []).append(observation)
+
+    pruned: list[str] = []
+    candidates = await db.scalars(select(Torrent).where(
+        Torrent.archive_state.in_([TorrentArchiveState.ARCHIVED, TorrentArchiveState.FAILED])
+    ))
+    for torrent in candidates:
+        seen = observations.get(torrent.id) or []
+        # Never seen in a client (e.g. rebuilt from a backup): no evidence, keep.
+        if torrent.id in kept or not seen or any(item.is_present or item.removed_at is None for item in seen):
+            continue
+        for path in archive_paths(torrent.info_hash):
+            path.unlink(missing_ok=True)
+        torrent.archive_state = TorrentArchiveState.PRUNED
+        torrent.archive_path = None
+        torrent.manifest_path = None
+        torrent.metadata_json = {**(torrent.metadata_json or {}), "archive_pruned_at": _iso(utcnow())}
+        pruned.append(torrent.info_hash)
+        await create_event(
+            db,
+            "torrent.archive_pruned",
+            entity_type="torrent",
+            entity_id=torrent.id,
+            message=f"Removed {torrent.name} from the torrent archive: it is no longer in qBittorrent or the library.",
+            details={"info_hash": torrent.info_hash, "drive_removal_after_days": DRIVE_GRACE.days},
+        )
+    return {"pruned": len(pruned), "info_hashes": pruned}
+
+
+async def drive_retired_hashes(db: AsyncSession) -> set[str]:
+    """Pruned torrents whose grace period in Google Drive has passed."""
+
+    cutoff = utcnow() - DRIVE_GRACE
+    due: set[str] = set()
+    for torrent in await db.scalars(select(Torrent).where(Torrent.archive_state == TorrentArchiveState.PRUNED)):
+        raw = (torrent.metadata_json or {}).get("archive_pruned_at")
+        try:
+            when = datetime.fromisoformat(str(raw))
+        except ValueError:
+            continue
+        if (when if when.tzinfo else when.replace(tzinfo=timezone.utc)) <= cutoff:
+            due.add(torrent.info_hash.lower())
+    return due

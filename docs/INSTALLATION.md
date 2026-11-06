@@ -65,7 +65,7 @@ Medialogue is designed to run as one Docker Compose application container with a
 - `/config/secrets.enc`: AES-GCM encrypted integration credentials. It can only be decrypted with the same `MEDIALOGUE_SECRET_KEY`.
 - `/config/application-secret`: generated production secret used when `MEDIALOGUE_SECRET_KEY` is not explicitly supplied. Back it up with `/config`.
 - `/config/initial-setup-token`: one-time first-run administrator token; it is removed after successful setup.
-- `/config`: durable application storage containing the SQLite database, setup marker, configuration, secrets, and temporary Recovery Bundle exports. Mount it from local storage, not SMB/NFS.
+- `/config`: durable application storage containing the SQLite database, setup marker, configuration, secrets, the Google Drive connection, and backup ZIPs while an upload is being read. Mount it from local storage, not SMB/NFS.
 - `/torrent-archive`: permanent archived `.torrent` files and versioned recovery manifests.
 - Media mounts: user-owned data. Medialogue does not reorganize them.
 

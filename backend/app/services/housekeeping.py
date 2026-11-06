@@ -72,6 +72,8 @@ async def run_scheduled_housekeeping(job_id) -> None:
         deleted = await prune_scheduled_job_history(db)
         expired_search_results = await cleanup_expired_search_results(db)
         expired_recovery_exports = await asyncio.to_thread(cleanup_expired_recovery_exports)
+        from app.services.torrent_archive import prune_retired_archives
+        pruned = await prune_retired_archives(db)
         await update_job(
             db,
             job,
@@ -86,6 +88,7 @@ async def run_scheduled_housekeeping(job_id) -> None:
                 "deleted_jobs": deleted,
                 "deleted_search_results": expired_search_results,
                 "deleted_recovery_exports": expired_recovery_exports,
+                "pruned_torrents": pruned["pruned"],
             },
         )
 

@@ -117,6 +117,9 @@ class TorrentArchiveState(StrEnum):
     NOT_ARCHIVED = "not_archived"
     ARCHIVED = "archived"
     FAILED = "failed"
+    #: Its files were dropped from the archive because nothing on the server
+    #: uses it any more; see ``prune_retired_archives``.
+    PRUNED = "pruned"
 
 
 class AssociationType(StrEnum):

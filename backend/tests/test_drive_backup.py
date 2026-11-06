@@ -343,3 +343,128 @@ async def test_large_upload_resumes_after_network_interruption(tmp_path, monkeyp
         assert calls[-1] == f"bytes 4194304-{path.stat().st_size - 1}/{path.stat().st_size}"
     finally:
         await drive.close()
+
+
+def _seed_prune_cases(archive_root: Path) -> dict[str, str]:
+    """One archived torrent per situation the pruning rule has to decide."""
+
+    from app.db import session as db_session
+    from app.models.domain import (DownloadClient, Movie, MovieRelease, MovieReleaseTorrent, ReleaseState, Torrent,
+                                   TorrentArchiveState, TorrentClientObservation)
+
+    removed = datetime.now(timezone.utc) - timedelta(days=1)
+    # name: (release state or None for no release, observations as (present, removed_at))
+    cases = {
+        "upgraded": (ReleaseState.REPLACED, [(False, removed)]),
+        "unlinked_gone": (None, [(False, removed)]),
+        "current_gone": (ReleaseState.CURRENT, [(False, removed)]),
+        "missing_files": (ReleaseState.MISSING, [(False, removed)]),
+        "removed_from_app_seeding": (None, [(True, None)]),
+        "one_client_left": (ReleaseState.REPLACED, [(False, removed), (True, None)]),
+        "never_seen": (ReleaseState.REPLACED, []),
+        "cross_seed_a": (ReleaseState.CURRENT, [(True, None)]),
+    }
+
+    async def seed():
+        hashes = {}
+        async with db_session.async_session_factory() as db:
+            clients = [DownloadClient(), DownloadClient()]
+            db.add_all(clients)
+            await db.flush()
+            shared_release = None
+            for index, (name, (state, observations)) in enumerate(cases.items()):
+                info_hash = f"{index:02x}" + "e" * 38
+                _archive_fixture(archive_root, info_hash)
+                torrent_path, manifest_path = (archive_root / "torrents" / info_hash[:2] / f"{info_hash}.torrent",
+                                               archive_root / "manifests" / info_hash[:2] / f"{info_hash}.json")
+                torrent = Torrent(info_hash=info_hash, name=name, archive_state=TorrentArchiveState.ARCHIVED,
+                                  archive_path=str(torrent_path), manifest_path=str(manifest_path))
+                db.add(torrent)
+                await db.flush()
+                if state is not None:
+                    movie = Movie(title=name, sort_title=name, year=2020)
+                    db.add(movie)
+                    await db.flush()
+                    release = MovieRelease(movie_id=movie.id, raw_release_name=f"{name}.2020.1080p", release_state=state)
+                    db.add(release)
+                    await db.flush()
+                    db.add(MovieReleaseTorrent(movie_release_id=release.id, torrent_id=torrent.id))
+                    if name == "cross_seed_a":
+                        shared_release = release
+                for client, (present, removed_at) in zip(clients, observations):
+                    db.add(TorrentClientObservation(torrent_id=torrent.id, download_client_id=client.id,
+                                                    is_present=present, removed_at=removed_at))
+                hashes[name] = info_hash
+            # A cross-seed of a current release, already gone from qBittorrent.
+            info_hash = "ff" + "e" * 38
+            _archive_fixture(archive_root, info_hash)
+            partner = Torrent(info_hash=info_hash, name="cross_seed_b", archive_state=TorrentArchiveState.ARCHIVED,
+                              archive_path=str(archive_root / "torrents/ff" / f"{info_hash}.torrent"),
+                              manifest_path=str(archive_root / "manifests/ff" / f"{info_hash}.json"))
+            db.add(partner)
+            await db.flush()
+            db.add(MovieReleaseTorrent(movie_release_id=shared_release.id, torrent_id=partner.id))
+            db.add(TorrentClientObservation(torrent_id=partner.id, download_client_id=clients[0].id,
+                                            is_present=False, removed_at=removed))
+            hashes["cross_seed_b"] = info_hash
+            await db.commit()
+        return hashes
+
+    return asyncio.run(seed())
+
+
+def test_only_torrents_nothing_on_the_server_uses_are_pruned(recovery_env):
+    from app.db import session as db_session
+    from app.services.torrent_archive import prune_retired_archives
+
+    client, settings, _ = recovery_env
+    login_headers(client)
+    archive = Path(settings.torrent_archive_dir)
+    hashes = _seed_prune_cases(archive)
+
+    async def prune():
+        async with db_session.async_session_factory() as db:
+            result = await prune_retired_archives(db)
+            await db.commit()
+            return result
+
+    result = asyncio.run(prune())
+    assert sorted(result["info_hashes"]) == sorted([hashes["upgraded"], hashes["unlinked_gone"]])
+    for name, info_hash in hashes.items():
+        exists = (archive / "torrents" / info_hash[:2] / f"{info_hash}.torrent").exists()
+        assert exists == (name not in {"upgraded", "unlinked_gone"}), name
+    listed = {row["info_hash"] for row in client.get("/api/v1/torrent-archive").json()["items"]}
+    assert hashes["upgraded"] not in listed and hashes["current_gone"] in listed
+    assert asyncio.run(prune())["pruned"] == 0
+
+
+def test_pruned_torrents_leave_drive_only_after_the_grace_period(recovery_env, drive):
+    from app.db import session as db_session
+    from app.models.domain import Torrent
+    from app.services.torrent_archive import prune_retired_archives
+    from sqlalchemy import select
+
+    _, settings, _ = recovery_env
+    hashes = _seed_prune_cases(Path(settings.torrent_archive_dir))
+    assert _run("remote_backup")[0] == "completed"
+    on_drive = lambda: {row["name"].split(".")[0] for row in FakeDrive.live("torrents")}  # noqa: E731
+    assert hashes["upgraded"] in on_drive()
+
+    async def prune(age_days: int):
+        async with db_session.async_session_factory() as db:
+            await prune_retired_archives(db)
+            for torrent in await db.scalars(select(Torrent).where(Torrent.info_hash == hashes["upgraded"])):
+                stamp = (datetime.now(timezone.utc) - timedelta(days=age_days)).isoformat()
+                torrent.metadata_json = {**torrent.metadata_json, "archive_pruned_at": stamp}
+            await db.commit()
+
+    asyncio.run(prune(1))
+    assert _run("remote_backup", manual=False)[0] == "completed"
+    assert hashes["upgraded"] in on_drive()  # still within the grace period
+
+    asyncio.run(prune(31))
+    status, summary, _ = _run("remote_backup", manual=False)
+    assert (status, summary["removed"]) == ("completed", 2)  # its .torrent and manifest
+    assert hashes["upgraded"] not in on_drive()
+    assert hashes["unlinked_gone"] in on_drive()  # pruned a day ago, still kept
+    assert hashes["current_gone"] in on_drive()

@@ -13021,7 +13021,8 @@
         "enum": [
           "not_archived",
           "archived",
-          "failed"
+          "failed",
+          "pruned"
         ],
         "title": "TorrentArchiveState",
         "type": "string"

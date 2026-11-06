@@ -266,7 +266,9 @@ async def build_recovery_reimport_plan(
 
     clients = await list_configured_download_clients(db)
     live_hashes, client_errors = await _live_qbit_hashes(clients, client_factory=client_factory)
-    torrents = list((await db.scalars(select(Torrent).order_by(Torrent.name.asc(), Torrent.id.asc()))).all())
+    torrents = list((await db.scalars(
+        select(Torrent).where(Torrent.archive_state != TorrentArchiveState.PRUNED).order_by(Torrent.name.asc(), Torrent.id.asc())
+    )).all())
     items: list[dict[str, Any]] = []
 
     for torrent in torrents:

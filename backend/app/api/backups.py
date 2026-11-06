@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
@@ -142,7 +143,11 @@ async def upload_backup(request: Request, _: object = Depends(require_csrf), db:
     confirmed. Uploading the same ZIP again changes nothing.
     """
 
-    handle = tempfile.NamedTemporaryFile(prefix="medialogue-upload-", suffix=".zip", delete=False)
+    # Staged under /config, which is persistent and sized for backups, rather
+    # than the container's /tmp, which may be small or in memory.
+    staging = Path(get_settings().config_dir) / "uploads"
+    staging.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(prefix="backup-", suffix=".zip", delete=False, dir=staging)
     path = Path(handle.name)
     try:
         size = 0
