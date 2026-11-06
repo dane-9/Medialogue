@@ -1,6 +1,6 @@
 
 
-export type SwarmHealth = 'dead' | 'weak' | 'healthy' | 'unknown'
+type SwarmHealth = 'dead' | 'weak' | 'healthy' | 'unknown'
 
 export const HEALTHY_SEEDERS = 5
 

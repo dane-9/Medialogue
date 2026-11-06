@@ -4,7 +4,7 @@ import { Modal } from './Modal'
 import { Button } from './ui'
 import type { Icon } from './Icon'
 
-export interface ConfirmOptions {
+interface ConfirmOptions {
   title: string
 
   body?: ReactNode

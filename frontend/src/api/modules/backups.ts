@@ -16,7 +16,7 @@ export type BackupStatus = {
   active_job_id?: string | null
 }
 
-export type CoverageStatus = 'no_torrent' | 'not_archived' | 'local_only' | 'protected'
+type CoverageStatus = 'no_torrent' | 'not_archived' | 'local_only' | 'protected'
 
 export type CoverageGap = { id: string; media_type: 'movies' | 'shows'; title: string; year?: number | null; poster_ref?: string | null; season_number?: number | null; release_name: string; status: CoverageStatus }
 
@@ -30,7 +30,7 @@ export type BackupCoverage = {
   gaps_truncated: boolean
 }
 
-export type BackupUploadResult = { written: number; present: number; skipped: number; listed: number; errors: string[] }
+type BackupUploadResult = { written: number; present: number; skipped: number; listed: number; errors: string[] }
 
 export type DatabaseCopy = { id: string; name: string; size?: number | null; created_at?: string | null; url: string }
 

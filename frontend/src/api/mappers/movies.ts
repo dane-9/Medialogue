@@ -12,7 +12,7 @@ type MovieSummaryDto = components['schemas']['MovieSummaryResponse']
 type MovieDetailDto = components['schemas']['MovieDetailResponse']
 type TagDto = components['schemas']['TagResponse']
 
-export function mapDirectory(value: MediaDirectoryDto): MovieDirectory {
+function mapDirectory(value: MediaDirectoryDto): MovieDirectory {
   return {
     id: value.id,
     path: value.resolved_path,
@@ -24,7 +24,7 @@ export function mapDirectory(value: MediaDirectoryDto): MovieDirectory {
   }
 }
 
-export function mapRelease(value: MovieReleaseDto): MovieRelease {
+function mapRelease(value: MovieReleaseDto): MovieRelease {
   return {
     id: value.id,
     name: value.raw_release_name,
@@ -46,7 +46,7 @@ export function mapRelease(value: MovieReleaseDto): MovieRelease {
   }
 }
 
-export function mapIncoming(value: MovieIncomingDto): IncomingDownload {
+function mapIncoming(value: MovieIncomingDto): IncomingDownload {
   return {
     id: value.id,
     name: value.name,
@@ -60,7 +60,7 @@ export function mapIncoming(value: MovieIncomingDto): IncomingDownload {
   }
 }
 
-export function mapReconciliation(value: MovieReconciliationDto): ReconciliationAggregate {
+function mapReconciliation(value: MovieReconciliationDto): ReconciliationAggregate {
   return {
     state: value.state,
     incomingCount: value.incoming_count,

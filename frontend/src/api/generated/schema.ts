@@ -1130,23 +1130,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/integrations/plex/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Plex Health */
-        get: operations["plex_health_api_v1_integrations_plex_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/integrations/plex/sync": {
         parameters: {
             query?: never;
@@ -2513,23 +2496,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/upgrade-candidates/{candidate_id}/quality-profile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Set Upgrade Quality Profile */
-        patch: operations["set_upgrade_quality_profile_api_v1_upgrade_candidates__candidate_id__quality_profile_patch"];
         trace?: never;
     };
     "/api/v1/upgrade-candidates/{candidate_id}/results": {
@@ -5280,33 +5246,6 @@ export interface components {
              */
             url: string;
         };
-        /** PlexHealthResponse */
-        PlexHealthResponse: {
-            /**
-             * Configured
-             * @default false
-             */
-            configured: boolean;
-            /**
-             * Enabled
-             * @default false
-             */
-            enabled: boolean;
-            /** Last Error */
-            last_error?: string | null;
-            /** Last Success */
-            last_success?: string | null;
-            /** Latency Ms */
-            latency_ms?: number | null;
-            /** Machine Identifier */
-            machine_identifier?: string | null;
-            /**
-             * Status
-             * @default unknown
-             * @enum {string}
-             */
-            status: "unknown" | "healthy" | "unavailable";
-        };
         /**
          * PresenceState
          * @enum {string}
@@ -7250,11 +7189,6 @@ export interface components {
         UpgradeQualityProfileBulkUpdate: {
             /** Candidate Ids */
             candidate_ids: string[];
-            /** Quality Profile Id */
-            quality_profile_id?: string | null;
-        };
-        /** UpgradeQualityProfileUpdate */
-        UpgradeQualityProfileUpdate: {
             /** Quality Profile Id */
             quality_profile_id?: string | null;
         };
@@ -9575,26 +9509,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    plex_health_api_v1_integrations_plex_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlexHealthResponse"];
                 };
             };
         };
@@ -12378,41 +12292,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeCleanupPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_upgrade_quality_profile_api_v1_upgrade_candidates__candidate_id__quality_profile_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                candidate_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpgradeQualityProfileUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UpgradeQualityProfileUpdateResponse"];
                 };
             };
             /** @description Validation Error */

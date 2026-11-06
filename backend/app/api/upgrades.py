@@ -54,7 +54,6 @@ from app.schemas.upgrades import (
     UpgradeCleanupResult,
     UpgradeExecuteRequest,
     UpgradeQualityProfileBulkUpdate,
-    UpgradeQualityProfileUpdate,
     UpgradeQualityProfileUpdateResponse,
     UpgradeSearchResponse,
     UpgradeSearchResultResponse,
@@ -799,24 +798,6 @@ async def _set_upgrade_quality_profile(
         quality_profile_id=quality_profile_id,
         quality_profile_name=profile.name if profile else None,
         updated_entities=changed,
-    )
-
-
-@router.patch(
-    "/upgrade-candidates/{candidate_id}/quality-profile",
-    response_model=UpgradeQualityProfileUpdateResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def set_upgrade_quality_profile(
-    candidate_id: UUID,
-    payload: UpgradeQualityProfileUpdate,
-    _: object = Depends(require_csrf),
-    db: AsyncSession = Depends(get_db),
-) -> UpgradeQualityProfileUpdateResponse:
-    return await _set_upgrade_quality_profile(
-        db,
-        candidate_ids=[candidate_id],
-        quality_profile_id=payload.quality_profile_id,
     )
 
 

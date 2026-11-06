@@ -7346,77 +7346,6 @@
         "title": "PlexConfigurationUpdate",
         "type": "object"
       },
-      "PlexHealthResponse": {
-        "properties": {
-          "configured": {
-            "default": false,
-            "title": "Configured",
-            "type": "boolean"
-          },
-          "enabled": {
-            "default": false,
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "last_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error"
-          },
-          "last_success": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Success"
-          },
-          "latency_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latency Ms"
-          },
-          "machine_identifier": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Machine Identifier"
-          },
-          "status": {
-            "default": "unknown",
-            "enum": [
-              "unknown",
-              "healthy",
-              "unavailable"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "title": "PlexHealthResponse",
-        "type": "object"
-      },
       "PresenceState": {
         "enum": [
           "present",
@@ -13580,24 +13509,6 @@
         "title": "UpgradeQualityProfileBulkUpdate",
         "type": "object"
       },
-      "UpgradeQualityProfileUpdate": {
-        "properties": {
-          "quality_profile_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quality Profile Id"
-          }
-        },
-        "title": "UpgradeQualityProfileUpdate",
-        "type": "object"
-      },
       "UpgradeQualityProfileUpdateResponse": {
         "properties": {
           "candidate_ids": {
@@ -17153,27 +17064,6 @@
           }
         },
         "summary": "Save Configuration",
-        "tags": [
-          "plex"
-        ]
-      }
-    },
-    "/api/v1/integrations/plex/health": {
-      "get": {
-        "operationId": "plex_health_api_v1_integrations_plex_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlexHealthResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Plex Health",
         "tags": [
           "plex"
         ]
@@ -21317,59 +21207,6 @@
           }
         },
         "summary": "Preview Cleanup",
-        "tags": [
-          "upgrade candidates"
-        ]
-      }
-    },
-    "/api/v1/upgrade-candidates/{candidate_id}/quality-profile": {
-      "patch": {
-        "operationId": "set_upgrade_quality_profile_api_v1_upgrade_candidates__candidate_id__quality_profile_patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "candidate_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Candidate Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpgradeQualityProfileUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UpgradeQualityProfileUpdateResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Upgrade Quality Profile",
         "tags": [
           "upgrade candidates"
         ]

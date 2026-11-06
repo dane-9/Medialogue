@@ -13,7 +13,7 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   }
 }
 
-export const TOOLTIP_DELAY = 1000
+const TOOLTIP_DELAY = 1000
 
 export function Tooltip({ content, children, className, focusable = false, asChild = false, delay = TOOLTIP_DELAY, placement = 'auto', interactive = false }: {
   content: ReactNode

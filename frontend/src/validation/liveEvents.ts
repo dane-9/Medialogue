@@ -22,7 +22,7 @@ const jobStatusDataSchema = z.object({
   updated_at: z.string().nullable(),
 })
 
-export type LiveEvent = {
+type LiveEvent = {
   event: string
   entity_type: string
   entity_id: string | null
@@ -44,7 +44,7 @@ type JobStatusData = {
   updated_at: string | null
 }
 
-export type JobStatusLiveEvent = LiveEvent & { data: JobStatusData }
+type JobStatusLiveEvent = LiveEvent & { data: JobStatusData }
 
 export function parseLiveEventData(raw: string): LiveEvent | null {
   try {

@@ -1,6 +1,6 @@
 
 
-export interface QualityParts {
+interface QualityParts {
   resolution?: string
   type: string
 }

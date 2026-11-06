@@ -1,4 +1,4 @@
-export type HighlightedMatch = { before: string; hit: string; after: string }
+type HighlightedMatch = { before: string; hit: string; after: string }
 
 /** Split `subject` around the first occurrence of `hit`.
  *

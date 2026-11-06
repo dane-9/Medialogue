@@ -1,6 +1,6 @@
-export type MatchedFormat = { id: string; name: string; contribution: number }
+type MatchedFormat = { id: string; name: string; contribution: number }
 
-export type ReleaseScoreBreakdown = {
+type ReleaseScoreBreakdown = {
   profileName?: string
   total?: number
   matched: MatchedFormat[]

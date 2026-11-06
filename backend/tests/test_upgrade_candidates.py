@@ -716,10 +716,10 @@ def test_upgrade_profile_controls_preserve_overrides_and_support_bulk(client: Te
     assert listed["quality_profile_id"] == default["id"]
     assert listed["quality_profile_inherited"] is False
 
-    changed = client.patch(
-        f"/api/v1/upgrade-candidates/{candidate_id}/quality-profile",
+    changed = client.post(
+        "/api/v1/upgrade-candidates/quality-profile",
         headers=headers,
-        json={"quality_profile_id": preferred["id"]},
+        json={"candidate_ids": [candidate_id], "quality_profile_id": preferred["id"]},
     )
     assert changed.status_code == 202, changed.text
     assert changed.json()["quality_profile_id"] == preferred["id"]

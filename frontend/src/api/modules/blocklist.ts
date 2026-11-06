@@ -5,7 +5,6 @@ const mapEntry = (value: Awaited<ReturnType<typeof rawEntries>>['items'][number]
   id: value.id,
   mediaType: value.media_type,
   targetEntityType: value.target_entity_type,
-  targetEntityId: value.target_entity_id ?? undefined,
   mediaResourceId: value.media_resource_id ?? undefined,
   mediaTitle: value.media_title ?? undefined,
   sourceTitle: value.source_title,

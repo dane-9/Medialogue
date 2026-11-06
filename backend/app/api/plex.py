@@ -14,7 +14,7 @@ from app.integrations.plex import PlexClient
 from app.models.auth import AdminUser
 from app.models.domain import Movie, Show
 from app.schemas.jobs import JobAcceptedResponse
-from app.schemas.plex import PlexConfigurationResponse, PlexConfigurationUpdate, PlexHealthResponse
+from app.schemas.plex import PlexConfigurationResponse, PlexConfigurationUpdate
 from app.services.integration_state import ConfiguredPlex, get_configured_plex
 from app.services.jobs import create_job, publish_job_status
 from app.services.plex import get_plex_configuration
@@ -44,20 +44,6 @@ def _response(configuration: ConfiguredPlex | None) -> PlexConfigurationResponse
         latency_ms=configuration.latency_ms,
         last_error=configuration.last_error,
         revision=configuration.revision,
-    )
-
-
-def _health_response(configuration: ConfiguredPlex | None) -> PlexHealthResponse:
-    if configuration is None:
-        return PlexHealthResponse()
-    return PlexHealthResponse(
-        configured=True,
-        enabled=configuration.enabled,
-        status=configuration.health if configuration.enabled else "unknown",
-        machine_identifier=configuration.machine_identifier,
-        last_success=configuration.last_success_at,
-        latency_ms=configuration.latency_ms,
-        last_error=configuration.last_error,
     )
 
 
@@ -102,13 +88,6 @@ async def save_configuration(
     await request_health_sweep(db)
     await db.commit()
     return _response(configuration)
-
-
-@router.get("/integrations/plex/health", response_model=PlexHealthResponse)
-async def plex_health(
-    _: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)
-) -> PlexHealthResponse:
-    return _health_response(await get_plex_configuration(db))
 
 
 @router.post("/integrations/plex/sync", response_model=JobAcceptedResponse, status_code=202)

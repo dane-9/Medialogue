@@ -2,7 +2,6 @@ import type { components } from '../generated/schema'
 import { openApiClient, openApiData } from '../transport'
 
 export type ReplacementItem = components['schemas']['ReplacementItem']
-export type ReplacementTab = ReplacementItem['tab']
 export type MediaHistoryItem = components['schemas']['MediaHistoryItem']
 
 export const replacementsApi = {

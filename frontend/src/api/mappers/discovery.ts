@@ -4,7 +4,7 @@ import type { components } from '../generated/schema'
 type MediaDiscoveryDto = components['schemas']['MediaDiscoveryResponse']
 type MediaDiscoveryCandidateDto = components['schemas']['MediaDiscoveryCandidate']
 
-export function mapDiscoveryCandidate(value: MediaDiscoveryCandidateDto, mediaType: MediaDiscovery['mediaType']): TMDBMovieLookup | TMDBShowLookup {
+function mapDiscoveryCandidate(value: MediaDiscoveryCandidateDto, mediaType: MediaDiscovery['mediaType']): TMDBMovieLookup | TMDBShowLookup {
   const candidate = {
     tmdbId: value.tmdb_id,
     title: value.title,

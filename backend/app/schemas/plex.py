@@ -23,13 +23,3 @@ class PlexConfigurationResponse(BaseModel):
     latency_ms: int | None = None
     last_error: str | None = None
     revision: int | None = None
-
-
-class PlexHealthResponse(BaseModel):
-    configured: bool = False
-    enabled: bool = False
-    status: Literal["unknown", "healthy", "unavailable"] = "unknown"
-    machine_identifier: str | None = None
-    last_success: datetime | None = None
-    latency_ms: int | None = None
-    last_error: str | None = None

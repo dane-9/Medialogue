@@ -126,4 +126,3 @@ export function EmptyState({ icon = 'clapper', title, detail, action }: { icon?:
 
 export function Progress({ value, tone = 'blue' }: { value: number; tone?: 'blue' | 'green' | 'amber' }) { return <div className={`progress progress-${tone}`}><span style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div> }
 
-export function Stat({ label, value, detail, tone = 'default' }: { label: string; value: string; detail?: string; tone?: string }) { return <div className={`stat stat-${tone}`}><div className="stat-label">{label}</div><div className="stat-value">{value}</div>{detail && <div className="stat-detail">{detail}</div>}</div> }

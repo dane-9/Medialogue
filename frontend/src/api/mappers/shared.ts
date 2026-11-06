@@ -1,11 +1,3 @@
-export function textValue(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : value === undefined || value === null ? fallback : String(value)
-}
-
-export function regexLiteral(value: unknown): string {
-  return textValue(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 export function numberValue(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value)
     ? value

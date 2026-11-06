@@ -2,7 +2,7 @@ import type { MediaDiscovery } from '../types'
 
 export const CONFIDENT = 0.85
 
-export type NewMediaLane = 'ready' | 'attention'
+type NewMediaLane = 'ready' | 'attention'
 
 export function laneFor(item: MediaDiscovery): NewMediaLane {
   if (!item.exists) return 'attention'
@@ -11,7 +11,7 @@ export function laneFor(item: MediaDiscovery): NewMediaLane {
   return 'ready'
 }
 
-export interface NewMediaFilters {
+interface NewMediaFilters {
   mediaType?: 'movies' | 'shows'
   rootName?: string
   query?: string
@@ -32,7 +32,7 @@ export function filterDiscoveries(items: readonly MediaDiscovery[], filters: New
   })
 }
 
-export interface Triage {
+interface Triage {
   ready: MediaDiscovery[]
   attention: MediaDiscovery[]
 }
@@ -43,7 +43,7 @@ export function triage(items: readonly MediaDiscovery[]): Triage {
   return result
 }
 
-export interface NewMediaRoot {
+interface NewMediaRoot {
   name: string
   mediaType: 'movies' | 'shows'
   count: number

@@ -2,14 +2,14 @@
 
 const LINE_HEIGHT = 16
 
-export interface WheelLike {
+interface WheelLike {
   deltaX: number
   deltaY: number
 
   deltaMode?: number
 }
 
-export interface ScrollBox {
+interface ScrollBox {
   scrollLeft: number
   scrollWidth: number
   clientWidth: number

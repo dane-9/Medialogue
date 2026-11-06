@@ -1,6 +1,6 @@
-export type HealthState = 'healthy' | 'degraded' | 'offline' | 'unknown'
+type HealthState = 'healthy' | 'degraded' | 'offline' | 'unknown'
 
-export interface HealthIndicatorItem {
+interface HealthIndicatorItem {
   id: string
   name: string
   state: HealthState
@@ -25,18 +25,18 @@ export interface HealthIndicator {
   items: HealthIndicatorItem[]
 }
 
-export type PlexHealthState = 'healthy' | 'unavailable' | 'unknown'
-export type IdentityState = 'matched' | 'manual' | 'uncertain' | 'conflict' | 'unmatched'
+type PlexHealthState = 'healthy' | 'unavailable' | 'unknown'
+type IdentityState = 'matched' | 'manual' | 'uncertain' | 'conflict' | 'unmatched'
 export type ReleaseState = 'current' | 'missing' | 'replaced' | 'removed' | 'conflict' | 'duplicate'
-export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
-export type ProblemStatus = 'open' | 'resolved' | 'dismissed'
+type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+type ProblemStatus = 'open' | 'resolved' | 'dismissed'
 export type ProblemAction = 'restore' | 'dismiss' | 'recheck' | 'confirm_movie_match' | 'confirm_show_match'
-export type SearchTargetEntityType = 'tmdb_movie' | 'tmdb_show_season' | 'movie' | 'episode' | 'season'
-export type SearchIndexerState = 'queued' | 'completed' | 'failed'
-export type TorrentArchiveState = 'not_archived' | 'archived' | 'failed' | 'pruned'
-export type TorrentMediaState = 'untracked' | 'tracked' | 'backed_up' | 'archived' | 'partial' | 'attention'
-export type TorrentAssociationType = 'incoming' | 'attached' | 'historical'
-export type MediaRole = 'movie_video' | 'episode_video' | 'multi_episode_video' | 'dvd_structure' | 'bluray_structure' | 'other_media'
+type SearchTargetEntityType = 'tmdb_movie' | 'tmdb_show_season' | 'movie' | 'episode' | 'season'
+type SearchIndexerState = 'queued' | 'completed' | 'failed'
+type TorrentArchiveState = 'not_archived' | 'archived' | 'failed' | 'pruned'
+type TorrentMediaState = 'untracked' | 'tracked' | 'backed_up' | 'archived' | 'partial' | 'attention'
+type TorrentAssociationType = 'incoming' | 'attached' | 'historical'
+type MediaRole = 'movie_video' | 'episode_video' | 'multi_episode_video' | 'dvd_structure' | 'bluray_structure' | 'other_media'
 
 export interface PlexConfiguration {
   configured: boolean
@@ -131,7 +131,7 @@ export interface MovieRelease {
   torrentStatus: MediaTorrentStatus
 }
 
-export type MovieEditionMode = 'automatic' | 'standard' | 'named'
+type MovieEditionMode = 'automatic' | 'standard' | 'named'
 
 export interface MovieEditionUpdate {
   releaseId: string
@@ -408,10 +408,10 @@ export interface Download {
   category?: string
 }
 
-export type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision' | 'replacement'
-export type UpgradeExecutionState = 'submitted' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
+type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision' | 'replacement'
+type UpgradeExecutionState = 'submitted' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
 
-export interface UpgradeCurrentRelease {
+interface UpgradeCurrentRelease {
   id: string
   name: string
   quality?: string
@@ -427,7 +427,7 @@ export interface UpgradeMatchedFormat {
   group?: string
 }
 
-export interface UpgradeCustomFormatImprovement {
+interface UpgradeCustomFormatImprovement {
   id: string
   name: string
   contribution: number
@@ -511,7 +511,7 @@ export interface UpgradeCandidate {
   updatedAt: string
 }
 
-export interface UpgradeSearchResult {
+interface UpgradeSearchResult {
   id: string
   indexerId?: string
   indexerName: string
@@ -540,7 +540,7 @@ export interface UpgradeSearchResults {
   results: UpgradeSearchResult[]
 }
 
-export interface UpgradeCleanupTarget {
+interface UpgradeCleanupTarget {
   path: string
   kind: 'directory' | 'file'
   inventory: Record<string, unknown>[]
@@ -656,7 +656,6 @@ export interface BlocklistEntry {
   id: string
   mediaType: 'movies' | 'shows'
   targetEntityType: string
-  targetEntityId?: string
   mediaResourceId?: string
   mediaTitle?: string
   sourceTitle: string
@@ -667,7 +666,7 @@ export interface BlocklistEntry {
   createdAt: string
 }
 
-export interface InteractiveSearchIndexerStatus {
+interface InteractiveSearchIndexerStatus {
   id: string
   name: string
   status: SearchIndexerState
@@ -676,7 +675,7 @@ export interface InteractiveSearchIndexerStatus {
   error?: string
 }
 
-export interface InteractiveSearchTarget {
+interface InteractiveSearchTarget {
   mediaType: 'movies' | 'shows'
   entityType: SearchTargetEntityType
   entityId?: string
@@ -691,7 +690,7 @@ export interface InteractiveSearchTarget {
   qualityProfileId?: string
 }
 
-export interface InteractiveSearchProgress {
+interface InteractiveSearchProgress {
   totalIndexers: number
   completedIndexers: number
   percent: number
@@ -777,9 +776,9 @@ export interface ScheduledTask {
   activeJobStatus?: JobStatus
 }
 
-export type RecoveryReimportStatus = 'ready' | 'already_present' | 'blocked'
+type RecoveryReimportStatus = 'ready' | 'already_present' | 'blocked'
 
-export interface RecoveryReimportItem {
+interface RecoveryReimportItem {
   torrentId: string
   infoHash: string
   torrentName: string
@@ -972,7 +971,7 @@ export interface QualityDefinition {
   enabled: boolean
 }
 
-export interface QualityProfileScore {
+interface QualityProfileScore {
   customFormatId: string
   customFormatName: string
   score: number
@@ -997,7 +996,7 @@ export interface QualityProfile {
   updatedAt: string
 }
 
-export interface MediaProfileScore {
+interface MediaProfileScore {
   customFormatId: string
   customFormatName: string
   profileScore: number

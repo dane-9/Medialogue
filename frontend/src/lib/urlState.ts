@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-export type UrlSetter<T> = (next: T | ((previous: T) => T)) => void
+type UrlSetter<T> = (next: T | ((previous: T) => T)) => void
 
 const resolve = <T,>(next: T | ((previous: T) => T), previous: T): T =>
   typeof next === 'function' ? (next as (previous: T) => T)(previous) : next

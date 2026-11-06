@@ -1,4 +1,4 @@
-export interface ReleaseToken {
+interface ReleaseToken {
   text: string
   /** The separator that precedes this token; empty for the first one. */
   sep: string

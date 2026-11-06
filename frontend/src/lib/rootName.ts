@@ -1,6 +1,6 @@
 
 
-export type RootNameBase = 'Movies' | 'Shows'
+type RootNameBase = 'Movies' | 'Shows'
 
 const GENERATED = /^(Movies|Shows)(\s+\d+)?$/i
 

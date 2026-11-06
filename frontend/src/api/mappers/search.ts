@@ -4,7 +4,7 @@ import type { components } from '../generated/schema'
 type SearchResultDto = components['schemas']['SearchResultResponse']
 type SearchJobDto = components['schemas']['SearchJobResponse']
 
-export function mapInteractiveSearchResult(value: SearchResultDto): InteractiveSearchResult {
+function mapInteractiveSearchResult(value: SearchResultDto): InteractiveSearchResult {
   return {
     id: value.id,
     jobId: value.job_id,

@@ -11,7 +11,7 @@ export interface TapEvent {
   altKey?: boolean
 }
 
-export interface TapResult {
+interface TapResult {
 
   triggered: boolean
 

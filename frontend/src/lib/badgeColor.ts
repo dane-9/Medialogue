@@ -1,6 +1,6 @@
 
 
-export interface BadgeColor {
+interface BadgeColor {
 
   text: string
   border: string

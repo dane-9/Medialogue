@@ -1,6 +1,6 @@
 import type { MediaProfileSettings } from '../types'
 
-export type ProfileFormState = {
+type ProfileFormState = {
   profileId: string
   minimumOverrideId: string
   minimumScoreOverride: string

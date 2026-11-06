@@ -171,19 +171,6 @@ export const upgradesApi = {
     }))
     return { jobId: value.job_id }
   },
-  setUpgradeQualityProfile: async (candidateId: string, qualityProfileId: string | null) => {
-    const value = await openApiData(openApiClient.PATCH('/api/v1/upgrade-candidates/{candidate_id}/quality-profile', {
-      params: { path: { candidate_id: candidateId } },
-      body: { quality_profile_id: qualityProfileId },
-    }))
-    return {
-      jobId: value.job_id,
-      candidateIds: value.candidate_ids,
-      qualityProfileId: value.quality_profile_id ?? undefined,
-      qualityProfileName: value.quality_profile_name ?? undefined,
-      updatedEntities: value.updated_entities,
-    }
-  },
   setUpgradeQualityProfiles: async (candidateIds: string[], qualityProfileId: string | null) => {
     const value = await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/quality-profile', {
       body: { candidate_ids: candidateIds, quality_profile_id: qualityProfileId },

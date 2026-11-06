@@ -7,7 +7,7 @@ type RemotePathMappingDto = components['schemas']['RemotePathMappingResponse']
 type FilesystemListingDto = components['schemas']['FilesystemListing']
 type LibrarySummaryDto = components['schemas']['LibrarySummary']
 
-export function mapStorageRootScan(value: StorageRootScanDto | null | undefined): StorageRootScan | undefined {
+function mapStorageRootScan(value: StorageRootScanDto | null | undefined): StorageRootScan | undefined {
   if (!value) return undefined
   return {
     job_id: value.job_id,

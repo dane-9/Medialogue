@@ -8,7 +8,7 @@ type SeasonDto = components['schemas']['SeasonResponse']
 type ShowSummaryDto = components['schemas']['ShowSummaryResponse']
 type ShowDetailDto = components['schemas']['ShowDetailResponse']
 
-export function mapEpisodeMedia(value: EpisodeMediaDto): EpisodeMedia {
+function mapEpisodeMedia(value: EpisodeMediaDto): EpisodeMedia {
   return {
     mediaFileId: value.media_file_id,
     showReleaseId: value.show_release_id ?? undefined,

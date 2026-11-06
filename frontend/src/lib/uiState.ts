@@ -1,6 +1,6 @@
 import type { Problem } from '../types'
 
-export type MediaView = 'cards' | 'table'
+type MediaView = 'cards' | 'table'
 
 export function normalizeMediaView(value: string | null | undefined, fallback: MediaView = 'cards'): MediaView {
   return value === 'table' || value === 'cards' ? value : fallback

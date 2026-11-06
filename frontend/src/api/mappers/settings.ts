@@ -15,7 +15,7 @@ type MediaProfileSettingsDto = components['schemas']['MediaProfileSettingsRespon
 type CustomFormatConditionInputDto = components['schemas']['CustomFormatConditionInput']
 type CustomFormatCreateDto = components['schemas']['CustomFormatCreate']
 
-export function mapCustomFormatCondition(value: CustomFormatConditionDto): CustomFormatCondition {
+function mapCustomFormatCondition(value: CustomFormatConditionDto): CustomFormatCondition {
   return {
     id: value.id,
     name: value.name ?? undefined,
@@ -56,7 +56,7 @@ export function mapCustomFormatSection(value: CustomFormatSectionDto): CustomFor
   }
 }
 
-export function mapConditionEvaluation(value: CustomFormatConditionEvaluationDto): CustomFormatConditionEvaluation {
+function mapConditionEvaluation(value: CustomFormatConditionEvaluationDto): CustomFormatConditionEvaluation {
   return {
     conditionId: value.condition_id,
     conditionType: value.condition_type,
@@ -155,7 +155,7 @@ export function mapMediaProfileSettings(value: MediaProfileSettingsDto): MediaPr
   }
 }
 
-export function customFormatConditionPayload(condition: CustomFormatCondition): CustomFormatConditionInputDto {
+function customFormatConditionPayload(condition: CustomFormatCondition): CustomFormatConditionInputDto {
   return {
     id: condition.id || undefined,
     name: condition.name || undefined,

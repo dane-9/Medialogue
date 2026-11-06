@@ -11,7 +11,7 @@ import type { RootDraft } from './lib/rootDraft'
 import { describeScan } from './lib/scanProgress'
 import { needsAttention, statusTone } from './lib/status'
 import { diffReleaseTokens } from './lib/releaseTokens'
-import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason, UPGRADE_REASON_SCORE } from './lib/upgradeTokenReason'
+import { candidateFormatReasons, shareCombinedDynamicRangeReasons, upgradeTokenReason, UPGRADE_REASON_SCORE } from './lib/upgradeTokenReason'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { ReleaseSourcePill } from './components/ReleaseSourcePill'
 import { MediaHistoryModal } from './components/MediaHistoryModal'
@@ -37,7 +37,6 @@ import { useConfirm } from './components/Confirm'
 import { Modal } from './components/Modal'
 import { PageTopbar, usePlexAvailable } from './components/Shell'
 import { Badge, Button, EmptyState, EnabledButton, Input, Panel, Progress, Segmented, Select, Slider } from './components/ui'
-import { ApiError } from './api/transport'
 import { authApi } from './api/modules/auth'
 import { blocklistApi } from './api/modules/blocklist'
 import { discoveryApi } from './api/modules/discovery'
@@ -68,13 +67,13 @@ export function tmdbPosterUrl(reference?: string) {
 }
 
 /** A small poster for list rows, or the movie/show icon when there is none. */
-export function RowPoster({ reference, mediaType }: { reference?: string | null; mediaType?: string | null }) {
+function RowPoster({ reference, mediaType }: { reference?: string | null; mediaType?: string | null }) {
   return <span className="new-media-poster row-poster">{reference
     ? <img src={tmdbPosterUrl(reference)} alt="" loading="lazy" referrerPolicy="no-referrer" />
     : <Icon name={mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
 }
 
-export function PosterImage({ reference, title }: { reference?: string; title: string }) {
+function PosterImage({ reference, title }: { reference?: string; title: string }) {
   const src = tmdbPosterUrl(reference)
   if (!src) return null
   return <img className="poster-image" src={src} alt={`${title} poster`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} />
@@ -148,9 +147,6 @@ function LibraryFilter({ value, options, onChange, ariaLabel }: { value: string;
   />
 }
 
-function FilterChips({ value, options, onChange, className = '' }: { value: string; options: string[]; onChange: (value: string) => void; className?: string }) {
-  return <div className={`media-filter-row ${className}`} role="group" aria-label="Filter library">{options.map((option) => <button type="button" className={`filter-chip ${value === option ? 'active' : ''}`} key={option} onClick={() => onChange(option)}>{option}</button>)}</div>
-}
 
 export function MoviesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1500,9 +1496,6 @@ export function DownloadsPage() {
     <p>{[item.quality, item.edition, item.client].filter(Boolean).join(' · ') || item.client}</p>
   </>
   const progressNote = (item: Download) => item.amountLeft ? `${item.amountLeft} left of ${item.size}` : `${item.size} complete`
-  const mediaNote = (item: Download) => item.incoming
-    ? item.incomingKind === 'replacement' ? 'Incoming replacement' : 'Incoming release'
-    : item.reconciliationState ?? item.mediaState ?? item.kind
   // qBittorrent renders peer counts as "connected (swarm total)". The total is
   // only shown when the tracker actually reported one.
   const peerCount = (connected?: number, total?: number) => total === undefined ? `${connected ?? 0}` : `${connected ?? 0} (${total})`
@@ -2043,9 +2036,6 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
   }
 
   if (problem.code === 'PLEX_IDENTITY_MISMATCH') {
-    const localPath = problemText(details.local_path ?? details.medialogue_path)
-    const plexPath = problemText(details.plex_path ?? details.plex_reported_path)
-    const differences = Array.isArray(details.differences) ? details.differences.map((value) => problemText(value)).filter((value): value is string => Boolean(value)) : []
     const conflicts = Array.isArray(details.conflicts) ? details.conflicts.map(problemRecord) : []
     if (problem.entityType === 'show' && conflicts.length > 0) return <div className="problem-evidence-block">
       <div className="problem-evidence-note">Plex show titles are advisory. This Problem exists only because Plex mapped the same physical file to different season/episode numbers.</div>
@@ -4634,7 +4624,7 @@ function formatScoreDelta(value: number) {
 
 /** The two scores' Custom Formats side by side, on hover. Replace Media
  *  shows it for its replacements too. */
-export type UpgradeCompareScores = Pick<UpgradeCandidate, 'currentMatchedFormats' | 'candidateMatchedFormats' | 'currentCustomFormatScore' | 'customFormatScore' | 'scoreDelta'>
+type UpgradeCompareScores = Pick<UpgradeCandidate, 'currentMatchedFormats' | 'candidateMatchedFormats' | 'currentCustomFormatScore' | 'customFormatScore' | 'scoreDelta'>
 
 export function UpgradeCompare({ item, profile, children }: { item: UpgradeCompareScores; profile: string; children: ReactNode }) {
   // Formats of one group (Audio, Dynamic Range, ...) fill the same part of a
@@ -4726,9 +4716,6 @@ function upgradeEditionLabel(edition?: string) {
   return edition?.trim() || 'Theatrical Cut'
 }
 
-function upgradeEditionsMatch(current?: string, candidate?: string) {
-  return upgradeEditionLabel(current).toLocaleLowerCase() === upgradeEditionLabel(candidate).toLocaleLowerCase()
-}
 
 function formatUpgradeBytes(bytes?: number) {
   if (bytes === undefined || bytes === null || !Number.isFinite(bytes)) return '-'
@@ -4916,16 +4903,6 @@ export function UpgradeMediaPage() {
     } : item))
   }
 
-  const setRowProfile = async (item: UpgradeCandidate, profileId: string | null) => {
-    setProfileBusy(true); setError(''); setMessage('')
-    try {
-      const result = await upgradesApi.setUpgradeQualityProfile(item.id, profileId)
-      applyProfileResult(result)
-      setMessage('Quality Profile changed. Upgrade candidates are being re-evaluated.')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not set the Quality Profile.') }
-    finally { setProfileBusy(false) }
-  }
-
   // Submitted one at a time so a rejected candidate does not discard the rest,
   // and so a failure can name which one it was.
   const executeChosen = async () => {
@@ -5002,7 +4979,6 @@ export function UpgradeMediaPage() {
     finally { setBusyId('') }
   }
 
-  const ready = items.filter((item) => !item.executionState).length
   const showResultsEdition = Boolean(
     resultsTarget?.mediaType === 'movies'
     && (resultsTarget.currentEdition || resultsTarget.movieHasMultipleEditions),
@@ -5077,7 +5053,6 @@ export function UpgradeMediaPage() {
     setCategories([])
     setConfirming(true)
   }
-  const active = items.filter((item) => item.executionState && item.executionState !== 'completed').length
 
   return <Page
     title="Upgrade Media"
