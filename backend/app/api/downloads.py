@@ -463,7 +463,9 @@ async def _load_page_context(
         associations=associations,
         problems=problems,
         root_names=root_names,
-        payload_groups=_payload_group_ids(rows, associations),
+        # Path resolution and hard-link inspection stat every payload file;
+        # on network storage that must not stall the event loop.
+        payload_groups=await asyncio.to_thread(_payload_group_ids, rows, associations),
     )
 
 
@@ -1094,6 +1096,34 @@ async def list_downloads(
     page_rows = (
         await db.execute(base.order_by(order).offset((page - 1) * page_size).limit(page_size))
     ).all()
+
+    # Cross-seeds sharing one exact qBittorrent content path are shown as one
+    # payload group. Pull partners that sorted onto another page into this
+    # one so a group is never split across pages.
+    page_ids = {observation.id for observation, _torrent in page_rows}
+    partner_paths = {
+        observation.resolved_save_path
+        for observation, torrent in page_rows
+        if observation.resolved_save_path
+        and str((torrent.metadata_json or {}).get("content_path") or "").strip()
+    }
+    if partner_paths:
+        partners = (
+            await db.execute(
+                base.where(
+                    TorrentClientObservation.resolved_save_path.in_(partner_paths),
+                    TorrentClientObservation.id.not_in(page_ids),
+                )
+            )
+        ).all()
+        page_rows = [
+            *page_rows,
+            *(
+                row
+                for row in partners
+                if str((row[1].metadata_json or {}).get("content_path") or "").strip()
+            ),
+        ]
 
     configured_by_id = {item.id: item for item in await list_configured_download_clients(db)}
     page_rows = [row for row in page_rows if row[0].download_client_id in configured_by_id]

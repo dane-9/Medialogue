@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -97,6 +98,11 @@ async def _create_auth_session(
     )
 
 
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    return hash_password(secrets.token_urlsafe(32))
+
+
 def _login_throttle_error(retry_after: int) -> AppError:
     return AppError(
         "LOGIN_THROTTLED",
@@ -129,7 +135,10 @@ async def login(
     result = await db.execute(select(AdminUser).where(AdminUser.username == payload.username))
     admin = result.scalar_one_or_none()
 
-    if admin is None or not verify_password(payload.password, admin.password_hash):
+    # Always run one password verification so response timing does not reveal
+    # whether the username exists.
+    password_ok = verify_password(payload.password, admin.password_hash if admin is not None else _dummy_password_hash())
+    if admin is None or not password_ok:
         login_rate_limiter.record_failure(key)
         raise AppError("INVALID_CREDENTIALS", "Username or password is incorrect.", status_code=401)
 

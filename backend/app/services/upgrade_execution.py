@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.security import consume_confirmation_jti, sign_confirmation_payload, verify_confirmation_payload
+from app.integrations.filesystem import VIDEO_SUFFIXES
 from app.integrations.qbittorrent import magnet_info_hash, torrent_payload_info_hash
 from app.models.domain import (
     AccessMode,
@@ -86,6 +87,10 @@ def _movie_edition_error(current: str | None, candidate: str | None) -> str:
         "The replacement edition does not match the current Movie edition "
         f"({edition_label(current)} → {edition_label(candidate)}). Search for upgrades again."
     )
+
+
+def _path_key(path: Path) -> str:
+    return str(path.resolve(strict=False)).casefold()
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -276,7 +281,7 @@ async def _old_live_torrents(
     # hard-linked cross-seed). The qBittorrent content path is therefore an
     # independent ownership boundary before old media may be deleted.
     old_paths = await _old_media_paths(db, row)
-    old_identities = _payload_file_identities(old_paths)
+    old_identities = await asyncio.to_thread(_payload_file_identities, old_paths)
     candidates = (
         await db.execute(
             select(Torrent, TorrentClientObservation)
@@ -312,7 +317,9 @@ async def _old_live_torrents(
         if client is None or not client.enabled or client.scope != row.media_type:
             continue
         resolved = str(observation.resolved_save_path or "").strip()
-        if resolved and _content_path_owns_payload(torrent, observation, Path(resolved), old_paths, old_identities):
+        if resolved and await asyncio.to_thread(
+            _content_path_owns_payload, torrent, observation, Path(resolved), old_paths, old_identities
+        ):
             unique[key] = (torrent, observation, True)
     return list(unique.values())
 
@@ -325,6 +332,28 @@ async def _assert_old_torrents_archived(db: AsyncSession, row: UpgradeCandidate)
                 f"The current torrent {torrent.info_hash} must be backed up before Medialogue can upgrade it.",
                 status_code=409,
             )
+
+
+async def _assert_not_blocklisted(db: AsyncSession, row: UpgradeCandidate, info_hash: str | None = None) -> None:
+    from app.services.blocklist import matching_blocklist_entry
+
+    blocked = await matching_blocklist_entry(
+        db,
+        media_type=row.media_type,
+        target_entity_type="movie" if row.media_type == MediaType.MOVIES else "season",
+        target_entity_id=row.movie_id if row.media_type == MediaType.MOVIES else row.season_id,
+        source_title=row.title,
+        indexer_id=row.indexer_id,
+        indexer_name=row.indexer_name,
+        info_hash=info_hash,
+    )
+    if blocked is not None:
+        raise AppError(
+            "RELEASE_BLOCKLISTED",
+            "This release previously failed. Remove it from the Blocklist before downloading it again.",
+            status_code=409,
+            details={"blocklist_id": str(blocked.id), "reason": blocked.reason},
+        )
 
 
 async def submit_upgrade_candidate(
@@ -346,6 +375,7 @@ async def submit_upgrade_candidate(
         raise AppError("UPGRADE_NOT_ELIGIBLE", row.execution_block_reason or "This upgrade cannot be executed.", status_code=409)
     if not row.download_url:
         raise AppError("UPGRADE_NOT_DOWNLOADABLE", "The indexer did not provide a downloadable torrent for this candidate.", status_code=409)
+    await _assert_not_blocklisted(db, row)
 
     releases = await _current_releases(db, row)
     active = (await db.scalars(select(UpgradeCandidate).where(UpgradeCandidate.id != row.id,
@@ -404,6 +434,7 @@ async def submit_upgrade_candidate(
         }
         if row.download_url.casefold().startswith("magnet:"):
             submitted_info_hash = magnet_info_hash(row.download_url)
+            await _assert_not_blocklisted(db, row, submitted_info_hash)
             if row.target_key.startswith("replace:") and (not submitted_info_hash or submitted_info_hash.lower() in row.comparison_snapshot.get("excluded_hashes", [])):
                 raise AppError("REPLACEMENT_SAME_TORRENT", "The indexer returned an existing or unidentified torrent. Choose another result.", status_code=409)
             await adapter.add_url(row.download_url, **options)
@@ -411,6 +442,7 @@ async def submit_upgrade_candidate(
             torznab = torznab_client_factory(indexer.torznab_url, indexer.api_key, timeout=float(indexer.timeout_seconds))
             torrent_bytes = await torznab.fetch_torrent(row.download_url)
             submitted_info_hash = torrent_payload_info_hash(torrent_bytes)
+            await _assert_not_blocklisted(db, row, submitted_info_hash)
             if row.target_key.startswith("replace:") and (not submitted_info_hash or submitted_info_hash.lower() in row.comparison_snapshot.get("excluded_hashes", [])):
                 raise AppError("REPLACEMENT_SAME_TORRENT", "The indexer returned an existing or unidentified torrent. Choose another result.", status_code=409)
             safe_name = "".join(char if char.isalnum() or char in " ._-" else "_" for char in row.title).strip()
@@ -769,23 +801,73 @@ async def advance_upgrade_handoff(
     if bool((row.comparison_snapshot or {}).get("delete_old_media_after_upgrade")):
         core = await _cleanup_core(db, row)
         if core["blocked"]:
-            row.execution_state = "handoff_attention"
-            row.execution_error = (
-                "Replacement validated and old torrents were retired, but automatic old-media cleanup was blocked: "
-                + " ".join(core["blocked"])
-            )
-            await create_event(
-                db,
-                "upgrade.cleanup_blocked",
-                entity_type="upgrade_candidate",
-                entity_id=row.id,
-                message="Automatic removal of superseded media was blocked by a safety check.",
-                details={"candidate_id": str(row.id), "blocked": list(core["blocked"])},
-            )
+            await _block_automatic_cleanup(db, row, core["blocked"])
         else:
-            await _perform_cleanup(db, row, core, automatic=True)
+            # Files are deleted only by run_automatic_cleanups(), after this
+            # validated handoff has been committed. Deleting inside the
+            # caller's transaction could leave media gone while a later
+            # rollback restores the old release as current.
+            row.comparison_snapshot = {**(row.comparison_snapshot or {}), "automatic_cleanup_pending": True}
     publish_live_event("upgrade.execution", entity_type="upgrade_candidate", entity_id=row.id, data={"candidate_id": str(row.id), "state": row.execution_state})
     return row
+
+
+async def _block_automatic_cleanup(db: AsyncSession, row: UpgradeCandidate, blocked: list[str]) -> None:
+    row.execution_state = "handoff_attention"
+    row.execution_error = (
+        "Replacement validated and old torrents were retired, but automatic old-media cleanup was blocked: "
+        + " ".join(blocked)
+    )
+    row.comparison_snapshot = {
+        key: value for key, value in (row.comparison_snapshot or {}).items() if key != "automatic_cleanup_pending"
+    }
+    await create_event(
+        db,
+        "upgrade.cleanup_blocked",
+        entity_type="upgrade_candidate",
+        entity_id=row.id,
+        message="Automatic removal of superseded media was blocked by a safety check.",
+        details={"candidate_id": str(row.id), "blocked": list(blocked)},
+    )
+
+
+async def run_automatic_cleanups(db: AsyncSession) -> int:
+    """Delete pre-authorized superseded media for committed, validated handoffs.
+
+    Each candidate runs in its own transaction: database state is flushed
+    first, files are deleted, then the transaction commits immediately.
+    """
+
+    rows = (
+        await db.scalars(select(UpgradeCandidate).where(UpgradeCandidate.execution_state == "cleanup_required"))
+    ).all()
+    pending_ids = [row.id for row in rows if (row.comparison_snapshot or {}).get("automatic_cleanup_pending")]
+    completed = 0
+    for candidate_id in pending_ids:
+        try:
+            row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.id == candidate_id).with_for_update())
+            if row is None or row.execution_state != "cleanup_required":
+                continue
+            core = await _cleanup_core(db, row)
+            if core["blocked"]:
+                await _block_automatic_cleanup(db, row, core["blocked"])
+            else:
+                row.comparison_snapshot = {
+                    key: value
+                    for key, value in (row.comparison_snapshot or {}).items()
+                    if key != "automatic_cleanup_pending"
+                }
+                await _perform_cleanup(db, row, core, automatic=True)
+                completed += 1
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Automatic upgrade cleanup failed", extra={"candidate_id": str(candidate_id)}
+            )
+    return completed
 
 
 async def retry_upgrade_handoff(
@@ -918,6 +1000,10 @@ async def _cleanup_core(db: AsyncSession, row: UpgradeCandidate) -> dict[str, An
         blocked.append("Retire the old torrent entries before deleting their media files.")
     targets: list[dict[str, Any]] = []
     media_file_ids: set[UUID] = set()
+    # Replacement media must never fall inside a deletion target, whether it
+    # shares the old folder, is nested below it, or matches a sidecar prefix.
+    protected = [Path(str(item["path"])) for item in replacement_guard if item.get("path")]
+    protected_keys = {_path_key(path) for path in protected}
 
     if row.media_type == MediaType.MOVIES:
         directories = list(
@@ -950,6 +1036,9 @@ async def _cleanup_core(db: AsyncSession, row: UpgradeCandidate) -> dict[str, An
             if shared is not None:
                 blocked.append(f"{path}: directory is shared with another release")
                 continue
+            if any(_inside(item, path) for item in protected):
+                blocked.append(f"{path}: directory contains the replacement media")
+                continue
             inventory = _directory_inventory(path) if path.exists() else []
             targets.append({"path": str(path), "kind": "directory", "inventory": inventory})
     else:
@@ -961,6 +1050,29 @@ async def _cleanup_core(db: AsyncSession, row: UpgradeCandidate) -> dict[str, An
                 .where(EpisodeMediaMap.show_release_id.in_(old_ids), MediaFile.exists.is_(True))
             )
         ).all()
+        # Media files of any other release in the same folders are never
+        # deletable as "sidecars" of an outgoing file.
+        old_id_set = set(old_ids)
+        directory_ids = {directory.id for _media_file, directory in rows}
+        tracked_keys: set[str] = set()
+        if directory_ids:
+            neighbours = (
+                await db.execute(
+                    select(MediaFile, MediaDirectory)
+                    .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+                    .where(MediaFile.media_directory_id.in_(directory_ids), MediaFile.exists.is_(True))
+                )
+            ).all()
+            for neighbour, neighbour_directory in neighbours:
+                owners = {
+                    value
+                    for value in await db.scalars(
+                        select(EpisodeMediaMap.show_release_id).where(EpisodeMediaMap.media_file_id == neighbour.id)
+                    )
+                    if value is not None
+                }
+                if not owners or not owners.issubset(old_id_set):
+                    tracked_keys.add(_path_key(Path(neighbour_directory.resolved_path) / neighbour.relative_path))
         seen_files: set[UUID] = set()
         file_targets: dict[str, dict[str, Any]] = {}
         for media_file, directory in rows:
@@ -984,15 +1096,30 @@ async def _cleanup_core(db: AsyncSession, row: UpgradeCandidate) -> dict[str, An
             if not _inside(path, root_path) or path.resolve(strict=False) == root_path.resolve(strict=False):
                 blocked.append(f"{path}: unsafe deletion target")
                 continue
+            if _path_key(path) in protected_keys:
+                blocked.append(f"{path}: file is the replacement media")
+                continue
             media_file_ids.add(media_file.id)
             parent = path.parent
             prefix = f"{path.stem}."
             siblings = []
             if parent.exists():
                 for sibling in parent.iterdir():
-                    if sibling.is_file() or sibling.is_symlink():
-                        if sibling.name == path.name or sibling.name.startswith(prefix):
-                            siblings.append(sibling)
+                    if not (sibling.is_file() or sibling.is_symlink()):
+                        continue
+                    if sibling.name == path.name:
+                        siblings.append(sibling)
+                        continue
+                    # Only true sidecars (subtitles, nfo, artwork) share the
+                    # stem. Another video file with a longer name, such as a
+                    # REPACK of the same episode, is separate media.
+                    if (
+                        sibling.name.startswith(prefix)
+                        and sibling.suffix.casefold() not in VIDEO_SUFFIXES
+                        and _path_key(sibling) not in protected_keys
+                        and _path_key(sibling) not in tracked_keys
+                    ):
+                        siblings.append(sibling)
             if not siblings and path.exists():
                 siblings = [path]
             for sibling in siblings:
@@ -1049,6 +1176,9 @@ async def _perform_cleanup(
     *,
     automatic: bool,
 ) -> dict[str, Any]:
+    # Surface any pending database error before anything irreversible runs.
+    # Callers commit immediately after this returns.
+    await db.flush()
     deleted: list[str] = []
     for target in core["targets"]:
         path = Path(str(target["path"]))

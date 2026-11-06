@@ -5,8 +5,11 @@ from Interactive Search or Upgrade Media. A stalled download, a temporary
 tracker warning, or a torrent that Medialogue did not submit is not treated as
 a failed download.
 
-When qBittorrent reports an incomplete submitted torrent in `error` or
-`missingFiles` state, Medialogue:
+qBittorrent also uses `error` and `missingFiles` for transient conditions such
+as a full disk or a storage mount that briefly disappeared. Medialogue therefore
+only acts once an incomplete submitted torrent has stayed in one of those
+states for 15 minutes; if it recovers sooner, nothing is removed or blocked.
+Once the state has persisted, Medialogue:
 
 1. records an immutable `download.failed` Event;
 2. adds the release to the Blocklist for that specific Movie, Season, or
@@ -32,7 +35,9 @@ release, indexer, quality, reason, and failure time. Entries can be unblocked
 individually, in a selected batch, or all at once. Unblocking makes a release
 eligible for future searches again; it does not delete its Event history.
 
-Interactive Search still displays a matching blocked release with its reason,
-but prevents selecting it. Use **Search alternatives** from a Movie blocklist
+Interactive Search and Upgrade Media still display a matching blocked release
+with its reason, but prevent selecting it, and upgrade searches never propose a
+blocked release as the upgrade candidate. A failed upgrade download is moved to
+attention with the failure reason, and the current media is kept. Use **Search alternatives** from a Movie blocklist
 entry to return to the normal review flow. Medialogue does not automatically
 grab a replacement.

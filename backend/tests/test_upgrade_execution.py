@@ -42,7 +42,7 @@ from app.models.domain import (
     TorrentClientObservation,
     UpgradeCandidate,
 )
-from app.services.upgrade_execution import advance_upgrade_handoff, associate_upgrade_torrent
+from app.services.upgrade_execution import advance_upgrade_handoff, associate_upgrade_torrent, run_automatic_cleanups
 
 
 @pytest.fixture
@@ -368,8 +368,12 @@ async def _simulate_movie_download_and_handoff(
             qbittorrent_client_factory=behavior.factory,
         )
         assert updated is not None
-        assert updated.execution_state == expected_handoff_state
         await db.commit()
+        # Pre-authorized old-media deletion runs only after the validated
+        # handoff is committed, exactly as the qBittorrent poll does.
+        await run_automatic_cleanups(db)
+        await db.refresh(updated)
+        assert updated.execution_state == expected_handoff_state
 
 
 async def _seed_show_upgrade(
@@ -871,11 +875,17 @@ def test_show_season_pack_upgrade_keeps_new_pack_and_deletes_only_reviewed_old_f
         assert {item["info_hash"] for item in behavior.removals} == {"old-show-1", "old-show-2"}
         assert all(item["delete_files"] is False for item in behavior.removals)
 
+        # A different video whose name extends the old stem (e.g. a REPACK)
+        # is separate media, never a sidecar of the outgoing file.
+        repack = show_path / "Season 01" / "Upgrade.Show.S01E01.1080p.WEB-DL-GRP.REPACK.mkv"
+        repack.write_bytes(b"repack-episode")
+
         preview = test_client.get(f"/api/v1/upgrade-candidates/{candidate_id}/cleanup-preview")
         assert preview.status_code == 200, preview.text
         payload = preview.json()
         assert payload["eligible"] is True
         target_paths = {target["path"] for target in payload["targets"]}
+        assert str(repack) not in target_paths
         assert str(show_path / "Season 01" / "Upgrade.Show.S01E01.1080p.WEB-DL-GRP.mkv") in target_paths
         assert str(show_path / "Season 01" / "Upgrade.Show.S01E01.1080p.WEB-DL-GRP.srt") in target_paths
         assert all(str(path) not in target_paths for path in new_paths)
@@ -888,6 +898,7 @@ def test_show_season_pack_upgrade_keeps_new_pack_and_deletes_only_reviewed_old_f
         assert cleanup.status_code == 200, cleanup.text
         assert cleanup.json()["state"] == "completed"
         assert all(path.exists() for path in new_paths)
+        assert repack.exists()
         assert not (show_path / "Season 01" / "Upgrade.Show.S01E01.1080p.WEB-DL-GRP.mkv").exists()
         assert not (show_path / "Season 01" / "Upgrade.Show.S01E01.1080p.WEB-DL-GRP.srt").exists()
         assert not (show_path / "Season 01" / "Upgrade.Show.S01E02.1080p.WEB-DL-GRP.mkv").exists()

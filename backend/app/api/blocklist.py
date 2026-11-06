@@ -10,7 +10,7 @@ from app.models.auth import AdminUser
 from app.models.domain import Episode, Movie, ReleaseBlocklist, Season, Show
 from app.schemas.blocklist import BlocklistBulkDeleteRequest, BlocklistDeleteResponse, BlocklistEntryResponse
 from app.schemas.common import Collection
-from app.services.events import publish_live_event
+from app.services.events import queue_live_event
 
 
 router = APIRouter(tags=["blocklist"])
@@ -96,7 +96,8 @@ async def _delete_ids(db: AsyncSession, ids: list[UUID]) -> int:
     result = await db.execute(delete(ReleaseBlocklist).where(ReleaseBlocklist.id.in_(ids)))
     deleted = int(result.rowcount or 0)
     if deleted:
-        publish_live_event("blocklist.changed", entity_type="blocklist", data={"deleted": deleted})
+        # Broadcast only once the deletion is committed.
+        queue_live_event(db, "blocklist.changed", entity_type="blocklist", data={"deleted": deleted})
     await db.commit()
     return deleted
 
@@ -126,6 +127,7 @@ async def clear_blocklist(
     result = await db.execute(delete(ReleaseBlocklist))
     deleted = int(result.rowcount or 0)
     if deleted:
-        publish_live_event("blocklist.changed", entity_type="blocklist", data={"deleted": deleted})
+        # Broadcast only once the deletion is committed.
+        queue_live_event(db, "blocklist.changed", entity_type="blocklist", data={"deleted": deleted})
     await db.commit()
     return BlocklistDeleteResponse(deleted=deleted)

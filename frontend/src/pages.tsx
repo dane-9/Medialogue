@@ -591,7 +591,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
 }
 
 export function MovieDetailPage({ id }: { id: string }) {
-  const [detailSearchParams] = useSearchParams()
+  const [detailSearchParams, setDetailSearchParams] = useSearchParams()
   const openSearchFromQuery = detailSearchParams.get('search') === '1'
   const plexAvailable = usePlexAvailable()
   const [movie, setMovie] = useState<Movie | null>(null)
@@ -600,7 +600,13 @@ export function MovieDetailPage({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [matchOpen, setMatchOpen] = useState(false)
-  useEffect(() => { if (openSearchFromQuery) setSearchOpen(true) }, [id, openSearchFromQuery])
+  useEffect(() => {
+    if (!openSearchFromQuery) return
+    setSearchOpen(true)
+    // One-shot deep link: drop the flag so reloads and back-navigation do not
+    // reopen the search dialog.
+    setDetailSearchParams((current) => { const next = new URLSearchParams(current); next.delete('search'); return next }, { replace: true })
+  }, [id, openSearchFromQuery, setDetailSearchParams])
   const load = async (reportError = true) => {
     try { setMovie(await moviesApi.movie(id)); if (reportError) setError('') }
     catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Movie not found.') }
@@ -1446,7 +1452,7 @@ export function DownloadsPage() {
     })}</tbody></table></Panel>}
       {pages > 1 && <div className="pagination-bar">
         <Button variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage((current) => current - 1)}>Previous</Button>
-        <span>Page {page} of {pages} · {filtered.length} payloads ({total} torrents)</span>
+        <span>Page {page} of {pages} · {filtered.length} payload{filtered.length === 1 ? '' : 's'} on this page · {total} torrents in total</span>
         <Button variant="ghost" disabled={page >= pages || loading} onClick={() => setPage((current) => current + 1)}>Next</Button>
       </div>}
       </div>
@@ -4660,7 +4666,10 @@ export function UpgradeMediaPage() {
       customFormatSnapshot: { matched_format_names: result.matchedFormatNames },
       parser: result.parser,
       warnings: [],
-      blocklisted: false,
+      // The upgrade search marks previously failed releases with a
+      // "Blocklisted:" rejection reason; they must not be selectable here.
+      blocklisted: (result.rejectionReasons ?? []).some((reason) => reason.startsWith('Blocklisted:')),
+      blocklistReason: (result.rejectionReasons ?? []).find((reason) => reason.startsWith('Blocklisted:'))?.slice('Blocklisted:'.length).trim(),
       createdAt: searchResults.searchedAt,
       expiresAt: searchResults.searchedAt,
     }))

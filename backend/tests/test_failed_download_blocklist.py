@@ -17,8 +17,18 @@ from app.models.domain import (
     Torrent,
     TorrentClientObservation,
 )
-from app.services.blocklist import handle_failed_download, matching_blocklist_entry
+from app.services.blocklist import FAILED_DOWNLOAD_GRACE, handle_failed_download, matching_blocklist_entry
 from app.api.blocklist import delete_blocklist_entry
+
+
+LATER = lambda: datetime.now(timezone.utc) + FAILED_DOWNLOAD_GRACE + timedelta(minutes=1)
+
+
+async def fail_after_grace(db, **kwargs):
+    """First observation starts the grace window; the second acts on it."""
+
+    await handle_failed_download(db, **kwargs)
+    await handle_failed_download(db, now=LATER(), **kwargs)
 
 
 class RemovalRecorder:
@@ -72,7 +82,7 @@ def test_failed_exclusive_download_deletes_partial_files_and_creates_removable_p
             await db.flush()
             adapter = RemovalRecorder()
 
-            await handle_failed_download(
+            await fail_after_grace(
                 db, torrent=torrent, observation=observation, client_name="Movies", adapter=adapter
             )
             await db.flush()
@@ -135,7 +145,7 @@ def test_failed_download_preserves_files_when_another_torrent_uses_same_path(tmp
             await db.flush()
             adapter = RemovalRecorder()
 
-            await handle_failed_download(
+            await fail_after_grace(
                 db, torrent=failed, observation=failed_observation, client_name="Movies", adapter=adapter
             )
             assert adapter.removals == [(failed.info_hash, False)]
@@ -177,12 +187,12 @@ def test_failed_cleanup_retries_without_duplicate_failure_records(tmp_path):
             await db.flush()
             adapter = FailOnceRemovalRecorder()
 
-            await handle_failed_download(
+            await fail_after_grace(
                 db, torrent=torrent, observation=observation, client_name="Movies", adapter=adapter
             )
             assert observation.is_present is True
             await handle_failed_download(
-                db, torrent=torrent, observation=observation, client_name="Movies", adapter=adapter
+                db, torrent=torrent, observation=observation, client_name="Movies", adapter=adapter, now=LATER()
             )
 
             assert adapter.removals == [(torrent.info_hash, True), (torrent.info_hash, True)]
@@ -192,3 +202,65 @@ def test_failed_cleanup_retries_without_duplicate_failure_records(tmp_path):
         await engine.dispose()
 
     asyncio.run(scenario())
+
+
+def test_transient_failure_state_is_not_acted_on_within_grace_period(tmp_path):
+    async def scenario():
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'grace.db'}")
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions() as db:
+            movie = Movie(title="Grace Film", sort_title="Grace Film", identity_state=IdentityState.MATCHED)
+            client = DownloadClient(health="healthy")
+            job = Job(job_type="interactive_search", summary={})
+            db.add_all([movie, client, job])
+            await db.flush()
+            result = InteractiveSearchResult(
+                job_id=job.id, indexer_name="Tracker", media_type=MediaType.MOVIES,
+                target_entity_type="movie", target_entity_id=movie.id, guid="grace-guid",
+                title="Grace.Film.2026.1080p", submitted_info_hash="e" * 40,
+                selected_download_client_id=client.id, selected_at=datetime.now(timezone.utc),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+            torrent = Torrent(info_hash="e" * 40, name=result.title, metadata_json={"completed": False})
+            db.add_all([result, torrent])
+            await db.flush()
+            observation = TorrentClientObservation(
+                torrent_id=torrent.id, download_client_id=client.id, state="error", progress=.3,
+                resolved_save_path="/downloads/grace", is_present=True,
+            )
+            db.add(observation)
+            await db.flush()
+            adapter = RemovalRecorder()
+            kwargs = dict(torrent=torrent, observation=observation, client_name="Movies", adapter=adapter)
+
+            await handle_failed_download(db, **kwargs)
+            await handle_failed_download(db, now=datetime.now(timezone.utc) + timedelta(minutes=5), **kwargs)
+            assert adapter.removals == []
+            assert observation.is_present is True
+            assert int(await db.scalar(select(func.count()).select_from(ReleaseBlocklist)) or 0) == 0
+
+            # Recovery resets the window.
+            from app.services.blocklist import clear_recovered_failure_marker
+            observation.state = "downloading"
+            clear_recovered_failure_marker(torrent, observation)
+            assert not (torrent.metadata_json or {}).get("failed_download_pending")
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_blocklist_display_and_download_share_one_matching_rule():
+    from app.services.blocklist import entry_matches
+
+    entry = ReleaseBlocklist(
+        media_type=MediaType.MOVIES, target_entity_type="movie", source_title="Some.Film.1080p",
+        indexer_id=None, indexer_name=None, reason="failed",
+    )
+    # No indexer identity on either side must not match on title alone.
+    assert not entry_matches(entry, source_title="Some.Film.1080p", indexer_id=None, indexer_name=None)
+    entry.indexer_name = "Tracker"
+    assert entry_matches(entry, source_title="some.film.1080p ", indexer_id=None, indexer_name="tracker")
+    entry.info_hash = "f" * 40
+    assert entry_matches(entry, source_title="Renamed", indexer_id=None, indexer_name=None, info_hash="F" * 40)

@@ -16,6 +16,16 @@ def _raise_walk_error(error: OSError) -> None:
     raise error
 
 
+def _dangling_symlink(path: Path) -> bool:
+    if not path.is_symlink():
+        return False
+    try:
+        path.stat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class DirectoryObservation:
     path: str
@@ -34,6 +44,10 @@ class FilesystemObserver:
             raise NotADirectoryError(root)
         observations: list[DirectoryObservation] = []
         for entry in sorted(base.iterdir()):
+            if _dangling_symlink(entry):
+                # A broken link is not unreadable media; skipping it keeps
+                # one stale link from failing the whole folder scan.
+                continue
             if not stat.S_ISDIR(entry.stat().st_mode):
                 continue
             try:
@@ -63,6 +77,8 @@ class FilesystemObserver:
                 upper_parts = {part.upper() for part in relative.parts}
                 has_dvd = has_dvd or "VIDEO_TS" in upper_parts
                 has_bluray = has_bluray or "BDMV" in upper_parts
+                if name in file_names and _dangling_symlink(entry):
+                    continue
                 if name in file_names and stat.S_ISREG(entry.stat().st_mode) and entry.suffix.casefold() in VIDEO_SUFFIXES:
                     media.append(relative.as_posix())
         return DirectoryObservation(

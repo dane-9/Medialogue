@@ -562,7 +562,7 @@ async def _poll_download_client(
     )
     relevant_count = added = completed = ignored = removed = processing_errors = 0
     completed_upgrade_torrent_ids: set[UUID] = set()
-    failed_downloads: list[tuple[TorrentClientObservation, Torrent]] = []
+    failed_downloads: list[tuple[TorrentClientObservation, Torrent, str]] = []
     detail_adapter = None
     for observed in observations:
         info_hash = observed.info_hash.lower()
@@ -798,7 +798,7 @@ async def _poll_download_client(
                 from app.services.blocklist import clear_recovered_failure_marker, terminal_incomplete_failure
                 clear_recovered_failure_marker(torrent, row)
                 if terminal_incomplete_failure(row, torrent):
-                    failed_downloads.append((row, torrent))
+                    failed_downloads.append((row, torrent, info_hash))
                 current_progress = float(observed.progress)
                 if (
                     previous_progress is None
@@ -918,6 +918,9 @@ async def _poll_download_client(
             # Restore them when the torrent's database work was rolled back.
             added = added_before
             completed = completed_before
+            # This torrent's SAVEPOINT rolled back, so its queued failure
+            # handling would act on state that no longer exists.
+            failed_downloads[:] = [item for item in failed_downloads if item[2] != info_hash]
             processing_errors += 1
             logger.exception(
                 "qBittorrent torrent processing failed; continuing with remaining torrents",
@@ -935,7 +938,7 @@ async def _poll_download_client(
 
         failure_adapter = client_factory(client.url, client.username or "", client.password or "")
         try:
-            for failed_observation, failed_torrent in failed_downloads:
+            for failed_observation, failed_torrent, _failed_hash in failed_downloads:
                 try:
                     async with db.begin_nested():
                         await handle_failed_download(
@@ -1037,6 +1040,8 @@ async def poll_download_client(
         async with archive_checkpoint:
             result = await _poll_download_client(db, client, client_factory=client_factory)
             await db.commit()
+            from app.services.upgrade_execution import run_automatic_cleanups
+            await run_automatic_cleanups(db)
             return result
 
 

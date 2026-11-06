@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -19,6 +19,12 @@ from app.services.events import create_event
 
 
 TERMINAL_INCOMPLETE_STATES = frozenset({"error", "missingfiles"})
+# qBittorrent also reports these states for transient conditions such as a
+# full disk or a NAS mount that briefly disappeared. A download is only treated
+# as failed once the state has persisted for this long.
+FAILED_DOWNLOAD_GRACE = timedelta(minutes=15)
+_PENDING_KEY = "failed_download_pending"
+_ACTIVE_UPGRADE_STATES = frozenset({"submitted", "downloading", "validating"})
 
 
 def utcnow() -> datetime:
@@ -36,6 +42,26 @@ def terminal_incomplete_failure(observation: TorrentClientObservation, torrent: 
     return state in TERMINAL_INCOMPLETE_STATES and progress < 1 and not completed
 
 
+async def blocklist_entries_for_target(
+    db: AsyncSession,
+    *,
+    media_type: MediaType,
+    target_entity_type: str,
+    target_entity_id: UUID | None,
+) -> list[ReleaseBlocklist]:
+    return list(
+        (
+            await db.scalars(
+                select(ReleaseBlocklist).where(
+                    ReleaseBlocklist.media_type == media_type,
+                    ReleaseBlocklist.target_entity_type == target_entity_type,
+                    ReleaseBlocklist.target_entity_id == target_entity_id,
+                )
+            )
+        ).all()
+    )
+
+
 async def matching_blocklist_entry(
     db: AsyncSession,
     *,
@@ -47,29 +73,44 @@ async def matching_blocklist_entry(
     indexer_name: str | None = None,
     info_hash: str | None = None,
 ) -> ReleaseBlocklist | None:
-    rows = (
-        await db.scalars(
-            select(ReleaseBlocklist).where(
-                ReleaseBlocklist.media_type == media_type,
-                ReleaseBlocklist.target_entity_type == target_entity_type,
-                ReleaseBlocklist.target_entity_id == target_entity_id,
-            )
-        )
-    ).all()
-    wanted_hash = str(info_hash or "").strip().casefold()
-    wanted_title = normalized_title(source_title)
-    wanted_indexer = normalized_title(indexer_name)
+    rows = await blocklist_entries_for_target(
+        db,
+        media_type=media_type,
+        target_entity_type=target_entity_type,
+        target_entity_id=target_entity_id,
+    )
     for row in rows:
-        if wanted_hash and row.info_hash and row.info_hash.casefold() == wanted_hash:
-            return row
-        same_indexer = (
-            indexer_id is not None and row.indexer_id == indexer_id
-        ) or (
-            bool(wanted_indexer) and normalized_title(row.indexer_name) == wanted_indexer
-        )
-        if normalized_title(row.source_title) == wanted_title and same_indexer:
+        if entry_matches(
+            row,
+            source_title=source_title,
+            indexer_id=indexer_id,
+            indexer_name=indexer_name,
+            info_hash=info_hash,
+        ):
             return row
     return None
+
+
+def entry_matches(
+    row: ReleaseBlocklist,
+    *,
+    source_title: str,
+    indexer_id: UUID | None,
+    indexer_name: str | None,
+    info_hash: str | None = None,
+) -> bool:
+    """The one blocklist matching rule shared by search display and download."""
+
+    wanted_hash = str(info_hash or "").strip().casefold()
+    if wanted_hash and row.info_hash and row.info_hash.casefold() == wanted_hash:
+        return True
+    wanted_indexer = normalized_title(indexer_name)
+    same_indexer = (
+        indexer_id is not None and row.indexer_id == indexer_id
+    ) or (
+        bool(wanted_indexer) and normalized_title(row.indexer_name) == wanted_indexer
+    )
+    return same_indexer and normalized_title(row.source_title) == normalized_title(source_title)
 
 
 async def blocklist_for_results(
@@ -77,7 +118,12 @@ async def blocklist_for_results(
 ) -> dict[UUID, ReleaseBlocklist]:
     if not rows:
         return {}
-    entries = (await db.scalars(select(ReleaseBlocklist))).all()
+    target_ids = {result.target_entity_id for result in rows if result.target_entity_id is not None}
+    if not target_ids:
+        return {}
+    entries = (
+        await db.scalars(select(ReleaseBlocklist).where(ReleaseBlocklist.target_entity_id.in_(target_ids)))
+    ).all()
     matched: dict[UUID, ReleaseBlocklist] = {}
     for result in rows:
         for entry in entries:
@@ -85,9 +131,13 @@ async def blocklist_for_results(
                 continue
             if entry.target_entity_type != result.target_entity_type or entry.target_entity_id != result.target_entity_id:
                 continue
-            if normalized_title(entry.source_title) != normalized_title(result.title):
-                continue
-            if entry.indexer_id == result.indexer_id or normalized_title(entry.indexer_name) == normalized_title(result.indexer_name):
+            if entry_matches(
+                entry,
+                source_title=result.title,
+                indexer_id=result.indexer_id,
+                indexer_name=result.indexer_name,
+                info_hash=result.submitted_info_hash,
+            ):
                 matched[result.id] = entry
                 break
     return matched
@@ -170,13 +220,30 @@ async def handle_failed_download(
     observation: TorrentClientObservation,
     client_name: str,
     adapter,
+    now: datetime | None = None,
 ) -> None:
     """Block and clean one terminal, incomplete, Medialogue-submitted download."""
 
     if not terminal_incomplete_failure(observation, torrent):
         return None
+    now = now or utcnow()
     handled = dict((torrent.metadata_json or {}).get("failed_download_clients") or {})
     marker = str(observation.download_client_id)
+    if marker not in handled:
+        pending = dict((torrent.metadata_json or {}).get(_PENDING_KEY) or {})
+        first_seen_raw = pending.get(marker)
+        try:
+            first_seen = datetime.fromisoformat(str(first_seen_raw)) if first_seen_raw else None
+        except ValueError:
+            first_seen = None
+        if first_seen is not None and first_seen.tzinfo is None:
+            first_seen = first_seen.replace(tzinfo=timezone.utc)
+        if first_seen is None:
+            pending[marker] = now.isoformat()
+            torrent.metadata_json = {**(torrent.metadata_json or {}), _PENDING_KEY: pending}
+            return None
+        if now - first_seen < FAILED_DOWNLOAD_GRACE:
+            return None
     previous_attempt = handled.get(marker)
     if previous_attempt is not None and (
         not isinstance(previous_attempt, dict)
@@ -243,6 +310,12 @@ async def handle_failed_download(
             "cleanup_error": cleanup_error,
         },
     )
+    if isinstance(origin, UpgradeCandidate) and origin.execution_state in _ACTIVE_UPGRADE_STATES:
+        origin.execution_state = "handoff_attention"
+        origin.execution_error = (
+            f"The replacement download failed (qBittorrent state '{observation.state}') and was added to the Blocklist. "
+            "The current media was kept."
+        )
     if existing is None:
         db.add(ReleaseBlocklist(
             media_type=media_type,
@@ -269,8 +342,13 @@ async def handle_failed_download(
 def clear_recovered_failure_marker(torrent: Torrent, observation: TorrentClientObservation) -> None:
     if terminal_incomplete_failure(observation, torrent):
         return
-    handled = dict((torrent.metadata_json or {}).get("failed_download_clients") or {})
-    if handled.pop(str(observation.download_client_id), None) is not None:
-        metadata = dict(torrent.metadata_json or {})
-        metadata["failed_download_clients"] = handled
+    marker = str(observation.download_client_id)
+    metadata = dict(torrent.metadata_json or {})
+    changed = False
+    for key in ("failed_download_clients", _PENDING_KEY):
+        values = dict(metadata.get(key) or {})
+        if values.pop(marker, None) is not None:
+            metadata[key] = values
+            changed = True
+    if changed:
         torrent.metadata_json = metadata

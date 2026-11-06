@@ -68,6 +68,7 @@ from app.services.upgrade_execution import (
     cleanup_preview,
     commit_cleanup,
     retry_upgrade_handoff,
+    run_automatic_cleanups,
     submit_upgrade_candidate,
 )
 
@@ -730,6 +731,8 @@ async def retry_handoff(
 ) -> UpgradeCandidateResponse:
     row = await retry_upgrade_handoff(db, candidate_id, qbittorrent_client_factory=qbittorrent_client_factory)
     await db.commit()
+    if await run_automatic_cleanups(db):
+        await db.refresh(row)
     return await _response(db, row)
 
 

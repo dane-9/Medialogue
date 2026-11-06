@@ -847,6 +847,14 @@ async def _search_target(
     failures = 0
     successful_indexers = 0
     by_id = {indexer.id: indexer for indexer in scoped}
+    from app.services.blocklist import blocklist_entries_for_target, entry_matches
+
+    blocklist = await blocklist_entries_for_target(
+        db,
+        media_type=target.media_type,
+        target_entity_type="movie" if target.media_type == MediaType.MOVIES else "season",
+        target_entity_id=target.movie_id if target.media_type == MediaType.MOVIES else target.season_id,
+    )
     for indexer_id, outcome in outcomes:
         if outcome.get("status") != "completed":
             failures += 1
@@ -855,11 +863,24 @@ async def _search_target(
         indexer = by_id[indexer_id]
         for result in outcome.get("results") or []:
             scored = _score_candidate(target=target, profile=profile, formats=formats, indexer=indexer, result=result)
-            if scored is not None:
-                candidates.append(scored)
-            stored_results.append(
-                _stored_search_result(target=target, indexer=indexer, result=result, scored=scored, profile=profile)
+            blocked = next(
+                (
+                    entry
+                    for entry in blocklist
+                    if entry_matches(entry, source_title=result.title, indexer_id=indexer.id, indexer_name=indexer.name)
+                ),
+                None,
             )
+            if scored is not None and blocked is None:
+                candidates.append(scored)
+            stored = _stored_search_result(target=target, indexer=indexer, result=result, scored=scored, profile=profile)
+            if blocked is not None:
+                # A release that previously failed for this media is never
+                # proposed again until its Blocklist entry is removed.
+                stored["eligible"] = False
+                stored["rejection_reasons"] = [*stored.get("rejection_reasons", []), f"Blocklisted: {blocked.reason}"]
+                stored["blocklisted"] = True
+            stored_results.append(stored)
     if not candidates:
         return None, stored_results, failures, successful_indexers > 0
     candidates.sort(key=_candidate_sort_key)
