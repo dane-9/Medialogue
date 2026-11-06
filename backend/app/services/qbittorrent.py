@@ -14,7 +14,7 @@ import os
 import logging
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from time import perf_counter
 from typing import Callable
@@ -24,6 +24,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import (
+    QBittorrentAuthError,
     QBittorrentClient,
     QBittorrentError,
     TorrentObservation,
@@ -495,15 +496,62 @@ async def run_torrent_action(
         await adapter.close()
 
 
+#: Failed polls in a row, per client. The first failure after a healthy poll
+#: is retried within seconds; only a second one in a row marks the client
+#: unavailable, so one dropped request or a qBittorrent restart does not flash
+#: "unavailable" across the app.
+_FAILURE_STREAK: dict[UUID, int] = {}
+FAILURES_BEFORE_UNAVAILABLE = 2
+RETRY_AFTER_FAILURE_SECONDS = 5
+#: How long to leave a client that banned Medialogue's IP before trying again.
+BAN_RETRY_SECONDS = 15 * 60
+
+
+async def set_client_health(
+    db: AsyncSession, client: ConfiguredDownloadClient, *, healthy: bool, error: str | None = None
+) -> None:
+    """Record a client's health and announce a change.
+
+    The poller, Refresh health and Test all report through here, so a change
+    reaches every open page live instead of waiting for a manual refresh.
+    """
+
+    previous = client.health
+    client.health = "healthy" if healthy else "unavailable"
+    client.last_error = None if healthy else error
+    if healthy:
+        client.last_success_at = utcnow()
+        _FAILURE_STREAK.pop(client.id, None)
+    if previous == client.health:
+        return
+    await create_event(
+        db,
+        "qbittorrent.health",
+        entity_type="download_client",
+        entity_id=client.id,
+        message=f"qBittorrent client {client.name} is {client.health}.",
+        severity=Severity.INFO if healthy else Severity.ERROR,
+        details={"status": client.health, **({} if healthy else {"error": error or ""})},
+    )
+
+
 async def test_download_client_connection(
     client: ConfiguredDownloadClient,
     *,
     client_factory: QBittorrentClientFactory = QBittorrentClient,
 ) -> dict[str, object]:
+    """Whether the client answers and its torrent list can be read.
+
+    The poller reads the list, so a check that stopped at the version could
+    report healthy while every poll failed.
+    """
+
     started = perf_counter()
     adapter = client_factory(client.url, client.username or "", client.password or "")
     try:
         result = await adapter.health()
+        if isinstance(adapter, QBittorrentClient):
+            await adapter.list_torrents()
         return {
             "status": "healthy",
             "version": result.get("version"),
@@ -586,26 +634,26 @@ async def _poll_download_client(
     checked_at = utcnow()
     client.last_polled_at = checked_at
     client.last_health_checked_at = checked_at
-    previous_health = client.health
     try:
         observations = await _fetch_observations(adapter, client)
     except Exception as exc:
-        client.health = "unavailable"
         client.latency_ms = round((perf_counter() - poll_started) * 1000)
-        client.last_error = str(exc)
-        if previous_health != client.health:
-            await create_event(
-                db,
-                "qbittorrent.health",
-                entity_type="download_client",
-                entity_id=client.id,
-                message=f"qBittorrent client {client.name} is unavailable.",
-                severity=Severity.ERROR,
-                details={"status": "unavailable", "error": str(exc)},
-            )
+        streak = _FAILURE_STREAK.get(client.id, 0) + 1
+        _FAILURE_STREAK[client.id] = streak
+        if (
+            client.health == "healthy"
+            and streak < FAILURES_BEFORE_UNAVAILABLE
+            and not isinstance(exc, QBittorrentAuthError)
+        ):
+            # Retry within seconds before calling it unavailable.
+            client.last_error = str(exc)
+            interval = max(5, client.poll_interval_seconds or 30)
+            client.last_polled_at = checked_at - timedelta(seconds=max(0, interval - RETRY_AFTER_FAILURE_SECONDS))
+        else:
+            await set_client_health(db, client, healthy=False, error=str(exc))
         return {
             "client_id": client.id,
-            "status": "unavailable",
+            "status": client.health or "unknown",
             "observed": 0,
             "relevant": 0,
             "added": 0,
@@ -620,19 +668,8 @@ async def _poll_download_client(
     # Connectivity health is deliberately independent from Medialogue's
     # reconciliation/parser/archive processing.  A bug while processing one
     # torrent must not make a reachable qBittorrent server appear offline.
-    client.health = "healthy"
-    client.last_success_at = utcnow()
     client.latency_ms = round((perf_counter() - poll_started) * 1000)
-    client.last_error = None
-    if previous_health != client.health:
-        await create_event(
-            db,
-            "qbittorrent.health",
-            entity_type="download_client",
-            entity_id=client.id,
-            message=f"qBittorrent client {client.name} is healthy.",
-            details={"status": "healthy"},
-        )
+    await set_client_health(db, client, healthy=True)
     await db.commit()
     roots = (
         await db.scalars(
@@ -1267,17 +1304,21 @@ async def poll_due_download_clients(
         client_id = client.id
         last = client.last_polled_at
         interval = max(5, client.poll_interval_seconds or 30)
-        if client.health == "unavailable" and client.last_error and (
-            "rejected the configured username/password" in client.last_error
-            or "temporarily banned Medialogue's IP" in client.last_error
-            or "rejected WebAPI authentication" in client.last_error
-        ):
-            continue
         # SQLite does not preserve tzinfo, so a stored timestamp comes back naive
         # while utcnow() is aware. Treat a naive value as UTC rather than letting
         # the subtraction raise and kill the whole polling cycle.
         if last is not None and last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
+        if client.health == "unavailable" and client.last_error:
+            # Rejected credentials wait for the user: retrying them only earns
+            # an IP ban. A ban lifts by itself, so it is retried now and then.
+            if (
+                "rejected the configured username/password" in client.last_error
+                or "rejected WebAPI authentication" in client.last_error
+            ):
+                continue
+            if "temporarily banned Medialogue's IP" in client.last_error:
+                interval = BAN_RETRY_SECONDS
         if last is not None and (now - last).total_seconds() < interval:
             continue
         try:

@@ -1136,3 +1136,65 @@ def test_cross_seeds_are_grouped_paged_together_and_removable_individually(clien
     remaining = client.get("/api/v1/downloads?page_size=50").json()["items"]
     assert observation_ids["b"] not in {item["id"] for item in remaining}
     assert observation_ids["a"] in {item["id"] for item in remaining}
+
+
+def test_torrent_list_tolerates_fields_in_an_unexpected_shape() -> None:
+    """qBittorrent 5 names share_limit_action; one odd field must not fail the poll."""
+
+    from app.integrations.qbittorrent import _TORRENT_LIST
+
+    items = _TORRENT_LIST.validate_python([{
+        "hash": "abc", "name": "Movie", "progress": 0.5, "share_limit_action": "Default",
+        "share_limits_mode": "Default", "dlspeed": "fast", "eta": None,
+    }])
+    assert items[0].share_limit_action == "Default"
+    assert items[0].dlspeed is None
+    assert items[0].progress == 0.5
+    with pytest.raises(Exception):
+        _TORRENT_LIST.validate_python([{"name": "no hash"}])
+
+
+def test_one_failed_poll_is_retried_before_the_client_is_unavailable(client: TestClient) -> None:
+    from app.models.domain import Event
+    from app.services import qbittorrent as qbit_service
+    from app.services.integration_state import get_configured_download_client
+
+    headers = _login(client)
+    configured = _create_client(client, headers)
+    client_id = UUID(configured["id"])
+    healthy = FakeQBitBehavior()
+
+    class Unreachable(FakeQBitClient):
+        async def list_torrents(self):
+            raise RuntimeError("connection dropped")
+
+    def unreachable(url, username, password):
+        return Unreachable(healthy, url, username, password)
+
+    async def poll(factory):
+        async with db_session.async_session_factory() as db:
+            target = await get_configured_download_client(db, client_id)
+            await qbit_service.poll_download_client(db, target, client_factory=factory)
+            await db.commit()
+            saved = await get_configured_download_client(db, client_id)
+            events = (await db.scalars(select(Event).where(
+                Event.event_type == "qbittorrent.health", Event.entity_id == client_id))).all()
+            return saved.health, saved.last_error, saved.last_polled_at, len(events)
+
+    health, error, _, events = asyncio.run(poll(healthy.factory))
+    assert (health, error, events) == ("healthy", None, 1)
+
+    # The first failure keeps it healthy and makes it due again within seconds.
+    health, error, polled_at, events = asyncio.run(poll(unreachable))
+    assert (health, error, events) == ("healthy", "connection dropped", 1)
+    from datetime import datetime, timezone
+    polled_at = polled_at if polled_at.tzinfo else polled_at.replace(tzinfo=timezone.utc)
+    assert (datetime.now(timezone.utc) - polled_at).total_seconds() >= 15 - 5 - 1
+
+    # A second in a row is real, and says so live.
+    health, error, _, events = asyncio.run(poll(unreachable))
+    assert (health, error, events) == ("unavailable", "connection dropped", 2)
+
+    # Recovery is announced too.
+    health, error, _, events = asyncio.run(poll(healthy.factory))
+    assert (health, error, events) == ("healthy", None, 3)

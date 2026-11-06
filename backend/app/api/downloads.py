@@ -64,6 +64,7 @@ from app.services.qbittorrent import (
     run_all_download_client_polls,
     run_torrent_action,
     run_download_client_poll,
+    set_client_health,
     test_download_client_connection,
 )
 from app.services.jobs import create_job, publish_job_status
@@ -812,16 +813,15 @@ async def test_download_client(
         # unsaved overrides is diagnostic and must not make the saved client
         # appear broken.
         if testing_saved_configuration:
-            client.health = "unavailable"
-            client.last_error = str(exc)
             client.latency_ms = None
+            await set_client_health(db, client, healthy=False, error=str(exc))
         await db.commit()
         return DownloadClientTestResponse(status="unavailable", message=str(exc))
     if testing_saved_configuration:
-        client.health = "healthy"
-        client.last_success_at = utcnow()
-        client.last_error = None
         client.latency_ms = int(result.get("latency_ms") or 0)
+        if client.health != "healthy":
+            client.last_polled_at = None
+        await set_client_health(db, client, healthy=True)
     await db.commit()
     return DownloadClientTestResponse(**result)
 
@@ -852,15 +852,16 @@ async def refresh_download_client_health(
     try:
         result = await test_download_client_connection(client, client_factory=client_factory)
     except Exception as exc:
-        client.health = "unavailable"
-        client.last_error = str(exc)
         client.latency_ms = None
+        await set_client_health(db, client, healthy=False, error=str(exc))
         await db.commit()
         return DownloadClientTestResponse(status="unavailable", message=str(exc))
-    client.health = "healthy"
-    client.last_success_at = utcnow()
-    client.last_error = None
+    was_unavailable = client.health != "healthy"
     client.latency_ms = int(result.get("latency_ms") or 0)
+    await set_client_health(db, client, healthy=True)
+    if was_unavailable:
+        # Catch up now rather than at the next interval.
+        client.last_polled_at = None
     await db.commit()
     return DownloadClientTestResponse(**result)
 

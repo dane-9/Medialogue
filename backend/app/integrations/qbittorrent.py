@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, ValidationInfo, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -149,8 +149,10 @@ class _TorrentPayload(BaseModel):
     seeding_time: int | None = None
     seeding_time_limit: int | None = None
     inactive_seeding_time_limit: int | None = None
-    share_limit_action: int | None = None
-    share_limits_mode: int | None = None
+    # qBittorrent 5 reports these by name ("Default") where 4.x used numbers.
+    # They are only ever sent back to qBittorrent, so either form is kept.
+    share_limit_action: int | str | None = None
+    share_limits_mode: int | str | None = None
     num_complete: int | None = None
     num_incomplete: int | None = None
     num_seeds: int | None = None
@@ -159,6 +161,24 @@ class _TorrentPayload(BaseModel):
     upspeed: int | None = None
     eta: int | None = None
     availability: float | None = None
+
+    @field_validator("*", mode="wrap")
+    @classmethod
+    def _unknown_when_unexpected(cls, value: Any, handler: Any, info: ValidationInfo) -> Any:
+        """A field in an unexpected shape reads as unknown.
+
+        qBittorrent releases change field types now and then. Failing the
+        torrent over one of them failed the whole list, and with it every poll,
+        so a reachable client showed as unavailable. Only the hash is required.
+        """
+
+        try:
+            return handler(value)
+        except ValidationError:
+            if info.field_name == "hash":
+                raise
+            logger.warning("qBittorrent sent an unexpected %s value; treating it as unknown", info.field_name)
+            return None
 
 
 class _TorrentTrackerPayload(BaseModel):
