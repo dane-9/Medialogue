@@ -1540,6 +1540,9 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 .download-menu-panel.flip { left: auto; right: 100%; }
 .download-menu-prompt { display: grid; gap: var(--s2); padding: var(--s1); }
 .download-menu-prompt-actions { display: flex; justify-content: flex-end; gap: var(--s2); }
+/* A client that stopped reporting: keep the row, but make it read as not live. */
+.downloads-table tbody tr.row-stale td { opacity: .55; }
+.downloads-table tbody tr.row-stale td:nth-child(4) { opacity: 1; }
 .downloads-table tbody tr.row-selected,
 .downloads-table tbody tr.row-selected:hover { background: var(--accent-soft); }
 .downloads-table tbody tr.row-selected .download-name strong { color: var(--text); }

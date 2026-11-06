@@ -36,31 +36,71 @@ export function mediaFolderPath(raw?: string | null): string {
   return parent || path
 }
 
+/**
+ * Human ETA. Rounds up once at the displayed unit and then splits it, so a
+ * value just under a boundary reads "2h 0m" rather than "1h 60m".
+ */
+export function formatEta(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || seconds < 0 || seconds >= 8640000) return '-'
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.ceil(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+  const hours = Math.ceil(seconds / 3600)
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`
+}
+
+const DOWNLOAD_STATES: Record<DownloadDto['activity'], Download['state']> = {
+  downloading: 'Downloading',
+  checking: 'Checking',
+  metadata: 'Downloading',
+  moving: 'Checking',
+  queued: 'Paused',
+  stalled: 'Downloading',
+  seeding: 'Seeding',
+  paused: 'Paused',
+  error: 'Error',
+}
+
+/** Mirror of the backend's `_activity_state`, for live progress events. */
+export function activityFor(rawState: string, progress: number): Download['activity'] {
+  const state = rawState.toLowerCase()
+  if (state.startsWith('checking')) return 'checking'
+  if (state.includes('error') || state.includes('missing')) return 'error'
+  if (state === 'moving') return 'moving'
+  if (state === 'metadl' || state === 'forcedmetadl') return 'metadata'
+  if (state.includes('queued')) return 'queued'
+  if (state.includes('stall') && progress < 1) return 'stalled'
+  if (state.includes('pause') || state.includes('stopped')) return 'paused'
+  return progress < 1 ? 'downloading' : 'seeding'
+}
+
+/**
+ * Apply one `download.progress` live event to a row in place, so the table
+ * tracks progress without re-reading the whole page. `progress` is the 0-1
+ * fraction qBittorrent reports.
+ */
+export function applyProgressUpdate(item: Download, update: { state?: string; progress?: number }): Download {
+  if (item.stale) return item
+  const fraction = typeof update.progress === 'number' && Number.isFinite(update.progress) ? update.progress : item.progress / 100
+  const activity = typeof update.state === 'string' ? activityFor(update.state, fraction) : item.activity
+  return { ...item, progress: Math.round(fraction * 10000) / 100, activity, state: DOWNLOAD_STATES[activity] }
+}
+
 export function mapDownload(value: DownloadDto): Download {
   const progress = percentValue(value.progress) ?? 0
-  const states: Record<DownloadDto['activity'], Download['state']> = {
-    downloading: 'Downloading',
-    checking: 'Checking',
-    metadata: 'Downloading',
-    queued: 'Paused',
-    stalled: 'Downloading',
-    seeding: 'Seeding',
-    paused: 'Paused',
-    error: 'Error',
-  }
+  const states = DOWNLOAD_STATES
   const etaSeconds = value.eta_seconds
-  const eta = etaSeconds === null || etaSeconds === undefined || etaSeconds < 0 || etaSeconds >= 8640000
-    ? '-'
-    : etaSeconds < 60
-      ? `${etaSeconds}s`
-      : etaSeconds < 3600
-        ? `${Math.ceil(etaSeconds / 60)}m`
-        : etaSeconds < 86400
-          ? `${Math.floor(etaSeconds / 3600)}h ${Math.ceil((etaSeconds % 3600) / 60)}m`
-          : `${Math.floor(etaSeconds / 86400)}d ${Math.ceil((etaSeconds % 86400) / 3600)}h`
+  const stale = value.stale ?? false
+  // Values from a client that stopped reporting are not live; hide them
+  // rather than presenting frozen speeds and countdowns as current.
+  const eta = stale ? '-' : formatEta(etaSeconds)
+  const downloadSpeed = stale ? 0 : value.download_speed ?? 0
+  const uploadSpeed = stale ? 0 : value.upload_speed ?? 0
 
   return {
     id: value.id,
+    torrentId: value.torrent_id,
     payloadGroupId: value.payload_group_id,
     infoHash: value.info_hash,
     name: value.name,
@@ -72,7 +112,7 @@ export function mapDownload(value: DownloadDto): Download {
     progress,
     size: formatBytes(value.total_size),
     eta,
-    speed: value.download_speed ? `${formatBytes(value.download_speed)}/s` : '-',
+    speed: downloadSpeed ? `${formatBytes(downloadSpeed)}/s` : '-',
     path: mediaFolderPath(value.resolved_save_path ?? value.reported_save_path),
     payloadPath: value.resolved_save_path ?? value.reported_save_path ?? undefined,
     quality: value.quality ?? undefined,
@@ -89,9 +129,11 @@ export function mapDownload(value: DownloadDto): Download {
     reconciliationDetail: value.reconciliation_detail ?? undefined,
     incoming: value.incoming ?? false,
     incomingKind: value.incoming_kind ?? undefined,
-    uploadSpeed: value.upload_speed ? `${formatBytes(value.upload_speed)}/s` : '-',
-    downloadSpeedBytes: value.download_speed ?? 0,
-    uploadSpeedBytes: value.upload_speed ?? 0,
+    uploadSpeed: uploadSpeed ? `${formatBytes(uploadSpeed)}/s` : '-',
+    downloadSpeedBytes: downloadSpeed,
+    uploadSpeedBytes: uploadSpeed,
+    stale,
+    staleReason: value.stale_reason ?? undefined,
     sizeBytes: value.total_size ?? 0,
     // Unknown/never sorts last rather than ahead of an imminent completion.
     etaSeconds: etaSeconds === null || etaSeconds === undefined || etaSeconds < 0 ? Number.MAX_SAFE_INTEGER : etaSeconds,

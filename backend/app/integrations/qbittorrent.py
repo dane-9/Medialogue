@@ -5,7 +5,7 @@ import base64
 import hashlib
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -331,6 +331,82 @@ class TorrentTrackerSnapshot:
         }
 
 
+@dataclass(slots=True)
+class TorrentSyncState:
+    """Client-side mirror of one qBittorrent ``sync/maindata`` stream."""
+
+    rid: int = 0
+    raw: dict[str, dict[str, Any]] = field(default_factory=dict)
+    observations: dict[str, "TorrentObservation"] = field(default_factory=dict)
+
+    def reset(self) -> None:
+        self.rid = 0
+        self.raw.clear()
+        self.observations.clear()
+
+
+class _Session:
+    """One HTTP connection pool and login shared by every adapter for a client."""
+
+    def __init__(self, http: httpx.AsyncClient, *, shared: bool) -> None:
+        self.http = http
+        self.shared = shared
+        self.authenticated = False
+        self.login_lock = asyncio.Lock()
+        #: Bumped on every successful login so waiters can skip a duplicate one.
+        self.login_generation = 0
+
+
+#: Long-lived sessions keyed by event loop, URL and credentials. Polls, archive
+#: work and UI actions all build short-lived adapters; sharing the session lets
+#: them reuse kept-alive connections and one SID instead of logging in and
+#: opening fresh sockets every time.
+_SESSIONS: dict[tuple[int, str, str, str], tuple[asyncio.AbstractEventLoop, _Session]] = {}
+
+
+def _credential_key(username: str, password: str) -> str:
+    return hashlib.sha256(repr((username, password)).encode("utf-8")).hexdigest()
+
+
+def _shared_session(base_url: str, username: str, password: str, timeout: float) -> _Session | None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+    # Sessions belong to the loop that created them; forget closed loops.
+    for key, (owner, _session) in list(_SESSIONS.items()):
+        if owner.is_closed():
+            _SESSIONS.pop(key, None)
+    key = (id(loop), base_url, username, _credential_key(username, password))
+    entry = _SESSIONS.get(key)
+    if entry is not None and entry[0] is loop and not entry[1].http.is_closed:
+        return entry[1]
+    # Credentials changed for this URL: retire the old session.
+    for other_key, (owner, session) in list(_SESSIONS.items()):
+        if owner is loop and other_key[1] == base_url and other_key != key:
+            _SESSIONS.pop(other_key, None)
+            loop.create_task(session.http.aclose())
+    session = _Session(
+        httpx.AsyncClient(
+            base_url=base_url,
+            timeout=timeout,
+            limits=httpx.Limits(max_connections=8, max_keepalive_connections=4, keepalive_expiry=5.0),
+        ),
+        shared=True,
+    )
+    _SESSIONS[key] = (loop, session)
+    return session
+
+
+async def close_shared_sessions() -> None:
+    """Close every pooled session (application shutdown)."""
+
+    sessions = [session for _loop, session in _SESSIONS.values()]
+    _SESSIONS.clear()
+    for session in sessions:
+        await session.http.aclose()
+
+
 class QBittorrentClient:
     """Small async adapter that only exposes explicitly allowed qBit actions."""
 
@@ -353,10 +429,26 @@ class QBittorrentClient:
     ) -> None:
         self.username = username
         self.password = password
-        self._client = httpx.AsyncClient(
-            base_url=f"{base_url.rstrip('/')}/", timeout=timeout, transport=transport
+        normalized = f"{base_url.rstrip('/')}/"
+        # An injected transport (tests, diagnostics) always gets a private
+        # session; production adapters share one per client.
+        session = None if transport is not None else _shared_session(normalized, username, password, timeout)
+        self._session = session or _Session(
+            httpx.AsyncClient(base_url=normalized, timeout=timeout, transport=transport),
+            shared=False,
         )
-        self._authenticated = False
+
+    @property
+    def _client(self) -> httpx.AsyncClient:
+        return self._session.http
+
+    @property
+    def _authenticated(self) -> bool:
+        return self._session.authenticated
+
+    @_authenticated.setter
+    def _authenticated(self, value: bool) -> None:
+        self._session.authenticated = value
 
     async def __aenter__(self) -> QBittorrentClient:
         await self.login()
@@ -366,9 +458,20 @@ class QBittorrentClient:
         await self.close()
 
     async def close(self) -> None:
-        await self._client.aclose()
+        # A shared session outlives this adapter; only private ones close.
+        if not self._session.shared:
+            await self._client.aclose()
 
     async def login(self) -> None:
+        generation = self._session.login_generation
+        async with self._session.login_lock:
+            # Another adapter on this session logged in while we waited.
+            if self._session.authenticated and self._session.login_generation != generation:
+                return
+            await self._login_once()
+            self._session.login_generation += 1
+
+    async def _login_once(self) -> None:
         # Do not leave the authentication socket in the connection pool. Some
         # qBittorrent/proxy combinations close the connection immediately after
         # the login response (especially the 204 response used by qBittorrent
@@ -418,6 +521,48 @@ class QBittorrentClient:
     async def health(self) -> dict[str, Any]:
         response = await self._request("GET", "/api/v2/app/version")
         return {"status": "healthy", "version": response.text.strip()}
+
+    async def sync_torrents(self, state: TorrentSyncState) -> list[TorrentObservation]:
+        """Full torrent list maintained from qBittorrent's incremental feed.
+
+        ``sync/maindata`` returns only what changed since ``state.rid``, so a
+        client with thousands of idle torrents sends a few kilobytes per poll
+        instead of its whole list. qBittorrent answers with ``full_update``
+        whenever it cannot diff (first call, new session, restart), which
+        resets the cache. The caller still receives every torrent, so removal
+        detection keeps working.
+        """
+
+        response = await self._request("GET", "/api/v2/sync/maindata", params={"rid": state.rid})
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise QBittorrentError("qBittorrent returned malformed sync data") from exc
+        if not isinstance(payload, dict):
+            raise QBittorrentError("qBittorrent returned malformed sync data")
+        if payload.get("full_update"):
+            state.raw.clear()
+            state.observations.clear()
+        changed = payload.get("torrents") or {}
+        if not isinstance(changed, dict):
+            raise QBittorrentError("qBittorrent returned malformed sync data")
+        try:
+            for info_hash, fields in changed.items():
+                if not isinstance(fields, dict):
+                    continue
+                merged = {**state.raw.get(info_hash, {}), **fields, "hash": info_hash}
+                observation = self._observation(_TorrentPayload.model_validate(merged))
+                state.raw[info_hash] = merged
+                state.observations[info_hash] = observation
+        except ValidationError as exc:
+            # A partial cache is worse than none: force a full resync next time.
+            state.reset()
+            raise QBittorrentError("qBittorrent returned malformed sync data") from exc
+        for info_hash in payload.get("torrents_removed") or []:
+            state.raw.pop(info_hash, None)
+            state.observations.pop(info_hash, None)
+        state.rid = int(payload.get("rid") or 0)
+        return list(state.observations.values())
 
     async def list_torrents(self) -> list[TorrentObservation]:
         response = await self._request("GET", "/api/v2/torrents/info")

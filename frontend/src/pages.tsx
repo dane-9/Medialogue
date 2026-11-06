@@ -40,6 +40,7 @@ import { authApi } from './api/modules/auth'
 import { blocklistApi } from './api/modules/blocklist'
 import { discoveryApi } from './api/modules/discovery'
 import { downloadsApi } from './api/modules/downloads'
+import { applyProgressUpdate } from './api/mappers/downloads'
 import { integrationsApi } from './api/modules/integrations'
 import { moviesApi } from './api/modules/movies'
 import { problemsApi } from './api/modules/problems'
@@ -1182,6 +1183,8 @@ export function downloadPayloadGroups(items: Download[]): DownloadPayloadGroup[]
         uploadSpeedBytes,
         speed: downloadSpeedBytes ? `${formatBytes(downloadSpeedBytes)}/s` : '-',
         uploadSpeed: uploadSpeedBytes ? `${formatBytes(uploadSpeedBytes)}/s` : '-',
+        stale: members.every((item) => item.stale),
+        staleReason: members.find((item) => item.stale)?.staleReason,
       },
     }
   })
@@ -1227,6 +1230,9 @@ export function DownloadsPage() {
   const [sort, setSort] = useState<{ key: keyof Download; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Action outcomes are reported beside the table; `error` replaces the whole
+  // table and is reserved for failing to load it.
+  const [actionNotice, setActionNotice] = useState<Message>(null)
   // `useLiveLibraryRefresh` captures `load` once on mount, so reading the query
   // straight from state would pin the 5s poll to whatever was selected then.
   // Each part of the query therefore travels through a ref, assigned during
@@ -1265,7 +1271,56 @@ export function DownloadsPage() {
     finally { setLoading(false) }
   }
   useEffect(() => { void integrationsApi.downloadClients().then(setClients).catch(() => setClients([])) }, [])
-  useLiveLibraryRefresh(() => load(false), 5000)
+  // Live updates without re-reading the page on every tick: progress events
+  // patch rows in place, structural events trigger one debounced reload, and
+  // a slow timer picks up speeds/ETA (which events do not carry).
+  const refreshFacetsRef = useRef<() => Promise<void>>(async () => undefined)
+  useEffect(() => {
+    let reloadTimer: number | undefined
+    const visible = () => document.visibilityState !== 'hidden'
+    const reload = () => {
+      if (reloadTimer !== undefined) return
+      reloadTimer = window.setTimeout(() => {
+        reloadTimer = undefined
+        if (!visible()) return
+        void load(false)
+        void refreshFacetsRef.current()
+      }, 1000)
+    }
+    const onProgress = (event: MessageEvent<string>) => {
+      let payload: { data?: { torrent_id?: unknown; client_id?: unknown; state?: unknown; progress?: unknown } }
+      try { payload = JSON.parse(event.data) } catch { return }
+      const data = payload?.data
+      if (!data || typeof data.torrent_id !== 'string') return
+      setItems((current) => current.map((item) => (
+        item.torrentId === data.torrent_id && (typeof data.client_id !== 'string' || item.clientId === data.client_id)
+          ? applyProgressUpdate(item, {
+            state: typeof data.state === 'string' ? data.state : undefined,
+            progress: typeof data.progress === 'number' ? data.progress : undefined,
+          })
+          : item
+      )))
+    }
+    const structural = [
+      'download.completed', 'download.failed', 'download.cancelled', 'torrent.detected', 'torrent.removed',
+      'torrent.reappeared', 'torrent.archived', 'torrent.archive_failed', 'torrent.tracker_unregistered',
+      'torrent.tracker_recovered', 'upgrade.execution', 'qbittorrent.health',
+    ]
+    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    stream.addEventListener('download.progress', onProgress)
+    structural.forEach((name) => stream.addEventListener(name, reload))
+    const speeds = window.setInterval(() => { if (visible()) void load(false) }, 10_000)
+    const counts = window.setInterval(() => { if (visible()) void refreshFacetsRef.current() }, 30_000)
+    const onVisibility = () => { if (visible()) reload() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      if (reloadTimer !== undefined) window.clearTimeout(reloadTimer)
+      window.clearInterval(speeds)
+      window.clearInterval(counts)
+      document.removeEventListener('visibilitychange', onVisibility)
+      stream.close()
+    }
+  }, [])
 
   // Fall back to the first configured client when the stored one is gone.
   const activeClientId = clients.some((client) => client.id === clientId) ? clientId : clients[0]?.id ?? ''
@@ -1295,7 +1350,9 @@ export function DownloadsPage() {
       setFacets({ counts: payload.counts, categories: payload.categories, tags: payload.tags, trackers: payload.trackers })
     } catch { setFacets({ counts: {}, categories: [], tags: [], trackers: [] }) }
   }
-  useEffect(() => { void refreshFacets() }, [activeClientId, items])
+  refreshFacetsRef.current = refreshFacets
+  // Counts follow the client and structural changes, not every row refresh.
+  useEffect(() => { void refreshFacets() }, [activeClientId])
   // A narrower filter can leave the current page past the end of the results.
   useEffect(() => { if (pages > 0 && page > pages) setPage(1) }, [pages, page])
 
@@ -1338,21 +1395,27 @@ export function DownloadsPage() {
       const downloadIds = filtered
         .filter((group) => selected.has(group.id))
         .flatMap((group) => group.members.map((member) => member.id))
-      await downloadsApi.applyDownloadAction(downloadIds, action, value)
-      setError('')
+      const result = await downloadsApi.applyDownloadAction(downloadIds, action, value)
+      const problems = [
+        ...(result.failures ?? []).map((item) => `${item.client_name}: ${item.error}`),
+        ...(result.skipped ? [`${result.skipped} torrent${result.skipped === 1 ? '' : 's'} skipped because the client is disabled`] : []),
+      ]
+      setActionNotice(problems.length
+        ? { tone: 'error', text: `Applied to ${result.applied} torrent${result.applied === 1 ? '' : 's'}, but: ${problems.join('; ')}` }
+        : null)
       setContext(null)
       // The endpoint refreshes the affected rows before responding, so this
       // reload shows the new state rather than waiting for the next poll.
       await load(false)
       await refreshFacets()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the action.') }
+    } catch (reason) { setActionNotice(failed(reason, 'Could not apply the action.')) }
     finally { setActionBusy(false) }
   }
 
   const setSortKey = (key: keyof Download) => { setPage(1); setSort((current) => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }) }
   const sortLabel = (key: keyof Download, label: string) => <button className="table-sort" onClick={() => setSortKey(key)}>{label}{sort.key === key && <span>{sort.direction === 'asc' ? ' ↑' : ' ↓'}</span>}</button>
-  const activityLabel = (item: Download) => item.activity === 'metadata' ? 'Fetching metadata' : item.activity.charAt(0).toUpperCase() + item.activity.slice(1)
-  const activityTone = (item: Download): 'neutral' | 'green' | 'amber' | 'red' | 'blue' => item.state === 'Error' ? 'red' : item.state === 'Seeding' ? 'green' : item.state === 'Paused' ? 'neutral' : item.activity === 'stalled' ? 'amber' : 'blue'
+  const activityLabel = (item: Download) => item.stale ? 'Stale' : item.activity === 'metadata' ? 'Fetching metadata' : item.activity.charAt(0).toUpperCase() + item.activity.slice(1)
+  const activityTone = (item: Download): 'neutral' | 'green' | 'amber' | 'red' | 'blue' => item.stale ? 'neutral' : item.state === 'Error' ? 'red' : item.state === 'Seeding' ? 'green' : item.state === 'Paused' ? 'neutral' : item.activity === 'stalled' ? 'amber' : 'blue'
   // The row is a single line, so what used to sit on a second line moves into
   // the hover tooltip for that cell rather than being dropped.
   const releaseNote = (item: Download) => <>
@@ -1424,6 +1487,7 @@ export function DownloadsPage() {
         })()}</small>
       </button>)}
     </div>}
+    {actionNotice && <Note message={actionNotice} />}
     {error && <EmptyState icon="download" title="Could not load downloads" detail={error} action={<Button variant="ghost" icon="refresh" onClick={() => void load()}>Try again</Button>} />}
     {!error && !loading && !filtered.length && <EmptyState icon="download" title={(facets.counts.all ?? 0) ? 'No activity matches this filter' : 'No managed torrents are currently loaded'} detail={(facets.counts.all ?? 0) ? 'Try another activity filter.' : 'Historical and archived-only torrents are intentionally kept out of this live view.'} />}
     {!error && (loading || filtered.length > 0) && <Panel className="table-panel"><table className="data-table downloads-table"><thead><tr><th>{sortLabel('name', 'Release')}</th><th>{sortLabel('sizeBytes', 'Size')}</th><th>{sortLabel('progress', 'Progress')}</th><th>{sortLabel('state', 'Status')}</th><th>{sortLabel('seeds', 'Seeds')}</th><th>{sortLabel('leeches', 'Peers')}</th><th>{sortLabel('downloadSpeedBytes', 'Down speed')}</th><th>{sortLabel('uploadSpeedBytes', 'Up speed')}</th><th>{sortLabel('etaSeconds', 'ETA')}</th><th>{sortLabel('trackerState', 'Tracker')}</th><th>{sortLabel('archiveState', 'Local archive')}</th></tr></thead><tbody>{loading ? <tr><td colSpan={11} className="table-loading">Reading live qBittorrent activity…</td></tr> : filtered.map((group) => {
@@ -1431,7 +1495,7 @@ export function DownloadsPage() {
       const isCrossSeeded = group.members.length > 1
       const remainingSources = group.members.filter((member) => member.trackerState !== 'unregistered' && member.trackerState !== 'unavailable').length
       return <Fragment key={group.id}><tr
-      className={selected.has(group.id) ? 'row-selected' : ''}
+      className={[selected.has(group.id) ? 'row-selected' : '', download.stale ? 'row-stale' : ''].filter(Boolean).join(' ')}
       onClick={(event) => rowClick(event, group.id)}
       onContextMenu={(event) => openContext(event, group.id)}
     >
@@ -1440,7 +1504,9 @@ export function DownloadsPage() {
         : <span className={`kind-box download-kind kind-${download.kind === 'Show' ? 'show' : 'movie'} unmatched`}><Icon name={download.kind === 'Show' ? 'tv-screen' : 'clapper'} size={11} /></span>}</Tooltip><Tooltip className="download-name-tip" delay={250} content={<span className="download-path">{download.path}</span>}><strong>{download.name}</strong></Tooltip>{isCrossSeeded && <span className="download-cross-seed-count">Cross-seeded · {group.members.length} torrents</span>}</span></td>
       <td className="download-size">{download.size}</td>
       <td><Tooltip className="download-progress" content={progressNote(download)}><Progress value={download.progress} tone={download.state === 'Seeding' ? 'green' : download.state === 'Error' ? 'amber' : 'blue'} /><span className="download-progress-value">{Math.round(download.progress)}%</span></Tooltip></td>
-      <td><Badge tone={activityTone(download)}>{activityLabel(download)}</Badge></td>
+      <td>{download.stale
+        ? <Tooltip content={download.staleReason ?? 'This client has not reported recently.'}><Badge tone="neutral">Stale</Badge></Tooltip>
+        : <Badge tone={activityTone(download)}>{activityLabel(download)}</Badge>}</td>
       <td className="download-count">{peerCount(download.seeds, download.seedsTotal)}</td>
       <td className="download-count">{peerCount(download.leeches, download.leechesTotal)}</td>
       <td className="download-speed down">{download.speed}</td>
@@ -1525,7 +1591,7 @@ export function BlocklistPage() {
     subtitle="Failed releases excluded from future searches. Removing an entry does not erase its failure history."
     action={<div className="page-actions"><Button variant="ghost" icon="unlock" disabled={!selected.size} onClick={() => void remove([...selected])}>Unblock selected</Button><Button variant="danger" disabled={!items.length} onClick={() => void clear()}>Clear all</Button></div>}
   >
-    {error && <Note message={failed(error, 'Could not load the blocklist.')} />}
+    {error && <Note message={{ tone: 'error', text: error }} />}
     {loading ? <Panel><div className="history-empty">Loading blocklist…</div></Panel>
       : !items.length ? <EmptyState title="Nothing is blocklisted" detail="Failed releases you exclude will appear here. Failure records remain available under Events." />
         : <Panel className="blocklist-panel"><table className="data-table blocklist-table"><thead><tr>

@@ -119,6 +119,9 @@ async def lifespan(_: FastAPI):
             await asyncio.wait_for(scheduler_task, timeout=5.0)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             logger.warning("scheduled task loop did not stop in time; cancelled")
+        from app.integrations.qbittorrent import close_shared_sessions
+
+        await close_shared_sessions()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

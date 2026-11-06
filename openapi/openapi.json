@@ -1891,6 +1891,35 @@
         "title": "DiscoveryMode",
         "type": "string"
       },
+      "DownloadActionFailure": {
+        "properties": {
+          "client_id": {
+            "format": "uuid",
+            "title": "Client Id",
+            "type": "string"
+          },
+          "client_name": {
+            "title": "Client Name",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "client_name",
+          "count",
+          "error"
+        ],
+        "title": "DownloadActionFailure",
+        "type": "object"
+      },
       "DownloadActionRequest": {
         "description": "Apply one qBittorrent action to a set of live download rows.",
         "properties": {
@@ -1948,6 +1977,18 @@
           },
           "clients": {
             "title": "Clients",
+            "type": "integer"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/DownloadActionFailure"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
             "type": "integer"
           }
         },
@@ -2811,6 +2852,7 @@
               "downloading",
               "checking",
               "metadata",
+              "moving",
               "queued",
               "stalled",
               "seeding",
@@ -3197,6 +3239,22 @@
               }
             ],
             "title": "Show Id"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Reason"
           },
           "state": {
             "anyOf": [

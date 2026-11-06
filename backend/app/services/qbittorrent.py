@@ -9,6 +9,8 @@ move, rename, import, or delete media.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
 import logging
 from collections import defaultdict
 from collections.abc import Sequence
@@ -18,10 +20,16 @@ from time import perf_counter
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.qbittorrent import QBittorrentClient, QBittorrentError, TorrentTrackerSnapshot
+from app.integrations.qbittorrent import (
+    QBittorrentClient,
+    QBittorrentError,
+    TorrentObservation,
+    TorrentSyncState,
+    TorrentTrackerSnapshot,
+)
 from app.models.domain import (
     IntegrationType,
     InteractiveSearchResult,
@@ -84,30 +92,44 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-#: How stale a torrent's tracker health may get. The per-poll batch is sized to
-#: hold this regardless of library size, so the guarantee does not weaken as a
-#: client grows; only the number of requests per cycle does.
-_TRACKER_MAX_STALENESS_SECONDS = 300
+#: How stale a torrent's tracker health may get. Torrents still downloading,
+#: errored, or without a working tracker are checked often because their state
+#: drives decisions; settled seeding torrents change rarely and are checked far
+#: less often, which keeps request volume low on clients with thousands of them.
+_TRACKER_ACTIVE_STALENESS_SECONDS = 300
+_TRACKER_SETTLED_STALENESS_SECONDS = 3600
 
-#: Floor for the per-poll batch, so a small client refreshes everything every
-#: cycle instead of trickling a couple of torrents at a time.
-_TRACKER_MIN_REQUESTS_PER_POLL = 50
+#: Floor so a small, mostly-due client still clears its queue quickly.
+_TRACKER_MIN_REQUESTS_PER_POLL = 10
+#: Ceiling so one poll never turns into thousands of detail requests.
+_TRACKER_MAX_REQUESTS_PER_POLL = 200
 
 
-def _tracker_request_budget(torrent_count: int, poll_interval_seconds: int) -> int:
+def _tracker_is_active(observed) -> bool:
+    state = str(getattr(observed, "state", "") or "").casefold()
+    return (
+        float(getattr(observed, "progress", 0) or 0) < 1
+        or "error" in state
+        or "missing" in state
+        or not getattr(observed, "tracker", None)
+    )
+
+
+def _tracker_request_budget(active_count: int, settled_count: int, poll_interval_seconds: int) -> int:
     """How many tracker detail calls this poll may make.
 
-    Sized so every torrent is revisited within _TRACKER_MAX_STALENESS_SECONDS:
-    spreading that work evenly across the polls in the window keeps the request
-    rate flat without letting any torrent go unchecked for longer than a fixed
-    budget would have allowed.
+    Each class is spread evenly over its own staleness window, so the request
+    rate stays flat and every torrent is still revisited within its window.
     """
 
-    if torrent_count <= 0:
+    total = active_count + settled_count
+    if total <= 0:
         return 0
-    polls_in_window = max(1, _TRACKER_MAX_STALENESS_SECONDS // max(1, poll_interval_seconds))
-    per_poll = -(-torrent_count // polls_in_window)  # ceil
-    return max(_TRACKER_MIN_REQUESTS_PER_POLL, per_poll)
+    interval = max(1, poll_interval_seconds)
+    active_polls = max(1, _TRACKER_ACTIVE_STALENESS_SECONDS // interval)
+    settled_polls = max(1, _TRACKER_SETTLED_STALENESS_SECONDS // interval)
+    per_poll = -(-active_count // active_polls) + -(-settled_count // settled_polls)
+    return min(total, _TRACKER_MAX_REQUESTS_PER_POLL, max(_TRACKER_MIN_REQUESTS_PER_POLL, per_poll))
 
 
 def _tracker_check_age(metadata: dict[str, object] | None, now: datetime) -> float:
@@ -134,6 +156,7 @@ async def _tracker_detail_batch(
     now: datetime,
     *,
     budget: int,
+    active_hashes: set[str] | None = None,
 ) -> set[str]:
     """Which torrents get their tracker detail refreshed this cycle.
 
@@ -161,8 +184,15 @@ async def _tracker_detail_batch(
             ).all()
         )
     known = {info_hash: metadata for info_hash, metadata in rows}
-    # A torrent with no row yet has never been checked, so it leads the queue.
-    ordered = sorted(lowered, key=lambda value: -_tracker_check_age(known.get(value), now))
+    active = {value.lower() for value in active_hashes} if active_hashes is not None else set(lowered)
+
+    def window(value: str) -> int:
+        return _TRACKER_ACTIVE_STALENESS_SECONDS if value in active else _TRACKER_SETTLED_STALENESS_SECONDS
+
+    # Only torrents past their window are due; the rest are left alone rather
+    # than refreshed just because budget remains. Never-checked ones lead.
+    due = [value for value in lowered if _tracker_check_age(known.get(value), now) >= window(value)]
+    ordered = sorted(due, key=lambda value: -_tracker_check_age(known.get(value), now) / window(value))
     return set(ordered[:budget])
 
 
@@ -436,6 +466,66 @@ async def test_download_client_connection(
         await adapter.close()
 
 
+#: Per-client mirror of qBittorrent's incremental torrent feed.
+_SYNC_STATES: dict[UUID, tuple[tuple[str, str, str], TorrentSyncState]] = {}
+
+#: Per-client fingerprints of torrents whose last full processing found nothing
+#: left to do. An unchanged torrent then only gets its live telemetry updated.
+_SETTLED: dict[UUID, dict[str, tuple[tuple, datetime]]] = {}
+#: Even an unchanged torrent is fully re-processed this often, so associations,
+#: archive state and reconciliation still catch up with library changes.
+_FULL_REPROCESS_SECONDS = 600
+
+
+async def _fetch_observations(adapter, client: ConfiguredDownloadClient) -> list[TorrentObservation]:
+    """The client's full torrent list, fetched incrementally when possible."""
+
+    if not isinstance(adapter, QBittorrentClient):
+        return await adapter.list_torrents()
+    identity = (client.url, client.username or "", hashlib.sha256((client.password or "").encode()).hexdigest())
+    entry = _SYNC_STATES.get(client.id)
+    if entry is None or entry[0] != identity:
+        entry = (identity, TorrentSyncState())
+        _SYNC_STATES[client.id] = entry
+        _SETTLED.pop(client.id, None)
+    try:
+        return await adapter.sync_torrents(entry[1])
+    except Exception:
+        entry[1].reset()
+        raise
+
+
+def _archive_files_present(torrent: Torrent | None) -> bool:
+    """Cheap guard for the fast path: a deleted backup forces a full pass."""
+
+    return bool(
+        torrent is not None
+        and torrent.archive_path
+        and torrent.manifest_path
+        and os.path.exists(torrent.archive_path)
+        and os.path.exists(torrent.manifest_path)
+    )
+
+
+def _settled_fingerprint(observed, reported: str | None, resolved: str | None) -> tuple:
+    """Everything whose change requires full processing of a torrent."""
+
+    return (
+        observed.name,
+        observed.state,
+        round(float(observed.progress or 0), 4),
+        bool(observed.complete),
+        bool(observed.checking),
+        reported,
+        resolved,
+        observed.category or None,
+        tuple(observed.tags),
+        observed.tracker or None,
+        observed.total_size,
+        observed.completed_at,
+    )
+
+
 async def _poll_download_client(
     db: AsyncSession,
     client: ConfiguredDownloadClient,
@@ -451,7 +541,7 @@ async def _poll_download_client(
     client.last_health_checked_at = checked_at
     previous_health = client.health
     try:
-        observations = await adapter.list_torrents()
+        observations = await _fetch_observations(adapter, client)
     except Exception as exc:
         client.health = "unavailable"
         client.latency_ms = round((perf_counter() - poll_started) * 1000)
@@ -547,18 +637,41 @@ async def _poll_download_client(
         await db.scalars(select(Torrent).where(Torrent.id.in_({row.torrent_id for row in prior_rows})))
     ).all() if prior_rows else []
     prior_hash_by_torrent = {torrent.id: torrent.info_hash.lower() for torrent in prior_torrents}
+    prior_torrent_by_id = {torrent.id: torrent for torrent in prior_torrents}
     prior_by_hash = {
         prior_hash_by_torrent[row.torrent_id]: row
         for row in prior_rows
         if row.torrent_id in prior_hash_by_torrent
     }
 
+    def scope_of(observed) -> tuple[str, str | None, UUID | None, bool]:
+        reported = observed.content_path or observed.save_path
+        resolved, found_mapping_id = resolve_remote_path(reported, mappings)
+        found_mapping = mapping_by_id.get(found_mapping_id) if found_mapping_id else None
+        if found_mapping is not None and found_mapping.storage_root_id is not None:
+            mapped_root = root_by_id.get(found_mapping.storage_root_id)
+            inside = bool(mapped_root and _inside_local_root(resolved, mapped_root.resolved_root_path))
+        else:
+            inside = any(_inside_local_root(resolved, root.resolved_root_path) for root in roots)
+        return reported, resolved, found_mapping_id, inside
+
+    # Path scope is computed once per torrent and reused below. Tracker detail
+    # is only fetched for torrents Medialogue manages: a client can hold
+    # thousands of unrelated torrents that must not cost requests.
+    scopes = {item.info_hash.lower(): scope_of(item) for item in observations}
+    managed = [item for item in observations if scopes[item.info_hash.lower()][3]]
+    active_hashes = {item.info_hash.lower() for item in managed if _tracker_is_active(item)}
     current_hashes: set[str] = set()
+    settled_cache = _SETTLED.setdefault(client.id, {})
+    fast_torrent_ids: list[UUID] = []
     detail_due = await _tracker_detail_batch(
         db,
-        [item.info_hash for item in observations],
+        [item.info_hash for item in managed],
         checked_at,
-        budget=_tracker_request_budget(len(observations), client.poll_interval_seconds or 30),
+        budget=_tracker_request_budget(
+            len(active_hashes), len(managed) - len(active_hashes), client.poll_interval_seconds or 30
+        ),
+        active_hashes=active_hashes,
     )
     relevant_count = added = completed = ignored = removed = processing_errors = 0
     completed_upgrade_torrent_ids: set[UUID] = set()
@@ -567,20 +680,7 @@ async def _poll_download_client(
     for observed in observations:
         info_hash = observed.info_hash.lower()
         current_hashes.add(info_hash)
-        reported_content = observed.content_path or observed.save_path
-        resolved_content, mapping_id = resolve_remote_path(reported_content, mappings)
-        matched_mapping = mapping_by_id.get(mapping_id) if mapping_id else None
-        if matched_mapping is not None and matched_mapping.storage_root_id is not None:
-            mapped_root = root_by_id.get(matched_mapping.storage_root_id)
-            in_scope = bool(
-                mapped_root
-                and _inside_local_root(resolved_content, mapped_root.resolved_root_path)
-            )
-        else:
-            in_scope = any(
-                _inside_local_root(resolved_content, root.resolved_root_path)
-                for root in roots
-            )
+        reported_content, resolved_content, mapping_id, in_scope = scopes[info_hash]
         previously_known = info_hash in prior_by_hash
         if observed.checking and previously_known and not in_scope:
             # checkingResumeData can temporarily omit or alter paths. A known
@@ -658,6 +758,38 @@ async def _poll_download_client(
             continue
 
         relevant_count += 1
+        fingerprint = _settled_fingerprint(observed, reported_content, resolved_content)
+        settled = settled_cache.get(info_hash)
+        prior = prior_by_hash.get(info_hash)
+        if (
+            settled is not None
+            and settled[0] == fingerprint
+            and (checked_at - settled[1]).total_seconds() < _FULL_REPROCESS_SECONDS
+            and prior is not None
+            and prior.is_present
+            and _archive_files_present(prior_torrent_by_id.get(prior.torrent_id))
+            and info_hash not in detail_due
+            and not observed.checking
+            and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
+        ):
+            # Nothing that drives Medialogue's decisions changed since the last
+            # full pass: refresh the live numbers and move on.
+            prior.state = observed.state
+            prior.progress = observed.progress
+            prior.download_speed = observed.download_speed
+            prior.upload_speed = observed.upload_speed
+            prior.eta_seconds = observed.eta
+            prior.amount_left = observed.amount_left
+            prior.ratio = observed.ratio
+            prior.seeds = observed.seeds
+            prior.seeds_total = observed.seeds_total
+            prior.leeches = observed.leeches
+            prior.leeches_total = observed.leeches_total
+            prior.availability = observed.availability
+            prior.last_seen_at = checked_at
+            fast_torrent_ids.append(prior.torrent_id)
+            continue
+        settled_cache.pop(info_hash, None)
         added_before = added
         completed_before = completed
         try:
@@ -913,7 +1045,14 @@ async def _poll_download_client(
                     completed_upgrade_torrent_ids.add(torrent.id)
 
                 await reconcile_torrent_disagreements(db, torrent, qbit_present=True)
+                if (
+                    torrent_archive_complete(torrent)
+                    and str(client.id) in (read_manifest(torrent).get("client_recovery") or {})
+                    and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
+                ):
+                    settled_cache[info_hash] = (fingerprint, checked_at)
         except Exception as exc:
+            settled_cache.pop(info_hash, None)
             # Python-side counters are not part of the database SAVEPOINT.
             # Restore them when the torrent's database work was rolled back.
             added = added_before
@@ -984,6 +1123,15 @@ async def _poll_download_client(
                         "torrent_id": str(torrent_id),
                     },
                 )
+
+    if fast_torrent_ids:
+        # One statement for every torrent that took the fast path.
+        for index in range(0, len(fast_torrent_ids), 500):
+            await db.execute(
+                update(Torrent)
+                .where(Torrent.id.in_(fast_torrent_ids[index : index + 500]))
+                .values(last_seen_at=checked_at)
+            )
 
     for row in prior_rows:
         info_hash = prior_hash_by_torrent.get(row.torrent_id)

@@ -935,3 +935,129 @@ def test_an_indexer_needs_a_download_client_once_one_exists(client: TestClient) 
     )
     assert cleared.status_code == 422, cleared.text
     assert cleared.json()["error"]["code"] == "DOWNLOAD_CLIENT_REQUIRED"
+
+
+def test_download_pages_are_stable_and_filters_match_exact_states_and_hosts(client: TestClient) -> None:
+    """Equal sort values must not reshuffle pages; tracker/moving filters are exact."""
+
+    from datetime import datetime, timedelta, timezone
+
+    headers = _login(client)
+    qbit = _create_client(client, headers, name="paging-client")
+    client_id = UUID(qbit["id"])
+    now = datetime.now(timezone.utc)
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            for index in range(9):
+                # Every row shares one name and progress: only a tie-breaker
+                # can give them a deterministic order.
+                torrent = Torrent(
+                    info_hash=f"{index:040x}",
+                    name="Same.Name.2024.1080p",
+                    tracker_summary={"tracker": "https://tracker.abc.org:443/announce" if index < 2 else "https://tracker.notabc.org/announce"},
+                )
+                db.add(torrent)
+                await db.flush()
+                db.add(TorrentClientObservation(
+                    torrent_id=torrent.id,
+                    download_client_id=client_id,
+                    state="moving" if index == 0 else "uploading",
+                    progress=1,
+                    is_present=True,
+                    last_seen_at=now if index < 8 else now - timedelta(hours=2),
+                    download_speed=1000,
+                ))
+            await db.commit()
+
+    asyncio.run(seed())
+
+    seen: list[str] = []
+    for page in range(1, 4):
+        response = client.get(f"/api/v1/downloads?client_id={client_id}&sort=name&page={page}&page_size=3")
+        assert response.status_code == 200, response.text
+        seen.extend(item["id"] for item in response.json()["items"])
+    assert len(seen) == len(set(seen)) == 9
+    again = [
+        item["id"]
+        for page in range(1, 4)
+        for item in client.get(f"/api/v1/downloads?client_id={client_id}&sort=name&page={page}&page_size=3").json()["items"]
+    ]
+    assert again == seen
+
+    by_host = client.get(f"/api/v1/downloads?client_id={client_id}&filters=tracker:tracker.abc.org&page_size=50").json()
+    facets = client.get(f"/api/v1/downloads/facets?client_id={client_id}").json()
+    assert by_host["total"] == facets["counts"]["tracker:tracker.abc.org"] == 2
+
+    moving = client.get(f"/api/v1/downloads?client_id={client_id}&filters=moving&page_size=50").json()
+    assert moving["total"] == facets["counts"]["moving"] == 1
+    assert moving["items"][0]["activity"] == "moving"
+
+    items = client.get(f"/api/v1/downloads?client_id={client_id}&page_size=50").json()["items"]
+    stale = [item for item in items if item["stale"]]
+    assert len(stale) == 1 and "has not reported" in stale[0]["stale_reason"]
+
+
+def test_download_action_reports_partial_failure_instead_of_failing_everything(client: TestClient) -> None:
+    headers = _login(client)
+    good = _create_client(client, headers, name="good-client")
+    bad = _create_client(client, headers, name="bad-client", url="http://qbit-bad.test:8080")
+    ids: dict[str, str] = {}
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            for name, qbit in (("good", good), ("bad", bad)):
+                torrent = Torrent(info_hash=f"{name}hash".ljust(40, "0"), name=f"{name}.torrent")
+                db.add(torrent)
+                await db.flush()
+                observation = TorrentClientObservation(
+                    torrent_id=torrent.id, download_client_id=UUID(qbit["id"]),
+                    state="uploading", progress=1, is_present=True,
+                )
+                db.add(observation)
+                await db.flush()
+                ids[name] = str(observation.id)
+            await db.commit()
+
+    asyncio.run(seed())
+
+    class Adapter:
+        def __init__(self, url: str, *_args, **_kwargs):
+            self.url = url
+
+        async def stop_torrents(self, hashes):
+            if "bad" in self.url:
+                raise RuntimeError("connection refused")
+
+        async def get_torrent(self, info_hash):
+            return None
+
+        async def list_torrents(self):
+            return []
+
+        async def close(self):
+            return None
+
+    from app.api import downloads as downloads_api
+    import app.api.downloads as downloads_module
+
+    async def no_refresh(*_args, **_kwargs):
+        return None
+
+    original_refresh = downloads_module.refresh_observations_after_action
+    downloads_module.refresh_observations_after_action = no_refresh
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: Adapter
+    try:
+        response = client.post(
+            "/api/v1/downloads/actions",
+            headers=headers,
+            json={"download_ids": [ids["good"], ids["bad"]], "action": "stop"},
+        )
+    finally:
+        downloads_module.refresh_observations_after_action = original_refresh
+        client.app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["applied"] == 1
+    assert [item["client_name"] for item in body["failures"]] == ["bad-client"]
+    assert "connection refused" in body["failures"][0]["error"]

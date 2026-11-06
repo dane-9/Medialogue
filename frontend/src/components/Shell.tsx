@@ -19,7 +19,7 @@ const primary = [
   { to: '/replace-media', label: 'Replace Media', icon: 'refresh' as const },
   { to: '/upgrade-media', label: 'Upgrade Media', icon: 'upgrade-media' as const },
   { to: '/downloads', label: 'Downloads', icon: 'download' as const },
-  { to: '/blocklist', label: 'Blocklist', icon: 'lock' as const },
+  { to: '/blocklist', label: 'Blocklist', icon: 'blocklist' as const },
   { to: '/problems', label: 'Problems', icon: 'alert' as const },
 ]
 const tools = [

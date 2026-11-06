@@ -43,6 +43,7 @@ from app.models.domain import (
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.downloads import (
+    DownloadActionFailure,
     DownloadActionRequest,
     DownloadFacetsResponse,
     DownloadActionResponse,
@@ -87,7 +88,9 @@ def _activity_state(observation: TorrentClientObservation) -> str:
         return "checking"
     if "error" in state or "missing" in state:
         return "error"
-    if state == "metadl":
+    if state == "moving":
+        return "moving"
+    if state in {"metadl", "forcedmetadl"}:
         return "metadata"
     if "queued" in state:
         return "queued"
@@ -164,7 +167,8 @@ def _activity_expression():
     return case(
         (state.like("checking%"), "checking"),
         (or_(state.like("%error%"), state.like("%missing%")), "error"),
-        (state == "metadl", "metadata"),
+        (state == "moving", "moving"),
+        (state.in_(("metadl", "forcedmetadl")), "metadata"),
         (state.like("%queued%"), "queued"),
         (and_(state.like("%stall%"), progress < 1), "stalled"),
         (or_(state.like("%pause%"), state.like("%stopped%")), "paused"),
@@ -241,8 +245,7 @@ def _filter_condition(key: str):
     if key == "error":
         return activity == "error"
     if key == "moving":
-        # No qBittorrent field reports a relocation, so this can never match.
-        return literal(False)
+        return activity == "moving"
     if key == "attention":
         return or_(
             activity == "error",
@@ -269,8 +272,29 @@ def _filter_condition(key: str):
     if key == "tracker:warning":
         return tracker_state == "degraded"
     if key.startswith("tracker:"):
-        return tracker_host.like(f"%{key.removeprefix('tracker:')}%")
+        return _tracker_host_matches(tracker_host, key.removeprefix("tracker:"))
     return None
+
+
+def _like_literal(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _tracker_host_matches(column, host: str):
+    """SQL mirror of ``_host_only(column) == host``.
+
+    The stored value is a redacted announce endpoint (``scheme://host:port/path``
+    or a bare ``host[:port]``). Matching the host exactly keeps the filter in
+    line with the facet counts; a substring match also caught other trackers
+    whose hostname merely contained this one.
+    """
+
+    escaped = _like_literal(host)
+    patterns = [f"%://{escaped}", f"%://{escaped}:%", f"%://{escaped}/%", f"{escaped}:%", f"{escaped}/%"]
+    return or_(
+        func.lower(column) == host.casefold(),
+        *(func.lower(column).like(pattern.casefold(), escape="\\") for pattern in patterns),
+    )
 
 
 #: Sort keys the table offers, mapped to what the database can order by.
@@ -469,6 +493,32 @@ async def _load_page_context(
     )
 
 
+#: A row is stale once its client has missed this many poll intervals.
+_STALE_AFTER_POLLS = 3
+_STALE_MINIMUM_SECONDS = 90
+
+
+def _staleness(observation: TorrentClientObservation, client: ConfiguredDownloadClient) -> dict[str, Any]:
+    """Whether the live numbers on this row can still be trusted."""
+
+    if not client.enabled:
+        return {"stale": True, "stale_reason": f"{client.name} is disabled; these values are from its last poll."}
+    last_seen = observation.last_seen_at
+    if last_seen is None:
+        return {"stale": False, "stale_reason": None}
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+    limit = max(_STALE_MINIMUM_SECONDS, _STALE_AFTER_POLLS * max(5, client.poll_interval_seconds or 30))
+    age = (utcnow() - last_seen).total_seconds()
+    if age <= limit:
+        return {"stale": False, "stale_reason": None}
+    minutes = max(1, int(age // 60))
+    reason = f"{client.name} has not reported this torrent for {minutes} min"
+    if client.last_error:
+        reason += f" ({client.last_error})"
+    return {"stale": True, "stale_reason": reason + "."}
+
+
 def _download_response(
     observation: TorrentClientObservation,
     torrent: Torrent,
@@ -551,6 +601,7 @@ def _download_response(
             else None
         ),
         activity=_activity_state(observation),
+        **_staleness(observation, client),
         download_speed=observation.download_speed,
         upload_speed=observation.upload_speed,
         eta_seconds=observation.eta_seconds,
@@ -909,15 +960,21 @@ async def apply_download_action(
     for observation, torrent in rows:
         by_client.setdefault(observation.download_client_id, []).append(torrent.info_hash)
 
-    applied = 0
+    applied = skipped = 0
+    failures: list[DownloadActionFailure] = []
     for client_id, hashes in by_client.items():
         client = await get_configured_download_client(db, client_id)
         if client is None or not client.enabled:
+            skipped += len(hashes)
             continue
         try:
             await run_torrent_action(client, payload.action, hashes, value=payload.value, client_factory=client_factory)
         except Exception as exc:
-            raise AppError("UPSTREAM_ERROR", f"{client.name}: {exc}", status_code=502) from exc
+            # One unreachable client must not hide that the others succeeded.
+            failures.append(
+                DownloadActionFailure(client_id=client.id, client_name=client.name, count=len(hashes), error=str(exc))
+            )
+            continue
         applied += len(hashes)
         # qBittorrent applies most of these immediately, but not instantly; a
         # short pause makes the refreshed snapshot show the new state rather
@@ -925,8 +982,14 @@ async def apply_download_action(
         await asyncio.sleep(0.35)
         await refresh_observations_after_action(db, client, hashes, client_factory=client_factory)
     if not applied:
+        if failures:
+            raise AppError(
+                "UPSTREAM_ERROR",
+                "; ".join(f"{item.client_name}: {item.error}" for item in failures),
+                status_code=502,
+            )
         raise AppError("CONFLICT", "No enabled download client owns the selected downloads.", status_code=409)
-    return DownloadActionResponse(applied=applied, clients=len(by_client))
+    return DownloadActionResponse(applied=applied, clients=len(by_client), skipped=skipped, failures=failures)
 
 
 @router.get("/downloads/facets", response_model=DownloadFacetsResponse)
@@ -988,6 +1051,8 @@ async def download_facets(
             counts["stalled"] += 1
         if activity == "checking":
             counts["checking"] += 1
+        if activity == "moving":
+            counts["moving"] += 1
         if activity == "error":
             counts["error"] += 1
         if activity == "error" or archive_state == TorrentArchiveState.FAILED or tracker_state == "unregistered":
@@ -1094,7 +1159,11 @@ async def list_downloads(
     else:
         order = order.desc() if direction == "desc" else order.asc()
     page_rows = (
-        await db.execute(base.order_by(order).offset((page - 1) * page_size).limit(page_size))
+        # The observation id breaks ties so equal sort values (cross-seeds with
+        # one name, every torrent at 100%) keep a stable page across refreshes.
+        await db.execute(
+            base.order_by(order, TorrentClientObservation.id).offset((page - 1) * page_size).limit(page_size)
+        )
     ).all()
 
     # Cross-seeds sharing one exact qBittorrent content path are shown as one

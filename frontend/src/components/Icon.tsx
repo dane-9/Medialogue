@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving' | 'tracker' | 'queue-top' | 'queue-bottom' | 'queue-up' | 'queue-down' | 'share-ratio' | 'tag' | 'category' | 'monitored' | 'monitored-off'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'blocklist' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving' | 'tracker' | 'queue-top' | 'queue-bottom' | 'queue-up' | 'queue-down' | 'share-ratio' | 'tag' | 'category' | 'monitored' | 'monitored-off'
 
 const paths: Record<IconName, JSX.Element> = {
   // Queue moves: the full mark (outline chevron above a solid arrow) means
@@ -91,6 +91,12 @@ const paths: Record<IconName, JSX.Element> = {
     stroke="none"
     d="M12 2C9.243 2 7 4.243 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7c0-2.757-2.243-5-5-5M9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9zm4 10.723V20h-2v-2.277a1.993 1.993 0 0 1 .567-3.677A2 2 0 0 1 14 16a1.99 1.99 0 0 1-1 1.723"
   />,
+  // Prohibited sign. Drawn on its own 16px grid with its own stroke width,
+  // so it keeps the supplied proportions at every size.
+  blocklist: <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5">
+    <circle cx="8" cy="8" r="6.25" />
+    <line x1="4.25" x2="12.25" y1="11.75" y2="3.75" />
+  </g>,
   unlock: <path
     fill="currentColor"
     stroke="none"
@@ -280,6 +286,7 @@ const VIEW_BOXES: Partial<Record<IconName, string>> = {
   alert: '-1.88 -1.85 27.75 27.75',
   lock: '-1.51 -1.51 27.03 27.03',
   unlock: '-1.51 -1.51 27.03 27.03',
+  blocklist: '0 0 16 16',
   backup: '-1.51 -2.01 27.03 27.03',
   plex: '-1.51 -1.51 27.03 27.03',
   tmdb: '-70.27 -160.27 540.54 540.54',

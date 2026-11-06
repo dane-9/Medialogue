@@ -3758,6 +3758,20 @@ export interface components {
          * @enum {string}
          */
         DiscoveryMode: "automatic" | "review";
+        /** DownloadActionFailure */
+        DownloadActionFailure: {
+            /**
+             * Client Id
+             * Format: uuid
+             */
+            client_id: string;
+            /** Client Name */
+            client_name: string;
+            /** Count */
+            count: number;
+            /** Error */
+            error: string;
+        };
         /**
          * DownloadActionRequest
          * @description Apply one qBittorrent action to a set of live download rows.
@@ -3779,6 +3793,13 @@ export interface components {
             applied: number;
             /** Clients */
             clients: number;
+            /** Failures */
+            failures?: components["schemas"]["DownloadActionFailure"][];
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
         };
         /** DownloadClientCategoryResponse */
         DownloadClientCategoryResponse: {
@@ -4071,7 +4092,7 @@ export interface components {
              * Activity
              * @enum {string}
              */
-            activity: "downloading" | "checking" | "metadata" | "queued" | "stalled" | "seeding" | "paused" | "error";
+            activity: "downloading" | "checking" | "metadata" | "moving" | "queued" | "stalled" | "seeding" | "paused" | "error";
             /** Amount Left */
             amount_left?: number | null;
             archive_state: components["schemas"]["TorrentArchiveState"];
@@ -4165,6 +4186,13 @@ export interface components {
             seeds_total?: number | null;
             /** Show Id */
             show_id?: string | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Stale Reason */
+            stale_reason?: string | null;
             /** State */
             state: string | null;
             /** Tags */

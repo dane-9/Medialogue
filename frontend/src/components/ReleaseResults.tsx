@@ -147,7 +147,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
             {tag ? <em>{tag}</em> : null}
             {renderTags?.(result)}
             {result.blocklisted
-              ? <Tooltip className="release-pill release-blocked" content={result.blocklistReason ?? 'This release previously failed.'}><Icon name="lock" size={11} />Blocklisted</Tooltip>
+              ? <Tooltip className="release-pill release-blocked" content={result.blocklistReason ?? 'This release previously failed.'}><Icon name="blocklist" size={11} />Blocklisted</Tooltip>
               : null}
             {warnings.length
               ? <Tooltip

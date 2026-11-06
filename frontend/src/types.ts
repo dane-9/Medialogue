@@ -360,6 +360,8 @@ export interface TMDBShowLookup {
 
 export interface Download {
   id: string
+  /** Torrent row id; live progress events address torrents by it. */
+  torrentId?: string
   payloadGroupId?: string
   infoHash?: string
   name: string
@@ -367,7 +369,10 @@ export interface Download {
   clientId: string
   kind: 'Movie' | 'Show'
   state: 'Downloading' | 'Checking' | 'Seeding' | 'Completed' | 'Paused' | 'Error'
-  activity: 'downloading' | 'checking' | 'metadata' | 'queued' | 'stalled' | 'seeding' | 'paused' | 'error'
+  activity: 'downloading' | 'checking' | 'metadata' | 'moving' | 'queued' | 'stalled' | 'seeding' | 'paused' | 'error'
+  /** The client is disabled or has not reported this torrent recently; live values are hidden. */
+  stale?: boolean
+  staleReason?: string
   progress: number
   size: string
   eta: string

@@ -147,9 +147,20 @@ class DownloadFacetsResponse(BaseModel):
     trackers: list[str]
 
 
+class DownloadActionFailure(BaseModel):
+    client_id: UUID
+    client_name: str
+    count: int
+    error: str
+
+
 class DownloadActionResponse(BaseModel):
     applied: int
     clients: int
+    #: Torrents on a client that is disabled or no longer configured.
+    skipped: int = 0
+    #: Clients whose part of the batch failed; the rest was still applied.
+    failures: list[DownloadActionFailure] = Field(default_factory=list)
 
 
 class DownloadResponse(ORMModel):
@@ -187,7 +198,11 @@ class DownloadResponse(ORMModel):
     reconciliation_detail: str | None = None
     incoming: bool = False
     incoming_kind: Literal["replacement", "release"] | None = None
-    activity: Literal["downloading", "checking", "metadata", "queued", "stalled", "seeding", "paused", "error"]
+    activity: Literal["downloading", "checking", "metadata", "moving", "queued", "stalled", "seeding", "paused", "error"]
+    #: True when the values below are not current: the client is disabled or
+    #: has not reported this torrent for several poll intervals.
+    stale: bool = False
+    stale_reason: str | None = None
     download_speed: int | None = None
     upload_speed: int | None = None
     eta_seconds: int | None = None
