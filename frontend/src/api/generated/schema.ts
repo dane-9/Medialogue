@@ -4886,6 +4886,20 @@ export interface components {
             default_password_warning: boolean;
             user: components["schemas"]["AdminResponse"];
         };
+        /**
+         * LostSourceEvidence
+         * @description Why one torrent behind a title counts as lost: its tracker's own words.
+         */
+        LostSourceEvidence: {
+            /** Last Worked At */
+            last_worked_at?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Torrent Name */
+            torrent_name: string;
+            /** Tracker */
+            tracker?: string | null;
+        };
         /** ManualAttachRequest */
         ManualAttachRequest: {
             /** Expected Revision */
@@ -6326,6 +6340,8 @@ export interface components {
         ReplacementItem: {
             /** Candidate Id */
             candidate_id?: string | null;
+            /** Candidate Matched Formats */
+            candidate_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
             /** Candidate Quality */
             candidate_quality?: string | null;
             /** Candidate Score */
@@ -6338,12 +6354,16 @@ export interface components {
             current_indexer?: string | null;
             /** Current Indexer Color */
             current_indexer_color?: string | null;
+            /** Current Matched Formats */
+            current_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
             /** Current Quality */
             current_quality?: string | null;
             /** Current Release */
             current_release?: string | null;
             /** Current Score */
             current_score?: number | null;
+            /** Current Size */
+            current_size?: number | null;
             /** Current Tracker */
             current_tracker?: string | null;
             /** Dismissed */
@@ -6370,6 +6390,8 @@ export interface components {
             last_searched_at?: string | null;
             /** Leechers */
             leechers?: number | null;
+            /** Lost Evidence */
+            lost_evidence?: components["schemas"]["LostSourceEvidence"][];
             /** Media Present */
             media_present?: boolean | null;
             /** Media Type */
@@ -6433,7 +6455,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "ignore" | "snooze" | "restore";
+            action: "ignore" | "restore";
             /** Torrent Ids */
             torrent_ids: string[];
         };

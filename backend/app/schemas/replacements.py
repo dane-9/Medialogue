@@ -5,8 +5,20 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.upgrades import UpgradeMatchedFormat
+
 
 ReplacementTab = Literal["needs_search", "found", "in_progress", "dismissed"]
+
+
+class LostSourceEvidence(BaseModel):
+    """Why one torrent behind a title counts as lost: its tracker's own words."""
+
+    torrent_name: str
+    tracker: str | None = None
+    message: str | None = None
+    #: The last time this tracker answered normally, when it ever did.
+    last_worked_at: datetime | None = None
 
 
 class ReplacementItem(BaseModel):
@@ -36,6 +48,8 @@ class ReplacementItem(BaseModel):
     candidate_quality: str | None = None
     candidate_score: int | None = None
     candidate_size: int | None = None
+    #: The lost release's size, from its torrents, so the size change shows.
+    current_size: int | None = None
     seeders: int | None = None
     leechers: int | None = None
     indexer: str | None = None
@@ -49,6 +63,11 @@ class ReplacementItem(BaseModel):
     #: The media folder the title lives in, so the page groups by folder as
     #: New Media and Upgrade Media do. None when it is not in the library.
     root_name: str | None = None
+    #: One entry per lost torrent, so the page can say why the title is here.
+    lost_evidence: list[LostSourceEvidence] = Field(default_factory=list)
+    #: The Custom Formats behind each score, for the score popup.
+    current_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
+    candidate_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
     #: Live from the download client while the replacement downloads, as
     #: Upgrade Media shows it: a 0..1 share, bytes per second, seconds left.
     download_progress: float | None = None

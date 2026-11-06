@@ -11,7 +11,7 @@ import { Tooltip } from './components/Tooltip'
 import { ReleaseSourcePill } from './components/ReleaseSourcePill'
 import { useConfirm } from './components/Confirm'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
-import { tmdbPosterUrl } from './pages'
+import { tmdbPosterUrl, UpgradeCompare } from './pages'
 import { formatAge } from './lib/age'
 import { badgeColor } from './lib/badgeColor'
 import { diffReleaseTokens } from './lib/releaseTokens'
@@ -26,14 +26,14 @@ import type { DownloadClient, UpgradeSearchResults } from './types'
 const SEARCH_JOB = 'search_media_replacements'
 
 /** The statuses Upgrade Media has: everything still to do, what is on its
- *  way, what waits on you, and what was set aside (ignored or snoozed). */
+ *  way, what waits on you, and what was set aside (ignored). */
 type ReplaceStatus = 'all' | 'in_progress' | 'attention' | 'ignored'
 
 const STATUSES: { value: ReplaceStatus; label: string; icon: 'refresh' | 'download' | 'alert' | 'eye-off'; tone: string; empty: string }[] = [
   { value: 'all', label: 'All', icon: 'refresh', tone: 'amber', empty: 'Nothing in this folder needs a new source.' },
   { value: 'in_progress', label: 'In progress', icon: 'download', tone: 'blue', empty: 'No replacements are downloading or being verified.' },
   { value: 'attention', label: 'Needs attention', icon: 'alert', tone: 'amber', empty: 'Nothing needs your attention.' },
-  { value: 'ignored', label: 'Ignored', icon: 'eye-off', tone: 'neutral', empty: 'Nothing in this folder is ignored or snoozed.' },
+  { value: 'ignored', label: 'Ignored', icon: 'eye-off', tone: 'neutral', empty: 'Nothing in this folder is ignored.' },
 ]
 
 function statusOf(item: ReplacementItem): ReplaceStatus {
@@ -50,6 +50,13 @@ type MediaKind = 'movies' | 'shows'
 /** A release name that may wrap only between its dotted words. */
 function breakable(name: string) {
   return name.split(/(?<=[._\-\s])/).map((part, index) => <Fragment key={index}>{index > 0 && <wbr />}{part}</Fragment>)
+}
+
+type ApiMatchedFormat = NonNullable<ReplacementItem['current_matched_formats']>[number]
+
+/** The API's matched format, as the score popup reads it. */
+function toMatchedFormat(format: ApiMatchedFormat) {
+  return { id: format.custom_format_id, name: format.custom_format_name, contribution: format.contribution, group: format.group ?? undefined }
 }
 
 /** A score change, signed: +5, −10, ±0. */
@@ -176,7 +183,7 @@ export default function ReplaceMediaPage() {
     setMessage('Searching for replacements. Results appear as they are found; nothing is downloaded automatically.')
   })
 
-  const decide = (targets: ReplacementItem[], action: 'ignore' | 'snooze' | 'restore') => act('decide', async () => {
+  const decide = (targets: ReplacementItem[], action: 'ignore' | 'restore') => act('decide', async () => {
     const torrentIds = targets.flatMap((item) => item.torrent_ids ?? [])
     if (torrentIds.length) await replacementsApi.review(torrentIds, action)
     setPicked(new Set())
@@ -318,6 +325,9 @@ export default function ReplaceMediaPage() {
             const isPickable = pickable(item)
             const on = isPickable && picked.has(item.target_key)
             const delta = (item.candidate_score ?? 0) - (item.current_score ?? 0)
+            // How much larger or smaller the replacement is than what was lost.
+            const sizeDelta = item.candidate_size != null && item.current_size != null ? item.candidate_size - item.current_size : undefined
+            // Coloured by the size of the jump, as Upgrade Media does.
             const swarm = swarmHealth(item.seeders)
             const indexerBadge = badgeColor(item.indexer_color ?? undefined)
             const sub = [item.year ? `${item.year}` : undefined, item.season_number != null ? `Season ${item.season_number}` : undefined,
@@ -361,8 +371,19 @@ export default function ReplaceMediaPage() {
                 <span className="new-media-match-copy upgrade-v2-title">
                   <strong>{item.title}</strong>
                   <small>{sub || (item.media_type === 'shows' ? 'Show' : 'Movie')}</small>
-                  {/* Where the lost release came from, under its title. */}
-                  <ReleaseSourcePill indexer={item.current_indexer} color={item.current_indexer_color} tracker={item.current_tracker} />
+                  {/* Why the title is here: the tracker that dropped it, in its own
+                      words. Hover lists every lost torrent behind the title. */}
+                  {item.lost_evidence?.length
+                    ? <Tooltip asChild content={<ul className="replace-lost-list">{item.lost_evidence.map((entry, index) => <li key={index}>
+                      <span className="release-pill release-pill-lost"><i>Indexer</i>{entry.tracker ?? 'unknown'}</span>
+                      <span>{entry.message ?? 'Removed by the tracker'}{entry.last_worked_at ? ` · last worked ${formatAge(entry.last_worked_at)}` : ''}</span>
+                    </li>)}</ul>}>
+                      <span className="replace-lost">
+                        <span className="release-pill release-pill-lost"><i>Indexer</i>{item.lost_evidence[0].tracker ?? 'unknown'}</span>
+                        <span className="replace-lost-message">{item.lost_evidence[0].message ?? 'Removed by the tracker'}{item.lost_evidence[0].last_worked_at ? ` · ${formatAge(item.lost_evidence[0].last_worked_at)}` : ''}</span>
+                      </span>
+                    </Tooltip>
+                    : <ReleaseSourcePill indexer={item.current_indexer} color={item.current_indexer_color} tracker={item.current_tracker} />}
                 </span>
                 <div className="upgrade-v2-side">
                   <div className="upgrade-v2-line">
@@ -395,7 +416,7 @@ export default function ReplaceMediaPage() {
                           ? <Tooltip content={`${item.seeders ?? 0} seeders: this release may be slow or impossible to download.`}><span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span></Tooltip>
                           : <span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span>}</span>
                         <span className="upgrade-v2-size upgrade-fact">{item.candidate_size != null ? formatBytes(item.candidate_size) : '-'}</span>
-                        <span className="upgrade-v2-size-change" aria-hidden="true" />
+                        <span className="upgrade-v2-size-change upgrade-fact">{sizeDelta !== undefined && sizeDelta !== 0 && <em className={sizeDelta > 0 ? 'size-up' : 'size-down'} aria-label={`${sizeDelta > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(sizeDelta))}`}><Icon name="caret" size={10} />{formatBytes(Math.abs(sizeDelta))}</em>}</span>
                       </>}
                   </div>
                   {item.execution_state === 'handoff_attention'
@@ -404,7 +425,15 @@ export default function ReplaceMediaPage() {
                       ? <div className="upgrade-v2-meta"><small className="replace-v3-done"><Icon name="check" size={11} />Verified · choose what happens to the old copy</small></div>
                       : item.candidate_title
                         ? <div className="upgrade-v2-meta">
-                          <small className="upgrade-v2-score">CF: {item.candidate_score} <span className="cf-score-delta">{formatScoreChange(delta)}</span></small>
+                          <span onClick={(event) => event.stopPropagation()}><UpgradeCompare profile="" item={{
+                            currentMatchedFormats: (item.current_matched_formats ?? []).map(toMatchedFormat),
+                            candidateMatchedFormats: (item.candidate_matched_formats ?? []).map(toMatchedFormat),
+                            currentCustomFormatScore: item.current_score ?? 0,
+                            customFormatScore: item.candidate_score ?? 0,
+                            scoreDelta: delta,
+                          }}>
+                            <small className={`upgrade-v2-score ${delta >= 100 ? 'big' : delta >= 25 ? 'medium' : 'small'}`}>CF: {item.candidate_score} <span className="cf-score-delta">{formatScoreChange(delta)}</span></small>
+                          </UpgradeCompare></span>
                           {/* The download fills the space between score and indexer. */}
                           {running && <span className="upgrade-v2-bar" style={{ '--upgrade-progress': `${runningPercent}%` } as CSSProperties} aria-hidden="true" />}
                           {item.indexer && <span className="upgrade-v2-facts"><span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexer}</span></span>}
@@ -435,7 +464,6 @@ export default function ReplaceMediaPage() {
             ? <Button variant="secondary" icon="refresh" disabled={!chosen.length || Boolean(busy)} onClick={() => void decide(chosen, 'restore')}>Return to queue</Button>
             : shownStatus === 'all' && <>
               <Button variant="ghost" disabled={!chosen.some(dismissable) || Boolean(busy)} onClick={() => void decide(chosen.filter(dismissable), 'ignore')}>Ignore</Button>
-              <Button variant="ghost" disabled={!chosen.some(dismissable) || Boolean(busy)} onClick={() => void decide(chosen.filter(dismissable), 'snooze')}>Snooze 7 days</Button>
               {toSearch.length
                 ? <Button variant={anyFound ? 'secondary' : 'primary'} icon="search" disabled={Boolean(busy)} onClick={() => void search(toSearch)}>{`Search ${toSearch.length} ${toSearch.length === 1 ? 'title' : 'titles'}`}</Button>
                 : <Button variant="secondary" icon="search" disabled={Boolean(busy) || bulkProgress !== null || !statusCounts.all} onClick={() => void search('all')}>Search all</Button>}

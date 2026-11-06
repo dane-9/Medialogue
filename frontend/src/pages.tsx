@@ -4654,7 +4654,11 @@ function formatScoreDelta(value: number) {
   return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '±0'
 }
 
-function UpgradeCompare({ item, profile, children }: { item: UpgradeCandidate; profile: string; children: ReactNode }) {
+/** The two scores' Custom Formats side by side, on hover. Replace Media
+ *  shows it for its replacements too. */
+export type UpgradeCompareScores = Pick<UpgradeCandidate, 'currentMatchedFormats' | 'candidateMatchedFormats' | 'currentCustomFormatScore' | 'customFormatScore' | 'scoreDelta'>
+
+export function UpgradeCompare({ item, profile, children }: { item: UpgradeCompareScores; profile: string; children: ReactNode }) {
   // Formats of one group (Audio, Dynamic Range, ...) fill the same part of a
   // release, so they share a row: DTS-HD MA on one side, TrueHD Atmos on the
   // other. A format with no group is a row of its own.

@@ -52,6 +52,31 @@ FAKE_CLIENT = uuid.UUID(int=BASE + 0xFFFF)
 #: Keeps the invented tracker evidence inside Replace Media's freshness window.
 EVIDENCE_AT = datetime.now(timezone.utc) + timedelta(days=365)
 
+def _format_row(name: str, group: str | None, contribution: int) -> dict:
+    return {"custom_format_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{name}")), "custom_format_name": name,
+            "custom_format_group": group, "matched": True, "contribution": contribution}
+
+
+#: The Custom Formats behind the sample candidate score (1450), in the shape real
+#: comparisons store. The current side is scored live from the release name.
+SAMPLE_BREAKDOWN = {
+    "candidate": {"formats": [
+        _format_row("HEVC", "Video", 300), _format_row("TrueHD Atmos", "Audio", 600), _format_row("HDR10", "Dynamic Range", 250),
+        _format_row("Remux", None, 300),
+    ]},
+}
+
+#: What trackers say when they drop a torrent, so each sample reads differently.
+LOST_MESSAGES = (
+    "Unregistered torrent",
+    "Trumped by a newer encode",
+    "Torrent not registered with this tracker",
+    "Dupe of an existing upload",
+    "Removed: source was retail-incorrect",
+    "Unregistered torrent",
+    "Torrent has been deleted",
+)
+
 SAMPLES = [
     {"state": "needs_search", "title": "Heat", "year": 1995, "release": "Heat.1995.1080p.BluRay.x264-GROUP", "quality": "1080p Encode"},
     {"state": "no_match", "title": "Collateral", "year": 2004, "release": "Collateral.2004.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-GROUP", "quality": "1080p BluRay REMUX"},
@@ -64,7 +89,7 @@ SAMPLES = [
      "error": "The replacement completed, but its torrent backup is not complete. The current torrent was kept."},
     {"state": "cleanup_required", "title": "Zodiac", "year": 2007, "release": "Zodiac.2007.Directors.Cut.1080p.BluRay.x264-GROUP", "quality": "1080p Encode",
      "candidate": "Zodiac.2007.Directors.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-OTHER", "candidate_quality": "2160p BluRay REMUX"},
-    {"state": "snoozed", "title": "Gone Girl", "year": 2014, "release": "Gone.Girl.2014.1080p.BluRay.x264-GROUP", "quality": "1080p Encode"},
+    {"state": "ignored", "title": "Gone Girl", "year": 2014, "release": "Gone.Girl.2014.1080p.BluRay.x264-GROUP", "quality": "1080p Encode"},
 ]
 
 
@@ -162,9 +187,10 @@ async def seed() -> None:
         db.add(DownloadClient(id=FAKE_CLIENT, health="unknown"))
         await db.flush()
 
-        def torrent_rows(ids, name: str, *, metadata: dict) -> list:
+        def torrent_rows(ids, name: str, *, metadata: dict, message: str = "Unregistered torrent",
+                         last_worked=None, size: int | None = None) -> list:
             return [
-                Torrent(id=ids["torrent"], info_hash=ids["torrent"].hex + "00000000", name=name,
+                Torrent(id=ids["torrent"], info_hash=ids["torrent"].hex + "00000000", name=name, total_size=size,
                         metadata_json={MARKER: True, "content_path": None, **metadata},
                         tracker_summary={"state": "unregistered", "tracker": "https://tracker.sample/announce"}),
                 TorrentClientObservation(id=ids["observation"], torrent_id=ids["torrent"], download_client_id=FAKE_CLIENT,
@@ -173,7 +199,7 @@ async def seed() -> None:
                 TorrentTrackerObservation(id=ids["tracker"], torrent_id=ids["torrent"], download_client_id=FAKE_CLIENT,
                                           endpoint_key=f"sample-{ids['torrent'].hex[:8]}",
                                           endpoint_display="https://tracker.sample/announce", active=True,
-                                          health_state="error", message="Unregistered torrent",
+                                          health_state="error", message=message, last_success_at=last_worked,
                                           terminal_confirmed=True, last_checked_at=EVIDENCE_AT),
             ]
 
@@ -194,9 +220,8 @@ async def seed() -> None:
             if sample["state"] == "no_match":
                 metadata = {"replacement_last_search": (now - timedelta(hours=3)).isoformat(),
                             "replacement_search_result": "no_match"}
-            elif sample["state"] == "snoozed":
-                metadata = {"replacement_review": {"ignored": False,
-                                                   "snoozed_until": (now + timedelta(days=5)).isoformat()}}
+            elif sample["state"] == "ignored":
+                metadata = {"replacement_review": {"ignored": True}}
             elif sample.get("candidate"):
                 metadata = {"replacement_last_search": (now - timedelta(minutes=40)).isoformat(),
                             "replacement_search_result": "candidate"}
@@ -204,7 +229,11 @@ async def seed() -> None:
                 # A validated replacement retires the lost source, so the
                 # queue keeps it visible through the active handoff instead.
                 metadata["replacement_candidate_id"] = str(ids["candidate"])
-            db.add_all(torrent_rows(ids, sample["release"], metadata=metadata))
+            db.add_all(torrent_rows(ids, sample["release"], metadata=metadata,
+                                    message=LOST_MESSAGES[index % len(LOST_MESSAGES)],
+                                    last_worked=now - timedelta(days=index + 1, hours=3),
+                                    # Lost copies a little smaller or larger than their replacements.
+                                    size=(40 + index * 7) * 1024**3 + (index % 3 - 1) * 6 * 1024**3))
             await db.flush()
             db.add(MovieReleaseTorrent(id=ids["link"], movie_release_id=ids["release"], torrent_id=ids["torrent"],
                                        association_type=AssociationType.ATTACHED))
@@ -228,7 +257,7 @@ async def seed() -> None:
                     guid=results[0]["guid"], download_url=None, title=sample["candidate"],
                     quality=sample["candidate_quality"], custom_format_score=1450, score_delta=550,
                     size=results[0]["size"], seeders=42, leechers=1, upgrade_types=["quality"],
-                    comparison_snapshot={MARKER: True}, search_results=results, last_searched_at=now - timedelta(minutes=40),
+                    comparison_snapshot={MARKER: True, **SAMPLE_BREAKDOWN}, search_results=results, last_searched_at=now - timedelta(minutes=40),
                     execution_state=None if state == "found" else state,
                     execution_error=sample.get("error"),
                     submitted_at=None if state == "found" else now - timedelta(hours=2),

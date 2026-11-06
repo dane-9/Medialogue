@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from typing import Any
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from app.models.domain import (EpisodeMediaMap, Job, JobStatus, MediaDirectory, 
 from app.services.integration_state import list_configured_indexers, get_configured_indexer
 from app.services.jobs import run_job, update_job
 from app.services.release_source import source_of_releases, source_of_torrents
+from app.services.format_breakdown import comparison_formats
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
     _persist_candidate, _evaluation_policy, _score_candidate)
 
@@ -212,10 +214,7 @@ async def replacement_targets(
 
 def _dismissed(torrents: list[Torrent], now: datetime) -> bool:
     preferences = [(torrent.metadata_json or {}).get("replacement_review") or {} for torrent in torrents]
-    return bool(preferences) and all(
-        preference.get("ignored") or (_aware(preference.get("snoozed_until")) or now) > now
-        for preference in preferences
-    )
+    return bool(preferences) and all(preference.get("ignored") for preference in preferences)
 
 
 def _last_search(torrents: list[Torrent]) -> tuple[datetime | None, str | None]:
@@ -262,7 +261,8 @@ def _item(**values: Any) -> dict[str, Any]:
         "last_search_result": None, "candidate_id": None, "candidate_title": None, "candidate_quality": None,
         "candidate_score": None, "candidate_size": None, "seeders": None, "leechers": None, "indexer": None,
         "indexer_id": None, "execution_state": None, "error": None,
-        "searching": False, "root_name": None,
+        "searching": False, "root_name": None, "lost_evidence": [], "current_size": None,
+        "current_matched_formats": [], "candidate_matched_formats": [],
         "download_progress": None, "download_speed": None, "download_eta_seconds": None,
         "current_indexer": None, "current_indexer_id": None, "current_tracker": None,
     }
@@ -308,6 +308,9 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
         in_progress = bool(row and row.execution_state in ACTIVE_STATES)
         source = await source_of_torrents(db, torrents)
         items.append(_item(
+            lost_evidence=_lost_evidence(lost.get(torrent.id, torrent) for torrent in torrents),
+            # Cross-seeds share one payload, so the largest torrent is the size.
+            current_size=max((torrent.total_size for torrent in torrents if torrent.total_size), default=None),
             current_indexer=source.indexer_name, current_tracker=source.tracker,
             current_indexer_id=str(source.indexer_id) if source.indexer_id else None,
             target_key=target.target_key, title=target.search_target.title, media_type=target.media_type.value,
@@ -330,6 +333,7 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
             indexer_id=str(row.indexer_id) if row and row.indexer_id else None,
             execution_state=row.execution_state if row else None, error=row.execution_error if row else None,
             **(await _download_live(db, row) if row else {}),
+            **(await _breakdown(db, row, current_score_snapshot=target.reference.score_snapshot) if row else {}),
             searching=not in_progress and (target.target_key in searching_keys or (bulk_search and not dismissed)),
         ))
 
@@ -371,9 +375,50 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
             indexer_id=str(row.indexer_id) if row.indexer_id else None,
             execution_state=row.execution_state, error=row.execution_error,
             **await _download_live(db, row),
+            **await _breakdown(db, row),
         ))
     await _attach_root_names(db, items)
     return sorted(items, key=lambda item: (item["dismissed"], not item["needs_attention"], item["title"].casefold()))
+
+
+def _tracker_host(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = urlsplit(value if "//" in value else f"//{value}")
+    return parsed.hostname or value
+
+
+def _lost_evidence(torrents) -> list[dict[str, Any]]:
+    """The tracker's own reason for each lost torrent, newest failure first."""
+
+    evidence: list[dict[str, Any]] = []
+    for torrent in torrents:
+        failing = [
+            observation for observation in torrent.tracker_observations
+            if observation.terminal_confirmed and observation.health_state == "error" and observation.active
+        ]
+        if not failing:
+            evidence.append({"torrent_name": torrent.name, "tracker": _tracker_host((torrent.tracker_summary or {}).get("tracker"))})
+            continue
+        observation = max(failing, key=lambda item: item.last_checked_at)
+        evidence.append({
+            "torrent_name": torrent.name,
+            "tracker": _tracker_host(observation.endpoint_display),
+            "message": (observation.message or "").strip() or None,
+            "last_worked_at": observation.last_success_at,
+        })
+    return evidence
+
+
+async def _breakdown(db: AsyncSession, row: UpgradeCandidate, *, current_score_snapshot: dict | None = None) -> dict[str, Any]:
+    """Both scores' formats. The current side comes from the live scoring of
+    the current release when there is one, the score the row shows beside it."""
+
+    snapshot = dict(row.comparison_snapshot or {})
+    if current_score_snapshot:
+        snapshot["current"] = {**(snapshot.get("current") or {}), "score_snapshot": current_score_snapshot}
+    current, candidate = await comparison_formats(db, snapshot)
+    return {"current_matched_formats": current, "candidate_matched_formats": candidate}
 
 
 async def _download_live(db: AsyncSession, row: UpgradeCandidate) -> dict[str, Any]:
@@ -436,7 +481,7 @@ async def run_replacement_search(job_id: UUID, *, target_key: str | None = None,
         if target_key:
             targets = [entry for entry in targets if entry.target.target_key == target_key]
         else:
-            # Snoozed and ignored issues stay out of bulk searches.
+            # Ignored issues stay out of bulk searches.
             targets = [entry for entry in targets if not _dismissed(entry.torrents, now)]
         indexers = await list_configured_indexers(db)
         found = failures = 0

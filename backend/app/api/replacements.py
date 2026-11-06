@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -36,7 +35,7 @@ class ReplacementSearchRequest(BaseModel):
 
 class ReplacementReviewRequest(BaseModel):
     torrent_ids: list[UUID] = Field(min_length=1, max_length=250)
-    action: Literal["ignore", "snooze", "restore"]
+    action: Literal["ignore", "restore"]
 
 
 @router.get("", response_model=ReplacementQueueResponse)
@@ -92,8 +91,7 @@ async def review(payload: ReplacementReviewRequest, _: object = Depends(require_
         if not torrent:
             raise AppError("NOT_FOUND", "Torrent was not found", status_code=404)
         torrent.metadata_json = {**(torrent.metadata_json or {}), "replacement_review": {
-            "ignored": payload.action == "ignore",
-            "snoozed_until": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat() if payload.action == "snooze" else None}}
+            "ignored": payload.action == "ignore"}}
     await db.commit()
     return ReplacementReviewResponse(updated=len(payload.torrent_ids))
 

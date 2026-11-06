@@ -5150,6 +5150,54 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "LostSourceEvidence": {
+        "description": "Why one torrent behind a title counts as lost: its tracker's own words.",
+        "properties": {
+          "last_worked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Worked At"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "torrent_name": {
+            "title": "Torrent Name",
+            "type": "string"
+          },
+          "tracker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker"
+          }
+        },
+        "required": [
+          "torrent_name"
+        ],
+        "title": "LostSourceEvidence",
+        "type": "object"
+      },
       "ManualAttachRequest": {
         "properties": {
           "expected_revision": {
@@ -9209,6 +9257,13 @@
             ],
             "title": "Candidate Id"
           },
+          "candidate_matched_formats": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeMatchedFormat"
+            },
+            "title": "Candidate Matched Formats",
+            "type": "array"
+          },
           "candidate_quality": {
             "anyOf": [
               {
@@ -9275,6 +9330,13 @@
             ],
             "title": "Current Indexer Color"
           },
+          "current_matched_formats": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeMatchedFormat"
+            },
+            "title": "Current Matched Formats",
+            "type": "array"
+          },
           "current_quality": {
             "anyOf": [
               {
@@ -9307,6 +9369,17 @@
               }
             ],
             "title": "Current Score"
+          },
+          "current_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Size"
           },
           "current_tracker": {
             "anyOf": [
@@ -9449,6 +9522,13 @@
               }
             ],
             "title": "Leechers"
+          },
+          "lost_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/LostSourceEvidence"
+            },
+            "title": "Lost Evidence",
+            "type": "array"
           },
           "media_present": {
             "anyOf": [
@@ -9675,7 +9755,6 @@
           "action": {
             "enum": [
               "ignore",
-              "snooze",
               "restore"
             ],
             "title": "Action",

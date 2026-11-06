@@ -10,6 +10,6 @@ export function ReleaseSourcePill({ indexer, color, tracker }: { indexer?: strin
       style={badge ? { color: badge.text, borderColor: badge.border, background: badge.background } : undefined}
     ><i>Indexer</i>{indexer}</span>
   }
-  if (tracker) return <span className="release-pill release-pill-tracker" title={tracker}><i>Tracker</i>{tracker}</span>
+  if (tracker) return <span className="release-pill release-pill-tracker" title={tracker}><i>Indexer</i>{tracker}</span>
   return null
 }

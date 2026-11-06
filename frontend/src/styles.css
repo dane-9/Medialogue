@@ -4903,6 +4903,9 @@ select.input { background-color: var(--input-bg); }
 /* The folder cell makes every direct span a flex row; the placeholder icon
    still has to sit in the middle of the poster. */
 .new-media-folder-cell > .new-media-poster { justify-content: center; }
+/* Upgrade and Replace Media rows are taller than New Media's, so their
+   posters can be too. */
+.upgrade-v3 .new-media-folder-cell > .new-media-poster { width: 36px; }
 .upgrade-v2-current .upgrade-v2-score { color: var(--faint); }
 
 /* The Upgrade side opens the other releases. */
@@ -4977,3 +4980,27 @@ select.input { background-color: var(--input-bg); }
 /* The current release's source, a third line under the title. */
 .upgrade-v2-title > .release-pill { justify-self: start; margin-top: 3px; }
 .release-pill-tracker { max-width: 200px; }
+
+/* Pages built on the New Media workspace (New, Upgrade and Replace Media) fill
+   the window: the list takes whatever height is left, so its bar sits at the
+   bottom however much stands above it (notes, filters that wrap). */
+.main-area:has(.new-media-workspace) { display: flex; min-height: 100vh; flex-direction: column; }
+.main-area:has(.new-media-workspace) > .page-content { display: flex; width: 100%; flex: 1 1 0; flex-direction: column; }
+.page:has(> .new-media-workspace) { display: flex; flex: 1 1 0; flex-direction: column; }
+.page > .new-media-workspace { height: auto; min-height: 420px; flex: 1 1 0; }
+
+/* Replace Media: why a title is here, the tracker that dropped it and what
+   it said, under the title; every lost torrent on hover. */
+.upgrade-v2-title > .replace-lost { display: flex; min-width: 0; align-items: center; gap: var(--s2); margin-top: 3px; }
+/* The reason may run past the title column, over the empty start of the CF
+   line, stopping short of the score. 100cqw is the whole Current cell; the
+   170px is the checkbox and poster on the left plus room for the score. */
+.replace-v3 .upgrade-v2-current { container-type: inline-size; }
+/* One fixed track, so the wider reason overflows it rather than widening the
+   column and pushing the title. */
+.replace-v3 .upgrade-v2-current > .upgrade-v2-title { grid-template-columns: minmax(0, 1fr); }
+.replace-v3 .upgrade-v2-title > .replace-lost { position: relative; z-index: 1; width: max-content; max-width: calc(100cqw - 170px); }
+.release-pill-lost { flex: none; color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+.replace-lost-message { min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--err) 70%, var(--muted)); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.replace-lost-list { display: grid; gap: var(--s2); }
+.replace-lost-list li { display: grid; justify-items: start; gap: 3px; }
