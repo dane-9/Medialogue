@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.upgrades import MediaHistoryItem
+from app.services.media_history import finished_history, history_snapshot
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
@@ -84,6 +86,13 @@ async def search(payload: ReplacementSearchRequest, _: object = Depends(require_
     return JobAcceptedResponse(job_id=job.id)
 
 
+@router.get("/history", response_model=list[MediaHistoryItem])
+async def history(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> list[MediaHistoryItem]:
+    """Finished replacements, newest first."""
+
+    return [MediaHistoryItem.model_validate(item) for item in await finished_history(db, replacements=True)]
+
+
 @router.post("/review", response_model=ReplacementReviewResponse)
 async def review(payload: ReplacementReviewRequest, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> ReplacementReviewResponse:
     for torrent_id in payload.torrent_ids:
@@ -131,7 +140,8 @@ async def finish(candidate_id: UUID, _: object = Depends(require_csrf), db: Asyn
         entity_id=row.id,
         message=f"Replacement finished for {row.current_release_name}; old torrents, media and archives were kept.",
         details={"candidate_id": str(row.id), "old_media_retained": True,
-                 "current_release_ids": list(row.current_release_ids or [])},
+                 "current_release_ids": list(row.current_release_ids or []),
+                 "history": await history_snapshot(db, row)},
     )
     await db.commit()
     return ReplacementFinishResponse(state="completed", old_media_retained=True)

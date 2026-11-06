@@ -117,6 +117,7 @@ function mapCleanupPreview(value: UpgradeCleanupPreviewDto): UpgradeCleanupPrevi
 }
 
 export const upgradesApi = {
+  upgradeHistory: () => openApiData(openApiClient.GET('/api/v1/upgrade-candidates/history')),
   upgradeCandidateCount: async () => {
     const value = await openApiData(openApiClient.GET('/api/v1/upgrade-candidates/count'))
     return { count: value.count, readOnlyRoots: value.read_only_roots }

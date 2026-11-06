@@ -16,6 +16,7 @@ import { diffReleaseTokens } from './lib/releaseTokens'
 import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason, UPGRADE_REASON_SCORE } from './lib/upgradeTokenReason'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { ReleaseSourcePill } from './components/ReleaseSourcePill'
+import { MediaHistoryModal } from './components/MediaHistoryModal'
 import { MovieInteractiveSearch } from './components/MovieInteractiveSearch'
 import { ChangeMatchModal } from './components/ChangeMatchModal'
 import { formatPeers, swarmHealth } from './lib/swarm'
@@ -4733,6 +4734,11 @@ function currentReleaseLabel(item: UpgradeCandidate) {
   return item.currentReleaseName || item.releaseFolder || pathParts(item.currentPaths[0])?.name || item.mediaTitle
 }
 
+/** Whether an upgrade can be started: never tried, or its last attempt failed. */
+function upgradeStartable(item: UpgradeCandidate) {
+  return !item.executionState || item.executionState === 'failed'
+}
+
 function upgradeStatusOf(item: UpgradeCandidate): UpgradeStatus {
   if (!item.executionState || item.executionState === 'completed' || item.executionState === 'failed') return 'ready'
   if (item.executionState === 'handoff_attention' || item.executionState === 'cleanup_required') return 'attention'
@@ -4770,6 +4776,7 @@ export function UpgradeMediaPage() {
   // (DV + HDR) lights together, and the score it carries.
   // A Custom Format word carries its score; a quality word (2160p, BluRay)
   // instead lights the quality it replaces on the Current side.
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [hoveredReason, setHoveredReason] = useState<{ id: string; reason: string; score?: number } | null>(null)
   const [selectedRoot, setSelectedRoot] = useState('')
   const [error, setError] = useState('')
@@ -4967,13 +4974,13 @@ export function UpgradeMediaPage() {
   // folder it belongs to rather than in one flat list across every root.
   const statusCounts = useMemo(() => {
     const counts: Record<UpgradeStatus, number> = { ready: 0, in_progress: 0, attention: 0 }
-    for (const item of items) counts[upgradeStatusOf(item)] += 1
+    for (const item of items) if (item.executionState !== 'completed') counts[upgradeStatusOf(item)] += 1
     return counts
   }, [items])
   // Open on a status that has something, until the user picks one.
   const shownStatus: UpgradeStatus = statusChosen || statusCounts[status] ? status
     : (['ready', 'attention', 'in_progress'] as UpgradeStatus[]).find((value) => statusCounts[value]) ?? 'ready'
-  const statusItems = useMemo(() => items.filter((item) => upgradeStatusOf(item) === shownStatus), [items, shownStatus])
+  const statusItems = useMemo(() => items.filter((item) => item.executionState !== 'completed' && upgradeStatusOf(item) === shownStatus), [items, shownStatus])
   const roots = useMemo(() => {
     const grouped = new Map<string, { name: string; mediaType: 'movies' | 'shows'; count: number }>()
     for (const item of statusItems) {
@@ -4989,7 +4996,7 @@ export function UpgradeMediaPage() {
 
   // The checkboxes decide what the bar acts on, for the profile exactly as for
   // the upgrade button.
-  const profileTargets = useMemo(() => rows.filter((item) => !item.executionState && !excluded.has(item.id)), [rows, excluded])
+  const profileTargets = useMemo(() => rows.filter((item) => upgradeStartable(item) && !excluded.has(item.id)), [rows, excluded])
   const sharedProfile = useMemo(() => {
     if (!profileTargets.length) return undefined
     const first = profileTargets[0].qualityProfileId ?? ''
@@ -5012,7 +5019,7 @@ export function UpgradeMediaPage() {
   }
   // A candidate already in flight keeps its own per-row actions, and a blocked
   // one cannot be submitted at all, so neither can join the batch.
-  const picked = useMemo(() => rows.filter((item) => !item.executionState && item.executionEligible && !excluded.has(item.id)), [rows, excluded])
+  const picked = useMemo(() => rows.filter((item) => upgradeStartable(item) && item.executionEligible && !excluded.has(item.id)), [rows, excluded])
   const pickedBytes = useMemo(() => picked.reduce((total, item) => total + (item.size ?? 0), 0), [picked])
   // How much the library grows (or shrinks) once these replace what is on
   // disk. Only rows whose current size is known can say.
@@ -5038,7 +5045,9 @@ export function UpgradeMediaPage() {
   return <Page
     title="Upgrade Media"
     subtitle="Review the best known replacement for each release. Starting an upgrade authorizes its validated replacement and automatic retirement of the old release."
+    action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}
   >
+    {historyOpen && <MediaHistoryModal title="Finished upgrades" load={upgradesApi.upgradeHistory} empty="No upgrades have finished yet." onClose={() => setHistoryOpen(false)} />}
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
     {/* One note for the folder setting, rather than one badge on every release
@@ -5113,9 +5122,9 @@ export function UpgradeMediaPage() {
           {!rows.length && <div className="upgrade-v2-empty">{UPGRADE_STATUSES.find((entry) => entry.value === shownStatus)?.empty}</div>}
           {rows.map((item) => {
             const active = false
-            const batchable = !item.executionState && item.executionEligible
+            const batchable = upgradeStartable(item) && item.executionEligible
             const included = batchable && !excluded.has(item.id)
-            const blocked = !item.executionState && !item.executionEligible
+            const blocked = upgradeStartable(item) && !item.executionEligible
             const delta = item.scoreDelta
             const swarm = swarmHealth(item.seeders)
             const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
@@ -5149,7 +5158,11 @@ export function UpgradeMediaPage() {
             const runningLabel = item.executionState === 'submitted' ? 'Sent' : item.executionState === 'validating' ? 'Checking' : `${runningPercent}%`
             // What is wrong, in the row itself: the client's or cleanup's own
             // words, then what is at stake.
-            const problem = item.executionState === 'handoff_attention'
+            // A failed attempt says why on the row; the upgrade can be started again.
+            const failed = item.executionState === 'failed'
+            const problem = failed
+              ? [`Last attempt failed: ${item.executionError ?? 'no reason was recorded'}`, item.submittedAt ? formatAge(item.submittedAt) : undefined]
+              : item.executionState === 'handoff_attention'
               ? [item.executionError ?? 'The download client never confirmed the torrent.', item.submittedAt ? `sent ${formatAge(item.submittedAt)}` : undefined]
               : item.executionState === 'cleanup_required'
                 ? [item.executionError ?? 'The old release still needs removing.', item.currentSize ? `frees ~${formatBytes(item.currentSize)}` : undefined]
@@ -5239,7 +5252,7 @@ export function UpgradeMediaPage() {
                     <span className="upgrade-v2-size-change upgrade-fact">{item.size !== undefined && sizeDelta !== undefined && sizeDelta !== 0 && <em className={sizeDelta > 0 ? 'size-up' : 'size-down'} aria-label={`${sizeDelta > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(sizeDelta))}`}><Icon name="caret" size={10} />{formatBytes(Math.abs(sizeDelta))}</em>}</span>
                     </>}
                   </div>
-                  {stuck ? <div className="upgrade-v2-meta">
+                  {stuck || failed ? <div className="upgrade-v2-meta">
                     <small className="upgrade-v2-problem" title={problem.filter(Boolean).join(' · ')}>
                       <Icon name="alert" size={11} />{problem.filter(Boolean).join(' · ')}
                     </small>
@@ -5257,7 +5270,7 @@ export function UpgradeMediaPage() {
               </div>
               {/* Outside the panel, so the two columns keep their width. */}
               <span className="upgrade-v3-rail">
-                {!item.executionState && <Tooltip asChild content="View all releases">
+                {upgradeStartable(item) && <Tooltip asChild content="View all releases">
                   <button type="button" className="icon-button" aria-label={`View all releases for ${item.mediaTitle}`} onClick={() => void openResults(item)}><Icon name="search" size={15} /></button>
                 </Tooltip>}
               </span>

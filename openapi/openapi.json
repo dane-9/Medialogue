@@ -5856,6 +5856,113 @@
         "title": "MediaDiscoverySelection",
         "type": "object"
       },
+      "MediaHistoryItem": {
+        "description": "One finished upgrade or replacement.",
+        "properties": {
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "new_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Quality"
+          },
+          "new_release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Release"
+          },
+          "old_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Quality"
+          },
+          "old_release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Release"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "season_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "finished_at",
+          "title",
+          "outcome"
+        ],
+        "title": "MediaHistoryItem",
+        "type": "object"
+      },
       "MediaProfileSettingsResponse": {
         "properties": {
           "custom_format_scores": {
@@ -9581,6 +9688,17 @@
               }
             ],
             "title": "Poster Ref"
+          },
+          "profile_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Name"
           },
           "reason": {
             "title": "Reason",
@@ -20763,6 +20881,32 @@
         ]
       }
     },
+    "/api/v1/replacements/history": {
+      "get": {
+        "description": "Finished replacements, newest first.",
+        "operationId": "history_api_v1_replacements_history_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MediaHistoryItem"
+                  },
+                  "title": "Response History Api V1 Replacements History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "History",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
     "/api/v1/replacements/review": {
       "post": {
         "operationId": "review_api_v1_replacements_review_post",
@@ -22849,6 +22993,32 @@
           }
         },
         "summary": "Count Upgrade Candidates",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/history": {
+      "get": {
+        "description": "Finished upgrades, newest first.",
+        "operationId": "upgrade_history_api_v1_upgrade_candidates_history_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MediaHistoryItem"
+                  },
+                  "title": "Response Upgrade History Api V1 Upgrade Candidates History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Upgrade History",
         "tags": [
           "upgrade candidates"
         ]

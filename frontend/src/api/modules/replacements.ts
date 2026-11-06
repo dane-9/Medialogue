@@ -3,9 +3,11 @@ import { openApiClient, openApiData } from '../transport'
 
 export type ReplacementItem = components['schemas']['ReplacementItem']
 export type ReplacementTab = ReplacementItem['tab']
+export type MediaHistoryItem = components['schemas']['MediaHistoryItem']
 
 export const replacementsApi = {
   queue: () => openApiData(openApiClient.GET('/api/v1/replacements')),
+  history: () => openApiData(openApiClient.GET('/api/v1/replacements/history')),
   count: async () => (await openApiData(openApiClient.GET('/api/v1/replacements/count'))).count,
   search: (targetKey?: string) => openApiData(openApiClient.POST('/api/v1/replacements/search', { body: { target_key: targetKey ?? null } })),
   review: (torrentIds: string[], action: 'ignore' | 'restore') =>

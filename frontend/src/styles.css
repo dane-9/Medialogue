@@ -5004,3 +5004,22 @@ select.input { background-color: var(--input-bg); }
 .replace-lost-message { min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--err) 70%, var(--muted)); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .replace-lost-list { display: grid; gap: var(--s2); }
 .replace-lost-list li { display: grid; justify-items: start; gap: 3px; }
+
+/* History: finished upgrades or replacements, opened from the page header. */
+.media-history-modal { width: min(760px, calc(100vw - 32px)); }
+.media-history-list { display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
+.media-history-list li { display: grid; gap: 4px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.media-history-head { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.media-history-head strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.media-history-head small { color: var(--faint); font-size: var(--t-xs); }
+.media-history-when { margin-left: auto; color: var(--faint); font-size: var(--t-xs); white-space: nowrap; }
+.media-history-change { display: flex; align-items: center; gap: var(--s2); min-width: 0; color: var(--muted); font-size: var(--t-xs); }
+.media-history-change svg { flex: none; color: var(--faint); }
+.media-history-old, .media-history-new { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-history-old { color: var(--faint); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--faint) 60%, transparent); }
+.media-history-new { color: var(--text); }
+.media-history-foot { display: flex; align-items: center; gap: var(--s2); }
+.media-history-foot small { color: var(--faint); font-size: var(--t-xs); }
+.media-history-outcome { margin-left: auto; color: var(--ok); font-size: var(--t-xs); }
+.media-history-note { margin: 0; color: var(--muted); font-size: var(--t-sm); }
+.media-history-link { color: var(--accent-text); font-size: var(--t-xs); }

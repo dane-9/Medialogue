@@ -2134,6 +2134,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/replacements/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History
+         * @description Finished replacements, newest first.
+         */
+        get: operations["history_api_v1_replacements_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/replacements/review": {
         parameters: {
             query?: never;
@@ -2802,6 +2822,26 @@ export interface paths {
          *     once the queue has been worked through.
          */
         get: operations["count_upgrade_candidates_api_v1_upgrade_candidates_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upgrade-candidates/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upgrade History
+         * @description Finished upgrades, newest first.
+         */
+        get: operations["upgrade_history_api_v1_upgrade_candidates_history_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5139,6 +5179,37 @@ export interface components {
             /** Year */
             year?: number | null;
         };
+        /**
+         * MediaHistoryItem
+         * @description One finished upgrade or replacement.
+         */
+        MediaHistoryItem: {
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /** Id */
+            id: string;
+            /** Media Type */
+            media_type?: string | null;
+            /** New Quality */
+            new_quality?: string | null;
+            /** New Release */
+            new_release?: string | null;
+            /** Old Quality */
+            old_quality?: string | null;
+            /** Old Release */
+            old_release?: string | null;
+            /** Outcome */
+            outcome: string;
+            /** Season Number */
+            season_number?: number | null;
+            /** Title */
+            title: string;
+            /** Year */
+            year?: number | null;
+        };
         /** MediaProfileSettingsResponse */
         MediaProfileSettingsResponse: {
             /** Custom Format Scores */
@@ -6402,6 +6473,8 @@ export interface components {
             needs_attention: boolean;
             /** Poster Ref */
             poster_ref?: string | null;
+            /** Profile Name */
+            profile_name?: string | null;
             /** Reason */
             reason: string;
             /** Root Name */
@@ -12224,6 +12297,26 @@ export interface operations {
             };
         };
     };
+    history_api_v1_replacements_history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaHistoryItem"][];
+                };
+            };
+        };
+    };
     review_api_v1_replacements_review_post: {
         parameters: {
             query?: never;
@@ -13656,6 +13749,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeCandidateCount"];
+                };
+            };
+        };
+    };
+    upgrade_history_api_v1_upgrade_candidates_history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaHistoryItem"][];
                 };
             };
         };

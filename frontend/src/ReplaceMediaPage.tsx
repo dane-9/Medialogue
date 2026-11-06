@@ -9,6 +9,7 @@ import { Modal } from './components/Modal'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
 import { ReleaseSourcePill } from './components/ReleaseSourcePill'
+import { MediaHistoryModal } from './components/MediaHistoryModal'
 import { useConfirm } from './components/Confirm'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { tmdbPosterUrl, UpgradeCompare } from './pages'
@@ -93,6 +94,7 @@ export default function ReplaceMediaPage() {
   const [clientFor, setClientFor] = useState<Record<MediaKind, string>>({ movies: '', shows: '' })
   // A verified replacement waits on what happens to the old copy.
   const [resolveTarget, setResolveTarget] = useState<ReplacementItem | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const load = async () => {
     try {
@@ -212,14 +214,26 @@ export default function ReplaceMediaPage() {
     setClientFor({ movies: clientsFor('movies')[0]?.id ?? '', shows: clientsFor('shows')[0]?.id ?? '' })
     setConfirming(true)
   }
+  // Sent one at a time, as Upgrade Media does: a rejected one does not stop the
+  // rest, and each failure names its title.
   const download = () => act('download', async () => {
     setConfirming(false)
+    const failures: string[] = []
+    let submitted = 0
     for (const item of toDownload) {
-      await upgradesApi.executeUpgrade(item.candidate_id!, clientFor[(item.media_type ?? 'movies') as MediaKind], undefined, false)
+      try {
+        await upgradesApi.executeUpgrade(item.candidate_id!, clientFor[(item.media_type ?? 'movies') as MediaKind], undefined, false)
+        submitted += 1
+      } catch (reason) {
+        failures.push(`${item.title}: ${reason instanceof Error ? reason.message : 'submission failed'}`)
+      }
     }
     setPicked(new Set())
-    chooseStatus('in_progress')
-    setMessage(`${toDownload.length === 1 ? 'Replacement' : `${toDownload.length} replacements`} submitted. Follow them under In progress.`)
+    if (submitted) {
+      chooseStatus('in_progress')
+      setMessage(`${submitted === 1 ? 'Replacement' : `${submitted} replacements`} submitted. Follow them under In progress.`)
+    }
+    if (failures.length) throw new Error(failures.join(' · '))
   })
 
   const retry = (item: ReplacementItem) => act(item.target_key, async () => { await upgradesApi.retryUpgradeHandoff(item.candidate_id!) })
@@ -252,7 +266,12 @@ export default function ReplaceMediaPage() {
   const toSearch = chosen.filter(searchable)
 
   return <div className="page replace-page">
-    <PageTopbar title="Replace Media" subtitle="Find a new source for media whose torrents were removed by their trackers, at equal or better quality." />
+    <PageTopbar
+      title="Replace Media"
+      subtitle="Find a new source for media whose torrents were removed by their trackers, at equal or better quality."
+      action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}
+    />
+    {historyOpen && <MediaHistoryModal title="Finished replacements" load={replacementsApi.history} empty="No replacements have finished yet." onClose={() => setHistoryOpen(false)} />}
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
 
@@ -419,13 +438,16 @@ export default function ReplaceMediaPage() {
                         <span className="upgrade-v2-size-change upgrade-fact">{sizeDelta !== undefined && sizeDelta !== 0 && <em className={sizeDelta > 0 ? 'size-up' : 'size-down'} aria-label={`${sizeDelta > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(sizeDelta))}`}><Icon name="caret" size={10} />{formatBytes(Math.abs(sizeDelta))}</em>}</span>
                       </>}
                   </div>
-                  {item.execution_state === 'handoff_attention'
+                  {item.execution_state === 'failed'
+                    // A failed attempt says why; the replacement can be downloaded again.
+                    ? <div className="upgrade-v2-meta"><small className="upgrade-v2-problem" title={item.error ?? undefined}><Icon name="alert" size={11} />Last attempt failed: {item.error ?? 'no reason was recorded'}</small></div>
+                    : item.execution_state === 'handoff_attention'
                     ? <div className="upgrade-v2-meta"><small className="upgrade-v2-problem" title={item.error ?? undefined}><Icon name="alert" size={11} />{item.error ?? 'The download client never confirmed the torrent.'}</small></div>
                     : item.execution_state === 'cleanup_required'
                       ? <div className="upgrade-v2-meta"><small className="replace-v3-done"><Icon name="check" size={11} />Verified · choose what happens to the old copy</small></div>
                       : item.candidate_title
                         ? <div className="upgrade-v2-meta">
-                          <span onClick={(event) => event.stopPropagation()}><UpgradeCompare profile="" item={{
+                          <span onClick={(event) => event.stopPropagation()}><UpgradeCompare profile={item.profile_name ?? ''} item={{
                             currentMatchedFormats: (item.current_matched_formats ?? []).map(toMatchedFormat),
                             candidateMatchedFormats: (item.candidate_matched_formats ?? []).map(toMatchedFormat),
                             currentCustomFormatScore: item.current_score ?? 0,

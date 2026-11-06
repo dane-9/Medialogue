@@ -745,8 +745,31 @@ def seed() -> None:
             _start_sample(connection, MOVIE_SAMPLES.index(sample), candidate_id, sample)
         inserted += 1
 
+    _seed_history(connection)
     connection.commit()
     print(f"inserted {inserted} sample upgrade candidates")
+
+
+#: Finished upgrades for the History view: (title, year, old, new, hours ago).
+HISTORY_SAMPLES = (
+    ("No Country for Old Men", 2007, "No.Country.for.Old.Men.2007.1080p.BluRay.x264-GROUP",
+     "No.Country.for.Old.Men.2007.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-OTHER", 5),
+    ("Fargo", 1996, "Fargo.1996.720p.BluRay.x264-GROUP", "Fargo.1996.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-OTHER", 30),
+)
+
+
+def _seed_history(connection: sqlite3.Connection) -> None:
+    for index, (title, year, old, new, hours) in enumerate(HISTORY_SAMPLES):
+        connection.execute(
+            """insert or replace into events (id, event_type, severity, entity_type, entity_id, message, details, created_at)
+               values (?, 'upgrade.cleanup_completed', 'INFO', 'upgrade_candidate', NULL, ?, ?, datetime('now', ?))""",
+            (uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:history:{index}").hex,
+             "Automatically deleted superseded media authorized when the upgrade was started.",
+             json.dumps({MARKER: True, "history": {
+                 "replacement": False, "media_type": "movies", "title": title, "year": year, "season_number": None,
+                 "old_release": old, "new_release": new, "old_torrents_removed": True}}),
+             f"-{hours} hours"),
+        )
 
 
 def _start_sample(connection: sqlite3.Connection, index: int, candidate_id: str, sample: dict) -> None:
@@ -811,6 +834,7 @@ def clear() -> None:
         connection.execute("delete from movies where id = ?", (movie_id,))
     # Sample torrents (current sizes, and downloads of started samples) carry
     # the marker; real torrents never do.
+    connection.execute("delete from events where details like ?", (f'%"{MARKER}"%',))
     connection.execute(
         "delete from torrent_client_observations where torrent_id in (select id from torrents where metadata like ?)",
         (f'%"{MARKER}"%',),

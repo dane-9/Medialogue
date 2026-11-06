@@ -262,7 +262,7 @@ def _item(**values: Any) -> dict[str, Any]:
         "candidate_score": None, "candidate_size": None, "seeders": None, "leechers": None, "indexer": None,
         "indexer_id": None, "execution_state": None, "error": None,
         "searching": False, "root_name": None, "lost_evidence": [], "current_size": None,
-        "current_matched_formats": [], "candidate_matched_formats": [],
+        "current_matched_formats": [], "candidate_matched_formats": [], "profile_name": None,
         "download_progress": None, "download_speed": None, "download_eta_seconds": None,
         "current_indexer": None, "current_indexer_id": None, "current_tracker": None,
     }
@@ -270,6 +270,27 @@ def _item(**values: Any) -> dict[str, Any]:
     base["tab"] = _tab(base)
     base["needs_attention"] = base["tab"] in {"needs_search", "found"} or base["execution_state"] in ACTION_STATES
     return base
+
+
+async def replacing_title_ids(db: AsyncSession) -> set[str]:
+    """Movies and seasons Replace Media is handling, without building its rows.
+
+    The same titles the queue lists and does not ignore: a lost source still
+    to replace, or a replacement under way. Cheap enough for a polled count.
+    """
+
+    now = datetime.now(timezone.utc)
+    ids: set[str] = set()
+    for entry in await replacement_targets(db):
+        if not _dismissed(entry.torrents, now):
+            ids.update(str(value) for value in (entry.target.movie_id, entry.target.season_id) if value)
+    for movie_id, season_id in (await db.execute(
+        select(UpgradeCandidate.movie_id, UpgradeCandidate.season_id).where(
+            UpgradeCandidate.target_key.startswith("replace:"), UpgradeCandidate.execution_state.in_(list(ACTIVE_STATES))
+        )
+    )).all():
+        ids.update(str(value) for value in (movie_id, season_id) if value)
+    return ids
 
 
 async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
@@ -418,7 +439,8 @@ async def _breakdown(db: AsyncSession, row: UpgradeCandidate, *, current_score_s
     if current_score_snapshot:
         snapshot["current"] = {**(snapshot.get("current") or {}), "score_snapshot": current_score_snapshot}
     current, candidate = await comparison_formats(db, snapshot)
-    return {"current_matched_formats": current, "candidate_matched_formats": candidate}
+    profile_name = (snapshot.get("profile") or {}).get("profile_name") or (current_score_snapshot or {}).get("profile_name")
+    return {"current_matched_formats": current, "candidate_matched_formats": candidate, "profile_name": profile_name}
 
 
 async def _download_live(db: AsyncSession, row: UpgradeCandidate) -> dict[str, Any]:

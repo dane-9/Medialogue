@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.services.media_history import history_snapshot
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.security import consume_confirmation_jti, sign_confirmation_payload, verify_confirmation_payload
@@ -1259,6 +1260,7 @@ async def _perform_cleanup(
             "deleted_paths": deleted,
             "old_release_ids": list(row.current_release_ids or []),
             "automatic": automatic,
+            "history": await history_snapshot(db, row),
         },
     )
     publish_live_event("upgrade.execution", entity_type="upgrade_candidate", entity_id=row.id, data={"candidate_id": str(row.id), "state": row.execution_state})

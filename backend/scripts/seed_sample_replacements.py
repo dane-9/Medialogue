@@ -30,6 +30,7 @@ from app.models.domain import (  # noqa: E402
     AssociationType,
     DownloadClient,
     IdentityState,
+    Event,
     MediaDirectory,
     MediaType,
     Movie,
@@ -130,6 +131,7 @@ async def clear() -> int:
         await db.execute(delete(MovieReleaseTorrent).where(MovieReleaseTorrent.torrent_id.in_(torrent_ids)))
         await db.execute(delete(Torrent).where(Torrent.id.in_(torrent_ids)))
         await db.execute(delete(DownloadClient).where(DownloadClient.id == FAKE_CLIENT))
+        await db.execute(delete(Event).where(Event.id.in_([uuid.UUID(int=BASE + 0xF000 + index) for index in range(3)])))
         for index in range(len(SAMPLES)):
             ids = _ids(index)
             await db.execute(delete(MediaDirectory).where(MediaDirectory.id == ids["directory"]))
@@ -277,6 +279,22 @@ async def seed() -> None:
                         is_present=True, first_seen_at=now, last_seen_at=EVIDENCE_AT,
                     ))
 
+        # Finished replacements for the History view, one per way they end.
+        for index, (title, year, old, new, event_type, retired, hours) in enumerate((
+            ("Drive", 2011, "Drive.2011.1080p.BluRay.x264-GROUP", "Drive.2011.1080p.BluRay.x264-OTHER",
+             "replacement.finished", False, 2),
+            ("Nightcrawler", 2014, "Nightcrawler.2014.1080p.BluRay.x264-GROUP",
+             "Nightcrawler.2014.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-OTHER", "replacement.finished", True, 26),
+            ("Ex Machina", 2014, "Ex.Machina.2014.2160p.UHD.BluRay.x265-GROUP",
+             "Ex.Machina.2014.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-OTHER", "upgrade.cleanup_completed", True, 70),
+        )):
+            db.add(Event(
+                id=uuid.UUID(int=BASE + 0xF000 + index), event_type=event_type, entity_type="upgrade_candidate",
+                message=f"Sample finished replacement ({MARKER}).", created_at=now - timedelta(hours=hours),
+                details={MARKER: True, "history": {
+                    "replacement": True, "media_type": "movies", "title": title, "year": year, "season_number": None,
+                    "old_release": old, "new_release": new, "old_torrents_removed": retired}},
+            ))
         await db.commit()
     filled = await _fill_posters()
     print(f"inserted {len(SAMPLES)} sample Replace Media entries ({filled} posters filled)")

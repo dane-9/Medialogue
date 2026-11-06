@@ -41,6 +41,7 @@ from app.parser import parse_release
 from app.services.format_breakdown import comparison_formats
 from app.services.release_source import source_of_releases
 from app.schemas.upgrades import (
+    MediaHistoryItem,
     UpgradeCandidateCount,
     UpgradeCurrentRelease,
     UpgradeMatchedFormat,
@@ -391,15 +392,9 @@ async def _titles_in_replace_media(db: AsyncSession) -> set[str]:
     downloads for one title would race to retire the same old release.
     """
 
-    from app.services.replacements import replacement_queue
+    from app.services.replacements import replacing_title_ids
 
-    return {
-        key
-        for item in await replacement_queue(db)
-        if not item["dismissed"]
-        for key in (item.get("movie_id"), item.get("season_id"))
-        if key
-    }
+    return await replacing_title_ids(db)
 
 
 def _left_to_replace_media(row: UpgradeCandidate, replacing: set[str]) -> bool:
@@ -521,6 +516,15 @@ async def select_upgrade_search_result(
     )
     await db.commit()
     return await _response(db, row)
+
+
+@router.get("/upgrade-candidates/history", response_model=list[MediaHistoryItem])
+async def upgrade_history(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> list[MediaHistoryItem]:
+    """Finished upgrades, newest first."""
+
+    from app.services.media_history import finished_history
+
+    return [MediaHistoryItem.model_validate(item) for item in await finished_history(db, replacements=False)]
 
 
 @router.get("/upgrade-candidates/count", response_model=UpgradeCandidateCount)

@@ -66,6 +66,8 @@ class ReplacementItem(BaseModel):
     #: One entry per lost torrent, so the page can say why the title is here.
     lost_evidence: list[LostSourceEvidence] = Field(default_factory=list)
     #: The Custom Formats behind each score, for the score popup.
+    #: The quality profile that scored both releases.
+    profile_name: str | None = None
     current_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
     candidate_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
     #: Live from the download client while the replacement downloads, as

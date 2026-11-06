@@ -218,3 +218,20 @@ class UpgradeCleanupResult(BaseModel):
     candidate_id: UUID
     state: Literal["completed"]
     deleted_paths: list[str]
+
+
+class MediaHistoryItem(BaseModel):
+    """One finished upgrade or replacement."""
+
+    id: str
+    finished_at: datetime
+    media_type: str | None = None
+    title: str
+    year: int | None = None
+    season_number: int | None = None
+    old_release: str | None = None
+    old_quality: str | None = None
+    new_release: str | None = None
+    new_quality: str | None = None
+    #: How it ended, in words: "Kept everything", "Old files deleted", ...
+    outcome: str
