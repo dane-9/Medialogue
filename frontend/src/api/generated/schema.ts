@@ -7652,8 +7652,12 @@ export interface components {
             current_size?: number | null;
             /** Custom Format Score */
             custom_format_score: number;
+            /** Download Eta Seconds */
+            download_eta_seconds?: number | null;
             /** Download Progress */
             download_progress?: number | null;
+            /** Download Speed */
+            download_speed?: number | null;
             /** Download State */
             download_state?: string | null;
             /** Execution Block Reason */

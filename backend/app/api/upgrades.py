@@ -283,6 +283,8 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
 
     progress = None
     download_state = None
+    download_speed = None
+    download_eta_seconds = None
     if row.torrent_id is not None and row.selected_download_client_id is not None:
         observation = await db.scalar(
             select(TorrentClientObservation).where(
@@ -293,6 +295,8 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         if observation is not None:
             progress = float(observation.progress) if observation.progress is not None else None
             download_state = observation.state
+            download_speed = int(observation.download_speed) if observation.download_speed is not None else None
+            download_eta_seconds = int(observation.eta_seconds) if observation.eta_seconds is not None else None
 
     effective_profile = (
         await load_effective_profile(db, media_type=profile_media_type, entity_id=profile_entity_id)
@@ -384,6 +388,8 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         torrent_id=row.torrent_id,
         download_progress=progress,
         download_state=download_state,
+        download_speed=download_speed,
+        download_eta_seconds=download_eta_seconds,
         execution_error=row.execution_error,
         submitted_at=row.submitted_at,
         validated_at=row.validated_at,

@@ -82,6 +82,8 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     torrentId: value.torrent_id ?? undefined,
     downloadProgress: value.download_progress ?? undefined,
     downloadState: value.download_state ?? undefined,
+    downloadSpeed: value.download_speed ?? undefined,
+    downloadEtaSeconds: value.download_eta_seconds ?? undefined,
     executionError: value.execution_error ?? undefined,
     submittedAt: value.submitted_at ?? undefined,
     validatedAt: value.validated_at ?? undefined,

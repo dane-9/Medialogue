@@ -501,6 +501,9 @@ export interface UpgradeCandidate {
   torrentId?: string
   downloadProgress?: number
   downloadState?: string
+  /** Bytes per second, live from the download client. */
+  downloadSpeed?: number
+  downloadEtaSeconds?: number
   executionError?: string
   submittedAt?: string
   validatedAt?: string

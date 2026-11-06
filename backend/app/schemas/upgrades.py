@@ -108,6 +108,9 @@ class UpgradeCandidateResponse(BaseModel):
     torrent_id: UUID | None = None
     download_progress: float | None = None
     download_state: str | None = None
+    # Live from the download client, while the upgrade downloads.
+    download_speed: int | None = None
+    download_eta_seconds: int | None = None
     execution_error: str | None = None
     submitted_at: datetime | None = None
     validated_at: datetime | None = None

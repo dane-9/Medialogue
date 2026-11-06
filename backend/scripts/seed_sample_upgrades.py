@@ -181,6 +181,81 @@ MOVIE_SAMPLES: list[dict] = [
         "quality": "2160p BluRay REMUX",
         "size": 64 * 1024**3, "seeders": 42, "leechers": 2,
     },
+    # Already started, so the In progress and Needs attention tabs have rows.
+    # "state" is the execution state; "progress" a download share in 0..1.
+    {
+        "title": "Heat", "year": 1995, "tmdb_id": 949, "edition": None,
+        "types": ["quality"],
+        "folder": "Heat.1995.1080p.BluRay.x264-GROUP",
+        "current_quality": "1080p Encode",
+        "candidate": "Heat.1995.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-OTHER",
+        "quality": "2160p BluRay REMUX",
+        "size": 66 * 1024**3, "seeders": 19, "leechers": 6,
+        "state": "submitted",
+    },
+    {
+        "title": "Interstellar", "year": 2014, "tmdb_id": 157336, "edition": None,
+        "types": ["quality", "custom_format"],
+        "folder": "Interstellar.2014.1080p.WEB-DL.DDP5.1.H.264-GROUP",
+        "current_quality": "1080p WEB-DL",
+        "candidate": "Interstellar.2014.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-OTHER",
+        "quality": "2160p BluRay REMUX",
+        "size": 82 * 1024**3, "seeders": 74, "leechers": 12,
+        "state": "downloading", "progress": 0.37,
+    },
+    {
+        "title": "Gladiator", "year": 2000, "tmdb_id": 98, "edition": "Extended Cut",
+        "types": ["custom_format"],
+        "folder": "Gladiator.2000.Extended.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
+        "current_quality": "2160p BluRay REMUX",
+        "candidate": "Gladiator.2000.Extended.Cut.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.Atmos.7.1-OTHER",
+        "quality": "2160p BluRay REMUX",
+        "size": 79 * 1024**3, "seeders": 3, "leechers": 9,
+        "state": "downloading", "progress": 0.82,
+    },
+    {
+        "title": "The Matrix", "year": 1999, "tmdb_id": 603, "edition": None,
+        "types": ["repack"],
+        "folder": "The.Matrix.1999.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.7.1-GROUP",
+        "current_quality": "2160p BluRay REMUX",
+        "candidate": "The.Matrix.1999.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.7.1.REPACK-GROUP",
+        "quality": "2160p BluRay REMUX",
+        "size": 61 * 1024**3, "seeders": 27, "leechers": 1,
+        "state": "validating", "progress": 1.0,
+    },
+    {
+        "title": "Jaws", "year": 1975, "tmdb_id": 578, "edition": None,
+        "types": ["quality"],
+        "folder": "Jaws.1975.720p.BluRay.x264-GROUP",
+        "current_quality": "720p Encode",
+        "candidate": "Jaws.1975.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-OTHER",
+        "quality": "2160p BluRay REMUX",
+        "size": 58 * 1024**3, "seeders": 0, "leechers": 4,
+        "state": "handoff_attention",
+        "error": "qBittorrent never confirmed it added the torrent. Check the client, then retry.",
+    },
+    {
+        "title": "Alien", "year": 1979, "tmdb_id": 348, "edition": "Director's Cut",
+        "types": ["proper"],
+        "folder": "Alien.1979.Directors.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
+        "current_quality": "2160p BluRay REMUX",
+        "candidate": "Alien.1979.Directors.Cut.PROPER.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-GROUP",
+        "quality": "2160p BluRay REMUX",
+        "size": 63 * 1024**3, "seeders": 14, "leechers": 0,
+        "state": "cleanup_required", "progress": 1.0,
+        "error": "The upgrade is in place, but the old release's torrent is still in qBittorrent.",
+    },
+    {
+        "title": "Se7en", "year": 1995, "tmdb_id": 807, "edition": None,
+        "types": ["quality"],
+        "folder": "Se7en.1995.1080p.BluRay.DD5.1.x264-GROUP",
+        "current_quality": "1080p Encode",
+        "candidate": "Se7en.1995.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.7.1-OTHER",
+        "quality": "2160p BluRay REMUX",
+        "size": 72 * 1024**3, "seeders": 33, "leechers": 2,
+        "state": "cleanup_required", "progress": 1.0,
+        "error": "The upgrade is in place, but the old release's torrent is still in qBittorrent.",
+    },
 ]
 
 #: Fixed id bases so re-seeding reuses the same rows instead of piling up.
@@ -606,6 +681,7 @@ def seed() -> None:
         del season_number
     _seed_show_sizes(connection, {target[3] for target in targets[: len(SAMPLES)]})
     for sample, movie_id, movie_release_id in _seed_movies(connection):
+        candidate_id = uuid.uuid4().hex
         snapshot, added, current_score, score = _comparison(
             sample["folder"],
             sample["candidate"],
@@ -633,7 +709,7 @@ def seed() -> None:
                        ?, '[]', '[]',
                        datetime('now'), datetime('now'), datetime('now'))""",
             (
-                uuid.uuid4().hex,
+                candidate_id,
                 f"sample:movie:{movie_id}",
                 movie_id,
                 json.dumps([movie_release_id]),
@@ -657,10 +733,57 @@ def seed() -> None:
                 json.dumps(snapshot),
             ),
         )
+        if sample.get("state"):
+            _start_sample(connection, MOVIE_SAMPLES.index(sample), candidate_id, sample)
         inserted += 1
 
     connection.commit()
     print(f"inserted {inserted} sample upgrade candidates")
+
+
+def _start_sample(connection: sqlite3.Connection, index: int, candidate_id: str, sample: dict) -> None:
+    """Put a sample into its execution state, with a download to report on.
+
+    Progress is read from the client's observation of the incoming torrent, so
+    a sample with progress gets both. Their ids are fixed per sample.
+    """
+
+    client = connection.execute("select id from download_clients limit 1").fetchone()
+    torrent_id = None
+    if client is not None and sample.get("progress") is not None:
+        base = MOVIE_ID_BASE + index * 16
+        torrent_id, observation_id = uuid.UUID(int=base + 5).hex, uuid.UUID(int=base + 6).hex
+        connection.execute(
+            """insert or replace into torrents
+               (id, info_hash, name, total_size, first_seen_at, last_seen_at, archive_state,
+                tracker_summary, metadata, created_at, updated_at)
+               values (?, ?, ?, ?, datetime('now'), datetime('now'), 'NOT_ARCHIVED', '{}', ?,
+                       datetime('now'), datetime('now'))""",
+            (torrent_id, torrent_id[:40].ljust(40, "0"), sample["candidate"], sample["size"],
+             json.dumps({MARKER: True})),
+        )
+        progress = float(sample["progress"])
+        left = round(sample["size"] * (1 - progress))
+        # A swarm this size moves roughly this fast; finished downloads idle.
+        speed = sample["seeders"] * 1_200_000 if progress < 1 else 0
+        connection.execute(
+            """insert or replace into torrent_client_observations
+               (id, torrent_id, download_client_id, state, progress, amount_left, download_speed, eta_seconds,
+                tags, is_present, first_seen_at, last_seen_at)
+               values (?, ?, ?, ?, ?, ?, ?, ?, '[]', 1, datetime('now'), datetime('now'))""",
+            (observation_id, torrent_id, client[0], "downloading" if progress < 1 else "uploading", progress,
+             left, speed, left // speed if speed else None),
+        )
+    connection.execute(
+        """update upgrade_candidates
+           set execution_state = ?, execution_error = ?, submitted_at = datetime('now', '-3 hours'),
+               selected_download_client_id = ?, selected_download_client_name = 'qBittorrent',
+               torrent_id = ?,
+               validated_at = case when ? = 'cleanup_required' then datetime('now', '-1 hour') end
+           where id = ?""",
+        (sample["state"], sample.get("error"), client[0] if client else None, torrent_id, sample["state"],
+         candidate_id),
+    )
 
 
 def clear() -> None:
@@ -678,8 +801,12 @@ def clear() -> None:
         connection.execute("delete from media_directories where id = ?", (directory_id,))
         connection.execute("delete from movie_releases where id = ?", (release_id,))
         connection.execute("delete from movies where id = ?", (movie_id,))
-    # Sample torrents attached to borrowed show releases; real torrents never
-    # carry the marker.
+    # Sample torrents (current sizes, and downloads of started samples) carry
+    # the marker; real torrents never do.
+    connection.execute(
+        "delete from torrent_client_observations where torrent_id in (select id from torrents where metadata like ?)",
+        (f'%"{MARKER}"%',),
+    )
     connection.execute(
         "delete from show_release_torrents where torrent_id in (select id from torrents where metadata like ?)",
         (f'%"{MARKER}"%',),

@@ -4807,8 +4807,6 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v2-current .new-media-match-copy strong, .upgrade-v2-change .new-media-match-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-v2-current .new-media-match-copy small, .upgrade-v2-change .new-media-match-copy small { color: var(--faint); font-size: var(--t-xs); }
 .upgrade-v2-change small em { font-style: normal; font-weight: 600; }
-.upgrade-v2-progress { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
-.upgrade-v2-progress .progress { flex: 1; max-width: 90px; }
 .upgrade-why.why-ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 .upgrade-why.why-blue { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
 .upgrade-why.why-amber { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
@@ -4879,7 +4877,6 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v3 .upgrade-v2-current .upgrade-v2-release,
 .upgrade-v3 .upgrade-v2-change .upgrade-v2-release { overflow: visible; font: var(--t-xs)/1.35 var(--sans); text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; }
 .upgrade-v3 .upgrade-v2-change .upgrade-v2-release { margin-left: 0; text-align: left; }
-.upgrade-v3 .upgrade-v2-change > .upgrade-v2-quality { flex: none; min-width: 96px; margin-left: var(--s3); text-align: right; }
 
 /* Release name with its CF score underneath. An invisible spacer the score's
    height sits above, so the name stays centred where it was. */
@@ -4962,3 +4959,25 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v3 .upgrade-v2-score.big { color: var(--ok); font-weight: 700; }
 .upgrade-v3 .upgrade-v2-score.medium { color: var(--ok); }
 .upgrade-v3 .upgrade-v2-score.small { color: var(--faint); }
+
+/* In progress: live Progress / Speed / ETA columns, and the download as a
+   bar filling the space between the CF score and the indexer. */
+.upgrade-v3 { --upgrade-live: 64px; --upgrade-action: 112px; }
+.upgrade-v2-live { flex: none; width: var(--upgrade-live); color: var(--muted); font: var(--t-xs) var(--sans); text-align: right; white-space: nowrap; }
+.upgrade-v2-line > .upgrade-v2-release + .upgrade-v2-live { margin-left: auto; }
+.upgrade-v2-head > .upgrade-v2-live { font: inherit; }
+/* Speeds are wider than their header: centre them on it instead. The header
+   stays put; the nudge moves only the values. */
+.upgrade-v2-line > .upgrade-v2-speed { position: relative; left: 14px; text-align: center; }
+.upgrade-v2-bar { flex: 1; min-width: 40px; height: 3px; overflow: hidden; border-radius: var(--r-full); background: var(--line); }
+.upgrade-v2-bar::after { content: ''; display: block; width: var(--upgrade-progress); height: 100%; background: var(--accent); transition: width .4s ease; }
+/* The release being replaced steps back while its upgrade runs. */
+.upgrade-v2-current.replacing .upgrade-v2-release,
+.upgrade-v2-current.replacing .upgrade-v2-score { opacity: .55; }
+/* Needs attention: one action column, and the problem in place of the score. */
+.upgrade-v2-action { display: flex; flex: none; justify-content: flex-end; width: var(--upgrade-action); }
+.upgrade-v2-line > .upgrade-v2-action { margin-left: auto; }
+.upgrade-v2-head > .upgrade-v2-action { justify-content: flex-end; }
+.upgrade-v2-action .button { width: 100%; justify-content: center; }
+.upgrade-v2-problem { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--warn) 75%, var(--muted)); font: var(--t-xs)/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-problem svg { flex: none; }

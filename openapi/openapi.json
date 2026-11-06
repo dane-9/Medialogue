@@ -13348,6 +13348,17 @@
             "title": "Custom Format Score",
             "type": "integer"
           },
+          "download_eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Eta Seconds"
+          },
           "download_progress": {
             "anyOf": [
               {
@@ -13358,6 +13369,17 @@
               }
             ],
             "title": "Download Progress"
+          },
+          "download_speed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Speed"
           },
           "download_state": {
             "anyOf": [

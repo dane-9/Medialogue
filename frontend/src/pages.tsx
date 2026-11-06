@@ -40,7 +40,7 @@ import { authApi } from './api/modules/auth'
 import { blocklistApi } from './api/modules/blocklist'
 import { discoveryApi } from './api/modules/discovery'
 import { downloadsApi } from './api/modules/downloads'
-import { applyProgressUpdate } from './api/mappers/downloads'
+import { applyProgressUpdate, formatEta } from './api/mappers/downloads'
 import { upgradeResultsToReleases } from './lib/upgradeResults'
 import { integrationsApi } from './api/modules/integrations'
 import { moviesApi } from './api/modules/movies'
@@ -4734,33 +4734,12 @@ function upgradeStatusOf(item: UpgradeCandidate): UpgradeStatus {
   return 'in_progress'
 }
 
-function upgradeStateLabel(item: UpgradeCandidate) {
-  switch (item.executionState) {
-    case 'submitted': return 'Submitted'
-    case 'downloading': return 'Downloading'
-    case 'validating': return 'Validating'
-    case 'handoff_attention': return 'Needs attention'
-    case 'cleanup_required': return 'Cleanup required'
-    case 'completed': return 'Completed'
-    case 'failed': return 'Failed'
-    default: return 'Ready'
-  }
-}
-
 function upgradeEditionLabel(edition?: string) {
   return edition?.trim() || 'Theatrical Cut'
 }
 
 function upgradeEditionsMatch(current?: string, candidate?: string) {
   return upgradeEditionLabel(current).toLocaleLowerCase() === upgradeEditionLabel(candidate).toLocaleLowerCase()
-}
-
-function upgradeStateTone(item: UpgradeCandidate): 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'purple' {
-  if (item.executionState === 'completed') return 'green'
-  if (item.executionState === 'handoff_attention' || item.executionState === 'failed') return 'red'
-  if (item.executionState === 'cleanup_required') return 'amber'
-  if (item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') return 'blue'
-  return item.executionEligible ? 'green' : 'neutral'
 }
 
 function formatUpgradeBytes(bytes?: number) {
@@ -5111,9 +5090,17 @@ export function UpgradeMediaPage() {
           <span className="new-media-col-head">Current</span>
           <span className="new-media-col-head upgrade-v2-head">
             <span>{shownStatus === 'ready' ? 'Upgrade' : 'Replacement'}</span>
-            <span className="upgrade-v2-seeds">Seeds</span>
-            <span className="upgrade-v2-size">Size</span>
-            <span className="upgrade-v2-size-change" aria-hidden="true" />
+            {shownStatus === 'ready' && <>
+              <span className="upgrade-v2-seeds">Seeds</span>
+              <span className="upgrade-v2-size">Size</span>
+              <span className="upgrade-v2-size-change" aria-hidden="true" />
+            </>}
+            {shownStatus === 'in_progress' && <>
+              <span className="upgrade-v2-live">Progress</span>
+              <span className="upgrade-v2-live">Speed</span>
+              <span className="upgrade-v2-live">ETA</span>
+            </>}
+            {shownStatus === 'attention' && <span className="upgrade-v2-action">Action</span>}
           </span>
           <span aria-hidden="true" />
           {!rows.length && <div className="upgrade-v2-empty">{UPGRADE_STATUSES.find((entry) => entry.value === shownStatus)?.empty}</div>}
@@ -5145,6 +5132,19 @@ export function UpgradeMediaPage() {
               formatSections,
             })))
             const indexerBadge = badgeColor(item.indexerColor)
+            const running = item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating'
+            const stuck = item.executionState === 'handoff_attention' || item.executionState === 'cleanup_required'
+            // How far along the download is; a sent torrent has not started
+            // and a checked one is complete.
+            const runningPercent = item.executionState === 'validating' ? 100 : item.executionState === 'submitted' ? 0 : progress ?? 0
+            const runningLabel = item.executionState === 'submitted' ? 'Sent' : item.executionState === 'validating' ? 'Checking' : `${runningPercent}%`
+            // What is wrong, in the row itself: the client's or cleanup's own
+            // words, then what is at stake.
+            const problem = item.executionState === 'handoff_attention'
+              ? [item.executionError ?? 'The download client never confirmed the torrent.', item.submittedAt ? `sent ${formatAge(item.submittedAt)}` : undefined]
+              : item.executionState === 'cleanup_required'
+                ? [item.executionError ?? 'The old release still needs removing.', item.currentSize ? `frees ~${formatBytes(item.currentSize)}` : undefined]
+                : []
             const sizeDelta = item.size !== undefined && item.currentSize !== undefined ? item.size - item.currentSize : undefined
             // A big score jump reads as one; a few points stay quiet.
             const scoreWeight = delta >= 100 ? 'big' : delta >= 25 ? 'medium' : 'small'
@@ -5154,7 +5154,7 @@ export function UpgradeMediaPage() {
               <span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexerName}</span>
             </span>
             return <div className="new-media-row" key={item.id}>
-              <div className={`new-media-folder-cell upgrade-v2-current ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`} onClick={open}>
+              <div className={`new-media-folder-cell upgrade-v2-current ${active ? 'active' : ''} ${blocked ? 'excluded' : ''} ${running ? 'replacing' : ''}`} onClick={open}>
                 <button
                   type="button"
                   role="checkbox"
@@ -5204,31 +5204,37 @@ export function UpgradeMediaPage() {
                         >{token.text}</span>
                         : <span className="upgrade-token-same">{token.text}</span>}
                     </Fragment>)}</span>
+                    {running && <>
+                      <span className="upgrade-v2-live">{runningLabel}</span>
+                      <span className="upgrade-v2-live upgrade-v2-speed">{item.downloadSpeed ? `${formatBytes(item.downloadSpeed)}/s` : '-'}</span>
+                      <span className="upgrade-v2-live">{item.executionState === 'downloading' ? formatEta(item.downloadEtaSeconds) : '-'}</span>
+                    </>}
+                    {stuck && <span className="upgrade-v2-action">{item.executionState === 'handoff_attention'
+                      ? <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void retryHandoff(item) }}>{busyId === item.id ? 'Checking…' : 'Retry'}</Button>
+                      : <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void reviewCleanup(item) }}>Clean up</Button>}</span>}
+                    {!running && !stuck && <>
                     <span className="upgrade-v2-seeds">{(swarm === 'dead' || swarm === 'weak')
                       ? <Tooltip content={`${item.seeders ?? 0} seeders: this release may be slow or impossible to download.`}><span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span></Tooltip>
                       : <span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span>}</span>
                     <span className="upgrade-v2-size upgrade-fact">{item.size === undefined ? '-' : formatBytes(item.size)}</span>
                     <span className="upgrade-v2-size-change upgrade-fact">{item.size !== undefined && sizeDelta !== undefined && sizeDelta !== 0 && <em className={sizeDelta > 0 ? 'size-up' : 'size-down'} aria-label={`${sizeDelta > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(sizeDelta))}`}><Icon name="caret" size={10} />{formatBytes(Math.abs(sizeDelta))}</em>}</span>
+                    </>}
                   </div>
-                  <div className="upgrade-v2-meta">
+                  {stuck ? <div className="upgrade-v2-meta">
+                    <small className="upgrade-v2-problem" title={problem.filter(Boolean).join(' · ')}>
+                      <Icon name="alert" size={11} />{problem.filter(Boolean).join(' · ')}
+                    </small>
+                  </div> : <div className="upgrade-v2-meta">
                     <span onClick={(event) => event.stopPropagation()}><UpgradeCompare item={item} profile={profileName}>
                       <small className={`upgrade-v2-score ${scoreWeight}`}>CF: {item.customFormatScore} {hoveredReason?.id === item.id
                         ? <span className="cf-score-delta hovered">{formatScoreDelta(hoveredReason.score)}</span>
                         : <span className="cf-score-delta">{formatScoreDelta(item.customFormatScore - item.currentCustomFormatScore)}</span>}</small>
                     </UpgradeCompare></span>
+                    {/* The download fills the space between score and indexer. */}
+                    {running && <span className="upgrade-v2-bar" style={{ '--upgrade-progress': `${runningPercent}%` } as CSSProperties} aria-hidden="true" />}
                     {releaseFacts}
-                  </div>
+                  </div>}
                 </div>
-                {item.executionState && item.executionState !== 'completed' && <span className="new-media-match-copy upgrade-v2-title upgrade-v2-quality">
-                  <span className="upgrade-v2-progress">
-                    <Tooltip content={item.executionError ?? upgradeStateLabel(item)}><Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge></Tooltip>
-                    {progress !== undefined && (item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && <><Progress value={progress} tone="blue" /><small>{progress}%</small></>}
-                  </span>
-                </span>}
-                {item.executionState === 'handoff_attention'
-                  ? <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void retryHandoff(item) }}>{busyId === item.id ? 'Checking…' : 'Retry'}</Button>
-                  : item.executionState === 'cleanup_required'
-                    && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void reviewCleanup(item) }}>Cleanup</Button>}
               </div>
               {/* Outside the panel, so the two columns keep their width. */}
               <span className="upgrade-v3-rail">
