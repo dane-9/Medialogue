@@ -11,11 +11,6 @@ class PlexConfigurationUpdate(BaseModel):
     expected_revision: int | None = None
 
 
-class PlexTestRequest(BaseModel):
-    url: AnyHttpUrl | None = None
-    token: str | None = Field(default=None, max_length=4096)
-
-
 class PlexConfigurationResponse(BaseModel):
     configured: bool
     url: str | None = None
@@ -38,10 +33,3 @@ class PlexHealthResponse(BaseModel):
     last_success: datetime | None = None
     latency_ms: int | None = None
     last_error: str | None = None
-
-
-class PlexTestResponse(BaseModel):
-    status: Literal["healthy", "unavailable"]
-    machine_identifier: str | None = None
-    latency_ms: int | None = None
-    message: str | None = None

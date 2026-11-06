@@ -15,7 +15,17 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.integrations.qbittorrent import magnet_info_hash, torrent_payload_info_hash
 from app.models.auth import AdminUser
-from app.models.domain import Episode, InteractiveSearchResult, Job, MediaProfileOverride, MediaType, Movie, QualityProfile, ReleaseBlocklist, Season, Show
+from app.models.domain import (
+    InteractiveSearchResult,
+    Job,
+    MediaProfileOverride,
+    MediaType,
+    Movie,
+    QualityProfile,
+    ReleaseBlocklist,
+    Season,
+    Show,
+)
 from app.parser import parse_release
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.search import (
@@ -247,43 +257,6 @@ async def search_movie(
             year=movie.year,
             tmdb_id=movie.tmdb_id,
             original_language=movie.original_language,
-        ),
-        background_tasks=background_tasks,
-        db=db,
-        client_factory=client_factory,
-    )
-
-
-@router.post("/episodes/{episode_id}/interactive-search", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
-async def search_episode(
-    episode_id: UUID,
-    background_tasks: BackgroundTasks,
-    _: object = Depends(require_csrf),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(indexers_api.get_torznab_client_factory),
-) -> JobAcceptedResponse:
-    row = (
-        await db.execute(
-            select(Episode, Show)
-            .join(Show, Show.id == Episode.show_id)
-            .where(Episode.id == episode_id)
-        )
-    ).first()
-    if row is None:
-        raise AppError("NOT_FOUND", "Episode was not found.", status_code=404)
-    episode, show = row
-    return await _start_search(
-        target=SearchTarget(
-            media_type=MediaType.SHOWS,
-            entity_type="episode",
-            entity_id=episode.id,
-            profile_entity_id=show.id,
-            title=show.title,
-            year=show.year,
-            tmdb_id=show.tmdb_id,
-            original_language=show.original_language,
-            season=episode.season_number,
-            episode=episode.episode_number,
         ),
         background_tasks=background_tasks,
         db=db,

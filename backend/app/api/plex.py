@@ -14,20 +14,10 @@ from app.integrations.plex import PlexClient
 from app.models.auth import AdminUser
 from app.models.domain import Movie, Show
 from app.schemas.jobs import JobAcceptedResponse
-from app.schemas.plex import (
-    PlexConfigurationResponse,
-    PlexConfigurationUpdate,
-    PlexHealthResponse,
-    PlexTestRequest,
-    PlexTestResponse,
-)
+from app.schemas.plex import PlexConfigurationResponse, PlexConfigurationUpdate, PlexHealthResponse
 from app.services.integration_state import ConfiguredPlex, get_configured_plex
 from app.services.jobs import create_job, publish_job_status
-from app.services.plex import (
-    get_plex_configuration,
-    refresh_plex_health,
-    test_plex_connection,
-)
+from app.services.plex import get_plex_configuration
 from app.services.plex_sync import run_plex_library_sync, run_plex_movie_recheck, run_plex_show_recheck
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.scheduler import request_health_sweep
@@ -114,48 +104,11 @@ async def save_configuration(
     return _response(configuration)
 
 
-@router.post("/integrations/plex/test", response_model=PlexTestResponse)
-async def test_connection(
-    payload: PlexTestRequest,
-    _: object = Depends(require_csrf),
-    admin: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_plex_client_factory),
-) -> PlexTestResponse:
-    del admin
-    configuration = await get_plex_configuration(db)
-    url = str(payload.url).rstrip("/") if payload.url else (configuration.url if configuration else None)
-    token = payload.token or (configuration.token if configuration else None)
-    if not url or not token:
-        raise AppError("PLEX_CONFIGURATION_REQUIRED", "Provide a Plex URL and token.", status_code=422)
-    try:
-        result = await test_plex_connection(url, token, client_factory=client_factory)
-    except Exception as exc:
-        return PlexTestResponse(status="unavailable", message=str(exc))
-    return PlexTestResponse(**result)
-
-
 @router.get("/integrations/plex/health", response_model=PlexHealthResponse)
 async def plex_health(
     _: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ) -> PlexHealthResponse:
     return _health_response(await get_plex_configuration(db))
-
-
-@router.post("/integrations/plex/health/refresh", response_model=PlexTestResponse)
-async def refresh_health(
-    _: object = Depends(require_csrf),
-    admin: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_plex_client_factory),
-) -> PlexTestResponse:
-    del admin
-    configuration = await get_plex_configuration(db)
-    if configuration is None or not configuration.enabled:
-        raise AppError("PLEX_NOT_CONFIGURED", "Plex is not configured and enabled.", status_code=409)
-    result = await refresh_plex_health(db, configuration, client_factory=client_factory)
-    await db.commit()
-    return PlexTestResponse(**result)
 
 
 @router.post("/integrations/plex/sync", response_model=JobAcceptedResponse, status_code=202)

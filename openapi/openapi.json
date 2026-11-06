@@ -3342,297 +3342,6 @@
         "title": "DownloadScope",
         "type": "string"
       },
-      "DuplicateDirectoryPreview": {
-        "properties": {
-          "access_mode": {
-            "$ref": "#/components/schemas/AccessMode"
-          },
-          "directory_id": {
-            "format": "uuid",
-            "title": "Directory Id",
-            "type": "string"
-          },
-          "exists": {
-            "title": "Exists",
-            "type": "boolean"
-          },
-          "files": {
-            "items": {
-              "$ref": "#/components/schemas/DuplicateFilePreview"
-            },
-            "title": "Files",
-            "type": "array"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          },
-          "storage_root": {
-            "title": "Storage Root",
-            "type": "string"
-          }
-        },
-        "required": [
-          "directory_id",
-          "path",
-          "storage_root",
-          "access_mode",
-          "exists"
-        ],
-        "title": "DuplicateDirectoryPreview",
-        "type": "object"
-      },
-      "DuplicateFilePreview": {
-        "properties": {
-          "is_symlink": {
-            "default": false,
-            "title": "Is Symlink",
-            "type": "boolean"
-          },
-          "relative_path": {
-            "title": "Relative Path",
-            "type": "string"
-          },
-          "size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Size"
-          }
-        },
-        "required": [
-          "relative_path"
-        ],
-        "title": "DuplicateFilePreview",
-        "type": "object"
-      },
-      "DuplicateReleasePreview": {
-        "properties": {
-          "directories": {
-            "items": {
-              "$ref": "#/components/schemas/DuplicateDirectoryPreview"
-            },
-            "title": "Directories",
-            "type": "array"
-          },
-          "edition": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edition"
-          },
-          "quality": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quality"
-          },
-          "release_group": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Release Group"
-          },
-          "release_id": {
-            "format": "uuid",
-            "title": "Release Id",
-            "type": "string"
-          },
-          "release_name": {
-            "title": "Release Name",
-            "type": "string"
-          },
-          "state": {
-            "$ref": "#/components/schemas/ReleaseState"
-          },
-          "torrents": {
-            "items": {
-              "$ref": "#/components/schemas/DuplicateTorrentPreview"
-            },
-            "title": "Torrents",
-            "type": "array"
-          }
-        },
-        "required": [
-          "release_id",
-          "release_name",
-          "state"
-        ],
-        "title": "DuplicateReleasePreview",
-        "type": "object"
-      },
-      "DuplicateResolveCommitRequest": {
-        "properties": {
-          "confirmation_token": {
-            "minLength": 16,
-            "title": "Confirmation Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "confirmation_token"
-        ],
-        "title": "DuplicateResolveCommitRequest",
-        "type": "object"
-      },
-      "DuplicateResolvePreviewRequest": {
-        "properties": {
-          "delete_media": {
-            "default": false,
-            "title": "Delete Media",
-            "type": "boolean"
-          },
-          "losing_release_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "minItems": 1,
-            "title": "Losing Release Ids",
-            "type": "array"
-          },
-          "remove_torrents": {
-            "default": false,
-            "title": "Remove Torrents",
-            "type": "boolean"
-          },
-          "winner_release_id": {
-            "format": "uuid",
-            "title": "Winner Release Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "winner_release_id",
-          "losing_release_ids"
-        ],
-        "title": "DuplicateResolvePreviewRequest",
-        "type": "object"
-      },
-      "DuplicateResolvePreviewResponse": {
-        "properties": {
-          "confirmation_token": {
-            "title": "Confirmation Token",
-            "type": "string"
-          },
-          "delete_media": {
-            "title": "Delete Media",
-            "type": "boolean"
-          },
-          "expires_at": {
-            "title": "Expires At",
-            "type": "string"
-          },
-          "losers": {
-            "items": {
-              "$ref": "#/components/schemas/DuplicateReleasePreview"
-            },
-            "title": "Losers",
-            "type": "array"
-          },
-          "movie_id": {
-            "format": "uuid",
-            "title": "Movie Id",
-            "type": "string"
-          },
-          "movie_title": {
-            "title": "Movie Title",
-            "type": "string"
-          },
-          "remove_torrents": {
-            "title": "Remove Torrents",
-            "type": "boolean"
-          },
-          "torrent_backups_will_be_kept": {
-            "default": true,
-            "title": "Torrent Backups Will Be Kept",
-            "type": "boolean"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Warnings",
-            "type": "array"
-          },
-          "winner": {
-            "$ref": "#/components/schemas/DuplicateReleasePreview"
-          }
-        },
-        "required": [
-          "movie_id",
-          "movie_title",
-          "winner",
-          "losers",
-          "delete_media",
-          "remove_torrents",
-          "confirmation_token",
-          "expires_at"
-        ],
-        "title": "DuplicateResolvePreviewResponse",
-        "type": "object"
-      },
-      "DuplicateTorrentPreview": {
-        "properties": {
-          "archived": {
-            "title": "Archived",
-            "type": "boolean"
-          },
-          "clients": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Clients",
-            "type": "array"
-          },
-          "info_hash": {
-            "title": "Info Hash",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "qbit_present": {
-            "title": "Qbit Present",
-            "type": "boolean"
-          },
-          "torrent_id": {
-            "format": "uuid",
-            "title": "Torrent Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "torrent_id",
-          "info_hash",
-          "name",
-          "archived",
-          "qbit_present"
-        ],
-        "title": "DuplicateTorrentPreview",
-        "type": "object"
-      },
       "EffectiveCustomFormatScore": {
         "properties": {
           "custom_format_id": {
@@ -5179,51 +4888,6 @@
         "title": "LostSourceEvidence",
         "type": "object"
       },
-      "ManualAttachRequest": {
-        "properties": {
-          "expected_revision": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Revision"
-          },
-          "path": {
-            "maxLength": 4096,
-            "minLength": 1,
-            "title": "Path",
-            "type": "string"
-          },
-          "release_name": {
-            "anyOf": [
-              {
-                "maxLength": 2048,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Release Name"
-          },
-          "root_id": {
-            "format": "uuid",
-            "title": "Root Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "root_id",
-          "path"
-        ],
-        "title": "ManualAttachRequest",
-        "type": "object"
-      },
       "MediaDirectoryResponse": {
         "properties": {
           "exists": {
@@ -5297,7 +4961,8 @@
           "action": {
             "enum": [
               "approve",
-              "ignore"
+              "ignore",
+              "restore"
             ],
             "title": "Action",
             "type": "string"
@@ -7504,21 +7169,6 @@
         "title": "NewMediaState",
         "type": "string"
       },
-      "ParserTestRequest": {
-        "properties": {
-          "name": {
-            "maxLength": 4096,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "ParserTestRequest",
-        "type": "object"
-      },
       "PasswordChangeRequest": {
         "properties": {
           "current_password": {
@@ -7765,87 +7415,6 @@
           }
         },
         "title": "PlexHealthResponse",
-        "type": "object"
-      },
-      "PlexTestRequest": {
-        "properties": {
-          "token": {
-            "anyOf": [
-              {
-                "maxLength": 4096,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Token"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "format": "uri",
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
-          }
-        },
-        "title": "PlexTestRequest",
-        "type": "object"
-      },
-      "PlexTestResponse": {
-        "properties": {
-          "latency_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latency Ms"
-          },
-          "machine_identifier": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Machine Identifier"
-          },
-          "message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message"
-          },
-          "status": {
-            "enum": [
-              "healthy",
-              "unavailable"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "title": "PlexTestResponse",
         "type": "object"
       },
       "PresenceState": {
@@ -8520,80 +8089,6 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
-      "ReconciliationActionResponse": {
-        "properties": {
-          "details": {
-            "additionalProperties": true,
-            "title": "Details",
-            "type": "object"
-          },
-          "movie_id": {
-            "format": "uuid",
-            "title": "Movie Id",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "manual_attached",
-              "review"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "movie_id",
-          "status"
-        ],
-        "title": "ReconciliationActionResponse",
-        "type": "object"
-      },
-      "ReconciliationRootStatus": {
-        "properties": {
-          "affected_count": {
-            "title": "Affected Count",
-            "type": "integer"
-          },
-          "health": {
-            "anyOf": [
-              {
-                "enum": [
-                  "available",
-                  "unavailable",
-                  "unknown"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Health"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "path",
-          "health",
-          "affected_count"
-        ],
-        "title": "ReconciliationRootStatus",
-        "type": "object"
-      },
       "ReconciliationRunRequest": {
         "properties": {
           "root_id": {
@@ -8651,43 +8146,6 @@
           "job_ids"
         ],
         "title": "ReconciliationRunResponse",
-        "type": "object"
-      },
-      "ReconciliationStatusResponse": {
-        "properties": {
-          "generated_at": {
-            "format": "date-time",
-            "title": "Generated At",
-            "type": "string"
-          },
-          "incoming_count": {
-            "title": "Incoming Count",
-            "type": "integer"
-          },
-          "missing_release_count": {
-            "title": "Missing Release Count",
-            "type": "integer"
-          },
-          "open_problem_count": {
-            "title": "Open Problem Count",
-            "type": "integer"
-          },
-          "roots": {
-            "items": {
-              "$ref": "#/components/schemas/ReconciliationRootStatus"
-            },
-            "title": "Roots",
-            "type": "array"
-          }
-        },
-        "required": [
-          "generated_at",
-          "roots",
-          "incoming_count",
-          "missing_release_count",
-          "open_problem_count"
-        ],
-        "title": "ReconciliationStatusResponse",
         "type": "object"
       },
       "RecoveryReimportItem": {
@@ -10917,87 +10375,6 @@
         "title": "ServiceHealth",
         "type": "object"
       },
-      "SetupCompleteRequest": {
-        "properties": {
-          "complete": {
-            "default": true,
-            "title": "Complete",
-            "type": "boolean"
-          }
-        },
-        "title": "SetupCompleteRequest",
-        "type": "object"
-      },
-      "SetupStatusResponse": {
-        "properties": {
-          "steps": {
-            "items": {
-              "$ref": "#/components/schemas/SetupStep"
-            },
-            "title": "Steps",
-            "type": "array"
-          },
-          "wizard_complete": {
-            "title": "Wizard Complete",
-            "type": "boolean"
-          },
-          "wizard_required": {
-            "title": "Wizard Required",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "wizard_complete",
-          "wizard_required",
-          "steps"
-        ],
-        "title": "SetupStatusResponse",
-        "type": "object"
-      },
-      "SetupStep": {
-        "properties": {
-          "complete": {
-            "title": "Complete",
-            "type": "boolean"
-          },
-          "detail": {
-            "title": "Detail",
-            "type": "string"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "optional": {
-            "default": true,
-            "title": "Optional",
-            "type": "boolean"
-          },
-          "settings_tab": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Settings Tab"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "title",
-          "complete",
-          "detail"
-        ],
-        "title": "SetupStep",
-        "type": "object"
-      },
       "Severity": {
         "enum": [
           "info",
@@ -12511,63 +11888,6 @@
         "title": "TMDBShowLookupResponse",
         "type": "object"
       },
-      "TMDBTestRequest": {
-        "properties": {
-          "api_key": {
-            "anyOf": [
-              {
-                "maxLength": 4096,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Api Key"
-          }
-        },
-        "title": "TMDBTestRequest",
-        "type": "object"
-      },
-      "TMDBTestResponse": {
-        "properties": {
-          "latency_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latency Ms"
-          },
-          "message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message"
-          },
-          "status": {
-            "enum": [
-              "healthy",
-              "unavailable"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "title": "TMDBTestResponse",
-        "type": "object"
-      },
       "TagCreate": {
         "properties": {
           "name": {
@@ -12606,21 +11926,6 @@
           "created_at"
         ],
         "title": "TagResponse",
-        "type": "object"
-      },
-      "TagUpdate": {
-        "properties": {
-          "name": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "TagUpdate",
         "type": "object"
       },
       "TorrentArchiveDetail": {
@@ -15937,7 +15242,7 @@
     },
     "/api/v1/discoveries/bulk": {
       "post": {
-        "description": "Approve or ignore many New Media directories in one request.\n\nEach item is committed on its own and a failure does not stop the rest: one\ntitle whose metadata fetch times out must not discard the twenty-nine that\nalready succeeded, and the caller is told exactly which ones failed and why.",
+        "description": "Approve, ignore or restore many New Media directories in one request.\n\nEach item is committed on its own and a failure does not stop the rest: one\ntitle whose metadata fetch times out must not discard the twenty-nine that\nalready succeeded, and the caller is told exactly which ones failed and why.",
         "operationId": "bulk_new_media_api_v1_discoveries_bulk_post",
         "requestBody": {
           "content": {
@@ -16040,49 +15345,6 @@
         ]
       }
     },
-    "/api/v1/discoveries/{discovery_id}/approve": {
-      "post": {
-        "operationId": "approve_discovery_api_v1_discoveries__discovery_id__approve_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "discovery_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Discovery Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaDiscoveryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Approve Discovery",
-        "tags": [
-          "discoveries"
-        ]
-      }
-    },
     "/api/v1/discoveries/{discovery_id}/edition": {
       "patch": {
         "operationId": "set_discovery_edition_api_v1_discoveries__discovery_id__edition_patch",
@@ -16131,49 +15393,6 @@
           }
         },
         "summary": "Set Discovery Edition",
-        "tags": [
-          "discoveries"
-        ]
-      }
-    },
-    "/api/v1/discoveries/{discovery_id}/ignore": {
-      "post": {
-        "operationId": "ignore_discovery_api_v1_discoveries__discovery_id__ignore_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "discovery_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Discovery Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaDiscoveryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Ignore Discovery",
         "tags": [
           "discoveries"
         ]
@@ -16228,50 +15447,6 @@
           }
         },
         "summary": "Set Discovery Quality Profile",
-        "tags": [
-          "discoveries"
-        ]
-      }
-    },
-    "/api/v1/discoveries/{discovery_id}/restore": {
-      "post": {
-        "description": "Put an ignored item back in the queue, so a mis-click is recoverable.",
-        "operationId": "restore_discovery_api_v1_discoveries__discovery_id__restore_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "discovery_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Discovery Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaDiscoveryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Restore Discovery",
         "tags": [
           "discoveries"
         ]
@@ -17127,27 +16302,6 @@
         ]
       }
     },
-    "/api/v1/downloads/poll": {
-      "post": {
-        "operationId": "poll_all_clients_api_v1_downloads_poll_post",
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Poll All Clients",
-        "tags": [
-          "downloads"
-        ]
-      }
-    },
     "/api/v1/episodes/{episode_id}": {
       "patch": {
         "operationId": "update_episode_api_v1_episodes__episode_id__patch",
@@ -17198,49 +16352,6 @@
         "summary": "Update Episode",
         "tags": [
           "shows"
-        ]
-      }
-    },
-    "/api/v1/episodes/{episode_id}/interactive-search": {
-      "post": {
-        "operationId": "search_episode_api_v1_episodes__episode_id__interactive_search_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "episode_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Episode Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Search Episode",
-        "tags": [
-          "interactive search"
         ]
       }
     },
@@ -18068,27 +17179,6 @@
         ]
       }
     },
-    "/api/v1/integrations/plex/health/refresh": {
-      "post": {
-        "operationId": "refresh_health_api_v1_integrations_plex_health_refresh_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlexTestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Refresh Health",
-        "tags": [
-          "plex"
-        ]
-      }
-    },
     "/api/v1/integrations/plex/sync": {
       "post": {
         "operationId": "sync_library_api_v1_integrations_plex_sync_post",
@@ -18105,47 +17195,6 @@
           }
         },
         "summary": "Sync Library",
-        "tags": [
-          "plex"
-        ]
-      }
-    },
-    "/api/v1/integrations/plex/test": {
-      "post": {
-        "operationId": "test_connection_api_v1_integrations_plex_test_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlexTestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlexTestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Test Connection",
         "tags": [
           "plex"
         ]
@@ -18206,68 +17255,6 @@
           }
         },
         "summary": "Save Configuration",
-        "tags": [
-          "tmdb"
-        ]
-      }
-    },
-    "/api/v1/integrations/tmdb/health/refresh": {
-      "post": {
-        "operationId": "refresh_health_api_v1_integrations_tmdb_health_refresh_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TMDBTestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Refresh Health",
-        "tags": [
-          "tmdb"
-        ]
-      }
-    },
-    "/api/v1/integrations/tmdb/test": {
-      "post": {
-        "operationId": "test_connection_api_v1_integrations_tmdb_test_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TMDBTestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TMDBTestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Test Connection",
         "tags": [
           "tmdb"
         ]
@@ -19017,175 +18004,6 @@
         ]
       }
     },
-    "/api/v1/movies/{resource_id}/duplicates/resolve": {
-      "post": {
-        "operationId": "resolve_movie_duplicate_api_v1_movies__resource_id__duplicates_resolve_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "title": "Resource Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DuplicateResolveCommitRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Resolve Movie Duplicate",
-        "tags": [
-          "duplicates"
-        ]
-      }
-    },
-    "/api/v1/movies/{resource_id}/duplicates/resolve-preview": {
-      "post": {
-        "operationId": "preview_movie_duplicate_resolution_api_v1_movies__resource_id__duplicates_resolve_preview_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "title": "Resource Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DuplicateResolvePreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DuplicateResolvePreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Preview Movie Duplicate Resolution",
-        "tags": [
-          "duplicates"
-        ]
-      }
-    },
-    "/api/v1/movies/{resource_id}/events": {
-      "get": {
-        "operationId": "get_movie_events_api_v1_movies__resource_id__events_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "title": "Resource Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 1,
-              "minimum": 1,
-              "title": "Page",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page_size",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 250,
-              "minimum": 1,
-              "title": "Page Size",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Collection_EventResponse_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Movie Events",
-        "tags": [
-          "movies"
-        ]
-      }
-    },
     "/api/v1/movies/{resource_id}/interactive-search": {
       "post": {
         "operationId": "search_movie_api_v1_movies__resource_id__interactive_search_post",
@@ -19423,160 +18241,6 @@
         "summary": "Rematch Movie",
         "tags": [
           "movies"
-        ]
-      }
-    },
-    "/api/v1/movies/{resource_id}/tags/{tag_id}": {
-      "delete": {
-        "operationId": "remove_movie_tag_api_v1_movies__resource_id__tags__tag_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "title": "Resource Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "tag_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Tag Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/TagResponse"
-                  },
-                  "title": "Response Remove Movie Tag Api V1 Movies  Resource Id  Tags  Tag Id  Delete",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Remove Movie Tag",
-        "tags": [
-          "tags"
-        ]
-      },
-      "post": {
-        "operationId": "add_movie_tag_api_v1_movies__resource_id__tags__tag_id__post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "title": "Resource Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "tag_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Tag Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/TagResponse"
-                  },
-                  "title": "Response Add Movie Tag Api V1 Movies  Resource Id  Tags  Tag Id  Post",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Add Movie Tag",
-        "tags": [
-          "tags"
-        ]
-      }
-    },
-    "/api/v1/parser/test": {
-      "post": {
-        "description": "Return the complete non-mutating, versioned release parse.",
-        "operationId": "test_parser_api_v1_parser_test_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ParserTestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Test Parser Api V1 Parser Test Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Test Parser",
-        "tags": [
-          "parser"
         ]
       }
     },
@@ -20007,49 +18671,6 @@
         ]
       }
     },
-    "/api/v1/quality-definitions/{quality_id}": {
-      "get": {
-        "operationId": "get_quality_definition_api_v1_quality_definitions__quality_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "quality_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Quality Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QualityDefinitionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Quality Definition",
-        "tags": [
-          "quality profiles"
-        ]
-      }
-    },
     "/api/v1/quality-profiles": {
       "get": {
         "operationId": "list_quality_profiles_api_v1_quality_profiles_get",
@@ -20286,59 +18907,6 @@
         ]
       }
     },
-    "/api/v1/reconciliation/movies/{movie_id}/manual-attach": {
-      "post": {
-        "operationId": "manual_attach_api_v1_reconciliation_movies__movie_id__manual_attach_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "movie_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Movie Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManualAttachRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReconciliationActionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Manual Attach",
-        "tags": [
-          "reconciliation"
-        ]
-      }
-    },
     "/api/v1/reconciliation/run": {
       "post": {
         "operationId": "run_reconciliation_api_v1_reconciliation_run_post",
@@ -20375,27 +18943,6 @@
           }
         },
         "summary": "Run Reconciliation",
-        "tags": [
-          "reconciliation"
-        ]
-      }
-    },
-    "/api/v1/reconciliation/status": {
-      "get": {
-        "operationId": "reconciliation_status_api_v1_reconciliation_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReconciliationStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Reconciliation Status",
         "tags": [
           "reconciliation"
         ]
@@ -21104,68 +19651,6 @@
         ]
       }
     },
-    "/api/v1/setup/complete": {
-      "put": {
-        "operationId": "complete_api_v1_setup_complete_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupCompleteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Complete",
-        "tags": [
-          "setup"
-        ]
-      }
-    },
-    "/api/v1/setup/status": {
-      "get": {
-        "operationId": "status_api_v1_setup_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Status",
-        "tags": [
-          "setup"
-        ]
-      }
-    },
     "/api/v1/shows": {
       "get": {
         "operationId": "list_shows_api_v1_shows_get",
@@ -21663,71 +20148,6 @@
           }
         },
         "summary": "List Episode Orderings",
-        "tags": [
-          "shows"
-        ]
-      }
-    },
-    "/api/v1/shows/{resource_id}/events": {
-      "get": {
-        "operationId": "get_show_events_api_v1_shows__resource_id__events_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "resource_id",
-            "required": true,
-            "schema": {
-              "title": "Resource Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 1,
-              "minimum": 1,
-              "title": "Page",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page_size",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 250,
-              "minimum": 1,
-              "title": "Page Size",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Collection_EventResponse_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Show Events",
         "tags": [
           "shows"
         ]
@@ -22273,93 +20693,6 @@
           }
         },
         "summary": "Create Tag",
-        "tags": [
-          "tags"
-        ]
-      }
-    },
-    "/api/v1/tags/{tag_id}": {
-      "delete": {
-        "operationId": "delete_tag_api_v1_tags__tag_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "tag_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Tag Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Tag",
-        "tags": [
-          "tags"
-        ]
-      },
-      "patch": {
-        "operationId": "update_tag_api_v1_tags__tag_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "tag_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Tag Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TagUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TagResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Tag",
         "tags": [
           "tags"
         ]

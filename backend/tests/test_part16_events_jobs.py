@@ -19,7 +19,6 @@ from app.db import session as db_session
 from app.db.bootstrap import mark_running_jobs_interrupted
 from app.main import create_app
 from app.models.domain import (
-    AssociationType,
     Event,
     Job,
     JobStatus,
@@ -27,14 +26,10 @@ from app.models.domain import (
     MediaFile,
     MediaType,
     Movie,
-    MovieRelease,
-    MovieReleaseTorrent,
     Problem,
     Severity,
-    ReleaseState,
     StorageRoot,
     Schedule,
-    Torrent,
 )
 from app.services.events import create_event, subscribe, unsubscribe
 from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job, update_job
@@ -75,8 +70,6 @@ def _configure_fake_tmdb(monkeypatch):
 
     monkeypatch.setattr(tmdb_service, "TMDBClient", _NoMatchTMDBClient)
     monkeypatch.setattr(tmdb_api, "TMDBClient", _NoMatchTMDBClient)
-
-
 
 
 @pytest.fixture
@@ -638,41 +631,6 @@ def test_problem_lifecycle_and_storage_health_have_meaningful_durable_events(cli
     assert "storage_root.unavailable" in event_types
     assert "storage_root.restored" in event_types
     assert live_types.count("storage_root.health") == 2
-
-
-def test_movie_event_history_includes_related_release_and_torrent_evidence(client: TestClient) -> None:
-    login_headers(client)
-
-    async def seed():
-        async with db_session.async_session_factory() as db:
-            movie = Movie(title="Event Movie", sort_title="event movie", year=2026, tmdb_id=987654)
-            db.add(movie)
-            await db.flush()
-            release = MovieRelease(
-                movie_id=movie.id,
-                raw_release_name="Event Movie 2026 2160p WEB-DL-GRP",
-                parsed_title="Event Movie",
-                parsed_year=2026,
-                release_state=ReleaseState.CURRENT,
-            )
-            torrent = Torrent(info_hash=uuid.uuid4().hex + "abcd1234", name="Event Movie 2026")
-            db.add_all([release, torrent])
-            await db.flush()
-            db.add(MovieReleaseTorrent(movie_release_id=release.id, torrent_id=torrent.id, association_type=AssociationType.ATTACHED))
-            await create_event(db, "release.replaced", entity_type="movie_release", entity_id=release.id, message="Release history event.")
-            await create_event(db, "torrent.removed", entity_type="torrent", entity_id=torrent.id, message="Torrent history event.")
-            await db.commit()
-
-    asyncio.run(seed())
-    response = client.get("/api/v1/movies/987654/events")
-    assert response.status_code == 200, response.text
-    types = {item["event_type"] for item in response.json()["items"]}
-    assert {"release.replaced", "torrent.removed"}.issubset(types)
-
-    filtered = client.get("/api/v1/events?event_type=torrent.removed&severity=info")
-    assert filtered.status_code == 200
-    assert filtered.json()["total"] >= 1
-    assert all(item["event_type"] == "torrent.removed" for item in filtered.json()["items"])
 
 
 def test_storage_scan_job_is_runtime_visible_deduplicated_and_cancellable(client: TestClient, monkeypatch) -> None:

@@ -18,18 +18,6 @@ class TagCreate(BaseModel):
         return normalized
 
 
-class TagUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=128)
-
-    @field_validator("name")
-    @classmethod
-    def normalize_name(cls, value: str) -> str:
-        normalized = " ".join(value.split()).strip()
-        if not normalized:
-            raise ValueError("Tag name cannot be empty.")
-        return normalized
-
-
 class TagResponse(BaseModel):
     id: UUID
     name: str

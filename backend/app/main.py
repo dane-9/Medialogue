@@ -8,7 +8,7 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import blocklist, replacements, backups, auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, parser, plex, problems, quality_profiles, reconciliation, recovery, search, setup, shows, storage, tags, tasks, tmdb, torrent_archive, upgrades
+from app.api import blocklist, replacements, backups, auth, bulk, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, plex, problems, quality_profiles, reconciliation, recovery, search, shows, storage, tags, tasks, tmdb, torrent_archive, upgrades
 from app.core.config import Settings, ensure_runtime_secret, get_settings, set_settings
 from app.core.errors import AppError, app_error_handler, validation_error_handler
 from app.core.integration_config import get_integration_config_store
@@ -141,14 +141,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.include_router(health.router)
     app.include_router(auth.router, prefix="/api/v1")
-    app.include_router(setup.router, prefix="/api/v1")
     app.include_router(storage.router, prefix="/api/v1")
     app.include_router(jobs.router, prefix="/api/v1")
     app.include_router(tasks.router, prefix="/api/v1")
     app.include_router(problems.router, prefix="/api/v1")
     app.include_router(discoveries.router, prefix="/api/v1")
     app.include_router(duplicates.router, prefix="/api/v1")
-    app.include_router(parser.router, prefix="/api/v1")
     app.include_router(movies.router, prefix="/api/v1")
     app.include_router(tags.router, prefix="/api/v1")
     app.include_router(bulk.router, prefix="/api/v1")

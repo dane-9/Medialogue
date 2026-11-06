@@ -455,7 +455,7 @@ async def backup_database(drive: DriveBackups, state: dict, folders: dict[str, s
         await run_sqlite_backup(work / "database" / "medialogue.db", settings)
         store = get_integration_config_store()
         sources = [store.config_path, store.secrets_path,
-                   Path(settings.config_dir) / "setup-state.json", Path(settings.config_dir) / "custom-format-layout.json",
+                   Path(settings.config_dir) / "custom-format-layout.json",
                    application_secret_path(settings)]
         for source in sources:
             if source.is_file():

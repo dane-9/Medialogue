@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 import uuid
 from pathlib import Path
@@ -101,7 +100,7 @@ async def seed_movies(db):
     return movies
 
 
-def test_tag_crud_assignment_filter_and_case_insensitive_uniqueness(client: TestClient) -> None:
+def test_tag_creation_assignment_filter_and_case_insensitive_uniqueness(client: TestClient) -> None:
     headers = login(client)
     movies = db_run(seed_movies)
 
@@ -112,9 +111,9 @@ def test_tag_crud_assignment_filter_and_case_insensitive_uniqueness(client: Test
     assert duplicate.status_code == 409
     assert duplicate.json()["error"]["code"] == "TAG_NAME_EXISTS"
 
-    attached = client.post(f"/api/v1/movies/27205/tags/{tag['id']}", headers=headers)
+    attached = client.post("/api/v1/movies/bulk", headers=headers,
+                           json={"movie_ids": ["27205"], "action": "add_tags", "tag_ids": [tag["id"]]})
     assert attached.status_code == 200, attached.text
-    assert [item["name"] for item in attached.json()] == ["Reference Quality"]
 
     movie = client.get("/api/v1/movies/27205")
     assert movie.status_code == 200
@@ -124,18 +123,6 @@ def test_tag_crud_assignment_filter_and_case_insensitive_uniqueness(client: Test
     assert filtered.status_code == 200, filtered.text
     assert filtered.json()["total"] == 1
     assert filtered.json()["items"][0]["tmdb_id"] == 27205
-
-    renamed = client.patch(f"/api/v1/tags/{tag['id']}", headers=headers, json={"name": "Keep Forever"})
-    assert renamed.status_code == 200
-    assert renamed.json()["name"] == "Keep Forever"
-
-    detached = client.delete(f"/api/v1/movies/27205/tags/{tag['id']}", headers=headers)
-    assert detached.status_code == 200
-    assert detached.json() == []
-
-    deleted = client.delete(f"/api/v1/tags/{tag['id']}", headers=headers)
-    assert deleted.status_code == 204
-    assert client.get("/api/v1/tags").json() == []
 
 
 def test_bulk_monitor_and_tags_are_idempotent(client: TestClient) -> None:

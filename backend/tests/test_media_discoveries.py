@@ -212,12 +212,12 @@ def test_review_stages_and_approves_movies_and_shows(client: TestClient, tmp_pat
     movie_item = next(item for item in items if item["media_type"] == "movies")
     show_item = next(item for item in items if item["media_type"] == "shows")
 
-    approved_movie = client.post(f"/api/v1/discoveries/{movie_item['id']}/approve", headers=headers)
+    approved_movie = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [movie_item['id']], "action": "approve"})
     assert approved_movie.status_code == 200, approved_movie.text
     assert client.get("/api/v1/movies").json()["total"] == 1
     assert client.get("/api/v1/shows").json()["total"] == 0
 
-    approved_show = client.post(f"/api/v1/discoveries/{show_item['id']}/approve", headers=headers)
+    approved_show = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [show_item['id']], "action": "approve"})
     assert approved_show.status_code == 200, approved_show.text
     assert client.get("/api/v1/shows").json()["total"] == 1
 
@@ -545,15 +545,16 @@ def test_an_ignored_item_can_be_restored_to_the_queue(client: TestClient, tmp_pa
     scan(client, headers, storage["id"])
     item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
 
-    client.post(f"/api/v1/discoveries/{item['id']}/ignore", headers=headers)
+    client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [item['id']], "action": "ignore"})
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0
 
-    restored = client.post(f"/api/v1/discoveries/{item['id']}/restore", headers=headers)
+    restored = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [item['id']], "action": "restore"})
     assert restored.status_code == 200, restored.text
-    assert restored.json()["new_media_state"] == "pending"
+    assert restored.json() == {"succeeded": [item["id"]], "failed": []}
     assert client.get("/api/v1/discoveries/count").json()["count"] == 1
 
-    assert client.post(f"/api/v1/discoveries/{item['id']}/restore", headers=headers).status_code == 409
+    again = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [item['id']], "action": "restore"}).json()
+    assert [failure["code"] for failure in again["failed"]] == ["DISCOVERY_NOT_IGNORED"]
 
 
 def test_a_discovery_reports_what_is_inside_the_folder(client: TestClient, tmp_path: Path) -> None:
@@ -789,7 +790,7 @@ def test_a_quality_profile_chosen_in_review_reaches_the_imported_movie(client: T
     assert chosen.json()["quality_profile_id"] == profile["id"]
     assert chosen.json()["quality_profile_name"] == "4K Movies"
 
-    approved = client.post(f"/api/v1/discoveries/{discovery['id']}/approve", headers=headers)
+    approved = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [discovery['id']], "action": "approve"})
     assert approved.status_code == 200, approved.text
 
     movie_id = client.get("/api/v1/movies").json()["items"][0]["id"]
@@ -855,7 +856,7 @@ def test_importing_another_edition_keeps_the_profile_the_movie_already_has(clien
         headers=headers,
         json={"quality_profile_id": original["id"]},
     )
-    assert client.post(f"/api/v1/discoveries/{discovery['id']}/approve", headers=headers).status_code == 200
+    assert client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [discovery['id']], "action": "approve"}).status_code == 200
     movie_id = client.get("/api/v1/movies").json()["items"][0]["id"]
 
     second = movie_root / "Dune.2021.Directors.Cut.2160p.BluRay.REMUX-OTHER"
@@ -870,7 +871,7 @@ def test_importing_another_edition_keeps_the_profile_the_movie_already_has(clien
             headers=headers,
             json={"quality_profile_id": other["id"]},
         )
-        client.post(f"/api/v1/discoveries/{pending[0]['id']}/approve", headers=headers)
+        client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [pending[0]['id']], "action": "approve"})
 
     settings = client.get(f"/api/v1/movies/{movie_id}/profile-settings").json()
     assert settings["quality_profile_id"] == original["id"]
@@ -919,7 +920,7 @@ def test_a_quality_profile_chosen_in_review_reaches_the_imported_show(client: Te
     )
     assert chosen.status_code == 200, chosen.text
 
-    approved = client.post(f"/api/v1/discoveries/{discovery['id']}/approve", headers=headers)
+    approved = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [discovery['id']], "action": "approve"})
     assert approved.status_code == 200, approved.text
 
     show_id = client.get("/api/v1/shows").json()["items"][0]["id"]

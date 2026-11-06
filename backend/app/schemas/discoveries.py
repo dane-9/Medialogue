@@ -91,7 +91,7 @@ class MediaDiscoveryBulk(BaseModel):
     """Approve or ignore a batch of New Media directories."""
 
     ids: list[UUID] = Field(min_length=1, max_length=500)
-    action: Literal["approve", "ignore"]
+    action: Literal["approve", "ignore", "restore"]
 
 
 class MediaDiscoveryQualityProfile(BaseModel):

@@ -33,7 +33,7 @@ Medialogue Backups/
 ```
 
 - **Torrents and manifests** are copied every 10 minutes (configurable in **Tasks**). Only new or changed files are uploaded, and each upload is checked against the checksum Drive reports. A manifest is uploaded again only when something a restore uses changes (paths, file selection, settings), not when live statistics are refreshed.
-- **Database copies** hold the library database (a consistent SQLite online backup) and the configuration: `medialogue.json`, `secrets.enc`, `setup-state.json`, `custom-format-layout.json` and `application-secret`. They are made on their own schedule (daily by default, set on the **Google Drive** tab) and the newest few are kept (7 by default). Older copies are moved to Drive's trash only after a new one is confirmed.
+- **Database copies** hold the library database (a consistent SQLite online backup) and the configuration: `medialogue.json`, `secrets.enc`, `custom-format-layout.json` and `application-secret`. They are made on their own schedule (daily by default, set on the **Google Drive** tab) and the newest few are kept (7 by default). Older copies are moved to Drive's trash only after a new one is confirmed.
 
 A torrent removed from the archive stays in Drive for 30 days, then the next backup deletes it from Drive too, in case an upgrade or removal needs undoing. Nothing else is ever deleted from Drive. If the Drive folder itself is deleted, the next run recreates it and uploads everything again.
 

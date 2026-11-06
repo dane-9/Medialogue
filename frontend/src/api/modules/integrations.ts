@@ -2,7 +2,7 @@ import type { DownloadClientCategory, DownloadClientTestResult, IndexerTestResul
 import type { components } from '../generated/schema'
 import {
   mapDownloadClient, mapDownloadClientCategory, mapDownloadClientTestResult, mapIndexer,
-  mapIndexerTestResult, mapPlexConfiguration, mapPlexTestResult, mapTmdbConfiguration,
+  mapIndexerTestResult, mapPlexConfiguration, mapTmdbConfiguration,
 } from '../mappers/integrations'
 import { mapRemotePathMapping } from '../mappers/storage'
 import { openApiClient, openApiData } from '../transport'
@@ -64,7 +64,6 @@ export const integrationsApi = {
   deleteRemotePathMapping: (id: string) => openApiData(openApiClient.DELETE('/api/v1/remote-path-mappings/{mapping_id}', { params: { path: { mapping_id: id } } })),
   plexConfiguration: async () => mapPlexConfiguration(await openApiData(openApiClient.GET('/api/v1/integrations/plex'))),
   savePlex: async (configuration: { url: string; token?: string; enabled: boolean; expected_revision?: number }) => mapPlexConfiguration(await openApiData(openApiClient.PUT('/api/v1/integrations/plex', { body: configuration }))),
-  refreshPlexHealth: async () => mapPlexTestResult(await openApiData(openApiClient.POST('/api/v1/integrations/plex/health/refresh'))),
   syncPlexLibrary: () => openApiData(openApiClient.POST('/api/v1/integrations/plex/sync')),
   tmdbConfiguration: async () => mapTmdbConfiguration(await openApiData(openApiClient.GET('/api/v1/integrations/tmdb'))),
   saveTmdb: async (configuration: { api_key?: string; enabled: boolean; expected_revision?: number }) => mapTmdbConfiguration(await openApiData(openApiClient.PUT('/api/v1/integrations/tmdb', { body: configuration }))),

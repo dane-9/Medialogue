@@ -15,7 +15,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from time import perf_counter
 from typing import Callable
 from uuid import UUID
@@ -1400,59 +1400,4 @@ async def run_download_client_poll(
         worker,
         failure_code="QBITTORRENT_POLL_FAILED",
         failure_message="qBittorrent poll failed.",
-    )
-
-
-async def run_all_download_client_polls(
-    job_id: UUID,
-    *,
-    client_factory=QBittorrentClient,
-) -> None:
-    """Poll all enabled qBittorrent clients as one durable background Job."""
-
-    async def worker(db, job) -> None:
-        clients = [client for client in await list_configured_download_clients(db) if client.enabled]
-        total = len(clients)
-        results: list[dict[str, object]] = []
-        await checkpoint_job(
-            db,
-            job,
-            status=JobStatus.RUNNING,
-            progress={"current": 0, "total": total, "percent": 0, "stage": "polling", "detail": f"Polling {total} qBittorrent client{'s' if total != 1 else ''}…"},
-            summary={"client_count": total, "results": []},
-        )
-        for index, client in enumerate(clients, start=1):
-            await db.refresh(job)
-            if job.status == JobStatus.CANCELLED:
-                return
-            client_name = client.name
-            try:
-                results.append(_job_poll_result(await poll_download_client(db, client, client_factory=client_factory)))
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                await db.rollback()
-                results.append({"client_id": str(client.id), "client_name": client_name, "status": "unavailable", "message": str(exc)})
-            summary = {"client_count": total, "results": results}
-            await checkpoint_job(
-                db,
-                job,
-                progress={"current": index, "total": total, "percent": round(index * 100 / total, 1) if total else 100, "stage": "polling", "detail": f"Polled {client_name} ({index}/{total})."},
-                summary=summary,
-            )
-        summary = {"client_count": total, "results": results, "message": f"qBittorrent poll completed for {total} client{'s' if total != 1 else ''}."}
-        await checkpoint_job(
-            db,
-            job,
-            status=JobStatus.COMPLETED,
-            progress={"current": total, "total": total, "percent": 100, "stage": "completed", "detail": summary["message"]},
-            summary=summary,
-        )
-
-    await run_job(
-        job_id,
-        worker,
-        failure_code="QBITTORRENT_POLL_FAILED",
-        failure_message="qBittorrent polling failed.",
-        failure_progress={"current": 0, "total": 0, "percent": 0, "stage": "failed", "detail": "qBittorrent polling failed."},
     )

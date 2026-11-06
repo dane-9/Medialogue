@@ -36,7 +36,6 @@ from app.services.upgrade_candidates import invalidate_idle_upgrade_candidates
 from app.services.quality_profiles import (
     get_assignment,
     assigned_titles_by_type,
-    is_marked_default,
     load_default_profile,
     resolve_default_profile,
     load_effective_profile,
@@ -142,18 +141,6 @@ async def list_quality_definitions(
         )
     ).all()
     return [_quality_response(row) for row in rows if row is not None]
-
-
-@router.get("/quality-definitions/{quality_id}", response_model=QualityDefinitionResponse)
-async def get_quality_definition(
-    quality_id: UUID,
-    _: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-) -> QualityDefinitionResponse:
-    row = await db.get(QualityDefinition, quality_id)
-    if row is None or not row.enabled:
-        raise AppError("NOT_FOUND", "Quality Definition was not found.", status_code=404)
-    return _quality_response(row)  # type: ignore[return-value]
 
 
 @router.get("/quality-profiles", response_model=list[QualityProfileResponse])

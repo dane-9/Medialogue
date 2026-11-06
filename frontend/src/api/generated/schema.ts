@@ -597,7 +597,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk New Media
-         * @description Approve or ignore many New Media directories in one request.
+         * @description Approve, ignore or restore many New Media directories in one request.
          *
          *     Each item is committed on its own and a failure does not stop the rest: one
          *     title whose metadata fetch times out must not discard the twenty-nine that
@@ -650,23 +650,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/discoveries/{discovery_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approve Discovery */
-        post: operations["approve_discovery_api_v1_discoveries__discovery_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/discoveries/{discovery_id}/edition": {
         parameters: {
             query?: never;
@@ -682,23 +665,6 @@ export interface paths {
         head?: never;
         /** Set Discovery Edition */
         patch: operations["set_discovery_edition_api_v1_discoveries__discovery_id__edition_patch"];
-        trace?: never;
-    };
-    "/api/v1/discoveries/{discovery_id}/ignore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Ignore Discovery */
-        post: operations["ignore_discovery_api_v1_discoveries__discovery_id__ignore_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/discoveries/{discovery_id}/quality-profile": {
@@ -719,26 +685,6 @@ export interface paths {
          * @description Choose the Quality Profile the added title will be created with.
          */
         patch: operations["set_discovery_quality_profile_api_v1_discoveries__discovery_id__quality_profile_patch"];
-        trace?: never;
-    };
-    "/api/v1/discoveries/{discovery_id}/restore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Restore Discovery
-         * @description Put an ignored item back in the queue, so a mis-click is recoverable.
-         */
-        post: operations["restore_discovery_api_v1_discoveries__discovery_id__restore_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/discoveries/{discovery_id}/search": {
@@ -980,23 +926,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/downloads/poll": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Poll All Clients */
-        post: operations["poll_all_clients_api_v1_downloads_poll_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/episodes/{episode_id}": {
         parameters: {
             query?: never;
@@ -1012,23 +941,6 @@ export interface paths {
         head?: never;
         /** Update Episode */
         patch: operations["update_episode_api_v1_episodes__episode_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/episodes/{episode_id}/interactive-search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Search Episode */
-        post: operations["search_episode_api_v1_episodes__episode_id__interactive_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/events": {
@@ -1235,23 +1147,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/integrations/plex/health/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh Health */
-        post: operations["refresh_health_api_v1_integrations_plex_health_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/integrations/plex/sync": {
         parameters: {
             query?: never;
@@ -1263,23 +1158,6 @@ export interface paths {
         put?: never;
         /** Sync Library */
         post: operations["sync_library_api_v1_integrations_plex_sync_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/plex/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test Connection */
-        post: operations["test_connection_api_v1_integrations_plex_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1298,40 +1176,6 @@ export interface paths {
         /** Save Configuration */
         put: operations["save_configuration_api_v1_integrations_tmdb_put"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/tmdb/health/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh Health */
-        post: operations["refresh_health_api_v1_integrations_tmdb_health_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/tmdb/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test Connection */
-        post: operations["test_connection_api_v1_integrations_tmdb_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1592,57 +1436,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/movies/{resource_id}/duplicates/resolve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resolve Movie Duplicate */
-        post: operations["resolve_movie_duplicate_api_v1_movies__resource_id__duplicates_resolve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/movies/{resource_id}/duplicates/resolve-preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Preview Movie Duplicate Resolution */
-        post: operations["preview_movie_duplicate_resolution_api_v1_movies__resource_id__duplicates_resolve_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/movies/{resource_id}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Movie Events */
-        get: operations["get_movie_events_api_v1_movies__resource_id__events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/movies/{resource_id}/interactive-search": {
         parameters: {
             query?: never;
@@ -1714,44 +1507,6 @@ export interface paths {
          *     title could not be corrected at all.
          */
         post: operations["rematch_movie_api_v1_movies__resource_id__rematch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/movies/{resource_id}/tags/{tag_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Add Movie Tag */
-        post: operations["add_movie_tag_api_v1_movies__resource_id__tags__tag_id__post"];
-        /** Remove Movie Tag */
-        delete: operations["remove_movie_tag_api_v1_movies__resource_id__tags__tag_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/parser/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Test Parser
-         * @description Return the complete non-mutating, versioned release parse.
-         */
-        post: operations["test_parser_api_v1_parser_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1878,23 +1633,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/quality-definitions/{quality_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Quality Definition */
-        get: operations["get_quality_definition_api_v1_quality_definitions__quality_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/quality-profiles": {
         parameters: {
             query?: never;
@@ -1955,23 +1693,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/reconciliation/movies/{movie_id}/manual-attach": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Manual Attach */
-        post: operations["manual_attach_api_v1_reconciliation_movies__movie_id__manual_attach_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/reconciliation/run": {
         parameters: {
             query?: never;
@@ -1983,23 +1704,6 @@ export interface paths {
         put?: never;
         /** Run Reconciliation */
         post: operations["run_reconciliation_api_v1_reconciliation_run_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/reconciliation/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Reconciliation Status */
-        get: operations["reconciliation_status_api_v1_reconciliation_status_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2269,40 +1973,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/setup/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Complete */
-        put: operations["complete_api_v1_setup_complete_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/setup/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Status */
-        get: operations["status_api_v1_setup_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/shows": {
         parameters: {
             query?: never;
@@ -2431,23 +2101,6 @@ export interface paths {
          *     so the choice reads as one list rather than "the normal way, plus extras".
          */
         get: operations["list_episode_orderings_api_v1_shows__resource_id__episode_orderings_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/shows/{resource_id}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Show Events */
-        get: operations["get_show_events_api_v1_shows__resource_id__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2609,24 +2262,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tags/{tag_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Tag */
-        delete: operations["delete_tag_api_v1_tags__tag_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Tag */
-        patch: operations["update_tag_api_v1_tags__tag_id__patch"];
         trace?: never;
     };
     "/api/v1/tasks": {
@@ -4235,127 +3870,6 @@ export interface components {
          * @enum {string}
          */
         DownloadScope: "movies" | "shows";
-        /** DuplicateDirectoryPreview */
-        DuplicateDirectoryPreview: {
-            access_mode: components["schemas"]["AccessMode"];
-            /**
-             * Directory Id
-             * Format: uuid
-             */
-            directory_id: string;
-            /** Exists */
-            exists: boolean;
-            /** Files */
-            files?: components["schemas"]["DuplicateFilePreview"][];
-            /** Path */
-            path: string;
-            /** Storage Root */
-            storage_root: string;
-        };
-        /** DuplicateFilePreview */
-        DuplicateFilePreview: {
-            /**
-             * Is Symlink
-             * @default false
-             */
-            is_symlink: boolean;
-            /** Relative Path */
-            relative_path: string;
-            /** Size */
-            size?: number | null;
-        };
-        /** DuplicateReleasePreview */
-        DuplicateReleasePreview: {
-            /** Directories */
-            directories?: components["schemas"]["DuplicateDirectoryPreview"][];
-            /** Edition */
-            edition?: string | null;
-            /** Quality */
-            quality?: string | null;
-            /** Release Group */
-            release_group?: string | null;
-            /**
-             * Release Id
-             * Format: uuid
-             */
-            release_id: string;
-            /** Release Name */
-            release_name: string;
-            state: components["schemas"]["ReleaseState"];
-            /** Torrents */
-            torrents?: components["schemas"]["DuplicateTorrentPreview"][];
-        };
-        /** DuplicateResolveCommitRequest */
-        DuplicateResolveCommitRequest: {
-            /** Confirmation Token */
-            confirmation_token: string;
-        };
-        /** DuplicateResolvePreviewRequest */
-        DuplicateResolvePreviewRequest: {
-            /**
-             * Delete Media
-             * @default false
-             */
-            delete_media: boolean;
-            /** Losing Release Ids */
-            losing_release_ids: string[];
-            /**
-             * Remove Torrents
-             * @default false
-             */
-            remove_torrents: boolean;
-            /**
-             * Winner Release Id
-             * Format: uuid
-             */
-            winner_release_id: string;
-        };
-        /** DuplicateResolvePreviewResponse */
-        DuplicateResolvePreviewResponse: {
-            /** Confirmation Token */
-            confirmation_token: string;
-            /** Delete Media */
-            delete_media: boolean;
-            /** Expires At */
-            expires_at: string;
-            /** Losers */
-            losers: components["schemas"]["DuplicateReleasePreview"][];
-            /**
-             * Movie Id
-             * Format: uuid
-             */
-            movie_id: string;
-            /** Movie Title */
-            movie_title: string;
-            /** Remove Torrents */
-            remove_torrents: boolean;
-            /**
-             * Torrent Backups Will Be Kept
-             * @default true
-             */
-            torrent_backups_will_be_kept: boolean;
-            /** Warnings */
-            warnings?: string[];
-            winner: components["schemas"]["DuplicateReleasePreview"];
-        };
-        /** DuplicateTorrentPreview */
-        DuplicateTorrentPreview: {
-            /** Archived */
-            archived: boolean;
-            /** Clients */
-            clients?: string[];
-            /** Info Hash */
-            info_hash: string;
-            /** Name */
-            name: string;
-            /** Qbit Present */
-            qbit_present: boolean;
-            /**
-             * Torrent Id
-             * Format: uuid
-             */
-            torrent_id: string;
-        };
         /** EffectiveCustomFormatScore */
         EffectiveCustomFormatScore: {
             /**
@@ -4895,20 +4409,6 @@ export interface components {
             /** Tracker */
             tracker?: string | null;
         };
-        /** ManualAttachRequest */
-        ManualAttachRequest: {
-            /** Expected Revision */
-            expected_revision?: number | null;
-            /** Path */
-            path: string;
-            /** Release Name */
-            release_name?: string | null;
-            /**
-             * Root Id
-             * Format: uuid
-             */
-            root_id: string;
-        };
         /** MediaDirectoryResponse */
         MediaDirectoryResponse: {
             /** Exists */
@@ -4938,7 +4438,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "approve" | "ignore";
+            action: "approve" | "ignore" | "restore";
             /** Ids */
             ids: string[];
         };
@@ -5721,11 +5221,6 @@ export interface components {
          * @enum {string}
          */
         NewMediaState: "pending" | "approved" | "ignored";
-        /** ParserTestRequest */
-        ParserTestRequest: {
-            /** Name */
-            name: string;
-        };
         /** PasswordChangeRequest */
         PasswordChangeRequest: {
             /** Current Password */
@@ -5811,27 +5306,6 @@ export interface components {
              * @enum {string}
              */
             status: "unknown" | "healthy" | "unavailable";
-        };
-        /** PlexTestRequest */
-        PlexTestRequest: {
-            /** Token */
-            token?: string | null;
-            /** Url */
-            url?: string | null;
-        };
-        /** PlexTestResponse */
-        PlexTestResponse: {
-            /** Latency Ms */
-            latency_ms?: number | null;
-            /** Machine Identifier */
-            machine_identifier?: string | null;
-            /** Message */
-            message?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "healthy" | "unavailable";
         };
         /**
          * PresenceState
@@ -6083,39 +5557,6 @@ export interface components {
              */
             status: "ok" | "not_ready";
         };
-        /** ReconciliationActionResponse */
-        ReconciliationActionResponse: {
-            /** Details */
-            details?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Movie Id
-             * Format: uuid
-             */
-            movie_id: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "manual_attached" | "review";
-        };
-        /** ReconciliationRootStatus */
-        ReconciliationRootStatus: {
-            /** Affected Count */
-            affected_count: number;
-            /** Health */
-            health: ("available" | "unavailable" | "unknown") | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Path */
-            path: string;
-        };
         /** ReconciliationRunRequest */
         ReconciliationRunRequest: {
             /** Root Id */
@@ -6131,22 +5572,6 @@ export interface components {
             skipped_root_ids?: string[];
             /** Uninitialized Root Ids */
             uninitialized_root_ids?: string[];
-        };
-        /** ReconciliationStatusResponse */
-        ReconciliationStatusResponse: {
-            /**
-             * Generated At
-             * Format: date-time
-             */
-            generated_at: string;
-            /** Incoming Count */
-            incoming_count: number;
-            /** Missing Release Count */
-            missing_release_count: number;
-            /** Open Problem Count */
-            open_problem_count: number;
-            /** Roots */
-            roots: components["schemas"]["ReconciliationRootStatus"][];
         };
         /** RecoveryReimportItem */
         RecoveryReimportItem: {
@@ -6802,41 +6227,6 @@ export interface components {
              */
             status: "unknown" | "healthy" | "unavailable";
         };
-        /** SetupCompleteRequest */
-        SetupCompleteRequest: {
-            /**
-             * Complete
-             * @default true
-             */
-            complete: boolean;
-        };
-        /** SetupStatusResponse */
-        SetupStatusResponse: {
-            /** Steps */
-            steps: components["schemas"]["SetupStep"][];
-            /** Wizard Complete */
-            wizard_complete: boolean;
-            /** Wizard Required */
-            wizard_required: boolean;
-        };
-        /** SetupStep */
-        SetupStep: {
-            /** Complete */
-            complete: boolean;
-            /** Detail */
-            detail: string;
-            /** Key */
-            key: string;
-            /**
-             * Optional
-             * @default true
-             */
-            optional: boolean;
-            /** Settings Tab */
-            settings_tab?: string | null;
-            /** Title */
-            title: string;
-        };
         /**
          * Severity
          * @enum {string}
@@ -7356,23 +6746,6 @@ export interface components {
             /** Year */
             year?: number | null;
         };
-        /** TMDBTestRequest */
-        TMDBTestRequest: {
-            /** Api Key */
-            api_key?: string | null;
-        };
-        /** TMDBTestResponse */
-        TMDBTestResponse: {
-            /** Latency Ms */
-            latency_ms?: number | null;
-            /** Message */
-            message?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "healthy" | "unavailable";
-        };
         /** TagCreate */
         TagCreate: {
             /** Name */
@@ -7390,11 +6763,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Name */
-            name: string;
-        };
-        /** TagUpdate */
-        TagUpdate: {
             /** Name */
             name: string;
         };
@@ -9120,37 +8488,6 @@ export interface operations {
             };
         };
     };
-    approve_discovery_api_v1_discoveries__discovery_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                discovery_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     set_discovery_edition_api_v1_discoveries__discovery_id__edition_patch: {
         parameters: {
             query?: never;
@@ -9186,37 +8523,6 @@ export interface operations {
             };
         };
     };
-    ignore_discovery_api_v1_discoveries__discovery_id__ignore_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                discovery_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     set_discovery_quality_profile_api_v1_discoveries__discovery_id__quality_profile_patch: {
         parameters: {
             query?: never;
@@ -9231,37 +8537,6 @@ export interface operations {
                 "application/json": components["schemas"]["MediaDiscoveryQualityProfile"];
             };
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaDiscoveryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    restore_discovery_api_v1_discoveries__discovery_id__restore_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                discovery_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -9809,26 +9084,6 @@ export interface operations {
             };
         };
     };
-    poll_all_clients_api_v1_downloads_poll_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobAcceptedResponse"];
-                };
-            };
-        };
-    };
     update_episode_api_v1_episodes__episode_id__patch: {
         parameters: {
             query?: never;
@@ -9851,37 +9106,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EpisodeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    search_episode_api_v1_episodes__episode_id__interactive_search_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                episode_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobAcceptedResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10375,26 +9599,6 @@ export interface operations {
             };
         };
     };
-    refresh_health_api_v1_integrations_plex_health_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlexTestResponse"];
-                };
-            };
-        };
-    };
     sync_library_api_v1_integrations_plex_sync_post: {
         parameters: {
             query?: never;
@@ -10411,39 +9615,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAcceptedResponse"];
-                };
-            };
-        };
-    };
-    test_connection_api_v1_integrations_plex_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlexTestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlexTestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10488,59 +9659,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TMDBConfigurationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    refresh_health_api_v1_integrations_tmdb_health_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TMDBTestResponse"];
-                };
-            };
-        };
-    };
-    test_connection_api_v1_integrations_tmdb_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TMDBTestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TMDBTestResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11018,110 +10136,6 @@ export interface operations {
             };
         };
     };
-    resolve_movie_duplicate_api_v1_movies__resource_id__duplicates_resolve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DuplicateResolveCommitRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobAcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_movie_duplicate_resolution_api_v1_movies__resource_id__duplicates_resolve_preview_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DuplicateResolvePreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DuplicateResolvePreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_movie_events_api_v1_movies__resource_id__events_get: {
-        parameters: {
-            query?: {
-                page?: number;
-                page_size?: number;
-            };
-            header?: never;
-            path: {
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Collection_EventResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     search_movie_api_v1_movies__resource_id__interactive_search_post: {
         parameters: {
             query?: never;
@@ -11276,105 +10290,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MovieDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    add_movie_tag_api_v1_movies__resource_id__tags__tag_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                resource_id: string;
-                tag_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TagResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_movie_tag_api_v1_movies__resource_id__tags__tag_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                resource_id: string;
-                tag_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TagResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_parser_api_v1_parser_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ParserTestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
                 };
             };
             /** @description Validation Error */
@@ -11619,37 +10534,6 @@ export interface operations {
             };
         };
     };
-    get_quality_definition_api_v1_quality_definitions__quality_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                quality_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QualityDefinitionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_quality_profiles_api_v1_quality_profiles_get: {
         parameters: {
             query?: never;
@@ -11829,41 +10713,6 @@ export interface operations {
             };
         };
     };
-    manual_attach_api_v1_reconciliation_movies__movie_id__manual_attach_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                movie_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ManualAttachRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReconciliationActionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     run_reconciliation_api_v1_reconciliation_run_post: {
         parameters: {
             query?: never;
@@ -11893,26 +10742,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reconciliation_status_api_v1_reconciliation_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReconciliationStatusResponse"];
                 };
             };
         };
@@ -12424,59 +11253,6 @@ export interface operations {
             };
         };
     };
-    complete_api_v1_setup_complete_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetupCompleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SetupStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    status_api_v1_setup_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SetupStatusResponse"];
-                };
-            };
-        };
-    };
     list_shows_api_v1_shows_get: {
         parameters: {
             query?: {
@@ -12798,40 +11574,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EpisodeOrderingOption"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_show_events_api_v1_shows__resource_id__events_get: {
-        parameters: {
-            query?: {
-                page?: number;
-                page_size?: number;
-            };
-            header?: never;
-            path: {
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Collection_EventResponse_"];
                 };
             };
             /** @description Validation Error */
@@ -13225,70 +11967,6 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TagResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_tag_api_v1_tags__tag_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                tag_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_tag_api_v1_tags__tag_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                tag_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TagUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };

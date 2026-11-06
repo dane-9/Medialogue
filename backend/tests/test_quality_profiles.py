@@ -17,7 +17,6 @@ from app.main import create_app
 from app.integrations.filesystem import DirectoryObservation
 from app.models.domain import (
     AccessMode,
-    Episode,
     IdentityState,
     InteractiveSearchResult,
     Job,
@@ -26,8 +25,6 @@ from app.models.domain import (
     Movie,
     MovieRelease,
     ReleaseState,
-    Season,
-    Show,
     StorageRoot,
     Torrent,
 )
@@ -52,7 +49,6 @@ def _user_formats(payload: dict) -> list[dict]:
     """Only the formats a test created; built-ins are filtered out."""
 
     return [item for item in payload.get("items", []) if not item.get("builtin")]
-
 
 
 @pytest.fixture
@@ -475,64 +471,6 @@ def test_deleting_profile_keeps_title_overrides_and_recomputes_current_score(cli
     })
     assert cleared.status_code == 200, cleared.text
     assert asyncio.run(current_score()) == with_override + 44
-
-
-def test_episode_search_uses_parent_show_profile(client: TestClient):
-    headers = login(client)
-
-    async def seed_show() -> tuple[str, str]:
-        async with db_session.async_session_factory() as db:
-            show = Show(title="Dollface", year=2019, tmdb_id=88974, identity_state=IdentityState.MATCHED)
-            db.add(show)
-            await db.flush()
-            season = Season(show_id=show.id, season_number=1)
-            db.add(season)
-            await db.flush()
-            episode = Episode(show_id=show.id, season_id=season.id, season_number=1, episode_number=1, title="Guy's Girl")
-            db.add(episode)
-            await db.commit()
-            return "88974", str(episode.id)
-
-    show_resource, episode_id = asyncio.run(seed_show())
-    cf_response = client.post("/api/v1/custom-formats", headers=headers, json={
-        "name": "DSNP",
-        "conditions": [{"pattern": "DSNP", "required": True}],
-    })
-    assert cf_response.status_code == 201, cf_response.text
-    cf = cf_response.json()
-    profile_response = client.post("/api/v1/quality-profiles", headers=headers, json={
-        "name": "Shows",
-        "custom_format_scores": [{"custom_format_id": cf["id"], "score": 222}],
-    })
-    assert profile_response.status_code == 201, profile_response.text
-    profile = profile_response.json()
-    assignment = client.put(f"/api/v1/shows/{show_resource}/profile-settings", headers=headers, json={
-        "quality_profile_id": profile["id"], "expected_revision": 0,
-    })
-    assert assignment.status_code == 200, assignment.text
-
-    indexer = client.post("/api/v1/indexers", headers=headers, json={
-        "name": "BTN", "torznab_url": "http://shows.test/api", "api_key": "secret", "scope": "shows", "enabled": True
-    })
-    assert indexer.status_code == 201, indexer.text
-    behavior = Behavior(results=[SearchResult(
-        guid="show-one",
-        title="Dollface S01E01 2160p DSNP WEB-DL DD+ 5.1 H.265-HONE",
-        download_url="magnet:?xt=urn:btih:def",
-        size=20_000,
-        seeders=8,
-        published=None,
-    )])
-    client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: behavior.factory
-    try:
-        started = client.post(f"/api/v1/episodes/{episode_id}/interactive-search", headers=headers)
-        assert started.status_code == 202, started.text
-        result = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"][0]
-        assert result["quality_profile_name"] == "Shows"
-        assert result["custom_format_score"] == 222
-        assert _format_named(result["custom_format_snapshot"], "DSNP")["contribution"] == 222
-    finally:
-        client.app.dependency_overrides.clear()
 
 
 def test_custom_format_test_all_can_explain_profile_score(client: TestClient):

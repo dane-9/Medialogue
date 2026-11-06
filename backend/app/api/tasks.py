@@ -9,7 +9,7 @@ from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import JobStatus, Schedule
+from app.models.domain import Schedule
 from app.schemas.tasks import ScheduledTaskResponse, ScheduledTaskRunResponse, ScheduledTaskUpdateRequest
 from app.services.scheduler import (
     ACTIVE_STATES,

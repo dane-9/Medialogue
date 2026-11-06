@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import urlsplit
 from time import perf_counter
 from uuid import UUID, uuid4
@@ -61,7 +60,6 @@ from app.services.integration_state import ConfiguredDownloadClient, get_configu
 from app.services.qbittorrent import (
     mark_removed_after_action,
     refresh_observations_after_action,
-    run_all_download_client_polls,
     run_torrent_action,
     run_download_client_poll,
     set_client_health,
@@ -886,26 +884,6 @@ async def poll_client(
     await db.commit()
     publish_job_status(job)
     launch_runtime_job(job.id, lambda: run_download_client_poll(job.id, client.id, client_factory=client_factory))
-    return JobAcceptedResponse(job_id=job.id)
-
-
-@router.post("/downloads/poll", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
-async def poll_all_clients(
-    _: object = Depends(require_csrf),
-    admin: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_qbittorrent_client_factory),
-) -> JobAcceptedResponse:
-    del admin
-    clients = [client for client in await list_configured_download_clients(db) if client.enabled]
-    job = await create_job(
-        db,
-        "qbittorrent_poll_all",
-        summary={"client_count": len(clients), "message": f"Polling {len(clients)} qBittorrent client{'s' if len(clients) != 1 else ''}…"},
-    )
-    await db.commit()
-    publish_job_status(job)
-    launch_runtime_job(job.id, lambda: run_all_download_client_polls(job.id, client_factory=client_factory))
     return JobAcceptedResponse(job_id=job.id)
 
 

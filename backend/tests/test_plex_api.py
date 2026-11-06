@@ -256,27 +256,6 @@ def test_plex_configuration_persists_without_returning_token(client: TestClient)
     assert "secret-plex-token" not in fetched.text
 
 
-def test_plex_connection_test_uses_read_only_client_override(client: TestClient) -> None:
-    headers = _login(client)
-    behavior = FakePlexBehavior(machine_identifier="machine-test")
-    client.app.dependency_overrides[plex_api.get_plex_client_factory] = lambda: behavior.factory
-    try:
-        response = client.post(
-            "/api/v1/integrations/plex/test",
-            headers=headers,
-            json={"url": "http://plex.test:32400", "token": "test-token"},
-        )
-    finally:
-        client.app.dependency_overrides.clear()
-
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == "healthy"
-    assert response.json()["machine_identifier"] == "machine-test"
-    assert response.json()["latency_ms"] is not None
-    assert len(behavior.instances) == 1
-    assert behavior.instances[0].token == "test-token"
-
-
 def test_plex_recheck_exact_path_match(client: TestClient, movie_context) -> None:
     client, headers, movie = movie_context
     _configure_plex(client, headers)

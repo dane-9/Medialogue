@@ -493,6 +493,18 @@ async def _ignore_one(db: AsyncSession, discovery: MediaDiscovery) -> MediaDisco
     return discovery
 
 
+async def _restore_one(db: AsyncSession, discovery: MediaDiscovery) -> MediaDiscovery:
+    """Put an ignored item back in the queue, so a mis-click is recoverable."""
+
+    if discovery.new_media_state != NewMediaState.IGNORED:
+        raise AppError("DISCOVERY_NOT_IGNORED", "Only an ignored item can be restored.", status_code=409)
+    discovery.new_media_state = NewMediaState.PENDING
+    discovery.reviewed_at = None
+    await db.commit()
+    await db.refresh(discovery)
+    return discovery
+
+
 async def _validated_profile_id(db: AsyncSession, quality_profile_id: UUID | None) -> UUID | None:
     if quality_profile_id is None:
         return None
@@ -608,18 +620,6 @@ async def search_discovery_candidates(
     return await _current_response(db, discovery)
 
 
-@router.post("/{discovery_id}/approve", response_model=MediaDiscoveryResponse)
-async def approve_discovery(
-    discovery_id: UUID,
-    _: object = Depends(require_csrf),
-    __: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_tmdb_client_factory),
-) -> MediaDiscoveryResponse:
-    discovery = await _get_discovery(db, discovery_id)
-    return await _current_response(db, await _approve_one(db, discovery, client_factory))
-
-
 @router.post("/bulk", response_model=MediaDiscoveryBulkResult)
 async def bulk_new_media(
     payload: MediaDiscoveryBulk,
@@ -628,7 +628,7 @@ async def bulk_new_media(
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(get_tmdb_client_factory),
 ) -> MediaDiscoveryBulkResult:
-    """Approve or ignore many New Media directories in one request.
+    """Approve, ignore or restore many New Media directories in one request.
 
     Each item is committed on its own and a failure does not stop the rest: one
     title whose metadata fetch times out must not discard the twenty-nine that
@@ -671,6 +671,8 @@ async def bulk_new_media(
             discovery = await _get_discovery(db, discovery_id)
             if payload.action == "approve":
                 await _approve_one(db, discovery, client_factory)
+            elif payload.action == "restore":
+                await _restore_one(db, discovery)
             else:
                 await _ignore_one(db, discovery)
             approved.append(discovery_id)
@@ -678,32 +680,3 @@ async def bulk_new_media(
             await db.rollback()
             failures.append(MediaDiscoveryBulkFailure(id=discovery_id, code=exc.code, message=exc.message))
     return MediaDiscoveryBulkResult(succeeded=approved, failed=failures)
-
-
-@router.post("/{discovery_id}/restore", response_model=MediaDiscoveryResponse)
-async def restore_discovery(
-    discovery_id: UUID,
-    _: object = Depends(require_csrf),
-    __: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-) -> MediaDiscoveryResponse:
-    """Put an ignored item back in the queue, so a mis-click is recoverable."""
-    discovery = await _get_discovery(db, discovery_id)
-    if discovery.new_media_state != NewMediaState.IGNORED:
-        raise AppError("DISCOVERY_NOT_IGNORED", "Only an ignored item can be restored.", status_code=409)
-    discovery.new_media_state = NewMediaState.PENDING
-    discovery.reviewed_at = None
-    await db.commit()
-    await db.refresh(discovery)
-    return await _current_response(db, discovery)
-
-
-@router.post("/{discovery_id}/ignore", response_model=MediaDiscoveryResponse)
-async def ignore_discovery(
-    discovery_id: UUID,
-    _: object = Depends(require_csrf),
-    __: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-) -> MediaDiscoveryResponse:
-    discovery = await _get_discovery(db, discovery_id)
-    return await _current_response(db, await _ignore_one(db, discovery))

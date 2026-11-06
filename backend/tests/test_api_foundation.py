@@ -196,20 +196,6 @@ def test_error_envelope_serializes_validation_context(client: TestClient) -> Non
     assert invalid.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_parser_endpoint_is_always_available(client: TestClient) -> None:
-    login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
-    csrf = login.json()["csrf_token"]
-
-    parsed = client.post(
-        "/api/v1/parser/test",
-        json={"name": "Inception 2010 Hybrid 2160p UHD BluRay REMUX DV HDR HEVC DTS-HD MA 5.1-LM"},
-    )
-    assert parsed.status_code == 200
-    assert parsed.json()["quality"]["canonical"] == "2160p BluRay REMUX"
-    assert parsed.json()["edition"] is None
-    assert parsed.json()["attributes"]["hybrid"] is True
-
-
 def test_movie_root_scan_is_idempotent_and_preserves_missing_history(client: TestClient) -> None:
     fixture_root = Path.cwd() / f"scan-fixture-{uuid.uuid4().hex}"
     release_name = "Inception 2010 Hybrid 2160p UHD BluRay REMUX DV HDR HEVC DTS-HD MA 5.1-LM"

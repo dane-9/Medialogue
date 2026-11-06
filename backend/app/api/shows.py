@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,7 +19,7 @@ from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import Episode, EpisodeMediaMap, Event, MediaDirectory, MediaFile, PresenceState, Problem, ProblemStatus, Season, Show, ShowRelease, StorageRoot
 from app.schemas.common import Collection
-from app.schemas.jobs import EventResponse, JobAcceptedResponse
+from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.shows import (
     EpisodeMediaResponse,
     EpisodeMappingResponse,
@@ -522,35 +522,6 @@ async def correct_episode_mapping(
         raise AppError("INVALID_EPISODE_MAPPING", str(exc), status_code=422) from exc
     await db.commit()
     return EpisodeMappingResponse(**result)
-
-
-@router.get("/shows/{resource_id}/events", response_model=Collection[EventResponse])
-async def get_show_events(
-    resource_id: str,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=250),
-    _: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-) -> Collection[EventResponse]:
-    show = await resolve_show_resource(db, resource_id)
-    predicate = scope_predicate(await show_event_scope(db, show.id))
-    total = int(await db.scalar(select(func.count()).select_from(Event).where(predicate)) or 0)
-    rows = (
-        await db.scalars(
-            select(Event)
-            .where(predicate)
-            .order_by(Event.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-    ).all()
-    return Collection(
-        items=[EventResponse.model_validate(row) for row in rows],
-        page=page,
-        page_size=page_size,
-        total=total,
-        pages=(total + page_size - 1) // page_size,
-    )
 
 
 async def _detail(db: AsyncSession, resource_id: str) -> ShowDetailResponse:

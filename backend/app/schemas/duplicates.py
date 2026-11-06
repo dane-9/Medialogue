@@ -5,66 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.domain import AccessMode, ReleaseState
-
-
-class DuplicateResolvePreviewRequest(BaseModel):
-    winner_release_id: UUID
-    losing_release_ids: list[UUID] = Field(min_length=1)
-    delete_media: bool = False
-    remove_torrents: bool = False
-
-
-class DuplicateFilePreview(BaseModel):
-    relative_path: str
-    size: int | None = None
-    is_symlink: bool = False
-
-
-class DuplicateDirectoryPreview(BaseModel):
-    directory_id: UUID
-    path: str
-    storage_root: str
-    access_mode: AccessMode
-    exists: bool
-    files: list[DuplicateFilePreview] = Field(default_factory=list)
-
-
-class DuplicateTorrentPreview(BaseModel):
-    torrent_id: UUID
-    info_hash: str
-    name: str
-    archived: bool
-    qbit_present: bool
-    clients: list[str] = Field(default_factory=list)
-
-
-class DuplicateReleasePreview(BaseModel):
-    release_id: UUID
-    release_name: str
-    edition: str | None = None
-    quality: str | None = None
-    release_group: str | None = None
-    state: ReleaseState
-    directories: list[DuplicateDirectoryPreview] = Field(default_factory=list)
-    torrents: list[DuplicateTorrentPreview] = Field(default_factory=list)
-
-
-class DuplicateResolvePreviewResponse(BaseModel):
-    movie_id: UUID
-    movie_title: str
-    winner: DuplicateReleasePreview
-    losers: list[DuplicateReleasePreview]
-    delete_media: bool
-    remove_torrents: bool
-    torrent_backups_will_be_kept: bool = True
-    confirmation_token: str
-    expires_at: str
-    warnings: list[str] = Field(default_factory=list)
-
-
-class DuplicateResolveCommitRequest(BaseModel):
-    confirmation_token: str = Field(min_length=16)
+from app.models.domain import ReleaseState
 
 
 class MovieEditionOverrideUpdate(BaseModel):

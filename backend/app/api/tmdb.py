@@ -9,14 +9,9 @@ from app.core.integration_config import get_integration_config_store
 from app.db.session import get_db
 from app.integrations.tmdb import TMDBClient
 from app.models.auth import AdminUser
-from app.schemas.tmdb import (
-    TMDBConfigurationResponse,
-    TMDBConfigurationUpdate,
-    TMDBTestRequest,
-    TMDBTestResponse,
-)
+from app.schemas.tmdb import TMDBConfigurationResponse, TMDBConfigurationUpdate
 from app.services.integration_state import ConfiguredTMDB, get_configured_tmdb
-from app.services.tmdb import get_tmdb_configuration, refresh_tmdb_health, test_tmdb_connection
+from app.services.tmdb import get_tmdb_configuration
 from app.services.scheduler import request_health_sweep
 
 router = APIRouter(tags=["tmdb"])
@@ -82,39 +77,3 @@ async def save_configuration(
     await request_health_sweep(db)
     await db.commit()
     return _response(configuration)
-
-
-@router.post("/integrations/tmdb/test", response_model=TMDBTestResponse)
-async def test_connection(
-    payload: TMDBTestRequest,
-    _: object = Depends(require_csrf),
-    admin: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_tmdb_client_factory),
-) -> TMDBTestResponse:
-    del admin
-    configuration = await get_tmdb_configuration(db)
-    api_key = payload.api_key or (configuration.api_key if configuration else None)
-    if not api_key:
-        raise AppError("TMDB_CONFIGURATION_REQUIRED", "Provide a TMDB API key.", status_code=422)
-    try:
-        result = await test_tmdb_connection(api_key, client_factory=client_factory)
-    except Exception as exc:
-        return TMDBTestResponse(status="unavailable", message=str(exc))
-    return TMDBTestResponse(**result)
-
-
-@router.post("/integrations/tmdb/health/refresh", response_model=TMDBTestResponse)
-async def refresh_health(
-    _: object = Depends(require_csrf),
-    admin: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-    client_factory=Depends(get_tmdb_client_factory),
-) -> TMDBTestResponse:
-    del admin
-    configuration = await get_tmdb_configuration(db)
-    if configuration is None or not configuration.enabled:
-        raise AppError("TMDB_NOT_CONFIGURED", "TMDB is not configured and enabled.", status_code=409)
-    result = await refresh_tmdb_health(db, configuration, client_factory=client_factory)
-    await db.commit()
-    return TMDBTestResponse(**result)

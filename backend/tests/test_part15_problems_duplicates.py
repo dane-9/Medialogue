@@ -1,17 +1,14 @@
 import asyncio
-import os
 import shutil
 import time
 import uuid
 from pathlib import Path
-from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.api import duplicates as duplicates_api
 from app.core.config import Settings
 from app.core.integration_config import DownloadClientConfig, get_integration_config_store
 from app.db import session as db_session
@@ -43,8 +40,6 @@ from app.models.domain import (
     SourceType,
     StorageRoot,
     Torrent,
-    TorrentArchiveState,
-    TorrentClientObservation,
 )
 from app.services.reconciliation import mark_absent_known_directories, reconcile_torrent_disagreements
 
@@ -86,16 +81,6 @@ def wait_job(client: TestClient, job_id: str, *, timeout: float = 5.0) -> dict:
             return payload
         time.sleep(0.02)
     raise AssertionError(f"Job did not finish: {payload}")
-
-
-def commit_duplicate(client: TestClient, movie_id: UUID, headers: dict[str, str], token: str) -> dict:
-    response = client.post(
-        f"/api/v1/movies/{movie_id}/duplicates/resolve",
-        headers=headers,
-        json={"confirmation_token": token},
-    )
-    assert response.status_code == 202, response.text
-    return wait_job(client, response.json()["job_id"])
 
 
 def db_run(fn):
@@ -263,113 +248,6 @@ def test_movie_edition_overrides_reclassify_copies_and_survive_automatic_mode(cl
         assert {item["state"] for item in duplicate_again.json()["releases"]} == {"duplicate"}
     finally:
         shutil.rmtree(root_path, ignore_errors=True)
-
-
-def test_duplicate_preview_lists_entire_folder_and_commit_deletes_only_loser(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part15-duplicate-{uuid.uuid4().hex}"
-    root.mkdir()
-    try:
-        movie_id, winner_id, loser_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root))
-
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": True,
-                "remove_torrents": False,
-            },
-        )
-        assert preview.status_code == 200, preview.text
-        payload = preview.json()
-        files = {item["relative_path"] for item in payload["losers"][0]["directories"][0]["files"]}
-        assert any(item.endswith(".mkv") for item in files)
-        assert "English.srt" in files
-        assert "poster.jpg" in files
-        assert payload["torrent_backups_will_be_kept"] is True
-
-        loser_path = Path(payload["losers"][0]["directories"][0]["path"])
-        stale_file = loser_path / "new-after-preview.txt"
-        stale_file.write_text("changed", encoding="utf-8")
-        stale = commit_duplicate(client, movie_id, headers, payload["confirmation_token"])
-        assert stale["status"] == "failed", stale
-        assert stale["error"]["code"] == "DELETE_PREVIEW_STALE"
-        stale_file.unlink()
-
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": True,
-                "remove_torrents": False,
-            },
-        ).json()
-        committed = commit_duplicate(client, movie_id, headers, preview["confirmation_token"])
-        assert committed["status"] == "completed", committed
-        assert committed["summary"]["duplicate_resolved"] is True
-        assert committed["summary"]["problem_status"] == "resolved"
-        assert not loser_path.exists()
-
-        async def states(db):
-            winner = await db.get(MovieRelease, winner_id)
-            loser = await db.get(MovieRelease, loser_id)
-            problem = await db.get(Problem, problem_id)
-            return winner.release_state, loser.release_state, problem.status
-
-        winner_state, loser_state, status = db_run(states)
-        assert winner_state == ReleaseState.CURRENT
-        assert loser_state == ReleaseState.REMOVED
-        assert status == ProblemStatus.RESOLVED
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
-def test_selecting_winner_without_deleting_keeps_duplicate_problem_open(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part15-preferred-{uuid.uuid4().hex}"
-    root.mkdir()
-    try:
-        movie_id, winner_id, loser_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root))
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={"winner_release_id": str(winner_id), "losing_release_ids": [str(loser_id)]},
-        ).json()
-        committed = commit_duplicate(client, movie_id, headers, preview["confirmation_token"])
-        assert committed["status"] == "completed", committed
-        assert committed["summary"]["duplicate_resolved"] is False
-        assert committed["summary"]["problem_status"] == "open"
-        assert Path(preview["losers"][0]["directories"][0]["path"]).exists()
-        problem = db_run(lambda db: db.get(Problem, problem_id))
-        assert problem.status == ProblemStatus.OPEN
-        assert problem.details["preferred_release_id"] == str(winner_id)
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
-def test_read_only_root_blocks_duplicate_media_delete(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part15-readonly-{uuid.uuid4().hex}"
-    root.mkdir()
-    try:
-        movie_id, winner_id, loser_id, _ = db_run(lambda db: seed_movie_duplicate(db, root, access_mode=AccessMode.READ_ONLY))
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": True,
-            },
-        )
-        assert preview.status_code == 409
-        assert preview.json()["error"]["code"] == "ROOT_READ_ONLY"
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_problem_actions_are_explicit_and_recheck_does_not_fake_resolution(client: TestClient) -> None:
@@ -547,131 +425,6 @@ def test_qbit_only_attached_releases_become_historical_without_path_problems(cli
     assert movie_state is AssociationType.HISTORICAL
     assert show_state is AssociationType.HISTORICAL
     assert open_count == 0
-
-
-async def seed_duplicate_torrent(
-    db,
-    loser_release_id: UUID,
-    *,
-    archived: bool,
-) -> tuple[UUID, UUID, str]:
-    client_config = get_integration_config_store().save_download_client(
-        DownloadClientConfig(
-            id=uuid.uuid4(),
-            name="qbit-movies",
-            url="http://qbit.test",
-            username="user",
-            password="pass",
-            scope=MediaType.MOVIES.value,
-            enabled=True,
-        )
-    )
-    client = DownloadClient(id=client_config.id)
-    info_hash = uuid.uuid4().hex
-    torrent = Torrent(
-        info_hash=info_hash,
-        name="Inception duplicate torrent",
-        archive_state=TorrentArchiveState.ARCHIVED if archived else TorrentArchiveState.NOT_ARCHIVED,
-        archive_path=f"/torrent-archive/{info_hash}.torrent" if archived else None,
-        manifest_path=f"/torrent-archive/{info_hash}.json" if archived else None,
-        manifest_schema_version=1 if archived else None,
-    )
-    db.add_all([client, torrent])
-    await db.flush()
-    db.add(MovieReleaseTorrent(movie_release_id=loser_release_id, torrent_id=torrent.id))
-    observation = TorrentClientObservation(
-        torrent_id=torrent.id,
-        download_client_id=client.id,
-        is_present=True,
-        state="pausedUP",
-        progress=1,
-    )
-    db.add(observation)
-    await db.flush()
-    return torrent.id, observation.id, info_hash
-
-
-class DuplicateQbitAdapter:
-    def __init__(self, calls: list[tuple[str, bool]]):
-        self.calls = calls
-
-    async def remove_torrent(self, info_hash: str, *, delete_files: bool = False):
-        self.calls.append((info_hash, delete_files))
-
-    async def close(self):
-        return None
-
-
-def test_duplicate_torrent_removal_requires_archive_and_never_deletes_qbit_data(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part15-qbit-{uuid.uuid4().hex}"
-    root.mkdir()
-    calls: list[tuple[str, bool]] = []
-    try:
-        movie_id, winner_id, loser_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root))
-        torrent_id, observation_id, info_hash = db_run(
-            lambda db: seed_duplicate_torrent(db, loser_id, archived=False)
-        )
-
-        blocked = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": False,
-                "remove_torrents": True,
-            },
-        )
-        assert blocked.status_code == 409, blocked.text
-        assert blocked.json()["error"]["code"] == "TORRENT_ARCHIVE_REQUIRED"
-
-        async def mark_archived(db):
-            torrent = await db.get(Torrent, torrent_id)
-            torrent.archive_state = TorrentArchiveState.ARCHIVED
-            torrent.archive_path = f"/torrent-archive/{info_hash}.torrent"
-            torrent.manifest_path = f"/torrent-archive/{info_hash}.json"
-            torrent.manifest_schema_version = 1
-
-        db_run(mark_archived)
-        client.app.dependency_overrides[duplicates_api.get_qbittorrent_client_factory] = lambda: (
-            lambda *_args, **_kwargs: DuplicateQbitAdapter(calls)
-        )
-
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": False,
-                "remove_torrents": True,
-            },
-        )
-        assert preview.status_code == 200, preview.text
-        assert preview.json()["torrent_backups_will_be_kept"] is True
-        committed = commit_duplicate(client, movie_id, headers, preview.json()["confirmation_token"])
-        assert committed["status"] == "completed", committed
-        assert calls == [(info_hash, False)]
-        assert committed["summary"]["duplicate_resolved"] is False
-        assert committed["summary"]["problem_status"] == "open"
-
-        async def state(db):
-            torrent = await db.get(Torrent, torrent_id)
-            observation = await db.get(TorrentClientObservation, observation_id)
-            problem = await db.get(Problem, problem_id)
-            return torrent.archive_state, torrent.archive_path, torrent.manifest_path, observation.is_present, problem.status
-
-        archive_state, archive_path, manifest_path, is_present, problem_status = db_run(state)
-        assert archive_state == TorrentArchiveState.ARCHIVED
-        assert archive_path == f"/torrent-archive/{info_hash}.torrent"
-        assert manifest_path == f"/torrent-archive/{info_hash}.json"
-        assert is_present is False
-        assert problem_status == ProblemStatus.OPEN
-    finally:
-        client.app.dependency_overrides.pop(duplicates_api.get_qbittorrent_client_factory, None)
-        shutil.rmtree(root, ignore_errors=True)
-
 
 
 def test_existing_show_identity_can_be_manually_confirmed(client: TestClient) -> None:
@@ -897,138 +650,3 @@ def test_root_scoped_remote_mapping_cannot_translate_outside_selected_root(clien
     )
     assert response.status_code == 422, response.text
     assert response.json()["error"]["code"] == "PATH_MAPPING_OUTSIDE_ROOT"
-
-
-def test_duplicate_commit_refuses_to_delete_loser_if_winner_disappears(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part15-winner-gone-{uuid.uuid4().hex}"
-    root.mkdir()
-    try:
-        movie_id, winner_id, loser_id, _ = db_run(lambda db: seed_movie_duplicate(db, root))
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": True,
-            },
-        )
-        assert preview.status_code == 200, preview.text
-        payload = preview.json()
-        winner_path = Path(payload["winner"]["directories"][0]["path"])
-        loser_path = Path(payload["losers"][0]["directories"][0]["path"])
-        shutil.rmtree(winner_path)
-
-        committed = commit_duplicate(client, movie_id, headers, payload["confirmation_token"])
-        assert committed["status"] == "failed", committed
-        assert committed["error"]["code"] == "DUPLICATE_WINNER_NOT_PRESENT"
-        assert loser_path.exists(), "the losing copy must not be deleted when the selected winner vanished"
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
-class FailingDuplicateQbitAdapter:
-    async def remove_torrent(self, info_hash: str, *, delete_files: bool = False):
-        raise RuntimeError("qBittorrent unavailable")
-
-    async def close(self):
-        return None
-
-
-def test_qbit_failure_skips_requested_media_deletion(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part15-qbit-failure-{uuid.uuid4().hex}"
-    root.mkdir()
-    try:
-        movie_id, winner_id, loser_id, problem_id = db_run(lambda db: seed_movie_duplicate(db, root))
-        db_run(lambda db: seed_duplicate_torrent(db, loser_id, archived=True))
-        client.app.dependency_overrides[duplicates_api.get_qbittorrent_client_factory] = lambda: (
-            lambda *_args, **_kwargs: FailingDuplicateQbitAdapter()
-        )
-
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": True,
-                "remove_torrents": True,
-            },
-        )
-        assert preview.status_code == 200, preview.text
-        loser_path = Path(preview.json()["losers"][0]["directories"][0]["path"])
-        committed = commit_duplicate(client, movie_id, headers, preview.json()["confirmation_token"])
-        assert committed["status"] == "completed", committed
-        payload = committed["summary"]
-        assert payload["duplicate_resolved"] is False
-        assert payload["deleted_directories"] == []
-        assert any("Media deletion was skipped" in warning for warning in payload["warnings"])
-        assert loser_path.exists()
-
-        async def state(db):
-            problem = await db.get(Problem, problem_id)
-            loser = await db.get(MovieRelease, loser_id)
-            return problem.status, loser.release_state
-
-        status, loser_state = db_run(state)
-        assert status == ProblemStatus.OPEN
-        assert loser_state == ReleaseState.DUPLICATE
-    finally:
-        client.app.dependency_overrides.pop(duplicates_api.get_qbittorrent_client_factory, None)
-        shutil.rmtree(root, ignore_errors=True)
-
-
-def test_duplicate_confirmation_rejects_tampering(client: TestClient) -> None:
-    headers = login(client)
-    root = Path.cwd() / f"part19-token-tamper-{uuid.uuid4().hex}"
-    root.mkdir()
-    try:
-        movie_id, winner_id, loser_id, _ = db_run(lambda db: seed_movie_duplicate(db, root))
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": True,
-            },
-        ).json()
-        token = preview["confirmation_token"]
-        replacement = "A" if token[-1] != "A" else "B"
-        tampered = f"{token[:-1]}{replacement}"
-        committed = commit_duplicate(client, movie_id, headers, tampered)
-        assert committed["status"] == "failed", committed
-        assert committed["error"]["code"] == "INVALID_CONFIRMATION"
-        assert Path(preview["losers"][0]["directories"][0]["path"]).exists()
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
-def test_duplicate_confirmation_expires_before_any_destructive_action(client: TestClient, monkeypatch) -> None:
-    import app.services.problem_resolution as problem_resolution_service
-
-    headers = login(client)
-    root = Path.cwd() / f"part19-token-expiry-{uuid.uuid4().hex}"
-    root.mkdir()
-    try:
-        movie_id, winner_id, loser_id, _ = db_run(lambda db: seed_movie_duplicate(db, root))
-        preview = client.post(
-            f"/api/v1/movies/{movie_id}/duplicates/resolve-preview",
-            headers=headers,
-            json={
-                "winner_release_id": str(winner_id),
-                "losing_release_ids": [str(loser_id)],
-                "delete_media": True,
-            },
-        ).json()
-        loser_path = Path(preview["losers"][0]["directories"][0]["path"])
-        future = problem_resolution_service.time.time() + problem_resolution_service.CONFIRMATION_TTL_SECONDS + 2
-        monkeypatch.setattr(problem_resolution_service.time, "time", lambda: future)
-        committed = commit_duplicate(client, movie_id, headers, preview["confirmation_token"])
-        assert committed["status"] == "failed", committed
-        assert committed["error"]["code"] == "CONFIRMATION_EXPIRED"
-        assert loser_path.exists()
-    finally:
-        shutil.rmtree(root, ignore_errors=True)

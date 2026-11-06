@@ -1,6 +1,6 @@
 import type {
   DownloadClient, DownloadClientCategory, DownloadClientTestResult, Indexer, IndexerTestResult,
-  PlexConfiguration, PlexTestResult,
+  PlexConfiguration,
 } from '../../types'
 import type { components } from '../generated/schema'
 
@@ -10,7 +10,6 @@ type DownloadClientTestResponseDto = components['schemas']['DownloadClientTestRe
 type IndexerDto = components['schemas']['IndexerResponse']
 type IndexerTestResponseDto = components['schemas']['IndexerTestResponse']
 type PlexConfigurationDto = components['schemas']['PlexConfigurationResponse']
-type PlexTestResponseDto = components['schemas']['PlexTestResponse']
 type TMDBConfigurationDto = components['schemas']['TMDBConfigurationResponse']
 
 export function mapDownloadClient(value: DownloadClientDto): DownloadClient {
@@ -106,15 +105,6 @@ export function mapPlexConfiguration(value: PlexConfigurationDto): PlexConfigura
     latency_ms: value.latency_ms ?? undefined,
     last_error: value.last_error ?? undefined,
     revision: value.revision ?? undefined,
-  }
-}
-
-export function mapPlexTestResult(value: PlexTestResponseDto): PlexTestResult {
-  return {
-    status: value.status,
-    machine_identifier: value.machine_identifier ?? undefined,
-    latency_ms: value.latency_ms ?? undefined,
-    message: value.message ?? undefined,
   }
 }
 

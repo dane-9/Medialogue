@@ -24,15 +24,12 @@ from app.main import create_app
 from app.models.domain import (
     AssociationType,
     Event,
-    IdentityState,
     MediaType,
     Movie,
     MovieRelease,
     MovieReleaseTorrent,
     PlexMatchState,
     PlexObservation,
-    Problem,
-    ProblemStatus,
     ReleaseState,
     Torrent,
 )
@@ -40,6 +37,8 @@ from app.services.library_scan import storage_root_scan_running, _root_locks
 
 
 @pytest.fixture
+
+
 def client(tmp_path):
     db_path = str(tmp_path / "medialogue.db")
     database_url = f"sqlite+aiosqlite:///{db_path}"
@@ -233,12 +232,12 @@ def _db_read(read):
     return asyncio.run(run())
 
 
-def _movie_revision(movie_id: str) -> int:
-    async def read(db):
-        movie = await db.get(Movie, UUID(movie_id))
-        return movie.revision
+def _incoming_count() -> int:
+    """Torrents attached as an incoming replacement, not yet the current release."""
 
-    return _db_read(read)
+    return _db_read(lambda db: db.scalar(
+        select(func.count()).select_from(MovieReleaseTorrent).where(MovieReleaseTorrent.association_type == AssociationType.INCOMING)
+    ))
 
 
 def test_incoming_replacement_is_provisional_and_cancellation_is_historical(client: TestClient) -> None:
@@ -264,9 +263,7 @@ def test_incoming_replacement_is_provisional_and_cancellation_is_historical(clie
         try:
             observed = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
             assert observed["added"] == 1
-            status = client.get("/api/v1/reconciliation/status")
-            assert status.status_code == 200, status.text
-            assert status.json()["incoming_count"] == 1
+            assert _incoming_count() == 1
 
             incoming = _db_read(
                 lambda db: db.scalar(
@@ -280,7 +277,7 @@ def test_incoming_replacement_is_provisional_and_cancellation_is_historical(clie
             behavior.torrents = []
             cancelled = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
             assert cancelled["removed"] == 1
-            assert client.get("/api/v1/reconciliation/status").json()["incoming_count"] == 0
+            assert _incoming_count() == 0
             assert client.get(f"/api/v1/movies/{movie['id']}").json()["state"] == "Missing"
 
             association, release, event_count = _db_read(
@@ -475,32 +472,6 @@ def test_root_outage_problem_event_is_idempotent_and_restores(client: TestClient
             shutil.rmtree(root)
 
 
-def test_manual_attach_expected_revision_race_is_rejected(client: TestClient) -> None:
-    headers, root, old_dir, root_payload, movie = _movie_setup(client)
-    try:
-        revision = _movie_revision(movie["id"])
-        first = client.post(
-            f"/api/v1/reconciliation/movies/{movie['id']}/manual-attach",
-            headers=headers,
-            json={"root_id": root_payload["id"], "path": str(old_dir), "expected_revision": revision},
-        )
-        assert first.status_code == 200, first.text
-        assert first.json()["details"]["revision"] == revision + 1
-        stale = client.post(
-            f"/api/v1/reconciliation/movies/{movie['id']}/manual-attach",
-            headers=headers,
-            json={"root_id": root_payload["id"], "path": str(old_dir), "expected_revision": revision},
-        )
-        assert stale.status_code == 409, stale.text
-        assert stale.json()["error"]["code"] == "REVISION_CONFLICT"
-        assert _movie_revision(movie["id"]) == revision + 1
-        state = _db_read(lambda db: db.get(Movie, UUID(movie["id"])))
-        assert state.identity_state is IdentityState.MANUAL
-    finally:
-        if root.exists():
-            shutil.rmtree(root)
-
-
 def test_reconciliation_refresh_status_and_root_overlap_lock(client: TestClient) -> None:
     headers, root, old_dir, root_payload, movie = _movie_setup(client)
     root_id = UUID(root_payload["id"])
@@ -517,15 +488,10 @@ def test_reconciliation_refresh_status_and_root_overlap_lock(client: TestClient)
         run_job = _wait_job(client, run.json()["job_ids"][0])
         assert run_job["status"] == "completed", run_job
 
-        status = client.get("/api/v1/reconciliation/status")
-        assert status.status_code == 200, status.text
-        assert status.json()["roots"][0]["health"] == "available"
+        assert client.get(f"/api/v1/storage-roots/{root_id}").json()["last_health"] == "available"
         assert not storage_root_scan_running(root_id)
         asyncio.run(lock.acquire())
         assert storage_root_scan_running(root_id)
-        refreshed = client.get("/api/v1/reconciliation/status")
-        assert refreshed.status_code == 200, refreshed.text
-        assert refreshed.json()["roots"][0]["affected_count"] == 1
     finally:
         if lock.locked():
             lock.release()

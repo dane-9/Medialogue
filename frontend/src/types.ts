@@ -52,13 +52,6 @@ export interface PlexConfiguration {
   revision?: number
 }
 
-export interface PlexTestResult {
-  status: 'healthy' | 'unavailable'
-  machine_identifier?: string
-  latency_ms?: number
-  message?: string
-}
-
 export interface Movie {
   id: string
   title: string

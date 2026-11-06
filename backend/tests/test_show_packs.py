@@ -212,10 +212,7 @@ def test_ambiguous_show_is_sent_to_review_with_cached_tmdb_candidates(
         ]
         assert discovery["selected"]["tmdb_id"] == 194764
 
-        confirmed = client.post(
-            f"/api/v1/discoveries/{discovery['id']}/approve",
-            headers=headers,
-        )
+        confirmed = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [discovery['id']], "action": "approve"})
         assert confirmed.status_code == 200, confirmed.text
         assert detail(client)["seasons"][0]["episodes"][0]["presence_state"] == "present"
     finally:
