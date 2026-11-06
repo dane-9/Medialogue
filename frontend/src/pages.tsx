@@ -1,5 +1,4 @@
 import TorrentRecoveryDetails from "./TorrentRecoveryDetails"
-import BackupDestinations from "./BackupDestinations"
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { badgeColor } from './lib/badgeColor'
@@ -56,7 +55,7 @@ import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import { isTaskOverdue } from './lib/taskTiming'
-import type { BlocklistEntry, EpisodeOrdering, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchResult, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults } from './types'
+import type { BlocklistEntry, EpisodeOrdering, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchResult, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
 import jackettIcon from './assets/jackett.svg'
@@ -65,6 +64,13 @@ export function tmdbPosterUrl(reference?: string) {
   if (!reference) return undefined
   if (/^https?:\/\//i.test(reference)) return reference
   return `https://image.tmdb.org/t/p/w500${reference.startsWith('/') ? reference : `/${reference}`}`
+}
+
+/** A small poster for list rows, or the movie/show icon when there is none. */
+export function RowPoster({ reference, mediaType }: { reference?: string | null; mediaType?: string | null }) {
+  return <span className="new-media-poster row-poster">{reference
+    ? <img src={tmdbPosterUrl(reference)} alt="" loading="lazy" referrerPolicy="no-referrer" />
+    : <Icon name={mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
 }
 
 export function PosterImage({ reference, title }: { reference?: string; title: string }) {
@@ -1499,7 +1505,7 @@ export function DownloadsPage() {
   // qBittorrent renders peer counts as "connected (swarm total)". The total is
   // only shown when the tracker actually reported one.
   const peerCount = (connected?: number, total?: number) => total === undefined ? `${connected ?? 0}` : `${connected ?? 0} (${total})`
-  return <Page title="Downloads" subtitle="Live Medialogue-managed qBittorrent activity. Historical and archived-only torrents stay in release history and Torrent Archive.">
+  return <Page title="Downloads" subtitle="Live Medialogue-managed qBittorrent activity. Historical and archived-only torrents stay in release history and Backups.">
     <div className="downloads-layout">
       <aside className="downloads-rail">
         {DOWNLOAD_RAIL_GROUPS.map((group) => <div className="downloads-rail-group" key={group}>
@@ -2950,7 +2956,9 @@ function NewMediaDiscoveryEdition({ item, options, onChanged, onError }: { item:
   </div>
 }
 
-export function TorrentArchivePage() {
+/** Every archived torrent: verified locally, on Google Drive, and restorable
+ *  one at a time. Part of the Backups page. */
+export function TorrentArchiveSection() {
   const [items, setItems] = useState<TorrentArchiveItem[]>([])
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [query, setQuery] = useState('')
@@ -3011,24 +3019,39 @@ export function TorrentArchivePage() {
   }
   const eligibleClients = restoreItem ? clients.filter((client) => !restoreItem.mediaType || client.scope === restoreItem.mediaType) : []
   const archiveTone = health.status === 'healthy' ? 'green' : health.status === 'unavailable' ? 'red' : 'amber'
-  const formatSize = (bytes?: number) => {
-    if (!bytes) return '-'
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']; let value = bytes; let unit = 0
-    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
-    return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
-  }
-  const shortHash = (hash: string) => hash.length > 16 ? `${hash.slice(0, 8)}…${hash.slice(-8)}` : hash
+  const formatSize = formatBytes
 
-  return <Page title="Torrent Archive" subtitle="Saved torrent files and settings for restoring downloads. Downloaded media is not included. Remote snapshots are managed in Settings → Backups." action={<Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button>}>
+  return <section className="backups-block">
     <div className="archive-callout"><div className="archive-callout-icon"><Icon name="archive" size={22} /></div><div><strong>{health.status === 'healthy' ? 'Archive mount is healthy' : 'Archive mount needs attention'}</strong><span>{health.archived ?? items.filter((item) => item.archiveState === 'archived').length} archived · {health.missing_or_failed ?? items.filter((item) => item.archiveState !== 'archived').length} pending/failed · retention: indefinite · {health.path ?? '/torrent-archive'}</span></div><Badge tone={archiveTone}>{health.status === 'healthy' ? 'Storage available' : health.status ?? 'Unknown'}</Badge></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {detailId && <TorrentRecoveryDetails id={detailId} onClose={() => setDetailId(null)} />}
-    {restoreItem && <Panel title="Restore archived torrent" eyebrow="EXPLICIT QBITTORRENT RESTORE"><div className="settings-form"><SettingsGroup><Field label="Torrent" help="The archived torrent being resubmitted."><Input value={restoreItem.torrentName} readOnly /></Field><Field label="qBittorrent client" help="Which client receives the restored torrent."><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></Field><Field label="qBittorrent save path" help="Must resolve inside a configured media folder."><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></Field></SettingsGroup></div><div className="settings-note"><Icon name="info" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
-    <div className="button-row"><Select aria-label="Archive filter" value={archiveFilter} onChange={e => setArchiveFilter(e.target.value)}><option value="all">All torrents</option><option value="attention">Local archive needs attention</option><option value="removed">Removed from qBittorrent</option><option value="remote">Not in latest remote backup</option></Select><Button disabled={busy} onClick={() => void (async () => { setBusy(true); try { const result = await downloadsApi.rebuildTorrentArchive(); setMessage(`Recovered ${result.imported} archive records; ${result.skipped} already present; ${result.errors.length} could not be verified.`); await load() } catch (e) { setMessage(String(e)) } finally { setBusy(false) } })()}>Rebuild archive catalogue</Button><Button disabled={busy} onClick={() => void (async () => { for (const item of items.filter(t => !t.archiveVerified && t.qbitPresent)) await retryArchive(item) })()}>Retry incomplete archives</Button></div>
-    <Panel className="table-panel" title="Archived torrents" eyebrow="RECOVERY INVENTORY" action={<div className="search-field compact"><Icon name="search" size={14} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter archive…" /></div>}>
-      {error ? <EmptyState title="Could not load torrent archive" detail={error} /> : !loading && !items.length ? <EmptyState icon="archive" title="No torrent recovery records yet" detail="Relevant qBittorrent torrents will be archived automatically when they are observed." /> : <table className="data-table"><thead><tr><th>Release</th><th>Media</th><th>Info hash</th><th>Source</th><th>Size</th><th>Local archive</th><th>Remote backup</th><th>Tracker source</th><th>qBit</th><th /></tr></thead><tbody>{items.filter(t => archiveFilter === 'attention' ? !t.archiveVerified : archiveFilter === 'removed' ? !t.qbitPresent : archiveFilter === 'remote' ? !t.includedInRemoteBackup : true).map((torrent) => <tr key={torrent.id}><td><strong>{torrent.releaseName ?? torrent.torrentName}</strong>{torrent.quality && <span className="table-sub">{torrent.quality}{torrent.edition ? ` · ${torrent.edition}` : ''}</span>}</td><td>{torrent.mediaTitle ?? 'Unassociated'}{torrent.tmdbId && <span className="table-sub">TMDB {torrent.tmdbId}</span>}</td><Tooltip asChild content={torrent.infoHash}><td className="mono">{shortHash(torrent.infoHash)}</td></Tooltip><td>{torrent.originalDownloadClient ?? 'Unknown client'}</td><td>{formatSize(torrent.totalSize)}</td><td><Badge tone={torrent.archiveVerified ? 'green' : 'amber'}>{torrent.archiveVerified ? 'Verified locally' : 'Needs attention'}</Badge><span className="table-sub">{torrent.archiveError || (torrent.capturedAt ? `Captured ${new Date(torrent.capturedAt).toLocaleString()}` : 'Capture time unknown')}</span></td><td><Badge tone={torrent.includedInRemoteBackup ? 'green' : 'neutral'}>{torrent.includedInRemoteBackup ? 'Included in last backup' : 'Awaiting backup'}</Badge>{torrent.remoteBackupAt && <span className="table-sub">{new Date(torrent.remoteBackupAt).toLocaleString()}</span>}</td><td>{torrent.sourceState === 'unregistered' ? 'Tracker reports removed' : torrent.sourceState ?? 'Unknown'}{torrent.sourceCheckedAt && <span className="table-sub">Checked {new Date(torrent.sourceCheckedAt).toLocaleString()}</span>}</td><td><Badge tone={torrent.qbitPresent ? 'green' : 'neutral'}>{torrent.qbitPresent ? 'Present' : 'Removed'}</Badge></td><td><div className="button-row"><Button variant="ghost" onClick={() => setDetailId(torrent.id)}>Details</Button>{torrent.archiveVerified ? <Button variant="ghost" icon="download" onClick={() => beginRestore(torrent)}>Restore</Button> : <Button variant="ghost" icon="refresh" onClick={() => void retryArchive(torrent)} disabled={busy}>Retry</Button>}</div></td></tr>)}</tbody></table>}
+    {restoreItem && <Panel title="Restore archived torrent"><div className="settings-form"><SettingsGroup><Field label="Torrent" help="The archived torrent being resubmitted."><Input value={restoreItem.torrentName} readOnly /></Field><Field label="qBittorrent client" help="Which client receives the restored torrent."><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></Field><Field label="qBittorrent save path" help="Must resolve inside a configured media folder."><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></Field></SettingsGroup></div><div className="settings-note"><Icon name="info" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
+    <div className="button-row"><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button><Select aria-label="Archive filter" value={archiveFilter} onChange={e => setArchiveFilter(e.target.value)}><option value="all">All torrents</option><option value="attention">Local archive needs attention</option><option value="removed">Removed from qBittorrent</option><option value="remote">Not on Drive yet</option></Select><Button disabled={busy} onClick={() => void (async () => { setBusy(true); try { const result = await downloadsApi.rebuildTorrentArchive(); setMessage(`Recovered ${result.imported} archive records; ${result.skipped} already present; ${result.errors.length} could not be verified.`); await load() } catch (e) { setMessage(String(e)) } finally { setBusy(false) } })()}>Rebuild archive catalogue</Button><Button disabled={busy} onClick={() => void (async () => { for (const item of items.filter(t => !t.archiveVerified && t.qbitPresent)) await retryArchive(item) })()}>Retry incomplete archives</Button></div>
+    <Panel className="table-panel" title="Archived torrents" action={<div className="search-field compact"><Icon name="search" size={14} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter archive…" /></div>}>
+      {error ? <EmptyState title="Could not load torrent archive" detail={error} /> : !loading && !items.length ? <EmptyState icon="archive" title="No torrent recovery records yet" detail="Relevant qBittorrent torrents will be archived automatically when they are observed." /> : <table className="data-table archive-table"><thead><tr><th>Release</th><th className="archive-num">Size</th><th>Backup</th><th>qBittorrent</th><th /></tr></thead><tbody>{items.filter(t => archiveFilter === 'attention' ? !t.archiveVerified : archiveFilter === 'removed' ? !t.qbitPresent : archiveFilter === 'remote' ? !t.includedInRemoteBackup : true).map((torrent) => {
+        const release = torrent.releaseName ?? torrent.torrentName
+        const backup = !torrent.archiveVerified ? { tone: 'amber' as const, label: 'Not archived', help: torrent.archiveError || 'The .torrent could not be saved yet.' }
+          : torrent.includedInRemoteBackup ? { tone: 'green' as const, label: 'On Drive', help: torrent.remoteBackupAt ? `Copied ${formatAge(torrent.remoteBackupAt)}` : 'Copied to Google Drive.' }
+          : { tone: 'neutral' as const, label: 'Only here', help: 'Archived on this server, waiting for the next copy to Google Drive.' }
+        return <tr key={torrent.id}>
+          <td><div className="row-with-poster"><RowPoster reference={torrent.posterRef} mediaType={torrent.mediaType} /><div className="archive-title">
+            <strong>{torrent.mediaTitle ?? release}{torrent.mediaTitle && torrent.mediaYear ? <span> {torrent.mediaYear}</span> : null}</strong>
+            {torrent.mediaTitle ? <span className="archive-release" title={release}>{release}</span> : <span className="archive-release">Not linked to the library</span>}
+            {torrent.sourceState === 'unregistered' && <span className="archive-lost">Removed from tracker</span>}
+          </div></div></td>
+          <td className="archive-num">{formatSize(torrent.totalSize)}</td>
+          <td><Tooltip content={backup.help}><Badge tone={backup.tone}>{backup.label}</Badge></Tooltip></td>
+          <td><span className={`archive-qbit ${torrent.qbitPresent ? 'present' : ''}`}>{torrent.qbitPresent ? 'Present' : 'Removed'}</span></td>
+          <td><div className="archive-actions">
+            <Tooltip asChild content="Details"><button type="button" className="icon-button" aria-label={`Details for ${release}`} onClick={() => setDetailId(torrent.id)}><Icon name="info" size={15} /></button></Tooltip>
+            {torrent.archiveVerified
+              ? <Tooltip asChild content="Re-add to qBittorrent"><button type="button" className="icon-button" aria-label={`Re-add ${release} to qBittorrent`} onClick={() => beginRestore(torrent)}><Icon name="download" size={15} /></button></Tooltip>
+              : <Tooltip asChild content="Retry archiving"><button type="button" className="icon-button" aria-label={`Retry archiving ${release}`} disabled={busy} onClick={() => void retryArchive(torrent)}><Icon name="refresh" size={15} /></button></Tooltip>}
+          </div></td>
+        </tr>
+      })}</tbody></table>}
     </Panel>
-  </Page>
+  </section>
 }
 
 export function CustomFormatsPage() { return <CustomFormatsPageView /> }
@@ -3042,7 +3065,6 @@ const settingsTabItems: Array<{ name: string; icon: Parameters<typeof Icon>[0]['
   { name: 'Plex', icon: 'plex' },
   { name: 'Indexers', icon: 'indexers' },
   { name: 'Security', icon: 'security' },
-  { name: 'Backups', icon: 'backup' },
 ]
 const settingsTabs = settingsTabItems.map((item) => item.name)
 
@@ -3062,8 +3084,7 @@ export function SettingsPage() {
           : current === 'Plex' ? <PlexSettings />
           : current === 'qBittorrent' ? <QBittorrentSettings />
           : current === 'Indexers' ? <IndexerSettings />
-          : current === 'Security' ? <SecuritySettings />
-          : <BackupRecoverySettings />}
+          : <SecuritySettings />}
       </section>
     </div>
   </Page>
@@ -4461,32 +4482,16 @@ function IndexerSettings() {
   </div>
 }
 
-function BackupRecoverySettings() {
-  const [capabilities, setCapabilities] = useState<RecoveryCapabilities | null>(null)
-  const [job, setJob] = useState<Job | null>(null)
+/** Re-add archived torrents to qBittorrent: a checked plan first, then only
+ *  what was confirmed. Part of the Backups page's restore. */
+export function RecoveryReimportSection({ refreshKey = 0 }: { refreshKey?: number }) {
   const [reimportPlan, setReimportPlan] = useState<RecoveryReimportPlan | null>(null)
   const [reimportJob, setReimportJob] = useState<Job | null>(null)
   const [selectedRecoveryIds, setSelectedRecoveryIds] = useState<Set<string>>(new Set())
   const [confirmReimport, setConfirmReimport] = useState(false)
   const [message, setMessage] = useState<Message>(null)
-  const [busy, setBusy] = useState(false)
-  const [recoveryPassword, setRecoveryPassword] = useState('')
   const [reimportBusy, setReimportBusy] = useState(false)
 
-  const loadCapabilities = async () => {
-    try { setCapabilities(await systemApi.recoveryCapabilities()); setMessage(null) }
-    catch (reason) { setMessage(failed(reason, 'Could not inspect Recovery Bundle capabilities.')) }
-  }
-  useEffect(() => { void loadCapabilities() }, [])
-  useEffect(() => {
-    if (!job || !['queued', 'running'].includes(job.state)) return
-    let alive = true
-    const refresh = async () => {
-      try { const value = await systemApi.job(job.id); if (alive) setJob(value) } catch {}
-    }
-    const timer = window.setInterval(() => void refresh(), 1500)
-    return () => { alive = false; window.clearInterval(timer) }
-  }, [job?.id, job?.state])
   useEffect(() => {
     if (!reimportJob || !['queued', 'running'].includes(reimportJob.state)) return
     let alive = true
@@ -4497,27 +4502,17 @@ function BackupRecoverySettings() {
     return () => { alive = false; window.clearInterval(timer) }
   }, [reimportJob?.id, reimportJob?.state])
 
-  const start = async () => {
-    setBusy(true); setMessage(null)
-    const currentPassword = recoveryPassword
-    setRecoveryPassword('')
-    try {
-      const accepted = await systemApi.startRecoveryExport(currentPassword)
-      const value = await systemApi.job(accepted.job_id)
-      setJob(value)
-      setMessage(accepted.warning ? { tone: 'error', text: accepted.warning } : null)
-    } catch (reason) { setMessage(failed(reason, 'Could not start Recovery Bundle export.')) }
-    finally { setBusy(false) }
-  }
   const inspectReimport = async () => {
     setReimportBusy(true); setMessage(null)
     try {
       const plan = await systemApi.recoveryReimportPlan()
       setReimportPlan(plan)
       setSelectedRecoveryIds(new Set(plan.items.filter((item) => item.status === 'ready').map((item) => item.torrentId)))
-    } catch (reason) { setMessage(failed(reason, 'Could not inspect the bulk recovery plan.')) }
+    } catch (reason) { setMessage(failed(reason, 'Could not check what can be re-added.')) }
     finally { setReimportBusy(false) }
   }
+  // A finished fetch from Drive opens the plan straight away.
+  useEffect(() => { if (refreshKey) void inspectReimport() }, [refreshKey])
   const submitReimport = async () => {
     if (!reimportPlan || !selectedRecoveryIds.size) return
     setReimportBusy(true); setMessage(null)
@@ -4530,121 +4525,58 @@ function BackupRecoverySettings() {
       setSelectedRecoveryIds(new Set())
     } catch (reason) {
       setConfirmReimport(false)
-      setMessage(failed(reason, 'Could not start bulk recovery re-import. Re-inspect the plan before trying again.'))
+      setMessage(failed(reason, 'Could not start re-adding torrents. Check the plan again before retrying.'))
     } finally { setReimportBusy(false) }
   }
-  const formatSize = (value: unknown) => {
-    const bytes = typeof value === 'number' ? value : Number(value)
-    if (!Number.isFinite(bytes) || bytes <= 0) return undefined
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']; let amount = bytes; let unit = 0
-    while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1 }
-    return `${amount >= 100 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unit]}`
-  }
-  const summary = job?.summary ?? {}
-  const bundleSize = formatSize(summary.bundle_size)
-  const sha = typeof summary.bundle_sha256 === 'string' ? summary.bundle_sha256 : undefined
-  const expiresAt = typeof summary.expires_at === 'string' ? new Date(summary.expires_at).toLocaleString() : undefined
-  const stateTone = job?.state === 'completed' ? 'green' : job?.state === 'failed' ? 'red' : job ? 'amber' : 'neutral'
   const reimportSummary = reimportJob?.summary ?? {}
   const reimportTone = reimportJob?.state === 'completed' ? 'green' : reimportJob?.state === 'failed' ? 'red' : reimportJob ? 'amber' : 'neutral'
   const readyIds = reimportPlan?.items.filter((item) => item.status === 'ready').map((item) => item.torrentId) ?? []
 
-  return <div className="recovery-settings">
-    <BackupDestinations />
-    <SectionHead title="Recovery Bundle"
-      description="Exports the database, torrent recovery data, settings, and a readable library list as one ZIP."
-      status={capabilities?.supported ? 'Ready' : capabilities ? 'Unavailable' : 'Checking'}
-      statusTone={capabilities?.supported ? 'green' : capabilities ? 'red' : 'neutral'} />
-
-    <div className="settings-section">
-      <div><h3>What the bundle contains</h3><p>Enough to rebuild this installation on a new host. Your media is <strong>not</strong> included; the bundle describes the library and preserves the torrent material needed to recover it. Restoring the database/configuration does not submit torrents until you explicitly confirm a bulk recovery plan.</p></div>
-      <div className="recovery-content-list"><span>database/medialogue.db</span><span>torrent-archive/</span><span>manifests/</span><span>config/application-config-export.json</span><span>inventory/library-inventory.json</span><span>inventory/torrent-archive-inventory.json</span><span>backup-metadata.json</span></div>
+  return <div className="backups-reimport">
+    <div className="button-row">
+      <Button variant="ghost" icon="refresh" disabled={reimportBusy || reimportJob?.state === 'running' || reimportJob?.state === 'queued'} onClick={() => void inspectReimport()}>{reimportBusy ? 'Checking…' : 'Check what can be re-added'}</Button>
+      {reimportPlan && <><Badge tone="green">{reimportPlan.ready} ready</Badge><Badge tone="neutral">{reimportPlan.alreadyPresent} already in qBittorrent</Badge><Badge tone={reimportPlan.blocked ? 'red' : 'neutral'}>{reimportPlan.blocked} blocked</Badge></>}
     </div>
 
-    <Note message={{ tone: 'error', text: 'The bundle contains a complete SQLite database backup and integration credentials. Treat anyone holding the ZIP as having full access to your Medialogue configuration and database.' }} />
-
-    {capabilities && <div className="settings-section">
-      <div><h3>Database backup</h3><p>Medialogue uses SQLite's online backup API to create a consistent database file while the application is running.</p></div>
-      <div className="settings-form">
-        <SettingsGroup>
-          <Field label="SQLite version" help="SQLite library version used to create the online backup."><Input readOnly value={capabilities.sqliteVersion ?? 'Unknown'} /></Field>
-          <Field label="Database file" help="Application-owned database included in the Recovery Bundle."><Input readOnly value={capabilities.databasePath ?? 'Unavailable'} /></Field>
-          <Field label="Temporary download retention" help="How long a finished bundle stays downloadable before it is deleted from the server."><Input readOnly value={`${capabilities.retentionHours} hours`} /></Field>
-        </SettingsGroup>
-      </div>
-    </div>}
-    {capabilities?.reasons.length ? <Note message={{ tone: 'error', text: capabilities.reasons.join(' ') }} /> : null}
-
-    {job && <div className="settings-section">
-      <div><h3>Latest export</h3><p>{job.error || job.detail || 'Recovery export runs as a background job and is recorded in Events.'}</p></div>
-      <div className="recovery-job">
-        <div className="button-row"><Badge tone={stateTone}>{job.state}</Badge>{job.stage && <Badge tone="neutral">{job.stage.replaceAll('_', ' ')}</Badge>}</div>
-        {job.progress !== undefined && <div className="job-progress-line"><Progress value={job.progress} tone={job.state === 'completed' ? 'green' : 'blue'} /><span>{job.progress}%</span></div>}
-        {bundleSize && <span className="muted">Bundle size: {bundleSize}</span>}
-        {expiresAt && <span className="muted">Temporary download available until {expiresAt}</span>}
-        {sha && <code className="recovery-hash">SHA-256: {sha}</code>}
-        {job.state === 'completed' && <Button variant="primary" icon="download" onClick={() => { window.location.href = systemApi.recoveryDownloadUrl(job.id) }}>Download Recovery Bundle</Button>}
-      </div>
-    </div>}
-
-    <div className="settings-section">
-      <div><h3>Bulk torrent re-import</h3><p>After restoring Medialogue's database, configuration, and torrent archive, inspect what can be resubmitted. The preview checks the original qBittorrent client, client scope, saved path, enabled media folders, current qBittorrent contents, category, tags, and captured file selection. Medialogue never moves recovered media; qBittorrent still owns download placement.</p></div>
-      <div className="button-row">
-        <Button variant="ghost" icon="refresh" disabled={reimportBusy || reimportJob?.state === 'running' || reimportJob?.state === 'queued'} onClick={() => void inspectReimport()}>{reimportBusy ? 'Inspecting…' : 'Inspect recovery plan'}</Button>
-        {reimportPlan && <><Badge tone="green">{reimportPlan.ready} ready</Badge><Badge tone="neutral">{reimportPlan.alreadyPresent} already present</Badge><Badge tone={reimportPlan.blocked ? 'red' : 'neutral'}>{reimportPlan.blocked} blocked</Badge></>}
-      </div>
-    </div>
-
-    {reimportPlan && <div className="settings-section">
-      <div><h3>Recovery preview</h3><p>This preview expires at {new Date(reimportPlan.expiresAt).toLocaleString()}. Blocked rows are never selectable. If clients, paths, storage roots, or qBittorrent contents change, Medialogue rejects the signed preview and requires a fresh inspection.</p></div>
+    {reimportPlan && <>
+      <p className="backups-note">Each torrent goes back to the client, save path, category and tags it had, with the same files selected. Blocked rows say why. The plan expires at {new Date(reimportPlan.expiresAt).toLocaleTimeString()}; check again if anything changes.</p>
       <div className="button-row">
         <Button variant="ghost" onClick={() => setSelectedRecoveryIds(new Set(readyIds))}>Select all ready</Button>
         <Button variant="ghost" onClick={() => setSelectedRecoveryIds(new Set())}>Clear selection</Button>
         <Badge tone="blue">{selectedRecoveryIds.size} selected</Badge>
       </div>
-      <div className="table-scroll"><table className="data-table"><thead><tr><th></th><th>Release</th><th>Status</th><th>qBittorrent</th><th>Destination</th><th>Recovery context</th></tr></thead><tbody>{reimportPlan.items.map((item) => {
+      <div className="table-scroll"><table className="data-table"><thead><tr><th></th><th>Release</th><th>Status</th><th>qBittorrent</th><th>Destination</th><th>Files</th></tr></thead><tbody>{reimportPlan.items.map((item) => {
         const selected = selectedRecoveryIds.has(item.torrentId)
         const selectable = item.status === 'ready'
         return <tr key={item.torrentId}>
-          <td><input type="checkbox" aria-label={`Recover ${item.releaseName ?? item.torrentName}`} checked={selected} disabled={!selectable} onChange={() => setSelectedRecoveryIds((current) => { const next = new Set(current); if (next.has(item.torrentId)) next.delete(item.torrentId); else next.add(item.torrentId); return next })} /></td>
+          <td><input type="checkbox" aria-label={`Re-add ${item.releaseName ?? item.torrentName}`} checked={selected} disabled={!selectable} onChange={() => setSelectedRecoveryIds((current) => { const next = new Set(current); if (next.has(item.torrentId)) next.delete(item.torrentId); else next.add(item.torrentId); return next })} /></td>
           <td><strong>{item.releaseName ?? item.torrentName}</strong><span className="table-sub">{item.mediaTitle ?? item.mediaType ?? 'Unknown media'} · {item.infoHash.slice(0, 12)}</span>{item.warnings.map((warning) => <span key={warning} className="table-sub">{warning}</span>)}</td>
-          <td><Badge tone={item.status === 'ready' ? 'green' : item.status === 'already_present' ? 'neutral' : 'red'}>{item.status.replaceAll('_', ' ')}</Badge>{item.reasons.map((reason) => <span key={reason} className="table-sub">{reason}</span>)}</td>
+          <td><Badge tone={item.status === 'ready' ? 'green' : item.status === 'already_present' ? 'neutral' : 'red'}>{item.status === 'already_present' ? 'already in qBittorrent' : item.status}</Badge>{item.reasons.map((reason) => <span key={reason} className="table-sub">{reason}</span>)}</td>
           <td>{item.downloadClientName ?? 'Unavailable'}{item.category !== undefined && <span className="table-sub">Category: {item.category || 'none'}</span>}{item.tags.length ? <span className="table-sub">Tags: {item.tags.join(', ')}</span> : null}</td>
           <td><code>{item.savePath ?? 'Missing'}</code>{item.resolvedSavePath && item.resolvedSavePath !== item.savePath && <span className="table-sub">Resolves to {item.resolvedSavePath}</span>}</td>
-          <td><span>{item.selectedFileCount}/{item.totalFileCount} files selected</span><span className="table-sub">{item.skippedFileCount} skipped file{item.skippedFileCount === 1 ? '' : 's'} will remain skipped</span></td>
+          <td><span>{item.selectedFileCount}/{item.totalFileCount} selected</span>{item.skippedFileCount ? <span className="table-sub">{item.skippedFileCount} stay skipped</span> : null}</td>
         </tr>
       })}</tbody></table></div>
-      <div className="settings-footer"><Button variant="primary" icon="download" disabled={!selectedRecoveryIds.size || reimportBusy} onClick={() => setConfirmReimport(true)}>Review and submit {selectedRecoveryIds.size || ''}</Button></div>
-    </div>}
+      <div className="settings-footer"><Button variant="primary" icon="download" disabled={!selectedRecoveryIds.size || reimportBusy} onClick={() => setConfirmReimport(true)}>Re-add {selectedRecoveryIds.size || ''} to qBittorrent</Button></div>
+    </>}
 
-    {reimportJob && <div className="settings-section">
-      <div><h3>Latest bulk re-import</h3><p>{reimportJob.error || (typeof reimportSummary.message === 'string' ? reimportSummary.message : reimportJob.detail) || 'Submitting archived torrents to qBittorrent.'}</p></div>
-      <div className="recovery-job">
-        <div className="button-row"><Badge tone={reimportTone}>{reimportJob.state}</Badge>{reimportJob.stage && <Badge tone="neutral">{reimportJob.stage.replaceAll('_', ' ')}</Badge>}</div>
-        {reimportJob.progress !== undefined && <div className="job-progress-line"><Progress value={reimportJob.progress} tone={reimportJob.state === 'completed' ? 'green' : 'blue'} /><span>{reimportJob.progress}%</span></div>}
-        {typeof reimportSummary.submitted === 'number' && <span className="muted">Submitted: {reimportSummary.submitted} · Already present: {Number(reimportSummary.skipped ?? 0)} · Failed: {Number(reimportSummary.failed ?? 0)}</span>}
-        {!['queued', 'running'].includes(reimportJob.state) && <Button variant="ghost" icon="refresh" onClick={() => void inspectReimport()}>Inspect remaining recovery</Button>}
-      </div>
+    {reimportJob && <div className="recovery-job">
+      <div className="button-row"><Badge tone={reimportTone}>{reimportJob.state}</Badge><span className="muted">{reimportJob.error || (typeof reimportSummary.message === 'string' ? reimportSummary.message : reimportJob.detail) || 'Re-adding torrents to qBittorrent.'}</span></div>
+      {reimportJob.progress !== undefined && <div className="job-progress-line"><Progress value={reimportJob.progress} tone={reimportJob.state === 'completed' ? 'green' : 'blue'} /><span>{reimportJob.progress}%</span></div>}
+      {typeof reimportSummary.submitted === 'number' && <span className="muted">Re-added: {reimportSummary.submitted} · Already in qBittorrent: {Number(reimportSummary.skipped ?? 0)} · Failed: {Number(reimportSummary.failed ?? 0)}</span>}
     </div>}
 
     <Note message={message} />
-    <div className="settings-footer">
-      <Field label="Current administrator password" help="Re-enter your password to authorize this sensitive Recovery Bundle export. It is sent only in the POST body and is not stored.">
-        <Input type="password" value={recoveryPassword} onChange={(event) => setRecoveryPassword(event.target.value)} autoComplete="current-password" />
-      </Field>
-      <Button variant="ghost" icon="refresh" onClick={() => void loadCapabilities()}>Recheck</Button>
-      <Button variant="primary" icon="download" disabled={busy || !recoveryPassword || !capabilities?.supported || job?.state === 'running' || job?.state === 'queued'} onClick={() => void start()}>{busy ? 'Starting…' : 'Export Recovery Bundle'}</Button>
-    </div>
 
     {confirmReimport && reimportPlan && <Modal
-      title="Confirm bulk recovery"
-      eyebrow="DISASTER RECOVERY"
+      title="Re-add torrents"
+      eyebrow="RESTORE"
       icon="download"
       onClose={() => setConfirmReimport(false)}
-      footer={<><Button variant="ghost" onClick={() => setConfirmReimport(false)}>Cancel</Button><Button variant="primary" icon="download" disabled={reimportBusy || !selectedRecoveryIds.size} onClick={() => void submitReimport()}>{reimportBusy ? 'Submitting…' : `Submit ${selectedRecoveryIds.size} torrent${selectedRecoveryIds.size === 1 ? '' : 's'}`}</Button></>}
+      footer={<><Button variant="ghost" onClick={() => setConfirmReimport(false)}>Cancel</Button><Button variant="primary" icon="download" disabled={reimportBusy || !selectedRecoveryIds.size} onClick={() => void submitReimport()}>{reimportBusy ? 'Submitting…' : `Re-add ${selectedRecoveryIds.size} torrent${selectedRecoveryIds.size === 1 ? '' : 's'}`}</Button></>}
     >
-      <div className="settings-section"><div><h3>qBittorrent will start these downloads</h3><p>Medialogue will submit only the {selectedRecoveryIds.size} selected archived torrent{selectedRecoveryIds.size === 1 ? '' : 's'}. Each destination is revalidated immediately before submission. Existing torrents are skipped if they appear after this preview. Saved category, tags, qBittorrent save path, and captured file priorities are restored where available.</p></div></div>
-      <Note message={{ tone: 'error', text: 'This can start substantial network and disk activity. It does not delete existing media and it does not move files after qBittorrent receives them.' }} />
+      <div className="settings-section"><div><h3>qBittorrent will start downloading these</h3><p>The {selectedRecoveryIds.size} selected torrent{selectedRecoveryIds.size === 1 ? '' : 's'} go back to their original save paths with the same category, tags and file selection. Anything that appears in qBittorrent in the meantime is skipped.</p></div></div>
+      <Note message={{ tone: 'error', text: 'This can start a lot of network and disk activity. Nothing already on disk is deleted or moved.' }} />
     </Modal>}
   </div>
 }
@@ -4756,7 +4688,8 @@ function upgradeEditionsMatch(current?: string, candidate?: string) {
 function formatUpgradeBytes(bytes?: number) {
   if (bytes === undefined || bytes === null || !Number.isFinite(bytes)) return '-'
   if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  // Binary units, matching the 1024 divisor and qBittorrent.
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
   let value = Math.max(0, bytes)
   let unit = 0
   while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }

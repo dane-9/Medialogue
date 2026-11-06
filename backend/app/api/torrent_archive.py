@@ -56,9 +56,32 @@ def _manifest_previous_path(primary: dict, original: dict, key: str) -> str | No
     return str(value) if value else None
 
 
-async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
+async def _posters(db: AsyncSession, primaries: list[dict]) -> dict[str, str]:
+    """Poster of each movie or show the manifests point at, by media id."""
+
+    from app.models.domain import Movie, Show
+
+    ids: dict[str, set[UUID]] = {"movies": set(), "shows": set()}
+    for primary in primaries:
+        try:
+            ids[str(primary.get("media_type"))].add(UUID(str(primary.get("media_id"))))
+        except (KeyError, ValueError):
+            continue
+    posters: dict[str, str] = {}
+    for model, kind in ((Movie, "movies"), (Show, "shows")):
+        if ids[kind]:
+            for media_id, poster in await db.execute(select(model.id, model.poster_ref).where(model.id.in_(ids[kind]))):
+                if poster:
+                    posters[str(media_id)] = poster
+    return posters
+
+
+async def _summary(db: AsyncSession, torrent: Torrent, remote: dict | None = None,
+                   posters: dict[str, str] | None = None) -> TorrentArchiveSummary:
     manifest = read_manifest(torrent)
     primary = _manifest_primary(manifest)
+    if posters is None:
+        posters = await _posters(db, [primary])
     observations = manifest.get("download_client_observations")
     original = observations[0] if isinstance(observations, list) and observations and isinstance(observations[0], dict) else {}
     qbit_present = bool(
@@ -70,9 +93,11 @@ async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
     )
     verified, verification_error = verify_torrent_archive(torrent)
     recovery = (manifest.get("client_recovery") or {}).get(str(original.get("download_client_id"))) or manifest.get("recovery") or {}
-    from app.services.remote_backups import read_backup_settings
-    from app.services.torrent_archive import recovery_revision
-    remote = read_backup_settings()
+    if remote is None:
+        from app.services.remote_backups import read_backup_settings
+        remote = read_backup_settings()
+    mirror = remote.get("mirror") or {}
+    key = torrent.info_hash.lower()
     return TorrentArchiveSummary(
         id=torrent.id,
         info_hash=torrent.info_hash,
@@ -87,6 +112,8 @@ async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
         completed_at=torrent.completed_at,
         media_type=primary.get("media_type"),
         media_title=primary.get("title"),
+        media_year=primary.get("year") if isinstance(primary.get("year"), int) else None,
+        poster_ref=posters.get(str(primary.get("media_id"))),
         tmdb_id=primary.get("tmdb_id"),
         tvdb_id=primary.get("tvdb_id"),
         release_name=primary.get("release_name"),
@@ -103,48 +130,20 @@ async def _summary(db: AsyncSession, torrent: Torrent) -> TorrentArchiveSummary:
         source_state=(torrent.tracker_summary or {}).get("state", "unknown") if qbit_present else "unknown",
         source_checked_at=(torrent.tracker_summary or {}).get("checked_at"),
         recovery_clients=list((manifest.get("client_recovery") or {}).keys()),
-        included_in_remote_backup=bool(manifest and (remote.get("coverage") or {}).get(torrent.info_hash.lower()) == recovery_revision(manifest)),
-        remote_backup_at=remote.get("last_success_at"),
+        # On Drive: both the torrent and the manifest that says where it goes.
+        included_in_remote_backup=f"torrents/{key}.torrent" in mirror and f"manifests/{key}.json" in mirror,
+        remote_backup_at=remote.get("last_sync_at"),
     )
 
 
 @router.post("/torrent-archive/rebuild")
 async def rebuild_archive_records(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
     """Recover missing catalogue rows from portable manifests, without contacting clients."""
-    import json
-    from pathlib import Path
-    from app.core.config import get_settings
-    from app.services.torrent_archive import archive_paths, _atomic_write
-    root = Path(get_settings().torrent_archive_dir).resolve()
-    imported = skipped = 0
-    errors = []
-    for path in sorted((root / "manifests").glob("*/*.json")):
-        try:
-            if path.is_symlink() or not path.resolve().is_relative_to(root):
-                raise ValueError("Manifest is outside the archive directory")
-            manifest = json.loads(path.read_text(encoding="utf-8"))
-            info_hash = str(manifest["torrent_info_hash"]).lower()
-            torrent_path, expected_manifest = archive_paths(info_hash)
-            if expected_manifest.resolve() != path.resolve() or not torrent_path.resolve().is_relative_to(root):
-                raise ValueError("Manifest path does not match its torrent hash")
-            if await db.scalar(select(Torrent).where(Torrent.info_hash == info_hash)):
-                skipped += 1
-                continue
-            torrent = Torrent(info_hash=info_hash, name=str(manifest.get("torrent_name") or info_hash),
-                              archive_state=TorrentArchiveState.ARCHIVED, archive_path=str(torrent_path),
-                              manifest_path=str(path), manifest_schema_version=manifest.get("schema_version"),
-                              metadata_json={"rebuilt_from_archive": True}, tracker_summary={"state": "unknown"})
-            valid, error = verify_torrent_archive(torrent)
-            if not valid:
-                raise ValueError(error)
-            async with db.begin_nested():
-                db.add(torrent)
-                await db.flush()
-            imported += 1
-        except (ValueError, KeyError, TypeError, OSError) as exc:
-            errors.append({"manifest": path.name, "error": str(exc)})
+    from app.services.torrent_archive import rebuild_catalogue_from_manifests
+
+    result = await rebuild_catalogue_from_manifests(db)
     await db.commit()
-    return {"imported": imported, "skipped": skipped, "errors": errors}
+    return {"imported": result["imported"], "skipped": result["skipped"], "errors": result["errors"]}
 
 
 @router.get("/torrent-archive", response_model=Collection[TorrentArchiveSummary])
@@ -177,8 +176,12 @@ async def list_torrent_archive(
             rows_query.order_by(Torrent.first_seen_at.desc()).offset((page - 1) * page_size).limit(page_size)
         )
     ).all()
+    from app.services.remote_backups import read_backup_settings
+
+    remote = read_backup_settings()
+    posters = await _posters(db, [_manifest_primary(read_manifest(torrent)) for torrent in torrents])
     return Collection(
-        items=[await _summary(db, torrent) for torrent in torrents],
+        items=[await _summary(db, torrent, remote, posters) for torrent in torrents],
         page=page,
         page_size=page_size,
         total=total,

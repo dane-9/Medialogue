@@ -1,173 +1,27 @@
 from __future__ import annotations
 
-from pathlib import Path
-from uuid import UUID
-
-from fastapi import APIRouter, BackgroundTasks, Depends, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.background import BackgroundTask
 
 from app.api.dependencies import require_admin, require_csrf
-from app.core.config import get_settings
 from app.core.errors import AppError
 from app.db.session import get_db
-from app.core.security import verify_password
 from app.integrations.qbittorrent import QBittorrentClient
-from app.models.auth import AdminUser, AuthSession
+from app.models.auth import AdminUser
 from app.models.domain import Job, JobStatus
-from app.services.events import create_event
 from app.schemas.jobs import JobAcceptedResponse
-from app.schemas.recovery import (
-    RecoveryCapabilitiesResponse,
-    RecoveryExportAcceptedResponse,
-    RecoveryExportRequest,
-    RecoveryReimportPlanResponse,
-    RecoveryReimportRequest,
-)
-from app.services.jobs import create_job
-from app.services.recovery import (
-    build_recovery_reimport_plan,
-    cleanup_expired_recovery_exports,
-    confirm_recovery_reimport_plan,
-    recovery_bundle_path,
-    recovery_capabilities,
-    recovery_export_root,
-    run_recovery_export,
-    run_recovery_reimport,
-)
-from app.services.jobs import publish_job_status
+from app.schemas.recovery import RecoveryReimportPlanResponse, RecoveryReimportRequest
+from app.services.events import create_event
+from app.services.jobs import create_job, publish_job_status
+from app.services.recovery import build_recovery_reimport_plan, confirm_recovery_reimport_plan, run_recovery_reimport
 from app.services.runtime_jobs import launch_runtime_job
 
 router = APIRouter(prefix="/recovery", tags=["recovery"])
 
 
-def get_recovery_export_runner():
-    return run_recovery_export
-
-
 def get_recovery_qbit_factory():
     return QBittorrentClient
-
-
-@router.get("/capabilities", response_model=RecoveryCapabilitiesResponse)
-async def capabilities(
-    _: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-) -> RecoveryCapabilitiesResponse:
-    return RecoveryCapabilitiesResponse(**(await recovery_capabilities(db)))
-
-
-@router.post(
-    "/export",
-    response_model=RecoveryExportAcceptedResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def start_recovery_export(
-    payload: RecoveryExportRequest,
-    background_tasks: BackgroundTasks,
-    auth_session: AuthSession = Depends(require_csrf),
-    db: AsyncSession = Depends(get_db),
-    runner=Depends(get_recovery_export_runner),
-) -> RecoveryExportAcceptedResponse:
-    if not verify_password(payload.current_password, auth_session.admin.password_hash):
-        raise AppError("INVALID_PASSWORD", "Current password is incorrect.", status_code=400)
-    capability = await recovery_capabilities(db)
-    if not capability["supported"]:
-        raise AppError(
-            "RECOVERY_EXPORT_UNAVAILABLE",
-            "Recovery export is not currently available.",
-            status_code=409,
-            details={"reasons": capability.get("reasons") or []},
-        )
-    settings = get_settings()
-    cleanup_expired_recovery_exports(settings)
-    existing = await db.scalar(
-        select(Job)
-        .where(Job.job_type == "recovery_export", Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
-        .order_by(Job.created_at.desc())
-        .limit(1)
-    )
-    if existing is not None:
-        raise AppError(
-            "RECOVERY_EXPORT_ALREADY_RUNNING",
-            "A Recovery Bundle export is already running.",
-            status_code=409,
-            details={"job_id": str(existing.id)},
-        )
-    job = await create_job(
-        db,
-        "recovery_export",
-        cancellable=False,
-        summary={
-            "message": "Preparing Recovery Bundle.",
-            "sensitive": True,
-            "retention_hours": settings.recovery_export_retention_hours,
-        },
-    )
-    await create_event(
-        db,
-        "recovery.export_started",
-        entity_type="job",
-        entity_id=job.id,
-        message="Recovery Bundle export started.",
-        details={"sensitive": True},
-    )
-    await db.commit()
-    background_tasks.add_task(runner, job.id)
-    return RecoveryExportAcceptedResponse(job_id=job.id)
-
-
-def _validated_bundle_path(job: Job) -> Path:
-    settings = get_settings()
-    root = recovery_export_root(settings).resolve(strict=False)
-    raw = str((job.summary or {}).get("bundle_path") or "")
-    candidate = Path(raw).resolve(strict=False) if raw else recovery_bundle_path(job.id, settings).resolve(strict=False)
-    try:
-        candidate.relative_to(root)
-    except ValueError as exc:
-        raise AppError("RECOVERY_BUNDLE_PATH_INVALID", "Stored Recovery Bundle path is invalid.", status_code=409) from exc
-    return candidate
-
-
-def _remove_downloaded_bundle(path: Path) -> None:
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        # Expiry cleanup remains the fallback if the filesystem is
-        # temporarily unavailable after the response has completed.
-        return
-
-
-@router.get("/exports/{job_id}/download")
-async def download_recovery_export(
-    job_id: UUID,
-    _: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-) -> FileResponse:
-    job = await db.get(Job, job_id)
-    if job is None or job.job_type != "recovery_export":
-        raise AppError("NOT_FOUND", "Recovery export job was not found.", status_code=404)
-    if (job.summary or {}).get("remote_backup"):
-        raise AppError("REMOTE_BACKUP_EXPORT_PRIVATE", "Scheduled snapshots are available only as encrypted backups in Google Drive.", status_code=409)
-    if job.status != JobStatus.COMPLETED:
-        raise AppError("RECOVERY_EXPORT_NOT_READY", "Recovery Bundle is not ready for download.", status_code=409)
-    bundle = _validated_bundle_path(job)
-    if not bundle.is_file():
-        raise AppError(
-            "RECOVERY_EXPORT_EXPIRED",
-            "The temporary Recovery Bundle is no longer available. Create a new export.",
-            status_code=410,
-        )
-    filename = str((job.summary or {}).get("bundle_filename") or bundle.name)
-    return FileResponse(
-        bundle,
-        media_type="application/zip",
-        filename=filename,
-        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
-        background=BackgroundTask(_remove_downloaded_bundle, bundle),
-    )
 
 
 @router.get("/reimport/plan", response_model=RecoveryReimportPlanResponse)

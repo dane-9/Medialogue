@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from uuid import UUID
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -14,119 +14,156 @@ from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import Job, JobStatus, Schedule
 from app.schemas.jobs import JobAcceptedResponse
-from app.services.backup_crypto import decode_key, new_recovery_key
-from app.services.remote_backups import (DriveBackups, access_token, begin_oauth, finish_oauth,
-    oauth_ready, read_backup_settings, update_backup_settings)
+from app.services.backup_coverage import archive_coverage
+from app.services.jobs import create_job, publish_job_status
+from app.services.remote_backups import (DATABASE, DEFAULT_DATABASE_INTERVAL, DriveBackups, access_token, begin_oauth,
+    finish_oauth, oauth_ready, read_backup_settings, run_drive_restore, update_backup_settings)
+from app.services.runtime_jobs import launch_runtime_job
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
 
 router = APIRouter(prefix="/backups", tags=["backups"])
 
+DRIVE_JOBS = ("remote_backup", "drive_restore")
+
 
 class BackupSettingsRequest(BaseModel):
-    recovery_key: str | None = Field(default=None, max_length=100)
-    keep_daily: int = Field(default=7, ge=1, le=365)
-    keep_weekly: int = Field(default=4, ge=0, le=104)
-    interval_seconds: int = Field(default=86400, ge=3600, le=2592000)
     enabled: bool = False
+    keep_database: int = Field(default=7, ge=1, le=90)
+    database_interval_seconds: int = Field(default=DEFAULT_DATABASE_INTERVAL, ge=3600, le=2592000)
+
+
+async def _active(db: AsyncSession, job_type: str) -> Job | None:
+    return await db.scalar(select(Job).where(Job.job_type == job_type,
+        Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])).order_by(Job.created_at.desc()).limit(1))
+
+
+async def _drive_busy(db: AsyncSession) -> bool:
+    return bool(await db.scalar(select(Job.id).where(Job.job_type.in_(DRIVE_JOBS),
+        Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])).limit(1)))
 
 
 @router.get("/status")
 async def backup_status(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict:
     saved = read_backup_settings()
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
-    active = await db.scalar(select(Job).where(Job.job_type == "remote_backup",
-        Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])).limit(1))
-    return {"oauth_configured": oauth_ready(), "connected": bool(saved.get("refresh_token")),
-        "key_configured": bool(saved.get("recovery_key")), "keep_daily": saved["keep_daily"],
-        "keep_weekly": saved["keep_weekly"], "last_success_at": saved.get("last_success_at"),
-        "last_error": saved.get("last_error"), "enabled": bool(schedule and schedule.enabled),
-        "torrent_count": len(saved.get("coverage") or {}),
-        "interval_seconds": int(schedule.expression) if schedule else 86400,
+    backup = await _active(db, "remote_backup")
+    restore = await _active(db, "drive_restore")
+    mirror = saved.get("mirror") or {}
+    return {
+        "oauth_configured": oauth_ready(),
+        "connected": bool(saved.get("refresh_token")),
+        "enabled": bool(schedule and schedule.enabled),
+        "sync_interval_seconds": int(schedule.expression) if schedule else 600,
         "next_run_at": schedule.next_run_at.isoformat() if schedule and schedule.next_run_at else None,
-        "active_job_id": str(active.id) if active else None}
-
-
-@router.post("/recovery-key")
-async def generate_recovery_key(response: Response, _: object = Depends(require_csrf)) -> dict:
-    response.headers["Cache-Control"] = "no-store"
-    return {"recovery_key": new_recovery_key()}
+        "last_sync_at": saved.get("last_sync_at"),
+        "last_database_at": saved.get("last_database_at"),
+        "last_error": saved.get("last_error"),
+        "keep_database": int(saved.get("keep_database") or 7),
+        "database_interval_seconds": int(saved.get("database_interval_seconds") or DEFAULT_DATABASE_INTERVAL),
+        "torrents_on_drive": sum(1 for key in mirror if key.startswith("torrents/")),
+        "folder_url": f"https://drive.google.com/drive/folders/{saved['folders']['root']}" if (saved.get("folders") or {}).get("root") else None,
+        "active_job_id": str(backup.id) if backup else None,
+        "active_restore_job_id": str(restore.id) if restore else None,
+    }
 
 
 @router.put("/settings")
 async def save_backup_settings(payload: BackupSettingsRequest, _: object = Depends(require_csrf),
                                db: AsyncSession = Depends(get_db)) -> dict:
     saved = read_backup_settings()
-    if payload.recovery_key:
-        try:
-            decode_key(payload.recovery_key)
-        except ValueError as exc:
-            raise AppError("INVALID_RECOVERY_KEY", str(exc), status_code=422) from exc
-        if saved.get("recovery_key") and saved["recovery_key"] != payload.recovery_key:
-            raise AppError("KEY_ALREADY_CONFIGURED", "This destination already has a recovery key. Keep using it so retained backups remain recoverable.", status_code=409)
-    if payload.enabled and not (saved.get("refresh_token") and (saved.get("recovery_key") or payload.recovery_key)):
-        raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive and save a recovery key before enabling scheduled backups.", status_code=409)
-    changes = {"keep_daily": payload.keep_daily, "keep_weekly": payload.keep_weekly}
-    if payload.recovery_key:
-        changes["recovery_key"] = payload.recovery_key
-    update_backup_settings(changes)
+    if payload.enabled and not saved.get("refresh_token"):
+        raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive before turning on backups.", status_code=409)
+    update_backup_settings({"keep_database": payload.keep_database,
+                            "database_interval_seconds": payload.database_interval_seconds})
     await ensure_default_schedules(db)
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
-    from datetime import datetime, timedelta, timezone
     schedule.enabled = payload.enabled
-    schedule.expression = str(payload.interval_seconds)
-    schedule.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=payload.interval_seconds) if payload.enabled else None
+    # Soon after turning on, so the first copy does not wait a whole interval.
+    schedule.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=30) if payload.enabled else None
     await db.commit()
     return {"saved": True}
 
 
 @router.post("/google/connect")
 async def connect_google(session=Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
-    if await db.scalar(select(Job.id).where(Job.job_type == "remote_backup", Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])).limit(1)):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before changing its Google account.", status_code=409)
+    if await _drive_busy(db):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore before changing its Google account.", status_code=409)
     return {"authorization_url": begin_oauth(str(session.admin.id))}
 
 
 @router.post("/google/disconnect")
 async def disconnect_google(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
-    if await db.scalar(select(Job.id).where(Job.job_type == "remote_backup", Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])).limit(1)):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before disconnecting Google Drive.", status_code=409)
+    if await _drive_busy(db):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore before disconnecting Google Drive.", status_code=409)
     update_backup_settings({"refresh_token": None, "oauth_state": None, "oauth_verifier": None})
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
     if schedule:
         schedule.enabled = False
         schedule.next_run_at = None
     await db.commit()
-    return {"disconnected": True, "remote_snapshots_retained": True}
+    return {"disconnected": True, "drive_files_kept": True}
 
 
 @router.get("/google/callback")
 async def google_callback(code: str = Query(default="", max_length=4096), state: str = Query(max_length=256),
                           admin: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    if await db.scalar(select(Job.id).where(Job.job_type == "remote_backup", Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])).limit(1)):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup, then reconnect Google Drive.", status_code=409)
+    if await _drive_busy(db):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore, then reconnect Google Drive.", status_code=409)
     await finish_oauth(code, state, str(admin.id))
-    return RedirectResponse("/settings?tab=Backups", status_code=303, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+    return RedirectResponse("/backups", status_code=303, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
 @router.post("/run", response_model=JobAcceptedResponse, status_code=202)
 async def start_backup(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)):
-    saved = read_backup_settings()
-    if not saved.get("refresh_token") or not saved.get("recovery_key"):
-        raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive and save a recovery key first.", status_code=409)
+    """Back up now: changed torrents, and the database whatever its schedule."""
+
+    if not read_backup_settings().get("refresh_token"):
+        raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive first.", status_code=409)
+    if await _active(db, "drive_restore"):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the restore to finish first.", status_code=409)
     await ensure_default_schedules(db)
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
     job = await trigger_schedule(db, schedule, trigger="manual")
     return JobAcceptedResponse(job_id=job.id)
 
 
-@router.get("/google/snapshots")
-async def list_snapshots(_: AdminUser = Depends(require_admin)) -> dict:
+@router.get("/coverage")
+async def coverage(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict:
+    return await archive_coverage(db)
+
+
+@router.post("/restore", response_model=JobAcceptedResponse, status_code=202)
+async def start_restore(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)):
+    """Fetch every torrent and manifest from Drive into the local archive.
+
+    Nothing is sent to qBittorrent here; the re-import plan does that once
+    confirmed.
+    """
+
+    if not read_backup_settings().get("refresh_token"):
+        raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive first.", status_code=409)
+    if await _drive_busy(db):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore to finish.", status_code=409)
+    job = await create_job(db, "drive_restore", cancellable=False,
+                           summary={"message": "Fetching torrents from Google Drive."})
+    await db.commit()
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_drive_restore(job.id))
+    return JobAcceptedResponse(job_id=job.id)
+
+
+@router.get("/database-copies")
+async def database_copies(_: AdminUser = Depends(require_admin)) -> dict:
+    """The database copies in Drive, newest first, to download by hand if ever needed."""
+
+    folder = (read_backup_settings().get("folders") or {}).get(DATABASE)
+    if not folder:
+        return {"items": []}
     drive = DriveBackups(await access_token())
     try:
-        rows = await drive.list()
-        return {"items": [{"id": row["id"], "name": row["name"], "size": row.get("size"),
+        rows = sorted(await drive.children(folder), key=lambda row: row.get("createdTime", ""), reverse=True)
+        return {"items": [{"id": row["id"], "name": row["name"], "size": int(row["size"]) if row.get("size") else None,
                            "created_at": row.get("createdTime"),
-                           "verified": row.get("appProperties", {}).get("verified") == "true",
-                           "download_url": f"https://drive.google.com/file/d/{row['id']}/view"} for row in rows]}
+                           "url": f"https://drive.google.com/file/d/{row['id']}/view"} for row in rows]}
     finally:
         await drive.close()

@@ -5024,3 +5024,44 @@ select.input { background-color: var(--input-bg); }
 .media-history-outcome { margin-left: auto; color: var(--ok); font-size: var(--t-xs); }
 .media-history-note { margin: 0; color: var(--muted); font-size: var(--t-sm); }
 .media-history-link { color: var(--accent-text); font-size: var(--t-xs); }
+
+/* Backups: Google Drive copy, coverage, restore and the torrent list. */
+.backups-page { display: grid; gap: var(--s4); }
+.backups-status { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.backups-status > div { display: grid; gap: 2px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.backups-status strong { color: var(--text); font-size: var(--t-md); font-weight: 600; }
+.backups-status span { color: var(--faint); font-size: var(--t-xs); }
+.backups-database { display: flex; flex-wrap: wrap; align-items: end; gap: var(--s3); margin-top: var(--s2); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.backups-database > .section-head { flex-basis: 100%; }
+.backups-database label { display: grid; gap: 4px; min-width: 180px; color: var(--muted); font-size: var(--t-xs); }
+.backups-copies { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: var(--t-sm); }
+.backups-copies li { display: flex; gap: var(--s3); align-items: baseline; }
+.backups-copies a { color: var(--accent-text); }
+.backups-copies span { color: var(--faint); font-size: var(--t-xs); }
+.backups-note { margin: 0; color: var(--muted); font-size: var(--t-sm); }
+.backups-steps { display: grid; gap: 4px; margin: 0; padding-left: 20px; color: var(--muted); font-size: var(--t-sm); }
+.backups-reimport { display: grid; gap: var(--s3); }
+.backups-block { display: grid; gap: var(--s3); }
+@media (max-width: 760px) { .backups-status { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.backups-tabs { display: flex; }
+.backups-body { display: grid; gap: var(--s3); padding: var(--s4); }
+.backups-body > .data-table { margin: 0 calc(-1 * var(--s4)); width: calc(100% + 2 * var(--s4)); }
+.backups-legend { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; color: var(--faint); font-size: var(--t-xs); }
+.backups-legend strong { color: var(--muted); font-weight: 500; }
+.row-with-poster { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.row-with-poster > div { display: grid; min-width: 0; }
+.row-poster { width: 30px; }
+/* Backups → Torrents: title block, then a few narrow facts. */
+.archive-table td { vertical-align: middle; }
+.archive-table td:first-child { width: 100%; }
+.archive-title { display: grid; gap: 2px; min-width: 0; }
+.archive-title strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.archive-title strong span { color: var(--faint); font-weight: 400; }
+.archive-release { overflow: hidden; color: var(--faint); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.archive-lost { color: color-mix(in srgb, var(--err) 75%, var(--muted)); font-size: var(--t-xs); }
+.archive-num { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.archive-qbit { color: var(--faint); font-size: var(--t-xs); white-space: nowrap; }
+.archive-qbit.present { color: var(--muted); }
+.archive-qbit::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--faint); vertical-align: 1px; }
+.archive-qbit.present::before { background: var(--ok); }
+.archive-actions { display: flex; justify-content: flex-end; gap: 2px; }

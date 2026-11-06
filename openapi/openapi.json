@@ -100,43 +100,24 @@
       },
       "BackupSettingsRequest": {
         "properties": {
+          "database_interval_seconds": {
+            "default": 86400,
+            "maximum": 2592000.0,
+            "minimum": 3600.0,
+            "title": "Database Interval Seconds",
+            "type": "integer"
+          },
           "enabled": {
             "default": false,
             "title": "Enabled",
             "type": "boolean"
           },
-          "interval_seconds": {
-            "default": 86400,
-            "maximum": 2592000.0,
-            "minimum": 3600.0,
-            "title": "Interval Seconds",
-            "type": "integer"
-          },
-          "keep_daily": {
+          "keep_database": {
             "default": 7,
-            "maximum": 365.0,
+            "maximum": 90.0,
             "minimum": 1.0,
-            "title": "Keep Daily",
+            "title": "Keep Database",
             "type": "integer"
-          },
-          "keep_weekly": {
-            "default": 4,
-            "maximum": 104.0,
-            "minimum": 0.0,
-            "title": "Keep Weekly",
-            "type": "integer"
-          },
-          "recovery_key": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recovery Key"
           }
         },
         "title": "BackupSettingsRequest",
@@ -8709,118 +8690,6 @@
         "title": "ReconciliationStatusResponse",
         "type": "object"
       },
-      "RecoveryCapabilitiesResponse": {
-        "properties": {
-          "database_backend": {
-            "title": "Database Backend",
-            "type": "string"
-          },
-          "database_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Database Path"
-          },
-          "database_readable": {
-            "title": "Database Readable",
-            "type": "boolean"
-          },
-          "export_directory": {
-            "title": "Export Directory",
-            "type": "string"
-          },
-          "export_directory_writable": {
-            "title": "Export Directory Writable",
-            "type": "boolean"
-          },
-          "reasons": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Reasons",
-            "type": "array"
-          },
-          "retention_hours": {
-            "title": "Retention Hours",
-            "type": "integer"
-          },
-          "sqlite_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sqlite Version"
-          },
-          "supported": {
-            "title": "Supported",
-            "type": "boolean"
-          },
-          "torrent_archive_readable": {
-            "title": "Torrent Archive Readable",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "supported",
-          "database_backend",
-          "database_readable",
-          "torrent_archive_readable",
-          "export_directory_writable",
-          "export_directory",
-          "retention_hours"
-        ],
-        "title": "RecoveryCapabilitiesResponse",
-        "type": "object"
-      },
-      "RecoveryExportAcceptedResponse": {
-        "properties": {
-          "job_id": {
-            "format": "uuid",
-            "title": "Job Id",
-            "type": "string"
-          },
-          "status": {
-            "const": "queued",
-            "default": "queued",
-            "title": "Status",
-            "type": "string"
-          },
-          "warning": {
-            "default": "Recovery Bundles contain a complete database backup and sensitive integration credentials. Store the downloaded ZIP securely.",
-            "title": "Warning",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job_id"
-        ],
-        "title": "RecoveryExportAcceptedResponse",
-        "type": "object"
-      },
-      "RecoveryExportRequest": {
-        "properties": {
-          "current_password": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "title": "Current Password",
-            "type": "string"
-          }
-        },
-        "required": [
-          "current_password"
-        ],
-        "title": "RecoveryExportRequest",
-        "type": "object"
-      },
       "RecoveryReimportItem": {
         "properties": {
           "category": {
@@ -12900,6 +12769,17 @@
               }
             ]
           },
+          "media_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Year"
+          },
           "observations": {
             "items": {
               "additionalProperties": true,
@@ -12918,6 +12798,17 @@
               }
             ],
             "title": "Original Download Client"
+          },
+          "poster_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Ref"
           },
           "previous_reported_path": {
             "anyOf": [
@@ -13257,6 +13148,17 @@
               }
             ]
           },
+          "media_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Year"
+          },
           "original_download_client": {
             "anyOf": [
               {
@@ -13267,6 +13169,17 @@
               }
             ],
             "title": "Original Download Client"
+          },
+          "poster_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Ref"
           },
           "previous_reported_path": {
             "anyOf": [
@@ -15031,6 +14944,53 @@
         ]
       }
     },
+    "/api/v1/backups/coverage": {
+      "get": {
+        "operationId": "coverage_api_v1_backups_coverage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Coverage Api V1 Backups Coverage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Coverage",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/database-copies": {
+      "get": {
+        "description": "The database copies in Drive, newest first, to download by hand if ever needed.",
+        "operationId": "database_copies_api_v1_backups_database_copies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Database Copies Api V1 Backups Database Copies Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Database Copies",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
     "/api/v1/backups/google/callback": {
       "get": {
         "operationId": "google_callback_api_v1_backups_google_callback_get",
@@ -15129,47 +15089,23 @@
         ]
       }
     },
-    "/api/v1/backups/google/snapshots": {
-      "get": {
-        "operationId": "list_snapshots_api_v1_backups_google_snapshots_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Snapshots Api V1 Backups Google Snapshots Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Snapshots",
-        "tags": [
-          "backups"
-        ]
-      }
-    },
-    "/api/v1/backups/recovery-key": {
+    "/api/v1/backups/restore": {
       "post": {
-        "operationId": "generate_recovery_key_api_v1_backups_recovery_key_post",
+        "description": "Fetch every torrent and manifest from Drive into the local archive.\n\nNothing is sent to qBittorrent here; the re-import plan does that once\nconfirmed.",
+        "operationId": "start_restore_api_v1_backups_restore_post",
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Generate Recovery Key Api V1 Backups Recovery Key Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Generate Recovery Key",
+        "summary": "Start Restore",
         "tags": [
           "backups"
         ]
@@ -15177,6 +15113,7 @@
     },
     "/api/v1/backups/run": {
       "post": {
+        "description": "Back up now: changed torrents, and the database whatever its schedule.",
         "operationId": "start_backup_api_v1_backups_run_post",
         "responses": {
           "202": {
@@ -20481,109 +20418,6 @@
         "summary": "Reconciliation Status",
         "tags": [
           "reconciliation"
-        ]
-      }
-    },
-    "/api/v1/recovery/capabilities": {
-      "get": {
-        "operationId": "capabilities_api_v1_recovery_capabilities_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryCapabilitiesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Capabilities",
-        "tags": [
-          "recovery"
-        ]
-      }
-    },
-    "/api/v1/recovery/export": {
-      "post": {
-        "operationId": "start_recovery_export_api_v1_recovery_export_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RecoveryExportRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryExportAcceptedResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Start Recovery Export",
-        "tags": [
-          "recovery"
-        ]
-      }
-    },
-    "/api/v1/recovery/exports/{job_id}/download": {
-      "get": {
-        "operationId": "download_recovery_export_api_v1_recovery_exports__job_id__download_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "job_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Job Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Download Recovery Export",
-        "tags": [
-          "recovery"
         ]
       }
     },

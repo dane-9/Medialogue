@@ -985,3 +985,53 @@ async def run_torrent_archive_restore(
         failure_code="QBITTORRENT_RESTORE_FAILED",
         failure_message="Torrent restore failed.",
     )
+
+
+async def rebuild_catalogue_from_manifests(db: AsyncSession) -> dict[str, Any]:
+    """Add an archive row for every manifest on disk that has none.
+
+    Only the archive is read; no client is contacted. This is how a fresh
+    install learns what a restored (or Drive-fetched) archive holds. A row that
+    exists but lost its archive files is pointed back at them once they verify.
+    """
+
+    root = Path(get_settings().torrent_archive_dir).resolve()
+    imported = skipped = repaired = 0
+    errors: list[dict[str, str]] = []
+    for path in sorted((root / "manifests").glob("*/*.json")):
+        try:
+            if path.is_symlink() or not path.resolve().is_relative_to(root):
+                raise ValueError("Manifest is outside the archive directory")
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            info_hash = str(manifest["torrent_info_hash"]).lower()
+            torrent_path, expected_manifest = archive_paths(info_hash)
+            if expected_manifest.resolve() != path.resolve() or not torrent_path.resolve().is_relative_to(root):
+                raise ValueError("Manifest path does not match its torrent hash")
+            existing = await db.scalar(select(Torrent).where(Torrent.info_hash == info_hash))
+            if existing is not None:
+                if existing.archive_state == TorrentArchiveState.ARCHIVED and verify_torrent_archive(existing)[0]:
+                    skipped += 1
+                    continue
+                candidate = Torrent(info_hash=info_hash, name=existing.name, archive_path=str(torrent_path), manifest_path=str(path))
+                if not verify_torrent_archive(candidate)[0]:
+                    skipped += 1
+                    continue
+                existing.archive_state = TorrentArchiveState.ARCHIVED
+                existing.archive_path = str(torrent_path)
+                existing.manifest_path = str(path)
+                repaired += 1
+                continue
+            torrent = Torrent(info_hash=info_hash, name=str(manifest.get("torrent_name") or info_hash),
+                              archive_state=TorrentArchiveState.ARCHIVED, archive_path=str(torrent_path),
+                              manifest_path=str(path), manifest_schema_version=manifest.get("schema_version"),
+                              metadata_json={"rebuilt_from_archive": True}, tracker_summary={"state": "unknown"})
+            valid, error = verify_torrent_archive(torrent)
+            if not valid:
+                raise ValueError(error)
+            async with db.begin_nested():
+                db.add(torrent)
+                await db.flush()
+            imported += 1
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            errors.append({"manifest": path.name, "error": str(exc)})
+    return {"imported": imported, "skipped": skipped, "repaired": repaired, "errors": errors}

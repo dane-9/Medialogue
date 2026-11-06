@@ -194,6 +194,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backups/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Coverage */
+        get: operations["coverage_api_v1_backups_coverage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/database-copies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Database Copies
+         * @description The database copies in Drive, newest first, to download by hand if ever needed.
+         */
+        get: operations["database_copies_api_v1_backups_database_copies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backups/google/callback": {
         parameters: {
             query?: never;
@@ -245,24 +282,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/backups/google/snapshots": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Snapshots */
-        get: operations["list_snapshots_api_v1_backups_google_snapshots_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/backups/recovery-key": {
+    "/api/v1/backups/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -271,8 +291,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate Recovery Key */
-        post: operations["generate_recovery_key_api_v1_backups_recovery_key_post"];
+        /**
+         * Start Restore
+         * @description Fetch every torrent and manifest from Drive into the local archive.
+         *
+         *     Nothing is sent to qBittorrent here; the re-import plan does that once
+         *     confirmed.
+         */
+        post: operations["start_restore_api_v1_backups_restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -288,7 +314,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start Backup */
+        /**
+         * Start Backup
+         * @description Back up now: changed torrents, and the database whatever its schedule.
+         */
         post: operations["start_backup_api_v1_backups_run_post"];
         delete?: never;
         options?: never;
@@ -1976,57 +2005,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/recovery/capabilities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Capabilities */
-        get: operations["capabilities_api_v1_recovery_capabilities_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/recovery/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start Recovery Export */
-        post: operations["start_recovery_export_api_v1_recovery_export_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/recovery/exports/{job_id}/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Download Recovery Export */
-        get: operations["download_recovery_export_api_v1_recovery_exports__job_id__download_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/recovery/reimport": {
         parameters: {
             query?: never;
@@ -3101,27 +3079,20 @@ export interface components {
         /** BackupSettingsRequest */
         BackupSettingsRequest: {
             /**
+             * Database Interval Seconds
+             * @default 86400
+             */
+            database_interval_seconds: number;
+            /**
              * Enabled
              * @default false
              */
             enabled: boolean;
             /**
-             * Interval Seconds
-             * @default 86400
-             */
-            interval_seconds: number;
-            /**
-             * Keep Daily
+             * Keep Database
              * @default 7
              */
-            keep_daily: number;
-            /**
-             * Keep Weekly
-             * @default 4
-             */
-            keep_weekly: number;
-            /** Recovery Key */
-            recovery_key?: string | null;
+            keep_database: number;
         };
         /** BlocklistBulkDeleteRequest */
         BlocklistBulkDeleteRequest: {
@@ -6193,53 +6164,6 @@ export interface components {
             /** Roots */
             roots: components["schemas"]["ReconciliationRootStatus"][];
         };
-        /** RecoveryCapabilitiesResponse */
-        RecoveryCapabilitiesResponse: {
-            /** Database Backend */
-            database_backend: string;
-            /** Database Path */
-            database_path?: string | null;
-            /** Database Readable */
-            database_readable: boolean;
-            /** Export Directory */
-            export_directory: string;
-            /** Export Directory Writable */
-            export_directory_writable: boolean;
-            /** Reasons */
-            reasons?: string[];
-            /** Retention Hours */
-            retention_hours: number;
-            /** Sqlite Version */
-            sqlite_version?: string | null;
-            /** Supported */
-            supported: boolean;
-            /** Torrent Archive Readable */
-            torrent_archive_readable: boolean;
-        };
-        /** RecoveryExportAcceptedResponse */
-        RecoveryExportAcceptedResponse: {
-            /**
-             * Job Id
-             * Format: uuid
-             */
-            job_id: string;
-            /**
-             * Status
-             * @default queued
-             * @constant
-             */
-            status: "queued";
-            /**
-             * Warning
-             * @default Recovery Bundles contain a complete database backup and sensitive integration credentials. Store the downloaded ZIP securely.
-             */
-            warning: string;
-        };
-        /** RecoveryExportRequest */
-        RecoveryExportRequest: {
-            /** Current Password */
-            current_password: string;
-        };
         /** RecoveryReimportItem */
         RecoveryReimportItem: {
             /** Category */
@@ -7545,12 +7469,16 @@ export interface components {
             /** Media Title */
             media_title?: string | null;
             media_type?: components["schemas"]["MediaType"] | null;
+            /** Media Year */
+            media_year?: number | null;
             /** Observations */
             observations?: {
                 [key: string]: unknown;
             }[];
             /** Original Download Client */
             original_download_client?: string | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
             /** Previous Reported Path */
             previous_reported_path?: string | null;
             /** Previous Resolved Path */
@@ -7658,8 +7586,12 @@ export interface components {
             /** Media Title */
             media_title?: string | null;
             media_type?: components["schemas"]["MediaType"] | null;
+            /** Media Year */
+            media_year?: number | null;
             /** Original Download Client */
             original_download_client?: string | null;
+            /** Poster Ref */
+            poster_ref?: string | null;
             /** Previous Reported Path */
             previous_reported_path?: string | null;
             /** Previous Resolved Path */
@@ -8371,6 +8303,50 @@ export interface operations {
             };
         };
     };
+    coverage_api_v1_backups_coverage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    database_copies_api_v1_backups_database_copies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     google_callback_api_v1_backups_google_callback_get: {
         parameters: {
             query: {
@@ -8447,7 +8423,7 @@ export interface operations {
             };
         };
     };
-    list_snapshots_api_v1_backups_google_snapshots_get: {
+    start_restore_api_v1_backups_restore_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -8457,36 +8433,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    generate_recovery_key_api_v1_backups_recovery_key_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["JobAcceptedResponse"];
                 };
             };
         };
@@ -11985,90 +11937,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReconciliationStatusResponse"];
-                };
-            };
-        };
-    };
-    capabilities_api_v1_recovery_capabilities_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecoveryCapabilitiesResponse"];
-                };
-            };
-        };
-    };
-    start_recovery_export_api_v1_recovery_export_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RecoveryExportRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecoveryExportAcceptedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    download_recovery_export_api_v1_recovery_exports__job_id__download_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

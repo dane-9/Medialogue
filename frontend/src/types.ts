@@ -784,19 +784,6 @@ export interface ScheduledTask {
   activeJobStatus?: JobStatus
 }
 
-export interface RecoveryCapabilities {
-  supported: boolean
-  databaseBackend: string
-  sqliteVersion?: string
-  databasePath?: string
-  databaseReadable: boolean
-  torrentArchiveReadable: boolean
-  exportDirectoryWritable: boolean
-  exportDirectory: string
-  retentionHours: number
-  reasons: string[]
-}
-
 export type RecoveryReimportStatus = 'ready' | 'already_present' | 'blocked'
 
 export interface RecoveryReimportItem {
@@ -858,6 +845,8 @@ export interface TorrentArchiveItem {
   releaseName?: string
   mediaTitle?: string
   mediaType?: 'movies' | 'shows'
+  mediaYear?: number
+  posterRef?: string
   tmdbId?: number
   tvdbId?: number
   quality?: string

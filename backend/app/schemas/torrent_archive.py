@@ -23,6 +23,8 @@ class TorrentArchiveSummary(BaseModel):
     completed_at: datetime | None = None
     media_type: MediaType | None = None
     media_title: str | None = None
+    media_year: int | None = None
+    poster_ref: str | None = None
     tmdb_id: int | None = None
     tvdb_id: int | None = None
     release_name: str | None = None

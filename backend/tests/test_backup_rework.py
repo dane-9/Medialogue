@@ -6,57 +6,19 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
-import zipfile
 
 import httpx
 import pytest
-from cryptography.exceptions import InvalidTag
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from app.db.base import Base
 from app.models.domain import MediaType, Torrent, TorrentClientObservation, TorrentTrackerObservation
-from app.services.backup_crypto import new_recovery_key, encrypt_backup, decrypt_backup
-from app.services.remote_backups import DriveBackups, retained_ids
 from app.services.torrent_archive import manifest_for_client, recovery_file_priorities, recovery_revision
 from app.services.replacements import lost_sources, releases_without_any_healthy_source
 from app.services.upgrade_candidates import CurrentReleaseEvidence, UpgradeTarget, _score_candidate
 from app.services.search import SearchTarget
 from app.integrations.torznab import SearchResult
 from tests.test_part17_recovery import recovery_env, login_headers
-
-
-def test_encryption_is_portable_and_rejects_wrong_key_and_tampering(tmp_path):
-    source = tmp_path / "snapshot.zip"
-    source.write_bytes(b"credentials and torrent data" * 100000)
-    encrypted = tmp_path / "snapshot.mlbackup"
-    key = new_recovery_key()
-    encrypt_backup(source, encrypted, key)
-    assert b"credentials" not in encrypted.read_bytes()
-    restored = tmp_path / "restored.zip"
-    decrypt_backup(encrypted, restored, key)
-    assert restored.read_bytes() == source.read_bytes()
-    for bad_key, mutate in [(new_recovery_key(), False), (key, True)]:
-        if mutate:
-            payload = bytearray(encrypted.read_bytes()); payload[80] ^= 1; encrypted.write_bytes(payload)
-        output = tmp_path / "untrusted.zip"
-        with pytest.raises(InvalidTag):
-            decrypt_backup(encrypted, output, bad_key)
-        assert not output.exists()
-        assert not output.with_name("untrusted.zip.decrypting").exists()
-    original = encrypted.read_bytes()
-    with pytest.raises(FileExistsError):
-        encrypt_backup(source, encrypted, key)
-    assert encrypted.read_bytes() == original
-
-
-def test_retention_keeps_daily_and_weekly_points_without_emptying_backup_set():
-    now = datetime(2026, 9, 8, tzinfo=timezone.utc)
-    rows = [{"id": str(i), "createdTime": (now - timedelta(days=i)).isoformat()} for i in range(60)]
-    keep = retained_ids(rows, 7, 4)
-    assert {str(i) for i in range(7)} <= keep
-    assert "0" in keep
-    assert 7 <= len(keep) <= 11
-    assert "59" not in keep
 
 
 def test_client_file_selections_remain_distinct_and_coverage_ignores_progress():
@@ -73,38 +35,6 @@ def test_client_file_selections_remain_distinct_and_coverage_ignores_progress():
     assert recovery_revision(manifest) == before
     manifest["client_recovery"][a]["files"][0]["priority"] = 1
     assert recovery_revision(manifest) != before
-
-
-@pytest.mark.asyncio
-async def test_google_upload_resumes_after_network_interruption(tmp_path, monkeypatch):
-    path = tmp_path / "snapshot.mlbackup"
-    path.write_bytes(b"x" * (5 * 1024 * 1024))
-    drive = DriveBackups("token")
-    await drive.client.aclose()
-    calls = []
-    interrupted = False
-    def handler(request):
-        nonlocal interrupted
-        calls.append(request.headers.get("Content-Range"))
-        if request.method == "POST":
-            return httpx.Response(200, headers={"Location": "https://www.googleapis.com/upload/session"})
-        if request.headers["Content-Range"].startswith("bytes */"):
-            return httpx.Response(308, headers={"Range": "bytes=0-4194303"})
-        if not interrupted:
-            interrupted = True
-            raise httpx.ReadError("lost response", request=request)
-        return httpx.Response(200, json={"id": "uploaded"})
-    drive.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    async def folder(): return "folder"
-    async def no_sleep(_): pass
-    monkeypatch.setattr(drive, "folder", folder)
-    monkeypatch.setattr("app.services.remote_backups.read_backup_settings", lambda: {"instance_id": "test"})
-    monkeypatch.setattr("app.services.remote_backups.asyncio.sleep", no_sleep)
-    try:
-        assert (await drive.upload(path, "snapshot"))["id"] == "uploaded"
-        assert calls[-1] == f"bytes 4194304-{path.stat().st_size - 1}/{path.stat().st_size}"
-    finally:
-        await drive.close()
 
 
 @pytest.mark.asyncio
@@ -179,116 +109,6 @@ def test_replacement_allows_equivalent_but_blocks_quality_score_edition_and_hash
     expensive = replace(evidence, custom_format_score=20)
     assert score(t=replace(target, reference=expensive, releases=(expensive,)),
                  r=replace(result, title="Movie.2024.2160p.WEB-DL-GRP")) is None
-
-
-def test_restore_staging_rejects_zip_traversal_and_preserves_destination(tmp_path):
-    from scripts.restore_backup import stage_restore
-    archive = tmp_path / "bad.zip"
-    with zipfile.ZipFile(archive, "w") as bundle:
-        bundle.writestr("../escaped", "bad")
-    with pytest.raises(ValueError, match="Unsafe"):
-        stage_restore(archive, tmp_path / "restored")
-    assert not (tmp_path / "escaped").exists()
-    assert not (tmp_path / "restored").exists()
-
-
-def _archive_fixture(root):
-    info_hash = "ab" + "c" * 38
-    payload = b"d4:infod4:name7:exampleee"
-    manifest = {"schema_version": 1, "torrent_info_hash": info_hash, "torrent_name": "Example",
-        "archive": {"torrent_sha256": hashlib.sha256(payload).hexdigest()},
-        "recovery": {"properties": {}, "files": [{"index": 0, "priority": 0}], "trackers": []},
-        "media_associations": [{"media_type": "movies", "title": "Example"}]}
-    torrent = root / "torrents/ab" / f"{info_hash}.torrent"
-    metadata = root / "manifests/ab" / f"{info_hash}.json"
-    torrent.parent.mkdir(parents=True, exist_ok=True); metadata.parent.mkdir(parents=True, exist_ok=True)
-    torrent.write_bytes(payload); metadata.write_text(json.dumps(manifest))
-    return info_hash
-
-
-def test_fresh_database_rebuilds_catalogue_without_inventing_live_presence(recovery_env):
-    client, settings, root = recovery_env
-    headers = login_headers(client)
-    info_hash = _archive_fixture(Path(settings.torrent_archive_dir))
-    response = client.post("/api/v1/torrent-archive/rebuild", headers=headers)
-    assert response.status_code == 200, response.text
-    assert response.json() == {"imported": 1, "skipped": 0, "errors": []}
-    rows = client.get("/api/v1/torrent-archive").json()["items"]
-    assert rows[0]["info_hash"] == info_hash
-    assert rows[0]["archive_verified"] is True
-    assert rows[0]["qbit_present"] is False
-    assert rows[0]["source_state"] == "unknown"
-    assert rows[0]["media_title"] == "Example"
-    assert client.post("/api/v1/torrent-archive/rebuild", headers=headers).json()["skipped"] == 1
-
-
-def test_remote_backup_roundtrip_and_failed_verification_preserve_previous_backup(recovery_env, monkeypatch):
-    from app.db import session as db_session
-    from app.models.domain import Job, JobStatus
-    from app.services.jobs import create_job
-    from app.services import remote_backups as remote
-    from scripts.restore_backup import stage_restore
-    client, settings, root = recovery_env
-    headers = login_headers(client)
-    info_hash = _archive_fixture(Path(settings.torrent_archive_dir))
-    key = new_recovery_key()
-    remote.update_backup_settings({"recovery_key": key, "refresh_token": "test-refresh-token"})
-    saved = root / "remote.mlbackup"
-    operations = []
-    bad_checksum = False
-    class FakeDrive:
-        def __init__(self, token): pass
-        async def close(self): pass
-        async def upload(self, path, snapshot_id):
-            saved.write_bytes(path.read_bytes())
-            return {"id": "new-snapshot"}
-        async def request(self, method, url, **kwargs):
-            operations.append((method, kwargs))
-            return httpx.Response(200, json={"id": "new-snapshot", "size": str(saved.stat().st_size),
-                "sha256Checksum": "wrong" if bad_checksum else hashlib.sha256(saved.read_bytes()).hexdigest(),
-                "appProperties": {"instance": remote.read_backup_settings()["instance_id"]}})
-        async def list(self): return []
-    async def token(): return "test-access-token"
-    monkeypatch.setattr(remote, "DriveBackups", FakeDrive)
-    monkeypatch.setattr(remote, "access_token", token)
-    async def run():
-        async with db_session.async_session_factory() as db:
-            job = await create_job(db, "remote_backup", cancellable=False)
-            await db.commit(); job_id = job.id
-        await remote.run_remote_backup(job_id)
-        async with db_session.async_session_factory() as db:
-            job = await db.get(Job, job_id)
-            return job.status
-    assert asyncio.run(run()) == JobStatus.COMPLETED
-    assert remote.read_backup_settings()["coverage"][info_hash]
-    destination = root / "restored"
-    metadata = stage_restore(saved, destination, key)
-    assert metadata["recovery_schema_version"] == 1
-    assert (destination / "database/medialogue.db").is_file()
-    assert (destination / "torrent-archive/torrents/ab" / f"{info_hash}.torrent").is_file()
-    assert not list(Path(settings.recovery_export_dir).glob("*.zip"))
-    # Automatic export children cannot bypass the manual-export password gate.
-    async def export_id():
-        from sqlalchemy import select
-        async with db_session.async_session_factory() as db:
-            return await db.scalar(select(Job.id).where(Job.job_type == "recovery_export").limit(1))
-    assert client.get(f"/api/v1/recovery/exports/{asyncio.run(export_id())}/download").status_code == 409
-    previous = remote.read_backup_settings()["last_success_at"]
-    operations.clear(); bad_checksum = True
-    assert asyncio.run(run()) == JobStatus.FAILED
-    assert remote.read_backup_settings()["last_success_at"] == previous
-    assert not any(method == "PATCH" for method, _ in operations)
-
-
-def test_backup_key_endpoint_requires_authentication_and_is_not_cached(recovery_env):
-    client, _, _ = recovery_env
-    assert client.post("/api/v1/backups/recovery-key").status_code == 401
-    headers = login_headers(client)
-    assert client.post("/api/v1/backups/recovery-key").status_code == 403
-    response = client.post("/api/v1/backups/recovery-key", headers=headers)
-    assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
-    assert "recovery_key" not in client.get("/api/v1/backups/status").json()
 
 
 def test_replacement_queue_search_review_and_submission_share_existing_execution(recovery_env):

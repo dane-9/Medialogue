@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 ACTIVE_STATES = (JobStatus.QUEUED, JobStatus.RUNNING)
 DEFAULT_SCHEDULES = {
     "search_media_replacements": {"name": "Search for Media Replacements", "description": "Finds equivalent or better releases for confirmed lost tracker sources. Never downloads automatically.", "interval_seconds": 86400, "interval_options": [21600, 43200, 86400, 604800], "configurable": True, "enabled": False},
-    "remote_backup": {"name": "Back Up to Google Drive", "description": "Creates and verifies an encrypted recovery snapshot in Google Drive.", "interval_seconds": 86400, "interval_options": [3600, 21600, 43200, 86400, 604800], "configurable": True, "enabled": False},
+    "remote_backup": {"name": "Back Up to Google Drive", "description": "Copies new and changed torrents to Google Drive, and the database on its own schedule.", "interval_seconds": 600, "interval_options": [300, 600, 1800, 3600], "configurable": True, "enabled": False},
     "integration_health_sweep": {
         "name": "Check Integration Health",
         "description": "Checks configured integrations and media-folder availability.",
@@ -118,6 +118,11 @@ async def ensure_default_schedules(db: AsyncSession) -> None:
             ))
         else:
             schedule.settings = {**dict(schedule.settings or {}), "name": definition["name"]}
+            # Backups used to run daily; torrents now go up within minutes.
+            if job_type == "remote_backup" and schedule.expression not in {str(value) for value in definition["interval_options"]}:
+                schedule.expression = str(definition["interval_seconds"])
+                if schedule.enabled:
+                    schedule.next_run_at = now + timedelta(seconds=int(definition["interval_seconds"]))
             if schedule.enabled and schedule.next_run_at is None:
                 schedule.next_run_at = now + timedelta(seconds=int(definition["interval_seconds"]))
     await db.flush()
