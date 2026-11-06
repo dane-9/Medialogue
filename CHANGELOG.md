@@ -1,92 +1,14 @@
-## SQLite-only persistence
-
-- Replace the PostgreSQL service and `asyncpg` runtime with one file-backed SQLite database at `/config/medialogue.db`.
-- Enable foreign keys, WAL journaling, a 30-second busy timeout, and `NORMAL` synchronous mode on application connections.
-- Replace `pg_basebackup` Recovery Bundles with SQLite online backups that are integrity-checked before packaging.
-- Remove PostgreSQL container tooling, credentials, CI coverage, frontend capability fields, and operator instructions.
-- This is an intentionally fresh database baseline; existing PostgreSQL data is not imported.
-
-## v9 qBittorrent connection stability hotfix
-
-- Prevent the qBittorrent authentication socket from being reused for the first API read, avoiding stale post-login keep-alive sockets after HTTP 204 login responses.
-- Retry idempotent qBittorrent GET/HEAD requests once on transient protocol/network disconnects such as `Server disconnected without sending a response`; mutating POST actions are never automatically retried.
-- Change the default polling interval for newly created qBittorrent clients from 15 seconds to 30 seconds. Explicitly configured existing intervals remain unchanged.
-
-## v9 file-backed integration configuration
-
-- Fixed qBittorrent 5.2+ authentication: HTTP 204 No Content is now accepted as a successful WebAPI login, while retaining legacy 200/`Ok.` support.
-
-- Make `/config/medialogue.json` the source of truth for Plex, TMDB, qBittorrent-client, and indexer settings.
-- Store Plex tokens, TMDB/indexer API keys, and qBittorrent passwords only in `/config/secrets.enc`, encrypted with AES-GCM using a key derived from `MEDIALOGUE_SECRET_KEY`.
-- Reduce the corresponding PostgreSQL tables to runtime health/reference state only; connection URLs, usernames, scopes, enabled flags, polling intervals, and credentials are no longer database columns.
-- Intentionally provide **no legacy database import/migration path** for these settings. This build targets a fresh PostgreSQL database; configure integrations normally through the UI.
-- Include both the file-backed configuration and encrypted live config files in Recovery Bundles.
-
-## v9 operations/root initialization hotfix
-
-- Remove the global **Active Operations** toggle. Explicit destructive preview/confirmation safeguards remain unchanged.
-- Require every newly added storage root to complete one explicit **Initialize & scan** before global reconciliation or qBittorrent filesystem reconciliation can use it.
-- Use the existing durable `last_scan_at` marker, so a failed or cancelled first scan leaves the root uninitialized and inert.
-- Surface uninitialized roots in Storage settings and refresh their state automatically when the initialization job finishes.
-
-## v9 movie-detail and publishing hotfix
-
-- Fix every Movie detail request failing with HTTP 500 because `poster_ref` was passed twice while constructing `MovieDetailResponse`.
-- Remove the typed `PUBLISH` confirmation input from the manual GHCR workflow; clicking **Run workflow** remains the explicit publish action.
-- Keep Show detail unchanged after regression coverage confirmed it does not share the Movie response-construction bug.
-
-## v9 fresh baseline and library usability
-
-- Squash development database history to one clean-install Alembic revision (`0001`); incompatible pre-v9 databases are intentionally not supported.
-- Add safe storage-root removal. Removing a configured root detaches retained inventory evidence and never deletes media.
-- Add individual and bulk Problem deletion plus server-side Problem pagination/filtering, fixing the UI's first-50-only behavior on large queues; deletion updates the sidebar count live.
-- Add individual and bulk Event History deletion plus pagination.
-- Add read-only Plex library snapshot verification, including correct Plex Episode (`type=4`) enumeration for TV libraries, an explicit full-library sync job, and automatic root-scoped verification after manual storage scans. Medialogue still never triggers Plex scans.
-- Render TMDB poster artwork on Movie/Show cards, tables, and detail views; Movie list responses now retain `poster_ref`.
-- Add regression coverage for fresh-schema creation, root removal, large Problem queues, history deletion, and Plex library snapshots.
-
-## v8 runtime migration hotfix
-
-- Widen PostgreSQL `alembic_version.version_num` from 32 to 128 characters before applying revision 0011.
-- Add regression checks for descriptive Alembic revision identifiers.
-
 # Changelog
 
-## Runtime stability fixes (v7)
+## Unreleased: first release
 
-- Fixed storage-root scans remaining visibly queued and made Job cancellation durable/live.
-- Removed authenticated GET session writes that caused database contention.
-- Separated qBittorrent connectivity health from Medialogue torrent-processing failures.
-- Added per-torrent database SAVEPOINT isolation so one bad torrent does not stop the rest of a client poll.
-- Added persistent qBittorrent health diagnostics and migration `0011_download_client_health_diagnostics`.
-- Fixed Custom Formats crashing on plain LAN HTTP when `crypto.randomUUID()` is unavailable.
-- Added a page-level React error boundary.
-- Replaced high-frequency full Problems-list refreshes with a lightweight count endpoint plus SSE count updates.
-- Disabled production Uvicorn access logs by default; opt in with `MEDIALOGUE_ACCESS_LOG=1`.
+The first public release of Medialogue.
 
-## 0.1.0
-
-Initial integrated Medialogue build covering the v1 roadmap through packaging/release readiness:
-
-- leave-in-place Movie and Show inventory;
-- TMDB identity and Plex secondary verification;
-- multiple qBittorrent clients and torrent recovery archive;
-- replacement/duplicate reconciliation;
-- interactive Prowlarr/Torznab search;
-- Custom Formats and Quality Profiles;
-- season packs and multi-episode mapping;
-- Problems, Jobs, SSE, Events, Recovery Bundle export;
-- Movie tags and bulk administration;
-- first-run setup checklist and Docker release packaging.
-
-## Deployment fix
-
-- Force `/usr/local/bin/medialogue-entrypoint` to mode `0755` during Docker build so Git/ZIP/Windows file-mode loss cannot make the container fail with `permission denied`.
-- Force shell scripts to LF line endings in Git.
-- CI now verifies the built container entrypoint is executable before booting the smoke-test stack.
-## Deployment fix v4
-
-- Restrict setuptools package discovery to `app*` only. The `backend/alembic/` migration directory and `tests/` are no longer installed into Python site-packages.
-- Prevent a stale `backend/alembic/__init__.py` from colliding with the real Alembic dependency.
-- Docker builds now fail immediately if the real Alembic import/CLI is broken.
-- Manual GHCR publishing now builds and validates the image locally before any tag is pushed.
+- **Library:** Movies and Shows read from existing media folders, matched with TMDB and verified against Plex. Media is never moved, renamed or deleted by scanning.
+- **New Media:** review newly found folders, confirm their matches and Quality Profiles, and add them.
+- **Upgrade Media** and **Replace Media:** find better releases, or new sources for torrents removed by their trackers, compare them by quality and Custom Format score, and hand them to qBittorrent with validation and cleanup.
+- **Downloads** and **Blocklist:** live qBittorrent activity, and failed releases kept out of future searches.
+- **Problems:** one queue for media evidence that needs a decision.
+- **Backups:** every torrent archived with where it downloaded to, copied to Google Drive, and restorable on a new server from the uploaded backup.
+- **Custom Formats**, **Quality Profiles**, **Tasks**, **Events** and **Settings** for Media folders, qBittorrent, TMDB, Plex, Torznab indexers and security.
+- One SQLite database in `/config`, with migrations applied on start, shipped as a Docker image.

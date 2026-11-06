@@ -1,68 +1,48 @@
 # Replace Media
 
-**Replace Media** is a repair queue for torrents whose trackers repeatedly report
-terminal errors such as “unregistered torrent” or “torrent deleted.” It shares
-candidate comparison and download handoff code with Upgrade Media, but an
-equivalent release is eligible even when it provides no quality or CF upgrade.
+**Replace Media** finds a new source for media whose torrents were removed by their trackers, such as an "unregistered torrent" or "torrent deleted" message. It shares candidate comparison and download handoff with Upgrade Media, but an equivalent release qualifies even when it is no upgrade.
 
-Cross-seeded releases are evaluated as one payload: failure of one torrent or
-tracker is retained as member-level evidence but does not create a replacement
-target while any other associated torrent source remains usable or uncertain.
+## When a title appears here
 
-## Detection
+Every recently observed qBittorrent client must report only confirmed terminal tracker errors for the torrent, and both the tracker evidence and the client observations must be from the last two hours. Timeouts, authentication failures, a client that was not inspected, and archived-only torrents never count. Connected peers may still transfer data; losing the tracker is the loss of that discovery source, not proof the download is impossible.
 
-Every recently observed live client must have exclusively confirmed terminal
-tracker endpoints. Endpoint evidence and live observations must be within two
-hours. Timeouts, authentication failures, uninspected clients, and archived-only
-torrents do not establish source removal. Existing connected peers may still
-transfer data; tracker removal is a loss of that discovery source, not proof
-that all downloads have become impossible.
+Cross-seeded releases are judged as one payload: a title appears only when **every** torrent of the release has lost its source. One tracker dropping a cross-seed while another still works does not list it.
 
-The queue groups affected movie releases and show seasons, distinguishes current
-media from missing media, and identifies another recently working associated
-source when known. Unidentified or unscorable torrents remain visible with a
-blocking explanation. Show replacement currently uses season packs and retains
-the existing aired-season and coverage guards. Resolve unknown identity/quality
-before searching; title/year/edition checks fail closed on mismatches.
+A title with a lost source belongs to Replace Media, not Upgrade Media: its search accepts anything equal or better, so a better release arrives as the replacement. Upgrade Media hides it unless an upgrade is already running for it. Ignoring it in Replace Media hands it back to Upgrade Media.
 
-## Finding and choosing a replacement
+## The page
 
-Use **Search** on one row, or **Search replacements** for the visible queue.
-Optionally enable **Search for Media Replacements** in Tasks for recurring
-searches. Searches never start downloads. Snoozed and ignored issues are excluded
-from bulk scheduled searches; the queue can reveal them and return them to review.
+Rows are grouped by media folder, under four tabs:
 
-Candidates must match the intended title, movie year and edition or show season,
-meet the assigned profile's quality/CF minimums, maintain or improve current
-quality, and have a CF score at least as high as every replaced release evaluated
-under the current profile. Known zero-seeder results are excluded; unknown seeder
-counts are shown as unknown. Existing torrent hashes are excluded when visible
-in magnets and checked again after fetching a torrent file, before submission.
+- **All**: every title with a lost source that is not ignored;
+- **In progress**: replacements downloading or being validated, with progress, speed and ETA;
+- **Needs attention**: replacements waiting for a decision, and failed attempts with their reason;
+- **Ignored**: titles you set aside. **Return to queue** brings one back.
 
-**Review replacement** displays the current release, candidate score, source,
-reported seeders, matched formats, and alternate results. Choose a qBittorrent
-client and confirm the download. Eligibility and profile state are revalidated
-before submission; another active upgrade/replacement for the same release
-blocks a competing submission. Unknown or lower-scoring results are not silently
-accepted. If nothing qualifies, the issue stays available for a later search.
+Each row shows why it is here: a red **Indexer** pill naming the tracker, the tracker's message, and when it last worked. Hover the pill to see every tracker of the torrent with its state. Beside it are the current release and the best replacement found, with their Custom Format scores (hover a score for the breakdown under the title's Quality Profile), size, size change and seeders.
 
-## Completion and cleanup
+**History** lists finished replacements: what was replaced, by what, and how it ended.
 
-The previous torrent, archive, and media are preserved during downloading and
-validation. The replacement must become the validated media association and
-have a verified local recovery archive. Show handoff verifies episode coverage.
+## Finding a replacement
 
-After validation, choose independently:
+Use **Search** on a row, or **Search all**. **Search for Media Replacements** in **Tasks** can search on a schedule; ignored titles are left out. Searches never start downloads.
 
-- **Retire old torrents** to remove only the old qBittorrent entries, keeping
-  downloaded files and torrent archives.
-- **Review file cleanup** to preview and confirm filesystem deletion. This is
-  blocked while old torrent entries are still present and retains the existing
-  writable-root, shared-file, replacement-presence, and signed-preview checks.
-- **Keep old media and finish** to close the workflow while retaining old data
-  and any old torrent entries.
+A candidate must match the title, the movie's year and edition or the show's season, meet the Quality Profile's quality and Custom Format minimums, keep or improve the current quality, and score at least as high as every release it replaces under the current profile. Results known to have no seeders are left out. Torrents already in the library are excluded by hash, checked again after the torrent file is fetched.
 
-Replacement history is retained through the candidate and torrent records.
-Reusing existing files with a different torrent via recheck is deferred. Google
-Drive backup coverage and tracker availability remain separate statuses: a
-verified cloud snapshot cannot guarantee that a tracker will keep a release.
+Show replacements use season packs and keep the aired-season and episode-coverage checks.
+
+## Downloading
+
+Select rows and choose **Download**. Pick the qBittorrent client for movies and for shows, then confirm. Each replacement is submitted on its own: one that is rejected is reported by title and does not stop the rest. Eligibility and the profile are checked again before submission, and another running upgrade or replacement for the same release blocks a second one.
+
+## Finishing
+
+The old torrent, its archive and the media stay untouched while the replacement downloads and is validated. The replacement must become the title's validated release and have its torrent archived. For shows, episode coverage is checked.
+
+Once validated, **Resolve** offers:
+
+- **Retire old torrents**: remove only the old qBittorrent entries, keeping their files;
+- **Delete old files**: preview and confirm deleting the old media. This needs the old torrent entries removed first, a writable media folder, and checks that no other release uses the files;
+- **Keep and finish**: close it and keep the old media, torrents and backups.
+
+A failed attempt appears under **Needs attention** with its reason, and can be started again.

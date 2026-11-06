@@ -1,5 +1,7 @@
 # System Status
 
+> **Proposal, not built.** This describes a planned Status page. None of it exists in Medialogue yet, including the status codes below.
+
 ## Purpose
 
 Medialogue should have a dedicated **Status** page for application-wide health. It belongs in the System navigation beside Tasks, Events, and Settings.
@@ -129,7 +131,7 @@ An optional integration that is disabled is not unhealthy. For example, disabled
 | `REMOTE_MAPPING_ORPHANED_CLIENT` | A mapping refers to a qBittorrent client that no longer exists. | Warning | Edit or remove the mapping. |
 | `REMOTE_MAPPING_ORPHANED_ROOT` | A mapping was scoped to a removed media folder. | Warning | Edit or remove the mapping. |
 | `APP_DATA_NOT_WRITABLE` | Medialogue cannot write its application-data directory. | Error | Show the affected path and documentation link. |
-| `TORRENT_ARCHIVE_UNAVAILABLE` | The configured torrent archive cannot be read or written. | Error when archive protection is required; otherwise Warning. | Open archive/recovery settings. |
+| `TORRENT_ARCHIVE_UNAVAILABLE` | The configured torrent archive cannot be read or written. | Error when archive protection is required; otherwise Warning. | Open Backups. |
 | `LOW_APPLICATION_DISK_SPACE` | Free space for application data or the archive is below a safe threshold. | Warning, escalating to Error at a critical threshold. | Show the affected volume. |
 
 Media-folder access checks must respect Medialogue's configured access mode. A read-only media folder is healthy when it can be read; it must not be reported unhealthy merely because it is not writable.
