@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir -r requirements.lock \
     && python -c "import alembic; from alembic.config import main; assert getattr(alembic, '__version__', None); print('Alembic', alembic.__version__)" \
     && alembic --version \
     && test "$(alembic heads | grep -c '(head)')" -eq 1 \
-    && alembic heads | grep -q '^0002 (head)$' \
+    && alembic heads | grep -q '^0001 (head)$' \
     && test -x /usr/local/bin/medialogue-entrypoint \
     && mkdir -p /config /torrent-archive \
     && chown -R appuser:appuser /app /config /torrent-archive

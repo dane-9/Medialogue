@@ -75,6 +75,7 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
         } <= tables
     assert "media_discoveries" in tables
     assert "confirmation_nonces" in tables
+    assert "release_blocklist" in tables
     assert "discovery_mode" in storage_root_columns
     assert {
         "last_health_checked_at",
@@ -133,26 +134,18 @@ def test_upgrade_head_offline_sql_generation_succeeds() -> None:
     assert "CREATE TABLE plex_configurations" in completed.stdout
     assert "INSERT INTO alembic_version" in completed.stdout
     assert "'0001'" in completed.stdout
-    assert "'0002'" in completed.stdout
 
 
 def test_migration_history_is_the_single_fresh_baseline() -> None:
     backend_dir = _backend_dir()
     versions_dir = backend_dir / "alembic" / "versions"
     migrations = sorted(path for path in versions_dir.glob("*.py") if path.name != "__init__.py")
-    assert [path.name for path in migrations] == [
-        "0001_fresh_baseline.py",
-        "0002_confirmation_nonces.py",
-        "0003_release_blocklist.py",
-    ]
+    assert [path.name for path in migrations] == ["0001_fresh_baseline.py"]
 
     source = migrations[0].read_text(encoding="utf-8")
     assert 'revision = "0001"' in source
     assert "down_revision = None" in source
     assert "Base.metadata.create_all" in source
-    nonce_migration = migrations[1].read_text(encoding="utf-8")
-    assert 'revision = "0002"' in nonce_migration
-    assert 'down_revision = "0001"' in nonce_migration
 
 
 def test_online_sqlite_migrations_use_installed_aiosqlite_driver() -> None:

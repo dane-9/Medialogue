@@ -3,9 +3,8 @@
 Revision ID: 0001
 Revises: None
 
-Medialogue currently targets clean-install development.  The user explicitly
-prefers wiping the application database between incompatible builds, so the
-migration history is intentionally squashed to the current SQLAlchemy model.
+The whole schema, created from the current SQLAlchemy models. Later schema
+changes are added as revisions on top of this one.
 """
 
 from alembic import op
