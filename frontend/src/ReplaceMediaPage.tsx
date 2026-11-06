@@ -9,7 +9,7 @@ import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
 import { useConfirm } from './components/Confirm'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
-import { PosterImage } from './pages'
+import { tmdbPosterUrl } from './pages'
 import { formatAge } from './lib/age'
 import { badgeColor } from './lib/badgeColor'
 import { diffReleaseTokens } from './lib/releaseTokens'
@@ -22,22 +22,12 @@ import type { DownloadClient, UpgradeSearchResults } from './types'
 
 const SEARCH_JOB = 'search_media_replacements'
 
-const TABS: { value: ReplacementTab; label: string; icon: 'search' | 'check' | 'download' | 'clock'; noun: string }[] = [
-  { value: 'needs_search', label: 'Needs search', icon: 'search', noun: 'title' },
-  { value: 'found', label: 'Replacement found', icon: 'check', noun: 'replacement' },
-  { value: 'in_progress', label: 'In progress', icon: 'download', noun: 'replacement' },
-  { value: 'dismissed', label: 'Snoozed & ignored', icon: 'clock', noun: 'title' },
+const TABS: { value: ReplacementTab; label: string; icon: 'search' | 'check' | 'download' | 'clock'; tone: string; noun: string; empty: string }[] = [
+  { value: 'needs_search', label: 'Needs search', icon: 'search', tone: 'amber', noun: 'title', empty: 'Nothing is waiting for a search.' },
+  { value: 'found', label: 'Replacement found', icon: 'check', tone: 'ok', noun: 'title', empty: 'No replacements are waiting for review.' },
+  { value: 'in_progress', label: 'In progress', icon: 'download', tone: 'blue', noun: 'title', empty: 'No replacements are downloading or being verified.' },
+  { value: 'dismissed', label: 'Snoozed & ignored', icon: 'clock', tone: 'neutral', noun: 'title', empty: 'Nothing is snoozed or ignored.' },
 ]
-
-const EMPTY: Record<ReplacementTab, { title: string; detail: string }> = {
-  needs_search: {
-    title: 'Nothing needs replacing',
-    detail: 'Media appears here when every torrent behind it has been removed by its tracker (for example "unregistered torrent"). A cross-seed that still works keeps media off this list.',
-  },
-  found: { title: 'No replacements waiting', detail: 'Searches that find an equivalent or better release list it here for review. Nothing is downloaded automatically.' },
-  in_progress: { title: 'No replacements in progress', detail: 'A replacement you start is tracked here while it downloads, is verified, and the old copy is retired.' },
-  dismissed: { title: 'Nothing snoozed or ignored', detail: 'Snoozed titles return after 7 days. Ignored titles stay out of the queue and scheduled searches until you return them.' },
-}
 
 function stateLabel(state?: string | null) {
   switch (state) {
@@ -57,13 +47,26 @@ function stateTone(state?: string | null): 'neutral' | 'green' | 'amber' | 'red'
   return 'neutral'
 }
 
-/** Why a row has no replacement yet, in the replacement column. */
-function missingReason(item: ReplacementItem) {
-  if (item.blocked_reason) return item.blocked_reason
-  if (item.searching) return 'Searching indexers…'
-  if (item.last_search_result === 'no_match') return `Nothing equivalent or better · searched ${formatAge(item.last_searched_at)}`
-  if (item.last_search_result === 'failed') return `Every indexer failed · ${formatAge(item.last_searched_at)}`
-  return 'Not searched yet'
+/** One short chip for the right-hand column, the row's single most useful fact. */
+function rowChip(item: ReplacementItem): { label: string; tone: string } | null {
+  if (item.blocked_reason) return { label: 'Needs identity', tone: 'amber' }
+  if (item.searching) return { label: 'Searching', tone: 'blue' }
+  if (item.execution_state === 'handoff_attention') return { label: 'Needs attention', tone: 'red' }
+  if (item.execution_state === 'cleanup_required') return { label: 'Verified', tone: 'ok' }
+  if (item.candidate_title) {
+    const better = (item.candidate_score ?? 0) > (item.current_score ?? 0) || (item.candidate_quality && item.candidate_quality !== item.current_quality)
+    return better ? { label: 'Better', tone: 'ok' } : { label: 'Equivalent', tone: 'blue' }
+  }
+  if (item.last_search_result === 'no_match') return { label: 'No match', tone: 'amber' }
+  if (item.last_search_result === 'failed') return { label: 'Search failed', tone: 'red' }
+  return { label: 'Not searched', tone: 'neutral' }
+}
+
+function Poster({ item, large = false }: { item: ReplacementItem; large?: boolean }) {
+  const src = tmdbPosterUrl(item.poster_ref ?? undefined)
+  return <span className={large ? 'upgrade-details-poster' : 'new-media-poster'}>{src
+    ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" />
+    : <Icon name={item.media_type === 'shows' ? 'tv-screen' : 'clapper'} size={large ? 22 : 16} />}</span>
 }
 
 export default function ReplaceMediaPage() {
@@ -73,17 +76,17 @@ export default function ReplaceMediaPage() {
   const [tab, setTab] = useState<ReplacementTab>('needs_search')
   const [tabChosen, setTabChosen] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [selectedKey, setSelectedKey] = useState('')
   const [clients, setClients] = useState<DownloadClient[]>([])
+  const [selectedClient, setSelectedClient] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [bulkProgress, setBulkProgress] = useState<number | null>(null)
-  const [review, setReview] = useState<ReplacementItem | null>(null)
   const [results, setResults] = useState<UpgradeSearchResults | null>(null)
-  const [selectedResultId, setSelectedResultId] = useState('')
-  const [selectedClient, setSelectedClient] = useState('')
-  const [finishing, setFinishing] = useState<ReplacementItem | null>(null)
+  const [fullList, setFullList] = useState(false)
+  const [fullSelectedId, setFullSelectedId] = useState('')
 
   const load = async () => {
     try {
@@ -92,7 +95,6 @@ export default function ReplaceMediaPage() {
       const nextCounts = queue.counts as Record<ReplacementTab, number>
       setCounts(nextCounts)
       setClients(configured)
-      // Open on the first status that has something, until the user picks one.
       if (!tabChosen) {
         const first = TABS.find((entry) => nextCounts[entry.value] > 0)
         if (first) setTab(first.value)
@@ -104,8 +106,7 @@ export default function ReplaceMediaPage() {
   const loadRef = useRef(load)
   loadRef.current = load
 
-  // Live: search progress, handoff state and tracker changes refresh the list;
-  // nothing waits on a blocking request.
+  // Live: search progress, handoff state and tracker changes refresh the list.
   useEffect(() => {
     void loadRef.current()
     let timer: number | undefined
@@ -140,6 +141,7 @@ export default function ReplaceMediaPage() {
   }
 
   const rows = useMemo(() => items.filter((item) => item.tab === tab), [items, tab])
+  const selected = rows.find((item) => item.target_key === selectedKey) ?? null
   const chosen = rows.filter((item) => picked.has(item.target_key))
   const searchable = (item: ReplacementItem) => (item.tab === 'needs_search' || item.tab === 'found') && !item.blocked_reason
   const dismissable = (item: ReplacementItem) => (item.torrent_ids ?? []).length > 0 && item.tab !== 'in_progress'
@@ -149,9 +151,19 @@ export default function ReplaceMediaPage() {
     if (!next.delete(key)) next.add(key)
     return next
   })
-  const chooseTab = (value: ReplacementTab) => { setTab(value); setTabChosen(true); setPicked(new Set()) }
+  const chooseTab = (value: ReplacementTab) => { setTab(value); setTabChosen(true); setPicked(new Set()); setSelectedKey('') }
 
-  // Searches run in the background; rows show "Searching indexers…" live.
+  // The pane lists the releases the last search found for the selected row.
+  useEffect(() => {
+    setResults(null)
+    if (!selected?.candidate_id || selected.tab !== 'found') return
+    const eligible = clients.filter((client) => client.enabled && client.scope === selected.media_type)
+    setSelectedClient((current) => eligible.some((client) => client.id === current) ? current : eligible[0]?.id ?? '')
+    let alive = true
+    upgradesApi.upgradeSearchResults(selected.candidate_id).then((value) => { if (alive) setResults(value) }).catch(() => undefined)
+    return () => { alive = false }
+  }, [selected?.candidate_id, selected?.candidate_title, selected?.tab])
+
   const search = (targets: ReplacementItem[] | 'all') => act('search', async () => {
     if (targets === 'all') { await replacementsApi.search(); setBulkProgress(0) }
     else for (const item of targets) await replacementsApi.search(item.target_key)
@@ -159,42 +171,29 @@ export default function ReplaceMediaPage() {
     setMessage('Searching for replacements. Results appear as they are found; nothing is downloaded automatically.')
   })
 
-  const decideAll = (targets: ReplacementItem[], action: 'ignore' | 'snooze' | 'restore') => act('decide', async () => {
+  const decide = (targets: ReplacementItem[], action: 'ignore' | 'snooze' | 'restore') => act('decide', async () => {
     const torrentIds = targets.flatMap((item) => item.torrent_ids ?? [])
     if (torrentIds.length) await replacementsApi.review(torrentIds, action)
     setPicked(new Set())
+    setSelectedKey('')
   })
 
-  const openReview = (item: ReplacementItem) => act(item.target_key, async () => {
-    const eligible = clients.filter((client) => client.enabled && client.scope === item.media_type)
-    setSelectedClient(eligible.length === 1 ? eligible[0].id : '')
-    const loaded = await upgradesApi.upgradeSearchResults(item.candidate_id!)
-    setResults(loaded)
-    setSelectedResultId(loaded.results.find((result) => result.selected)?.id ?? '')
-    setReview(item)
+  const chooseResult = (item: ReplacementItem, resultId: string) => act(item.target_key, async () => {
+    await upgradesApi.selectUpgradeSearchResult(item.candidate_id!, resultId)
+    setResults(await upgradesApi.upgradeSearchResults(item.candidate_id!))
   })
 
-  const closeReview = () => { setReview(null); setResults(null); setSelectedResultId('') }
-
-  const download = () => {
-    if (!review?.candidate_id || !selectedClient || !selectedResultId) return
-    void act(review.target_key, async () => {
-      const current = results?.results.find((result) => result.selected)
-      let title = review.candidate_title
-      // Picking another release first makes it the replacement.
-      if (current?.id !== selectedResultId) title = (await upgradesApi.selectUpgradeSearchResult(review.candidate_id!, selectedResultId)).title
-      const client = clients.find((entry) => entry.id === selectedClient)
-      if (!await confirm({ title: 'Download this replacement?', body: <p><strong>{title}</strong> will be sent to {client?.name ?? 'qBittorrent'}. The current torrent and files stay until the replacement is verified.</p>, confirmLabel: 'Download replacement', tone: 'primary' })) return
-      await upgradesApi.executeUpgrade(review.candidate_id!, selectedClient, undefined, false)
-      closeReview(); chooseTab('in_progress')
-      setMessage('Replacement submitted. Follow it under In progress.')
-    })
-  }
+  const download = (item: ReplacementItem) => act(item.target_key, async () => {
+    const client = clients.find((entry) => entry.id === selectedClient)
+    if (!await confirm({ title: 'Download this replacement?', body: <p><strong>{item.candidate_title}</strong> will be sent to {client?.name ?? 'qBittorrent'}. The current torrent and files stay until the replacement is verified.</p>, confirmLabel: 'Download replacement', tone: 'primary' })) return
+    await upgradesApi.executeUpgrade(item.candidate_id!, selectedClient, undefined, false)
+    chooseTab('in_progress')
+    setMessage('Replacement submitted. Follow it under In progress.')
+  })
 
   const retire = (item: ReplacementItem) => act(item.target_key, async () => {
     const response = await replacementsApi.retireTorrents(item.candidate_id!)
     if (response.error) throw new Error(response.error)
-    setFinishing(null)
     setMessage('Old torrents retired. Their files and backups are kept.')
   })
   const cleanup = (item: ReplacementItem) => act(item.target_key, async () => {
@@ -202,70 +201,58 @@ export default function ReplaceMediaPage() {
     if (!preview.eligible) throw new Error(preview.blocked.join(' '))
     if (!await confirm({ title: 'Delete the old files?', body: <div><p>The replacement is verified. These old paths will be permanently deleted:</p><ul className="replace-path-list">{preview.targets.map((target) => <li key={target.path}><code>{target.path}</code></li>)}</ul></div>, confirmLabel: 'Delete listed files', tone: 'danger' })) return
     await upgradesApi.cleanupUpgrade(item.candidate_id!, preview.confirmationToken)
-    setFinishing(null)
     setMessage('Old files deleted. Torrent backups are kept.')
   })
   const finish = (item: ReplacementItem) => act(item.target_key, async () => {
     await replacementsApi.finish(item.candidate_id!)
-    setFinishing(null)
+    setSelectedKey('')
     setMessage('Replacement finished. The old torrents, files and backups were kept.')
   })
 
-  const reviewReleases = useMemo(() => (
-    review && results ? upgradeResultsToReleases(results, review.candidate_id ?? '', review.media_type ?? 'movies') : []
-  ), [review, results])
-  const reviewClients = review ? clients.filter((client) => client.enabled && client.scope === review.media_type) : []
-  const selectedEligible = Boolean(results?.results.find((result) => result.id === selectedResultId)?.eligible)
   const total = counts.needs_search + counts.found + counts.in_progress + counts.dismissed
   const tabInfo = TABS.find((entry) => entry.value === tab)!
+  const fullReleases = useMemo(() => (
+    fullList && selected && results ? upgradeResultsToReleases(results, selected.candidate_id ?? '', selected.media_type ?? 'movies') : []
+  ), [fullList, selected, results])
 
   return <div className="page replace-page">
-    <PageTopbar
-      title="Replace Media"
-      subtitle="Find a new source for media whose torrents were removed by their trackers, at equal or better quality."
-    />
+    <PageTopbar title="Replace Media" subtitle="Find a new source for media whose torrents were removed by their trackers, at equal or better quality." />
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
 
     {loading ? <div className="upgrade-media-loading">Checking tracker evidence…</div> : !total ? <EmptyState
       icon="refresh"
-      title={EMPTY.needs_search.title}
-      detail={EMPTY.needs_search.detail}
+      title="Nothing needs replacing"
+      detail='Media appears here when every torrent behind it has been removed by its tracker (for example "unregistered torrent"). A cross-seed that still works keeps media off this list.'
     /> : <>
       <div className="new-media-roots-label">Status</div>
       <div className="new-media-roots">
-        {TABS.map((entry) => <button
-          type="button"
-          key={entry.value}
-          className={`new-media-root ${entry.value === tab ? 'active' : ''}`}
-          onClick={() => chooseTab(entry.value)}
-        >
+        {TABS.map((entry) => <button type="button" key={entry.value} className={`new-media-root ${entry.value === tab ? 'active' : ''}`} onClick={() => chooseTab(entry.value)}>
           <span className="new-media-root-name">
-            <span className="kind-box replace-status-box"><Icon name={entry.icon} size={13} /></span>
+            <span className={`kind-box upgrade-status-box tone-${entry.tone}`}><Icon name={entry.icon} size={13} /></span>
             <strong>{entry.label}</strong>
           </span>
           <small>{counts[entry.value]} {counts[entry.value] === 1 ? entry.noun : `${entry.noun}s`}</small>
         </button>)}
       </div>
 
-      <div className="upgrade-workspace">
-        <div className="upgrade-scroll">
-          <span className="new-media-col-head upgrade-head">Current release<em>CF Score</em></span>
-          <span aria-hidden="true" />
-          <span className="new-media-col-head upgrade-head">Replacement<em><span>CF Score</span><i>Peers</i></em></span>
-          <span className="new-media-col-head upgrade-results-head">Releases</span>
-          {!rows.length && <div className="replace-empty-row"><EmptyState icon={tabInfo.icon} title={EMPTY[tab].title} detail={EMPTY[tab].detail} /></div>}
+      <div className="new-media-workspace upgrade-v2">
+        <div className="new-media-scroll">
+          <span className="new-media-col-head">Lost source</span>
+          <span className="new-media-col-head">Replacement</span>
+          {!rows.length && <div className="upgrade-v2-empty">{tabInfo.empty}</div>}
           {rows.map((item) => {
+            const active = item.target_key === selectedKey
             const isPickable = pickable(item)
             const on = isPickable && picked.has(item.target_key)
-            const tokens = item.candidate_title && item.current_release ? diffReleaseTokens(item.candidate_title, item.current_release) : []
-            const qualityChanged = Boolean(item.candidate_quality) && item.candidate_quality !== item.current_quality
+            const chip = rowChip(item)
             const delta = (item.candidate_score ?? 0) - (item.current_score ?? 0)
-            const indexerBadge = badgeColor(item.indexer_color ?? undefined)
-            const label = stateLabel(item.execution_state)
-            const rowBusy = busy === item.target_key
-            return <div className="upgrade-row" key={item.target_key}>
-              <div className="upgrade-cell upgrade-target">
+            const swarm = swarmHealth(item.seeders)
+            const sub = [item.year ? `${item.year}` : undefined, item.season_number != null ? `Season ${item.season_number}` : undefined,
+              qualityLabel(item.current_quality) || undefined].filter(Boolean).join(' · ')
+            const open = () => setSelectedKey(active ? '' : item.target_key)
+            return <div className="new-media-row" key={item.target_key}>
+              <div className={`new-media-folder-cell upgrade-v2-current ${active ? 'active' : ''}`} onClick={open}>
                 <button
                   type="button"
                   role="checkbox"
@@ -273,80 +260,29 @@ export default function ReplaceMediaPage() {
                   aria-label={`Select ${item.title}`}
                   className={`new-media-check ${on ? 'on' : ''}`}
                   disabled={!isPickable}
-                  onClick={() => togglePicked(item.target_key)}
+                  onClick={(event) => { event.stopPropagation(); togglePicked(item.target_key) }}
                 >{on && <Icon name="check" size={11} />}</button>
-                <Tooltip placement="left" delay={250} content={<span className="upgrade-identity">
-                  <span className="upgrade-identity-art">
-                    {item.poster_ref ? <PosterImage reference={item.poster_ref} title={item.title} /> : <Icon name={item.media_type === 'shows' ? 'tv-screen' : 'clapper'} size={28} />}
-                  </span>
-                  <span className="upgrade-identity-copy">
-                    <strong>{item.title}</strong>
-                    <small>{[item.year ? `${item.year}` : undefined, item.season_number != null ? `Season ${item.season_number}` : undefined].filter(Boolean).join(' · ') || (item.media_type === 'shows' ? 'Show' : 'Movie')}</small>
-                    <code>{item.media_present === false ? 'Files missing or incomplete' : item.media_present ? 'Files present on disk' : 'Media not identified'}</code>
-                  </span>
-                </span>}>
-                  <span className="upgrade-poster">
-                    {item.poster_ref ? <PosterImage reference={item.poster_ref} title={item.title} /> : <Icon name={item.media_type === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}
-                  </span>
-                </Tooltip>
-                <span className="upgrade-target-copy">
-                  <strong title={item.current_release ?? item.title}>{item.current_release ?? item.title}</strong>
-                  <span className="upgrade-target-meta">
-                    {item.current_quality && <span className="release-pill">{qualityLabel(item.current_quality) || item.current_quality}</span>}
-                    <Tooltip content="Every tracker behind this release reported the torrent as removed."><span className="release-pill release-blocked"><Icon name="blocklist" size={11} />Source lost</span></Tooltip>
-                    {item.media_present === false && <Badge tone="amber">Files missing</Badge>}
-                    {item.blocked_reason && <Badge tone="amber">Needs identity</Badge>}
-                  </span>
+                <Poster item={item} />
+                <span className="new-media-match-copy upgrade-v2-title">
+                  <strong>{item.title}</strong>
+                  <small>{sub || (item.blocked_reason ? 'Not identified' : item.media_type === 'shows' ? 'Show' : 'Movie')}</small>
                 </span>
-                <span className="upgrade-score-col">
-                  {item.current_score != null && <span className="upgrade-score"><b>{item.current_score}</b></span>}
-                </span>
+                {item.current_release && item.current_release !== item.title && <Tooltip asChild content={item.current_release}><span className="upgrade-v2-release">{item.current_release}</span></Tooltip>}
               </div>
-              <span className="upgrade-arrow" aria-hidden="true"><Icon name="caret" size={16} /></span>
-              <div className="upgrade-cell upgrade-change">
-                {item.candidate_title ? <span className="upgrade-change-copy">
-                  <strong title={item.candidate_title}>{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
-                    <span className="upgrade-token-sep">{token.sep}</span>
-                    <span className={token.changed ? 'upgrade-token-new' : 'upgrade-token-same'}>{token.text}</span>
-                  </Fragment>) : item.candidate_title}</strong>
-                  <small className="upgrade-change-meta">
-                    {item.indexer && <span
-                      className="release-pill release-pill-indexer"
-                      style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}
-                    ><i>Indexer</i>{item.indexer}</span>}
-                    {qualityChanged && <span className="upgrade-quality-change">
-                      <span className="release-pill">{qualityLabel(item.current_quality) || 'Unknown'}</span>
-                      <Icon name="caret" size={14} />
-                      <span className="release-pill upgrade-quality-new">{qualityLabel(item.candidate_quality)}</span>
-                    </span>}
-                    {item.candidate_size != null && <span className="upgrade-fact">{formatBytes(item.candidate_size)}</span>}
-                  </small>
-                </span> : <span className="upgrade-change-copy replace-missing">
-                  <span className={item.blocked_reason ? 'replace-missing-blocked' : ''}>{item.searching && <span className="replace-spinner" aria-hidden="true" />}{missingReason(item)}</span>
-                </span>}
-                <span className="upgrade-action">
-                  {item.candidate_title && <>
-                    <span className="upgrade-score-col">
-                      <span className="upgrade-score">
-                        <b>{item.candidate_score}</b>
-                        {delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}>{delta > 0 ? '+' : ''}{delta}</em>}
-                      </span>
-                    </span>
-                    <span className="upgrade-peers">
-                      <Tooltip className={`release-pill release-pill-swarm swarm-${swarmHealth(item.seeders)}`} content={`${item.seeders ?? 'N/A'} seeders, ${item.leechers ?? 'N/A'} leechers`}>{formatPeers(item.seeders, item.leechers)}</Tooltip>
-                    </span>
+              <div className={`new-media-match-cell upgrade-v2-change ${active ? 'active' : ''}`} onClick={open}>
+                <span className="new-media-match-copy">
+                  {item.candidate_title ? <>
+                    <strong>{qualityLabel(item.candidate_quality) || item.candidate_quality || 'Unknown quality'}</strong>
+                    {stateLabel(item.execution_state) && item.execution_state !== 'cleanup_required' && item.execution_state !== 'handoff_attention'
+                      ? <span className="upgrade-v2-progress"><Badge tone={stateTone(item.execution_state)}>{stateLabel(item.execution_state)}</Badge></span>
+                      : <small>CF {item.candidate_score}{delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}> {delta > 0 ? '+' : ''}{delta}</em>}</small>}
+                  </> : <>
+                    <strong className="replace-v2-none">{item.blocked_reason ? 'Cannot search yet' : '—'}</strong>
+                    <small>{item.last_searched_at ? `Searched ${formatAge(item.last_searched_at)}` : item.blocked_reason ? 'Identity unresolved' : 'No search yet'}</small>
                   </>}
-                  {label && <Tooltip content={item.error ?? label}><Badge tone={stateTone(item.execution_state)}>{label}</Badge></Tooltip>}
-                  {item.execution_state === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={rowBusy} onClick={() => void act(item.target_key, async () => { await upgradesApi.retryUpgradeHandoff(item.candidate_id!) })}>{rowBusy ? 'Checking…' : 'Retry'}</Button>}
-                  {item.execution_state === 'cleanup_required' && <Button variant="primary" icon="check" disabled={rowBusy} onClick={() => setFinishing(item)}>Finish</Button>}
                 </span>
-              </div>
-              <div className="upgrade-cell upgrade-results-cell">
-                {item.tab === 'found' || item.tab === 'in_progress'
-                  ? <Button variant="ghost" icon="search" disabled={item.tab === 'in_progress' || rowBusy} onClick={() => void openReview(item)}>View All</Button>
-                  : item.tab === 'dismissed'
-                    ? <Button variant="ghost" icon="refresh" disabled={busy === 'decide'} onClick={() => void decideAll([item], 'restore')}>Restore</Button>
-                    : <Button variant="ghost" icon="search" disabled={!searchable(item) || item.searching || busy === 'search'} onClick={() => void search([item])}>{item.searching ? 'Searching' : 'Search'}</Button>}
+                {item.candidate_title && (swarm === 'dead' || swarm === 'weak') && <Tooltip content={`${item.seeders ?? 0} seeders: this release may be slow or impossible to download.`}><span className={`upgrade-v2-swarm swarm-${swarm}`} /></Tooltip>}
+                {chip && <span className={`new-media-state upgrade-why why-${chip.tone}`}>{item.searching && <span className="replace-spinner" aria-hidden="true" />}{chip.label}</span>}
               </div>
             </div>
           })}
@@ -355,66 +291,70 @@ export default function ReplaceMediaPage() {
         <div className="new-media-add">
           {bulkProgress !== null
             ? <span className="replace-bulk-progress"><span className="replace-spinner" aria-hidden="true" />Searching all titles · {Math.round(bulkProgress)}%</span>
-            : <span>{chosen.length ? `${chosen.length} selected` : 'Select titles to search, snooze or ignore them together.'}</span>}
+            : <span>{chosen.length ? `${chosen.length} selected` : 'Select titles to act on them together.'}</span>}
           <div className="toolbar-spacer" />
           {tab === 'dismissed'
-            ? <Button variant="secondary" icon="refresh" disabled={!chosen.length || Boolean(busy)} onClick={() => void decideAll(chosen, 'restore')}>Return to queue</Button>
+            ? <Button variant="secondary" icon="refresh" disabled={!chosen.length || Boolean(busy)} onClick={() => void decide(chosen, 'restore')}>Return to queue</Button>
             : tab !== 'in_progress' && <>
-              <Button variant="ghost" disabled={!chosen.some(dismissable) || Boolean(busy)} onClick={() => void decideAll(chosen.filter(dismissable), 'ignore')}>Ignore</Button>
-              <Button variant="ghost" disabled={!chosen.some(dismissable) || Boolean(busy)} onClick={() => void decideAll(chosen.filter(dismissable), 'snooze')}>Snooze 7 days</Button>
+              <Button variant="ghost" disabled={!chosen.some(dismissable) || Boolean(busy)} onClick={() => void decide(chosen.filter(dismissable), 'ignore')}>Ignore</Button>
+              <Button variant="ghost" disabled={!chosen.some(dismissable) || Boolean(busy)} onClick={() => void decide(chosen.filter(dismissable), 'snooze')}>Snooze 7 days</Button>
               {chosen.some(searchable)
                 ? <Button variant="primary" icon="search" disabled={Boolean(busy)} onClick={() => void search(chosen.filter(searchable))}>{`Search ${chosen.filter(searchable).length} ${chosen.filter(searchable).length === 1 ? 'title' : 'titles'}`}</Button>
                 : <Button variant="secondary" icon="search" disabled={Boolean(busy) || bulkProgress !== null || !(counts.needs_search + counts.found)} onClick={() => void search('all')}>Search all</Button>}
             </>}
         </div>
+
+        {selected ? <ReplaceDetails
+          key={selected.target_key}
+          item={selected}
+          results={results}
+          busy={busy === selected.target_key || busy === 'search' || busy === 'decide'}
+          clients={clients.filter((client) => client.enabled && client.scope === selected.media_type)}
+          selectedClient={selectedClient}
+          onClient={setSelectedClient}
+          onSearch={() => void search([selected])}
+          onDecide={(action) => void decide([selected], action)}
+          onChooseResult={(resultId) => void chooseResult(selected, resultId)}
+          onOpenAll={() => { setFullSelectedId(results?.results.find((result) => result.selected)?.id ?? ''); setFullList(true) }}
+          onDownload={() => void download(selected)}
+          onRetry={() => void act(selected.target_key, async () => { await upgradesApi.retryUpgradeHandoff(selected.candidate_id!) })}
+          onRetire={() => void retire(selected)}
+          onCleanup={() => void cleanup(selected)}
+          onFinish={() => void finish(selected)}
+        /> : <aside className="new-media-alt-pane new-media-alt-idle">
+          <div className="new-media-col-head new-media-alt-title">Details</div>
+          <div className="new-media-alt-empty">
+            <Icon name="refresh" size={28} />
+            <p>Select a title to see its lost source and replacement.</p>
+          </div>
+        </aside>}
       </div>
     </>}
 
-    {review && <Modal
-      title={review.title}
-      titleSuffix={review.year ? <span className="upgrade-results-title-year"> ({review.year})</span> : undefined}
-      eyebrow={review.season_number != null ? `SEASON ${review.season_number}` : 'REPLACE MEDIA'}
+    {fullList && selected && results && <Modal
+      title={selected.title}
+      titleSuffix={selected.year ? <span className="upgrade-results-title-year"> ({selected.year})</span> : undefined}
+      eyebrow={selected.season_number != null ? `SEASON ${selected.season_number}` : 'REPLACE MEDIA'}
       className="upgrade-results-modal"
-      onClose={() => { if (!busy) closeReview() }}
-      footer={<>
-        <span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : ''}</span>
-        <span className="modal-foot-spacer" />
-        <Select className="replace-client-select" aria-label="qBittorrent client" value={selectedClient} onChange={(event) => setSelectedClient(event.target.value)}>
-          <option value="">qBittorrent client…</option>
-          {reviewClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-        </Select>
-        <Button variant="ghost" disabled={Boolean(busy)} onClick={closeReview}>Cancel</Button>
-        <Button variant="primary" icon="download" disabled={Boolean(busy) || !selectedClient || !selectedEligible} onClick={download}>Download replacement</Button>
-      </>}
+      onClose={() => setFullList(false)}
+      footer={<><span className="wizard-foot-count">{`${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found`}</span><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setFullList(false)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results.results.find((result) => result.id === fullSelectedId)?.eligible} onClick={() => { void chooseResult(selected, fullSelectedId); setFullList(false) }}>Use this result</Button></>}
     >
       <div className="upgrade-results-current">
         {(() => {
-          const { resolution, type } = splitQuality(review.current_quality ?? undefined)
-          const score = review.current_score ?? 0
+          const { resolution, type } = splitQuality(selected.current_quality ?? undefined)
+          const score = selected.current_score ?? 0
           return <div className="upgrade-results-current-row">
-            <Tooltip asChild content={review.current_quality || 'Unknown quality'}>
-              <span className="release-quality">
-                {resolution ? <strong>{resolution}</strong> : null}
-                <small>{type || 'Unknown'}</small>
-              </span>
-            </Tooltip>
-            <span className="release-name">
-              <strong>{review.current_release}</strong>
-              <span className="release-tags">
-                <span className="release-pill upgrade-current-release-pill">Current release</span>
-                <span className="release-pill release-blocked"><Icon name="blocklist" size={11} />Source lost</span>
-              </span>
-            </span>
+            <span className="release-quality">{resolution ? <strong>{resolution}</strong> : null}<small>{type || 'Unknown'}</small></span>
+            <span className="release-name"><strong>{selected.current_release}</strong><span className="release-tags"><span className="release-pill upgrade-current-release-pill">Current release</span><span className="release-pill release-blocked"><Icon name="blocklist" size={11} />Source lost</span></span></span>
             <span className={`release-numeric release-score ${score < 0 ? 'negative' : score > 0 ? 'positive' : ''}`}>{score > 0 ? `+${score}` : score}</span>
           </div>
         })()}
       </div>
-      {results && <div className="upgrade-results-browser">
+      <div className="upgrade-results-browser">
         <ReleaseResults
-          results={reviewReleases}
-          selectedId={selectedResultId}
-          onSelect={setSelectedResultId}
-          disabled={Boolean(busy)}
+          results={fullReleases}
+          selectedId={fullSelectedId}
+          onSelect={setFullSelectedId}
           isSelectable={(release) => Boolean(results.results.find((entry) => entry.id === release.id)?.eligible)}
           renderTags={(release) => {
             const result = results.results.find((entry) => entry.id === release.id)
@@ -425,33 +365,129 @@ export default function ReplaceMediaPage() {
               {!result.eligible && !release.blocklisted && <Tooltip className="release-pill release-blocked" content={<ul>{result.rejectionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}><Icon name="alert" size={11} />Rejected</Tooltip>}
             </>
           }}
-          label={`Replacement search results for ${review.title}`}
+          label={`Replacement search results for ${selected.title}`}
           empty="No cached releases were returned. Search again to refresh them."
         />
-      </div>}
-    </Modal>}
-
-    {finishing && <Modal
-      title="Finish replacement"
-      eyebrow={finishing.title}
-      icon="check"
-      onClose={() => { if (!busy) setFinishing(null) }}
-      footer={<><span className="modal-foot-spacer" /><Button variant="ghost" disabled={Boolean(busy)} onClick={() => setFinishing(null)}>Close</Button></>}
-    >
-      <div className="upgrade-modal-copy modal-copy-inset">
-        <p><strong>{finishing.candidate_title}</strong> is downloaded and verified on disk. Choose what happens to the old copy:</p>
-      </div>
-      <div className="replace-choices">
-        <button type="button" className="replace-choice" disabled={Boolean(busy)} onClick={() => void retire(finishing)}>
-          <Icon name="tracker" size={16} /><strong>Retire old torrents</strong><span>Remove the old torrents from qBittorrent. Files and backups are kept.</span>
-        </button>
-        <button type="button" className="replace-choice danger" disabled={Boolean(busy)} onClick={() => void cleanup(finishing)}>
-          <Icon name="close" size={16} /><strong>Delete old files</strong><span>Preview, then delete the superseded files. Retire the old torrents first.</span>
-        </button>
-        <button type="button" className="replace-choice" disabled={Boolean(busy)} onClick={() => void finish(finishing)}>
-          <Icon name="check" size={16} /><strong>Keep and finish</strong><span>Close this replacement and keep everything that is left.</span>
-        </button>
       </div>
     </Modal>}
   </div>
+}
+
+function ReplaceDetails({ item, results, busy, clients, selectedClient, onClient, onSearch, onDecide, onChooseResult, onOpenAll, onDownload, onRetry, onRetire, onCleanup, onFinish }: {
+  item: ReplacementItem
+  results: UpgradeSearchResults | null
+  busy: boolean
+  clients: DownloadClient[]
+  selectedClient: string
+  onClient: (id: string) => void
+  onSearch: () => void
+  onDecide: (action: 'ignore' | 'snooze' | 'restore') => void
+  onChooseResult: (resultId: string) => void
+  onOpenAll: () => void
+  onDownload: () => void
+  onRetry: () => void
+  onRetire: () => void
+  onCleanup: () => void
+  onFinish: () => void
+}) {
+  const tokens = item.candidate_title && item.current_release ? diffReleaseTokens(item.candidate_title, item.current_release) : []
+  const indexerBadge = badgeColor(item.indexer_color ?? undefined)
+  const delta = (item.candidate_score ?? 0) - (item.current_score ?? 0)
+  const others = (results?.results ?? []).slice(0, 8)
+  const canDismiss = (item.torrent_ids ?? []).length > 0 && item.tab !== 'in_progress'
+  const searchable = (item.tab === 'needs_search' || item.tab === 'found') && !item.blocked_reason
+
+  return <aside className="new-media-alt-pane upgrade-details">
+    <div className="new-media-col-head new-media-alt-title">Details</div>
+    <div className="upgrade-details-body">
+      <div className="upgrade-details-identity">
+        <Poster item={item} large />
+        <span className="upgrade-details-identity-copy">
+          <strong>{item.title}</strong>
+          <small>{[item.year ? `${item.year}` : undefined, item.season_number != null ? `Season ${item.season_number}` : undefined].filter(Boolean).join(' · ') || (item.media_type === 'shows' ? 'Show' : 'Movie')}</small>
+          <small>{item.media_present === false ? 'Current files are missing or incomplete' : item.media_present ? 'Current files are still on disk' : 'Not matched to library media'}</small>
+        </span>
+      </div>
+
+      {item.blocked_reason && <div className="settings-note"><Icon name="info" size={16} /><span>{item.blocked_reason}</span></div>}
+
+      {stateLabel(item.execution_state) && <div className="upgrade-details-state">
+        <Badge tone={stateTone(item.execution_state)}>{stateLabel(item.execution_state)}</Badge>
+        {item.error && <p>{item.error}</p>}
+        {item.execution_state === 'handoff_attention' && <span className="upgrade-details-state-actions"><Button variant="secondary" icon="refresh" disabled={busy} onClick={onRetry}>Retry verification</Button></span>}
+        {item.execution_state === 'cleanup_required' && <div className="replace-choices">
+          <p>The replacement is downloaded and verified. Choose what happens to the old copy:</p>
+          <button type="button" className="replace-choice" disabled={busy} onClick={onRetire}><Icon name="tracker" size={16} /><strong>Retire old torrents</strong><span>Remove them from qBittorrent. Files and backups are kept.</span></button>
+          <button type="button" className="replace-choice danger" disabled={busy} onClick={onCleanup}><Icon name="close" size={16} /><strong>Delete old files</strong><span>Preview, then delete. Retire the old torrents first.</span></button>
+          <button type="button" className="replace-choice" disabled={busy} onClick={onFinish}><Icon name="check" size={16} /><strong>Keep and finish</strong><span>Close this replacement and keep everything.</span></button>
+        </div>}
+      </div>}
+
+      {item.current_release && <section className="upgrade-details-side">
+        <span className="upgrade-details-label">Lost source</span>
+        <code className="upgrade-details-name">{item.current_release}</code>
+        <span className="upgrade-details-facts">
+          <span className="release-pill">{qualityLabel(item.current_quality) || 'Unknown'}</span>
+          {item.current_score != null && <span className="upgrade-score"><b>CF {item.current_score}</b></span>}
+          <Tooltip content="Every tracker behind this release reported the torrent as removed."><span className="release-pill release-blocked"><Icon name="blocklist" size={11} />Source lost</span></Tooltip>
+        </span>
+      </section>}
+
+      {item.candidate_title ? <section className="upgrade-details-side upgrade-details-new">
+        <span className="upgrade-details-label">Replacement</span>
+        <code className="upgrade-details-name">{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
+          <span className="upgrade-token-sep">{token.sep}</span>
+          <span className={token.changed ? 'upgrade-token-new' : 'upgrade-token-same'}>{token.text}</span>
+        </Fragment>) : item.candidate_title}</code>
+        <span className="upgrade-details-facts">
+          <span className="release-pill upgrade-quality-new">{qualityLabel(item.candidate_quality) || 'Unknown'}</span>
+          <span className="upgrade-score"><b>CF {item.candidate_score}</b>{delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}>{delta > 0 ? '+' : ''}{delta}</em>}</span>
+        </span>
+        <span className="upgrade-details-facts">
+          {item.indexer && <span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexer}</span>}
+          <Tooltip className={`release-pill release-pill-swarm swarm-${swarmHealth(item.seeders)}`} content={`${item.seeders ?? 'N/A'} seeders, ${item.leechers ?? 'N/A'} leechers`}>{formatPeers(item.seeders, item.leechers)}</Tooltip>
+          {item.candidate_size != null && <span className="upgrade-fact">{formatBytes(item.candidate_size)}</span>}
+        </span>
+      </section> : !item.blocked_reason && <section className="upgrade-details-side">
+        <span className="upgrade-details-label">Replacement</span>
+        <p className="new-media-alt-note">{item.searching ? 'Searching indexers…' : item.last_search_result === 'no_match' ? `Nothing equivalent or better was found ${formatAge(item.last_searched_at)} ago.` : item.last_search_result === 'failed' ? 'Every indexer failed during the last search.' : 'Not searched yet.'}</p>
+      </section>}
+
+      {item.tab === 'found' && <section className="upgrade-details-others">
+        <span className="upgrade-details-label">Other releases<button type="button" className="upgrade-details-link" onClick={onOpenAll} disabled={!results}>Open full list</button></span>
+        {!results ? <p className="new-media-alt-note">Loading the last search…</p>
+          : !others.length ? <p className="new-media-alt-note">No other releases were found.</p>
+            : others.map((result) => <button
+              type="button"
+              key={result.id}
+              className={`new-media-candidate upgrade-other ${result.selected ? 'chosen' : ''}`}
+              disabled={busy || result.selected || !result.eligible}
+              title={!result.eligible ? result.rejectionReasons.join(' ') : result.title}
+              onClick={() => onChooseResult(result.id)}
+            >
+              <span className="new-media-candidate-copy">
+                <strong>{result.title}</strong>
+                <small>{[qualityLabel(result.quality) || 'Unknown', result.customFormatScore !== undefined ? `CF ${result.customFormatScore}` : undefined, `${formatPeers(result.seeders, result.leechers)} peers`, result.indexerName].filter(Boolean).join(' · ')}{!result.eligible ? ' · rejected' : ''}</small>
+              </span>
+              {result.selected && <Icon name="check" size={14} />}
+            </button>)}
+      </section>}
+
+      <div className="replace-details-actions">
+        {item.tab === 'found' && <div className="replace-details-download">
+          <Select aria-label="qBittorrent client" value={selectedClient} onChange={(event) => onClient(event.target.value)}>
+            <option value="">qBittorrent client…</option>
+            {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+          </Select>
+          <Button variant="primary" icon="download" disabled={busy || !selectedClient} onClick={onDownload}>Download replacement</Button>
+        </div>}
+        <span className="replace-details-secondary">
+          {searchable && <Button variant="secondary" icon="search" disabled={busy || item.searching} onClick={onSearch}>{item.searching ? 'Searching…' : item.tab === 'found' ? 'Search again' : 'Search'}</Button>}
+          {canDismiss && (item.dismissed
+            ? <Button variant="secondary" icon="refresh" disabled={busy} onClick={() => onDecide('restore')}>Return to queue</Button>
+            : <><Button variant="ghost" disabled={busy} onClick={() => onDecide('snooze')}>Snooze 7 days</Button><Button variant="ghost" disabled={busy} onClick={() => onDecide('ignore')}>Ignore</Button></>)}
+        </span>
+      </div>
+    </div>
+  </aside>
 }

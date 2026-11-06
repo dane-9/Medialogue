@@ -4770,3 +4770,67 @@ select.input { background-color: var(--input-bg); }
 .replace-choice strong { font-size: var(--t-sm); }
 .replace-choice span { grid-column: 2; color: var(--muted); font-size: var(--t-xs); }
 .replace-path-list { display: grid; gap: var(--s1); max-height: 240px; margin: var(--s2) 0 0; padding-left: var(--s4); overflow: auto; }
+
+/* Upgrade Media (New Media layout) ------------------------------------------ */
+.upgrade-v2-filters { display: flex; flex-wrap: wrap; gap: var(--s5); }
+.upgrade-status-box { border-color: var(--line); background: var(--raised); color: var(--muted); }
+.upgrade-status-box.tone-ok { color: var(--ok); }
+.upgrade-status-box.tone-blue { color: var(--accent); }
+.upgrade-status-box.tone-amber { color: var(--warn); }
+.new-media-workspace.upgrade-v2 { --new-media-detected: 280px; grid-template-columns: minmax(0, 1fr) var(--new-media-detected) 400px; }
+.upgrade-v2-empty { grid-column: 1 / -1; padding: var(--s5); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-md) var(--r-md); background: var(--surface); color: var(--faint); font-size: var(--t-sm); text-align: center; }
+.upgrade-v2-current .new-media-match-copy strong, .upgrade-v2-change .new-media-match-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-current .new-media-match-copy small, .upgrade-v2-change .new-media-match-copy small { color: var(--faint); font-size: var(--t-xs); }
+.upgrade-v2-change small em { font-style: normal; font-weight: 600; }
+.upgrade-v2-progress { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.upgrade-v2-progress .progress { flex: 1; max-width: 90px; }
+.upgrade-v2-swarm { flex: none; width: 8px; height: 8px; border-radius: var(--r-full); }
+.upgrade-v2-swarm.swarm-weak { background: var(--warn); }
+.upgrade-v2-swarm.swarm-dead { background: var(--err); }
+.upgrade-why.why-ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
+.upgrade-why.why-blue { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+.upgrade-why.why-amber { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
+.upgrade-why.why-violet { color: var(--violet); border-color: color-mix(in srgb, var(--violet) 45%, transparent); background: color-mix(in srgb, var(--violet) 12%, transparent); }
+.new-media-state .icon, .new-media-state svg { margin-right: 4px; }
+
+.upgrade-details-body { display: grid; flex: 1; align-content: start; gap: var(--s4); min-height: 0; overflow-y: auto; padding: var(--s3); }
+.upgrade-details-identity { display: flex; gap: var(--s3); align-items: flex-start; }
+.upgrade-details-poster { display: grid; width: 64px; aspect-ratio: 2 / 3; flex: none; overflow: hidden; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-sm); color: var(--faint); background: linear-gradient(155deg, #3d4450, #24282f 58%, #171d25); }
+.upgrade-details-poster img { width: 100%; height: 100%; object-fit: cover; }
+.upgrade-details-identity-copy { display: grid; gap: 4px; min-width: 0; }
+.upgrade-details-identity-copy strong { color: var(--text); font-size: var(--t-md); }
+.upgrade-details-identity-copy small { color: var(--faint); font-size: var(--t-xs); }
+.upgrade-details-profile { margin-top: var(--s1); }
+.upgrade-details-profile .dropdown-trigger { min-width: 180px; height: var(--control-sm); font-size: var(--t-xs); }
+.upgrade-details-side { display: grid; gap: var(--s2); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raised); }
+.upgrade-details-new { border-color: var(--ok-line); }
+.upgrade-details-label { display: flex; align-items: center; justify-content: space-between; color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.upgrade-details-name { overflow-wrap: anywhere; color: var(--text); font: var(--t-sm)/1.45 var(--sans); }
+.upgrade-details-facts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.upgrade-details-state { display: grid; gap: var(--s2); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raised); }
+.upgrade-details-state p { margin: 0; color: var(--muted); font-size: var(--t-xs); }
+.upgrade-details-state-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.upgrade-details-others { display: grid; gap: var(--s1); }
+.upgrade-details-link { padding: 0; border: 0; background: none; color: var(--accent-text); font: 500 var(--t-xs) var(--sans); letter-spacing: 0; text-transform: none; cursor: pointer; }
+.upgrade-details-link:hover { text-decoration: underline; }
+.upgrade-other strong { overflow: hidden; font-size: var(--t-xs); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-other small { color: var(--faint); font-size: var(--t-micro); }
+.upgrade-other:disabled:not(.chosen) { opacity: .55; }
+@media (max-width: 1500px) { .new-media-workspace.upgrade-v2 { grid-template-columns: minmax(0, 1fr) 240px 340px; --new-media-detected: 240px; } }
+.replace-v2-none { color: var(--faint) !important; }
+.upgrade-why.why-red { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+.upgrade-why.why-neutral { color: var(--muted); }
+.upgrade-status-box.tone-neutral { color: var(--muted); }
+.upgrade-why .replace-spinner { width: 9px; height: 9px; margin-right: 4px; border-width: 1.5px; }
+.upgrade-details-state .replace-choices { padding: 0; }
+.upgrade-details-state .replace-choices p { margin: 0; }
+.replace-details-actions { display: grid; gap: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--line); }
+.replace-details-download { display: flex; gap: var(--s2); }
+.replace-details-download select { flex: 1; min-width: 0; height: var(--control-sm); }
+.replace-details-secondary { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+/* Title over year/quality, never side by side: .new-media-folder-cell > span
+   makes every direct span a flex row, so the stack is restored here. */
+.upgrade-v2-current > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 120px; max-width: 45%; }
+/* The full current release fills the remaining width on one line. */
+.upgrade-v2-current > .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s4); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
