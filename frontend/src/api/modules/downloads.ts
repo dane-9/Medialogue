@@ -1,6 +1,6 @@
 import { mapDownload } from '../mappers/downloads'
 import { mapTorrentArchiveItem } from '../mappers/torrentArchive'
-import { openApiClient, openApiData } from '../transport'
+import { LIBRARY_PAGE_SIZE, openApiClient, openApiData } from '../transport'
 
 export const downloadsApi = {
   downloads: async (query: {
@@ -42,14 +42,10 @@ export const downloadsApi = {
     return { ...archive, message: archive.message ?? undefined }
   },
   rebuildTorrentArchive: async () => await openApiData(openApiClient.POST('/api/v1/torrent-archive/rebuild')) as { imported: number; skipped: number; errors: unknown[] },
-  torrentArchive: async (query = '') => {
-    const payload = await openApiData(openApiClient.GET('/api/v1/torrent-archive', { params: { query: { query: query || undefined, page_size: 250 } } }))
-    const items = payload.items.map(mapTorrentArchiveItem)
-    for (let page = 2; page <= payload.pages; page++) {
-      const next = await openApiData(openApiClient.GET('/api/v1/torrent-archive', { params: { query: { query: query || undefined, page_size: 250, page } } }))
-      items.push(...next.items.map(mapTorrentArchiveItem))
-    }
-    return items
+  // The whole archive in one request; the Backups page filters it locally.
+  torrentArchive: async () => {
+    const payload = await openApiData(openApiClient.GET('/api/v1/torrent-archive', { params: { query: { page_size: LIBRARY_PAGE_SIZE } } }))
+    return payload.items.map(mapTorrentArchiveItem)
   },
   retryTorrentArchive: (id: string) => openApiData(openApiClient.POST('/api/v1/torrent-archive/{torrent_id}/retry', { params: { path: { torrent_id: id } } })),
 }

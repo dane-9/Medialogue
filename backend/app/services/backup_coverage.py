@@ -32,7 +32,7 @@ STATUSES = ("no_torrent", "not_archived", "local_only", "protected")
 GAP_LIMIT = 10000
 
 
-async def archive_coverage(db: AsyncSession) -> dict[str, Any]:
+async def archive_coverage(db: AsyncSession, *, gap_status: str | None = None) -> dict[str, Any]:
     mirror = read_backup_settings().get("mirror") or {}
 
     def on_drive(info_hash: str) -> bool:
@@ -82,7 +82,7 @@ async def archive_coverage(db: AsyncSession) -> dict[str, Any]:
         else:
             status = "protected"
         counts[status] += 1
-        if status != "protected":
+        if status != "protected" and (gap_status is None or status == gap_status):
             gaps.append({**release, "id": str(release["id"]), "status": status})
     gaps.sort(key=lambda item: (STATUSES.index(item["status"]), (item["title"] or "").casefold(), item["season_number"] or 0))
     return {"total": len(releases), **counts, "gaps": gaps[:GAP_LIMIT], "gaps_truncated": len(gaps) > GAP_LIMIT}

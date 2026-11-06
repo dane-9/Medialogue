@@ -126,8 +126,12 @@ async def start_backup(_: object = Depends(require_csrf), db: AsyncSession = Dep
 
 
 @router.get("/coverage")
-async def coverage(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict:
-    return await archive_coverage(db)
+async def coverage(
+    status: str | None = Query(None, description="Only list gaps with this status; the counts always cover every release."),
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return await archive_coverage(db, gap_status=status)
 
 
 #: Big enough for the whole backup folder, database copies included.

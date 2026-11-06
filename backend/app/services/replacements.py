@@ -21,6 +21,7 @@ from app.services.integration_state import list_configured_indexers, get_configu
 from app.services.jobs import run_job, update_job
 from app.services.release_source import ReleaseSource, source_of_releases, source_of_torrents
 from app.services.format_breakdown import comparison_formats
+from app.services.quality_profiles import profiles_cached
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
     _persist_candidate, _evaluation_policy, _score_candidate)
 
@@ -177,6 +178,18 @@ async def replacement_targets(
     lost = await lost_sources(db) if lost is None else lost
     if not lost:
         return []
+    # Scoring every affected release reads the same few profiles each time.
+    with profiles_cached():
+        return await _replacement_targets(db, lost=lost, movie_ids=movie_ids, show_ids=show_ids)
+
+
+async def _replacement_targets(
+    db: AsyncSession,
+    *,
+    lost: dict[UUID, Torrent],
+    movie_ids: set[UUID] | None,
+    show_ids: set[UUID] | None,
+) -> list[ReplacementTarget]:
     if movie_ids is None or show_ids is None:
         affected_movies, affected_shows = await _affected_media(db, list(lost))
         movie_ids = affected_movies if movie_ids is None else movie_ids & affected_movies

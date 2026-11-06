@@ -14,8 +14,10 @@ import json
 import os
 import re
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable
 from uuid import UUID
 
@@ -155,6 +157,60 @@ def verify_torrent_archive(torrent: Torrent) -> tuple[bool, str | None]:
         return True, None
     except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         return False, str(exc)
+
+
+@dataclass(frozen=True, slots=True)
+class ArchiveFileFacts:
+    """What a torrent's archive files say: its manifest and whether they verify.
+
+    The manifest is shared between callers through the cache below, so it must
+    be treated as read-only.
+    """
+
+    manifest: dict[str, Any]
+    verified: bool
+    error: str | None
+
+
+# Listing the archive verifies every torrent against its files: a read of the
+# .torrent, a checksum and two reads of the manifest each. The result only
+# changes when a file does, so it is kept per torrent and reused while the
+# state and both files' size and modification time are unchanged.
+_FILE_FACTS: dict[str, tuple[tuple[Any, ...], ArchiveFileFacts]] = {}
+
+
+def _file_stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def archive_file_facts(
+    info_hash: str,
+    archive_state: TorrentArchiveState,
+    archive_path: str | None,
+    manifest_path: str | None,
+) -> ArchiveFileFacts:
+    """Manifest and verification for one torrent, from cache when unchanged.
+
+    Takes plain values rather than the ORM row, so it can run off the event
+    loop in a worker thread.
+    """
+
+    default_torrent, default_manifest = archive_paths(info_hash)
+    torrent_file = Path(archive_path) if archive_path else default_torrent
+    manifest_file = Path(manifest_path) if manifest_path else default_manifest
+    stamp = (archive_state, str(torrent_file), _file_stamp(torrent_file), str(manifest_file), _file_stamp(manifest_file))
+    cached = _FILE_FACTS.get(info_hash)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    probe = SimpleNamespace(info_hash=info_hash, archive_state=archive_state, archive_path=archive_path, manifest_path=manifest_path)
+    verified, error = verify_torrent_archive(probe)  # type: ignore[arg-type]
+    facts = ArchiveFileFacts(manifest=_load_existing_manifest(manifest_file), verified=verified, error=error)
+    _FILE_FACTS[info_hash] = (stamp, facts)
+    return facts
 
 
 def torrent_archive_complete(torrent: Torrent) -> bool:

@@ -37,7 +37,7 @@ export type DatabaseCopy = { id: string; name: string; size?: number | null; cre
 // The backup endpoints answer with plain objects; their shapes live here.
 export const backupsApi = {
   status: async () => await openApiData(openApiClient.GET('/api/v1/backups/status')) as unknown as BackupStatus,
-  coverage: async () => await openApiData(openApiClient.GET('/api/v1/backups/coverage')) as unknown as BackupCoverage,
+  coverage: async (status?: 'no_torrent' | 'not_archived' | 'local_only') => await openApiData(openApiClient.GET('/api/v1/backups/coverage', { params: { query: { status } } })) as unknown as BackupCoverage,
   saveSettings: (body: { enabled: boolean; keep_database: number; database_interval_seconds: number }) =>
     openApiData(openApiClient.PUT('/api/v1/backups/settings', { body })),
   connect: async () => await openApiData(openApiClient.POST('/api/v1/backups/google/connect')) as unknown as { authorization_url: string },

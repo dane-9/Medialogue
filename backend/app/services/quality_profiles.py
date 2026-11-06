@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -19,7 +21,7 @@ from app.models.domain import (
     QualityProfile,
     ShowRelease,
 )
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
 
 
@@ -33,7 +35,42 @@ def resolve_default_profile(profiles: Sequence[QualityProfile]) -> QualityProfil
     return next((row for row in profiles if is_marked_default(row)), None)
 
 
+# Read-only work that scores many titles at once (the Replace Media queue and
+# its sidebar count) would otherwise load the same profiles and quality list
+# once per release. Inside `profiles_cached()` each is read once and reused.
+# It is opt-in, never session-wide: a request that edits a profile and then
+# rescores titles must see its own edit.
+_PROFILE_CACHE: ContextVar[dict[Any, Any] | None] = ContextVar("quality_profile_cache", default=None)
+
+
+@contextmanager
+def profiles_cached() -> Iterator[None]:
+    """Reuse loaded profiles and quality definitions until the block ends."""
+
+    if _PROFILE_CACHE.get() is not None:
+        yield
+        return
+    token = _PROFILE_CACHE.set({})
+    try:
+        yield
+    finally:
+        _PROFILE_CACHE.reset(token)
+
+
+async def _cached(key: Any, load):
+    cache = _PROFILE_CACHE.get()
+    if cache is None:
+        return await load()
+    if key not in cache:
+        cache[key] = await load()
+    return cache[key]
+
+
 async def load_default_profile(db: AsyncSession) -> QualityProfile | None:
+    return await _cached(("default-profile", id(db)), lambda: _load_default_profile(db))
+
+
+async def _load_default_profile(db: AsyncSession) -> QualityProfile | None:
     rows = (
         await db.scalars(
             select(QualityProfile).options(
@@ -127,14 +164,15 @@ async def load_effective_profile(
     assignment = await get_assignment(db, media_type=media_type, entity_id=entity_id)
     profile: QualityProfile | None = None
     if assignment and assignment.quality_profile_id:
-        profile = await db.scalar(
+        profile_id = assignment.quality_profile_id
+        profile = await _cached(("profile", id(db), profile_id), lambda: db.scalar(
             select(QualityProfile)
             .options(
                 selectinload(QualityProfile.minimum_quality_definition),
                 selectinload(QualityProfile.custom_format_scores).selectinload(ProfileCustomFormatScore.custom_format),
             )
-            .where(QualityProfile.id == assignment.quality_profile_id)
-        )
+            .where(QualityProfile.id == profile_id)
+        ))
     # No explicit assignment means "inherit the default", not "score nothing".
     # Resolved here rather than written as a row per title so that an inherited
     # profile stays distinguishable from one the user actually chose, which is
@@ -185,13 +223,16 @@ async def load_effective_profile(
     effective_scores = dict(profile_scores)
     effective_scores.update(overrides)
 
-    quality_rows = (
-        await db.scalars(
-            select(QualityDefinition)
-            .where(QualityDefinition.enabled.is_(True))
-            .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
-        )
-    ).all()
+    async def load_qualities():
+        return (
+            await db.scalars(
+                select(QualityDefinition)
+                .where(QualityDefinition.enabled.is_(True))
+                .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
+            )
+        ).all()
+
+    quality_rows = await _cached(("qualities", id(db)), load_qualities)
     quality_by_id = {str(item.id): item for item in quality_rows}
     configured_quality_ids = (profile.settings or {}).get("quality_definition_ids") if profile else None
     if isinstance(configured_quality_ids, list):

@@ -7581,7 +7581,10 @@ export interface operations {
     };
     coverage_api_v1_backups_coverage_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only list gaps with this status; the counts always cover every release. */
+                status?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7597,6 +7600,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

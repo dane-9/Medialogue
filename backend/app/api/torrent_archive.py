@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -12,16 +13,17 @@ from app.db.session import get_db
 from app.integrations.qbittorrent import QBittorrentClient
 from app.models.auth import AdminUser
 from app.models.domain import Torrent, TorrentArchiveState, TorrentClientObservation
-from app.schemas.common import Collection
+from app.schemas.common import LIBRARY_PAGE_LIMIT, Collection
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.torrent_archive import TorrentArchiveDetail, TorrentArchiveSummary
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.torrent_archive import (
+    ArchiveFileFacts,
+    archive_file_facts,
     read_manifest,
     run_torrent_archive_retry,
     select_archive_client,
-    verify_torrent_archive,
 )
 
 
@@ -70,22 +72,39 @@ async def _posters(db: AsyncSession, primaries: list[dict]) -> dict[str, str]:
     return posters
 
 
+def _file_probe(torrent: Torrent) -> tuple:
+    """The plain values `archive_file_facts` needs, read on the event loop."""
+
+    return torrent.info_hash, torrent.archive_state, torrent.archive_path, torrent.manifest_path
+
+
+async def _present_in_clients(db: AsyncSession, torrent_ids: list[UUID]) -> set[UUID]:
+    if not torrent_ids:
+        return set()
+    return set(
+        await db.scalars(
+            select(TorrentClientObservation.torrent_id)
+            .where(TorrentClientObservation.torrent_id.in_(torrent_ids), TorrentClientObservation.is_present.is_(True))
+            .distinct()
+        )
+    )
+
+
 async def _summary(db: AsyncSession, torrent: Torrent, remote: dict | None = None,
-                   posters: dict[str, str] | None = None) -> TorrentArchiveSummary:
-    manifest = read_manifest(torrent)
+                   posters: dict[str, str] | None = None, facts: ArchiveFileFacts | None = None,
+                   present: set[UUID] | None = None) -> TorrentArchiveSummary:
+    if facts is None:
+        facts = await asyncio.to_thread(archive_file_facts, *_file_probe(torrent))
+    manifest = facts.manifest
     primary = _manifest_primary(manifest)
     if posters is None:
         posters = await _posters(db, [primary])
     observations = manifest.get("download_client_observations")
     original = observations[0] if isinstance(observations, list) and observations and isinstance(observations[0], dict) else {}
-    qbit_present = bool(
-        await db.scalar(
-            select(func.count())
-            .select_from(TorrentClientObservation)
-            .where(TorrentClientObservation.torrent_id == torrent.id, TorrentClientObservation.is_present.is_(True))
-        )
-    )
-    verified, verification_error = verify_torrent_archive(torrent)
+    if present is None:
+        present = await _present_in_clients(db, [torrent.id])
+    qbit_present = torrent.id in present
+    verified, verification_error = facts.verified, facts.error
     recovery = (manifest.get("client_recovery") or {}).get(str(original.get("download_client_id"))) or manifest.get("recovery") or {}
     if remote is None:
         from app.services.remote_backups import read_backup_settings
@@ -144,7 +163,7 @@ async def rebuild_archive_records(_: object = Depends(require_csrf), db: AsyncSe
 @router.get("/torrent-archive", response_model=Collection[TorrentArchiveSummary])
 async def list_torrent_archive(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=250),
+    page_size: int = Query(50, ge=1, le=LIBRARY_PAGE_LIMIT),
     query: str | None = Query(None),
     archive_state: str | None = Query(None),
     _: AdminUser = Depends(require_admin),
@@ -175,9 +194,14 @@ async def list_torrent_archive(
     from app.services.remote_backups import read_backup_settings
 
     remote = read_backup_settings()
-    posters = await _posters(db, [_manifest_primary(read_manifest(torrent)) for torrent in torrents])
+    # Reading and verifying every archive file is disk work; it runs in a
+    # thread so a large archive never stalls the rest of the app.
+    probes = [_file_probe(torrent) for torrent in torrents]
+    facts = await asyncio.to_thread(lambda: [archive_file_facts(*probe) for probe in probes])
+    posters = await _posters(db, [_manifest_primary(item.manifest) for item in facts])
+    present = await _present_in_clients(db, [torrent.id for torrent in torrents])
     return Collection(
-        items=[await _summary(db, torrent, remote, posters) for torrent in torrents],
+        items=[await _summary(db, torrent, remote, posters, item, present) for torrent, item in zip(torrents, facts)],
         page=page,
         page_size=page_size,
         total=total,

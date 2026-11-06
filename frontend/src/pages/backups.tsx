@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatAge } from '../lib/age'
 import { formatBytes } from '../components/ReleaseResults'
 import { backupsApi } from '../api/modules/backups'
@@ -13,11 +13,13 @@ import { downloadsApi } from '../api/modules/downloads'
 import { systemApi } from '../api/modules/system'
 import type { TorrentArchiveItem, Job, RecoveryReimportPlan } from '../types'
 import { EventSortHeader, tmdbPosterUrl } from './shared'
+import { reuseUnchanged } from '../lib/reuseUnchanged'
+import { useVirtualRows } from '../components/VirtualList'
 
 /** A small poster for list rows, or the movie/show icon when there is none. */
 function RowPoster({ reference, mediaType }: { reference?: string | null; mediaType?: string | null }) {
   return <span className="new-media-poster row-poster">{reference
-    ? <img src={tmdbPosterUrl(reference)} alt="" loading="lazy" referrerPolicy="no-referrer" />
+    ? <img src={tmdbPosterUrl(reference, 'w92')} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
     : <Icon name={mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
 }
 
@@ -74,12 +76,13 @@ export function TorrentArchiveSection() {
   const load = async () => {
     setLoading(true)
     try {
-      const [archive, archiveHealth, nextCoverage] = await Promise.all([downloadsApi.torrentArchive(query), downloadsApi.torrentArchiveHealth(), backupsApi.coverage()])
-      setItems(archive); setHealth(archiveHealth); setCoverage(nextCoverage); setError('')
+      // Only the "no torrent" gaps are listed; the counts still cover everything.
+      const [archive, archiveHealth, nextCoverage] = await Promise.all([downloadsApi.torrentArchive(), downloadsApi.torrentArchiveHealth(), backupsApi.coverage('no_torrent')])
+      setItems((current) => reuseUnchanged(current, archive)); setHealth(archiveHealth); setCoverage(nextCoverage); setError('')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load the torrent archive.') }
     finally { setLoading(false) }
   }
-  useEffect(() => { const timer = window.setTimeout(() => { void load() }, 150); return () => window.clearTimeout(timer) }, [query])
+  useEffect(() => { void load() }, [])
 
   const retryArchive = async (item: TorrentArchiveItem) => {
     setBusy(true); setMessage('')
@@ -94,9 +97,10 @@ export function TorrentArchiveSection() {
   }
   const formatSize = formatBytes
   const needle = query.trim().toLocaleLowerCase()
-  const noTorrent = (coverage?.gaps ?? []).filter((gap) => gap.status === 'no_torrent'
-    && (!needle || `${gap.title} ${gap.release_name}`.toLocaleLowerCase().includes(needle)))
-  const rows = sortArchive(archiveRows(items, noTorrent).filter((row) => {
+  const noTorrent = useMemo(() => (coverage?.gaps ?? []).filter((gap) => gap.status === 'no_torrent'
+    && (!needle || `${gap.title} ${gap.release_name}`.toLocaleLowerCase().includes(needle))), [coverage, needle])
+  const rows = useMemo(() => sortArchive(archiveRows(items.filter((torrent) => !needle
+    || [torrent.mediaTitle, torrent.releaseName, torrent.torrentName, torrent.infoHash].some((value) => value?.toLocaleLowerCase().includes(needle))), noTorrent).filter((row) => {
     const torrent = row.torrent
     return archiveFilter === 'unrestorable' ? row.rank < 2
       : archiveFilter === 'attention' ? torrent !== undefined && !torrent.archiveVerified
@@ -104,7 +108,8 @@ export function TorrentArchiveSection() {
       : archiveFilter === 'removed' ? torrent !== undefined && !torrent.qbitPresent
       : archiveFilter === 'missing' ? row.gap !== undefined
       : true
-  }), archiveSort)
+  }), archiveSort), [items, noTorrent, needle, archiveFilter, archiveSort])
+  const visibleRows = useVirtualRows(rows, 6)
 
   return <section className="backups-block">
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
@@ -127,7 +132,7 @@ export function TorrentArchiveSection() {
         <th><EventSortHeader label="Archived" field="archived" sort={archiveSort} onSort={setArchiveSort} /></th>
         <th><EventSortHeader label="Backup" field="backup" sort={archiveSort} onSort={setArchiveSort} /></th>
         <th>qBittorrent</th><th />
-      </tr></thead><tbody>{rows.map((row) => {
+      </tr></thead><tbody ref={visibleRows.bodyRef}>{visibleRows.before}{visibleRows.visible.map((row) => {
         const gap = row.gap
         if (gap) return <tr key={row.key}>
           <td><div className="row-with-poster"><RowPoster reference={gap.poster_ref} mediaType={gap.media_type} /><div className="archive-title">
@@ -158,7 +163,7 @@ export function TorrentArchiveSection() {
             {!torrent.archiveVerified && <Tooltip asChild content="Retry archiving"><button type="button" className="icon-button" aria-label={`Retry archiving ${release}`} disabled={busy} onClick={() => void retryArchive(torrent)}><Icon name="refresh" size={15} /></button></Tooltip>}
           </div></td>
         </tr>
-      })}</tbody></table>}
+      })}{visibleRows.after}</tbody></table>}
     </Panel>
   </section>
 }

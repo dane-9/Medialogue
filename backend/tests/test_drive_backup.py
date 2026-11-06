@@ -294,6 +294,10 @@ def test_coverage_counts_each_release_by_how_restorable_it_is(recovery_env, driv
     result = client.get("/api/v1/backups/coverage").json()
     assert (result["total"], result["protected"], result["local_only"], result["not_archived"], result["no_torrent"]) == (4, 1, 1, 1, 1)
     assert [gap["title"] for gap in result["gaps"]] == ["Bare", "Unarchived", "Local"]
+    # A status filter narrows the listed gaps but never the counts.
+    only = client.get("/api/v1/backups/coverage?status=no_torrent").json()
+    assert [gap["title"] for gap in only["gaps"]] == ["Bare"]
+    assert (only["total"], only["local_only"], only["not_archived"]) == (4, 1, 1)
 
 
 def test_reimport_uses_the_only_client_for_the_media_type_on_a_fresh_install():

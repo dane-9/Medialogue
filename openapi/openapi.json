@@ -14141,6 +14141,26 @@
     "/api/v1/backups/coverage": {
       "get": {
         "operationId": "coverage_api_v1_backups_coverage_get",
+        "parameters": [
+          {
+            "description": "Only list gaps with this status; the counts always cover every release.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only list gaps with this status; the counts always cover every release.",
+              "title": "Status"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -14153,6 +14173,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Coverage",
@@ -20730,7 +20760,7 @@
             "required": false,
             "schema": {
               "default": 50,
-              "maximum": 250,
+              "maximum": 10000,
               "minimum": 1,
               "title": "Page Size",
               "type": "integer"

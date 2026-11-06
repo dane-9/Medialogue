@@ -7,6 +7,7 @@ import { problemsApi } from '../api/modules/problems'
 import { systemApi } from '../api/modules/system'
 import { replacementsApi } from '../api/modules/replacements'
 import { upgradesApi } from '../api/modules/upgrades'
+import { jobEventChangesBadges } from '../lib/badgeRefresh'
 import medialogueBanner from '../assets/medialogue-banner.png'
 import type { HealthIndicator } from '../types'
 import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
@@ -105,7 +106,13 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     void refreshNewMediaCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const jobListener = () => { void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount() }
+    // Every job reports here, the health sweep included, and the Upgrade and
+    // Replace Media counts are not cheap: only a finished job that can change
+    // them refreshes the badges.
+    const jobListener = (event: MessageEvent<string>) => {
+      if (!jobEventChangesBadges(event.data)) return
+      void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount()
+    }
     ;['upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished']
       .forEach((name) => stream.addEventListener(name, () => void refreshReplaceCount()))
     // Problem SSE events are invalidation signals only. SQLite remains the
