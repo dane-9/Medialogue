@@ -81,6 +81,11 @@ class UpgradeCandidateResponse(BaseModel):
     size: int | None = None
     #: Size of the releases being replaced, from their torrents; None if unknown.
     current_size: int | None = None
+    #: Where the current release came from: the indexer when Medialogue sent
+    #: it, otherwise the tracker host its torrent announces to.
+    current_indexer: str | None = None
+    current_indexer_color: str | None = None
+    current_tracker: str | None = None
     seeders: int | None = None
     leechers: int | None = None
     published_at: datetime | None = None

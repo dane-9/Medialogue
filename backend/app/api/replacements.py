@@ -45,7 +45,11 @@ async def queue(_: AdminUser = Depends(require_admin), db: AsyncSession = Depend
 
     colors = {str(item.id): item.color for item in get_integration_config_store().list_indexers()}
     items = [
-        ReplacementItem.model_validate({**item, "indexer_color": colors.get(item.get("indexer_id") or "")})
+        ReplacementItem.model_validate({
+            **item,
+            "indexer_color": colors.get(item.get("indexer_id") or ""),
+            "current_indexer_color": colors.get(item.get("current_indexer_id") or ""),
+        })
         for item in await replacement_queue(db)
     ]
     counts = {"needs_search": 0, "found": 0, "in_progress": 0, "dismissed": 0}

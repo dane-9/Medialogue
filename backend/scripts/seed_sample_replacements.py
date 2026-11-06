@@ -66,13 +66,13 @@ SAMPLES = [
      "candidate": "Zodiac.2007.Directors.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-OTHER", "candidate_quality": "2160p BluRay REMUX"},
     {"state": "snoozed", "title": "Gone Girl", "year": 2014, "release": "Gone.Girl.2014.1080p.BluRay.x264-GROUP", "quality": "1080p Encode"},
 ]
-UNIDENTIFIED = "Unknown.Release.2019.1080p.WEB-DL.DDP5.1.H.264-NOGRP"
 
 
 def _ids(index: int) -> dict[str, uuid.UUID]:
     base = BASE + index * 16
     return {name: uuid.UUID(int=base + offset) for offset, name in enumerate(
-        ["movie", "release", "directory", "torrent", "observation", "tracker", "link", "candidate", "replacement"]
+        ["movie", "release", "directory", "torrent", "observation", "tracker", "link", "candidate", "replacement",
+         "replacement_observation"]
     )}
 
 
@@ -233,14 +233,24 @@ async def seed() -> None:
                     execution_error=sample.get("error"),
                     submitted_at=None if state == "found" else now - timedelta(hours=2),
                     validated_at=now - timedelta(minutes=10) if state == "cleanup_required" else None,
+                    # A download in flight reports live numbers from its torrent.
+                    torrent_id=ids["replacement"] if state == "downloading" else None,
+                    selected_download_client_id=FAKE_CLIENT if state == "downloading" else None,
                 ))
+                if state == "downloading":
+                    size = results[0]["size"] or 0
+                    db.add(Torrent(id=ids["replacement"], info_hash=ids["replacement"].hex + "00000000",
+                                   name=sample["candidate"], total_size=size, metadata_json={MARKER: True}))
+                    db.add(TorrentClientObservation(
+                        id=ids["replacement_observation"], torrent_id=ids["replacement"], download_client_id=FAKE_CLIENT,
+                        state="downloading", progress=0.46, download_speed=9_500_000,
+                        amount_left=round(size * 0.54), eta_seconds=round(size * 0.54 / 9_500_000),
+                        is_present=True, first_seen_at=now, last_seen_at=EVIDENCE_AT,
+                    ))
 
-        # A lost torrent Medialogue cannot tie to any media.
-        ids = _ids(len(SAMPLES))
-        db.add_all(torrent_rows(ids, UNIDENTIFIED, metadata={}))
         await db.commit()
     filled = await _fill_posters()
-    print(f"inserted {len(SAMPLES) + 1} sample Replace Media entries ({filled} posters filled)")
+    print(f"inserted {len(SAMPLES)} sample Replace Media entries ({filled} posters filled)")
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ from app.models.domain import (
 )
 from app.parser import parse_release
 from app.services.builtin_formats import format_group
+from app.services.release_source import source_of_releases
 from app.schemas.upgrades import (
     UpgradeCandidateCount,
     UpgradeCurrentRelease,
@@ -309,6 +310,12 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
     current_formats = _matched_rows(((snapshot.get("current") or {}).get("score_snapshot") or {}).get("breakdown"))
     candidate_formats = _matched_rows(candidate_snapshot.get("formats"))
     format_details = await _format_details(db, current_formats, candidate_formats)
+    current_ids = [UUID(value) for value in row.current_release_ids or []]
+    source = await source_of_releases(
+        db,
+        movie_release_ids=current_ids if row.media_type == MediaType.MOVIES else (),
+        show_release_ids=current_ids if row.media_type != MediaType.MOVIES else (),
+    )
     candidate_edition = (
         candidate_snapshot.get("edition")
         if isinstance(candidate_snapshot, dict) and "edition" in candidate_snapshot
@@ -340,6 +347,9 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_release_name=row.current_release_name,
         current_quality=row.current_quality,
         current_size=await _current_size(db, row),
+        current_indexer=source.indexer_name,
+        current_indexer_color=_indexer_color(source.indexer_id),
+        current_tracker=source.tracker,
         current_edition=current_edition,
         movie_has_multiple_editions=movie_has_multiple_editions,
         current_custom_format_score=row.current_custom_format_score,

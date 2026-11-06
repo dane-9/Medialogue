@@ -12,11 +12,13 @@ from sqlalchemy.orm import selectinload
 
 from app.core.errors import AppError
 from app.integrations.torznab import TorznabClient, SearchResult
-from app.models.domain import (Job, JobStatus, MediaType, Movie, MovieRelease, MovieReleaseTorrent, ReleaseState,
-                               Season, Show, ShowRelease, ShowReleaseTorrent, Torrent, TorrentTrackerObservation,
-                               UpgradeCandidate)
+from app.models.domain import (EpisodeMediaMap, Job, JobStatus, MediaDirectory, MediaFile, MediaType, Movie,
+                               MovieRelease, MovieReleaseTorrent, ReleaseState, Season, Show, ShowRelease,
+                               ShowReleaseTorrent, StorageRoot, Torrent, TorrentClientObservation,
+                               TorrentTrackerObservation, UpgradeCandidate)
 from app.services.integration_state import list_configured_indexers, get_configured_indexer
 from app.services.jobs import run_job, update_job
+from app.services.release_source import source_of_releases, source_of_torrents
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
     _persist_candidate, _evaluation_policy, _score_candidate)
 
@@ -260,7 +262,9 @@ def _item(**values: Any) -> dict[str, Any]:
         "last_search_result": None, "candidate_id": None, "candidate_title": None, "candidate_quality": None,
         "candidate_score": None, "candidate_size": None, "seeders": None, "leechers": None, "indexer": None,
         "indexer_id": None, "execution_state": None, "error": None,
-        "blocked_reason": None, "searching": False,
+        "searching": False, "root_name": None,
+        "download_progress": None, "download_speed": None, "download_eta_seconds": None,
+        "current_indexer": None, "current_indexer_id": None, "current_tracker": None,
     }
     base.update(values)
     base["tab"] = _tab(base)
@@ -294,17 +298,18 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
     seasons = {season.id: (season, show) for season, show in season_rows}
 
     items: list[dict[str, Any]] = []
-    covered: set[UUID] = set()
     for entry in targets:
         target, torrents = entry.target, entry.torrents
-        covered.update(torrent.id for torrent in torrents)
         row = candidates.get(target.target_key)
         dismissed = _dismissed(torrents, now)
         searched_at, search_result = _last_search(torrents)
         movie = movies.get(target.movie_id) if target.movie_id else None
         season, show = seasons.get(target.season_id, (None, None)) if target.season_id else (None, None)
         in_progress = bool(row and row.execution_state in ACTIVE_STATES)
+        source = await source_of_torrents(db, torrents)
         items.append(_item(
+            current_indexer=source.indexer_name, current_tracker=source.tracker,
+            current_indexer_id=str(source.indexer_id) if source.indexer_id else None,
             target_key=target.target_key, title=target.search_target.title, media_type=target.media_type.value,
             movie_id=str(target.movie_id) if target.movie_id else None,
             show_id=str(show.id) if show else None,
@@ -324,41 +329,12 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
             candidate_size=row.size if row else None, leechers=row.leechers if row else None,
             indexer_id=str(row.indexer_id) if row and row.indexer_id else None,
             execution_state=row.execution_state if row else None, error=row.execution_error if row else None,
+            **(await _download_live(db, row) if row else {}),
             searching=not in_progress and (target.target_key in searching_keys or (bulk_search and not dismissed)),
         ))
 
-    # A lost torrent that is not part of a target. When it still shares a
-    # release with a working cross-seed the payload is fine and it is left out;
-    # otherwise its identity or quality has to be resolved before searching.
-    uncovered = [torrent_id for torrent_id in lost if torrent_id not in covered]
-    if uncovered:
-        healthy_elsewhere: set[UUID] = set()
-        for link, release_column in (
-            (MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id),
-            (ShowReleaseTorrent, ShowReleaseTorrent.show_release_id),
-        ):
-            pairs = (await db.execute(select(link.torrent_id, release_column).where(link.torrent_id.in_(uncovered)))).all()
-            release_ids = {release_id for _torrent_id, release_id in pairs}
-            if not release_ids:
-                continue
-            members = (await db.execute(select(link.torrent_id, release_column).where(release_column.in_(release_ids)))).all()
-            by_release: dict[UUID, set[UUID]] = {}
-            for torrent_id, release_id in members:
-                by_release.setdefault(release_id, set()).add(torrent_id)
-            for torrent_id, release_id in pairs:
-                if any(member not in lost for member in by_release.get(release_id, set())):
-                    healthy_elsewhere.add(torrent_id)
-        for torrent_id in uncovered:
-            if torrent_id in healthy_elsewhere:
-                continue
-            torrent = lost[torrent_id]
-            searched_at, search_result = _last_search([torrent])
-            items.append(_item(
-                target_key=f"torrent:{torrent_id}", title=torrent.name, torrent_ids=[str(torrent_id)],
-                dismissed=_dismissed([torrent], now), last_searched_at=searched_at, last_search_result=search_result,
-                blocked_reason="Resolve media identity, current quality, monitoring, and season coverage before searching for an equivalent replacement.",
-            ))
-
+    # A lost torrent that belongs to no replaceable title is left out: there is
+    # nothing in the library to find a new source for.
     # Keep active handoffs visible after the previous torrent disappears or the
     # replacement becomes the new current release.
     known = {item["candidate_id"] for item in items}
@@ -372,7 +348,15 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
         season_show = (await db.execute(select(Season, Show).join(Show, Show.id == Season.show_id)
                                         .where(Season.id == row.season_id))).first() if row.season_id else None
         season, show = season_show if season_show else (None, None)
+        current_ids = [UUID(value) for value in row.current_release_ids or []]
+        source = await source_of_releases(
+            db,
+            movie_release_ids=current_ids if row.media_type == MediaType.MOVIES else (),
+            show_release_ids=current_ids if row.media_type != MediaType.MOVIES else (),
+        )
         items.append(_item(
+            current_indexer=source.indexer_name, current_tracker=source.tracker,
+            current_indexer_id=str(source.indexer_id) if source.indexer_id else None,
             target_key=row.target_key, title=movie.title if movie else show.title if show else row.current_release_name,
             reason="Replacement in progress", year=movie.year if movie else show.year if show else None,
             poster_ref=movie.poster_ref if movie else show.poster_ref if show else None,
@@ -386,8 +370,61 @@ async def replacement_queue(db: AsyncSession) -> list[dict[str, Any]]:
             seeders=row.seeders, indexer=row.indexer_name, candidate_size=row.size, leechers=row.leechers,
             indexer_id=str(row.indexer_id) if row.indexer_id else None,
             execution_state=row.execution_state, error=row.execution_error,
+            **await _download_live(db, row),
         ))
+    await _attach_root_names(db, items)
     return sorted(items, key=lambda item: (item["dismissed"], not item["needs_attention"], item["title"].casefold()))
+
+
+async def _download_live(db: AsyncSession, row: UpgradeCandidate) -> dict[str, Any]:
+    """The client's live view of a replacement's download, when it has one."""
+
+    if row.torrent_id is None or row.selected_download_client_id is None:
+        return {}
+    observation = await db.scalar(select(TorrentClientObservation).where(
+        TorrentClientObservation.torrent_id == row.torrent_id,
+        TorrentClientObservation.download_client_id == row.selected_download_client_id,
+    ))
+    if observation is None:
+        return {}
+    return {
+        "download_progress": float(observation.progress) if observation.progress is not None else None,
+        "download_speed": int(observation.download_speed) if observation.download_speed is not None else None,
+        "download_eta_seconds": int(observation.eta_seconds) if observation.eta_seconds is not None else None,
+    }
+
+
+async def _attach_root_names(db: AsyncSession, items: list[dict[str, Any]]) -> None:
+    """Name the media folder of each title, from where its releases sit on disk."""
+
+    movie_ids = {UUID(item["movie_id"]) for item in items if item.get("movie_id")}
+    show_ids = {UUID(item["show_id"]) for item in items if item.get("show_id")}
+    movie_roots: dict[str, str] = {}
+    show_roots: dict[str, str] = {}
+    if movie_ids:
+        for movie_id, name in (await db.execute(
+            select(MovieRelease.movie_id, StorageRoot.name)
+            .join(MediaDirectory, MediaDirectory.movie_release_id == MovieRelease.id)
+            .join(StorageRoot, StorageRoot.id == MediaDirectory.storage_root_id)
+            .where(MovieRelease.movie_id.in_(movie_ids))
+        )).all():
+            movie_roots.setdefault(str(movie_id), name)
+    if show_ids:
+        # A show's directory is the show container; its files say which folder.
+        for show_id, name in (await db.execute(
+            select(ShowRelease.show_id, StorageRoot.name)
+            .join(EpisodeMediaMap, EpisodeMediaMap.show_release_id == ShowRelease.id)
+            .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
+            .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+            .join(StorageRoot, StorageRoot.id == MediaDirectory.storage_root_id)
+            .where(ShowRelease.show_id.in_(show_ids))
+        )).all():
+            show_roots.setdefault(str(show_id), name)
+    for item in items:
+        if item.get("movie_id"):
+            item["root_name"] = movie_roots.get(item["movie_id"])
+        elif item.get("show_id"):
+            item["root_name"] = show_roots.get(item["show_id"])
 
 
 async def run_replacement_search(job_id: UUID, *, target_key: str | None = None, client_factory=TorznabClient):

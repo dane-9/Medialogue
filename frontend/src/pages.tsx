@@ -15,6 +15,7 @@ import { needsAttention, statusTone } from './lib/status'
 import { diffReleaseTokens } from './lib/releaseTokens'
 import { candidateFormatReasons, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason, UPGRADE_REASON_SCORE } from './lib/upgradeTokenReason'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
+import { ReleaseSourcePill } from './components/ReleaseSourcePill'
 import { MovieInteractiveSearch } from './components/MovieInteractiveSearch'
 import { ChangeMatchModal } from './components/ChangeMatchModal'
 import { formatPeers, swarmHealth } from './lib/swarm'
@@ -2905,7 +2906,7 @@ function NewMediaAlternatives({ item, onChoose, onSearched, onError }: {
             <strong>{candidate.title}</strong>
             <small>{candidate.year ?? 'Year unknown'}{yearMatches ? ' · matches folder' : ''}</small>
           </span>
-          {chosen && <Icon name="check" size={14} />}
+          {chosen && <Icon name="radio-selected" size={20} />}
         </button>
       })}
     </div>
@@ -5181,6 +5182,8 @@ export function UpgradeMediaPage() {
                       {part.quality ? <span className={`upgrade-current-quality ${qualityHovered ? 'hovered' : ''}`}>{part.text}</span> : part.text}
                     </Fragment>)
                     : item.mediaType === 'movies' ? 'Movie' : 'Show'}</small>
+                  {/* Where the current release came from, under its title. */}
+                  <ReleaseSourcePill indexer={item.currentIndexer} color={item.currentIndexerColor} tracker={item.currentTracker} />
                 </span>
                 {/* The release on disk fills the rest of the row on one line;
                     the full name is a hover away. */}

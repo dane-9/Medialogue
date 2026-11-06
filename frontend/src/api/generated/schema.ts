@@ -6324,8 +6324,6 @@ export interface components {
         };
         /** ReplacementItem */
         ReplacementItem: {
-            /** Blocked Reason */
-            blocked_reason?: string | null;
             /** Candidate Id */
             candidate_id?: string | null;
             /** Candidate Quality */
@@ -6336,14 +6334,26 @@ export interface components {
             candidate_size?: number | null;
             /** Candidate Title */
             candidate_title?: string | null;
+            /** Current Indexer */
+            current_indexer?: string | null;
+            /** Current Indexer Color */
+            current_indexer_color?: string | null;
             /** Current Quality */
             current_quality?: string | null;
             /** Current Release */
             current_release?: string | null;
             /** Current Score */
             current_score?: number | null;
+            /** Current Tracker */
+            current_tracker?: string | null;
             /** Dismissed */
             dismissed: boolean;
+            /** Download Eta Seconds */
+            download_eta_seconds?: number | null;
+            /** Download Progress */
+            download_progress?: number | null;
+            /** Download Speed */
+            download_speed?: number | null;
             /** Error */
             error?: string | null;
             /** Execution State */
@@ -6372,6 +6382,8 @@ export interface components {
             poster_ref?: string | null;
             /** Reason */
             reason: string;
+            /** Root Name */
+            root_name?: string | null;
             /**
              * Searching
              * @default false
@@ -7636,6 +7648,10 @@ export interface components {
             current_edition?: string | null;
             /** Current Episode Count */
             current_episode_count?: number | null;
+            /** Current Indexer */
+            current_indexer?: string | null;
+            /** Current Indexer Color */
+            current_indexer_color?: string | null;
             /** Current Matched Formats */
             current_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
             /** Current Paths */
@@ -7650,6 +7666,8 @@ export interface components {
             current_releases?: components["schemas"]["UpgradeCurrentRelease"][];
             /** Current Size */
             current_size?: number | null;
+            /** Current Tracker */
+            current_tracker?: string | null;
             /** Custom Format Score */
             custom_format_score: number;
             /** Download Eta Seconds */

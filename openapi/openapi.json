@@ -9198,17 +9198,6 @@
       },
       "ReplacementItem": {
         "properties": {
-          "blocked_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Blocked Reason"
-          },
           "candidate_id": {
             "anyOf": [
               {
@@ -9264,6 +9253,28 @@
             ],
             "title": "Candidate Title"
           },
+          "current_indexer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Indexer"
+          },
+          "current_indexer_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Indexer Color"
+          },
           "current_quality": {
             "anyOf": [
               {
@@ -9297,9 +9308,53 @@
             ],
             "title": "Current Score"
           },
+          "current_tracker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Tracker"
+          },
           "dismissed": {
             "title": "Dismissed",
             "type": "boolean"
+          },
+          "download_eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Eta Seconds"
+          },
+          "download_progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Progress"
+          },
+          "download_speed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Speed"
           },
           "error": {
             "anyOf": [
@@ -9450,6 +9505,17 @@
           "reason": {
             "title": "Reason",
             "type": "string"
+          },
+          "root_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Name"
           },
           "searching": {
             "default": false,
@@ -13289,6 +13355,28 @@
             ],
             "title": "Current Episode Count"
           },
+          "current_indexer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Indexer"
+          },
+          "current_indexer_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Indexer Color"
+          },
           "current_matched_formats": {
             "items": {
               "$ref": "#/components/schemas/UpgradeMatchedFormat"
@@ -13343,6 +13431,17 @@
               }
             ],
             "title": "Current Size"
+          },
+          "current_tracker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Tracker"
           },
           "custom_format_score": {
             "title": "Custom Format Score",

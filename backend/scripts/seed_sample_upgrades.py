@@ -459,6 +459,14 @@ def _ids(index: int) -> tuple[str, str, str]:
     return uuid.UUID(int=base).hex, uuid.UUID(int=base + 1).hex, uuid.UUID(int=base + 2).hex
 
 
+#: Trackers the sample current torrents announce to; the page names the
+#: source of a release it did not download by its tracker host.
+SAMPLE_TRACKERS = (
+    "https://tracker.alpha-sample.org:443/announce",
+    "https://bt.beta-sample.net/announce",
+    "udp://open.gamma-sample.io:6969/announce",
+)
+
 #: Current size as a share of the upgrade's, per sample in turn.
 CURRENT_SIZE_RATIOS = (0.62, 1.04, 0.55, 0.9, 1.12, 0.97, 0.7)
 
@@ -527,10 +535,10 @@ def _seed_movies(connection: sqlite3.Connection) -> list[tuple[dict, str, str]]:
             """insert or replace into torrents
                (id, info_hash, name, total_size, first_seen_at, last_seen_at, archive_state,
                 tracker_summary, metadata, created_at, updated_at)
-               values (?, ?, ?, ?, datetime('now'), datetime('now'), 'NOT_ARCHIVED', '{}', ?,
+               values (?, ?, ?, ?, datetime('now'), datetime('now'), 'NOT_ARCHIVED', ?, ?,
                        datetime('now'), datetime('now'))""",
             (torrent_id, uuid.UUID(torrent_id).hex[:40].ljust(40, "0"), sample["folder"], current_size,
-             json.dumps({MARKER: True})),
+             json.dumps({"tracker": SAMPLE_TRACKERS[index % len(SAMPLE_TRACKERS)]}), json.dumps({MARKER: True})),
         )
         connection.execute(
             """insert or replace into movie_release_torrents
@@ -601,10 +609,10 @@ def _seed_show_sizes(connection: sqlite3.Connection, release_ids: set[str]) -> N
             """insert or replace into torrents
                (id, info_hash, name, total_size, first_seen_at, last_seen_at, archive_state,
                 tracker_summary, metadata, created_at, updated_at)
-               values (?, ?, ?, ?, datetime('now'), datetime('now'), 'NOT_ARCHIVED', '{}', ?,
+               values (?, ?, ?, ?, datetime('now'), datetime('now'), 'NOT_ARCHIVED', ?, ?,
                        datetime('now'), datetime('now'))""",
             (torrent_id, torrent_id[:40].ljust(40, "0"), f"Sample torrent ({MARKER})", SHOW_CURRENT_SIZE,
-             json.dumps({MARKER: True})),
+             json.dumps({"tracker": SAMPLE_TRACKERS[0]}), json.dumps({MARKER: True})),
         )
         connection.execute(
             """insert or replace into show_release_torrents

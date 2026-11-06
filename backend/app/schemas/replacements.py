@@ -44,9 +44,21 @@ class ReplacementItem(BaseModel):
     indexer_color: str | None = None
     execution_state: str | None = None
     error: str | None = None
-    blocked_reason: str | None = None
     #: A replacement search covering this item is queued or running.
     searching: bool = False
+    #: The media folder the title lives in, so the page groups by folder as
+    #: New Media and Upgrade Media do. None when it is not in the library.
+    root_name: str | None = None
+    #: Live from the download client while the replacement downloads, as
+    #: Upgrade Media shows it: a 0..1 share, bytes per second, seconds left.
+    download_progress: float | None = None
+    download_speed: int | None = None
+    download_eta_seconds: int | None = None
+    #: Where the current release came from: the indexer when Medialogue sent
+    #: it, otherwise the tracker host its torrent announces to.
+    current_indexer: str | None = None
+    current_indexer_color: str | None = None
+    current_tracker: str | None = None
 
 
 class ReplacementQueueResponse(BaseModel):

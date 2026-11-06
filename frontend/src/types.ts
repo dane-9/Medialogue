@@ -501,6 +501,10 @@ export interface UpgradeCandidate {
   torrentId?: string
   downloadProgress?: number
   downloadState?: string
+  /** The current release's indexer when Medialogue sent it, else its tracker host. */
+  currentIndexer?: string
+  currentIndexerColor?: string
+  currentTracker?: string
   /** Bytes per second, live from the download client. */
   downloadSpeed?: number
   downloadEtaSeconds?: number
