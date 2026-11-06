@@ -160,6 +160,21 @@ const SCENE_TAGS: Record<string, string> = {
 
 const words = (value: string) => tokenWords(value)
 
+/** Scene words for a resolution that a quality name spells another way:
+ *  UHD and 4K are 2160p, FHD is 1080p. */
+const QUALITY_ALIASES: Record<string, string> = {
+  uhd: '2160p',
+  '4k': '2160p',
+  fhd: '1080p',
+}
+
+/** Whether a token names part of a quality: 2160p, UHD, BluRay, WEB-DL. */
+function namesQuality(token: string, quality: string) {
+  const qualityWords = words(quality)
+  const parts = words(token).map((part) => QUALITY_ALIASES[part] ?? part)
+  return parts.length > 0 && parts.every((part) => qualityWords.includes(part))
+}
+
 /** "Dynamic Range: DV HDR10 +50" - the section the format is filed under reads
  *  as its kind. Formats with no section keep the generic label, which is still
  *  true of every one of them. The score closes the line so the renderer can
@@ -207,7 +222,7 @@ export function upgradeTokenReason(token: ReleaseTokenDiff, context: UpgradeToke
   }
 
   // Resolution and source tokens: the quality change already states itself.
-  if (context.quality && context.quality !== context.currentQuality && words(context.quality).includes(key)) {
+  if (context.quality && context.quality !== context.currentQuality && namesQuality(token.text, context.quality)) {
     return `Quality: ${context.currentQuality ?? 'unknown'} to ${context.quality}.`
   }
 

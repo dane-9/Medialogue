@@ -4763,7 +4763,9 @@ export function UpgradeMediaPage() {
   const [busyId, setBusyId] = useState('')
   // The lit word under the pointer: its reason, so every word sharing it
   // (DV + HDR) lights together, and the score it carries.
-  const [hoveredReason, setHoveredReason] = useState<{ id: string; reason: string; score: number } | null>(null)
+  // A Custom Format word carries its score; a quality word (2160p, BluRay)
+  // instead lights the quality it replaces on the Current side.
+  const [hoveredReason, setHoveredReason] = useState<{ id: string; reason: string; score?: number } | null>(null)
   const [selectedRoot, setSelectedRoot] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -5089,7 +5091,7 @@ export function UpgradeMediaPage() {
         <div className="new-media-scroll">
           <span className="new-media-col-head">Current</span>
           <span className="new-media-col-head upgrade-v2-head">
-            <span>{shownStatus === 'ready' ? 'Upgrade' : 'Replacement'}</span>
+            <span>Upgrade</span>
             {shownStatus === 'ready' && <>
               <span className="upgrade-v2-seeds">Seeds</span>
               <span className="upgrade-v2-size">Size</span>
@@ -5112,13 +5114,15 @@ export function UpgradeMediaPage() {
             const delta = item.scoreDelta
             const swarm = swarmHealth(item.seeders)
             const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
-            const detail = [
-              item.mediaYear ? `${item.mediaYear}` : undefined,
-              item.seasonNumber !== undefined ? `Season ${item.seasonNumber}` : undefined,
-              qualityLabel(item.currentQuality) || undefined,
+            const currentQualityText = qualityLabel(item.currentQuality) || undefined
+            const qualityHovered = hoveredReason?.id === item.id && hoveredReason.reason.startsWith('Quality:')
+            const detailParts: { text: string; quality?: boolean }[] = [
+              item.mediaYear ? { text: `${item.mediaYear}` } : undefined,
+              item.seasonNumber !== undefined ? { text: `Season ${item.seasonNumber}` } : undefined,
+              currentQualityText ? { text: currentQualityText, quality: true } : undefined,
               // After the quality, as the movie page and release lists show it.
-              item.currentEdition || undefined,
-            ].filter(Boolean).join(' · ')
+              item.currentEdition ? { text: item.currentEdition } : undefined,
+            ].filter((part): part is { text: string; quality?: boolean } => Boolean(part))
             // With no details pane, the row itself is the checkbox.
             const open = () => { if (batchable) toggleChosen(item.id) }
             const profileName = profiles.find((profile) => profile.id === item.qualityProfileId)?.name
@@ -5171,7 +5175,12 @@ export function UpgradeMediaPage() {
                   : <Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={16} />}</span>
                 <span className="new-media-match-copy upgrade-v2-title">
                   <strong>{item.mediaTitle}</strong>
-                  <small>{detail || (item.mediaType === 'movies' ? 'Movie' : 'Show')}</small>
+                  <small>{detailParts.length
+                    ? detailParts.map((part, index) => <Fragment key={index}>
+                      {index > 0 && ' · '}
+                      {part.quality ? <span className={`upgrade-current-quality ${qualityHovered ? 'hovered' : ''}`}>{part.text}</span> : part.text}
+                    </Fragment>)
+                    : item.mediaType === 'movies' ? 'Movie' : 'Show'}</small>
                 </span>
                 {/* The release on disk fills the rest of the row on one line;
                     the full name is a hover away. */}
@@ -5194,11 +5203,14 @@ export function UpgradeMediaPage() {
                           the Custom Format it earned beside CF, also blue. */}
                       {tokenReasons[index]
                         ? <span
-                          className={`upgrade-token-new ${hoveredReason?.id === item.id && hoveredReason.reason === tokenReasons[index] ? 'hovered' : ''}`}
+                          // Quality words wear a soft chip, so they read apart
+                          // from the words a Custom Format scored.
+                          className={`upgrade-token-new ${tokenReasons[index]!.startsWith('Quality:') ? 'quality' : ''} ${hoveredReason?.id === item.id && hoveredReason.reason === tokenReasons[index] ? 'hovered' : ''}`}
                           onMouseEnter={() => {
                             const reason = tokenReasons[index]!
                             const match = UPGRADE_REASON_SCORE.exec(reason)
                             if (match) setHoveredReason({ id: item.id, reason, score: Number(match[1]) })
+                            else if (reason.startsWith('Quality:')) setHoveredReason({ id: item.id, reason })
                           }}
                           onMouseLeave={() => setHoveredReason(null)}
                         >{token.text}</span>
@@ -5226,7 +5238,7 @@ export function UpgradeMediaPage() {
                     </small>
                   </div> : <div className="upgrade-v2-meta">
                     <span onClick={(event) => event.stopPropagation()}><UpgradeCompare item={item} profile={profileName}>
-                      <small className={`upgrade-v2-score ${scoreWeight}`}>CF: {item.customFormatScore} {hoveredReason?.id === item.id
+                      <small className={`upgrade-v2-score ${scoreWeight}`}>CF: {item.customFormatScore} {hoveredReason?.id === item.id && hoveredReason.score !== undefined
                         ? <span className="cf-score-delta hovered">{formatScoreDelta(hoveredReason.score)}</span>
                         : <span className="cf-score-delta">{formatScoreDelta(item.customFormatScore - item.currentCustomFormatScore)}</span>}</small>
                     </UpgradeCompare></span>

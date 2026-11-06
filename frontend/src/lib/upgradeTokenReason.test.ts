@@ -138,6 +138,15 @@ describe('upgradeTokenReason', () => {
     expect(reasonFor('BluRay')).toBe('Quality: 1080p WEB-DL to 2160p BluRay REMUX.')
   })
 
+  it('reads UHD and 4K as the 2160p of a quality, and WEB-DL as one word', () => {
+    expect(reasonFor('UHD')).toBe('Quality: 1080p WEB-DL to 2160p BluRay REMUX.')
+    const web = { ...context, currentQuality: '1080p BluRay', quality: '2160p WEB-DL' }
+    const tokens = diffReleaseTokens('Movie.2160p.4K.WEB-DL.x265-GRP', 'Movie.1080p.BluRay.x264-GRP')
+    const reason = (text: string) => upgradeTokenReason(tokens.find((entry) => entry.text === text)!, web)
+    expect(reason('4K')).toBe('Quality: 1080p BluRay to 2160p WEB-DL.')
+    expect(reason('WEB-DL')).toBe('Quality: 1080p BluRay to 2160p WEB-DL.')
+  })
+
   it('does not attribute a quality token when the quality did not change', () => {
     const same = { ...context, currentQuality: '2160p BluRay REMUX' }
     expect(reasonFor('2160p', same)).toBeUndefined()

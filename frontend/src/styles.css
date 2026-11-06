@@ -4866,6 +4866,13 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v2-change > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 110px; max-width: 40%; }
 .upgrade-v2-change .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s3); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-v2-change .upgrade-v2-release .upgrade-token-new { color: var(--ok); font-weight: 600; }
+/* Quality words sit on a soft green chip, the look a word takes on hover,
+   so they read apart from the words a Custom Format scored. */
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.quality { background: var(--ok-soft); }
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.quality.hovered { background: var(--accent-soft); }
+/* A quality word under the pointer lights the quality it replaces. */
+.upgrade-current-quality { border-radius: var(--r-sm); transition: color .12s ease; }
+.upgrade-current-quality.hovered { margin: 0 -2px; padding: 0 2px; color: var(--accent-text); background: var(--accent-soft); }
 /* The word under the pointer and the score it earned, matched in blue. */
 .upgrade-v2-change .upgrade-v2-release .upgrade-token-new.hovered,
 .upgrade-v2-score .cf-score-delta.hovered { color: var(--accent-text); }
@@ -4899,6 +4906,9 @@ select.input { background-color: var(--input-bg); }
    change fills its own column at the far right. */
 .upgrade-v2-seeds, .upgrade-v2-size, .upgrade-v2-size-change { flex: none; text-align: right; white-space: nowrap; }
 .upgrade-v2-seeds { width: var(--upgrade-seeds); }
+/* As a flex box, not inline text: inline, the pill sat on a text baseline and
+   the line grew taller than in the other tabs. */
+.upgrade-v2-line > .upgrade-v2-seeds { display: flex; align-items: center; justify-content: flex-end; }
 .upgrade-v2-size { width: var(--upgrade-size); }
 .upgrade-v2-size-change { width: var(--upgrade-size-change); text-align: left; }
 /* Seeds and Size read as a pair: a tighter gap than the row's own. */
@@ -4962,7 +4972,7 @@ select.input { background-color: var(--input-bg); }
 
 /* In progress: live Progress / Speed / ETA columns, and the download as a
    bar filling the space between the CF score and the indexer. */
-.upgrade-v3 { --upgrade-live: 64px; --upgrade-action: 112px; }
+.upgrade-v3 { --upgrade-live: 64px; --upgrade-action: 92px; }
 .upgrade-v2-live { flex: none; width: var(--upgrade-live); color: var(--muted); font: var(--t-xs) var(--sans); text-align: right; white-space: nowrap; }
 .upgrade-v2-line > .upgrade-v2-release + .upgrade-v2-live { margin-left: auto; }
 .upgrade-v2-head > .upgrade-v2-live { font: inherit; }
@@ -4979,5 +4989,9 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v2-line > .upgrade-v2-action { margin-left: auto; }
 .upgrade-v2-head > .upgrade-v2-action { justify-content: flex-end; }
 .upgrade-v2-action .button { width: 100%; justify-content: center; }
+/* The button overhangs the line rather than growing it, so a row here is the
+   same height as in Ready and In progress. */
+.upgrade-v2-line > .upgrade-v2-action { height: var(--upgrade-line); align-items: center; }
+.upgrade-v2-line > .upgrade-v2-action .button { height: 28px; min-height: 0; margin-block: -5px; padding-inline: var(--s2); }
 .upgrade-v2-problem { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--warn) 75%, var(--muted)); font: var(--t-xs)/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-v2-problem svg { flex: none; }
