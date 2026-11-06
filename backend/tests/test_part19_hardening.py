@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import Settings
 from app.db import session as db_session
 from app.db.base import Base
+from app.schemas.common import LIBRARY_PAGE_LIMIT
 from app.main import create_app
 from app.models.domain import (
     IdentityState,
@@ -211,6 +212,6 @@ def test_movie_collection_pagination_sort_query_tag_and_state_filters(client: Te
     present = client.get("/api/v1/movies?state=present").json()
     assert [item["title"] for item in present["items"]] == ["Bravo"]
 
-    too_large = client.get("/api/v1/movies?page_size=251")
+    too_large = client.get(f"/api/v1/movies?page_size={LIBRARY_PAGE_LIMIT + 1}")
     assert too_large.status_code == 422
     assert too_large.json()["error"]["code"] == "VALIDATION_ERROR"

@@ -574,6 +574,11 @@ def test_duplicate_episode_files_are_flagged_and_left_untouched(client: TestClie
         problems = client.get("/api/v1/problems?reason=DUPLICATE_EPISODE_RELEASE")
         assert problems.status_code == 200, problems.text
         assert problems.json()["total"] == 1
+        # The library list computes its summary with grouped queries instead of
+        # loading the show; every field it shares with the detail must agree.
+        listed = client.get("/api/v1/shows").json()["items"][0]
+        assert listed["problem_count"] >= 1
+        assert {key: show[key] for key in listed} == listed
         details = problems.json()["items"][0]["details"]
         assert details["verified_physical_file_count"] == 2
         assert {item["path"] for item in details["media_files"] if item["physical_exists"]} == {

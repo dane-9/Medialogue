@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { needsAttention, statusTone } from '../lib/status'
 import { MovieInteractiveSearch } from '../components/MovieInteractiveSearch'
 import { ChangeMatchModal } from '../components/ChangeMatchModal'
@@ -16,6 +16,8 @@ import { settingsApi } from '../api/modules/settings'
 import { systemApi } from '../api/modules/system'
 import { upgradesApi } from '../api/modules/upgrades'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from '../lib/uiState'
+import { reuseUnchanged } from '../lib/reuseUnchanged'
+import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { IncomingDownload, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
 import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, useLiveLibraryRefresh } from './shared'
 
@@ -37,31 +39,29 @@ export function MoviesPage() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [cardBusy, setCardBusy] = useState<string | null>(null)
 
-  const loadMovies = async () => {
-    try {
-      const items = await moviesApi.movies(query, tagFilter, sort)
-      setMovies(items)
-      setSelected((current) => new Set([...current].filter((id) => items.some((movie) => movie.id === id))))
-      setError('')
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not load movies.')
-    } finally { setLoading(false) }
+  const applyMovies = (items: Movie[]) => {
+    setMovies((current) => reuseUnchanged(current, items))
+    const ids = new Set(items.map((movie) => movie.id))
+    setSelected((current) => [...current].every((id) => ids.has(id)) ? current : new Set([...current].filter((id) => ids.has(id))))
+    setError('')
   }
 
-  useLiveLibraryRefresh(loadMovies)
+  const loadMovies = async () => {
+    try { applyMovies(await moviesApi.movies('', tagFilter, sort)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load movies.') }
+    finally { setLoading(false) }
+  }
+
+  // Live events already trigger a reload, so the poll is only a fallback.
+  useLiveLibraryRefresh(loadMovies, 60000)
 
   useEffect(() => {
     let alive = true
-    const timer = window.setTimeout(() => {
-      moviesApi.movies(query, tagFilter, sort).then((items) => {
-        if (!alive) return
-        setMovies(items)
-        setSelected((current) => new Set([...current].filter((id) => items.some((movie) => movie.id === id))))
-        setError('')
-      }).catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load movies.') }).finally(() => { if (alive) setLoading(false) })
-    }, 150)
-    return () => { alive = false; window.clearTimeout(timer) }
-  }, [query, tagFilter, sort])
+    moviesApi.movies('', tagFilter, sort).then((items) => { if (alive) applyMovies(items) })
+      .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load movies.') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [tagFilter, sort])
 
   useEffect(() => {
     let alive = true
@@ -78,14 +78,14 @@ export function MoviesPage() {
     setSearchParams(next, { replace: true })
   }
 
-  const toggleSelected = (movieId: string) => setSelected((current) => toggleIdSelection(current, movieId))
+  const toggleSelected = useCallback((movieId: string) => setSelected((current) => toggleIdSelection(current, movieId)), [])
 
-  const openContext = (event: React.MouseEvent, movieId: string) => {
+  const openContext = useCallback((event: React.MouseEvent, movieId: string) => {
     event.preventDefault()
     event.stopPropagation()
     setSelected((current) => contextMenuSelection(current, movieId))
     setContext({ x: event.clientX, y: event.clientY })
-  }
+  }, [])
 
   const changeMovieView = (next: 'cards' | 'table') => {
     setView(next)
@@ -146,17 +146,25 @@ export function MoviesPage() {
     } finally { setCardBusy(null) }
   }
 
-  const needsReview = (movie: Movie) => movie.status === 'Conflict' || movie.status === 'Duplicate' || (movie.problemCount ?? 0) > 0
-  const filtered = useMemo(() => movies.filter((movie) => {
-    const matchesFilter = filter === 'All' || (filter === 'Problems' ? needsReview(movie) : filter === 'Unmonitored' ? movie.monitored === false : movie.status === filter)
-    return matchesFilter && movie.title.toLowerCase().includes(query.toLowerCase())
-  }), [movies, filter, query])
+  // Cards are memoised, so they get one stable handler that always calls the
+  // latest version of the action.
+  const cardActionRef = useRef(runMovieCardAction)
+  cardActionRef.current = runMovieCardAction
+  const onCardAction = useCallback((movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => cardActionRef.current(movie, action), [])
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return movies.filter((movie) => {
+      const matchesFilter = filter === 'All' || (filter === 'Problems' ? needsReview(movie) : filter === 'Unmonitored' ? movie.monitored === false : movie.status === filter)
+      return matchesFilter && (!needle || movie.title.toLowerCase().includes(needle) || String(movie.year ?? '').includes(needle))
+    })
+  }, [movies, filter, query])
   return <Page title="Movies" subtitle="Your library, exactly where it was downloaded.">
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div>{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <div className="media-grid">{filtered.map((movie) => <MovieCard key={movie.id} movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={runMovieCardAction} />)}</div> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
+    {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid" items={filtered} itemKey={(movie) => movie.id} renderItem={(movie) => <MovieCard movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={onCardAction} />} /> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onContext={openContext} onTagClick={updateTagFilter} />)}
     {!error && !loading && !filtered.length && <EmptyState icon="clapper" title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><MovieBulkContextMenu position={context} count={selected.size} profiles={profiles} tags={tags} busy={bulkBusy} onRun={runBulk} onCreateTag={createTag} onClear={() => { setSelected(new Set()); setContext(null) }} /></>}
   </Page>
@@ -167,24 +175,27 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
   return <div className="tag-chip-row">{movie.tags.map((tag) => <span key={tag.id} className="tag-chip" role={onTagClick ? 'button' : undefined} tabIndex={onTagClick ? 0 : undefined} onClick={(event) => { if (!onTagClick) return; event.preventDefault(); event.stopPropagation(); onTagClick(tag.name) }} onKeyDown={(event) => { if (onTagClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onTagClick(tag.name) } }}>{tag.name}</span>)}</div>
 }
 
-function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
+const needsReview = (movie: Movie) => movie.status === 'Conflict' || movie.status === 'Duplicate' || (movie.problemCount ?? 0) > 0
+
+const MovieCard = memo(function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
   const plexAvailable = usePlexAvailable()
   const tier = qualityMark(movie.quality)
   const edition = editionLabel(movie.edition)
   const run = (action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onAction(movie, action) }
   return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <Link className="media-card-link" to={`/movies/${movie.id}`} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}>
-      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}<span className="poster-marks">{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}<span className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={13} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={13} /></button></Tooltip>}</span><MonitorMark monitored={movie.monitored !== false} title={movie.title} busy={busy} onToggle={(next) => void onAction(movie, next ? 'monitor' : 'unmonitor')} /></span>{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
+      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} size="w342" />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}<span className="poster-marks">{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}<span className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={13} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={13} /></button></Tooltip>}</span><MonitorMark monitored={movie.monitored !== false} title={movie.title} busy={busy} onToggle={(next) => void onAction(movie, next ? 'monitor' : 'unmonitor')} /></span>{selected && <span className="selection-mark"><Icon name="check" size={14} /></span>}</div>
       <div className="media-card-body"><div className="media-card-meta">{needsAttention(movie.status) && <Badge tone={statusTone(movie.status)} className="media-card-primary-badge">{movie.status}</Badge>}<QbitStatusBadge status={movie.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{movie.title}</strong>{/* An edition is long enough that sharing a row with the tier truncated one
         of them, so it takes the year's row and the tier drops to its own. */}
         <span className="media-card-sub">{movie.year || 'Year unknown'}{edition && <em className="media-card-quality">{edition}</em>}{!edition && tier && <em className="media-card-quality">{tier}</em>}</span>{edition && tier && <span className="media-card-sub media-card-tier">{tier}</span>}</div></div>
     </Link>
   </article>
-}
+})
 
 function MovieTable({ items, selected, onToggle, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; onToggle: (id: string) => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) {
   const plexAvailable = usePlexAvailable()
-  return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Title</th><th>State</th><th>Current release</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody>{items.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} /></span><MonitorMark monitored={movie.monitored !== false} />{movie.title}<span className="muted">{movie.year}</span></Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><QbitStatusBadge status={movie.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}<td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td>{selected.has(movie.id) ? <Icon name="check" size={15} /> : <Icon name="chevron" size={15} />}</td></tr>)}</tbody></table></Panel>
+  const rows = useVirtualRows(items, plexAvailable ? 9 : 8)
+  return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Title</th><th>State</th><th>Current release</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id) } }}><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} size="w92" /></span><MonitorMark monitored={movie.monitored !== false} />{movie.title}<span className="muted">{movie.year}</span></Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><QbitStatusBadge status={movie.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}<td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td>{selected.has(movie.id) ? <Icon name="check" size={15} /> : <Icon name="chevron" size={15} />}</td></tr>)}{rows.after}</tbody></table></Panel>
 }
 
 function MovieBulkContextMenu({ position, count, profiles, tags, busy, onRun, onCreateTag, onClear }: { position: { x: number; y: number }; count: number; profiles: QualityProfile[]; tags: Tag[]; busy: boolean; onRun: (action: Parameters<typeof moviesApi.bulkMovies>[0]['action'], options?: { profileId?: string | null; tagIds?: string[] }) => Promise<void>; onCreateTag: (name: string) => Promise<Tag>; onClear: () => void }) {

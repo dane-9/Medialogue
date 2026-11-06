@@ -1,10 +1,11 @@
 import { mapEpisode, mapSeason, mapShow } from '../mappers/shows'
 import { mapTMDBShowLookup } from '../mappers/metadata'
-import { openApiClient, openApiData } from '../transport'
+import { LIBRARY_PAGE_SIZE, openApiClient, openApiData } from '../transport'
 
 export const showsApi = {
   shows: async (query = '', sort = 'title') => {
     const payload = await openApiData(openApiClient.GET('/api/v1/shows', { params: { query: {
+      page_size: LIBRARY_PAGE_SIZE,
       query: query || undefined,
       sort,
     } } }))

@@ -10,16 +10,21 @@ import { Badge } from '../components/ui'
 import type { MediaTorrentStatus, MovieEditionUpdate, QualityProfile, TMDBShowLookup, TMDBMovieLookup } from '../types'
 import { parseJobStatusLiveEvent } from '../validation/liveEvents'
 
-export function tmdbPosterUrl(reference?: string) {
+// TMDB serves posters at fixed widths. A library card or table thumbnail asks
+// for one near its own size: the full w500 image is several times the bytes
+// and decode work, which a page of cards pays on every scroll.
+export type TmdbPosterSize = 'w92' | 'w154' | 'w342' | 'w500'
+
+export function tmdbPosterUrl(reference?: string, size: TmdbPosterSize = 'w500') {
   if (!reference) return undefined
   if (/^https?:\/\//i.test(reference)) return reference
-  return `https://image.tmdb.org/t/p/w500${reference.startsWith('/') ? reference : `/${reference}`}`
+  return `https://image.tmdb.org/t/p/${size}${reference.startsWith('/') ? reference : `/${reference}`}`
 }
 
-export function PosterImage({ reference, title }: { reference?: string; title: string }) {
-  const src = tmdbPosterUrl(reference)
+export function PosterImage({ reference, title, size }: { reference?: string; title: string; size?: TmdbPosterSize }) {
+  const src = tmdbPosterUrl(reference, size)
   if (!src) return null
-  return <img className="poster-image" src={src} alt={`${title} poster`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} />
+  return <img className="poster-image" src={src} alt={`${title} poster`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} />
 }
 
 export const libraryInvalidationEvents = [

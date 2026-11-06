@@ -1175,18 +1175,21 @@ async def show_problem_count(db: AsyncSession, show_id: UUID) -> int:
     )
 
 
+# The worst Plex state wins when a show has several observations.
+PLEX_STATE_PRIORITY = {
+    PlexMatchState.CONFLICT: 5,
+    PlexMatchState.MULTIPLE_VERSIONS: 4,
+    PlexMatchState.UNAVAILABLE: 3,
+    PlexMatchState.PENDING: 2,
+    PlexMatchState.NOT_FOUND: 1,
+    PlexMatchState.MATCHED: 0,
+}
+
+
 async def show_plex_state(db: AsyncSession, show_id: UUID) -> str:
     states = (
         await db.scalars(select(PlexObservation.match_state).where(PlexObservation.show_id == show_id))
     ).all()
     if not states:
         return "unknown"
-    priority = {
-        PlexMatchState.CONFLICT: 5,
-        PlexMatchState.MULTIPLE_VERSIONS: 4,
-        PlexMatchState.UNAVAILABLE: 3,
-        PlexMatchState.PENDING: 2,
-        PlexMatchState.NOT_FOUND: 1,
-        PlexMatchState.MATCHED: 0,
-    }
-    return max(states, key=lambda state: priority.get(state, 0)).value
+    return max(states, key=lambda state: PLEX_STATE_PRIORITY.get(state, 0)).value

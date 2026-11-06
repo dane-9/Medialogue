@@ -836,6 +836,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .media-card {
   position: relative;
+  /* Keeps the card's own layers (marks, washes, borders) inside the card, so
+     none of them can paint over the sticky page header while scrolling. */
+  isolation: isolate;
   aspect-ratio: 2 / 3;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -973,8 +976,7 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 
 .media-card-quality::before { color: rgba(255, 255, 255, .45); margin: 0 var(--s1); font-family: var(--sans); content: "·"; }
 .media-card-meta { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
-.media-card-meta .badge { border-color: rgba(255, 255, 255, .18); backdrop-filter: blur(6px); }
-.media-card-body .episode-progress { backdrop-filter: blur(6px); }
+.media-card-meta .badge { border-color: rgba(255, 255, 255, .18); }
 .media-card-primary-badge { min-height: 22px; padding-inline: var(--s2); font-weight: 600; }
 .media-card-secondary-badge { opacity: .72; transition: opacity .16s ease; }
 /* Held back at rest so the artwork leads, brought fully forward once the card
@@ -1080,11 +1082,10 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 @media (prefers-reduced-motion: reduce) {
   button.monitor-mark { transition: none; }
 }
-.poster-marks .monitor-mark { backdrop-filter: blur(5px); }
 /* In a table there is no artwork behind it, so it carries no plate. */
-.table-title .monitor-mark { width: auto; height: auto; border: 0; background: none; backdrop-filter: none; }
+.table-title .monitor-mark { width: auto; height: auto; border: 0; background: none; }
 
-.incoming-mark { position: static; z-index: 2; display: inline-flex; align-items: center; gap: var(--s1); padding: 3px var(--s2); border: 1px solid var(--accent-line); border-radius: var(--r-sm); color: var(--accent-text); background: rgba(36, 40, 47, .94); backdrop-filter: blur(4px); font: 600 var(--t-micro) var(--mono); text-transform: uppercase; }
+.incoming-mark { position: static; z-index: 2; display: inline-flex; align-items: center; gap: var(--s1); padding: 3px var(--s2); border: 1px solid var(--accent-line); border-radius: var(--r-sm); color: var(--accent-text); background: rgba(36, 40, 47, .94); font: 600 var(--t-micro) var(--mono); text-transform: uppercase; }
 .incoming-mark svg { flex: none; }
 
 .tag-chip-row { display: flex; flex-wrap: wrap; gap: var(--s1); }
@@ -4645,3 +4646,7 @@ select.input { background-color: var(--input-bg); }
 .archive-actions { display: flex; justify-content: flex-end; gap: 2px; }
 .archive-when { color: var(--muted); font-size: var(--t-xs); white-space: nowrap; }
 .archive-unhealthy .panel-note { color: var(--err); }
+
+/* Stand-ins for the rows a virtualised list leaves unrendered. */
+.data-table tbody tr.virtual-spacer,
+.data-table tbody tr.virtual-spacer:hover { background: none; }

@@ -31,7 +31,7 @@ from app.models.domain import (
     Torrent,
     TorrentClientObservation,
 )
-from app.schemas.common import Collection
+from app.schemas.common import LIBRARY_PAGE_LIMIT, Collection
 from app.services.movie_identity import apply_movie_identity
 from app.schemas.movies import (
     MediaDirectoryResponse,
@@ -53,9 +53,17 @@ from app.services.media_torrent_status import aggregate_torrent_status, release_
 router = APIRouter(prefix="/movies", tags=["movies"])
 
 
-def _movie_query():
+def _movie_query(*, for_list: bool = False):
+    # The library list skips the two heaviest parts of a release: its files
+    # (every subtitle, sample and extra) and its parse snapshot, which holds the
+    # full parser evidence. The list reads the snapshot's confidence on its own.
+    releases = selectinload(Movie.releases)
+    if for_list:
+        releases = releases.defer(MovieRelease.parse_snapshot, raiseload=True)
+    files = () if for_list else (selectinload(Movie.releases).selectinload(MovieRelease.directories).selectinload(MediaDirectory.files),)
     return select(Movie).options(
-        selectinload(Movie.releases).selectinload(MovieRelease.directories).selectinload(MediaDirectory.files),
+        releases,
+        *files,
         selectinload(Movie.releases).selectinload(MovieRelease.directories).selectinload(MediaDirectory.storage_root),
         selectinload(Movie.releases).selectinload(MovieRelease.quality_definition),
         selectinload(Movie.plex_observations),
@@ -66,7 +74,7 @@ def _movie_query():
 @router.get("", response_model=Collection[MovieSummaryResponse])
 async def list_movies(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=250),
+    page_size: int = Query(50, ge=1, le=LIBRARY_PAGE_LIMIT),
     query: str | None = None,
     state: str | None = None,
     tag: str | None = None,
@@ -74,7 +82,7 @@ async def list_movies(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[MovieSummaryResponse]:
-    statement = _movie_query()
+    statement = _movie_query(for_list=True)
     if query:
         pattern = f"%{query.strip()}%"
         statement = statement.where(or_(Movie.title.ilike(pattern), cast(Movie.year, String).ilike(pattern)))
@@ -86,21 +94,29 @@ async def list_movies(
         else:
             statement = statement.where(Movie.tags.any(Tag.id == tag_id))
     movies = list((await db.scalars(statement)).unique().all())
-    problems = await _problem_counts(db, [movie.id for movie in movies])
+    movie_ids = [movie.id for movie in movies]
+    problems = await _problem_counts(db, movie_ids)
+    confidences = dict(
+        (
+            await db.execute(
+                select(MovieRelease.id, func.json_extract(MovieRelease.parse_snapshot, "$.identity_confidence"))
+                .where(MovieRelease.movie_id.in_(movie_ids))
+            )
+        ).all()
+    ) if movies else {}
     incoming_rows = (
         await db.execute(
-            select(MovieRelease.movie_id, MovieRelease.parse_snapshot)
+            select(MovieRelease.movie_id, func.json_extract(MovieRelease.parse_snapshot, "$.incoming_kind"))
             .join(MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id == MovieRelease.id)
             .where(
-                MovieRelease.movie_id.in_([movie.id for movie in movies]),
+                MovieRelease.movie_id.in_(movie_ids),
                 MovieReleaseTorrent.association_type == AssociationType.INCOMING,
             )
             .order_by(MovieReleaseTorrent.created_at.desc())
         )
     ).all() if movies else []
     incoming_kinds: dict[UUID, str] = {}
-    for movie_id, parse_snapshot in incoming_rows:
-        raw_kind = (parse_snapshot or {}).get("incoming_kind")
+    for movie_id, raw_kind in incoming_rows:
         kind = "replacement" if str(raw_kind).casefold() == "replacement" else "release"
         if movie_id not in incoming_kinds or kind == "replacement":
             incoming_kinds[movie_id] = kind
@@ -127,6 +143,7 @@ async def list_movies(
                 release_statuses.get(release.id, MediaTorrentStatusResponse())
                 for release in active_by_movie[movie.id]
             ),
+            confidences=confidences,
         )
         for movie in movies
     ]
@@ -539,6 +556,8 @@ def _summary(
     problem_count: int,
     incoming_kind: str | None = None,
     torrent_status: MediaTorrentStatusResponse | None = None,
+    *,
+    confidences: dict[UUID, object] | None = None,
 ) -> MovieSummaryResponse:
     active = [
         release
@@ -582,7 +601,7 @@ def _summary(
     )
     confidence = None
     if current:
-        raw_confidence = current.parse_snapshot.get("identity_confidence")
+        raw_confidence = confidences.get(current.id) if confidences is not None else current.parse_snapshot.get("identity_confidence")
         confidence = float(raw_confidence) if raw_confidence is not None else None
     last_observed = max(
         (directory.last_seen_at for release in active for directory in release.directories),

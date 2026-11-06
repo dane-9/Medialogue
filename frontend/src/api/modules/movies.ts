@@ -1,12 +1,12 @@
 import type { MovieEditionUpdate, MovieEditionUpdateResult } from '../../types'
 import { mapMovie, mapTag } from '../mappers/movies'
 import { mapTMDBMovieLookup } from '../mappers/metadata'
-import { openApiClient, openApiData } from '../transport'
+import { LIBRARY_PAGE_SIZE, openApiClient, openApiData } from '../transport'
 
 export const moviesApi = {
   movies: async (query = '', tag = '', sort = 'title') => {
     const payload = await openApiData(openApiClient.GET('/api/v1/movies', { params: { query: {
-      page_size: 250,
+      page_size: LIBRARY_PAGE_SIZE,
       query: query || undefined,
       tag: tag || undefined,
       sort,

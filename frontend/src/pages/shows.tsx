@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { needsAttention, statusTone } from '../lib/status'
 import { Link } from 'react-router-dom'
 import { Field, SettingsGroup } from '../components/settings'
@@ -12,6 +12,8 @@ import { showsApi } from '../api/modules/shows'
 import { systemApi } from '../api/modules/system'
 import { upgradesApi } from '../api/modules/upgrades'
 import { normalizeMediaView } from '../lib/uiState'
+import { reuseUnchanged } from '../lib/reuseUnchanged'
+import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { EpisodeOrdering, MediaProfileSettings, QualityDefinition, QualityProfile, Show, Season, Episode, EpisodeMedia } from '../types'
 import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, useLiveLibraryRefresh } from './shared'
 
@@ -34,12 +36,13 @@ export function ShowsPage() {
   const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
-    try { setItems(await showsApi.shows(query, sort)); setError('') }
+    try { const next = await showsApi.shows('', sort); setItems((current) => reuseUnchanged(current, next)); setError('') }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load shows.') }
     finally { if (foreground) setLoading(false) }
   }
-  useLiveLibraryRefresh(() => load(false))
-  useEffect(() => { const timer = window.setTimeout(() => { void load() }, 150); return () => window.clearTimeout(timer) }, [query, sort])
+  // Live events already trigger a reload, so the poll is only a fallback.
+  useLiveLibraryRefresh(() => load(false), 60000)
+  useEffect(() => { void load(!items.length) }, [sort])
   useEffect(() => { showsApi.specialsCounting().then((value) => setCountSpecials(value.count_specials)).catch(() => undefined) }, [])
 
   // A hard switch, not a view filter: it rewrites the Counted flag on Season 0
@@ -60,7 +63,7 @@ export function ShowsPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not change Specials counting.') }
     finally { setSpecialsBusy(false) }
   }
-  const checkShowForUpgrade = async (show: Show) => {
+  const checkShowForUpgradeNow = async (show: Show) => {
     setCardBusy(show.id); setMessage('')
     try {
       const accepted = await upgradesApi.searchUpgrades({ showId: show.id })
@@ -73,23 +76,39 @@ export function ShowsPage() {
       setMessage(reason instanceof Error ? reason.message : `Could not check ${show.title} for upgrades.`)
     } finally { setCardBusy(null) }
   }
-  const totalEpisodes = items.reduce((sum, show) => sum + show.episodesTotal, 0)
-  const needsReview = (show: Show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0
-  const filtered = useMemo(() => items.filter((show) => filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter)), [items, filter])
+  // Cards are memoised, so they get one stable handler that always calls the
+  // latest version of the action.
+  const upgradeRef = useRef(checkShowForUpgradeNow)
+  upgradeRef.current = checkShowForUpgradeNow
+  const checkShowForUpgrade = useCallback((show: Show) => upgradeRef.current(show), [])
+  const totalEpisodes = useMemo(() => items.reduce((sum, show) => sum + show.episodesTotal, 0), [items])
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return items.filter((show) => (filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsShowReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter))
+      && (!needle || show.title.toLowerCase().includes(needle)))
+  }, [items, filter, query])
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files.">
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load Shows" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <div className="media-grid show-grid">{filtered.map((show) => <ShowCard key={show.id} show={show} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />)}</div> : <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody>{filtered.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} /></span><MonitorMark monitored={show.monitored !== false} />{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}</tbody></table></Panel>)}
+    {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid show-grid" items={filtered} itemKey={(show) => show.id} renderItem={(show) => <ShowCard show={show} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />} /> : <ShowTable items={filtered} />)}
     {!error && !loading && !filtered.length && <EmptyState icon="tv-screen" title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
 
-function ShowCard({ show, busy, onCheckUpgrade }: { show: Show; busy: boolean; onCheckUpgrade: (show: Show) => Promise<void> }) {
+const needsShowReview = (show: Show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0
+
+function ShowTable({ items }: { items: Show[] }) {
+  const plexAvailable = usePlexAvailable()
+  const rows = useVirtualRows(items, plexAvailable ? 7 : 6)
+  return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} size="w92" /></span><MonitorMark monitored={show.monitored !== false} />{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}{rows.after}</tbody></table></Panel>
+}
+
+const ShowCard = memo(function ShowCard({ show, busy, onCheckUpgrade }: { show: Show; busy: boolean; onCheckUpgrade: (show: Show) => Promise<void> }) {
   const plexAvailable = usePlexAvailable()
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
   const checkUpgrade = (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onCheckUpgrade(show) }
-  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-marks"><span className="media-card-actions" aria-label={`Actions for ${show.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${show.title} for upgrades`} disabled={busy} onClick={checkUpgrade}><Icon name="upgrade-media" size={13} /></button></Tooltip></span><MonitorMark monitored={show.monitored !== false} /></span></div><div className="media-card-body"><div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
+  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} size="w342" />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-marks"><span className="media-card-actions" aria-label={`Actions for ${show.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${show.title} for upgrades`} disabled={busy} onClick={checkUpgrade}><Icon name="upgrade-media" size={13} /></button></Tooltip></span><MonitorMark monitored={show.monitored !== false} /></span></div><div className="media-card-body"><div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
                   pill fills to the proportion present and is coloured by whether any
                   are missing. A separate bar repeated what the numbers already said. */}
               <div className={`episode-progress ${percent === 100 ? 'complete' : 'incomplete'}`} title={`${show.episodesPresent} of ${show.episodesTotal} episodes present`}>
@@ -97,7 +116,7 @@ function ShowCard({ show, busy, onCheckUpgrade }: { show: Show; busy: boolean; o
                 <span className="episode-progress-label">Episodes</span>
                 <strong>{show.episodesPresent} / {show.episodesTotal}</strong>
               </div></div></Link></article>
-}
+})
 
 export function ShowDetailPage({ id }: { id: string }) {
   const confirm = useConfirm()

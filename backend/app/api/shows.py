@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,8 +17,8 @@ from app.core.problem_types import problem_description, problem_title
 from app.services.events import create_event
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import Episode, EpisodeMediaMap, Event, MediaDirectory, MediaFile, PresenceState, Problem, ProblemStatus, Season, Show, ShowRelease, StorageRoot
-from app.schemas.common import Collection
+from app.models.domain import Episode, EpisodeMediaMap, Event, MediaDirectory, MediaFile, PlexMatchState, PlexObservation, PresenceState, Problem, ProblemStatus, Season, Show, ShowRelease, StorageRoot
+from app.schemas.common import LIBRARY_PAGE_LIMIT, Collection
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.shows import (
     EpisodeMediaResponse,
@@ -37,7 +37,7 @@ from app.schemas.shows import (
 from app.schemas.torrent_status import MediaTorrentStatusResponse
 from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.events import scope_predicate, show_event_scope
-from app.services.shows import add_show_from_tmdb, resolve_show_resource, set_media_file_episode_mappings, show_plex_state, show_problem_count
+from app.services.shows import PLEX_STATE_PRIORITY, add_show_from_tmdb, resolve_show_resource, set_media_file_episode_mappings, show_plex_state, show_problem_count
 from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
@@ -132,6 +132,151 @@ async def _summary(
         last_observed_at=last_observed,
         torrent_status=torrent_status,
     )
+
+
+async def _list_summaries(db: AsyncSession, shows: list[Show]) -> list[ShowSummaryResponse]:
+    """Summaries for the library list, computed with a handful of grouped queries.
+
+    `_summary` walks each show's whole episode, file and folder tree, which is
+    right for one show and far too much for the library: this reads the same
+    facts as counts and maxima per show instead, and must stay equal to it.
+    """
+
+    if not shows:
+        return []
+    show_ids = [show.id for show in shows]
+    counted = Season.counted.is_(True)
+    present = Episode.presence_state == PresenceState.PRESENT
+    episode_rows = (
+        await db.execute(
+            select(
+                Episode.show_id,
+                func.count(Episode.id).filter(counted),
+                func.count(Episode.id).filter(counted & present),
+                func.count(Episode.id).filter(present),
+            )
+            .join(Season, Season.id == Episode.season_id)
+            .where(Episode.show_id.in_(show_ids))
+            .group_by(Episode.show_id)
+        )
+    ).all()
+    episodes = {show_id: (total, counted_present, any_present) for show_id, total, counted_present, any_present in episode_rows}
+    season_counts = dict(
+        (
+            await db.execute(
+                select(Season.show_id, func.count(Season.id)).where(Season.show_id.in_(show_ids)).group_by(Season.show_id)
+            )
+        ).all()
+    )
+    mapped = (
+        select(Episode.show_id, EpisodeMediaMap.media_file_id, EpisodeMediaMap.show_release_id)
+        .select_from(EpisodeMediaMap)
+        .join(Episode, Episode.id == EpisodeMediaMap.episode_id)
+        .where(Episode.show_id.in_(show_ids))
+        .subquery()
+    )
+    last_observed = dict(
+        (
+            await db.execute(
+                select(mapped.c.show_id, func.max(MediaDirectory.last_seen_at))
+                .join(MediaFile, MediaFile.id == mapped.c.media_file_id)
+                .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+                .group_by(mapped.c.show_id)
+            )
+        ).all()
+    )
+    release_ids: dict[UUID, set[UUID]] = {show_id: set() for show_id in show_ids}
+    for show_id, release_id in (
+        await db.execute(
+            select(mapped.c.show_id, mapped.c.show_release_id).where(mapped.c.show_release_id.is_not(None)).distinct()
+        )
+    ).all():
+        release_ids[show_id].add(release_id)
+    release_statuses = await release_torrent_statuses(
+        db, (release_id for ids in release_ids.values() for release_id in ids), media_type="shows"
+    )
+    plex_states: dict[UUID, list[PlexMatchState]] = {}
+    for show_id, match_state in (
+        await db.execute(select(PlexObservation.show_id, PlexObservation.match_state).where(PlexObservation.show_id.in_(show_ids)))
+    ).all():
+        plex_states.setdefault(show_id, []).append(match_state)
+    problems = await _problem_counts(db, show_ids)
+
+    items = []
+    for show in shows:
+        total, counted_present, any_present = episodes.get(show.id, (0, 0, 0))
+        if show.identity_state.value == "conflict":
+            state = "Conflict"
+        elif not total:
+            state = "Present" if any_present else "Missing"
+        else:
+            state = "Missing" if counted_present < total else "Present"
+        states = plex_states.get(show.id)
+        items.append(
+            ShowSummaryResponse(
+                id=show.id,
+                resource_id=str(show.tmdb_id or show.id),
+                tmdb_id=show.tmdb_id,
+                tvdb_id=show.tvdb_id,
+                tmdb_episode_group_id=show.tmdb_episode_group_id,
+                title=show.title,
+                year=show.year,
+                monitored=show.monitored,
+                identity_state=show.identity_state.value,
+                state=state,
+                plex_state=max(states, key=lambda item: PLEX_STATE_PRIORITY.get(item, 0)).value if states else "unknown",
+                season_count=season_counts.get(show.id, 0),
+                episode_count=total,
+                episodes_present=counted_present,
+                episodes_missing=total - counted_present,
+                problem_count=problems.get(show.id, 0),
+                poster_ref=show.poster_ref,
+                revision=show.revision,
+                last_observed_at=last_observed.get(show.id),
+                torrent_status=aggregate_torrent_status(
+                    release_statuses.get(release_id, MediaTorrentStatusResponse()) for release_id in release_ids[show.id]
+                ),
+            )
+        )
+    return items
+
+
+async def _problem_counts(db: AsyncSession, show_ids: list[UUID]) -> dict[UUID, int]:
+    """Open problems per show, counted the way `show_problem_count` counts them."""
+
+    open_problem = Problem.status == ProblemStatus.OPEN
+    counts: dict[UUID, int] = dict(
+        (
+            await db.execute(
+                select(Problem.entity_id, func.count())
+                .where(open_problem, Problem.entity_type == "show", Problem.entity_id.in_(show_ids))
+                .group_by(Problem.entity_id)
+            )
+        ).all()
+    )
+    for show_id, count in (
+        await db.execute(
+            select(Episode.show_id, func.count())
+            .select_from(Problem)
+            .join(Episode, Episode.id == Problem.entity_id)
+            .where(open_problem, Problem.entity_type == "episode", Episode.show_id.in_(show_ids))
+            .group_by(Episode.show_id)
+        )
+    ).all():
+        counts[show_id] = counts.get(show_id, 0) + count
+    # A file mapped to several of a show's episodes is still one problem.
+    for show_id, count in (
+        await db.execute(
+            select(Episode.show_id, func.count(func.distinct(Problem.id)))
+            .select_from(Problem)
+            .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == Problem.entity_id)
+            .join(Episode, Episode.id == EpisodeMediaMap.episode_id)
+            .where(open_problem, Problem.entity_type == "media_file", Episode.show_id.in_(show_ids))
+            .group_by(Episode.show_id)
+        )
+    ).all():
+        counts[show_id] = counts.get(show_id, 0) + count
+    return counts
 
 
 class SpecialsCountingState(BaseModel):
@@ -281,35 +426,19 @@ async def list_episode_orderings(
 @router.get("/shows", response_model=Collection[ShowSummaryResponse])
 async def list_shows(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=250),
+    page_size: int = Query(50, ge=1, le=LIBRARY_PAGE_LIMIT),
     query: str | None = None,
     state: str | None = None,
     sort: str = "title",
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[ShowSummaryResponse]:
-    statement = _show_query()
+    statement = select(Show)
     if query:
         pattern = f"%{query.strip()}%"
         statement = statement.where(Show.title.ilike(pattern))
-    shows = list((await db.scalars(statement)).unique().all())
-    releases_by_show = {show.id: _show_release_ids(show) for show in shows}
-    release_statuses = await release_torrent_statuses(
-        db,
-        (release_id for release_ids in releases_by_show.values() for release_id in release_ids),
-        media_type="shows",
-    )
-    items = [
-        await _summary(
-            db,
-            show,
-            aggregate_torrent_status(
-                release_statuses.get(release_id, MediaTorrentStatusResponse())
-                for release_id in releases_by_show[show.id]
-            ),
-        )
-        for show in shows
-    ]
+    shows = list((await db.scalars(statement)).all())
+    items = await _list_summaries(db, shows)
     if state:
         items = [item for item in items if item.state.casefold() == state.casefold()]
     reverse = sort.startswith("-")

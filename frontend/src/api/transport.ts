@@ -86,6 +86,10 @@ export async function uploadFile<T>(url: string, file: Blob): Promise<T> {
   return await response.json() as T
 }
 
+// The Movies and Shows pages read the whole library at once; the server allows
+// up to this many per request (LIBRARY_PAGE_LIMIT).
+export const LIBRARY_PAGE_SIZE = 10000
+
 export const openApiClient = createClient<paths>({
   credentials: 'include',
   headers: { Accept: 'application/json' },
