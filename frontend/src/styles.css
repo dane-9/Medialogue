@@ -3843,8 +3843,9 @@ a.download-kind:hover { filter: brightness(1.35); }
 .new-media-workspace {
   display: grid;
 
-  --new-media-detected: 260px;
-  grid-template-columns: 820px var(--new-media-detected) 340px;
+  /* Possible Matches is a little wider than Detected, for long titles. */
+  --new-media-detected: 300px;
+  grid-template-columns: 820px var(--new-media-detected) calc(var(--new-media-detected) + 20px);
   grid-template-rows: minmax(0, 1fr) auto;
   gap: var(--s3);
   height: calc(100vh - 260px);
@@ -3947,7 +3948,7 @@ a.download-kind:hover { filter: brightness(1.35); }
 .new-media-folder-cell > span { display: flex; align-items: center; min-width: 0; }
 /* The name and its profile control stack, so the row is one folder with one
    decision under it rather than two columns competing for the same width. */
-.new-media-folder-copy { display: grid; flex: 1; gap: var(--s2); min-width: 0; }
+.new-media-folder-copy { display: grid; flex: 1; gap: 2px; min-width: 0; }
 /* Only as wide as the control it holds. As a stretched grid item it covered the
    rest of the row, and its click handler - there to keep the dropdown from
    selecting the row - swallowed every click in that empty space. */
@@ -4028,7 +4029,7 @@ a.download-kind:hover { filter: brightness(1.35); }
 .new-media-candidate-copy small { color: var(--faint); font: var(--t-micro) var(--sans); }
 
 @media (max-width: 1400px) {
-  .new-media-workspace { --new-media-detected: 220px; grid-template-columns: 220px var(--new-media-detected) 300px; }
+  .new-media-workspace { --new-media-detected: 260px; grid-template-columns: 220px var(--new-media-detected) calc(var(--new-media-detected) + 20px); }
 }
 
 /* ========================================================================== */
