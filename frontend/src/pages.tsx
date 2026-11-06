@@ -2716,7 +2716,7 @@ export function NewMediaPage() {
         type="button"
         key={entry.name}
         className={`new-media-root ${entry.name === rootName ? 'active' : ''}`}
-        onClick={() => { setRootName(entry.name); setSelectedId('') }}
+        onClick={() => { setRootName(entry.name) }}
       >
         <span className="new-media-root-name">
           <span className={`kind-box kind-${entry.mediaType === 'movies' ? 'movie' : 'show'}`} aria-label={entry.mediaType === 'movies' ? 'Movies folder' : 'Shows folder'}>
@@ -2735,7 +2735,7 @@ export function NewMediaPage() {
         <span className="new-media-col-head">Detected {noun}</span>
         {rows.map((item) => {
             const match = item.selected
-              const active = item.id === selectedId
+              const active = false
               const blocked = !item.exists || !match
             const included = !excluded.has(item.id)
             const editionConflict = included && conflictingIds.has(item.id)
@@ -4695,6 +4695,11 @@ const UPGRADE_STATUSES: { value: UpgradeStatus; label: string; icon: 'upgrade-me
   { value: 'attention', label: 'Needs attention', icon: 'alert', tone: 'amber', empty: 'Nothing needs your attention.' },
 ]
 
+/** A release name that may wrap only between its dotted words. */
+function breakableRelease(name: string) {
+  return name.split(/(?<=[._\-\s])/).map((part, index) => <Fragment key={index}>{index > 0 && <wbr />}{part}</Fragment>)
+}
+
 /** The current release as named on disk or by its tracker. */
 function currentReleaseLabel(item: UpgradeCandidate) {
   return item.currentReleaseName || item.releaseFolder || pathParts(item.currentPaths[0])?.name || item.mediaTitle
@@ -4716,145 +4721,6 @@ function upgradeWhy(item: UpgradeCandidate): { label: string; tone: 'ok' | 'blue
   if (types.includes('revision')) return { label: 'Rerip', tone: 'amber' }
   if (types.includes('custom_format')) return { label: 'Better formats', tone: 'blue' }
   return null
-}
-
-function UpgradeDetails({ item, profiles, profileBusy, busy, results, formatSections, onProfile, onChooseResult, onOpenAll, onRetry, onCleanup }: {
-  item: UpgradeCandidate
-  profiles: QualityProfile[]
-  profileBusy: boolean
-  busy: boolean
-  results: UpgradeSearchResults | null
-  formatSections: Record<string, string>
-  onProfile: (profileId: string | null) => void
-  onChooseResult: (resultId: string) => void
-  onOpenAll: () => void
-  onRetry: () => void
-  onCleanup: () => void
-}) {
-  const [hoveredTokenGroup, setHoveredTokenGroup] = useState('')
-  const folderName = item.releaseFolder ?? pathParts(item.currentPaths[0])?.name
-  const currentName = item.currentReleaseName || folderName || item.mediaTitle
-  const replacing = item.currentReleases.length > 1 ? item.currentReleases : []
-  const tokens = diffReleaseTokens(item.title, item.currentReleaseName)
-  const tokenReasons = shareCombinedDynamicRangeReasons(tokens, tokens.map((token) => upgradeTokenReason(token, {
-    upgradeTypes: item.upgradeTypes as string[],
-    addedCustomFormats: candidateFormatReasons(item.comparisonSnapshot, item.addedCustomFormats),
-    currentQuality: item.currentQuality,
-    quality: item.quality,
-    formatSections,
-  })))
-  const sharedTokenGroups = sharedUpgradeReasonTokenGroups(tokenReasons)
-  const indexerBadge = badgeColor(item.indexerColor)
-  const editionMismatch = item.mediaType === 'movies' && !upgradeEditionsMatch(item.currentEdition, item.candidateEdition)
-  const showEdition = item.mediaType === 'movies' && Boolean(item.currentEdition || item.candidateEdition || item.movieHasMultipleEditions || editionMismatch)
-  const profileName = profiles.find((profile) => profile.id === item.qualityProfileId)?.name ?? profiles.find((profile) => profile.isDefault)?.name ?? 'Default'
-  const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
-  const others = (results?.results ?? []).slice(0, 8)
-
-  return <aside className="new-media-alt-pane upgrade-details">
-    <div className="new-media-col-head new-media-alt-title">Details</div>
-    <div className="upgrade-details-body">
-      <div className="upgrade-details-identity">
-        <span className="upgrade-details-poster">{item.posterRef
-          ? <img src={tmdbPosterUrl(item.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />
-          : <Icon name={item.mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={22} />}</span>
-        <span className="upgrade-details-identity-copy">
-          <strong>{item.mediaTitle}</strong>
-          <small>{[item.mediaYear ? `${item.mediaYear}` : undefined, item.seasonNumber !== undefined ? `Season ${item.seasonNumber}` : undefined].filter(Boolean).join(' · ') || (item.mediaType === 'movies' ? 'Movie' : 'Show')}</small>
-          <span className="upgrade-details-profile" onClick={(event) => event.stopPropagation()}>
-            <Dropdown
-              ariaLabel={`Quality Profile for ${item.mediaTitle}`}
-              value={item.qualityProfileId ?? ''}
-              disabled={profileBusy || Boolean(item.executionState)}
-              options={[{ value: '', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
-              onChange={(value) => onProfile(value || null)}
-            />
-          </span>
-        </span>
-      </div>
-
-      {!item.executionState && !item.executionEligible && <div className="settings-note"><Icon name="lock" size={16} /><span>{item.executionBlockReason ?? 'This upgrade cannot be started.'}</span></div>}
-
-      {item.executionState && item.executionState !== 'completed' && <div className="upgrade-details-state">
-        <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>
-        {progress !== undefined && <span className="upgrade-progress-wrap"><Progress value={progress} tone="blue" /><span>{progress}%</span></span>}
-        {item.executionError && <p>{item.executionError}</p>}
-        <span className="upgrade-details-state-actions">
-          {item.executionState === 'handoff_attention' && <Button variant="secondary" icon="refresh" disabled={busy} onClick={onRetry}>{busy ? 'Checking…' : 'Retry handoff'}</Button>}
-          {item.executionState === 'cleanup_required' && <Button variant="danger" icon="alert" disabled={busy} onClick={onCleanup}>Review cleanup</Button>}
-        </span>
-      </div>}
-
-      <section className="upgrade-details-side">
-        <span className="upgrade-details-label">Current</span>
-        {replacing.length ? <details className="upgrade-replacing">
-          <summary><strong>{folderName ?? item.mediaTitle}</strong><small>{replacing.length} releases{item.currentEpisodeCount !== undefined && item.seasonEpisodeCount !== undefined ? ` · ${item.currentEpisodeCount}/${item.seasonEpisodeCount} episodes` : ''}</small></summary>
-          <span className="upgrade-replacing-list">
-            {replacing.map((entry) => <span key={entry.id} className="upgrade-replacing-row">
-              <span>{entry.name}</span>
-              <span className="release-pill">{qualityLabel(entry.quality) || 'Unknown'}</span>
-              <b>{entry.customFormatScore}</b>
-            </span>)}
-          </span>
-        </details> : <code className="upgrade-details-name">{currentName}</code>}
-        <span className="upgrade-details-facts">
-          <span className="release-pill">{qualityLabel(item.currentQuality) || 'Unknown'}</span>
-          {showEdition && <em className="release-edition">{upgradeEditionLabel(item.currentEdition)}</em>}
-          <UpgradeCompare item={item} profile={profileName}><span className="upgrade-score"><b>CF {item.currentCustomFormatScore}</b></span></UpgradeCompare>
-        </span>
-      </section>
-
-      <section className="upgrade-details-side upgrade-details-new">
-        <span className="upgrade-details-label">Upgrade</span>
-        <code className="upgrade-details-name">{tokens.map((token, index) => {
-          const reason = tokenReasons[index]
-          const sharedGroup = sharedTokenGroups.get(index)
-          const key = sharedGroup ? `${item.id}:${sharedGroup}` : ''
-          const text = <span
-            className={`${reason ? 'upgrade-token-new' : 'upgrade-token-same'} ${key && hoveredTokenGroup === key ? 'upgrade-token-linked' : ''}`}
-            onMouseEnter={key ? () => setHoveredTokenGroup(key) : undefined}
-            onMouseLeave={key ? () => setHoveredTokenGroup('') : undefined}
-          >{token.text}</span>
-          return <Fragment key={index}>
-            <span className="upgrade-token-sep">{token.sep}</span>
-            {reason ? <Tooltip asChild content={upgradeReasonContent(reason)}>{text}</Tooltip> : text}
-          </Fragment>
-        })}</code>
-        <span className="upgrade-details-facts">
-          <span className="release-pill upgrade-quality-new">{qualityLabel(item.quality) || 'Unknown'}</span>
-          {showEdition && <em className="release-edition">{upgradeEditionLabel(item.candidateEdition)}</em>}
-          <UpgradeCompare item={item} profile={profileName}><span className="upgrade-score"><b>CF {item.customFormatScore}</b>{item.scoreDelta !== 0 && <em className={item.scoreDelta > 0 ? 'cf-plus' : 'cf-minus'}>{item.scoreDelta > 0 ? '+' : ''}{item.scoreDelta}</em>}</span></UpgradeCompare>
-        </span>
-        <span className="upgrade-details-facts">
-          <span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexerName}</span>
-          <Tooltip className={`release-pill release-pill-swarm swarm-${swarmHealth(item.seeders)}`} content={`${item.seeders ?? 'N/A'} seeders, ${item.leechers ?? 'N/A'} leechers`}>{formatPeers(item.seeders, item.leechers)}</Tooltip>
-          {item.size !== undefined && <span className="upgrade-fact">{formatBytes(item.size)}</span>}
-          {editionMismatch && <Badge tone="red">Edition mismatch</Badge>}
-          {(item.upgradeTypes as string[]).filter((type) => type !== 'quality' && type !== 'custom_format').map((type) => <Badge key={type} tone="amber">{upgradeTypeLabel(type as UpgradeType)}</Badge>)}
-        </span>
-      </section>
-
-      {!item.executionState && <section className="upgrade-details-others">
-        <span className="upgrade-details-label">Other releases<button type="button" className="upgrade-details-link" onClick={onOpenAll}>Open full list</button></span>
-        {!results ? <p className="new-media-alt-note">Loading the last search…</p>
-          : !others.length ? <p className="new-media-alt-note">No other releases were found.</p>
-            : others.map((result) => <button
-              type="button"
-              key={result.id}
-              className={`new-media-candidate upgrade-other ${result.selected ? 'chosen' : ''}`}
-              disabled={busy || result.selected || !result.eligible}
-              title={!result.eligible ? result.rejectionReasons.join(' ') : result.title}
-              onClick={() => onChooseResult(result.id)}
-            >
-              <span className="new-media-candidate-copy">
-                <strong>{result.title}</strong>
-                <small>{[qualityLabel(result.quality) || 'Unknown', result.customFormatScore !== undefined ? `CF ${result.customFormatScore}` : undefined, `${formatPeers(result.seeders, result.leechers)} peers`, result.indexerName].filter(Boolean).join(' · ')}{!result.eligible ? ' · rejected' : ''}</small>
-              </span>
-              {result.selected && <Icon name="check" size={14} />}
-            </button>)}
-      </section>}
-    </div>
-  </aside>
 }
 
 function upgradeTypeLabel(value: UpgradeType) {
@@ -4949,10 +4815,6 @@ export function UpgradeMediaPage() {
   // waiting on a decision never share one list.
   const [status, setStatus] = useState<UpgradeStatus>('ready')
   const [statusChosen, setStatusChosen] = useState(false)
-  // The row whose details fill the right-hand pane.
-  const [selectedId, setSelectedId] = useState('')
-  const [detailResults, setDetailResults] = useState<UpgradeSearchResults | null>(null)
-  const [detailBusy, setDetailBusy] = useState(false)
   const upgradeReleaseResults = useMemo<InteractiveSearchResult[]>(() => (
     searchResults && resultsTarget ? upgradeResultsToReleases(searchResults, resultsTarget.id, resultsTarget.mediaType) : []
   ), [searchResults, resultsTarget])
@@ -5145,27 +5007,7 @@ export function UpgradeMediaPage() {
   }, [statusItems])
   const rootName = roots.some((entry) => entry.name === selectedRoot) ? selectedRoot : roots[0]?.name ?? ''
   const rows = useMemo(() => statusItems.filter((item) => (item.rootName ?? 'Unknown folder') === rootName), [statusItems, rootName])
-  const selected = rows.find((item) => item.id === selectedId) ?? null
-  // The pane lists the other releases the last search found, so another one
-  // can be chosen without opening a dialog.
-  useEffect(() => {
-    setDetailResults(null)
-    if (!selected || selected.executionState) return
-    let alive = true
-    upgradesApi.upgradeSearchResults(selected.id).then((value) => { if (alive) setDetailResults(value) }).catch(() => undefined)
-    return () => { alive = false }
-  }, [selected?.id, selected?.title])
-  const chooseDetailResult = async (resultId: string) => {
-    if (!selected) return
-    setDetailBusy(true)
-    try {
-      const updated = await upgradesApi.selectUpgradeSearchResult(selected.id, resultId)
-      setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
-      setDetailResults(await upgradesApi.upgradeSearchResults(selected.id))
-      setError('')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not choose that release.') }
-    finally { setDetailBusy(false) }
-  }
+
   // The checkboxes decide what the bar acts on, for the profile exactly as for
   // the upgrade button.
   const profileTargets = useMemo(() => rows.filter((item) => !item.executionState && !excluded.has(item.id)), [rows, excluded])
@@ -5228,14 +5070,14 @@ export function UpgradeMediaPage() {
       action={<Button variant="primary" icon="refresh" disabled={searching} onClick={() => void search()}>Search for upgrades</Button>}
     /> : <>
       <div className="upgrade-v2-filters">
-        <div>
+        <div className="upgrade-v2-status-group">
           <div className="new-media-roots-label">Status</div>
           <div className="new-media-roots">
             {UPGRADE_STATUSES.map((entry) => <button
               type="button"
               key={entry.value}
               className={`new-media-root ${entry.value === shownStatus ? 'active' : ''}`}
-              onClick={() => { setStatus(entry.value); setStatusChosen(true); setSelectedId('') }}
+              onClick={() => { setStatus(entry.value); setStatusChosen(true) }}
             >
               <span className="new-media-root-name">
                 <span className={`kind-box upgrade-status-box tone-${entry.tone}`}><Icon name={entry.icon} size={13} /></span>
@@ -5252,7 +5094,7 @@ export function UpgradeMediaPage() {
               type="button"
               key={entry.name}
               className={`new-media-root ${entry.name === rootName ? 'active' : ''}`}
-              onClick={() => { setSelectedRoot(entry.name); setSelectedId('') }}
+              onClick={() => { setSelectedRoot(entry.name) }}
             >
               <span className="new-media-root-name">
                 <span className={`kind-box kind-${entry.mediaType === 'movies' ? 'movie' : 'show'}`} aria-label={entry.mediaType === 'movies' ? 'Movies folder' : 'Shows folder'}>
@@ -5266,13 +5108,14 @@ export function UpgradeMediaPage() {
         </div>}
       </div>
 
-      <div className="new-media-workspace upgrade-v2">
+      <div className="new-media-workspace upgrade-v2 upgrade-v3">
         <div className="new-media-scroll">
           <span className="new-media-col-head">Current</span>
           <span className="new-media-col-head">{shownStatus === 'ready' ? 'Upgrade' : 'Replacement'}</span>
+          <span aria-hidden="true" />
           {!rows.length && <div className="upgrade-v2-empty">{UPGRADE_STATUSES.find((entry) => entry.value === shownStatus)?.empty}</div>}
           {rows.map((item) => {
-            const active = item.id === selectedId
+            const active = false
             const batchable = !item.executionState && item.executionEligible
             const included = batchable && !excluded.has(item.id)
             const blocked = !item.executionState && !item.executionEligible
@@ -5285,7 +5128,28 @@ export function UpgradeMediaPage() {
               item.seasonNumber !== undefined ? `Season ${item.seasonNumber}` : undefined,
               qualityLabel(item.currentQuality) || undefined,
             ].filter(Boolean).join(' · ')
-            const open = () => setSelectedId(active ? '' : item.id)
+            // With no details pane, the row itself is the checkbox.
+            const open = () => { if (batchable) toggleChosen(item.id) }
+            const profileName = profiles.find((profile) => profile.id === item.qualityProfileId)?.name
+              ?? profiles.find((profile) => profile.isDefault)?.name ?? 'Default'
+            const tokens = diffReleaseTokens(item.title, item.currentReleaseName)
+            const tokenReasons = shareCombinedDynamicRangeReasons(tokens, tokens.map((token) => upgradeTokenReason(token, {
+              upgradeTypes: item.upgradeTypes as string[],
+              addedCustomFormats: candidateFormatReasons(item.comparisonSnapshot, item.addedCustomFormats),
+              currentQuality: item.currentQuality,
+              quality: item.quality,
+              formatSections,
+            })))
+            const indexerBadge = badgeColor(item.indexerColor)
+            const extraReasons = (item.upgradeTypes as string[]).filter((type) => type !== 'quality' && type !== 'custom_format')
+            const releaseCard = <span className="upgrade-v2-card">
+              <strong>{item.title}</strong>
+              <span>
+                <span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexerName}</span>
+                <span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span>
+                {item.size !== undefined && <span className="upgrade-fact">{formatBytes(item.size)}</span>}
+              </span>
+            </span>
             return <div className="new-media-row" key={item.id}>
               <div className={`new-media-folder-cell upgrade-v2-current ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`} onClick={open}>
                 <button
@@ -5307,23 +5171,43 @@ export function UpgradeMediaPage() {
                   <small>{detail || (item.mediaType === 'movies' ? 'Movie' : 'Show')}</small>
                 </span>
                 {/* The release on disk fills the rest of the row on one line;
-                    the full name is a hover away and in the Details pane. */}
-                <Tooltip asChild content={currentReleaseLabel(item)}><span className="upgrade-v2-release">{currentReleaseLabel(item)}</span></Tooltip>
+                    the full name is a hover away. */}
+                <span className="upgrade-v2-release">{breakableRelease(currentReleaseLabel(item))}</span>
                 {blocked && <Tooltip content={item.executionBlockReason ?? 'This upgrade cannot be started.'}><span className="new-media-state needs-match"><Icon name="lock" size={11} />Blocked</span></Tooltip>}
               </div>
-              <div className={`new-media-match-cell upgrade-v2-change ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`} onClick={open}>
-                <span className="new-media-match-copy">
+              <div className={`new-media-match-cell upgrade-v2-change ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`}>
+                {/* Opposite the current release across the divide, only the
+                    changed words lit, so the two names read as a pair. */}
+                <Tooltip asChild content={releaseCard}>
+                  <span className="upgrade-v2-release">{tokens.map((token, index) => <Fragment key={index}>
+                    <span className="upgrade-token-sep">{token.sep}</span>{token.sep && <wbr />}
+                    <span className={tokenReasons[index] ? 'upgrade-token-new' : 'upgrade-token-same'}>{token.text}</span>
+                  </Fragment>)}</span>
+                </Tooltip>
+                <span className="new-media-match-copy upgrade-v2-title upgrade-v2-quality">
                   <strong>{qualityLabel(item.quality) || item.quality || 'Unknown quality'}</strong>
                   {item.executionState && item.executionState !== 'completed'
                     ? <span className="upgrade-v2-progress">
-                      <Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge>
+                      <Tooltip content={item.executionError ?? upgradeStateLabel(item)}><Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge></Tooltip>
                       {progress !== undefined && (item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && <><Progress value={progress} tone="blue" /><small>{progress}%</small></>}
                     </span>
-                    : <small>CF {item.customFormatScore}{delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}> {delta > 0 ? '+' : ''}{delta}</em>}</small>}
+                    : <span onClick={(event) => event.stopPropagation()}><UpgradeCompare item={item} profile={profileName}>
+                      <small className="upgrade-v2-score">CF {item.customFormatScore}{delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}> {delta > 0 ? '+' : ''}{delta}</em>}</small>
+                    </UpgradeCompare></span>}
                 </span>
                 {(swarm === 'dead' || swarm === 'weak') && <Tooltip content={`${item.seeders ?? 0} seeders: this release may be slow or impossible to download.`}><span className={`upgrade-v2-swarm swarm-${swarm}`} /></Tooltip>}
-                {why && <span className={`new-media-state upgrade-why why-${why.tone}`}>{why.label}</span>}
+                {item.executionState === 'handoff_attention'
+                  ? <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void retryHandoff(item) }}>{busyId === item.id ? 'Checking…' : 'Retry'}</Button>
+                  : item.executionState === 'cleanup_required'
+                    ? <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void reviewCleanup(item) }}>Cleanup</Button>
+                    : why && <Tooltip content={extraReasons.length ? `Also: ${extraReasons.map((type) => upgradeTypeLabel(type as UpgradeType)).join(', ')}` : why.label}><span className={`new-media-state upgrade-why why-${why.tone}`}>{why.label}</span></Tooltip>}
               </div>
+              {/* Outside the panel, so the two columns keep their width. */}
+              <span className="upgrade-v3-rail">
+                {!item.executionState && <Tooltip asChild content="View all releases">
+                  <button type="button" className="icon-button" aria-label={`View all releases for ${item.mediaTitle}`} onClick={() => void openResults(item)}><Icon name="search" size={15} /></button>
+                </Tooltip>}
+              </span>
             </div>
           })}
         </div>
@@ -5359,26 +5243,6 @@ export function UpgradeMediaPage() {
           </>}
         </div>
 
-        {selected ? <UpgradeDetails
-          key={selected.id}
-          item={selected}
-          profiles={profiles}
-          profileBusy={profileBusy}
-          busy={busyId === selected.id || detailBusy}
-          results={detailResults}
-          formatSections={formatSections}
-          onProfile={(profileId) => void setRowProfile(selected, profileId)}
-          onChooseResult={(resultId) => void chooseDetailResult(resultId)}
-          onOpenAll={() => void openResults(selected)}
-          onRetry={() => void retryHandoff(selected)}
-          onCleanup={() => void reviewCleanup(selected)}
-        /> : <aside className="new-media-alt-pane new-media-alt-idle">
-          <div className="new-media-col-head new-media-alt-title">Details</div>
-          <div className="new-media-alt-empty">
-            <Icon name="upgrade-media" size={28} />
-            <p>Select an upgrade to see why it is better.</p>
-          </div>
-        </aside>}
       </div>
     </>}
 

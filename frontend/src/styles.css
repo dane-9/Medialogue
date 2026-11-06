@@ -4834,3 +4834,54 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v2-current > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 120px; max-width: 45%; }
 /* The full current release fills the remaining width on one line. */
 .upgrade-v2-current > .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s4); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Upgrade Media without a details pane: Current and Upgrade split the width
+   evenly, mirrored, with a slim releases/actions rail. */
+.new-media-workspace.upgrade-v3 { grid-template-columns: minmax(0, 1fr); }
+.new-media-workspace.upgrade-v3 > .new-media-scroll { grid-column: 1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.new-media-workspace.upgrade-v3 > .new-media-add { grid-column: 1; }
+@media (max-width: 1500px) { .new-media-workspace.upgrade-v3 { grid-template-columns: minmax(0, 1fr); } }
+.upgrade-v2-change { cursor: default; }
+.upgrade-v3 .upgrade-v2-current, .upgrade-v3 .upgrade-v2-change { cursor: pointer; }
+.upgrade-v2-change > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 110px; max-width: 40%; }
+.upgrade-v2-change > .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s3); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-change > .upgrade-v2-release .upgrade-token-new { color: var(--ok); font-weight: 600; }
+.upgrade-v2-score { cursor: help; }
+.upgrade-v2-actions { justify-content: center; padding-inline: var(--s2); cursor: default; }
+.upgrade-v2-actions .button { width: 100%; justify-content: center; padding-inline: var(--s2); white-space: nowrap; }
+.upgrade-v2-card { display: grid; gap: var(--s2); max-width: 520px; }
+.upgrade-v2-card strong { overflow-wrap: anywhere; font: var(--t-xs)/1.4 var(--mono); }
+.upgrade-v2-card > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+
+/* Names never truncate: proportional type, wrapping only at word breaks. */
+.upgrade-v3 .upgrade-v2-current > .upgrade-v2-release,
+.upgrade-v3 .upgrade-v2-change > .upgrade-v2-release { overflow: visible; font: var(--t-xs)/1.35 var(--sans); text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; }
+.upgrade-v3 .upgrade-v2-change > .upgrade-v2-release { margin-left: 0; text-align: left; }
+.upgrade-v3 .upgrade-v2-change > .upgrade-v2-quality { flex: none; min-width: 96px; margin-left: var(--s3); text-align: right; }
+
+/* The Upgrade side opens the other releases. */
+.upgrade-v3 .upgrade-v2-change { cursor: default; }
+.upgrade-v3 .upgrade-v2-change.opens-results { cursor: pointer; }
+.upgrade-v3 .upgrade-v2-change.opens-results:hover { border-color: var(--accent-line); background: var(--raised); }
+.upgrade-v3 .upgrade-v2-change.opens-results:hover > .upgrade-v2-release { color: var(--text); }
+
+/* Media folders on the far left, status on the far right. */
+.upgrade-v2-status-group { order: 2; margin-left: auto; }
+.upgrade-v2-status-group .new-media-roots-label { text-align: right; }
+.upgrade-v2-status-group .new-media-roots { justify-content: flex-end; }
+
+/* A search button per row in a rail beyond the Upgrade panel. The workspace
+   grows by exactly the rail, so Current and Upgrade keep their widths. */
+.new-media-workspace.upgrade-v3 { --upgrade-rail: 36px; width: calc(100% + var(--upgrade-rail) + var(--s3)); }
+.new-media-workspace.upgrade-v3 > .new-media-scroll { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--upgrade-rail); }
+.new-media-workspace.upgrade-v3 > .new-media-add { margin-right: calc(var(--upgrade-rail) + var(--s3)); }
+.upgrade-v3-rail { display: grid; place-items: center; }
+.upgrade-v3-rail .icon-button { width: 32px; height: 32px; }
+.upgrade-v3 .upgrade-v2-change { cursor: default; }
+/* The rail is exactly one button wide and starts at the column gap, so the
+   button sits the same distance from Upgrade as Upgrade does from Current. */
+.new-media-workspace.upgrade-v3 { --upgrade-rail: 32px; }
+.upgrade-v3-rail { justify-items: start; }
+.upgrade-v3-rail .icon-button { width: var(--upgrade-rail); height: var(--upgrade-rail); margin: 0; }
+.upgrade-v3-rail .icon-button { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); }
+.upgrade-v3-rail .icon-button:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
