@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import and_, case, func, literal, or_, select
+from sqlalchemy import String, and_, case, cast, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -59,6 +59,7 @@ from app.schemas.downloads import (
 )
 from app.services.integration_state import ConfiguredDownloadClient, get_configured_download_client, list_configured_download_clients
 from app.services.qbittorrent import (
+    mark_removed_after_action,
     refresh_observations_after_action,
     run_all_download_client_polls,
     run_torrent_action,
@@ -86,7 +87,11 @@ def _activity_state(observation: TorrentClientObservation) -> str:
     progress = float(observation.progress or 0)
     if state.startswith("checking"):
         return "checking"
-    if "error" in state or "missing" in state:
+    # Missing files is its own state: the payload vanished from disk, which
+    # needs a different fix than a qBittorrent I/O error.
+    if "missing" in state:
+        return "missing"
+    if "error" in state:
         return "error"
     if state == "moving":
         return "moving"
@@ -166,7 +171,8 @@ def _activity_expression():
     progress = func.coalesce(TorrentClientObservation.progress, 0)
     return case(
         (state.like("checking%"), "checking"),
-        (or_(state.like("%error%"), state.like("%missing%")), "error"),
+        (state.like("%missing%"), "missing"),
+        (state.like("%error%"), "error"),
         (state == "moving", "moving"),
         (state.in_(("metadl", "forcedmetadl")), "metadata"),
         (state.like("%queued%"), "queued"),
@@ -243,12 +249,12 @@ def _filter_condition(key: str):
     if key == "checking":
         return activity == "checking"
     if key == "error":
-        return activity == "error"
+        return activity.in_(("error", "missing"))
     if key == "moving":
         return activity == "moving"
     if key == "attention":
         return or_(
-            activity == "error",
+            activity.in_(("error", "missing")),
             Torrent.archive_state == TorrentArchiveState.FAILED,
             tracker_state == "unregistered",
         )
@@ -330,63 +336,32 @@ class _DownloadPageContext:
     payload_groups: dict[uuid.UUID, str]
 
 
-def _payload_group_ids(
-    rows: Sequence[tuple[TorrentClientObservation, Torrent]],
-    associations: dict[uuid.UUID, tuple[Any, Any]],
-) -> dict[uuid.UUID, str]:
-    """Group a page by release, exact payload path, or selected hard-linked files."""
+def _payload_group_expression():
+    """Stored cross-seed group, or the torrent on its own when not grouped yet.
 
-    from app.services.upgrade_execution import _archived_file_signatures, _payload_file_identities
+    The fallback equals ``payload_groups.group_key_for`` because SQLite stores
+    UUIDs as 32-character hex text.
+    """
 
-    torrent_ids = {torrent.id for _observation, torrent in rows}
-    parent = {torrent_id: torrent_id for torrent_id in torrent_ids}
+    return func.coalesce(
+        Torrent.metadata_json["payload_group"].as_string(),
+        literal("payload:").concat(cast(Torrent.id, String)),
+    )
 
-    def find(value: uuid.UUID) -> uuid.UUID:
-        while parent[value] != value:
-            parent[value] = parent[parent[value]]
-            value = parent[value]
-        return value
 
-    def union(first: uuid.UUID, second: uuid.UUID) -> None:
-        left, right = find(first), find(second)
-        if left != right:
-            parent[max(left, right, key=str)] = min(left, right, key=str)
+def _group_sort_aggregate(key: str | None):
+    """How a sort column is summarised over a payload group."""
 
-    release_owner: dict[uuid.UUID, uuid.UUID] = {}
-    path_owner: dict[str, uuid.UUID] = {}
-    identities: dict[uuid.UUID, set[tuple[int, int]]] = {}
-    for observation, torrent in rows:
-        association = associations.get(torrent.id)
-        if association is not None:
-            release_id = association[1].id
-            if release_id in release_owner:
-                union(torrent.id, release_owner[release_id])
-            else:
-                release_owner[release_id] = torrent.id
-
-        # A save-path fallback can be the whole library. Only the real
-        # qBittorrent content path is specific enough to establish ownership.
-        if not str((torrent.metadata_json or {}).get("content_path") or "").strip():
-            continue
-        resolved = str(observation.resolved_save_path or "").strip()
-        if not resolved:
-            continue
-        path_key = str(Path(resolved).resolve(strict=False)).casefold()
-        if path_key in path_owner:
-            union(torrent.id, path_owner[path_key])
-        else:
-            path_owner[path_key] = torrent.id
-        signatures = _archived_file_signatures(torrent, observation.download_client_id)
-        if signatures:
-            identities[torrent.id] = _payload_file_identities([Path(resolved)], file_signatures=signatures)
-
-    identity_rows = [(torrent_id, values) for torrent_id, values in identities.items() if values]
-    for position, (torrent_id, values) in enumerate(identity_rows):
-        for other_id, other_values in identity_rows[position + 1:]:
-            if values & other_values:
-                union(torrent_id, other_id)
-
-    return {torrent_id: f"payload:{find(torrent_id)}" for torrent_id in torrent_ids}
+    if not key:
+        return None
+    expression = _sort_expression(key)
+    if expression is None:
+        return None
+    if key in {"downloadSpeedBytes", "uploadSpeedBytes"}:
+        return func.sum(func.coalesce(expression, 0))
+    if key in {"name", "state", "trackerState", "archiveState", "etaSeconds"}:
+        return func.min(expression)
+    return func.max(expression)
 
 
 def _select_association(target: dict[uuid.UUID, tuple[Any, Any]], rows: Sequence[Any]) -> None:
@@ -487,9 +462,8 @@ async def _load_page_context(
         associations=associations,
         problems=problems,
         root_names=root_names,
-        # Path resolution and hard-link inspection stat every payload file;
-        # on network storage that must not stall the event loop.
-        payload_groups=await asyncio.to_thread(_payload_group_ids, rows, associations),
+        # Filled from the persisted group keys by the list endpoint.
+        payload_groups={},
     )
 
 
@@ -541,7 +515,7 @@ def _download_response(
     return DownloadResponse(
         id=observation.id,
         torrent_id=torrent.id,
-        payload_group_id=context.payload_groups.get(torrent.id, f"payload:{torrent.id}"),
+        payload_group_id=context.payload_groups.get(torrent.id, f"payload:{torrent.id.hex}"),
         client_id=client.id,
         client_name=client.name,
         scope=DownloadScope(client.scope.value),
@@ -979,6 +953,9 @@ async def apply_download_action(
         # qBittorrent applies most of these immediately, but not instantly; a
         # short pause makes the refreshed snapshot show the new state rather
         # than the one the action just replaced.
+        if payload.action == "remove":
+            await mark_removed_after_action(db, client, hashes)
+            continue
         await asyncio.sleep(0.35)
         await refresh_observations_after_action(db, client, hashes, client_factory=client_factory)
     if not applied:
@@ -1053,9 +1030,9 @@ async def download_facets(
             counts["checking"] += 1
         if activity == "moving":
             counts["moving"] += 1
-        if activity == "error":
+        if activity in {"error", "missing"}:
             counts["error"] += 1
-        if activity == "error" or archive_state == TorrentArchiveState.FAILED or tracker_state == "unregistered":
+        if activity in {"error", "missing"} or archive_state == TorrentArchiveState.FAILED or tracker_state == "unregistered":
             counts["attention"] += 1
         if archive_state == TorrentArchiveState.ARCHIVED:
             counts["backed-up"] += 1
@@ -1138,65 +1115,55 @@ async def list_downloads(
         if condition is not None:
             conditions.append(condition)
 
-    base = (
-        select(TorrentClientObservation, Torrent)
+    # Pages, totals and sorting are by payload group: cross-seeds of one
+    # payload always arrive together and count once.
+    group_key = _payload_group_expression()
+    joined = (
+        select(group_key.label("group_key"))
+        .select_from(TorrentClientObservation)
         .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
         .where(*conditions)
     )
     total = int(
-        await db.scalar(
-            select(func.count())
-            .select_from(TorrentClientObservation)
-            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
-            .where(*conditions)
-        )
-        or 0
+        await db.scalar(select(func.count()).select_from(joined.group_by(group_key).subquery())) or 0
     )
 
-    order = _sort_expression(sort) if sort else None
-    if order is None:
-        order = TorrentClientObservation.last_seen_at.desc()
+    aggregate = _group_sort_aggregate(sort)
+    if aggregate is None:
+        ordering = func.max(TorrentClientObservation.last_seen_at).desc()
     else:
-        order = order.desc() if direction == "desc" else order.asc()
-    page_rows = (
-        # The observation id breaks ties so equal sort values (cross-seeds with
-        # one name, every torrent at 100%) keep a stable page across refreshes.
-        await db.execute(
-            base.order_by(order, TorrentClientObservation.id).offset((page - 1) * page_size).limit(page_size)
-        )
-    ).all()
-
-    # Cross-seeds sharing one exact qBittorrent content path are shown as one
-    # payload group. Pull partners that sorted onto another page into this
-    # one so a group is never split across pages.
-    page_ids = {observation.id for observation, _torrent in page_rows}
-    partner_paths = {
-        observation.resolved_save_path
-        for observation, torrent in page_rows
-        if observation.resolved_save_path
-        and str((torrent.metadata_json or {}).get("content_path") or "").strip()
-    }
-    if partner_paths:
-        partners = (
-            await db.execute(
-                base.where(
-                    TorrentClientObservation.resolved_save_path.in_(partner_paths),
-                    TorrentClientObservation.id.not_in(page_ids),
-                )
+        ordering = aggregate.desc() if direction == "desc" else aggregate.asc()
+    # The group key breaks ties so equal sort values keep a stable page.
+    page_keys = list(
+        (
+            await db.scalars(
+                joined.group_by(group_key)
+                .order_by(ordering, group_key)
+                .offset((page - 1) * page_size)
+                .limit(page_size)
             )
         ).all()
-        page_rows = [
-            *page_rows,
-            *(
-                row
-                for row in partners
-                if str((row[1].metadata_json or {}).get("content_path") or "").strip()
-            ),
-        ]
+    )
+    rank = {key: index for index, key in enumerate(page_keys)}
+    page_rows = []
+    groups_by_torrent: dict[uuid.UUID, str] = {}
+    if page_keys:
+        fetched = (
+            await db.execute(
+                select(TorrentClientObservation, Torrent, group_key)
+                .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+                .where(*conditions, group_key.in_(page_keys))
+                .order_by(TorrentClientObservation.id)
+            )
+        ).all()
+        fetched = sorted(fetched, key=lambda row: rank.get(row[2], len(rank)))
+        page_rows = [(observation, torrent) for observation, torrent, _key in fetched]
+        groups_by_torrent = {torrent.id: key for _observation, torrent, key in fetched}
 
     configured_by_id = {item.id: item for item in await list_configured_download_clients(db)}
     page_rows = [row for row in page_rows if row[0].download_client_id in configured_by_id]
     context = await _load_page_context(db, page_rows, configured_by_id)
+    context.payload_groups = groups_by_torrent
     return Collection(
         items=[
             _download_response(observation, torrent, configured_by_id[observation.download_client_id], context)

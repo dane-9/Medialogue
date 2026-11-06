@@ -32,7 +32,7 @@ export const downloadsApi = {
     downloadIds: string[],
     action: 'start' | 'stop' | 'recheck' | 'reannounce'
       | 'queue_top' | 'queue_up' | 'queue_down' | 'queue_bottom'
-      | 'download_limit' | 'upload_limit' | 'share_ratio',
+      | 'download_limit' | 'upload_limit' | 'share_ratio' | 'remove',
     value?: number,
   ) => openApiData(openApiClient.POST('/api/v1/downloads/actions', {
     body: { download_ids: downloadIds, action, value: value ?? null },

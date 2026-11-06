@@ -369,7 +369,7 @@ export interface Download {
   clientId: string
   kind: 'Movie' | 'Show'
   state: 'Downloading' | 'Checking' | 'Seeding' | 'Completed' | 'Paused' | 'Error'
-  activity: 'downloading' | 'checking' | 'metadata' | 'moving' | 'queued' | 'stalled' | 'seeding' | 'paused' | 'error'
+  activity: 'downloading' | 'checking' | 'metadata' | 'moving' | 'queued' | 'stalled' | 'seeding' | 'paused' | 'error' | 'missing'
   /** The client is disabled or has not reported this torrent recently; live values are hidden. */
   stale?: boolean
   staleReason?: string

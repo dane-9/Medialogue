@@ -3781,7 +3781,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "start" | "stop" | "recheck" | "reannounce" | "queue_top" | "queue_up" | "queue_down" | "queue_bottom" | "download_limit" | "upload_limit" | "share_ratio";
+            action: "start" | "stop" | "recheck" | "reannounce" | "queue_top" | "queue_up" | "queue_down" | "queue_bottom" | "download_limit" | "upload_limit" | "share_ratio" | "remove";
             /** Download Ids */
             download_ids: string[];
             /** Value */
@@ -4092,7 +4092,7 @@ export interface components {
              * Activity
              * @enum {string}
              */
-            activity: "downloading" | "checking" | "metadata" | "moving" | "queued" | "stalled" | "seeding" | "paused" | "error";
+            activity: "downloading" | "checking" | "metadata" | "moving" | "queued" | "stalled" | "seeding" | "paused" | "error" | "missing";
             /** Amount Left */
             amount_left?: number | null;
             archive_state: components["schemas"]["TorrentArchiveState"];

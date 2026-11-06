@@ -20,7 +20,7 @@ from time import perf_counter
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import (
@@ -409,6 +409,48 @@ async def refresh_observations_after_action(
     return updated
 
 
+async def mark_removed_after_action(
+    db: AsyncSession,
+    client: ConfiguredDownloadClient,
+    info_hashes: Sequence[str],
+) -> int:
+    """Record a user's "remove from qBittorrent" right away.
+
+    Mirrors the poll's removal handling so the table, incoming links and
+    tracker health reflect it now rather than on the next poll.
+    """
+
+    wanted = [value.lower() for value in info_hashes]
+    rows = (
+        await db.execute(
+            select(TorrentClientObservation, Torrent)
+            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+            .where(
+                TorrentClientObservation.download_client_id == client.id,
+                TorrentClientObservation.is_present.is_(True),
+                func.lower(Torrent.info_hash).in_(wanted),
+            )
+        )
+    ).all()
+    now = utcnow()
+    for observation, torrent in rows:
+        observation.is_present = False
+        observation.removed_at = now
+        await create_event(
+            db,
+            "torrent.removed",
+            entity_type="torrent",
+            entity_id=torrent.id,
+            message=f"Torrent removed from qBittorrent client {client.name} from Downloads (files kept).",
+            details={"client_id": str(client.id), "info_hash": torrent.info_hash, "delete_files": False},
+        )
+        await deactivate_client_tracker_health(db, torrent.id, client.id)
+        await cancel_incoming_torrent(db, torrent)
+        await reconcile_torrent_disagreements(db, torrent, qbit_present=False)
+    await db.commit()
+    return len(rows)
+
+
 async def run_torrent_action(
     client: ConfiguredDownloadClient,
     action: str,
@@ -442,6 +484,11 @@ async def run_torrent_action(
         elif action == "share_ratio":
             # -2 hands the torrent back to qBittorrent's global limit.
             await adapter.set_share_limits(info_hashes, float(value if value is not None else -2))
+        elif action == "remove":
+            # Removal from qBittorrent only. Files are never deleted here: a
+            # cross-seed member shares its payload with the rest of its group.
+            for info_hash in info_hashes:
+                await adapter.remove_torrent(info_hash, delete_files=False)
         else:
             raise QBittorrentError(f"Unsupported torrent action: {action}")
     finally:
@@ -1188,6 +1235,15 @@ async def poll_download_client(
         async with archive_checkpoint:
             result = await _poll_download_client(db, client, client_factory=client_factory)
             await db.commit()
+            from app.services.payload_groups import refresh_due, refresh_payload_groups
+
+            if refresh_due(structure_changed=bool(result.get("added") or result.get("removed"))):
+                try:
+                    await refresh_payload_groups(db)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    logger.exception("Payload group refresh failed", extra={"client_id": str(client.id)})
             from app.services.upgrade_execution import run_automatic_cleanups
             await run_automatic_cleanups(db)
             return result

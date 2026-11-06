@@ -60,13 +60,15 @@ const DOWNLOAD_STATES: Record<DownloadDto['activity'], Download['state']> = {
   seeding: 'Seeding',
   paused: 'Paused',
   error: 'Error',
+  missing: 'Error',
 }
 
 /** Mirror of the backend's `_activity_state`, for live progress events. */
 export function activityFor(rawState: string, progress: number): Download['activity'] {
   const state = rawState.toLowerCase()
   if (state.startsWith('checking')) return 'checking'
-  if (state.includes('error') || state.includes('missing')) return 'error'
+  if (state.includes('missing')) return 'missing'
+  if (state.includes('error')) return 'error'
   if (state === 'moving') return 'moving'
   if (state === 'metadl' || state === 'forcedmetadl') return 'metadata'
   if (state.includes('queued')) return 'queued'

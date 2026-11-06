@@ -132,7 +132,7 @@ class DownloadActionRequest(BaseModel):
     action: Literal[
         "start", "stop", "recheck", "reannounce",
         "queue_top", "queue_up", "queue_down", "queue_bottom",
-        "download_limit", "upload_limit", "share_ratio",
+        "download_limit", "upload_limit", "share_ratio", "remove",
     ]
     #: Bytes/s for the rate limits, a ratio for share_ratio. Ignored otherwise.
     value: float | None = None
@@ -198,7 +198,7 @@ class DownloadResponse(ORMModel):
     reconciliation_detail: str | None = None
     incoming: bool = False
     incoming_kind: Literal["replacement", "release"] | None = None
-    activity: Literal["downloading", "checking", "metadata", "moving", "queued", "stalled", "seeding", "paused", "error"]
+    activity: Literal["downloading", "checking", "metadata", "moving", "queued", "stalled", "seeding", "paused", "error", "missing"]
     #: True when the values below are not current: the client is disabled or
     #: has not reported this torrent for several poll intervals.
     stale: bool = False

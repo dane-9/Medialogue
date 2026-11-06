@@ -1061,3 +1061,78 @@ def test_download_action_reports_partial_failure_instead_of_failing_everything(c
     assert body["applied"] == 1
     assert [item["client_name"] for item in body["failures"]] == ["bad-client"]
     assert "connection refused" in body["failures"][0]["error"]
+
+
+def test_cross_seeds_are_grouped_paged_together_and_removable_individually(client: TestClient) -> None:
+    from app.services.payload_groups import refresh_payload_groups
+
+    headers = _login(client)
+    first = _create_client(client, headers, name="seed-a")
+    second = _create_client(client, headers, name="seed-b", url="http://qbit-b.test:8080")
+    observation_ids: dict[str, str] = {}
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            rows = [
+                ("a", first, "/media/Movies/Shared.Film.2024", "uploading"),
+                ("b", second, "/media/Movies/Shared.Film.2024", "uploading"),
+                ("c", first, "/media/Movies/Other.Film.2024", "missingFiles"),
+            ]
+            for key, qbit, path, state in rows:
+                torrent = Torrent(info_hash=key * 40, name="Same.Name" if key != "c" else "Other",
+                                  metadata_json={"content_path": path})
+                db.add(torrent)
+                await db.flush()
+                observation = TorrentClientObservation(
+                    torrent_id=torrent.id, download_client_id=UUID(qbit["id"]), state=state,
+                    progress=1 if key != "c" else 0.5, is_present=True, resolved_save_path=path,
+                )
+                db.add(observation)
+                await db.flush()
+                observation_ids[key] = str(observation.id)
+            await db.commit()
+            await refresh_payload_groups(db)
+            await db.commit()
+
+    asyncio.run(seed())
+
+    # Two payloads in total; a one-payload page still carries both cross-seeds.
+    listing = client.get("/api/v1/downloads?sort=name&page=1&page_size=1").json()
+    assert listing["total"] == 2 and listing["pages"] == 2
+    assert {item["id"] for item in listing["items"]} == {observation_ids["c"]}
+    second_page = client.get("/api/v1/downloads?sort=name&page=2&page_size=1").json()
+    assert {item["id"] for item in second_page["items"]} == {observation_ids["a"], observation_ids["b"]}
+    assert len({item["payload_group_id"] for item in second_page["items"]}) == 1
+
+    # Missing files is its own state but still counts as an error.
+    missing = listing["items"][0]
+    assert missing["activity"] == "missing"
+    assert client.get("/api/v1/downloads/facets").json()["counts"]["error"] == 1
+
+    removed: list[tuple[str, bool]] = []
+
+    class Adapter:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def remove_torrent(self, info_hash, *, delete_files=False):
+            removed.append((info_hash, delete_files))
+
+        async def close(self):
+            return None
+
+    from app.api import downloads as downloads_api
+
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: Adapter
+    try:
+        response = client.post(
+            "/api/v1/downloads/actions", headers=headers,
+            json={"download_ids": [observation_ids["b"]], "action": "remove"},
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    assert removed == [("b" * 40, False)]
+    remaining = client.get("/api/v1/downloads?page_size=50").json()["items"]
+    assert observation_ids["b"] not in {item["id"] for item in remaining}
+    assert observation_ids["a"] in {item["id"] for item in remaining}

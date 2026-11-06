@@ -16,7 +16,8 @@ describe('live download updates', () => {
     expect(activityFor('uploading', 1)).toBe('seeding')
     expect(activityFor('moving', 1)).toBe('moving')
     expect(activityFor('forcedMetaDL', 0)).toBe('metadata')
-    expect(activityFor('missingFiles', 0.3)).toBe('error')
+    expect(activityFor('missingFiles', 0.3)).toBe('missing')
+    expect(activityFor('error', 0.3)).toBe('error')
     expect(activityFor('stoppedDL', 0.2)).toBe('paused')
   })
 
