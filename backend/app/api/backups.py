@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -15,15 +18,14 @@ from app.models.auth import AdminUser
 from app.models.domain import Job, JobStatus, Schedule
 from app.schemas.jobs import JobAcceptedResponse
 from app.services.backup_coverage import archive_coverage
-from app.services.jobs import create_job, publish_job_status
+from app.services.backup_import import import_backup_zip
 from app.services.remote_backups import (DATABASE, DEFAULT_DATABASE_INTERVAL, DriveBackups, access_token, begin_oauth,
-    finish_oauth, oauth_ready, read_backup_settings, run_drive_restore, update_backup_settings)
-from app.services.runtime_jobs import launch_runtime_job
+    finish_oauth, oauth_ready, read_backup_settings, update_backup_settings)
+from app.services.torrent_archive import rebuild_catalogue_from_manifests
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
 
 router = APIRouter(prefix="/backups", tags=["backups"])
 
-DRIVE_JOBS = ("remote_backup", "drive_restore")
 
 
 class BackupSettingsRequest(BaseModel):
@@ -38,8 +40,7 @@ async def _active(db: AsyncSession, job_type: str) -> Job | None:
 
 
 async def _drive_busy(db: AsyncSession) -> bool:
-    return bool(await db.scalar(select(Job.id).where(Job.job_type.in_(DRIVE_JOBS),
-        Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])).limit(1)))
+    return await _active(db, "remote_backup") is not None
 
 
 @router.get("/status")
@@ -47,7 +48,6 @@ async def backup_status(_: AdminUser = Depends(require_admin), db: AsyncSession 
     saved = read_backup_settings()
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
     backup = await _active(db, "remote_backup")
-    restore = await _active(db, "drive_restore")
     mirror = saved.get("mirror") or {}
     return {
         "oauth_configured": oauth_ready(),
@@ -63,7 +63,6 @@ async def backup_status(_: AdminUser = Depends(require_admin), db: AsyncSession 
         "torrents_on_drive": sum(1 for key in mirror if key.startswith("torrents/")),
         "folder_url": f"https://drive.google.com/drive/folders/{saved['folders']['root']}" if (saved.get("folders") or {}).get("root") else None,
         "active_job_id": str(backup.id) if backup else None,
-        "active_restore_job_id": str(restore.id) if restore else None,
     }
 
 
@@ -87,14 +86,14 @@ async def save_backup_settings(payload: BackupSettingsRequest, _: object = Depen
 @router.post("/google/connect")
 async def connect_google(session=Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
     if await _drive_busy(db):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore before changing its Google account.", status_code=409)
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before changing its Google account.", status_code=409)
     return {"authorization_url": begin_oauth(str(session.admin.id))}
 
 
 @router.post("/google/disconnect")
 async def disconnect_google(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
     if await _drive_busy(db):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore before disconnecting Google Drive.", status_code=409)
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before disconnecting Google Drive.", status_code=409)
     update_backup_settings({"refresh_token": None, "oauth_state": None, "oauth_verifier": None})
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
     if schedule:
@@ -108,7 +107,7 @@ async def disconnect_google(_: object = Depends(require_csrf), db: AsyncSession 
 async def google_callback(code: str = Query(default="", max_length=4096), state: str = Query(max_length=256),
                           admin: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     if await _drive_busy(db):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore, then reconnect Google Drive.", status_code=409)
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup, then reconnect Google Drive.", status_code=409)
     await finish_oauth(code, state, str(admin.id))
     return RedirectResponse("/backups", status_code=303, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
@@ -119,8 +118,6 @@ async def start_backup(_: object = Depends(require_csrf), db: AsyncSession = Dep
 
     if not read_backup_settings().get("refresh_token"):
         raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive first.", status_code=409)
-    if await _active(db, "drive_restore"):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the restore to finish first.", status_code=409)
     await ensure_default_schedules(db)
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
     job = await trigger_schedule(db, schedule, trigger="manual")
@@ -132,24 +129,41 @@ async def coverage(_: AdminUser = Depends(require_admin), db: AsyncSession = Dep
     return await archive_coverage(db)
 
 
-@router.post("/restore", response_model=JobAcceptedResponse, status_code=202)
-async def start_restore(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)):
-    """Fetch every torrent and manifest from Drive into the local archive.
+#: Big enough for the whole backup folder, database copies included.
+UPLOAD_LIMIT = 16 * 1024 * 1024 * 1024
 
+
+@router.post("/restore/upload")
+async def upload_backup(request: Request, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
+    """Take the backup folder's ZIP, downloaded from Google Drive, as the request body.
+
+    Its torrents and manifests go into the archive, which then lists them.
     Nothing is sent to qBittorrent here; the re-import plan does that once
-    confirmed.
+    confirmed. Uploading the same ZIP again changes nothing.
     """
 
-    if not read_backup_settings().get("refresh_token"):
-        raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive first.", status_code=409)
-    if await _drive_busy(db):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup or restore to finish.", status_code=409)
-    job = await create_job(db, "drive_restore", cancellable=False,
-                           summary={"message": "Fetching torrents from Google Drive."})
+    handle = tempfile.NamedTemporaryFile(prefix="medialogue-upload-", suffix=".zip", delete=False)
+    path = Path(handle.name)
+    try:
+        size = 0
+        with handle:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > UPLOAD_LIMIT:
+                    raise AppError("BACKUP_UPLOAD_TOO_LARGE", "That file is too large to be a Medialogue backup.", status_code=413)
+                handle.write(chunk)
+        if not size:
+            raise AppError("BACKUP_UPLOAD_EMPTY", "Choose the backup ZIP to upload.", status_code=422)
+        try:
+            imported = await asyncio.to_thread(import_backup_zip, path)
+        except ValueError as exc:
+            raise AppError("BACKUP_UPLOAD_INVALID", str(exc), status_code=422) from exc
+    finally:
+        path.unlink(missing_ok=True)
+    catalogue = await rebuild_catalogue_from_manifests(db)
     await db.commit()
-    publish_job_status(job)
-    launch_runtime_job(job.id, lambda: run_drive_restore(job.id))
-    return JobAcceptedResponse(job_id=job.id)
+    return {**imported, "listed": catalogue["imported"] + catalogue["repaired"],
+            "errors": imported["errors"] + [f"{item['manifest']}: {item['error']}" for item in catalogue["errors"]][:20]}
 
 
 @router.get("/database-copies")

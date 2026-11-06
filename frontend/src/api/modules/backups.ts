@@ -1,4 +1,4 @@
-import { openApiClient, openApiData } from '../transport'
+import { openApiClient, openApiData, uploadFile } from '../transport'
 
 export type BackupStatus = {
   oauth_configured: boolean
@@ -14,10 +14,11 @@ export type BackupStatus = {
   torrents_on_drive: number
   folder_url?: string | null
   active_job_id?: string | null
-  active_restore_job_id?: string | null
 }
 
 export type CoverageStatus = 'no_torrent' | 'not_archived' | 'local_only' | 'protected'
+
+export type CoverageGap = { id: string; media_type: 'movies' | 'shows'; title: string; year?: number | null; poster_ref?: string | null; season_number?: number | null; release_name: string; status: CoverageStatus }
 
 export type BackupCoverage = {
   total: number
@@ -25,9 +26,11 @@ export type BackupCoverage = {
   local_only: number
   not_archived: number
   no_torrent: number
-  gaps: Array<{ id: string; media_type: 'movies' | 'shows'; title: string; year?: number | null; poster_ref?: string | null; season_number?: number | null; release_name: string; status: CoverageStatus }>
+  gaps: CoverageGap[]
   gaps_truncated: boolean
 }
+
+export type BackupUploadResult = { written: number; present: number; skipped: number; listed: number; errors: string[] }
 
 export type DatabaseCopy = { id: string; name: string; size?: number | null; created_at?: string | null; url: string }
 
@@ -40,6 +43,7 @@ export const backupsApi = {
   connect: async () => await openApiData(openApiClient.POST('/api/v1/backups/google/connect')) as unknown as { authorization_url: string },
   disconnect: () => openApiData(openApiClient.POST('/api/v1/backups/google/disconnect')),
   run: () => openApiData(openApiClient.POST('/api/v1/backups/run')),
-  restore: () => openApiData(openApiClient.POST('/api/v1/backups/restore')),
+  /** The backup folder's ZIP, as downloaded from Google Drive. */
+  uploadBackup: (file: File) => uploadFile<BackupUploadResult>('/api/v1/backups/restore/upload', file),
   databaseCopies: async () => (await openApiData(openApiClient.GET('/api/v1/backups/database-copies')) as unknown as { items: DatabaseCopy[] }).items,
 }

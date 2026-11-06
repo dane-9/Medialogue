@@ -40,7 +40,7 @@ from app.core.integration_config import get_integration_config_store
 from app.db import session as db_session
 from app.models.domain import Job, JobStatus
 from app.services.jobs import update_job
-from app.services.torrent_archive import _atomic_write, _safe_hash, archive_paths, recovery_revision
+from app.services.torrent_archive import _atomic_write, recovery_revision
 
 DRIVE = "https://www.googleapis.com/drive/v3/files"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
@@ -545,73 +545,6 @@ async def run_remote_backup(job_id: UUID) -> None:
             message = exc.message if isinstance(exc, AppError) else str(exc)
             update_backup_settings({"last_error": message})
             await _finish(job_id, status=JobStatus.FAILED, error={"code": "REMOTE_BACKUP_FAILED", "message": message})
-        finally:
-            if drive:
-                await drive.close()
-
-
-async def run_drive_restore(job_id: UUID) -> None:
-    """Bring every torrent and manifest from Drive into the local archive.
-
-    Files already present and identical are left alone, so it is safe to run
-    again. The archive list is rebuilt from the manifests afterwards; nothing
-    is sent to qBittorrent until the re-import is confirmed.
-    """
-
-    from app.services.torrent_archive import rebuild_catalogue_from_manifests
-
-    async with backup_lock:
-        drive = None
-        try:
-            await _finish(job_id, status=JobStatus.RUNNING, progress={"percent": 2, "stage": "connecting"})
-            state = read_backup_settings()
-            drive = DriveBackups(await access_token())
-            folders, _ = await drive_folders(drive, state)
-            update_backup_settings({"folders": folders})
-            rows = [(kind, row) for kind in MIRRORED for row in await drive.children(folders[kind])]
-            counts = {"downloaded": 0, "present": 0, "skipped": 0}
-            gate = asyncio.Semaphore(PARALLEL_UPLOADS)
-
-            async def fetch(kind: str, row: dict) -> None:
-                name = str(row.get("name") or "")
-                stem, _, suffix = name.rpartition(".")
-                try:
-                    info_hash = _safe_hash(stem)
-                except ValueError:
-                    counts["skipped"] += 1
-                    return
-                if (kind, suffix) not in {("torrents", "torrent"), ("manifests", "json")}:
-                    counts["skipped"] += 1
-                    return
-                torrent_path, manifest_path = archive_paths(info_hash)
-                target = torrent_path if kind == "torrents" else manifest_path
-                if target.is_file() and row.get("sha256Checksum") and file_digest(target) == row["sha256Checksum"]:
-                    counts["present"] += 1
-                    return
-                async with gate:
-                    data = await drive.download(row["id"])
-                if row.get("sha256Checksum") and hashlib.sha256(data).hexdigest() != row["sha256Checksum"]:
-                    raise ValueError(f"{name} did not match its Drive checksum")
-                if kind == "manifests":
-                    json.loads(data)
-                await asyncio.to_thread(_atomic_write, target, data)
-                counts["downloaded"] += 1
-
-            for start in range(0, len(rows), 50):
-                await asyncio.gather(*(fetch(kind, row) for kind, row in rows[start:start + 50]))
-                await _finish(job_id, progress={"percent": 5 + int(85 * min(len(rows), start + 50) / max(1, len(rows))),
-                                                "stage": "downloading", "detail": f"{min(len(rows), start + 50)} of {len(rows)} files"})
-            async with db_session.async_session_factory() as db:
-                catalogue = await rebuild_catalogue_from_manifests(db)
-                await db.commit()
-            await _finish(job_id, status=JobStatus.COMPLETED, progress={"percent": 100, "stage": "completed"},
-                          summary={"message": f"Fetched {counts['downloaded']} file(s) from Google Drive; "
-                                              f"{catalogue['imported']} torrent(s) added to the archive list.",
-                                   **counts, **{f"catalogue_{key}": value for key, value in catalogue.items() if key != "errors"},
-                                   "errors": catalogue["errors"][:20]})
-        except Exception as exc:
-            message = exc.message if isinstance(exc, AppError) else str(exc)
-            await _finish(job_id, status=JobStatus.FAILED, error={"code": "DRIVE_RESTORE_FAILED", "message": message})
         finally:
             if drive:
                 await drive.close()

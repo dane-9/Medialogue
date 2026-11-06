@@ -52,5 +52,4 @@ export const downloadsApi = {
     return items
   },
   retryTorrentArchive: (id: string) => openApiData(openApiClient.POST('/api/v1/torrent-archive/{torrent_id}/retry', { params: { path: { torrent_id: id } } })),
-  restoreTorrentArchive: (id: string, payload: { download_client_id: string; save_path: string; category?: string; tags?: string[] }) => openApiData(openApiClient.POST('/api/v1/torrent-archive/{torrent_id}/restore', { params: { path: { torrent_id: id } }, body: payload })),
 }

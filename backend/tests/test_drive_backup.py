@@ -129,7 +129,7 @@ def _run(job_type: str, *, manual: bool = True):
             job = await create_job(db, job_type, cancellable=False, summary={"trigger": "manual" if manual else "schedule"})
             await db.commit()
             job_id = job.id
-        await (remote.run_remote_backup if job_type == "remote_backup" else remote.run_drive_restore)(job_id)
+        await remote.run_remote_backup(job_id)
         async with db_session.async_session_factory() as db:
             job = await db.get(Job, job_id)
             return job.status.value, dict(job.summary or {}), job.error
@@ -198,26 +198,55 @@ def test_only_the_newest_database_copies_are_kept(recovery_env, drive):
     assert len(FakeDrive.live("database")) == 2
 
 
-def test_restore_fetches_drive_files_and_lists_them_without_touching_qbittorrent(recovery_env, drive):
-    client, settings, _ = recovery_env
+def _drive_download_zip(torrent: Path, manifest: Path) -> bytes:
+    """The backup folder as Google Drive zips it on download."""
+
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr(f"Medialogue Backups/torrents/{torrent.name}", torrent.read_bytes())
+        bundle.writestr(f"Medialogue Backups/manifests/{manifest.name}", manifest.read_bytes())
+        bundle.writestr("Medialogue Backups/database/medialogue-database-20260101T000000Z.zip", b"not used")
+        bundle.writestr("Medialogue Backups/torrents/../../escape.torrent", b"d4:infod4:name1:xee")
+        bundle.writestr("Medialogue Backups/torrents/notahash!.torrent", b"d4:infod4:name1:xee")
+    return buffer.getvalue()
+
+
+def test_uploaded_backup_zip_restores_the_archive_without_touching_qbittorrent(recovery_env):
+    client, settings, root = recovery_env
     headers = login_headers(client)
     torrent, manifest = _archive_fixture(Path(settings.torrent_archive_dir))
-    assert _run("remote_backup")[0] == "completed"
+    upload = _drive_download_zip(torrent, manifest)
     torrent.unlink()
     manifest.unlink()
 
-    status, summary, error = _run("drive_restore")
-    assert status == "completed", error
-    assert (summary["downloaded"], summary["catalogue_imported"]) == (2, 1)
+    response = client.post("/api/v1/backups/restore/upload", headers={**headers, "Content-Type": "application/zip"}, content=upload)
+    assert response.status_code == 200, response.text
+    assert (response.json()["written"], response.json()["listed"], response.json()["skipped"]) == (2, 1, 1)
     assert torrent.is_file() and manifest.is_file()
-    rows = client.get("/api/v1/torrent-archive", headers=headers).json()["items"]
+    assert not (Path(settings.torrent_archive_dir).parent / "escape.torrent").exists()
+    rows = client.get("/api/v1/torrent-archive").json()["items"]
     assert [(row["info_hash"], row["media_title"], row["archive_verified"], row["qbit_present"]) for row in rows] == [
         (INFO_HASH, "Example", True, False)]
-    assert rows[0]["included_in_remote_backup"] is True
 
-    # Running it again changes nothing.
-    status, summary, _ = _run("drive_restore")
-    assert (summary["downloaded"], summary["present"], summary["catalogue_imported"]) == (0, 2, 0)
+    # The same ZIP again changes nothing.
+    again = client.post("/api/v1/backups/restore/upload", headers=headers, content=upload).json()
+    assert (again["written"], again["present"], again["listed"]) == (0, 2, 0)
+
+
+def test_upload_rejects_files_that_are_not_a_backup(recovery_env):
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+    assert client.post("/api/v1/backups/restore/upload", headers=headers, content=b"plain text").json()["error"]["code"] == "BACKUP_UPLOAD_INVALID"
+    import io
+    import zipfile
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr("photos/cat.jpg", b"meow")
+    assert client.post("/api/v1/backups/restore/upload", headers=headers, content=buffer.getvalue()).status_code == 422
+    assert client.post("/api/v1/backups/restore/upload", content=buffer.getvalue()).status_code in {401, 403}
 
 
 def test_rebuild_lists_archived_torrents_without_inventing_live_presence(recovery_env):

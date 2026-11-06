@@ -76,6 +76,16 @@ const transportMiddleware: Middleware = {
   },
 }
 
+/** Send a file as the raw request body, with the session's CSRF token. */
+export async function uploadFile<T>(url: string, file: Blob): Promise<T> {
+  const headers = new Headers({ Accept: 'application/json', 'Content-Type': file.type || 'application/octet-stream' })
+  const csrf = await ensureCsrf()
+  if (csrf) headers.set('X-CSRF-Token', csrf)
+  const response = await fetch(url, { method: 'POST', credentials: 'include', headers, body: file })
+  if (!response.ok) throw await apiErrorFromResponse(response)
+  return await response.json() as T
+}
+
 export const openApiClient = createClient<paths>({
   credentials: 'include',
   headers: { Accept: 'application/json' },

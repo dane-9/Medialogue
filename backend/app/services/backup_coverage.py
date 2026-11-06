@@ -29,7 +29,7 @@ from app.services.remote_backups import read_backup_settings
 
 #: How each status reads, worst first.
 STATUSES = ("no_torrent", "not_archived", "local_only", "protected")
-GAP_LIMIT = 500
+GAP_LIMIT = 10000
 
 
 async def archive_coverage(db: AsyncSession) -> dict[str, Any]:

@@ -15111,23 +15111,25 @@
         ]
       }
     },
-    "/api/v1/backups/restore": {
+    "/api/v1/backups/restore/upload": {
       "post": {
-        "description": "Fetch every torrent and manifest from Drive into the local archive.\n\nNothing is sent to qBittorrent here; the re-import plan does that once\nconfirmed.",
-        "operationId": "start_restore_api_v1_backups_restore_post",
+        "description": "Take the backup folder's ZIP, downloaded from Google Drive, as the request body.\n\nIts torrents and manifests go into the archive, which then lists them.\nNothing is sent to qBittorrent here; the re-import plan does that once\nconfirmed. Uploading the same ZIP again changes nothing.",
+        "operationId": "upload_backup_api_v1_backups_restore_upload_post",
         "responses": {
-          "202": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                  "additionalProperties": true,
+                  "title": "Response Upload Backup Api V1 Backups Restore Upload Post",
+                  "type": "object"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Start Restore",
+        "summary": "Upload Backup",
         "tags": [
           "backups"
         ]

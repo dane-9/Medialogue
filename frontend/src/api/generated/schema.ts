@@ -282,7 +282,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/backups/restore": {
+    "/api/v1/backups/restore/upload": {
         parameters: {
             query?: never;
             header?: never;
@@ -292,13 +292,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start Restore
-         * @description Fetch every torrent and manifest from Drive into the local archive.
+         * Upload Backup
+         * @description Take the backup folder's ZIP, downloaded from Google Drive, as the request body.
          *
+         *     Its torrents and manifests go into the archive, which then lists them.
          *     Nothing is sent to qBittorrent here; the re-import plan does that once
-         *     confirmed.
+         *     confirmed. Uploading the same ZIP again changes nothing.
          */
-        post: operations["start_restore_api_v1_backups_restore_post"];
+        post: operations["upload_backup_api_v1_backups_restore_upload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8427,7 +8428,7 @@ export interface operations {
             };
         };
     };
-    start_restore_api_v1_backups_restore_post: {
+    upload_backup_api_v1_backups_restore_upload_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -8437,12 +8438,14 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            202: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobAcceptedResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

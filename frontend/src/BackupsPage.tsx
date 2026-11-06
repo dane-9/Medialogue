@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { backupsApi } from './api/modules/backups'
-import type { BackupCoverage, BackupStatus, CoverageStatus, DatabaseCopy } from './api/modules/backups'
+import type { BackupStatus, DatabaseCopy } from './api/modules/backups'
 import { systemApi } from './api/modules/system'
 import { Badge, Button, Panel, Progress, Segmented, Select } from './components/ui'
 import { useUrlState } from './lib/urlState'
@@ -9,7 +9,7 @@ import type { Message } from './components/settings'
 import { PageTopbar } from './components/Shell'
 import { formatAge } from './lib/age'
 import { formatBytes } from './components/ReleaseResults'
-import { RecoveryReimportSection, RowPoster, TorrentArchiveSection } from './pages'
+import { RecoveryReimportSection, TorrentArchiveSection } from './pages'
 import type { Job } from './types'
 
 const DATABASE_INTERVALS = [
@@ -18,18 +18,6 @@ const DATABASE_INTERVALS = [
   { value: 259200, label: 'Every 3 days' },
   { value: 604800, label: 'Weekly' },
 ]
-
-const COVERAGE_LABEL: Record<CoverageStatus, string> = {
-  protected: 'On Google Drive',
-  local_only: 'Only on this server',
-  not_archived: 'Torrent not archived',
-  no_torrent: 'No torrent',
-}
-const COVERAGE_HELP: Record<Exclude<CoverageStatus, 'protected'>, string> = {
-  local_only: 'Archived here, waiting for the next copy to Google Drive.',
-  not_archived: 'Its torrent could not be saved yet. Retry it under Torrents below.',
-  no_torrent: 'Medialogue never saw a torrent for it, so it cannot be downloaded again.',
-}
 
 /** Job progress while it runs, refreshed until it finishes. */
 function useJob(id: string | null | undefined, onDone?: (job: Job) => void) {
@@ -58,7 +46,6 @@ function useJob(id: string | null | undefined, onDone?: (job: Job) => void) {
 const TABS = [
   { value: 'torrents', label: 'Torrents' },
   { value: 'drive', label: 'Google Drive' },
-  { value: 'coverage', label: 'Coverage' },
   { value: 'restore', label: 'Restore' },
 ] as const
 type Tab = typeof TABS[number]['value']
@@ -67,22 +54,20 @@ export default function BackupsPage() {
   const [tabParam, setTab] = useUrlState('tab', 'torrents')
   const tab: Tab = TABS.some((item) => item.value === tabParam) ? tabParam as Tab : 'torrents'
   const [status, setStatus] = useState<BackupStatus | null>(null)
-  const [coverage, setCoverage] = useState<BackupCoverage | null>(null)
   const [message, setMessage] = useState<Message>(null)
   const [busy, setBusy] = useState(false)
   const [backupJobId, setBackupJobId] = useState<string | null>(null)
-  const [restoreJobId, setRestoreJobId] = useState<string | null>(null)
   const [restored, setRestored] = useState(0)
-  const [showAllGaps, setShowAllGaps] = useState(false)
+  const [uploadMessage, setUploadMessage] = useState<Message>(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
   const [copies, setCopies] = useState<DatabaseCopy[] | null>(null)
 
   const load = async () => {
     try {
-      const [nextStatus, nextCoverage] = await Promise.all([backupsApi.status(), backupsApi.coverage()])
+      const nextStatus = await backupsApi.status()
       setStatus(nextStatus)
-      setCoverage(nextCoverage)
       if (nextStatus.active_job_id) setBackupJobId(nextStatus.active_job_id)
-      if (nextStatus.active_restore_job_id) setRestoreJobId(nextStatus.active_restore_job_id)
     } catch (reason) { setMessage(failed(reason, 'Could not load backup status.')) }
   }
   useEffect(() => { void load() }, [])
@@ -90,9 +75,7 @@ export default function BackupsPage() {
   useEffect(() => { const timer = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(timer) }, [])
 
   const backupJob = useJob(backupJobId, () => void load())
-  const restoreJob = useJob(restoreJobId, (job) => { void load(); if (job.state === 'completed') setRestored((value) => value + 1) })
   const backingUp = backupJob ? ['queued', 'running'].includes(backupJob.state) : false
-  const restoring = restoreJob ? ['queued', 'running'].includes(restoreJob.state) : false
 
   const act = async (action: () => Promise<void>) => {
     setBusy(true); setMessage(null)
@@ -107,8 +90,6 @@ export default function BackupsPage() {
   const connected = Boolean(status?.connected)
   const tone = !status ? 'neutral' : !connected ? 'neutral' : status.last_error ? 'red' : status.enabled ? 'green' : 'amber'
   const label = !status ? 'Checking' : !connected ? 'Not connected' : status.last_error ? 'Needs attention' : status.enabled ? 'Backing up' : 'Paused'
-  const gaps = coverage?.gaps ?? []
-  const shownGaps = showAllGaps ? gaps : gaps.slice(0, 8)
 
   return <div className="page backups-page">
     <PageTopbar title="Backups" subtitle="Keeps every torrent in Google Drive, so the whole library can download again onto a new server." />
@@ -128,16 +109,16 @@ export default function BackupsPage() {
 
       <div className="button-row">
         {connected && <Button variant={status?.enabled ? 'secondary' : 'primary'} disabled={busy} onClick={() => void save({ enabled: !status?.enabled })}>{status?.enabled ? 'Pause backups' : 'Turn on backups'}</Button>}
-        {connected && <Button variant="secondary" icon="refresh" disabled={busy || backingUp || restoring} onClick={() => void act(async () => {
+        {connected && <Button variant="secondary" icon="refresh" disabled={busy || backingUp} onClick={() => void act(async () => {
           const accepted = await backupsApi.run() as { job_id: string }
           setBackupJobId(accepted.job_id)
         })}>{backingUp ? 'Backing up…' : 'Back up now'}</Button>}
         {status?.folder_url && <a className="button button-ghost" href={status.folder_url} target="_blank" rel="noreferrer">Open in Google Drive</a>}
         <span className="modal-foot-spacer" />
-        <Button variant={connected ? 'ghost' : 'primary'} disabled={busy || backingUp || restoring || !status?.oauth_configured} onClick={() => void act(async () => {
+        <Button variant={connected ? 'ghost' : 'primary'} disabled={busy || backingUp || !status?.oauth_configured} onClick={() => void act(async () => {
           window.location.assign((await backupsApi.connect()).authorization_url)
         })}>{connected ? 'Reconnect' : 'Connect Google Drive'}</Button>
-        {connected && <Button variant="ghost" disabled={busy || backingUp || restoring} onClick={() => void act(async () => { await backupsApi.disconnect(); setMessage({ tone: 'ok', text: 'Disconnected. Everything already in Drive stays there.' }) })}>Disconnect</Button>}
+        {connected && <Button variant="ghost" disabled={busy || backingUp} onClick={() => void act(async () => { await backupsApi.disconnect(); setMessage({ tone: 'ok', text: 'Disconnected. Everything already in Drive stays there.' }) })}>Disconnect</Button>}
       </div>
 
       {connected && status && <div className="backups-database">
@@ -158,42 +139,35 @@ export default function BackupsPage() {
       <Note message={message} />
     </div></Panel>}
 
-    {tab === 'coverage' && <Panel title="Coverage" action={coverage && <Badge tone={coverage.protected === coverage.total ? 'green' : 'amber'}>{coverage.protected.toLocaleString()} / {coverage.total.toLocaleString()} on Drive</Badge>}>
-      <div className="backups-body">
-        {!coverage ? <p className="backups-note">Checking…</p> : <>
-          <p className="backups-note">{coverage.protected === coverage.total
-            ? 'Every release in the library can be downloaded again from Google Drive.'
-            : `${(coverage.total - coverage.protected).toLocaleString()} of ${coverage.total.toLocaleString()} releases could not be downloaded again yet.`}</p>
-          {gaps.length > 0 && <>
-            <div className="button-row">
-              {(['local_only', 'not_archived', 'no_torrent'] as const).filter((key) => coverage[key]).map((key) => <Badge key={key} tone={key === 'local_only' ? 'amber' : 'red'}>{coverage[key]} {COVERAGE_LABEL[key].toLowerCase()}</Badge>)}
-            </div>
-            <ul className="backups-legend">{(['local_only', 'not_archived', 'no_torrent'] as const).filter((key) => coverage[key]).map((key) => <li key={key}><strong>{COVERAGE_LABEL[key]}:</strong> {COVERAGE_HELP[key]}</li>)}</ul>
-          </>}
-        </>}
-      </div>
-      {/* Edge to edge, outside the padded body, like every other table panel. */}
-      {gaps.length > 0 && <table className="data-table backups-gaps"><thead><tr><th>Title</th><th>Release</th><th>Status</th></tr></thead><tbody>{shownGaps.map((gap) => <tr key={gap.id}>
-        <td><div className="row-with-poster"><RowPoster reference={gap.poster_ref} mediaType={gap.media_type} /><div><strong>{gap.title}</strong><span className="table-sub">{[gap.year, gap.season_number != null ? `Season ${gap.season_number}` : null].filter(Boolean).join(' · ')}</span></div></div></td>
-        <td className="mono">{gap.release_name}</td>
-        <td><Badge tone={gap.status === 'local_only' ? 'amber' : 'red'}>{COVERAGE_LABEL[gap.status]}</Badge></td>
-      </tr>)}</tbody></table>}
-      {gaps.length > shownGaps.length && <div className="backups-more"><Button variant="ghost" onClick={() => setShowAllGaps(true)}>Show all {gaps.length}{coverage?.gaps_truncated ? '+' : ''}</Button></div>}
-    </Panel>}
-
     {tab === 'restore' && <Panel title="Restore"><div className="backups-body">
       <ol className="backups-steps">
         <li>Set up Medialogue again: media folders and qBittorrent clients, as before.</li>
-        <li>Connect the same Google account and fetch the torrents.</li>
-        <li>Check the plan and re-add them. Each goes back to its original folder and downloads again.</li>
+        <li>In Google Drive, download the "Medialogue Backups" folder. Drive gives it to you as a ZIP (several, if it is large).</li>
+        <li>Upload the ZIP here, then check the plan and re-add. Each torrent goes back to its original folder and downloads again.</li>
       </ol>
       <div className="button-row">
-        <Button variant="secondary" icon="download" disabled={!connected || busy || restoring || backingUp} onClick={() => void act(async () => {
-          const accepted = await backupsApi.restore() as { job_id: string }
-          setRestoreJobId(accepted.job_id)
-        })}>{restoring ? 'Fetching…' : 'Fetch torrents from Google Drive'}</Button>
+        <input ref={fileInput} type="file" accept=".zip,application/zip" multiple hidden onChange={(event) => {
+          const files = [...(event.target.files ?? [])]
+          event.target.value = ''
+          if (!files.length) return
+          void (async () => {
+            setUploading(true); setUploadMessage(null)
+            let written = 0, present = 0, listed = 0
+            try {
+              // Drive splits a large folder into several ZIPs; each is a part of the same backup.
+              for (const file of files) {
+                const result = await backupsApi.uploadBackup(file)
+                written += result.written; present += result.present; listed += result.listed
+              }
+              setUploadMessage({ tone: 'ok', text: `${written} file${written === 1 ? '' : 's'} restored${present ? `, ${present} already here` : ''}; ${listed} torrent${listed === 1 ? '' : 's'} added to the list.` })
+              setRestored((value) => value + 1)
+            } catch (reason) { setUploadMessage(failed(reason, 'That ZIP could not be restored.')) }
+            finally { setUploading(false) }
+          })()
+        }} />
+        <Button variant="secondary" icon="download" disabled={uploading} onClick={() => fileInput.current?.click()}>{uploading ? 'Uploading…' : 'Upload backup ZIP'}</Button>
       </div>
-      {restoreJob && <div className="job-progress-line"><Progress value={restoreJob.progress ?? 0} tone={restoring ? 'blue' : restoreJob.state === 'completed' ? 'green' : 'amber'} /><span>{restoring ? (restoreJob.detail || `${restoreJob.progress ?? 0}%`) : restoreJob.error || (typeof restoreJob.summary?.message === 'string' ? restoreJob.summary.message : restoreJob.state)}</span></div>}
+      <Note message={uploadMessage} />
       <RecoveryReimportSection refreshKey={restored} />
     </div></Panel>}
 
