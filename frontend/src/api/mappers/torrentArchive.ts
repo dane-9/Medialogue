@@ -39,6 +39,7 @@ export function mapTorrentArchiveItem(value: TorrentArchiveDto | MovieTorrentHis
     recoveryClients: value.recovery_clients,
     mediaTitle: value.media_title ?? undefined,
     mediaYear: value.media_year ?? undefined,
+    archivedAt: value.archived_at ?? undefined,
     mediaType: value.media_type ?? undefined,
     tmdbId: value.tmdb_id ?? undefined,
     posterRef: value.poster_ref ?? undefined,

@@ -158,25 +158,28 @@ export default function BackupsPage() {
       <Note message={message} />
     </div></Panel>}
 
-    {tab === 'coverage' && <Panel title="Coverage" action={coverage && <Badge tone={coverage.protected === coverage.total ? 'green' : 'amber'}>{coverage.protected.toLocaleString()} / {coverage.total.toLocaleString()} on Drive</Badge>}><div className="backups-body">
-      {!coverage ? <p className="backups-note">Checking…</p> : <>
-        <p className="backups-note">{coverage.protected === coverage.total
-          ? 'Every release in the library can be downloaded again from Google Drive.'
-          : `${(coverage.total - coverage.protected).toLocaleString()} of ${coverage.total.toLocaleString()} releases could not be downloaded again yet.`}</p>
-        {gaps.length > 0 && <>
-          <div className="button-row">
-            {(['local_only', 'not_archived', 'no_torrent'] as const).filter((key) => coverage[key]).map((key) => <Badge key={key} tone={key === 'local_only' ? 'amber' : 'red'}>{coverage[key]} {COVERAGE_LABEL[key].toLowerCase()}</Badge>)}
-          </div>
-          <ul className="backups-legend">{(['local_only', 'not_archived', 'no_torrent'] as const).filter((key) => coverage[key]).map((key) => <li key={key}><strong>{COVERAGE_LABEL[key]}:</strong> {COVERAGE_HELP[key]}</li>)}</ul>
-          <table className="data-table backups-gaps"><thead><tr><th>Title</th><th>Release</th><th>Status</th></tr></thead><tbody>{shownGaps.map((gap) => <tr key={gap.id}>
-            <td><div className="row-with-poster"><RowPoster reference={gap.poster_ref} mediaType={gap.media_type} /><div><strong>{gap.title}</strong><span className="table-sub">{[gap.year, gap.season_number != null ? `Season ${gap.season_number}` : null].filter(Boolean).join(' · ')}</span></div></div></td>
-            <td className="mono">{gap.release_name}</td>
-            <td><Badge tone={gap.status === 'local_only' ? 'amber' : 'red'}>{COVERAGE_LABEL[gap.status]}</Badge></td>
-          </tr>)}</tbody></table>
-          {gaps.length > shownGaps.length && <Button variant="ghost" onClick={() => setShowAllGaps(true)}>Show all {gaps.length}{coverage.gaps_truncated ? '+' : ''}</Button>}
+    {tab === 'coverage' && <Panel title="Coverage" action={coverage && <Badge tone={coverage.protected === coverage.total ? 'green' : 'amber'}>{coverage.protected.toLocaleString()} / {coverage.total.toLocaleString()} on Drive</Badge>}>
+      <div className="backups-body">
+        {!coverage ? <p className="backups-note">Checking…</p> : <>
+          <p className="backups-note">{coverage.protected === coverage.total
+            ? 'Every release in the library can be downloaded again from Google Drive.'
+            : `${(coverage.total - coverage.protected).toLocaleString()} of ${coverage.total.toLocaleString()} releases could not be downloaded again yet.`}</p>
+          {gaps.length > 0 && <>
+            <div className="button-row">
+              {(['local_only', 'not_archived', 'no_torrent'] as const).filter((key) => coverage[key]).map((key) => <Badge key={key} tone={key === 'local_only' ? 'amber' : 'red'}>{coverage[key]} {COVERAGE_LABEL[key].toLowerCase()}</Badge>)}
+            </div>
+            <ul className="backups-legend">{(['local_only', 'not_archived', 'no_torrent'] as const).filter((key) => coverage[key]).map((key) => <li key={key}><strong>{COVERAGE_LABEL[key]}:</strong> {COVERAGE_HELP[key]}</li>)}</ul>
+          </>}
         </>}
-      </>}
-    </div></Panel>}
+      </div>
+      {/* Edge to edge, outside the padded body, like every other table panel. */}
+      {gaps.length > 0 && <table className="data-table backups-gaps"><thead><tr><th>Title</th><th>Release</th><th>Status</th></tr></thead><tbody>{shownGaps.map((gap) => <tr key={gap.id}>
+        <td><div className="row-with-poster"><RowPoster reference={gap.poster_ref} mediaType={gap.media_type} /><div><strong>{gap.title}</strong><span className="table-sub">{[gap.year, gap.season_number != null ? `Season ${gap.season_number}` : null].filter(Boolean).join(' · ')}</span></div></div></td>
+        <td className="mono">{gap.release_name}</td>
+        <td><Badge tone={gap.status === 'local_only' ? 'amber' : 'red'}>{COVERAGE_LABEL[gap.status]}</Badge></td>
+      </tr>)}</tbody></table>}
+      {gaps.length > shownGaps.length && <div className="backups-more"><Button variant="ghost" onClick={() => setShowAllGaps(true)}>Show all {gaps.length}{coverage?.gaps_truncated ? '+' : ''}</Button></div>}
+    </Panel>}
 
     {tab === 'restore' && <Panel title="Restore"><div className="backups-body">
       <ol className="backups-steps">

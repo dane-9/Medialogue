@@ -7426,6 +7426,8 @@ export interface components {
              * @default false
              */
             archive_verified: boolean;
+            /** Archived At */
+            archived_at?: string | null;
             /** Associations */
             associations?: {
                 [key: string]: unknown;
@@ -7551,6 +7553,8 @@ export interface components {
              * @default false
              */
             archive_verified: boolean;
+            /** Archived At */
+            archived_at?: string | null;
             /** Captured At */
             captured_at?: string | null;
             /** Completed At */

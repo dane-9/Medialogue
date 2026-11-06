@@ -5045,7 +5045,7 @@ select.input { background-color: var(--input-bg); }
 @media (max-width: 760px) { .backups-status { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .backups-tabs { display: flex; }
 .backups-body { display: grid; gap: var(--s3); padding: var(--s4); }
-.backups-body > .data-table { margin: 0 calc(-1 * var(--s4)); width: calc(100% + 2 * var(--s4)); }
+.backups-more { display: flex; justify-content: center; padding: var(--s2) var(--s4) var(--s3); }
 .backups-legend { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; color: var(--faint); font-size: var(--t-xs); }
 .backups-legend strong { color: var(--muted); font-weight: 500; }
 .row-with-poster { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
@@ -5065,3 +5065,5 @@ select.input { background-color: var(--input-bg); }
 .archive-qbit::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--faint); vertical-align: 1px; }
 .archive-qbit.present::before { background: var(--ok); }
 .archive-actions { display: flex; justify-content: flex-end; gap: 2px; }
+.archive-when { color: var(--muted); font-size: var(--t-xs); white-space: nowrap; }
+.archive-unhealthy .panel-note { color: var(--err); }

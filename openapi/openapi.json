@@ -12655,6 +12655,17 @@
             "title": "Archive Verified",
             "type": "boolean"
           },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
           "associations": {
             "items": {
               "additionalProperties": true,
@@ -13046,6 +13057,17 @@
             "default": false,
             "title": "Archive Verified",
             "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
           },
           "captured_at": {
             "anyOf": [

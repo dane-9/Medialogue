@@ -127,6 +127,7 @@ async def _summary(db: AsyncSession, torrent: Torrent, remote: dict | None = Non
         archive_verified=verified,
         archive_error=verification_error,
         captured_at=recovery.get("captured_at"),
+        archived_at=(manifest.get("archive") or {}).get("archived_at") if isinstance(manifest.get("archive"), dict) else None,
         source_state=(torrent.tracker_summary or {}).get("state", "unknown") if qbit_present else "unknown",
         source_checked_at=(torrent.tracker_summary or {}).get("checked_at"),
         recovery_clients=list((manifest.get("client_recovery") or {}).keys()),

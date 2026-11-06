@@ -38,6 +38,8 @@ class TorrentArchiveSummary(BaseModel):
     archive_verified: bool = False
     archive_error: str | None = None
     captured_at: str | None = None
+    #: When the .torrent was first saved to the archive.
+    archived_at: str | None = None
     source_state: str = "unknown"
     source_checked_at: str | None = None
     recovery_clients: list[str] = Field(default_factory=list)

@@ -846,6 +846,7 @@ export interface TorrentArchiveItem {
   mediaTitle?: string
   mediaType?: 'movies' | 'shows'
   mediaYear?: number
+  archivedAt?: string
   posterRef?: string
   tmdbId?: number
   tvdbId?: number

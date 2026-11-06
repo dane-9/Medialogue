@@ -2956,6 +2956,29 @@ function NewMediaDiscoveryEdition({ item, options, onChanged, onError }: { item:
   </div>
 }
 
+/** How sure a torrent's backup is: not archived, only here, on Drive. */
+function archiveBackupRank(item: TorrentArchiveItem) {
+  return !item.archiveVerified ? 0 : item.includedInRemoteBackup ? 2 : 1
+}
+
+/** The archive list in the order its headers ask for ("-field" is descending). */
+function sortArchive(items: TorrentArchiveItem[], sort: string) {
+  const descending = sort.startsWith('-')
+  const field = sort.replace(/^-/, '')
+  const name = (item: TorrentArchiveItem) => (item.mediaTitle ?? item.releaseName ?? item.torrentName).toLocaleLowerCase()
+  const value = (item: TorrentArchiveItem): number | string =>
+    field === 'size' ? item.totalSize ?? -1
+      : field === 'archived' ? (item.archivedAt ? Date.parse(item.archivedAt) : 0)
+      : field === 'backup' ? archiveBackupRank(item)
+      : name(item)
+  return [...items].sort((a, b) => {
+    const left = value(a), right = value(b)
+    const order = typeof left === 'string' ? left.localeCompare(String(right)) : left - (right as number)
+    // Ties keep a stable, readable order by title.
+    return (descending ? -order : order) || name(a).localeCompare(name(b))
+  })
+}
+
 /** Every archived torrent: verified locally, on Google Drive, and restorable
  *  one at a time. Part of the Backups page. */
 export function TorrentArchiveSection() {
@@ -2963,6 +2986,8 @@ export function TorrentArchiveSection() {
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [query, setQuery] = useState('')
   const [archiveFilter, setArchiveFilter] = useState('all')
+  // Newest archived first; a header click sorts by that column, again to flip it.
+  const [archiveSort, setArchiveSort] = useState('-archived')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -3018,17 +3043,31 @@ export function TorrentArchiveSection() {
     finally { setBusy(false) }
   }
   const eligibleClients = restoreItem ? clients.filter((client) => !restoreItem.mediaType || client.scope === restoreItem.mediaType) : []
-  const archiveTone = health.status === 'healthy' ? 'green' : health.status === 'unavailable' ? 'red' : 'amber'
   const formatSize = formatBytes
 
   return <section className="backups-block">
-    <div className="archive-callout"><div className="archive-callout-icon"><Icon name="archive" size={22} /></div><div><strong>{health.status === 'healthy' ? 'Archive mount is healthy' : 'Archive mount needs attention'}</strong><span>{health.archived ?? items.filter((item) => item.archiveState === 'archived').length} archived · {health.missing_or_failed ?? items.filter((item) => item.archiveState !== 'archived').length} pending/failed · retention: indefinite · {health.path ?? '/torrent-archive'}</span></div><Badge tone={archiveTone}>{health.status === 'healthy' ? 'Storage available' : health.status ?? 'Unknown'}</Badge></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {detailId && <TorrentRecoveryDetails id={detailId} onClose={() => setDetailId(null)} />}
     {restoreItem && <Panel title="Restore archived torrent"><div className="settings-form"><SettingsGroup><Field label="Torrent" help="The archived torrent being resubmitted."><Input value={restoreItem.torrentName} readOnly /></Field><Field label="qBittorrent client" help="Which client receives the restored torrent."><Select value={restoreClientId} onChange={(event) => setRestoreClientId(event.target.value)}><option value="">Select client…</option>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select></Field><Field label="qBittorrent save path" help="Must resolve inside a configured media folder."><Input value={restorePath} onChange={(event) => setRestorePath(event.target.value)} placeholder="Enter the destination path explicitly" /></Field></SettingsGroup></div><div className="settings-note"><Icon name="info" size={15} /><span>The destination must resolve inside a configured {restoreItem.mediaType ?? 'media'} media folder. Medialogue does not move or import the downloaded data.</span></div><div className="settings-footer"><Button variant="ghost" onClick={() => setRestoreItem(null)}>Cancel</Button><Button variant="primary" icon="download" onClick={() => void restore()} disabled={busy || !restoreClientId || !restorePath.trim()}>{busy ? 'Submitting…' : 'Restore to qBittorrent'}</Button></div></Panel>}
     <div className="button-row"><Button variant="ghost" icon="refresh" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</Button><Select aria-label="Archive filter" value={archiveFilter} onChange={e => setArchiveFilter(e.target.value)}><option value="all">All torrents</option><option value="attention">Local archive needs attention</option><option value="removed">Removed from qBittorrent</option><option value="remote">Not on Drive yet</option></Select><Button disabled={busy} onClick={() => void (async () => { setBusy(true); try { const result = await downloadsApi.rebuildTorrentArchive(); setMessage(`Recovered ${result.imported} archive records; ${result.skipped} already present; ${result.errors.length} could not be verified.`); await load() } catch (e) { setMessage(String(e)) } finally { setBusy(false) } })()}>Rebuild archive catalogue</Button><Button disabled={busy} onClick={() => void (async () => { for (const item of items.filter(t => !t.archiveVerified && t.qbitPresent)) await retryArchive(item) })()}>Retry incomplete archives</Button></div>
-    <Panel className="table-panel" title="Archived torrents" action={<div className="search-field compact"><Icon name="search" size={14} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter archive…" /></div>}>
-      {error ? <EmptyState title="Could not load torrent archive" detail={error} /> : !loading && !items.length ? <EmptyState icon="archive" title="No torrent recovery records yet" detail="Relevant qBittorrent torrents will be archived automatically when they are observed." /> : <table className="data-table archive-table"><thead><tr><th>Release</th><th className="archive-num">Size</th><th>Backup</th><th>qBittorrent</th><th /></tr></thead><tbody>{items.filter(t => archiveFilter === 'attention' ? !t.archiveVerified : archiveFilter === 'removed' ? !t.qbitPresent : archiveFilter === 'remote' ? !t.includedInRemoteBackup : true).map((torrent) => {
+    <Panel
+      className={`table-panel ${health.status === 'healthy' ? '' : 'archive-unhealthy'}`}
+      title="Archived torrents"
+      // The archive folder's health, beside the title rather than in its own banner.
+      note={[
+        health.status === 'healthy' ? undefined : `Archive folder ${health.status === 'unavailable' ? 'unavailable' : 'needs attention'}`,
+        `${(health.archived ?? items.filter((item) => item.archiveState === 'archived').length).toLocaleString()} archived`,
+        `${(health.missing_or_failed ?? items.filter((item) => item.archiveState !== 'archived').length).toLocaleString()} not archived`,
+        health.path ?? '/torrent-archive',
+      ].filter(Boolean).join(' · ')}
+      action={<div className="search-field compact"><Icon name="search" size={14} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter archive…" /></div>}>
+      {error ? <EmptyState title="Could not load torrent archive" detail={error} /> : !loading && !items.length ? <EmptyState icon="archive" title="No torrent recovery records yet" detail="Relevant qBittorrent torrents will be archived automatically when they are observed." /> : <table className="data-table archive-table"><thead><tr>
+        <th><EventSortHeader label="Release" field="release" sort={archiveSort} onSort={setArchiveSort} /></th>
+        <th className="archive-num"><EventSortHeader label="Size" field="size" sort={archiveSort} onSort={setArchiveSort} /></th>
+        <th><EventSortHeader label="Archived" field="archived" sort={archiveSort} onSort={setArchiveSort} /></th>
+        <th><EventSortHeader label="Backup" field="backup" sort={archiveSort} onSort={setArchiveSort} /></th>
+        <th>qBittorrent</th><th />
+      </tr></thead><tbody>{sortArchive(items.filter(t => archiveFilter === 'attention' ? !t.archiveVerified : archiveFilter === 'removed' ? !t.qbitPresent : archiveFilter === 'remote' ? !t.includedInRemoteBackup : true), archiveSort).map((torrent) => {
         const release = torrent.releaseName ?? torrent.torrentName
         const backup = !torrent.archiveVerified ? { tone: 'amber' as const, label: 'Not archived', help: torrent.archiveError || 'The .torrent could not be saved yet.' }
           : torrent.includedInRemoteBackup ? { tone: 'green' as const, label: 'On Drive', help: torrent.remoteBackupAt ? `Copied ${formatAge(torrent.remoteBackupAt)}` : 'Copied to Google Drive.' }
@@ -3040,6 +3079,7 @@ export function TorrentArchiveSection() {
             {torrent.sourceState === 'unregistered' && <span className="archive-lost">Removed from tracker</span>}
           </div></div></td>
           <td className="archive-num">{formatSize(torrent.totalSize)}</td>
+          <td className="archive-when">{torrent.archivedAt ? <Tooltip content={new Date(torrent.archivedAt).toLocaleString()}><span>{formatAge(torrent.archivedAt)}</span></Tooltip> : '-'}</td>
           <td><Tooltip content={backup.help}><Badge tone={backup.tone}>{backup.label}</Badge></Tooltip></td>
           <td><span className={`archive-qbit ${torrent.qbitPresent ? 'present' : ''}`}>{torrent.qbitPresent ? 'Present' : 'Removed'}</span></td>
           <td><div className="archive-actions">
