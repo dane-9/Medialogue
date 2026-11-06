@@ -2114,6 +2114,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/replacements/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count
+         * @description Items waiting on the user, for the sidebar badge.
+         */
+        get: operations["count_api_v1_replacements_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/replacements/review": {
         parameters: {
             query?: never;
@@ -6290,6 +6310,111 @@ export interface components {
             /** Storage Root Id */
             storage_root_id?: string | null;
         };
+        /** ReplacementCountResponse */
+        ReplacementCountResponse: {
+            /** Count */
+            count: number;
+        };
+        /** ReplacementFinishResponse */
+        ReplacementFinishResponse: {
+            /** Old Media Retained */
+            old_media_retained: boolean;
+            /** State */
+            state: string;
+        };
+        /** ReplacementItem */
+        ReplacementItem: {
+            /** Blocked Reason */
+            blocked_reason?: string | null;
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Candidate Quality */
+            candidate_quality?: string | null;
+            /** Candidate Score */
+            candidate_score?: number | null;
+            /** Candidate Size */
+            candidate_size?: number | null;
+            /** Candidate Title */
+            candidate_title?: string | null;
+            /** Current Quality */
+            current_quality?: string | null;
+            /** Current Release */
+            current_release?: string | null;
+            /** Current Score */
+            current_score?: number | null;
+            /** Dismissed */
+            dismissed: boolean;
+            /** Error */
+            error?: string | null;
+            /** Execution State */
+            execution_state?: string | null;
+            /** Indexer */
+            indexer?: string | null;
+            /** Indexer Color */
+            indexer_color?: string | null;
+            /** Indexer Id */
+            indexer_id?: string | null;
+            /** Last Search Result */
+            last_search_result?: ("candidate" | "no_match" | "failed") | null;
+            /** Last Searched At */
+            last_searched_at?: string | null;
+            /** Leechers */
+            leechers?: number | null;
+            /** Media Present */
+            media_present?: boolean | null;
+            /** Media Type */
+            media_type?: ("movies" | "shows") | null;
+            /** Movie Id */
+            movie_id?: string | null;
+            /** Needs Attention */
+            needs_attention: boolean;
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Searching
+             * @default false
+             */
+            searching: boolean;
+            /** Season Id */
+            season_id?: string | null;
+            /** Season Number */
+            season_number?: number | null;
+            /** Seeders */
+            seeders?: number | null;
+            /** Show Id */
+            show_id?: string | null;
+            /**
+             * Tab
+             * @enum {string}
+             */
+            tab: "needs_search" | "found" | "in_progress" | "dismissed";
+            /** Target Key */
+            target_key: string;
+            /** Title */
+            title: string;
+            /** Torrent Ids */
+            torrent_ids?: string[];
+            /** Year */
+            year?: number | null;
+        };
+        /** ReplacementQueueResponse */
+        ReplacementQueueResponse: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["ReplacementItem"][];
+        };
+        /** ReplacementRetireResponse */
+        ReplacementRetireResponse: {
+            /** Error */
+            error?: string | null;
+            /** State */
+            state: string;
+        };
         /** ReplacementReviewRequest */
         ReplacementReviewRequest: {
             /**
@@ -6299,6 +6424,11 @@ export interface components {
             action: "ignore" | "snooze" | "restore";
             /** Torrent Ids */
             torrent_ids: string[];
+        };
+        /** ReplacementReviewResponse */
+        ReplacementReviewResponse: {
+            /** Updated */
+            updated: number;
         };
         /** ReplacementSearchRequest */
         ReplacementSearchRequest: {
@@ -12021,9 +12151,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ReplacementQueueResponse"];
+                };
+            };
+        };
+    };
+    count_api_v1_replacements_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplacementCountResponse"];
                 };
             };
         };
@@ -12047,9 +12195,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ReplacementReviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12113,9 +12259,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ReplacementFinishResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12146,9 +12290,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ReplacementRetireResponse"];
                 };
             };
             /** @description Validation Error */

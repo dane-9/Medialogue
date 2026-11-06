@@ -5,6 +5,7 @@ import { discoveryApi } from '../api/modules/discovery'
 import { integrationsApi } from '../api/modules/integrations'
 import { problemsApi } from '../api/modules/problems'
 import { systemApi } from '../api/modules/system'
+import { replacementsApi } from '../api/modules/replacements'
 import { upgradesApi } from '../api/modules/upgrades'
 import medialogueBanner from '../assets/medialogue-banner.png'
 import type { HealthIndicator } from '../types'
@@ -64,6 +65,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   const [problemCount, setProblemCount] = useState(0)
   const [newMediaCount, setNewMediaCount] = useState(0)
   const [upgradeCount, setUpgradeCount] = useState(0)
+  const [replaceCount, setReplaceCount] = useState(0)
   const newMediaCountGeneration = useRef(0)
   const [pageTopbarHost, setPageTopbarHost] = useState<HTMLDivElement | null>(null)
   const location = useLocation()
@@ -95,11 +97,17 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     void refreshHealth()
     void refreshPlexAvailability()
     void refreshProblemCount()
+    // Replace Media items that wait on the user: lost sources to search or
+    // choose for, and finished replacements awaiting a cleanup decision.
+    const refreshReplaceCount = () => replacementsApi.count().then((value) => { if (alive) setReplaceCount(value) }).catch(() => undefined)
     void refreshUpgradeCount()
+    void refreshReplaceCount()
     void refreshNewMediaCount()
 
     const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
-    const jobListener = () => { void refreshNewMediaCount(); void refreshUpgradeCount() }
+    const jobListener = () => { void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount() }
+    ;['upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished']
+      .forEach((name) => stream.addEventListener(name, () => void refreshReplaceCount()))
     // Problem SSE events are invalidation signals only. SQLite remains the
     // authoritative count, so reconnects, rollbacks and duplicate-resolution
     // events can never leave the badge drifting from the queue.
@@ -117,7 +125,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     stream.addEventListener('qbittorrent.health', healthListener)
 
     const problemTimer = window.setInterval(refreshProblemCount, 300000)
-    const upgradeTimer = window.setInterval(refreshUpgradeCount, 300000)
+    const upgradeTimer = window.setInterval(() => { void refreshUpgradeCount(); void refreshReplaceCount() }, 300000)
     const newMediaChangedListener = () => void refreshNewMediaCount()
     const plexConfigurationChangedListener = () => { void refreshPlexAvailability(); void refreshHealth() }
     window.addEventListener('medialogue-new-media-changed', newMediaChangedListener)
@@ -148,7 +156,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
         <GlobalSearchButton onOpen={() => setSearchOpen(true)} />
       </div>
       <div className="sidebar-scroll">
-        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount, alert: true } : item.to === '/new-media' ? { ...item, count: newMediaCount } : item.to === '/upgrade-media' ? { ...item, count: upgradeCount, tone: 'ok' as const } : item)} />
+        <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount, alert: true } : item.to === '/new-media' ? { ...item, count: newMediaCount } : item.to === '/upgrade-media' ? { ...item, count: upgradeCount, tone: 'ok' as const } : item.to === '/replace-media' ? { ...item, count: replaceCount } : item)} />
         <NavSection items={tools} />
         <NavSection items={system} />
       </div>

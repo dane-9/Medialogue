@@ -41,6 +41,7 @@ import { blocklistApi } from './api/modules/blocklist'
 import { discoveryApi } from './api/modules/discovery'
 import { downloadsApi } from './api/modules/downloads'
 import { applyProgressUpdate } from './api/mappers/downloads'
+import { upgradeResultsToReleases } from './lib/upgradeResults'
 import { integrationsApi } from './api/modules/integrations'
 import { moviesApi } from './api/modules/movies'
 import { problemsApi } from './api/modules/problems'
@@ -64,7 +65,7 @@ function tmdbPosterUrl(reference?: string) {
   return `https://image.tmdb.org/t/p/w500${reference.startsWith('/') ? reference : `/${reference}`}`
 }
 
-function PosterImage({ reference, title }: { reference?: string; title: string }) {
+export function PosterImage({ reference, title }: { reference?: string; title: string }) {
   const src = tmdbPosterUrl(reference)
   if (!src) return null
   return <img className="poster-image" src={src} alt={`${title} poster`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = 'none' }} />
@@ -4775,38 +4776,9 @@ export function UpgradeMediaPage() {
   const [resultsLoading, setResultsLoading] = useState(false)
   const [selectedResultId, setSelectedResultId] = useState('')
   const [resultSelecting, setResultSelecting] = useState(false)
-  const upgradeReleaseResults = useMemo<InteractiveSearchResult[]>(() => {
-    if (!searchResults || !resultsTarget) return []
-    return searchResults.results.map((result) => ({
-      id: result.id,
-      jobId: resultsTarget.id,
-      indexerId: result.indexerId,
-      indexerName: result.indexerName,
-      indexerColor: result.indexerColor,
-      mediaType: resultsTarget.mediaType,
-      targetEntityType: resultsTarget.mediaType === 'movies' ? 'movie' : 'season',
-      title: result.title,
-      size: result.size,
-      seeders: result.seeders,
-      leechers: result.leechers,
-      publishedAt: result.publishedAt,
-      quality: result.quality,
-      qualityAllowed: result.eligible,
-      qualityPreference: 0,
-      edition: result.edition,
-      releaseGroup: result.releaseGroup,
-      customFormatScore: result.customFormatScore,
-      customFormatSnapshot: { matched_format_names: result.matchedFormatNames },
-      parser: result.parser,
-      warnings: [],
-      // The upgrade search marks previously failed releases with a
-      // "Blocklisted:" rejection reason; they must not be selectable here.
-      blocklisted: (result.rejectionReasons ?? []).some((reason) => reason.startsWith('Blocklisted:')),
-      blocklistReason: (result.rejectionReasons ?? []).find((reason) => reason.startsWith('Blocklisted:'))?.slice('Blocklisted:'.length).trim(),
-      createdAt: searchResults.searchedAt,
-      expiresAt: searchResults.searchedAt,
-    }))
-  }, [searchResults, resultsTarget])
+  const upgradeReleaseResults = useMemo<InteractiveSearchResult[]>(() => (
+    searchResults && resultsTarget ? upgradeResultsToReleases(searchResults, resultsTarget.id, resultsTarget.mediaType) : []
+  ), [searchResults, resultsTarget])
 
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)

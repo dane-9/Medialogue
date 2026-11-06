@@ -352,3 +352,78 @@ def test_replacement_queue_search_review_and_submission_share_existing_execution
         assert all(row["id"] != candidate_id for row in client.get("/api/v1/upgrade-candidates").json())
     finally:
         client.app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_lost_cross_seed_with_a_working_partner_is_not_listed():
+    """A torrent whose tracker died, but whose release still has a working
+    cross-seed, must not appear in Replace Media at all."""
+
+    from app.models.domain import IdentityState, Movie, MovieRelease, MovieReleaseTorrent, AssociationType
+    from app.services.replacements import replacement_queue
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime.now(timezone.utc)
+    async with sessions() as db:
+        movie = Movie(title="Shared", sort_title="Shared", identity_state=IdentityState.MATCHED)
+        db.add(movie); await db.flush()
+        release = MovieRelease(movie_id=movie.id, raw_release_name="Shared.2024.1080p")
+        dead = Torrent(info_hash="d" * 40, name="Shared dead")
+        alive = Torrent(info_hash="e" * 40, name="Shared alive")
+        db.add_all([release, dead, alive]); await db.flush()
+        client_id = uuid4()
+        for torrent in (dead, alive):
+            db.add(MovieReleaseTorrent(movie_release_id=release.id, torrent_id=torrent.id,
+                                       association_type=AssociationType.ATTACHED))
+            db.add(TorrentClientObservation(torrent_id=torrent.id, download_client_id=client_id,
+                                            is_present=True, last_seen_at=now))
+        db.add(TorrentTrackerObservation(torrent_id=dead.id, download_client_id=client_id, endpoint_key="x",
+            endpoint_display="https://dead.test", active=True, health_state="error",
+            terminal_confirmed=True, last_checked_at=now))
+        db.add(TorrentTrackerObservation(torrent_id=alive.id, download_client_id=client_id, endpoint_key="y",
+            endpoint_display="https://alive.test", active=True, health_state="healthy",
+            terminal_confirmed=False, last_checked_at=now))
+        await db.commit()
+        assert dead.id in await lost_sources(db)
+        assert await replacement_queue(db) == []
+    await engine.dispose()
+
+
+def test_replacement_search_is_scoped_per_item_and_finish_is_recorded(recovery_env):
+    from app.db import session as db_session
+    from app.models.domain import Event, Job, JobStatus
+    from sqlalchemy import select
+
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+
+    async def running(target_key):
+        async with db_session.async_session_factory() as db:
+            job = Job(job_type="search_media_replacements", status=JobStatus.RUNNING, cancellable=False,
+                      summary={"target_key": target_key})
+            db.add(job); await db.commit()
+            return str(job.id)
+
+    other = asyncio.run(running("replace:movie-release:other"))
+    from app.api import replacements as replacements_api
+    launched: list[str] = []
+    original = replacements_api.launch_runtime_job
+    replacements_api.launch_runtime_job = lambda job_id, factory: launched.append(str(job_id)) or True
+    try:
+        # A different item's running search must not answer this request.
+        mine = client.post("/api/v1/replacements/search", headers=headers, json={"target_key": "replace:movie-release:mine"})
+        assert mine.status_code == 202 and mine.json()["job_id"] != other
+        # Asking again for the same item reuses its own job.
+        again = client.post("/api/v1/replacements/search", headers=headers, json={"target_key": "replace:movie-release:mine"})
+        assert again.json()["job_id"] == mine.json()["job_id"]
+    finally:
+        replacements_api.launch_runtime_job = original
+    assert launched == [mine.json()["job_id"]]
+
+    queue = client.get("/api/v1/replacements")
+    assert queue.status_code == 200, queue.text
+    assert set(queue.json()["counts"]) == {"needs_search", "found", "in_progress", "dismissed"}
+    assert client.get("/api/v1/replacements/count").json() == {"count": 0}

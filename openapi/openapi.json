@@ -9165,6 +9165,445 @@
         "title": "RemotePathMappingUpdate",
         "type": "object"
       },
+      "ReplacementCountResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "ReplacementCountResponse",
+        "type": "object"
+      },
+      "ReplacementFinishResponse": {
+        "properties": {
+          "old_media_retained": {
+            "title": "Old Media Retained",
+            "type": "boolean"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "old_media_retained"
+        ],
+        "title": "ReplacementFinishResponse",
+        "type": "object"
+      },
+      "ReplacementItem": {
+        "properties": {
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "candidate_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Quality"
+          },
+          "candidate_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Score"
+          },
+          "candidate_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Size"
+          },
+          "candidate_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Title"
+          },
+          "current_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Quality"
+          },
+          "current_release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release"
+          },
+          "current_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Score"
+          },
+          "dismissed": {
+            "title": "Dismissed",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "execution_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution State"
+          },
+          "indexer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexer"
+          },
+          "indexer_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexer Color"
+          },
+          "indexer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexer Id"
+          },
+          "last_search_result": {
+            "anyOf": [
+              {
+                "enum": [
+                  "candidate",
+                  "no_match",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Search Result"
+          },
+          "last_searched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Searched At"
+          },
+          "leechers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leechers"
+          },
+          "media_present": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Present"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "movies",
+                  "shows"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "movie_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movie Id"
+          },
+          "needs_attention": {
+            "title": "Needs Attention",
+            "type": "boolean"
+          },
+          "poster_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Ref"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "searching": {
+            "default": false,
+            "title": "Searching",
+            "type": "boolean"
+          },
+          "season_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Id"
+          },
+          "season_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Number"
+          },
+          "seeders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seeders"
+          },
+          "show_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Id"
+          },
+          "tab": {
+            "enum": [
+              "needs_search",
+              "found",
+              "in_progress",
+              "dismissed"
+            ],
+            "title": "Tab",
+            "type": "string"
+          },
+          "target_key": {
+            "title": "Target Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "torrent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Torrent Ids",
+            "type": "array"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "target_key",
+          "title",
+          "reason",
+          "tab",
+          "needs_attention",
+          "dismissed"
+        ],
+        "title": "ReplacementItem",
+        "type": "object"
+      },
+      "ReplacementQueueResponse": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "needs_search",
+                "found",
+                "in_progress",
+                "dismissed"
+              ]
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReplacementItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "counts"
+        ],
+        "title": "ReplacementQueueResponse",
+        "type": "object"
+      },
+      "ReplacementRetireResponse": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ReplacementRetireResponse",
+        "type": "object"
+      },
       "ReplacementReviewRequest": {
         "properties": {
           "action": {
@@ -9192,6 +9631,19 @@
           "action"
         ],
         "title": "ReplacementReviewRequest",
+        "type": "object"
+      },
+      "ReplacementReviewResponse": {
+        "properties": {
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "title": "ReplacementReviewResponse",
         "type": "object"
       },
       "ReplacementSearchRequest": {
@@ -20054,9 +20506,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Queue Api V1 Replacements Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReplacementQueueResponse"
                 }
               }
             },
@@ -20064,6 +20514,28 @@
           }
         },
         "summary": "Queue",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
+    "/api/v1/replacements/count": {
+      "get": {
+        "description": "Items waiting on the user, for the sidebar badge.",
+        "operationId": "count_api_v1_replacements_count_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplacementCountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Count",
         "tags": [
           "replacements"
         ]
@@ -20087,9 +20559,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Review Api V1 Replacements Review Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReplacementReviewResponse"
                 }
               }
             },
@@ -20173,9 +20643,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Finish Api V1 Replacements  Candidate Id  Finish Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReplacementFinishResponse"
                 }
               }
             },
@@ -20218,9 +20686,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Retire Api V1 Replacements  Candidate Id  Retire Torrents Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReplacementRetireResponse"
                 }
               }
             },

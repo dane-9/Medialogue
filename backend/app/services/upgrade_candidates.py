@@ -357,14 +357,20 @@ async def _release_evidence(
     )
 
 
-async def _movie_targets(db: AsyncSession, *, replacement: bool = False) -> tuple[list[UpgradeTarget], int, set[str]]:
-    movies = (
-        await db.scalars(
-            select(Movie)
-            .where(Movie.monitored.is_(True) if not replacement else True)
-            .order_by(Movie.sort_title, Movie.id)
-        )
-    ).all()
+async def _movie_targets(
+    db: AsyncSession,
+    *,
+    replacement: bool = False,
+    movie_ids: set[UUID] | None = None,
+) -> tuple[list[UpgradeTarget], int, set[str]]:
+    """``movie_ids`` limits the scan (Replace Media only needs affected titles)."""
+
+    if movie_ids is not None and not movie_ids:
+        return [], 0, set()
+    statement = select(Movie).where(Movie.monitored.is_(True) if not replacement else True)
+    if movie_ids is not None:
+        statement = statement.where(Movie.id.in_(movie_ids))
+    movies = (await db.scalars(statement.order_by(Movie.sort_title, Movie.id))).all()
     targets: list[UpgradeTarget] = []
     skipped_quality = 0
     skipped_read_only: set[str] = set()
@@ -424,10 +430,19 @@ async def _movie_targets(db: AsyncSession, *, replacement: bool = False) -> tupl
     return targets, skipped_quality, skipped_read_only
 
 
-async def _show_targets(db: AsyncSession, *, today: date, replacement: bool = False) -> tuple[list[UpgradeTarget], int, int, set[str]]:
-    shows = (
-        await db.scalars(select(Show).where(Show.monitored.is_(True) if not replacement else True).order_by(Show.title, Show.id))
-    ).all()
+async def _show_targets(
+    db: AsyncSession,
+    *,
+    today: date,
+    replacement: bool = False,
+    show_ids: set[UUID] | None = None,
+) -> tuple[list[UpgradeTarget], int, int, set[str]]:
+    if show_ids is not None and not show_ids:
+        return [], 0, 0, set()
+    statement = select(Show).where(Show.monitored.is_(True) if not replacement else True)
+    if show_ids is not None:
+        statement = statement.where(Show.id.in_(show_ids))
+    shows = (await db.scalars(statement.order_by(Show.title, Show.id))).all()
     targets: list[UpgradeTarget] = []
     skipped_airing = 0
     skipped_quality = 0

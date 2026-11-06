@@ -16,7 +16,21 @@ import uuid
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-DB = REPO / ".local" / "medialogue.db"
+
+
+def _app_database() -> Path:
+    """The SQLite file the app itself uses (backend/.env and defaults)."""
+
+    import sys
+
+    sys.path.insert(0, str(REPO))
+    from app.core.config import get_settings
+
+    url = get_settings().database_url
+    return Path(url.split("///", 1)[1]).resolve()
+
+
+DB = _app_database()
 
 #: A marker in comparison_snapshot, so the samples can be found and deleted
 #: again without touching candidates a real search produced.
@@ -391,10 +405,9 @@ def _seed_movies(connection: sqlite3.Connection) -> list[tuple[dict, str, str]]:
                (id, movie_id, raw_release_name, parsed_title, parsed_year, parsed_edition,
                 effective_edition, quality_definition_id, release_group, release_state, first_seen_at,
                 original_custom_format_score, current_custom_format_score, parse_snapshot,
-                edition_override_active, audio_languages, audio_language_override_active, version_kind,
-                created_at, updated_at)
+                edition_override_active, created_at, updated_at)
                values (?, ?, ?, ?, ?, ?, ?, ?, 'GROUP', 'CURRENT', datetime('now'),
-                       ?, ?, ?, 0, '[]', 0, 'original', datetime('now'), datetime('now'))""",
+                       ?, ?, ?, 0, datetime('now'), datetime('now'))""",
             (release_id, movie_id, sample["folder"], sample["title"], sample["year"],
              sample["edition"], sample["edition"], quality[0] if quality else None,
              current_score, current_score, json.dumps({MARKER: True})),
@@ -464,7 +477,7 @@ def seed() -> None:
                 title, quality, custom_format_score, score_delta,
                 size, seeders, leechers, published_at,
                 upgrade_types, added_custom_formats, execution_eligible, execution_block_reason,
-                comparison_snapshot, incoming_release_ids,
+                comparison_snapshot, incoming_release_ids, search_results,
                 last_searched_at, created_at, updated_at)
                values (?, ?, 'SHOWS', NULL, ?,
                        ?, ?, ?, ?,
@@ -472,7 +485,7 @@ def seed() -> None:
                        ?, ?, ?, ?,
                        ?, ?, ?, datetime('now', '-2 days'),
                        ?, ?, ?, ?,
-                       ?, '[]',
+                       ?, '[]', '[]',
                        datetime('now'), datetime('now'), datetime('now'))""",
             (
                 uuid.uuid4().hex,
@@ -518,7 +531,7 @@ def seed() -> None:
                 title, quality, custom_format_score, score_delta,
                 size, seeders, leechers, published_at,
                 upgrade_types, added_custom_formats, execution_eligible, execution_block_reason,
-                comparison_snapshot, incoming_release_ids,
+                comparison_snapshot, incoming_release_ids, search_results,
                 last_searched_at, created_at, updated_at)
                values (?, ?, 'MOVIES', ?, NULL,
                        ?, ?, ?, ?,
@@ -526,7 +539,7 @@ def seed() -> None:
                        ?, ?, ?, ?,
                        ?, ?, ?, datetime('now', '-1 day'),
                        ?, ?, ?, ?,
-                       ?, '[]',
+                       ?, '[]', '[]',
                        datetime('now'), datetime('now'), datetime('now'))""",
             (
                 uuid.uuid4().hex,

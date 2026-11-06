@@ -4746,3 +4746,27 @@ select.input { background-color: var(--input-bg); }
 .blocklist-select input { width: 15px; height: 15px; accent-color: var(--accent); }
 .blocklist-reason { max-width: 360px; color: var(--muted); white-space: normal !important; }
 .blocklist-actions { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; }
+
+/* Replace Media ---------------------------------------------------------- */
+/* Built on Upgrade Media's comparison grid; only what that page has no
+   equivalent of is styled here. */
+.replace-status-box { border-color: var(--line); background: var(--raised); color: var(--muted); }
+.new-media-root.active .replace-status-box { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
+.replace-empty-row { grid-column: 1 / -1; padding: var(--s4); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-md) var(--r-md); background: var(--surface); }
+.replace-empty-row .empty-state { margin: 0; border: 0; background: none; }
+.replace-missing > span { display: flex; align-items: center; gap: var(--s2); overflow: hidden; color: var(--muted); font-size: var(--t-sm); font-style: italic; text-overflow: ellipsis; white-space: nowrap; }
+.replace-missing > span.replace-missing-blocked { color: var(--warn); font-style: normal; white-space: normal; }
+.replace-spinner { flex: none; width: 12px; height: 12px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: var(--r-full); animation: replace-spin .8s linear infinite; }
+@keyframes replace-spin { to { transform: rotate(360deg); } }
+.replace-bulk-progress { display: flex; align-items: center; gap: var(--s2); color: var(--text); }
+.replace-client-select { width: 220px; height: var(--control-sm); }
+.replace-choices { display: grid; gap: var(--s2); padding: 0 var(--s4) var(--s4); }
+.replace-choice { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--s2); align-items: center; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.replace-choice:hover:not(:disabled) { border-color: var(--accent-line); background: var(--control-hover); }
+.replace-choice:disabled { opacity: .55; cursor: default; }
+.replace-choice svg { color: var(--accent); }
+.replace-choice.danger svg { color: var(--err); }
+.replace-choice.danger:hover:not(:disabled) { border-color: var(--err-line); }
+.replace-choice strong { font-size: var(--t-sm); }
+.replace-choice span { grid-column: 2; color: var(--muted); font-size: var(--t-xs); }
+.replace-path-list { display: grid; gap: var(--s1); max-height: 240px; margin: var(--s2) 0 0; padding-left: var(--s4); overflow: auto; }
