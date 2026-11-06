@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
@@ -122,7 +122,7 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
         description="Lossy multichannel DTS surround, typically supporting 5.1 channels at a higher bitrate than Dolby Digital. DTS-HD High Resolution has its own format. This format also includes the generic DTS-HD tag when no variant is named. Original note: Resolution audio.",
         conditions=(BuiltinCondition(type="audio_codec", value=["DTS", "DTS-HD"]),)),
     BuiltinFormat(
-        key="audio-dd", name="Dolby Digital", group="Audio",
+        key="audio-dd", name="DD", group="Audio",
         description="Lossy Dolby Digital, also called DD or AC-3. It supports up to 5.1 channels and is broadly compatible with broadcasts, DVDs, Blu-rays, and playback devices.",
         conditions=(BuiltinCondition(type="audio_codec", value=["DD"]),)),
     BuiltinFormat(
@@ -140,12 +140,12 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
     BuiltinFormat(
         key="hdr-dv-hdr10", name="DV HDR10", group="Dynamic Range",
         description="Dolby Vision paired with an HDR10 fallback, giving compatible displays dynamic HDR while retaining reliable playback on standard HDR10 equipment.",
-        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\b(HDR(10)?(?!\+))\b)"),),
+        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\b(HDR(10)?(?!\+|[ .]?Plus\b))\b)"),),
         supersedes=("hdr-dolby-vision", "hdr-hdr10")),
     BuiltinFormat(
         key="hdr-dv-hdr10-plus", name="DV HDR10+", group="Dynamic Range",
         description="Dolby Vision paired with an HDR10+ base layer: dynamic metadata for Dolby Vision displays and dynamic metadata again for everything else. The best dynamic range a release can carry.",
-        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\bHDR10\+)"),),
+        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\bHDR10(\+|[ .]?Plus\b))"),),
         supersedes=("hdr-dolby-vision", "hdr-hdr10-plus", "hdr-hdr10")),
     BuiltinFormat(
         key="hdr-hdr10-plus", name="HDR10+", group="Dynamic Range",
@@ -154,7 +154,7 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
     BuiltinFormat(
         key="hdr-hdr10", name="HDR10", group="Dynamic Range",
         description="The baseline HDR format, commonly tagged HDR or HDR10. It uses static metadata and is supported by essentially all HDR-capable displays.",
-        conditions=(BuiltinCondition(type="release_title", pattern=r"\bHDR(10)?(?!\+)\b"),)),
+        conditions=(BuiltinCondition(type="release_title", pattern=r"\bHDR(10)?(?!\+|[ .]?Plus\b)\b"),)),
     BuiltinFormat(
         key="hdr-hlg", name="HLG", group="Dynamic Range",
         description="Broadcast-focused HDR developed by the BBC and NHK. It is mainly found in cable, satellite, and over-the-air releases and may look dark on incompatible displays.",
@@ -259,6 +259,36 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
 
 
 BUILTIN_KEYS = frozenset(item.key for item in BUILTIN_FORMATS)
+
+#: What a typed condition describes, for formats that are not built-in.
+_CONDITION_GROUPS = {
+    "audio_codec": "Audio",
+    "audio_channels": "Audio",
+    "hdr_type": "Dynamic Range",
+    "video_codec": "Video",
+    "release_attribute": "Release",
+    "web_provider": "Streaming",
+}
+
+
+def format_group(builtin_key: str | None, condition_definition: Mapping[str, Any] | None) -> str | None:
+    """The kind of thing a format describes (Audio, Dynamic Range, ...).
+
+    Formats in one group compete for the same slot of a release, so a
+    comparison can pair them. A built-in format names its group; any other
+    format has one only when every positive condition is of one typed kind.
+    """
+
+    if builtin_key:
+        builtin = next((item for item in BUILTIN_FORMATS if item.key == builtin_key), None)
+        if builtin is not None and builtin.group != "General":
+            return builtin.group
+    conditions = [
+        item for item in ((condition_definition or {}).get("conditions") or [])
+        if isinstance(item, Mapping) and not item.get("negate")
+    ]
+    groups = {_CONDITION_GROUPS.get(str(item.get("type") or "")) for item in conditions}
+    return groups.pop() if len(groups) == 1 and None not in groups else None
 
 # This is the starting policy for the editable profile created on a fresh
 # install. These values are copied into the profile once; they are not part of

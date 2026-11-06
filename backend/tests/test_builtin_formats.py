@@ -273,3 +273,43 @@ def test_new_builtins_match_their_releases(key: str, release: str) -> None:
 )
 def test_new_builtins_stay_out_of_each_others_territory(key: str, release: str) -> None:
     assert not _matches(key, release)
+
+
+def test_format_group_pairs_formats_that_fill_the_same_part_of_a_release() -> None:
+    from app.services.builtin_formats import format_group
+
+    assert format_group("audio-dtshd-ma", None) == "Audio"
+    assert format_group("hdr-dv-hdr10-plus", None) == "Dynamic Range"
+    # A user format is grouped only when every positive condition agrees.
+    audio_only = {"conditions": [{"type": "audio_codec"}, {"type": "release_title", "negate": True}]}
+    assert format_group(None, audio_only) == "Audio"
+    mixed = {"conditions": [{"type": "audio_codec"}, {"type": "hdr_type"}]}
+    assert format_group(None, mixed) is None
+    assert format_group(None, {"conditions": [{"type": "release_title"}]}) is None
+
+
+@pytest.mark.parametrize(
+    ("release", "expected"),
+    [
+        # DDPA is the scene shorthand for DD+ Atmos.
+        ("Movie 2024 1080p WEB-DL DDPA5.1 H.265-GRP", {"audio-ddplus-atmos"}),
+        ("Movie 2024 1080p WEB-DL DDPA 5.1 H.264-GRP", {"audio-ddplus-atmos"}),
+        # HDR10+ spelled out still reads as HDR10+, and pairs with DV.
+        ("Movie 2024 2160p WEB-DL HDR10Plus HEVC-GRP", {"hdr-hdr10-plus"}),
+        ("Movie 2024 2160p WEB-DL DoVi HDR10Plus HEVC-GRP", {"hdr-dv-hdr10-plus"}),
+        ("Movie 2024 2160p WEB-DL DV HDR10.Plus HEVC-GRP", {"hdr-dv-hdr10-plus"}),
+    ],
+)
+def test_alternate_spellings_resolve_to_one_format(release: str, expected: set[str]) -> None:
+    from app.services.custom_formats import evaluate_custom_formats
+
+    formats = [
+        EvaluationFormat.from_dict({
+            "id": item.key, "name": item.name, "description": item.description, "enabled": True,
+            "condition_definition": condition_definition(item, supersedes=item.supersedes),
+        })
+        for item in BUILTIN_FORMATS
+        if item.group in {"Audio", "Dynamic Range"}
+    ]
+    matched = {item.custom_format_id for item in evaluate_custom_formats(formats, parse_release(release)).formats if item.matched}
+    assert matched == expected

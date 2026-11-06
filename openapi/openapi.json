@@ -13333,6 +13333,17 @@
             "title": "Current Releases",
             "type": "array"
           },
+          "current_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Size"
+          },
           "custom_format_score": {
             "title": "Custom Format Score",
             "type": "integer"
@@ -14003,6 +14014,17 @@
           "custom_format_name": {
             "title": "Custom Format Name",
             "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
           }
         },
         "required": [

@@ -3809,6 +3809,8 @@ a.download-kind:hover { filter: brightness(1.35); }
 /* A path reads far better on one line than wrapped mid-folder, so its bubble is
    allowed the width it needs, bounded only by the viewport. */
 .tooltip:has(.download-path) { max-width: min(1000px, calc(100vw - 32px)); }
+/* The format comparison is a table; it takes the width its columns need. */
+.tooltip:has(.cf-compare) { max-width: min(640px, calc(100vw - 32px)); }
 .download-path { display: block; overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .tooltip ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .tooltip li { color: var(--accent-text); font: var(--t-xs) var(--mono); overflow-wrap: anywhere; }
@@ -4569,10 +4571,6 @@ select.input { background-color: var(--input-bg); }
 .upgrade-results-cell { align-items: center; justify-content: center; padding-inline: var(--s2); }
 .upgrade-results-cell .button { width: 100%; justify-content: center; padding-inline: var(--s2); white-space: nowrap; }
 
-.upgrade-reason-score { font: var(--t-xs) var(--sans); font-weight: 600; }
-.upgrade-reason-score.positive { color: var(--ok); }
-.upgrade-reason-score.negative { color: var(--err); }
-.upgrade-reason-score.neutral { color: var(--muted); }
 
 .upgrade-modal-copy { display: grid; gap: var(--s3); margin-bottom: var(--s4); }
 /* .modal-body carries no padding of its own; forms bring theirs, prose does not. */
@@ -4640,6 +4638,33 @@ select.input { background-color: var(--input-bg); }
 .cf-breakdown-row b, .cf-breakdown-total b { flex: none; font: 500 var(--t-xs) var(--sans); }
 .cf-breakdown-total { padding-top: var(--s2); border-top: 1px solid var(--line); color: var(--text); }
 .cf-breakdown-total > span { color: var(--text); }
+/* Upgrade comparison on one grid: Format | name score | name score. Names
+   align left and scores right within each side; a hairline down the grid
+   sets the Upgrade side apart from Current. Rows carry their own padding
+   instead of a row gap, so that line runs unbroken. */
+.cf-compare { display: grid; grid-template-columns: auto auto auto auto auto; column-gap: 0; align-items: stretch; font-size: var(--t-xs); }
+.cf-compare > * { padding-block: 2px; }
+/* Room between the last format row (the five cells before the three Total
+   cells) and the total line. */
+.cf-compare > :nth-last-child(n+4):nth-last-child(-n+8) { padding-bottom: 5px; }
+.cf-compare-legend { padding-bottom: 4px; color: var(--faint); }
+.cf-compare-side { grid-column: span 2; }
+.cf-compare-legend.cf-compare-side { padding-left: var(--s3); }
+.cf-compare-label { padding-right: var(--s3); color: var(--muted); white-space: nowrap; }
+.cf-compare-names, .cf-compare-scores { display: grid; align-content: start; gap: 2px; white-space: nowrap; }
+.cf-compare-names { padding-left: var(--s3); color: var(--text); }
+.cf-compare-scores { justify-items: end; padding-left: var(--s3); }
+.cf-compare-scores b { font: 500 var(--t-xs) var(--sans); }
+.cf-compare .cf-compare-upgrade { padding-left: var(--s3); border-left: 1px solid var(--line); }
+/* Current's last column keeps clear of the divider. */
+.cf-compare .cf-compare-current { padding-right: var(--s3); }
+.cf-compare > .cf-compare-foot { padding-top: 7px; border-top: 1px solid var(--line); }
+.cf-compare .cf-compare-total { color: var(--text); }
+.cf-compare-sum { display: inline-flex; align-items: baseline; gap: var(--s2); }
+/* The change in score, quieter than the score it follows. */
+.cf-score-delta { color: var(--faint); font-size: var(--t-micro); font-weight: 400; }
+.cf-compare b.cf-compare-total.cf-plus { color: var(--ok); }
+.cf-compare b.cf-compare-total.cf-minus { color: var(--err); }
 .cf-plus { color: var(--ok); }
 .cf-minus { color: var(--err); }
 .cf-zero { color: var(--faint); }
@@ -4784,9 +4809,6 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v2-change small em { font-style: normal; font-weight: 600; }
 .upgrade-v2-progress { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .upgrade-v2-progress .progress { flex: 1; max-width: 90px; }
-.upgrade-v2-swarm { flex: none; width: 8px; height: 8px; border-radius: var(--r-full); }
-.upgrade-v2-swarm.swarm-weak { background: var(--warn); }
-.upgrade-v2-swarm.swarm-dead { background: var(--err); }
 .upgrade-why.why-ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 .upgrade-why.why-blue { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
 .upgrade-why.why-amber { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
@@ -4833,7 +4855,7 @@ select.input { background-color: var(--input-bg); }
    makes every direct span a flex row, so the stack is restored here. */
 .upgrade-v2-current > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 120px; max-width: 45%; }
 /* The full current release fills the remaining width on one line. */
-.upgrade-v2-current > .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s4); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-current .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s4); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Upgrade Media without a details pane: Current and Upgrade split the width
    evenly, mirrored, with a slim releases/actions rail. */
@@ -4844,26 +4866,76 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v2-change { cursor: default; }
 .upgrade-v3 .upgrade-v2-current, .upgrade-v3 .upgrade-v2-change { cursor: pointer; }
 .upgrade-v2-change > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 110px; max-width: 40%; }
-.upgrade-v2-change > .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s3); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-.upgrade-v2-change > .upgrade-v2-release .upgrade-token-new { color: var(--ok); font-weight: 600; }
-.upgrade-v2-score { cursor: help; }
+.upgrade-v2-change .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s3); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new { color: var(--ok); font-weight: 600; }
+/* The word under the pointer and the score it earned, matched in blue. */
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.hovered,
+.upgrade-v2-score .cf-score-delta.hovered { color: var(--accent-text); }
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.hovered { background: var(--accent-soft); }
 .upgrade-v2-actions { justify-content: center; padding-inline: var(--s2); cursor: default; }
 .upgrade-v2-actions .button { width: 100%; justify-content: center; padding-inline: var(--s2); white-space: nowrap; }
-.upgrade-v2-card { display: grid; gap: var(--s2); max-width: 520px; }
-.upgrade-v2-card strong { overflow-wrap: anywhere; font: var(--t-xs)/1.4 var(--mono); }
-.upgrade-v2-card > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
 
 /* Names never truncate: proportional type, wrapping only at word breaks. */
-.upgrade-v3 .upgrade-v2-current > .upgrade-v2-release,
-.upgrade-v3 .upgrade-v2-change > .upgrade-v2-release { overflow: visible; font: var(--t-xs)/1.35 var(--sans); text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; }
-.upgrade-v3 .upgrade-v2-change > .upgrade-v2-release { margin-left: 0; text-align: left; }
+.upgrade-v3 .upgrade-v2-current .upgrade-v2-release,
+.upgrade-v3 .upgrade-v2-change .upgrade-v2-release { overflow: visible; font: var(--t-xs)/1.35 var(--sans); text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; }
+.upgrade-v3 .upgrade-v2-change .upgrade-v2-release { margin-left: 0; text-align: left; }
 .upgrade-v3 .upgrade-v2-change > .upgrade-v2-quality { flex: none; min-width: 96px; margin-left: var(--s3); text-align: right; }
+
+/* Release name with its CF score underneath. An invisible spacer the score's
+   height sits above, so the name stays centred where it was. */
+.upgrade-v2-side { display: flex; flex: 1 1 0; flex-direction: column; justify-content: center; align-self: stretch; gap: 2px; min-width: 0; }
+.upgrade-v2-current > .upgrade-v2-side { margin-left: var(--s4); align-items: flex-end; text-align: right; }
+.upgrade-v2-change > .upgrade-v2-side { align-items: flex-start; }
+.upgrade-v2-side::before { content: ''; height: 18px; flex: none; }
+.upgrade-v3 .upgrade-v2-side > .upgrade-v2-release { flex: none; max-width: 100%; margin-left: 0; }
+.upgrade-v2-side .upgrade-v2-score { display: block; height: 18px; font: var(--t-xs)/18px var(--sans); }
+/* The Upgrade side's score line also carries the release facts, pushed right. */
+.upgrade-v2-meta { display: flex; align-self: stretch; align-items: center; gap: var(--s3); height: 18px; min-width: 0; }
+.upgrade-v2-line { display: flex; align-self: stretch; align-items: center; gap: var(--s3); min-width: 0; min-height: var(--upgrade-line); }
+.upgrade-v2-current .upgrade-v2-line { justify-content: flex-end; }
+.upgrade-v2-line > .upgrade-v2-release { flex: 0 1 auto; min-width: 0; margin-left: 0; }
+.upgrade-v3 { --upgrade-seeds: 34px; --upgrade-size: 40px; --upgrade-size-change: 44px; --upgrade-line: 18px; }
+/* Both sides' name lines share one height, so the CF scores under them sit
+   level. */
+/* Seeds, Size and the size change are fixed-width columns, so each lines up
+   under its header on every row. Size is right-aligned against the seeds; the
+   change fills its own column at the far right. */
+.upgrade-v2-seeds, .upgrade-v2-size, .upgrade-v2-size-change { flex: none; text-align: right; white-space: nowrap; }
+.upgrade-v2-seeds { width: var(--upgrade-seeds); }
+.upgrade-v2-size { width: var(--upgrade-size); }
+.upgrade-v2-size-change { width: var(--upgrade-size-change); text-align: left; }
+/* Seeds and Size read as a pair: a tighter gap than the row's own. */
+.upgrade-v2-line > .upgrade-v2-size, .upgrade-v2-head > .upgrade-v2-size { margin-left: calc(var(--s2) - var(--s3)); }
+.upgrade-v2-line > .upgrade-v2-size-change, .upgrade-v2-head > .upgrade-v2-size-change { margin-left: calc(4px - var(--s3)); }
+.upgrade-v2-line > .upgrade-v2-size-change { display: flex; align-items: center; }
+.upgrade-v2-size-change em { display: inline-flex; align-items: center; font-size: 9px; font-style: normal; line-height: 1; }
+.upgrade-v2-size-change em svg { flex: none; margin-right: -1px; }
+/* The caret points down; larger flips it up. */
+.upgrade-v2-size-change .size-up svg { transform: rotate(180deg); }
+/* Larger or smaller at a glance, toned down so it never outshouts the size. */
+.upgrade-v2-size-change .size-up { color: color-mix(in srgb, var(--err) 70%, var(--muted)); }
+.upgrade-batch-change { display: inline-flex; align-items: center; margin-left: -4px; font-size: var(--t-xs); font-style: normal; line-height: 1; opacity: .8; }
+.upgrade-batch-change.size-up svg { transform: rotate(180deg); }
+.upgrade-v2-size-change .size-down { color: color-mix(in srgb, var(--ok) 70%, var(--muted)); }
+.upgrade-v2-line > .upgrade-v2-seeds { margin-left: auto; }
+.upgrade-v2-head { display: flex; align-items: center; gap: var(--s3); }
+.upgrade-v2-head > :first-child { flex: 1; }
+/* Nudges for the header labels only; the columns below never move with them. */
+.upgrade-v2-head > .upgrade-v2-seeds { position: relative; left: 0px; }
+.upgrade-v2-head > .upgrade-v2-size { position: relative; left: 14px; }
+.upgrade-v2-facts { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin-left: auto; }
+.upgrade-v2-facts .size-up { color: var(--warn); font-style: normal; }
+.upgrade-v2-facts .size-down { color: var(--ok); font-style: normal; }
+/* The folder cell makes every direct span a flex row; the placeholder icon
+   still has to sit in the middle of the poster. */
+.new-media-folder-cell > .new-media-poster { justify-content: center; }
+.upgrade-v2-current .upgrade-v2-score { color: var(--faint); }
 
 /* The Upgrade side opens the other releases. */
 .upgrade-v3 .upgrade-v2-change { cursor: default; }
 .upgrade-v3 .upgrade-v2-change.opens-results { cursor: pointer; }
 .upgrade-v3 .upgrade-v2-change.opens-results:hover { border-color: var(--accent-line); background: var(--raised); }
-.upgrade-v3 .upgrade-v2-change.opens-results:hover > .upgrade-v2-release { color: var(--text); }
+.upgrade-v3 .upgrade-v2-change.opens-results:hover .upgrade-v2-release { color: var(--text); }
 
 /* Media folders on the far left, status on the far right. */
 .upgrade-v2-status-group { order: 2; margin-left: auto; }
@@ -4885,3 +4957,8 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v3-rail .icon-button { width: var(--upgrade-rail); height: var(--upgrade-rail); margin: 0; }
 .upgrade-v3-rail .icon-button { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); }
 .upgrade-v3-rail .icon-button:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
+
+/* Upgrade stack refinements, same footprint. */
+.upgrade-v3 .upgrade-v2-score.big { color: var(--ok); font-weight: 700; }
+.upgrade-v3 .upgrade-v2-score.medium { color: var(--ok); }
+.upgrade-v3 .upgrade-v2-score.small { color: var(--faint); }

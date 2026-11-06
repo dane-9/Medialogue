@@ -7648,6 +7648,8 @@ export interface components {
             current_release_name: string;
             /** Current Releases */
             current_releases?: components["schemas"]["UpgradeCurrentRelease"][];
+            /** Current Size */
+            current_size?: number | null;
             /** Custom Format Score */
             custom_format_score: number;
             /** Download Progress */
@@ -7850,6 +7852,8 @@ export interface components {
             custom_format_id: string;
             /** Custom Format Name */
             custom_format_name: string;
+            /** Group */
+            group?: string | null;
         };
         /** UpgradeQualityProfileBulkUpdate */
         UpgradeQualityProfileBulkUpdate: {

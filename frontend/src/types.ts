@@ -430,6 +430,8 @@ export interface UpgradeMatchedFormat {
   id: string
   name: string
   contribution: number
+  /** Audio, Dynamic Range, ...: formats in one group compete for the same part of a release. */
+  group?: string
 }
 
 export interface UpgradeCustomFormatImprovement {
@@ -443,6 +445,8 @@ export interface UpgradeCustomFormatImprovement {
 
 export interface UpgradeCandidate {
   id: string
+  /** Size of the releases being replaced, from their torrents. */
+  currentSize?: number
   mediaType: 'movies' | 'shows'
   movieId?: string
   seasonId?: string

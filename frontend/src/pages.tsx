@@ -54,7 +54,7 @@ import CustomFormatsPageView from './CustomFormatsPage'
 import { contextMenuSelection, normalizeMediaView, toggleIdSelection } from './lib/uiState'
 import { updateUrlParams, useUrlNumber, useUrlState } from './lib/urlState'
 import { isTaskOverdue } from './lib/taskTiming'
-import type { BlocklistEntry, EpisodeOrdering, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchResult, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults, UpgradeType } from './types'
+import type { BlocklistEntry, EpisodeOrdering, Download, DownloadClient, IncomingDownload, Indexer, IndexerScope, InteractiveSearchResult, LibrarySummary, MediaProfileSettings, MediaTorrentStatus, Movie, MediaDiscovery, MovieEditionUpdate, MovieRelease, Problem, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, Show, Season, Episode, EpisodeMedia, TMDBShowLookup, TMDBMovieLookup, FilesystemListing, StorageRoot, RemotePathMapping, TorrentArchiveItem, EventHistoryItem, Job, RecoveryCapabilities, RecoveryReimportPlan, ScheduledTask, Tag, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults } from './types'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import prowlarrIcon from './assets/prowlarr.svg'
 import jackettIcon from './assets/jackett.svg'
@@ -4648,42 +4648,65 @@ function BackupRecoverySettings() {
 }
 
 
+/** A score change, signed: +5, −10, ±0. */
+function formatScoreDelta(value: number) {
+  return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '±0'
+}
+
 function UpgradeCompare({ item, profile, children }: { item: UpgradeCandidate; profile: string; children: ReactNode }) {
+  // Formats of one group (Audio, Dynamic Range, ...) fill the same part of a
+  // release, so they share a row: DTS-HD MA on one side, TrueHD Atmos on the
+  // other. A format with no group is a row of its own.
   const rows = useMemo(() => {
-    const merged = new Map<string, { name: string; current?: number; candidate?: number }>()
-    for (const format of item.currentMatchedFormats) merged.set(format.id, { name: format.name, current: format.contribution })
-    for (const format of item.candidateMatchedFormats) {
-      const entry = merged.get(format.id)
-      if (entry) entry.candidate = format.contribution
-      else merged.set(format.id, { name: format.name, candidate: format.contribution })
+    type Side = { name: string; contribution: number }[]
+    const merged = new Map<string, { label: string; grouped: boolean; current: Side; candidate: Side }>()
+    const add = (format: UpgradeMatchedFormat, side: 'current' | 'candidate') => {
+      const key = format.group ? `group:${format.group}` : `format:${format.id}`
+      const row = merged.get(key) ?? { label: format.group ?? format.name, grouped: Boolean(format.group), current: [], candidate: [] }
+      row[side].push({ name: format.name, contribution: format.contribution })
+      merged.set(key, row)
     }
+    item.currentMatchedFormats.forEach((format) => add(format, 'current'))
+    item.candidateMatchedFormats.forEach((format) => add(format, 'candidate'))
+    const total = (side: Side) => side.reduce((sum, format) => sum + format.contribution, 0)
     // Biggest movers first, so what changed is read before what did not.
     return [...merged.entries()]
-      .map(([id, entry]) => ({ id, ...entry, delta: (entry.candidate ?? 0) - (entry.current ?? 0) }))
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.name.localeCompare(b.name))
+      .map(([key, row]) => ({ key, ...row, delta: total(row.candidate) - total(row.current) }))
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.label.localeCompare(b.label))
   }, [item.currentMatchedFormats, item.candidateMatchedFormats])
 
-  const cell = (value: number | undefined, tone: string) => value === undefined
-    ? <b className="cf-zero">-</b>
-    : <b className={tone}>{value > 0 ? '+' : ''}{value}</b>
+  const score = (value: number) => `${value > 0 ? '+' : ''}${value}`
+  // Each side is two columns, names then scores, so every name starts on one
+  // line and every score ends on another.
+  // A format the current release already has, at the same score, is not
+  // part of the change, so it stays grey even in a group that improved.
+  const side = (formats: { name: string; contribution: number }[], grouped: boolean, tone: string, upgrade = false, unchanged: { name: string; contribution: number }[] = []) => <>
+    <span className={`cf-compare-names ${upgrade ? 'cf-compare-upgrade' : ''}`}>{grouped && formats.map((format, index) => <span key={index}>{format.name}</span>)}</span>
+    <span className={`cf-compare-scores ${upgrade ? '' : 'cf-compare-current'}`}>{formats.length
+      ? formats.map((format, index) => <b key={index} className={unchanged.some((other) => other.name === format.name && other.contribution === format.contribution) ? 'cf-zero' : tone}>{score(format.contribution)}</b>)
+      : <b className="cf-zero">-</b>}</span>
+  </>
 
   return <Tooltip asChild placement="below" delay={250} content={<span className="cf-breakdown">
     <span className="cf-breakdown-head"><strong>Custom Formats</strong><small>{profile}</small></span>
     {rows.length
-      ? <span className="cf-breakdown-rows">
-          <span className="cf-breakdown-row cf-breakdown-legend"><span>Format</span><b>Current</b><b>Upgrade</b></span>
-          {rows.map((row) => <span key={row.id} className="cf-breakdown-row">
-            <span>{row.name}</span>
-            {cell(row.current, 'cf-zero')}
-            {cell(row.candidate, row.delta > 0 ? 'cf-plus' : row.delta < 0 ? 'cf-minus' : 'cf-zero')}
-          </span>)}
+      ? <span className="cf-compare">
+          <span className="cf-compare-legend">Format</span>
+          <span className="cf-compare-legend cf-compare-side cf-compare-current">Current</span>
+          <span className="cf-compare-legend cf-compare-side cf-compare-upgrade">Upgrade</span>
+          {rows.map((row) => <Fragment key={row.key}>
+            <span className="cf-compare-label">{row.label}</span>
+            {side(row.current, row.grouped, 'cf-zero')}
+            {side(row.candidate, row.grouped, row.delta > 0 ? 'cf-plus' : row.delta < 0 ? 'cf-minus' : 'cf-zero', true, row.current)}
+          </Fragment>)}
+          <span className="cf-compare-label cf-compare-total cf-compare-foot">Total</span>
+          <span className="cf-compare-scores cf-compare-side cf-compare-current cf-compare-foot"><b className="cf-compare-total">{item.currentCustomFormatScore}</b></span>
+          <span className="cf-compare-scores cf-compare-side cf-compare-upgrade cf-compare-foot"><span className="cf-compare-sum">
+            <b className={`cf-compare-total ${item.scoreDelta > 0 ? 'cf-plus' : item.scoreDelta < 0 ? 'cf-minus' : 'cf-zero'}`}>{item.customFormatScore}</b>
+            <small className="cf-score-delta">{formatScoreDelta(item.customFormatScore - item.currentCustomFormatScore)}</small>
+          </span></span>
         </span>
       : <small>No Custom Formats matched either release.</small>}
-    <span className="cf-breakdown-row cf-breakdown-total">
-      <span>Total</span>
-      <b>{item.currentCustomFormatScore}</b>
-      <b className={item.scoreDelta > 0 ? 'cf-plus' : item.scoreDelta < 0 ? 'cf-minus' : 'cf-zero'}>{item.customFormatScore}</b>
-    </span>
   </span>}>{children}</Tooltip>
 }
 
@@ -4711,29 +4734,6 @@ function upgradeStatusOf(item: UpgradeCandidate): UpgradeStatus {
   return 'in_progress'
 }
 
-/** The single most important reason a row is an upgrade. */
-function upgradeWhy(item: UpgradeCandidate): { label: string; tone: 'ok' | 'blue' | 'amber' | 'violet' } | null {
-  const types = item.upgradeTypes as string[]
-  if (types.includes('season_pack')) return { label: 'Season pack', tone: 'violet' }
-  if (types.includes('quality')) return { label: 'Quality ↑', tone: 'ok' }
-  if (types.includes('repack')) return { label: 'Repack', tone: 'amber' }
-  if (types.includes('proper')) return { label: 'Proper', tone: 'amber' }
-  if (types.includes('revision')) return { label: 'Rerip', tone: 'amber' }
-  if (types.includes('custom_format')) return { label: 'Better formats', tone: 'blue' }
-  return null
-}
-
-function upgradeTypeLabel(value: UpgradeType) {
-  if (value === 'custom_format') return 'Custom Format'
-  if (value === 'season_pack') return 'Season Pack'
-  if (value === 'repack') return 'REPACK'
-  if (value === 'proper') return 'PROPER'
-  // The scene tag itself, as REPACK and PROPER are: the backend reason is
-  // named 'revision', but what the release says is RERIP.
-  if (value === 'revision') return 'RERIP'
-  return 'Quality'
-}
-
 function upgradeStateLabel(item: UpgradeCandidate) {
   switch (item.executionState) {
     case 'submitted': return 'Submitted'
@@ -4749,16 +4749,6 @@ function upgradeStateLabel(item: UpgradeCandidate) {
 
 function upgradeEditionLabel(edition?: string) {
   return edition?.trim() || 'Theatrical Cut'
-}
-
-/** A token reason with its trailing score tinted: green for a gain, red for a
- *  loss, grey for a format that matched without moving the score. */
-function upgradeReasonContent(reason: string) {
-  const match = UPGRADE_REASON_SCORE.exec(reason)
-  if (!match) return reason
-  const score = Number(match[1])
-  const tone = score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral'
-  return <>{reason.slice(0, match.index)} <b className={`upgrade-reason-score ${tone}`}>{match[1]}</b></>
 }
 
 function upgradeEditionsMatch(current?: string, candidate?: string) {
@@ -4792,6 +4782,9 @@ export function UpgradeMediaPage() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [busyId, setBusyId] = useState('')
+  // The lit word under the pointer: its reason, so every word sharing it
+  // (DV + HDR) lights together, and the score it carries.
+  const [hoveredReason, setHoveredReason] = useState<{ id: string; reason: string; score: number } | null>(null)
   const [selectedRoot, setSelectedRoot] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -5035,6 +5028,11 @@ export function UpgradeMediaPage() {
   // one cannot be submitted at all, so neither can join the batch.
   const picked = useMemo(() => rows.filter((item) => !item.executionState && item.executionEligible && !excluded.has(item.id)), [rows, excluded])
   const pickedBytes = useMemo(() => picked.reduce((total, item) => total + (item.size ?? 0), 0), [picked])
+  // How much the library grows (or shrinks) once these replace what is on
+  // disk. Only rows whose current size is known can say.
+  const pickedBytesChange = useMemo(() => picked.reduce((total, item) => (
+    item.size !== undefined && item.currentSize !== undefined ? total + item.size - item.currentSize : total
+  ), 0), [picked])
   const mediaType = rows[0]?.mediaType ?? 'movies'
   const noun = mediaType === 'movies' ? 'Movie' : 'Show'
   const eligibleClients = useMemo(() => clients.filter((client) => client.enabled && client.scope === mediaType), [clients, mediaType])
@@ -5111,7 +5109,12 @@ export function UpgradeMediaPage() {
       <div className="new-media-workspace upgrade-v2 upgrade-v3">
         <div className="new-media-scroll">
           <span className="new-media-col-head">Current</span>
-          <span className="new-media-col-head">{shownStatus === 'ready' ? 'Upgrade' : 'Replacement'}</span>
+          <span className="new-media-col-head upgrade-v2-head">
+            <span>{shownStatus === 'ready' ? 'Upgrade' : 'Replacement'}</span>
+            <span className="upgrade-v2-seeds">Seeds</span>
+            <span className="upgrade-v2-size">Size</span>
+            <span className="upgrade-v2-size-change" aria-hidden="true" />
+          </span>
           <span aria-hidden="true" />
           {!rows.length && <div className="upgrade-v2-empty">{UPGRADE_STATUSES.find((entry) => entry.value === shownStatus)?.empty}</div>}
           {rows.map((item) => {
@@ -5119,7 +5122,6 @@ export function UpgradeMediaPage() {
             const batchable = !item.executionState && item.executionEligible
             const included = batchable && !excluded.has(item.id)
             const blocked = !item.executionState && !item.executionEligible
-            const why = upgradeWhy(item)
             const delta = item.scoreDelta
             const swarm = swarmHealth(item.seeders)
             const progress = item.downloadProgress === undefined ? undefined : Math.round(Math.max(0, Math.min(1, item.downloadProgress)) * 100)
@@ -5127,6 +5129,8 @@ export function UpgradeMediaPage() {
               item.mediaYear ? `${item.mediaYear}` : undefined,
               item.seasonNumber !== undefined ? `Season ${item.seasonNumber}` : undefined,
               qualityLabel(item.currentQuality) || undefined,
+              // After the quality, as the movie page and release lists show it.
+              item.currentEdition || undefined,
             ].filter(Boolean).join(' · ')
             // With no details pane, the row itself is the checkbox.
             const open = () => { if (batchable) toggleChosen(item.id) }
@@ -5141,14 +5145,13 @@ export function UpgradeMediaPage() {
               formatSections,
             })))
             const indexerBadge = badgeColor(item.indexerColor)
-            const extraReasons = (item.upgradeTypes as string[]).filter((type) => type !== 'quality' && type !== 'custom_format')
-            const releaseCard = <span className="upgrade-v2-card">
-              <strong>{item.title}</strong>
-              <span>
-                <span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexerName}</span>
-                <span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span>
-                {item.size !== undefined && <span className="upgrade-fact">{formatBytes(item.size)}</span>}
-              </span>
+            const sizeDelta = item.size !== undefined && item.currentSize !== undefined ? item.size - item.currentSize : undefined
+            // A big score jump reads as one; a few points stay quiet.
+            const scoreWeight = delta >= 100 ? 'big' : delta >= 25 ? 'medium' : 'small'
+            // Seeds and size are columns level with the release name, under
+            // their headers; the indexer sits below them on the score's line.
+            const releaseFacts = <span className="upgrade-v2-facts">
+              <span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexerName}</span>
             </span>
             return <div className="new-media-row" key={item.id}>
               <div className={`new-media-folder-cell upgrade-v2-current ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`} onClick={open}>
@@ -5172,35 +5175,60 @@ export function UpgradeMediaPage() {
                 </span>
                 {/* The release on disk fills the rest of the row on one line;
                     the full name is a hover away. */}
-                <span className="upgrade-v2-release">{breakableRelease(currentReleaseLabel(item))}</span>
+                <div className="upgrade-v2-side">
+                  <div className="upgrade-v2-line">
+                    <span className="upgrade-v2-release">{breakableRelease(currentReleaseLabel(item))}</span>
+                  </div>
+                  <small className="upgrade-v2-score">CF: {item.currentCustomFormatScore}</small>
+                </div>
                 {blocked && <Tooltip content={item.executionBlockReason ?? 'This upgrade cannot be started.'}><span className="new-media-state needs-match"><Icon name="lock" size={11} />Blocked</span></Tooltip>}
               </div>
               <div className={`new-media-match-cell upgrade-v2-change ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`}>
                 {/* Opposite the current release across the divide, only the
                     changed words lit, so the two names read as a pair. */}
-                <Tooltip asChild content={releaseCard}>
-                  <span className="upgrade-v2-release">{tokens.map((token, index) => <Fragment key={index}>
-                    <span className="upgrade-token-sep">{token.sep}</span>{token.sep && <wbr />}
-                    <span className={tokenReasons[index] ? 'upgrade-token-new' : 'upgrade-token-same'}>{token.text}</span>
-                  </Fragment>)}</span>
-                </Tooltip>
-                <span className="new-media-match-copy upgrade-v2-title upgrade-v2-quality">
-                  <strong>{qualityLabel(item.quality) || item.quality || 'Unknown quality'}</strong>
-                  {item.executionState && item.executionState !== 'completed'
-                    ? <span className="upgrade-v2-progress">
-                      <Tooltip content={item.executionError ?? upgradeStateLabel(item)}><Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge></Tooltip>
-                      {progress !== undefined && (item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && <><Progress value={progress} tone="blue" /><small>{progress}%</small></>}
-                    </span>
-                    : <span onClick={(event) => event.stopPropagation()}><UpgradeCompare item={item} profile={profileName}>
-                      <small className="upgrade-v2-score">CF {item.customFormatScore}{delta !== 0 && <em className={delta > 0 ? 'cf-plus' : 'cf-minus'}> {delta > 0 ? '+' : ''}{delta}</em>}</small>
-                    </UpgradeCompare></span>}
-                </span>
-                {(swarm === 'dead' || swarm === 'weak') && <Tooltip content={`${item.seeders ?? 0} seeders: this release may be slow or impossible to download.`}><span className={`upgrade-v2-swarm swarm-${swarm}`} /></Tooltip>}
+                <div className="upgrade-v2-side">
+                  <div className="upgrade-v2-line">
+                    <span className="upgrade-v2-release">{tokens.map((token, index) => <Fragment key={index}>
+                      <span className="upgrade-token-sep">{token.sep}</span>{token.sep && <wbr />}
+                      {/* Pointing at a lit word turns it blue and puts the score of
+                          the Custom Format it earned beside CF, also blue. */}
+                      {tokenReasons[index]
+                        ? <span
+                          className={`upgrade-token-new ${hoveredReason?.id === item.id && hoveredReason.reason === tokenReasons[index] ? 'hovered' : ''}`}
+                          onMouseEnter={() => {
+                            const reason = tokenReasons[index]!
+                            const match = UPGRADE_REASON_SCORE.exec(reason)
+                            if (match) setHoveredReason({ id: item.id, reason, score: Number(match[1]) })
+                          }}
+                          onMouseLeave={() => setHoveredReason(null)}
+                        >{token.text}</span>
+                        : <span className="upgrade-token-same">{token.text}</span>}
+                    </Fragment>)}</span>
+                    <span className="upgrade-v2-seeds">{(swarm === 'dead' || swarm === 'weak')
+                      ? <Tooltip content={`${item.seeders ?? 0} seeders: this release may be slow or impossible to download.`}><span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span></Tooltip>
+                      : <span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span>}</span>
+                    <span className="upgrade-v2-size upgrade-fact">{item.size === undefined ? '-' : formatBytes(item.size)}</span>
+                    <span className="upgrade-v2-size-change upgrade-fact">{item.size !== undefined && sizeDelta !== undefined && sizeDelta !== 0 && <em className={sizeDelta > 0 ? 'size-up' : 'size-down'} aria-label={`${sizeDelta > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(sizeDelta))}`}><Icon name="caret" size={10} />{formatBytes(Math.abs(sizeDelta))}</em>}</span>
+                  </div>
+                  <div className="upgrade-v2-meta">
+                    <span onClick={(event) => event.stopPropagation()}><UpgradeCompare item={item} profile={profileName}>
+                      <small className={`upgrade-v2-score ${scoreWeight}`}>CF: {item.customFormatScore} {hoveredReason?.id === item.id
+                        ? <span className="cf-score-delta hovered">{formatScoreDelta(hoveredReason.score)}</span>
+                        : <span className="cf-score-delta">{formatScoreDelta(item.customFormatScore - item.currentCustomFormatScore)}</span>}</small>
+                    </UpgradeCompare></span>
+                    {releaseFacts}
+                  </div>
+                </div>
+                {item.executionState && item.executionState !== 'completed' && <span className="new-media-match-copy upgrade-v2-title upgrade-v2-quality">
+                  <span className="upgrade-v2-progress">
+                    <Tooltip content={item.executionError ?? upgradeStateLabel(item)}><Badge tone={upgradeStateTone(item)}>{upgradeStateLabel(item)}</Badge></Tooltip>
+                    {progress !== undefined && (item.executionState === 'submitted' || item.executionState === 'downloading' || item.executionState === 'validating') && <><Progress value={progress} tone="blue" /><small>{progress}%</small></>}
+                  </span>
+                </span>}
                 {item.executionState === 'handoff_attention'
                   ? <Button variant="secondary" icon="refresh" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void retryHandoff(item) }}>{busyId === item.id ? 'Checking…' : 'Retry'}</Button>
                   : item.executionState === 'cleanup_required'
-                    ? <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void reviewCleanup(item) }}>Cleanup</Button>
-                    : why && <Tooltip content={extraReasons.length ? `Also: ${extraReasons.map((type) => upgradeTypeLabel(type as UpgradeType)).join(', ')}` : why.label}><span className={`new-media-state upgrade-why why-${why.tone}`}>{why.label}</span></Tooltip>}
+                    && <Button variant="danger" icon="alert" disabled={busyId === item.id} onClick={(event) => { event.stopPropagation(); void reviewCleanup(item) }}>Cleanup</Button>}
               </div>
               {/* Outside the panel, so the two columns keep their width. */}
               <span className="upgrade-v3-rail">
@@ -5235,7 +5263,12 @@ export function UpgradeMediaPage() {
               icon="download"
               disabled={!picked.length || Boolean(busyId)}
               onClick={openConfirm}
-            >{`Upgrade ${picked.length} ${picked.length === 1 ? noun : `${noun}s`}${pickedBytes ? ` · ${formatBytes(pickedBytes)}` : ''}`}</Button>
+            >
+              {`Upgrade ${picked.length} ${picked.length === 1 ? noun : `${noun}s`}${pickedBytes ? ` · ${formatBytes(pickedBytes)}` : ''}`}
+              {pickedBytesChange !== 0 && <em className={`upgrade-batch-change ${pickedBytesChange > 0 ? 'size-up' : 'size-down'}`} aria-label={`${pickedBytesChange > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(pickedBytesChange))} in total`}>
+                <Icon name="caret" size={11} />{formatBytes(Math.abs(pickedBytesChange))}
+              </em>}
+            </Button>
           </> : <>
             <span>{shownStatus === 'attention' ? 'These upgrades are waiting for you. Select one to see what it needs.' : 'Upgrades on their way. Progress updates live.'}</span>
             <div className="toolbar-spacer" />

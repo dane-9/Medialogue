@@ -18,23 +18,28 @@ from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import (
     AccessMode,
+    CustomFormat,
     Episode,
     MediaDirectory,
     MediaFile,
     MediaType,
     Movie,
     MovieRelease,
+    MovieReleaseTorrent,
     ReleaseState,
     MediaProfileOverride,
     QualityProfile,
     Schedule,
     Season,
     Show,
+    ShowReleaseTorrent,
     StorageRoot,
+    Torrent,
     TorrentClientObservation,
     UpgradeCandidate,
 )
 from app.parser import parse_release
+from app.services.builtin_formats import format_group
 from app.schemas.upgrades import (
     UpgradeCandidateCount,
     UpgradeCurrentRelease,
@@ -86,23 +91,77 @@ def _indexer_color(indexer_id: UUID | None) -> str | None:
     return None
 
 
-def _matched_formats(rows: Any) -> list[UpgradeMatchedFormat]:
+def _matched_rows(rows: Any) -> list[dict]:
+    return [item for item in (rows if isinstance(rows, list) else []) if isinstance(item, dict) and item.get("matched")]
+
+
+async def _format_details(db: AsyncSession, *row_sets: list[dict]) -> dict[str, tuple[str, str | None]]:
+    """The current name and group of every format in the given score rows, by id.
+
+    Score rows freeze the name a format had when it was scored; a format renamed
+    since, such as a built-in, should read as it is called now.
+    """
+
+    ids: set[UUID] = set()
+    for rows in row_sets:
+        for item in rows:
+            try:
+                ids.add(UUID(str(item.get("custom_format_id"))))
+            except ValueError:
+                continue
+    if not ids:
+        return {}
+    formats = (await db.execute(
+        select(CustomFormat.id, CustomFormat.name, CustomFormat.builtin_key, CustomFormat.condition_definition)
+        .where(CustomFormat.id.in_(ids))
+    )).all()
+    return {str(id_): (name, format_group(key, definition)) for id_, name, key, definition in formats}
+
+
+def _matched_formats(rows: list[dict], details: dict[str, tuple[str, str | None]]) -> list[UpgradeMatchedFormat]:
     """Formats that matched, ordered by impact then name.
 
     A zero contribution is kept: a matched format that scores nothing is still
     a fact about the release, and hiding it makes the score look unexplained.
     """
 
-    matched = [
-        UpgradeMatchedFormat(
+    matched = []
+    for item in rows:
+        name, group = details.get(str(item.get("custom_format_id") or ""), (None, None))
+        matched.append(UpgradeMatchedFormat(
             custom_format_id=str(item.get("custom_format_id") or ""),
-            custom_format_name=str(item.get("custom_format_name") or "Custom Format"),
+            custom_format_name=name or str(item.get("custom_format_name") or "Custom Format"),
             contribution=int(item.get("contribution") or 0),
-        )
-        for item in (rows if isinstance(rows, list) else [])
-        if isinstance(item, dict) and item.get("matched")
-    ]
+            # A group frozen into the row wins; otherwise the format's own.
+            group=item.get("custom_format_group") or group,
+        ))
     return sorted(matched, key=lambda item: (-item.contribution, item.custom_format_name.casefold()))
+
+
+async def _current_size(db: AsyncSession, row: UpgradeCandidate) -> int | None:
+    """Size of the releases an upgrade replaces, from their torrents.
+
+    Cross-seeds of one release share a payload, so each release counts its
+    largest torrent once. Unknown when no current release has a torrent.
+    """
+
+    release_ids = [UUID(value) for value in row.current_release_ids or []]
+    if not release_ids:
+        return None
+    if row.media_type == MediaType.MOVIES:
+        link, column = MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id
+    else:
+        link, column = ShowReleaseTorrent, ShowReleaseTorrent.show_release_id
+    rows = (
+        await db.execute(
+            select(column, func.max(Torrent.total_size))
+            .join(Torrent, Torrent.id == link.torrent_id)
+            .where(column.in_(release_ids), Torrent.total_size.is_not(None))
+            .group_by(column)
+        )
+    ).all()
+    sizes = [int(size) for _release_id, size in rows if size]
+    return sum(sizes) if sizes else None
 
 
 async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidateResponse:
@@ -243,6 +302,9 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
 
     snapshot = dict(row.comparison_snapshot or {})
     candidate_snapshot = snapshot.get("candidate") or {}
+    current_formats = _matched_rows(((snapshot.get("current") or {}).get("score_snapshot") or {}).get("breakdown"))
+    candidate_formats = _matched_rows(candidate_snapshot.get("formats"))
+    format_details = await _format_details(db, current_formats, candidate_formats)
     candidate_edition = (
         candidate_snapshot.get("edition")
         if isinstance(candidate_snapshot, dict) and "edition" in candidate_snapshot
@@ -273,6 +335,7 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         current_release_ids=[UUID(value) for value in row.current_release_ids],
         current_release_name=row.current_release_name,
         current_quality=row.current_quality,
+        current_size=await _current_size(db, row),
         current_edition=current_edition,
         movie_has_multiple_editions=movie_has_multiple_editions,
         current_custom_format_score=row.current_custom_format_score,
@@ -309,10 +372,8 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
         ],
         current_episode_count=current_episode_count,
         season_episode_count=season_episode_count,
-        current_matched_formats=_matched_formats(
-            ((snapshot.get("current") or {}).get("score_snapshot") or {}).get("breakdown")
-        ),
-        candidate_matched_formats=_matched_formats((snapshot.get("candidate") or {}).get("formats")),
+        current_matched_formats=_matched_formats(current_formats, format_details),
+        candidate_matched_formats=_matched_formats(candidate_formats, format_details),
         execution_eligible=execution_eligible,
         execution_block_reason=execution_block_reason,
         comparison_snapshot=dict(row.comparison_snapshot or {}),

@@ -200,15 +200,27 @@ SAMPLE_FORMATS: list[tuple[str, str, int]] = [
     ("DTS-HD MA", "DTS-HD MA", 45),
     ("DTS-HD HRA", "DTS-HD HRA", 20),
     ("HEVC", "HEVC", 15),
+    ("H.265", "HEVC", 15),
+    ("x265", "HEVC", 15),
     ("WEB-DL", "WEB-DL", 10),
     ("REPACK", "Repack", 5),
     ("PROPER", "Proper", 15),
     ("RERIP", "Rerip", 5),
     ("x264", "h264", 0),
-    ("H", "h264", 0),
-    ("DDP5", "Dolby Digital Plus", -5),
-    ("DD5", "Dolby Digital", -10),
+    ("H.264", "h264", 0),
+    ("DDP5", "DD+", -5),
+    ("DD5", "DD", -10),
 ]
+
+
+#: The group the real built-in of the same kind carries, so the breakdown
+#: pairs formats the way it would for a real search.
+SAMPLE_GROUPS = {
+    **dict.fromkeys(("Dolby Vision", "HDR10+", "HDR10", "DV HDR10+", "DV HDR10"), "Dynamic Range"),
+    **dict.fromkeys(("TrueHD", "TrueHD Atmos", "DD+ Atmos", "DTS-HD MA", "DTS-HD HRA", "DD+", "DD"), "Audio"),
+    **dict.fromkeys(("HEVC", "h264"), "Video"),
+    **dict.fromkeys(("Repack", "Proper", "Rerip"), "Release"),
+}
 
 
 def _sample_id(name: str) -> str:
@@ -228,6 +240,7 @@ def _sample_result(name: str, contribution: int, *, regex_match: str | None = No
     return {
         "custom_format_id": _sample_id(name),
         "custom_format_name": name,
+        "custom_format_group": SAMPLE_GROUPS.get(name),
         "matched": True,
         "raw_matched": True,
         "suppressed_by": [],
@@ -297,6 +310,9 @@ def _matched_formats(release_name: str) -> list[dict]:
     has_atmos = _sample_token_matches(release_name, "Atmos")
     if has_truehd and has_atmos:
         _take_over(matched, name="TrueHD Atmos", contribution=60, supersedes={"TrueHD"})
+    # As the built-in DD+ Atmos does, Atmos over DD+ replaces plain DD+.
+    elif has_atmos and _sample_token_matches(release_name, "DDP5"):
+        _take_over(matched, name="DD+ Atmos", contribution=25, supersedes={"DD+"})
     return matched
 
 
@@ -339,7 +355,7 @@ def _comparison(
         "note": "Seeded for UI review; not a real search result.",
         "current": {
             "edition": current_edition,
-            "score_snapshot": {"formats": current},
+            "score_snapshot": {"breakdown": current},
             "releases": [
                 {
                     "release_id": uuid.uuid5(uuid.NAMESPACE_URL, f"{MARKER}:{name}").hex,
@@ -366,6 +382,15 @@ def _ids(index: int) -> tuple[str, str, str]:
 
     base = MOVIE_ID_BASE + index * 16
     return uuid.UUID(int=base).hex, uuid.UUID(int=base + 1).hex, uuid.UUID(int=base + 2).hex
+
+
+#: Current size as a share of the upgrade's, per sample in turn.
+CURRENT_SIZE_RATIOS = (0.62, 1.04, 0.55, 0.9, 1.12, 0.97, 0.7)
+
+
+def _torrent_ids(index: int) -> tuple[str, str]:
+    base = MOVIE_ID_BASE + index * 16
+    return uuid.UUID(int=base + 3).hex, uuid.UUID(int=base + 4).hex
 
 
 def _seed_movies(connection: sqlite3.Connection) -> list[tuple[dict, str, str]]:
@@ -419,6 +444,25 @@ def _seed_movies(connection: sqlite3.Connection) -> list[tuple[dict, str, str]]:
                values (?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'), 0, 'FILESYSTEM')""",
             (directory_id, root_id, path, path, release_id),
         )
+        # The current size comes from the release's torrent, so each sample
+        # gets one. The ratio varies, so the size change reads both ways.
+        torrent_id, link_id = _torrent_ids(index)
+        current_size = round(sample["size"] * CURRENT_SIZE_RATIOS[index % len(CURRENT_SIZE_RATIOS)])
+        connection.execute(
+            """insert or replace into torrents
+               (id, info_hash, name, total_size, first_seen_at, last_seen_at, archive_state,
+                tracker_summary, metadata, created_at, updated_at)
+               values (?, ?, ?, ?, datetime('now'), datetime('now'), 'NOT_ARCHIVED', '{}', ?,
+                       datetime('now'), datetime('now'))""",
+            (torrent_id, uuid.UUID(torrent_id).hex[:40].ljust(40, "0"), sample["folder"], current_size,
+             json.dumps({MARKER: True})),
+        )
+        connection.execute(
+            """insert or replace into movie_release_torrents
+               (id, movie_release_id, torrent_id, association_type, created_at)
+               values (?, ?, ?, 'ATTACHED', datetime('now'))""",
+            (link_id, release_id, torrent_id),
+        )
         seeded.append((sample, movie_id, release_id))
     return seeded
 
@@ -447,6 +491,52 @@ def _targets(connection: sqlite3.Connection) -> list[tuple[str, str, int, str]]:
     if not rows:
         raise SystemExit("No mapped show media in the library; scan a show folder first.")
     return rows
+
+
+#: Fixed id base for the sample torrents attached to borrowed show releases.
+SHOW_TORRENT_ID_BASE = 0x3D1EB000
+#: Current size of a borrowed show release, so the show samples show a size
+#: change as the movie samples do.
+SHOW_CURRENT_SIZE = 60 * 1024**3
+
+
+def _show_torrent_ids(release_id: str) -> tuple[str, str]:
+    """Stable ids per borrowed release, so re-seeding replaces rather than duplicates."""
+
+    offset = uuid.UUID(release_id).int % 0xFFF * 4
+    return uuid.UUID(int=SHOW_TORRENT_ID_BASE + offset).hex, uuid.UUID(int=SHOW_TORRENT_ID_BASE + offset + 1).hex
+
+
+def _seed_show_sizes(connection: sqlite3.Connection, release_ids: set[str]) -> None:
+    """Give each borrowed show release a sample torrent, only when it has none.
+
+    The current size is read from a release's torrents. A release that already
+    has a real one keeps it untouched.
+    """
+
+    for release_id in release_ids:
+        has_torrent = connection.execute(
+            "select 1 from show_release_torrents where replace(show_release_id, '-', '') = ? limit 1",
+            (uuid.UUID(release_id).hex,),
+        ).fetchone()
+        if has_torrent:
+            continue
+        torrent_id, link_id = _show_torrent_ids(release_id)
+        connection.execute(
+            """insert or replace into torrents
+               (id, info_hash, name, total_size, first_seen_at, last_seen_at, archive_state,
+                tracker_summary, metadata, created_at, updated_at)
+               values (?, ?, ?, ?, datetime('now'), datetime('now'), 'NOT_ARCHIVED', '{}', ?,
+                       datetime('now'), datetime('now'))""",
+            (torrent_id, torrent_id[:40].ljust(40, "0"), f"Sample torrent ({MARKER})", SHOW_CURRENT_SIZE,
+             json.dumps({MARKER: True})),
+        )
+        connection.execute(
+            """insert or replace into show_release_torrents
+               (id, show_release_id, torrent_id, association_type, created_at)
+               values (?, ?, ?, 'ATTACHED', datetime('now'))""",
+            (link_id, release_id, torrent_id),
+        )
 
 
 def seed() -> None:
@@ -514,6 +604,7 @@ def seed() -> None:
         )
         inserted += 1
         del season_number
+    _seed_show_sizes(connection, {target[3] for target in targets[: len(SAMPLES)]})
     for sample, movie_id, movie_release_id in _seed_movies(connection):
         snapshot, added, current_score, score = _comparison(
             sample["folder"],
@@ -581,9 +672,19 @@ def clear() -> None:
     # folder, so it leaves with it. Its folder on disk is never touched.
     for index in range(len(MOVIE_SAMPLES)):
         movie_id, release_id, directory_id = _ids(index)
+        torrent_id, link_id = _torrent_ids(index)
+        connection.execute("delete from movie_release_torrents where id = ?", (link_id,))
+        connection.execute("delete from torrents where id = ?", (torrent_id,))
         connection.execute("delete from media_directories where id = ?", (directory_id,))
         connection.execute("delete from movie_releases where id = ?", (release_id,))
         connection.execute("delete from movies where id = ?", (movie_id,))
+    # Sample torrents attached to borrowed show releases; real torrents never
+    # carry the marker.
+    connection.execute(
+        "delete from show_release_torrents where torrent_id in (select id from torrents where metadata like ?)",
+        (f'%"{MARKER}"%',),
+    )
+    connection.execute("delete from torrents where metadata like ?", (f'%"{MARKER}"%',))
     connection.commit()
     print(f"removed {cursor.rowcount} sample upgrade candidates")
 

@@ -32,6 +32,9 @@ class UpgradeMatchedFormat(BaseModel):
     custom_format_id: str
     custom_format_name: str
     contribution: int
+    # Audio, Dynamic Range, ...: formats in one group compete for the same
+    # part of a release. None when the format describes no single part.
+    group: str | None = None
 
 
 class UpgradeCandidateResponse(BaseModel):
@@ -76,6 +79,8 @@ class UpgradeCandidateResponse(BaseModel):
     custom_format_score: int
     score_delta: int
     size: int | None = None
+    #: Size of the releases being replaced, from their torrents; None if unknown.
+    current_size: int | None = None
     seeders: int | None = None
     leechers: int | None = None
     published_at: datetime | None = None

@@ -215,6 +215,7 @@ _KNOWN_NON_TITLE = {
     "hdr",
     "hdr10",
     "hdr10+",
+    "hdr10plus",
     "dv",
     "hlg",
     "dolby",
@@ -227,6 +228,7 @@ _KNOWN_NON_TITLE = {
     "hra",
     "dd",
     "dd+",
+    "ddpa",
     "flac",
     "aac",
     "pcm",
@@ -735,8 +737,9 @@ def _hdr(normalized: str) -> HDRInfo:
     return HDRInfo(
         dolby_vision=bool(re.search(r"(?<![a-z0-9])(?:dv|dolby vision)(?![a-z0-9])", folded)),
         hdr=bool(re.search(r"(?<![a-z0-9])hdr(?![0-9a-z])", folded)),
-        hdr10=bool(re.search(r"(?<![a-z0-9])hdr10(?!\+|[a-z0-9])", folded)),
-        hdr10_plus=bool(re.search(r"(?<![a-z0-9])hdr10\+(?![a-z0-9])", folded)),
+        hdr10=bool(re.search(r"(?<![a-z0-9])hdr10(?!\+| ?plus(?![a-z0-9])|[a-z0-9])", folded)),
+        # HDR10+ is also spelled out: HDR10Plus, HDR10.Plus.
+        hdr10_plus=bool(re.search(r"(?<![a-z0-9])hdr10(?:\+| ?plus)(?![a-z0-9])", folded)),
         hlg=bool(re.search(r"(?<![a-z0-9])hlg(?![a-z0-9])", folded)),
     )
 
@@ -772,7 +775,7 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
         (r"(?<![A-Za-z0-9])DTS(?=[0-9]|(?![A-Za-z0-9]))", "DTS"),
         # Dolby Digital Plus ships under four spellings; all mean the same codec.
         (r"(?<![A-Za-z0-9])E[- .]?AC[- .]?3(?![A-Za-z0-9])", "DD+"),
-        (r"(?<![A-Za-z0-9])DDP(?=[0-9]|(?![A-Za-z0-9]))", "DD+"),
+        (r"(?<![A-Za-z0-9])DDPA?(?=[0-9]|(?![A-Za-z0-9]))", "DD+"),
         (r"(?<![A-Za-z0-9])DD\+(?=[0-9]|(?![A-Za-z0-9]))", "DD+"),
         (r"(?<![A-Za-z0-9])AC[- .]?3(?![A-Za-z0-9])", "DD"),
         (r"(?<![A-Za-z0-9])DD(?=[0-9]|(?![A-Za-z0-9+]))", "DD"),
@@ -791,7 +794,7 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
     # A channel layout attached directly to the codec (DDP5.1, DD+7.1) is read
     # first; only then the standalone forms.
     channels_match = re.search(
-        r"(?:TrueHD|DTS(?:[- .]?HD)?(?:[- .]?MA)?|DDP|DD\+|DD|E?[- .]?AC[- .]?3|FLAC|AAC|Opus|PCM)"
+        r"(?:TrueHD|DTS(?:[- .]?HD)?(?:[- .]?MA)?|DDPA?|DD\+|DD|E?[- .]?AC[- .]?3|FLAC|AAC|Opus|PCM)"
         r"[- .]?([1-9](?:\.[0-9]){1,2})(?![A-Za-z0-9])",
         raw,
         re.IGNORECASE,
@@ -807,7 +810,8 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
     return AudioInfo(
         codec=codec,
         channels=channels,
-        atmos=bool(re.search(r"(?<![a-z0-9])atmos(?![a-z0-9])", folded)),
+        # DDPA is the scene shorthand for DD+ Atmos.
+        atmos=bool(re.search(r"(?<![a-z0-9])(?:atmos(?![a-z0-9])|ddpa(?=[0-9]|(?![a-z0-9])))", folded)),
         dts_x=bool(re.search(r"(?<![a-z0-9])dts x(?![a-z0-9])", folded)),
         auro_3d=bool(re.search(r"(?<![a-z0-9])auro\s*3d(?![a-z0-9])", folded)),
         dual_audio=bool(re.search(r"(?<![a-z0-9])dual\s*audio(?![a-z0-9])", folded)),
@@ -989,7 +993,7 @@ def _unknown_tokens(
         if folded in known:
             continue
         if audio.codec and re.fullmatch(
-            r"(?:truehd|dts(?:-?hd)?(?:-?ma|-?hra)?|ddp|dd\+?|e-?ac-?3|flac|aac|opus|l?pcm)"
+            r"(?:truehd|dts(?:-?hd)?(?:-?ma|-?hra)?|ddpa?|dd\+?|e-?ac-?3|flac|aac|opus|l?pcm)"
             r"[1-9](?:[._][0-9]){0,2}",
             stripped,
             re.IGNORECASE,
