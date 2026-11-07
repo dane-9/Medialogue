@@ -7,6 +7,7 @@ import { systemApi } from '../api/modules/system'
 import { isTaskOverdue } from '../lib/taskTiming'
 import type { Job, ScheduledTask } from '../types'
 import { Page } from './shared'
+import { openLiveEvents } from '../lib/liveEvents'
 
 function taskInterval(seconds: number) {
   if (seconds < 60) return `${seconds} seconds`
@@ -69,7 +70,7 @@ export function TasksPage() {
 
   useEffect(() => {
     void load(true)
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     const changed = () => void load()
     stream.addEventListener('job.status', changed)
     const timer = window.setInterval(changed, 10_000)

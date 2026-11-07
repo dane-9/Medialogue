@@ -8,6 +8,7 @@ import { blocklistApi } from '../api/modules/blocklist'
 import { toggleIdSelection } from '../lib/uiState'
 import type { BlocklistEntry } from '../types'
 import { Page } from './shared'
+import { openLiveEvents } from '../lib/liveEvents'
 
 export function BlocklistPage() {
   const confirm = useConfirm()
@@ -23,7 +24,7 @@ export function BlocklistPage() {
   }
   useEffect(() => {
     void load()
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     stream.addEventListener('blocklist.changed', load)
     stream.addEventListener('download.failed', load)
     return () => stream.close()

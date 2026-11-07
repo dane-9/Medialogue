@@ -9,6 +9,7 @@ import { PageTopbar } from '../components/Shell'
 import { Badge } from '../components/ui'
 import type { MediaTorrentStatus, MovieEditionUpdate, QualityProfile, TMDBShowLookup, TMDBMovieLookup } from '../types'
 import { parseJobStatusLiveEvent } from '../validation/liveEvents'
+import { openLiveEvents } from '../lib/liveEvents'
 
 // TMDB serves posters at fixed widths. A library card or table thumbnail asks
 // for one near its own size: the full w500 image is several times the bytes
@@ -58,7 +59,7 @@ export function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollI
       }, 500)
     }
 
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     libraryInvalidationEvents.forEach((name) => stream.addEventListener(name, invalidate))
     const scanJobChanged = (event: MessageEvent<string>) => {
       if (!watchScanJobs) return

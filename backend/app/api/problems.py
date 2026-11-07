@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -51,6 +52,8 @@ from app.services.problem_resolution import available_actions, resolve_explicit_
 from app.services.qbittorrent import poll_download_client
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.shows import recheck_episode_duplicate_problem
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/problems", tags=["problems"])
 
@@ -392,6 +395,7 @@ async def run_problem_recheck(
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            logger.warning("problem job failed", extra={"job_id": str(job_id)}, exc_info=True)
             await update_job(
                 db,
                 job,

@@ -25,6 +25,7 @@ import { settingsApi } from '../api/modules/settings'
 import { upgradesApi } from '../api/modules/upgrades'
 import type { DownloadClient, InteractiveSearchResult, QualityProfile, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults } from '../types'
 import { MIXED_PROFILE, Page, defaultProfileLabel, libraryInvalidationEvents, tmdbPosterUrl } from './shared'
+import { openLiveEvents } from '../lib/liveEvents'
 
 /** A score change, signed: +5, −10, ±0. */
 function formatScoreDelta(value: number) {
@@ -248,7 +249,7 @@ export function UpgradeMediaPage() {
       })
     }
     const structural = libraryInvalidationEvents.filter((name) => name !== 'download.progress')
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     stream.addEventListener('download.progress', onProgress)
     structural.forEach((name) => stream.addEventListener(name, reload))
     // A safety net for missed events, not the refresh itself.

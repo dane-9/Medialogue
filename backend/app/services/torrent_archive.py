@@ -8,6 +8,8 @@ filesystem paths and the same torrent is archived once globally.
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import hashlib
 import json
@@ -50,6 +52,8 @@ from app.core.integration_config import get_integration_config_store
 from app.services.events import create_event
 from app.services.integration_state import ConfiguredDownloadClient
 from app.services.jobs import JobFailure, checkpoint_job, run_job
+
+logger = logging.getLogger(__name__)
 
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -612,6 +616,7 @@ async def refresh_torrent_manifest(
         )
         return True
     except Exception:
+        logger.warning("torrent manifest refresh failed", extra={"info_hash": torrent.info_hash}, exc_info=True)
         return False
 
 
@@ -900,6 +905,7 @@ async def restore_torrent_archive(
                 try:
                     await adapter.remove_torrent(torrent.info_hash, delete_files=False)
                 except Exception:
+                    logger.warning("rollback could not remove partially restored torrent", extra={"info_hash": torrent.info_hash}, exc_info=True)
                     pass
             raise
     except AppError:

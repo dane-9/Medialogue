@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,7 +43,8 @@ from app.services.events import create_event
 from app.services.download_paths import join_qbit_path, show_folder_with_year
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.core.integration_config import get_integration_config_store
-from app.services.jobs import create_job
+from app.services.jobs import create_job, publish_job_status
+from app.services.runtime_jobs import launch_runtime_job
 from app.services.blocklist import blocklist_for_results, matching_blocklist_entry
 from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
@@ -100,7 +101,6 @@ def _search_result_response(
 async def _start_search(
     *,
     target: SearchTarget,
-    background_tasks: BackgroundTasks,
     db: AsyncSession,
     client_factory,
 ) -> JobAcceptedResponse:
@@ -112,14 +112,14 @@ async def _start_search(
         summary={"target": target.to_dict(), "indexers": {}, "result_count": 0},
     )
     await db.commit()
-    background_tasks.add_task(run_search_job, job.id, client_factory=client_factory)
+    publish_job_status(job)
+    launch_runtime_job(job.id, lambda: run_search_job(job.id, client_factory=client_factory))
     return JobAcceptedResponse(job_id=job.id)
 
 
 @router.post("/interactive-search/movies", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def search_unattached_movie(
     payload: MovieDownloadSearchRequest,
-    background_tasks: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(indexers_api.get_torznab_client_factory),
@@ -152,7 +152,6 @@ async def search_unattached_movie(
             overview=metadata.overview,
             poster_ref=metadata.poster_path,
         ),
-        background_tasks=background_tasks,
         db=db,
         client_factory=client_factory,
     )
@@ -194,7 +193,6 @@ async def preview_unattached_show(
 @router.post("/interactive-search/shows/seasons", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def search_unattached_show_season(
     payload: ShowSeasonDownloadSearchRequest,
-    background_tasks: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(indexers_api.get_torznab_client_factory),
@@ -222,7 +220,6 @@ async def search_unattached_show_season(
             poster_ref=details.poster_path,
             season=payload.season_number,
         ),
-        background_tasks=background_tasks,
         db=db,
         client_factory=client_factory,
     )
@@ -231,7 +228,6 @@ async def search_unattached_show_season(
 @router.post("/movies/{resource_id}/interactive-search", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def search_movie(
     resource_id: str,
-    background_tasks: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(indexers_api.get_torznab_client_factory),
@@ -258,7 +254,6 @@ async def search_movie(
             tmdb_id=movie.tmdb_id,
             original_language=movie.original_language,
         ),
-        background_tasks=background_tasks,
         db=db,
         client_factory=client_factory,
     )
@@ -267,7 +262,6 @@ async def search_movie(
 @router.post("/seasons/{season_id}/interactive-search", response_model=JobAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def search_season(
     season_id: UUID,
-    background_tasks: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
     client_factory=Depends(indexers_api.get_torznab_client_factory),
@@ -294,7 +288,6 @@ async def search_season(
             original_language=show.original_language,
             season=season_row.season_number,
         ),
-        background_tasks=background_tasks,
         db=db,
         client_factory=client_factory,
     )

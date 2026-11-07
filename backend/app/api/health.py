@@ -1,3 +1,4 @@
+import logging
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
@@ -11,6 +12,8 @@ from app.schemas.health import IntegrationHealthResponse, LivenessResponse, Read
 
 from app.services.integration_state import get_configured_plex, get_configured_tmdb, list_configured_download_clients, list_configured_indexers
 from app.services.torrent_archive import archive_mount_health
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
@@ -26,6 +29,7 @@ async def readiness(db: AsyncSession = Depends(get_db)) -> ReadinessResponse:
     try:
         await db.execute(text("SELECT 1"))
     except Exception:
+        logger.warning("readiness check: database unavailable", exc_info=True)
         return ReadinessResponse(status="not_ready", database="unavailable")
     return ReadinessResponse(status="ok", database="available")
 

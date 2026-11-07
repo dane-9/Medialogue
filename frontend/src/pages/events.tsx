@@ -9,6 +9,7 @@ import { systemApi } from '../api/modules/system'
 import { useUrlNumber, useUrlState } from '../lib/urlState'
 import type { EventHistoryItem } from '../types'
 import { EventSortHeader, Page, indexerBadgePreview } from './shared'
+import { openLiveEvents } from '../lib/liveEvents'
 
 export function EventHistoryPage() {
   const confirm = useConfirm()
@@ -58,7 +59,7 @@ export function EventHistoryPage() {
       if (alive) { setEvents(payload.items); setTotal(payload.total); setPages(payload.pages); setError('') }
     }).catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load events.') }).finally(() => { if (alive) setLoading(false) })
     void refresh()
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     const onDurableEvent = () => void refresh()
     ;[
       'download.completed', 'scan.completed', 'scan.failed', 'plex.health', 'plex.verified', 'plex.conflict', 'plex.sync_completed',

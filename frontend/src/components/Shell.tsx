@@ -13,6 +13,7 @@ import type { HealthIndicator } from '../types'
 import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
+import { openLiveEvents } from '../lib/liveEvents'
 
 const primary = [
   { to: '/movies', label: 'Movies', icon: 'clapper' as const },
@@ -105,7 +106,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     void refreshReplaceCount()
     void refreshNewMediaCount()
 
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     // Every job reports here, the health sweep included, and the Upgrade and
     // Replace Media counts are not cheap: only a finished job that can change
     // them refreshes the badges.

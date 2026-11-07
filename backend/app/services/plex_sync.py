@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import asyncio
 from time import perf_counter
 from uuid import UUID
@@ -12,6 +14,8 @@ from app.models.domain import Job, JobStatus, MediaDirectory, Movie, MovieReleas
 from app.services.events import create_event
 from app.services.jobs import JobFailure, checkpoint_job, publish_job_status, run_job, update_job
 from app.services.plex import get_plex_configuration, recheck_movie_plex, recheck_show_plex, utcnow
+
+logger = logging.getLogger(__name__)
 
 
 async def run_plex_library_sync(job_id: UUID, storage_root_id: UUID | None = None) -> None:
@@ -111,6 +115,7 @@ async def run_plex_library_sync(job_id: UUID, storage_root_id: UUID | None = Non
             except asyncio.CancelledError:
                 raise
             except Exception:
+                logger.warning("Plex sync item failed", exc_info=True)
                 errors += 1
             progress = {
                 "current": index,

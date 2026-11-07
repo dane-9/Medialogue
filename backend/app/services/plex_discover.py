@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import asyncio
 from typing import Literal
 
@@ -7,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.plex_discover import PlexDiscoverClient, PlexExternalRating
 from app.services.integration_state import get_configured_plex
+
+logger = logging.getLogger(__name__)
 
 
 async def lookup_tmdb_ratings(
@@ -33,6 +37,7 @@ async def lookup_tmdb_ratings(
             try:
                 return tmdb_id, await client.get_rating(tmdb_id, kind)
             except Exception:
+                logger.debug("Plex Discover rating lookup failed", extra={"tmdb_id": tmdb_id}, exc_info=True)
                 # An unavailable Discover lookup must not make TMDB search
                 # unusable. Missing ratings are represented as absent fields.
                 return tmdb_id, None

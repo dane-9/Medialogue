@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pathlib import PurePosixPath
 from uuid import UUID
 
@@ -42,6 +44,8 @@ from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["shows"])
 
@@ -477,6 +481,7 @@ async def lookup_shows(
             try:
                 credits[item.tmdb_id] = await client.get_show_credits(item.tmdb_id)
             except Exception:
+                logger.debug("TMDB credits lookup failed", extra={"tmdb_id": item.tmdb_id}, exc_info=True)
                 credits[item.tmdb_id] = (None, ())
     except Exception as exc:
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Show lookup failed: {exc}", status_code=503) from exc

@@ -6,6 +6,8 @@ path, and checks qBittorrent and the media folders before anything is sent.
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import hashlib
 import json
@@ -42,6 +44,8 @@ from app.services.torrent_archive import (
     recovery_file_priorities,
     restore_torrent_archive,
 )
+
+logger = logging.getLogger(__name__)
 
 
 RECOVERY_REIMPORT_CONFIRMATION_TTL_SECONDS = 15 * 60
@@ -511,6 +515,7 @@ async def run_recovery_reimport(
             )
             await db.commit()
     except Exception as exc:
+        logger.warning("recovery re-import job failed", extra={"job_id": str(job_id)}, exc_info=True)
         async with db_session.async_session_factory() as db:
             job = await db.get(Job, job_id)
             if job is not None and job.status not in {JobStatus.CANCELLED, JobStatus.INTERRUPTED}:

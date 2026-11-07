@@ -31,6 +31,7 @@ from app.models.domain import (
 from app.services.reconciliation import reconcile_movie_directory
 from app.services.builtin_formats import BUILTIN_FORMATS, DEFAULT_FORMAT_SCORES
 from app.services.quality_profiles import minimum_quality_status
+from tests.test_interactive_search import get_search_job
 
 
 def _format_named(payload: dict, name: str) -> dict:
@@ -219,7 +220,7 @@ def test_interactive_search_scores_warns_below_minimum_and_preserves_snapshot(cl
     try:
         started = client.post(f"/api/v1/movies/{movie}/interactive-search", headers=headers)
         assert started.status_code == 202, started.text
-        payload = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()
+        payload = get_search_job(client, started.json()['job_id']).json()
         result = payload["results"][0]
         assert result["quality_profile_name"] == "Reference"
         assert result["custom_format_score"] == 750
@@ -241,7 +242,7 @@ def test_interactive_search_scores_warns_below_minimum_and_preserves_snapshot(cl
             "expected_revision": profile["revision"],
         })
         assert changed.status_code == 200, changed.text
-        same = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"][0]
+        same = get_search_job(client, started.json()['job_id']).json()["results"][0]
         assert same["custom_format_score"] == 750
         assert _format_named(same["custom_format_snapshot"], "Hybrid")["effective_score"] == 750
     finally:
@@ -381,7 +382,7 @@ def test_interactive_search_uses_profile_quality_order_before_format_score(clien
     try:
         started = client.post(f"/api/v1/movies/{movie}/interactive-search", headers=headers)
         assert started.status_code == 202, started.text
-        results = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"]
+        results = get_search_job(client, started.json()['job_id']).json()["results"]
         assert [item["quality"] for item in results] == ["1080p WEB-DL", "2160p BluRay REMUX", "720p WEB-DL"]
         assert results[0]["quality_allowed"] is True
         assert results[0]["quality_preference"] > results[1]["quality_preference"]

@@ -26,6 +26,7 @@ import { formatPeers, swarmHealth } from './lib/swarm'
 import { upgradeResultsToReleases } from './lib/upgradeResults'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import type { DownloadClient, UpgradeSearchResults } from './types'
+import { openLiveEvents } from './lib/liveEvents'
 
 const SEARCH_JOB = 'search_media_replacements'
 
@@ -129,7 +130,7 @@ export default function ReplaceMediaPage() {
       if (timer !== undefined) return
       timer = window.setTimeout(() => { timer = undefined; void loadRef.current() }, 800)
     }
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     const onJob = (event: MessageEvent<string>) => {
       const payload = parseJobStatusLiveEvent(event.data)
       if (!payload || payload.data.job_type !== SEARCH_JOB) return

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import session as db_session
 from app.models.domain import Job, JobStatus
 from app.services.events import publish_live_event
+
+logger = logging.getLogger(__name__)
 
 
 TERMINAL_JOB_STATES = frozenset(
@@ -195,6 +198,7 @@ async def run_job(
                 },
             )
         except Exception as exc:
+            logger.warning("job failed", extra={"job_id": str(job_id)}, exc_info=True)
             await db.rollback()
             job = await db.get(Job, job_id)
             if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED}:

@@ -18,6 +18,8 @@ of checking the whole library at once.
 
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -31,6 +33,8 @@ from app.services.events import create_event
 from app.services.integration_state import ConfiguredDownloadClient, list_configured_download_clients
 from app.services.jobs import checkpoint_job, run_job, update_job
 from app.services.torrent_archive import QBittorrentClientFactory, read_manifest, restore_torrent_archive
+
+logger = logging.getLogger(__name__)
 
 READD_JOB_TYPE = "readd_missing_torrents"
 
@@ -108,6 +112,7 @@ async def settle_checks(db: AsyncSession, *, client_factory: QBittorrentClientFa
                 try:
                     await _start(client, torrent.info_hash, client_factory)
                 except Exception:
+                    logger.warning("automatic re-add could not start torrent", extra={"info_hash": torrent.info_hash}, exc_info=True)
                     continue
             torrent.readd_state = SEEDING
             counts["started"] += 1

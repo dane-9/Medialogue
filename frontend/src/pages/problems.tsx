@@ -14,6 +14,7 @@ import { systemApi } from '../api/modules/system'
 import { updateUrlParams, useUrlNumber, useUrlState } from '../lib/urlState'
 import type { Movie, MovieRelease, Problem } from '../types'
 import { CUSTOM_EDITION, EditionDraft, Page, PosterImage, THEATRICAL_EDITION, TMDBCandidate, editionChoices, editionUpdate, tmdbPosterUrl } from './shared'
+import { openLiveEvents } from '../lib/liveEvents'
 
 function problemRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -422,7 +423,7 @@ export function ProblemsPage() {
 
   useEffect(() => { void load(1) }, [workflow, reasonFilter, severityFilter, queueStatus])
   useEffect(() => {
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     let timer: number | undefined
     const invalidate = () => {
       if (timer !== undefined) window.clearTimeout(timer)

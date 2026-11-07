@@ -17,7 +17,10 @@ question that matters, it needs no heuristics about naming, and it is wrong in
 an obvious way rather than a subtle one when it is wrong.
 """
 
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +126,7 @@ async def auto_select_episode_ordering(
             try:
                 group = await client.get_episode_group(summary.id)
             except Exception:
+                logger.debug("TMDB episode group unreadable", extra={"group_id": summary.id}, exc_info=True)
                 # One unreadable group must not stop the others being weighed.
                 continue
             if not group.seasons:
@@ -133,6 +137,7 @@ async def auto_select_episode_ordering(
                 episode_counts={number: len(episodes) for number, _, episodes in group.seasons},
             ))
     except Exception:
+        logger.debug("episode ordering detection skipped", exc_info=True)
         # Ordering detection is an improvement, never a reason for a scan to
         # fail: an unreachable TMDB leaves the show numbered as it was.
         return None

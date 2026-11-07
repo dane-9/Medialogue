@@ -364,6 +364,7 @@ async def refresh_observations_after_action(
     try:
         observations = await adapter.list_torrents()
     except Exception:
+        logger.debug("post-action qBittorrent refresh failed", exc_info=True)
         # The action itself already succeeded; a failed refresh only means the
         # table catches up on the next poll instead.
         return 0

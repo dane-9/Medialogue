@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -49,6 +51,8 @@ from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -228,6 +232,7 @@ async def lookup_movies(
             try:
                 credits[item.tmdb_id] = await client.get_movie_credits(item.tmdb_id)
             except Exception:
+                logger.debug("TMDB credits lookup failed", extra={"tmdb_id": item.tmdb_id}, exc_info=True)
                 credits[item.tmdb_id] = (None, ())
     except Exception as exc:
         raise AppError("TMDB_UNAVAILABLE", f"TMDB Movie lookup failed: {exc}", status_code=503) from exc

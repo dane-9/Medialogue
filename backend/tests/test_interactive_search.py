@@ -24,6 +24,21 @@ from app.models.domain import IdentityState, InteractiveSearchResult, Job, Media
 from app.services.qbittorrent import _selected_tracker_title
 
 
+def get_search_job(client, job_id: str, *, timeout: float = 5.0):
+    """Read a search job once its runtime worker has finished."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while True:
+        response = client.get(f"/api/v1/search-jobs/{job_id}")
+        if response.status_code != 200 or response.json()["status"] not in {"queued", "running"}:
+            return response
+        if time.monotonic() > deadline:
+            raise AssertionError(f"search job {job_id} did not finish: {response.text}")
+        time.sleep(0.02)
+
+
+
 def _format_named(payload: dict, name: str) -> dict:
     """Pick one evaluated format by name.
 
@@ -123,6 +138,7 @@ class FakeTorznabBehavior:
     results_by_url: dict[str, list[SearchResult]] = field(default_factory=dict)
     results_by_season: dict[int, list[SearchResult]] = field(default_factory=dict)
     errors_by_url: dict[str, str] = field(default_factory=dict)
+    hanging_urls: set[str] = field(default_factory=set)
     health_title: str = "Prowlarr Test Indexer"
     fetched: list[str] = field(default_factory=list)
     expected_media_type: str = "movies"
@@ -150,6 +166,8 @@ class FakeTorznabClient:
         error = self.behavior.errors_by_url.get(self.url)
         if error:
             raise RuntimeError(error)
+        if self.url in self.behavior.hanging_urls:
+            await asyncio.sleep(60)
         assert media_type == self.behavior.expected_media_type
         assert tmdb_id == self.behavior.expected_tmdb_id
         assert self.behavior.expected_query_text in query
@@ -312,6 +330,40 @@ def test_indexer_crud_redacts_api_key_and_tests_connection(client: TestClient) -
         client.app.dependency_overrides.clear()
 
 
+def test_cancelling_a_running_search_stops_its_indexer_queries(client: TestClient) -> None:
+    import time
+
+    from app.services import runtime_jobs
+
+    headers = _login(client)
+    movie_resource = _seed_movie()
+    stuck = "http://prowlarr.test/9/api"
+    _create_indexer(client, headers, name="Stuck", url=stuck, scope="movies")
+    behavior = FakeTorznabBehavior(hanging_urls={stuck})
+    client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: behavior.factory
+    try:
+        started = client.post(f"/api/v1/movies/{movie_resource}/interactive-search", headers=headers)
+        assert started.status_code == 202, started.text
+        job_id = started.json()["job_id"]
+        deadline = time.monotonic() + 5
+        while client.get(f"/api/v1/search-jobs/{job_id}").json()["status"] != "running":
+            assert time.monotonic() < deadline, "search never started"
+            time.sleep(0.02)
+        assert uuid.UUID(job_id) in runtime_jobs._runtime_tasks
+
+        cancelled = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=headers)
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "cancelled"
+        # The live worker stops now, not after the stuck indexer times out.
+        deadline = time.monotonic() + 2
+        while uuid.UUID(job_id) in runtime_jobs._runtime_tasks:
+            assert time.monotonic() < deadline, "search worker kept running after cancel"
+            time.sleep(0.02)
+        assert get_search_job(client, job_id).json()["status"] == "cancelled"
+    finally:
+        client.app.dependency_overrides.clear()
+
+
 def test_movie_search_fans_out_preserves_partial_results_and_parses_release_names(client: TestClient) -> None:
     headers = _login(client)
     movie_resource = _seed_movie()
@@ -359,7 +411,7 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
     try:
         started = client.post(f"/api/v1/movies/{movie_resource}/interactive-search", headers=headers)
         assert started.status_code == 202, started.text
-        job = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}")
+        job = get_search_job(client, started.json()['job_id'])
         assert job.status_code == 200, job.text
         payload = job.json()
         assert payload["status"] == "completed"
@@ -395,7 +447,7 @@ def test_movie_search_fans_out_preserves_partial_results_and_parses_release_name
             },
         )
         assert edited.status_code == 200, edited.text
-        unchanged = client.get(f"/api/v1/search-jobs/{started.json()['job_id']}").json()["results"]
+        unchanged = get_search_job(client, started.json()['job_id']).json()["results"]
         same_first = next(item for item in unchanged if item["id"] == first["id"])
         assert custom_format_id in same_first["custom_format_snapshot"]["matched_format_ids"]
 
@@ -456,7 +508,7 @@ def test_selected_search_result_submits_to_eligible_qbit_and_is_idempotent(clien
             },
         ).json()
         started = client.post(f"/api/v1/movies/{movie_resource}/interactive-search", headers=headers).json()
-        result = client.get(f"/api/v1/search-jobs/{started['job_id']}").json()["results"][0]
+        result = get_search_job(client, started['job_id']).json()["results"][0]
 
         wrong = client.post(
             f"/api/v1/search-results/{result['id']}/download",
@@ -488,7 +540,7 @@ def test_selected_search_result_submits_to_eligible_qbit_and_is_idempotent(clien
         assert repeat.json()["status"] == "already_submitted"
         assert len(qbit.submissions) == 1
 
-        persisted = client.get(f"/api/v1/search-jobs/{started['job_id']}").json()["results"][0]
+        persisted = get_search_job(client, started['job_id']).json()["results"][0]
         assert persisted["selected_at"] is not None
         assert persisted["selected_download_client_id"] == qbit_client["id"]
     finally:
@@ -586,7 +638,7 @@ def test_unattached_movie_search_commits_only_after_explicit_qbit_download(clien
         )
         assert started.status_code == 202, started.text
         job_id = started.json()["job_id"]
-        job = client.get(f"/api/v1/search-jobs/{job_id}")
+        job = get_search_job(client, job_id)
         assert job.status_code == 200, job.text
         payload = job.json()
         assert payload["target"]["entity_type"] == "tmdb_movie"
@@ -743,7 +795,7 @@ def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(clien
             json={"tmdb_id": 95396, "quality_profile_id": profile_id, "season_number": 1},
         )
         assert s1.status_code == 202, s1.text
-        s1_job = client.get(f"/api/v1/search-jobs/{s1.json()['job_id']}")
+        s1_job = get_search_job(client, s1.json()['job_id'])
         assert s1_job.status_code == 200, s1_job.text
         assert s1_job.json()["target"]["entity_type"] == "tmdb_show_season"
         assert s1_job.json()["target"]["season"] == 1
@@ -757,7 +809,7 @@ def test_unattached_show_season_tabs_only_return_packs_and_commit_one_show(clien
             json={"tmdb_id": 95396, "quality_profile_id": profile_id, "season_number": 2},
         )
         assert s2.status_code == 202, s2.text
-        s2_job = client.get(f"/api/v1/search-jobs/{s2.json()['job_id']}")
+        s2_job = get_search_job(client, s2.json()['job_id'])
         assert s2_job.status_code == 200, s2_job.text
 
         async def show_before_download():

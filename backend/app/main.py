@@ -100,7 +100,11 @@ async def lifespan(_: FastAPI):
             await ensure_default_schedules(db)
             await db.commit()
     except Exception:
-        logger.warning("database bootstrap skipped", exc_info=True)
+        # Seeding, interrupted-job recovery and default schedules all live
+        # here. Serving requests without them means a half-initialized
+        # database, so a failure stops startup instead of being a warning.
+        logger.critical("database bootstrap failed; refusing to start", exc_info=True)
+        raise
     stop_event = asyncio.Event()
     poll_task = asyncio.create_task(_qbittorrent_poll_loop(stop_event))
     scheduler_task = asyncio.create_task(run_scheduler_loop(stop_event))

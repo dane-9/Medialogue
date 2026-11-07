@@ -13,6 +13,7 @@ import { contextMenuSelection, toggleIdSelection } from '../lib/uiState'
 import type { Download, DownloadClient } from '../types'
 import { Page, PosterImage } from './shared'
 import { DeleteDownloadsModal } from '../components/DeleteDownloadsModal'
+import { openLiveEvents } from '../lib/liveEvents'
 
 // The Downloads status rail, in qBittorrent's spirit: one row per filter with a
 // live count. Groups are ordered so the everyday activity filters come first
@@ -397,7 +398,7 @@ export function DownloadsPage() {
       'torrent.reappeared', 'torrent.archived', 'torrent.archive_failed', 'torrent.tracker_unregistered',
       'torrent.tracker_recovered', 'upgrade.execution', 'qbittorrent.health',
     ]
-    const stream = new EventSource('/api/v1/events/stream', { withCredentials: true })
+    const stream = openLiveEvents()
     stream.addEventListener('download.progress', onProgress)
     structural.forEach((name) => stream.addEventListener(name, reload))
     const speeds = window.setInterval(() => { if (visible()) void load(false) }, 10_000)

@@ -15,6 +15,8 @@ access to the folder can use those tracker accounts.
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import base64
 import hashlib
@@ -41,6 +43,8 @@ from app.db import session as db_session
 from app.models.domain import Job, JobStatus
 from app.services.jobs import update_job
 from app.services.torrent_archive import _atomic_write, recovery_revision
+
+logger = logging.getLogger(__name__)
 
 DRIVE = "https://www.googleapis.com/drive/v3/files"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
@@ -559,6 +563,7 @@ async def run_remote_backup(job_id: UUID) -> None:
                                    "errors": mirrored["errors"], "database": database},
                           error={"code": "REMOTE_BACKUP_PARTIAL", "message": changes["last_error"]} if failed else None)
         except Exception as exc:
+            logger.warning("remote backup job failed", extra={"job_id": str(job_id)}, exc_info=True)
             message = exc.message if isinstance(exc, AppError) else str(exc)
             update_backup_settings({"last_error": message})
             await _finish(job_id, status=JobStatus.FAILED, error={"code": "REMOTE_BACKUP_FAILED", "message": message})

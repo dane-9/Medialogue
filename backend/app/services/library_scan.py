@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -24,6 +26,8 @@ from app.services.shows import mark_absent_show_directories, reconcile_show_dire
 from app.services.plex import get_plex_configuration
 from app.services.plex_sync import run_plex_library_sync
 from app.services.runtime_jobs import launch_runtime_job
+
+logger = logging.getLogger(__name__)
 
 
 _root_locks: defaultdict[UUID, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -75,6 +79,7 @@ async def run_storage_root_scan(job_id: UUID, root_id: UUID) -> None:
                 await execute_storage_root_scan(db, root, job)
                 await db.commit()
             except Exception as exc:
+                logger.warning("storage root scan failed", extra={"job_id": str(job_id)}, exc_info=True)
                 await db.rollback()
                 job = await db.get(Job, job_id)
                 root = await db.get(StorageRoot, root_id)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -29,6 +31,8 @@ from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
 from app.services.jobs import update_job
 from app.services.quality_profiles import load_effective_profile, load_quality_profile_for_search, minimum_quality_status
+
+logger = logging.getLogger(__name__)
 
 TorznabClientFactory = Callable[..., TorznabClient]
 SEARCH_RESULT_TTL = timedelta(hours=24)
@@ -316,6 +320,7 @@ async def run_search_job(
             task.cancel()
         raise
     except Exception as exc:
+        logger.warning("interactive search job failed", extra={"job_id": str(job_id)}, exc_info=True)
         async with db_session.async_session_factory() as db:
             job = await db.get(Job, job_id)
             if job is not None and job.status not in {JobStatus.CANCELLED, JobStatus.COMPLETED}:
