@@ -171,7 +171,7 @@ function IdentityCard({ source, identity, tmdbId, poster, tone }: { source: stri
     </div>
     <div className="identity-copy">
       <span className="identity-source">{source}</span>
-      <strong title={identity}>{identity ?? 'Not recorded'}</strong>
+      <strong>{identity ?? 'Not recorded'}</strong>
       {/* The id is what actually settles the dispute. Nothing is shown when
           there is none: Plex artwork and ids are not captured, and a line
           announcing that on every card says nothing about this title. */}
@@ -255,7 +255,7 @@ function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; dupl
     if (qbitParts) rows.push(['qBittorrent path', qbitParts.name, qbitParts.parent])
   }
   if (!rows.length) rows.push(['Affected media', problem.subject, problem.entityType ? `${problem.entityType} evidence` : undefined])
-  return <section className="problems-key-details">{rows.map(([label, value, note], index) => <div className="problems-detail-row" key={`${label}-${index}`}><span>{label}</span><div><strong title={value}>{value}</strong>{note && <small>{note}</small>}</div></div>)}</section>
+  return <section className="problems-key-details">{rows.map(([label, value, note], index) => <div className="problems-detail-row" key={`${label}-${index}`}><span>{label}</span><div><strong>{value}</strong>{note && <small>{note}</small>}</div></div>)}</section>
 }
 
 function initialEditionDraft(release: MovieRelease, options: string[]): EditionDraft {

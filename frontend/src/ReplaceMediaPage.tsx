@@ -81,7 +81,12 @@ export default function ReplaceMediaPage() {
   const [statusChosen, setStatusChosen] = useState(false)
   const [selectedRoot, setSelectedRoot] = useState('')
   const [hiddenReasons, setHiddenReasons] = useState<Set<ReplaceReasonCode>>(loadHiddenReasons)
+  // Rows ticked by hand. A row with a replacement found starts ticked for
+  // Download (like Upgrade Media) unless unticked; Ignore and Search only
+  // ever act on rows ticked by hand.
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [unticked, setUnticked] = useState<Set<string>>(new Set())
+  const clearPicks = () => { clearPicks(); setUnticked(new Set()) }
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
@@ -189,19 +194,22 @@ export default function ReplaceMediaPage() {
   }, [reasonItems])
   const rootName = roots.some((entry) => entry.name === selectedRoot) ? selectedRoot : roots[0]?.name ?? ''
   const rows = useMemo(() => reasonItems.filter((item) => (item.root_name ?? UNKNOWN_FOLDER) === rootName), [reasonItems, rootName])
-  const chosen = rows.filter((item) => picked.has(item.target_key))
   const searchable = (item: ReplacementItem) => (item.tab === 'needs_search' || item.tab === 'found')
   const dismissable = (item: ReplacementItem) => Boolean(item.reason_code) && item.tab !== 'in_progress'
   const downloadable = (item: ReplacementItem) => item.tab === 'found' && Boolean(item.candidate_id)
   const pickable = (item: ReplacementItem) => searchable(item) || dismissable(item) || downloadable(item)
-  const togglePicked = (key: string) => setPicked((current) => {
-    const next = new Set(current)
-    if (!next.delete(key)) next.add(key)
-    return next
-  })
-  const chooseStatus = (value: ReplaceStatus) => { setStatus(value); setStatusChosen(true); setPicked(new Set()) }
-  const chooseRoot = (name: string) => { setSelectedRoot(name); setPicked(new Set()) }
-  const setHidden = (next: Set<ReplaceReasonCode>) => { setHiddenReasons(next); saveHiddenReasons(next); setPicked(new Set()) }
+  const checked = (item: ReplacementItem) => picked.has(item.target_key) || (downloadable(item) && !unticked.has(item.target_key))
+  const chosen = rows.filter(checked)
+  const handPicked = rows.filter((item) => picked.has(item.target_key))
+  const without = (set: Set<string>, key: string) => { const next = new Set(set); next.delete(key); return next }
+  const togglePicked = (item: ReplacementItem) => {
+    const key = item.target_key
+    if (checked(item)) { setPicked((current) => without(current, key)); setUnticked((current) => new Set(current).add(key)) }
+    else { setPicked((current) => new Set(current).add(key)); setUnticked((current) => without(current, key)) }
+  }
+  const chooseStatus = (value: ReplaceStatus) => { setStatus(value); setStatusChosen(true); clearPicks() }
+  const chooseRoot = (name: string) => { setSelectedRoot(name); clearPicks() }
+  const setHidden = (next: Set<ReplaceReasonCode>) => { setHiddenReasons(next); saveHiddenReasons(next); clearPicks() }
   const toggleReason = (code: ReplaceReasonCode) => {
     const next = new Set(hiddenReasons)
     if (!next.delete(code)) next.add(code)
@@ -212,14 +220,14 @@ export default function ReplaceMediaPage() {
   const search = (targets: ReplacementItem[] | 'all') => act('search', async () => {
     if (targets === 'all') { await replacementsApi.search(); setBulkProgress(0) }
     else for (const item of targets) await replacementsApi.search(item.target_key)
-    setPicked(new Set())
+    clearPicks()
     setMessage('Searching for replacements. Results appear as they are found; nothing is downloaded automatically.')
   })
 
   const decide = (targets: ReplacementItem[], action: 'ignore' | 'restore') => act('decide', async () => {
     const reviewed = targets.flatMap((item) => item.reason_code ? [{ target_key: item.target_key, reason: item.reason_code }] : [])
     if (reviewed.length) await replacementsApi.review(reviewed, action)
-    setPicked(new Set())
+    clearPicks()
   })
 
   // A torrent only missing from qBittorrent goes back from the archive, so its
@@ -241,21 +249,23 @@ export default function ReplaceMediaPage() {
       : `Re-adding ${item.title} ${job?.state ?? 'failed'}. Check Tasks for details.`)
   })
 
+  // Searches the trackers again for this title, then lists every release.
   const openResults = async (item: ReplacementItem) => {
-    if (!item.candidate_id) return
     setResultsTarget(item); setResults(null); setError('')
     try {
-      const value = await upgradesApi.upgradeSearchResults(item.candidate_id)
+      const value = await replacementsApi.searchNow(item.target_key)
       setResults(value)
       setFullSelectedId(value.results.find((entry) => entry.selected)?.id ?? value.results.find((entry) => entry.recommended)?.id ?? '')
+      if (value.indexerFailures) setMessage(`${value.indexerFailures} indexer${value.indexerFailures === 1 ? '' : 's'} did not answer; the list shows what the others returned.`)
+      void load()
     } catch (reason) {
       setResultsTarget(null)
-      setError(reason instanceof Error ? reason.message : 'Could not load the last search.')
+      setError(reason instanceof Error ? reason.message : 'Could not search the trackers.')
     }
   }
 
-  const chooseResult = (item: ReplacementItem, resultId: string) => act(item.target_key, async () => {
-    await upgradesApi.selectUpgradeSearchResult(item.candidate_id!, resultId)
+  const chooseResult = (candidateId: string, resultId: string) => act('choose', async () => {
+    await upgradesApi.selectUpgradeSearchResult(candidateId, resultId)
   })
 
   const toDownload = chosen.filter(downloadable)
@@ -278,7 +288,7 @@ export default function ReplaceMediaPage() {
         failures.push(`${item.title}: ${reason instanceof Error ? reason.message : 'submission failed'}`)
       }
     }
-    setPicked(new Set())
+    clearPicks()
     if (submitted) {
       chooseStatus('in_progress')
       setMessage(`${submitted === 1 ? 'Replacement' : `${submitted} replacements`} submitted. Follow them under In progress.`)
@@ -311,9 +321,9 @@ export default function ReplaceMediaPage() {
   const statusInfo = STATUSES.find((entry) => entry.value === shownStatus)!
   const anyFound = rows.some(downloadable)
   const fullReleases = useMemo(() => (
-    resultsTarget && results ? upgradeResultsToReleases(results, resultsTarget.candidate_id ?? '', resultsTarget.media_type ?? 'movies') : []
+    resultsTarget && results ? upgradeResultsToReleases(results, results.candidateId, resultsTarget.media_type ?? 'movies') : []
   ), [resultsTarget, results])
-  const toSearch = chosen.filter(searchable)
+  const toSearch = handPicked.filter(searchable)
 
   return <div className="page replace-page">
     <PageTopbar
@@ -417,7 +427,7 @@ export default function ReplaceMediaPage() {
           {!rows.length && <div className="upgrade-v2-empty">{statusItems.length && !reasonItems.length ? 'Every reason with titles here is switched off.' : statusInfo.empty}</div>}
           {rows.map((item) => {
             const isPickable = pickable(item)
-            const on = isPickable && picked.has(item.target_key)
+            const on = isPickable && checked(item)
             const delta = (item.candidate_score ?? 0) - (item.current_score ?? 0)
             // How much larger or smaller the replacement is than what was lost.
             const sizeDelta = item.candidate_size != null && item.current_size != null ? item.candidate_size - item.current_size : undefined
@@ -427,7 +437,7 @@ export default function ReplaceMediaPage() {
             const sub = [item.year ? `${item.year}` : undefined, item.season_number != null ? `Season ${item.season_number}` : undefined,
               qualityLabel(item.current_quality) || undefined].filter(Boolean).join(' · ')
             // With no details pane, the row itself is the checkbox.
-            const open = () => { if (isPickable) togglePicked(item.target_key) }
+            const open = () => { if (isPickable) togglePicked(item) }
             // Only words the quality change explains are lit: a replacement is
             // usually another group's equal copy, so merely differing is not
             // a reason to call a word better.
@@ -459,7 +469,7 @@ export default function ReplaceMediaPage() {
                   aria-label={`Select ${item.title}`}
                   className={`new-media-check ${on ? 'on' : ''}`}
                   disabled={!isPickable}
-                  onClick={(event) => { event.stopPropagation(); togglePicked(item.target_key) }}
+                  onClick={(event) => { event.stopPropagation(); togglePicked(item) }}
                 >{on && <Icon name="check" size={11} />}</button>
                 <Poster item={item} />
                 <span className="new-media-match-copy upgrade-v2-title">
@@ -488,7 +498,7 @@ export default function ReplaceMediaPage() {
                 </span>
                 <div className="upgrade-v2-side">
                   <div className="upgrade-v2-line">
-                    <span className="upgrade-v2-release" title={item.current_release ?? undefined}>{item.current_release && item.current_release !== item.title ? breakable(item.current_release) : '—'}</span>
+                    <span className="upgrade-v2-release">{item.current_release && item.current_release !== item.title ? breakable(item.current_release) : '—'}</span>
                   </div>
                   <small className="upgrade-v2-score">{item.current_score != null ? `CF: ${item.current_score}` : ''}</small>
                 </div>
@@ -497,7 +507,7 @@ export default function ReplaceMediaPage() {
                 <div className="upgrade-v2-side">
                   <div className="upgrade-v2-line">
                     {item.candidate_title
-                      ? <span className="upgrade-v2-release" title={item.candidate_title}>{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
+                      ? <span className="upgrade-v2-release">{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
                         <span className="upgrade-token-sep">{token.sep}</span>{token.sep && <wbr />}
                         <span className={lit[index] ? 'upgrade-token-new quality' : 'upgrade-token-same'}>{token.text}</span>
                       </Fragment>) : breakable(item.candidate_title)}</span>
@@ -550,13 +560,9 @@ export default function ReplaceMediaPage() {
                 {item.readdable && item.tab !== 'in_progress' && <Tooltip asChild content="Re-add to qBittorrent from the archive">
                   <button type="button" className="icon-button" aria-label={`Re-add ${item.title} to qBittorrent`} disabled={Boolean(busy)} onClick={() => void readd(item)}><Icon name="download" size={15} /></button>
                 </Tooltip>}
-                {item.tab === 'found' && item.candidate_id
-                  ? <Tooltip asChild content="View all releases">
-                    <button type="button" className="icon-button" aria-label={`View all releases for ${item.title}`} onClick={() => void openResults(item)}><Icon name="search" size={15} /></button>
-                  </Tooltip>
-                  : searchable(item) && !item.searching && <Tooltip asChild content="Search now">
-                    <button type="button" className="icon-button" aria-label={`Search for ${item.title}`} disabled={busy === 'search'} onClick={() => void search([item])}><Icon name="search" size={15} /></button>
-                  </Tooltip>}
+                {(searchable(item) || downloadable(item)) && <Tooltip asChild content="View all releases">
+                  <button type="button" className="icon-button" aria-label={`View all releases for ${item.title}`} onClick={() => void openResults(item)}><Icon name="search" size={15} /></button>
+                </Tooltip>}
               </span>
             </div>
           })}
@@ -570,7 +576,7 @@ export default function ReplaceMediaPage() {
           {shownStatus === 'ignored'
             ? <Button variant="secondary" icon="refresh" disabled={!chosen.length || Boolean(busy)} onClick={() => void decide(chosen, 'restore')}>Return to queue</Button>
             : shownStatus === 'all' && <>
-              <Button variant="ghost" disabled={!chosen.some(dismissable) || Boolean(busy)} onClick={() => void decide(chosen.filter(dismissable), 'ignore')}>Ignore</Button>
+              <Button variant="ghost" disabled={!handPicked.some(dismissable) || Boolean(busy)} onClick={() => void decide(handPicked.filter(dismissable), 'ignore')}>Ignore</Button>
               {toSearch.length
                 ? <Button variant={anyFound ? 'secondary' : 'primary'} icon="search" disabled={Boolean(busy)} onClick={() => void search(toSearch)}>{`Search ${toSearch.length} ${toSearch.length === 1 ? 'title' : 'titles'}`}</Button>
                 : <Button variant="secondary" icon="search" disabled={Boolean(busy) || bulkProgress !== null || !statusCounts.all} onClick={() => void search('all')}>Search all</Button>}
@@ -618,7 +624,7 @@ export default function ReplaceMediaPage() {
       eyebrow={resultsTarget.season_number != null ? `SEASON ${resultsTarget.season_number}` : 'REPLACE MEDIA'}
       className="upgrade-results-modal"
       onClose={() => setResultsTarget(null)}
-      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Loading the last search…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.eligible} onClick={() => { void chooseResult(resultsTarget, fullSelectedId); setResultsTarget(null) }}>Use this result</Button></>}
+      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Searching the trackers…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.eligible} onClick={() => { if (results?.candidateId) void chooseResult(results.candidateId, fullSelectedId); setResultsTarget(null) }}>Use this result</Button></>}
     >
       <div className="upgrade-results-current">
         {(() => {
@@ -647,7 +653,7 @@ export default function ReplaceMediaPage() {
             </>
           }}
           label={`Replacement search results for ${resultsTarget.title}`}
-          empty="No cached releases were returned. Search again to refresh them."
+          empty="The trackers returned no releases for this title."
         />
       </div>}
     </Modal>}

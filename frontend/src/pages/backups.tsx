@@ -137,7 +137,7 @@ export function TorrentArchiveSection() {
         if (gap) return <tr key={row.key}>
           <td><div className="row-with-poster"><RowPoster reference={gap.poster_ref} mediaType={gap.media_type} /><div className="archive-title">
             <strong>{gap.title}{gap.year ? <span> {gap.year}</span> : null}{gap.season_number != null ? <span> · Season {gap.season_number}</span> : null}</strong>
-            <span className="archive-release" title={gap.release_name}>{gap.release_name}</span>
+            <span className="archive-release">{gap.release_name}</span>
           </div></div></td>
           <td className="archive-num">-</td>
           <td className="archive-when">-</td>
@@ -152,7 +152,7 @@ export function TorrentArchiveSection() {
         return <tr key={row.key}>
           <td><div className="row-with-poster"><RowPoster reference={torrent.posterRef} mediaType={torrent.mediaType} /><div className="archive-title">
             <strong>{torrent.mediaTitle ?? release}{torrent.mediaTitle && torrent.mediaYear ? <span> {torrent.mediaYear}</span> : null}</strong>
-            {torrent.mediaTitle ? <span className="archive-release" title={release}>{release}</span> : <span className="archive-release">Not linked to the library</span>}
+            {torrent.mediaTitle ? <span className="archive-release">{release}</span> : <span className="archive-release">Not linked to the library</span>}
             {torrent.sourceState === 'unregistered' && <span className="archive-lost">Removed from tracker</span>}
           </div></div></td>
           <td className="archive-num">{formatSize(torrent.totalSize)}</td>

@@ -756,6 +756,35 @@ async def run_replacement_search(job_id: UUID, *, target_key: str | None = None,
     await run_job(job_id, worker, failure_code="REPLACEMENT_SEARCH_FAILED", failure_message="Replacement search failed")
 
 
+async def search_replacement_now(db: AsyncSession, target_key: str, *, client_factory=TorznabClient):
+    """Search the trackers for one title right away and return every release found.
+
+    The best equal-or-better release is kept for review, as a scheduled search
+    would; the rest come back so the user can see and pick from all of them.
+    Returns the candidate row (None when nothing qualified), the results, when
+    it searched, and how many indexers failed.
+    """
+
+    entry = next((item for item in await replacement_targets(db) if item.target.target_key == target_key), None)
+    if entry is None:
+        raise AppError("NOT_FOUND", "This title is no longer in Replace Media.", status_code=404)
+    indexers = await list_configured_indexers(db)
+    best, results, failures, success = await _search_target(db, target=entry.target, indexers=indexers, client_factory=client_factory)
+    searched_at = datetime.now(timezone.utc)
+    if not success:
+        raise AppError("INDEXERS_FAILED", "Every indexer failed to answer. Check them in Settings and try again.", status_code=502)
+    await _persist_candidate(db, target=entry.target, candidate=best, search_results=results, searched_at=searched_at)
+    review = (await _reviews(db, [target_key])).get(target_key)
+    if review is None:
+        review = ReplacementReview(target_key=target_key)
+        db.add(review)
+    review.last_search_at = searched_at
+    review.last_search_result = "candidate" if best else "no_match"
+    await db.commit()
+    row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.target_key == target_key))
+    return row, results, searched_at, failures
+
+
 async def revalidate_replacement(db: AsyncSession, row: UpgradeCandidate) -> None:
     # Only the media behind this candidate is re-evaluated, not the library.
     movie_ids: set[UUID] = set()

@@ -636,7 +636,6 @@ export function DownloadsPage() {
         key={member.id}
         role="row"
         className={`download-cross-seed-member ${selected.has(MEMBER_PREFIX + member.id) ? 'row-selected' : ''}`}
-        title="Click to select only this torrent; right-click for actions"
         onClick={(event) => { event.stopPropagation(); rowClick(event, MEMBER_PREFIX + member.id) }}
         onContextMenu={(event) => openContext(event, MEMBER_PREFIX + member.id)}
       ><span><Icon name="tracker" size={13} /><strong>{member.trackerHost ?? 'Unknown tracker'}</strong></span><code>{member.infoHash?.slice(0, 12) ?? 'unknown hash'}…</code><span>{member.client}</span><Badge tone={member.trackerState === 'healthy' ? 'green' : member.trackerState === 'degraded' ? 'amber' : member.trackerState === 'unknown' ? 'neutral' : 'red'}>{member.trackerState}</Badge><span>{activityLabel(member)}</span><span className="download-speed up">{member.uploadSpeed}</span></div>)}</div></td></tr>}</Fragment>

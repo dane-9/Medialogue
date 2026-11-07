@@ -146,6 +146,14 @@ def test_replacement_queue_search_review_and_submission_share_existing_execution
         await run_replacement_search(again_id, only_new=True, client_factory=behavior.factory)
         async with db_session.async_session_factory() as db:
             assert (await db.get(Job, again_id)).summary["targets"] == 0
+        # Searching one title now lists every release, eligible or not, and
+        # keeps the best one.
+        from app.services.replacements import search_replacement_now
+        async with db_session.async_session_factory() as db:
+            row, results, _, failures = await search_replacement_now(db, item["target_key"], client_factory=behavior.factory)
+            assert row is not None and row.title == behavior.movie_results[0].title
+            assert len(results) == 2 and sum(bool(value["eligible"]) for value in results) == 1
+            assert failures == 0
     asyncio.run(search())
     item = client.get("/api/v1/replacements").json()["items"][0]
     assert item["candidate_title"] == behavior.movie_results[0].title

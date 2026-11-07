@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.upgrades import MediaHistoryItem
+from datetime import datetime
+
+from app.schemas.upgrades import MediaHistoryItem, UpgradeSearchResultResponse
 from app.services.media_history import finished_history, history_snapshot
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
@@ -26,7 +28,7 @@ from app.schemas.replacements import (
 from app.services.events import create_event
 from app.services.jobs import create_job
 from app.services.runtime_jobs import launch_runtime_job
-from app.services.replacements import NO_TORRENT, SEARCH_JOB_TYPE, replacement_queue, run_replacement_search
+from app.services.replacements import NO_TORRENT, SEARCH_JOB_TYPE, replacement_queue, run_replacement_search, search_replacement_now
 from app.api import downloads as downloads_api
 
 router = APIRouter(prefix="/replacements", tags=["replacements"])
@@ -97,6 +99,38 @@ async def search(payload: ReplacementSearchRequest, _: object = Depends(require_
     await db.commit()
     launch_runtime_job(job.id, lambda: run_replacement_search(job.id, target_key=payload.target_key))
     return JobAcceptedResponse(job_id=job.id)
+
+
+class ReplacementSearchNowRequest(BaseModel):
+    target_key: str = Field(min_length=1, max_length=150)
+
+
+class ReplacementSearchNowResponse(BaseModel):
+    #: The kept replacement, when one qualified.
+    candidate_id: UUID | None = None
+    searched_at: datetime
+    results: list[UpgradeSearchResultResponse]
+    indexer_failures: int = 0
+
+
+@router.post("/search-now", response_model=ReplacementSearchNowResponse)
+async def search_now(payload: ReplacementSearchNowRequest, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)):
+    """Search the trackers for one title now and list every release found."""
+
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.api.upgrades import _search_result_response
+
+    row, results, searched_at, failures = await search_replacement_now(db, payload.target_key)
+    # Nothing kept means nothing is selected; the rows still describe themselves.
+    anchor = row or SimpleNamespace(id=uuid4(), guid=None, indexer_id=None, title=None)
+    return ReplacementSearchNowResponse(
+        candidate_id=row.id if row else None,
+        searched_at=searched_at,
+        results=[_search_result_response(anchor, value, position=index) for index, value in enumerate(results)],
+        indexer_failures=failures,
+    )
 
 
 @router.get("/history", response_model=list[MediaHistoryItem])

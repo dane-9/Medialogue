@@ -581,7 +581,7 @@ export default function CustomFormatsPageView() {
 function FormatCard({ format, toggling, onToggle, onOpen, onDuplicate }: { format: CustomFormat; toggling: boolean; onToggle: () => void; onOpen: () => void; onDuplicate: () => void }) {
   return <article className={`cf-card ${format.enabled ? '' : 'cf-card-off'}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen() } }}>
     <div className="cf-card-head">
-      <strong title={format.name}>{format.name}</strong>
+      <strong>{format.name}</strong>
       <span className="cf-card-badges">
         {format.builtin && <Badge tone="blue">Built-in</Badge>}
         <button type="button" className={`enabled-button cf-card-toggle ${format.enabled ? 'on' : 'off'}`} aria-pressed={format.enabled} aria-label={`Turn ${format.name} ${format.enabled ? 'off' : 'on'}`} disabled={toggling} onClick={(event) => { event.stopPropagation(); onToggle() }}>{toggling ? 'Saving…' : format.enabled ? 'On' : 'Off'}</button>

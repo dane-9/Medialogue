@@ -262,7 +262,7 @@ function ReleaseEvidenceRow({ release }: { release: MovieRelease; torrents?: Tor
     </Tooltip>
     <div className="release-main">
       <strong title={directory?.path}>{folder ?? release.name}</strong>
-      {separateFile && <small title={separateFile}>{separateFile}</small>}
+      {separateFile && <small>{separateFile}</small>}
     </div>
     {/* A number belongs in a column, not in a pill among the format tags: as a
         pill it read as another attribute of the release rather than as the

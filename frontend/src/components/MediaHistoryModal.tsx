@@ -42,9 +42,9 @@ export function MediaHistoryModal({ title, load, empty, onClose }: {
               <span className="media-history-when">{formatAge(item.finished_at)}</span>
             </div>
             <div className="media-history-change">
-              <span className="media-history-old" title={item.old_release ?? undefined}>{item.old_release ?? '—'}</span>
+              <span className="media-history-old">{item.old_release ?? '—'}</span>
               <Icon name="arrow" size={13} />
-              <span className="media-history-new" title={item.new_release ?? undefined}>{item.new_release ?? '—'}</span>
+              <span className="media-history-new">{item.new_release ?? '—'}</span>
             </div>
             <div className="media-history-foot">
               {(item.old_quality || item.new_quality) && <small>{qualityLabel(item.old_quality ?? undefined) || item.old_quality || '?'} → {qualityLabel(item.new_quality ?? undefined) || item.new_quality || '?'}</small>}

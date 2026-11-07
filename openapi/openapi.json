@@ -9357,6 +9357,60 @@
         "title": "ReplacementReviewResponse",
         "type": "object"
       },
+      "ReplacementSearchNowRequest": {
+        "properties": {
+          "target_key": {
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Target Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_key"
+        ],
+        "title": "ReplacementSearchNowRequest",
+        "type": "object"
+      },
+      "ReplacementSearchNowResponse": {
+        "properties": {
+          "candidate_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "indexer_failures": {
+            "default": 0,
+            "title": "Indexer Failures",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeSearchResultResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "searched_at": {
+            "format": "date-time",
+            "title": "Searched At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "searched_at",
+          "results"
+        ],
+        "title": "ReplacementSearchNowResponse",
+        "type": "object"
+      },
       "ReplacementSearchRequest": {
         "properties": {
           "target_key": {
@@ -19570,6 +19624,48 @@
           }
         },
         "summary": "Search",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
+    "/api/v1/replacements/search-now": {
+      "post": {
+        "description": "Search the trackers for one title now and list every release found.",
+        "operationId": "search_now_api_v1_replacements_search_now_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplacementSearchNowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplacementSearchNowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Now",
         "tags": [
           "replacements"
         ]

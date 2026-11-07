@@ -1894,6 +1894,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/replacements/search-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Now
+         * @description Search the trackers for one title now and list every release found.
+         */
+        post: operations["search_now_api_v1_replacements_search_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/replacements/{candidate_id}/finish": {
         parameters: {
             query?: never;
@@ -5911,6 +5931,28 @@ export interface components {
         ReplacementReviewResponse: {
             /** Updated */
             updated: number;
+        };
+        /** ReplacementSearchNowRequest */
+        ReplacementSearchNowRequest: {
+            /** Target Key */
+            target_key: string;
+        };
+        /** ReplacementSearchNowResponse */
+        ReplacementSearchNowResponse: {
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /**
+             * Indexer Failures
+             * @default 0
+             */
+            indexer_failures: number;
+            /** Results */
+            results: components["schemas"]["UpgradeSearchResultResponse"][];
+            /**
+             * Searched At
+             * Format: date-time
+             */
+            searched_at: string;
         };
         /** ReplacementSearchRequest */
         ReplacementSearchRequest: {
@@ -11148,6 +11190,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_now_api_v1_replacements_search_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplacementSearchNowRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplacementSearchNowResponse"];
                 };
             };
             /** @description Validation Error */

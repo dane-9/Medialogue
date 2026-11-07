@@ -480,7 +480,7 @@ function ProfileCard({ profile, formatById, onOpen, onDuplicate }: { profile: Qu
   >
     <div className="cf-card-head">
       {/* Truncated names stay readable on hover. */}
-      <strong title={profile.name}>{profile.name}</strong>
+      <strong>{profile.name}</strong>
       <span className="cf-card-badges">
         {profile.isDefault && <Tooltip asChild content="Titles without a profile of their own use this one"><Badge tone="green">Default</Badge></Tooltip>}
         {/* Only floors that are actually set. "No minimum" and "Any score" are
