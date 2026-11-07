@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { formatAge } from '../lib/age'
 import { Link } from 'react-router-dom'
 import { Note } from '../components/settings'
@@ -8,7 +8,7 @@ import { blocklistApi } from '../api/modules/blocklist'
 import { toggleIdSelection } from '../lib/uiState'
 import type { BlocklistEntry } from '../types'
 import { Page } from './shared'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveRefresh } from '../lib/liveRefresh'
 
 export function BlocklistPage() {
   const confirm = useConfirm()
@@ -22,13 +22,7 @@ export function BlocklistPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load the blocklist.') }
     finally { setLoading(false) }
   }
-  useEffect(() => {
-    void load()
-    const stream = openLiveEvents()
-    stream.addEventListener('blocklist.changed', load)
-    stream.addEventListener('download.failed', load)
-    return () => stream.close()
-  }, [])
+  useLiveRefresh(load, { events: ['blocklist.changed', 'download.failed'], immediate: true })
 
   const remove = async (ids: string[]) => {
     if (!ids.length) return

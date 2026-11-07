@@ -15,6 +15,7 @@ import type { TorrentArchiveItem, Job, RecoveryReimportPlan } from '../types'
 import { EventSortHeader, tmdbPosterUrl } from './shared'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { useVirtualRows } from '../components/VirtualList'
+import { useLiveRefresh } from '../lib/liveRefresh'
 
 /** A small poster for list rows, or the movie/show icon when there is none. */
 function RowPoster({ reference, mediaType }: { reference?: string | null; mediaType?: string | null }) {
@@ -178,15 +179,11 @@ export function RecoveryReimportSection({ refreshKey = 0 }: { refreshKey?: numbe
   const [message, setMessage] = useState<Message>(null)
   const [reimportBusy, setReimportBusy] = useState(false)
 
-  useEffect(() => {
-    if (!reimportJob || !['queued', 'running'].includes(reimportJob.state)) return
-    let alive = true
-    const refresh = async () => {
-      try { const value = await systemApi.job(reimportJob.id); if (alive) setReimportJob(value) } catch {}
-    }
-    const timer = window.setInterval(() => void refresh(), 1500)
-    return () => { alive = false; window.clearInterval(timer) }
-  }, [reimportJob?.id, reimportJob?.state])
+  const reimportRunning = Boolean(reimportJob && ['queued', 'running'].includes(reimportJob.state))
+  useLiveRefresh(async () => {
+    if (!reimportJob) return
+    try { setReimportJob(await systemApi.job(reimportJob.id)) } catch { /* the next tick retries */ }
+  }, { pollMs: 1500, enabled: reimportRunning, onlyWhenVisible: false })
 
   const inspectReimport = async () => {
     setReimportBusy(true); setMessage(null)

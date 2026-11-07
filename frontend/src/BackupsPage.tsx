@@ -11,6 +11,7 @@ import { formatAge } from './lib/age'
 import { formatBytes } from './components/ReleaseResults'
 import { RecoveryReimportSection, TorrentArchiveSection } from './pages/backups'
 import type { Job } from './types'
+import { useLiveRefresh } from './lib/liveRefresh'
 
 const DATABASE_INTERVALS = [
   { value: 43200, label: 'Every 12 hours' },
@@ -70,9 +71,8 @@ export default function BackupsPage() {
       if (nextStatus.active_job_id) setBackupJobId(nextStatus.active_job_id)
     } catch (reason) { setMessage(failed(reason, 'Could not load backup status.')) }
   }
-  useEffect(() => { void load() }, [])
   // Scheduled copies run every few minutes; keep the status line current.
-  useEffect(() => { const timer = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(timer) }, [])
+  useLiveRefresh(load, { pollMs: 30_000, immediate: true })
 
   const backupJob = useJob(backupJobId, () => void load())
   const backingUp = backupJob ? ['queued', 'running'].includes(backupJob.state) : false

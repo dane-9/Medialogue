@@ -13,7 +13,10 @@ import type { HealthIndicator } from '../types'
 import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveRefresh } from '../lib/liveRefresh'
+
+const problemEvents = ['problem.created', 'problem.updated', 'problem.resolved', 'problem.deleted']
+const healthEvents = ['plex.health', 'tmdb.health', 'indexer.health', 'storage_root.health', 'qbittorrent.health']
 
 const primary = [
   { to: '/movies', label: 'Movies', icon: 'clapper' as const },
@@ -88,67 +91,43 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     void refreshNewMediaCount()
   }, [location.pathname, refreshNewMediaCount])
 
+  const refreshProblemCount = () => problemsApi.problemCount('open').then((count) => setProblemCount(count)).catch(() => undefined)
+  const refreshUpgradeCount = () => upgradesApi.upgradeCandidateCount().then((value) => setUpgradeCount(value.count)).catch(() => undefined)
+  // Replace Media items that wait on the user: lost sources to search or
+  // choose for, and finished replacements awaiting a cleanup decision.
+  const refreshReplaceCount = () => replacementsApi.count().then((value) => setReplaceCount(value)).catch(() => undefined)
+  const refreshHealth = () => systemApi.health().then((payload) => { if (payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
+  const refreshPlexAvailability = () => integrationsApi.plexConfiguration().then((configuration) => {
+    setPlexAvailable(configuration.configured && configuration.enabled && configuration.token_configured)
+  }).catch(() => undefined)
+  const refreshHealthAndPlex = () => { void refreshHealth(); void refreshPlexAvailability() }
+  // Every job reports on job.status, the health sweep included, and the
+  // Upgrade and Replace Media counts are not cheap: only a finished job that
+  // can change them refreshes the badges.
+  const badgeJob = (event: MessageEvent<string>, name: string) => name !== 'job.status' || jobEventChangesBadges(event.data)
+
+  // Problem events are invalidation signals only. SQLite remains the
+  // authoritative count, so reconnects, rollbacks and duplicate-resolution
+  // events can never leave the badge drifting from the queue.
+  useLiveRefresh(refreshProblemCount, { events: problemEvents, pollMs: 300_000, immediate: true })
+  useLiveRefresh(refreshUpgradeCount, { events: ['job.status'], when: badgeJob, pollMs: 300_000, immediate: true })
+  useLiveRefresh(refreshReplaceCount, {
+    events: ['job.status', 'upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished'],
+    when: badgeJob,
+    pollMs: 300_000,
+    immediate: true,
+  })
+  useLiveRefresh(refreshNewMediaCount, { events: ['job.status'], when: badgeJob, pollMs: 60_000 })
+  useLiveRefresh(refreshHealthAndPlex, { events: healthEvents, pollMs: 60_000, immediate: true })
+
   useEffect(() => {
-    let alive = true
-    const refreshProblemCount = () => problemsApi.problemCount('open').then((count) => { if (alive) setProblemCount(count) }).catch(() => undefined)
-    const refreshUpgradeCount = () => upgradesApi.upgradeCandidateCount().then((value) => { if (alive) setUpgradeCount(value.count) }).catch(() => undefined)
-    const refreshHealth = () => systemApi.health().then((payload) => { if (alive && payload.indicators?.length) setHealth(payload.indicators) }).catch(() => undefined)
-    const refreshPlexAvailability = () => integrationsApi.plexConfiguration().then((configuration) => {
-      if (alive) setPlexAvailable(configuration.configured && configuration.enabled && configuration.token_configured)
-    }).catch(() => undefined)
-    void refreshHealth()
-    void refreshPlexAvailability()
-    void refreshProblemCount()
-    // Replace Media items that wait on the user: lost sources to search or
-    // choose for, and finished replacements awaiting a cleanup decision.
-    const refreshReplaceCount = () => replacementsApi.count().then((value) => { if (alive) setReplaceCount(value) }).catch(() => undefined)
-    void refreshUpgradeCount()
-    void refreshReplaceCount()
-    void refreshNewMediaCount()
-
-    const stream = openLiveEvents()
-    // Every job reports here, the health sweep included, and the Upgrade and
-    // Replace Media counts are not cheap: only a finished job that can change
-    // them refreshes the badges.
-    const jobListener = (event: MessageEvent<string>) => {
-      if (!jobEventChangesBadges(event.data)) return
-      void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount()
-    }
-    ;['upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished']
-      .forEach((name) => stream.addEventListener(name, () => void refreshReplaceCount()))
-    // Problem SSE events are invalidation signals only. SQLite remains the
-    // authoritative count, so reconnects, rollbacks and duplicate-resolution
-    // events can never leave the badge drifting from the queue.
-    const problemChangedListener = () => void refreshProblemCount()
-    const healthListener = () => { void refreshHealth(); void refreshPlexAvailability() }
-    stream.addEventListener('job.status', jobListener)
-    stream.addEventListener('problem.created', problemChangedListener)
-    stream.addEventListener('problem.updated', problemChangedListener)
-    stream.addEventListener('problem.resolved', problemChangedListener)
-    stream.addEventListener('problem.deleted', problemChangedListener)
-    stream.addEventListener('plex.health', healthListener)
-    stream.addEventListener('tmdb.health', healthListener)
-    stream.addEventListener('indexer.health', healthListener)
-    stream.addEventListener('storage_root.health', healthListener)
-    stream.addEventListener('qbittorrent.health', healthListener)
-
-    const problemTimer = window.setInterval(refreshProblemCount, 300000)
-    const upgradeTimer = window.setInterval(() => { void refreshUpgradeCount(); void refreshReplaceCount() }, 300000)
     const newMediaChangedListener = () => void refreshNewMediaCount()
     const plexConfigurationChangedListener = () => { void refreshPlexAvailability(); void refreshHealth() }
     window.addEventListener('medialogue-new-media-changed', newMediaChangedListener)
     window.addEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
-    const newMediaTimer = window.setInterval(() => void refreshNewMediaCount(), 60000)
-    const healthTimer = window.setInterval(() => { void refreshHealth(); void refreshPlexAvailability() }, 60000)
     return () => {
-      alive = false
-      stream.close()
-      window.clearInterval(problemTimer)
-      window.clearInterval(upgradeTimer)
-      window.clearInterval(newMediaTimer)
       window.removeEventListener('medialogue-new-media-changed', newMediaChangedListener)
       window.removeEventListener('medialogue-plex-configuration-changed', plexConfigurationChangedListener)
-      window.clearInterval(healthTimer)
       newMediaCountGeneration.current += 1
     }
   }, [refreshNewMediaCount])

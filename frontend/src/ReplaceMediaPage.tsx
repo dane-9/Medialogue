@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { PageTopbar } from './components/Shell'
 import { upgradesApi } from './api/modules/upgrades'
 import { formatEta } from './api/mappers/downloads'
@@ -27,7 +27,7 @@ import { formatPeers, swarmHealth } from './lib/swarm'
 import { upgradeResultsToReleases } from './lib/upgradeResults'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import type { DownloadClient, UpgradeSearchResults } from './types'
-import { openLiveEvents } from './lib/liveEvents'
+import { useLiveEvent, useLiveRefresh } from './lib/liveRefresh'
 
 const SEARCH_JOB = 'search_media_replacements'
 
@@ -124,38 +124,37 @@ export default function ReplaceMediaPage() {
   downloadingRef.current = items.some((item) => item.execution_state === 'downloading' || item.execution_state === 'submitted')
 
   // Live: search progress, handoff state and tracker changes refresh the list.
-  useEffect(() => {
-    void loadRef.current()
-    let timer: number | undefined
-    const reload = () => {
-      if (timer !== undefined) return
-      timer = window.setTimeout(() => { timer = undefined; void loadRef.current() }, 800)
-    }
-    const stream = openLiveEvents()
-    const onJob = (event: MessageEvent<string>) => {
-      const payload = parseJobStatusLiveEvent(event.data)
-      if (!payload || payload.data.job_type !== SEARCH_JOB) return
-      const { status, progress } = payload.data
-      if (status === 'running' || status === 'queued') setBulkProgress(typeof progress.percent === 'number' ? progress.percent : 0)
-      else { setBulkProgress(null); reload() }
-    }
-    stream.addEventListener('job.status', onJob)
-    // Live progress, speed and ETA: at most one reload every five seconds.
-    let progressTimer: number | undefined
-    stream.addEventListener('download.progress', () => {
-      if (!downloadingRef.current || progressTimer !== undefined) return
-      progressTimer = window.setTimeout(() => { progressTimer = undefined; void loadRef.current() }, 5000)
-    })
-    ;['upgrade.execution', 'upgrade.candidate', 'torrent.tracker_unregistered', 'torrent.tracker_recovered',
-      'download.completed', 'replacement.finished'].forEach((name) => stream.addEventListener(name, reload))
-    const fallback = window.setInterval(() => { if (document.visibilityState !== 'hidden') void loadRef.current() }, 60_000)
-    return () => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      if (progressTimer !== undefined) window.clearTimeout(progressTimer)
-      window.clearInterval(fallback)
-      stream.close()
-    }
-  }, [])
+  // Bulk search progress shows in the toolbar; a finished search reloads.
+  const searchJob = (data: string) => {
+    const payload = parseJobStatusLiveEvent(data)
+    return payload && payload.data.job_type === SEARCH_JOB ? payload.data : null
+  }
+  useLiveEvent(['job.status'], (event) => {
+    const job = searchJob(event.data)
+    if (!job) return
+    if (job.status === 'running' || job.status === 'queued') setBulkProgress(typeof job.progress.percent === 'number' ? job.progress.percent : 0)
+    else setBulkProgress(null)
+  })
+  useLiveRefresh(() => loadRef.current(), {
+    events: ['job.status', 'upgrade.execution', 'upgrade.candidate', 'torrent.tracker_unregistered',
+      'torrent.tracker_recovered', 'download.completed', 'replacement.finished'],
+    when: (event, name) => {
+      if (name !== 'job.status') return true
+      const job = searchJob(event.data)
+      return Boolean(job && job.status !== 'running' && job.status !== 'queued')
+    },
+    coalesceMs: 800,
+    pollMs: 60_000,
+    immediate: true,
+  })
+  // Live progress, speed and ETA: at most one reload every five seconds, and
+  // only while something is downloading.
+  useLiveRefresh(() => loadRef.current(), {
+    events: ['download.progress'],
+    when: () => downloadingRef.current,
+    coalesceMs: 5000,
+    refreshOnVisible: false,
+  })
 
   const act = async (key: string, run: () => Promise<void>) => {
     setBusy(key); setError(''); setMessage('')

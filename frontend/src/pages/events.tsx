@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { eventLabel, eventStamp } from '../lib/eventLabel'
 import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
@@ -9,7 +9,17 @@ import { systemApi } from '../api/modules/system'
 import { useUrlNumber, useUrlState } from '../lib/urlState'
 import type { EventHistoryItem } from '../types'
 import { EventSortHeader, Page, indexerBadgePreview } from './shared'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveRefresh } from '../lib/liveRefresh'
+
+// Live events that are also written to Events, so the list has a new row.
+const durableEvents = [
+  'download.completed', 'scan.completed', 'scan.failed', 'plex.health', 'plex.verified', 'plex.conflict', 'plex.sync_completed',
+  'problem.created', 'problem.resolved', 'storage_root.unavailable', 'storage_root.restored', 'release.replaced',
+  'media.missing', 'media.present', 'media.reappeared', 'torrent.detected', 'torrent.removed', 'torrent.reappeared',
+  'search.download_submitted', 'show.metadata_refreshed', 'qbittorrent.health',
+  'tag.created', 'tag.updated', 'tag.deleted', 'movie.tags_updated', 'movie.monitoring_updated',
+  'quality_profile.assignment_updated', 'parser.reevaluated', 'custom_formats.reevaluated', 'bulk.operation_completed',
+]
 
 export function EventHistoryPage() {
   const confirm = useConfirm()
@@ -53,25 +63,17 @@ export function EventHistoryPage() {
 
   useEffect(() => { setPage(1) }, [eventType, severity, entityType, pageSize, sort])
 
+  const refreshRef = useRef<() => Promise<void>>(async () => undefined)
   useEffect(() => {
     let alive = true
     const refresh = () => systemApi.events({ eventType: eventType || undefined, severity: severity || undefined, entityType: entityType || undefined, sort, page, pageSize }).then((payload) => {
       if (alive) { setEvents(payload.items); setTotal(payload.total); setPages(payload.pages); setError('') }
     }).catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load events.') }).finally(() => { if (alive) setLoading(false) })
+    refreshRef.current = refresh
     void refresh()
-    const stream = openLiveEvents()
-    const onDurableEvent = () => void refresh()
-    ;[
-      'download.completed', 'scan.completed', 'scan.failed', 'plex.health', 'plex.verified', 'plex.conflict', 'plex.sync_completed',
-      'problem.created', 'problem.resolved', 'storage_root.unavailable', 'storage_root.restored', 'release.replaced',
-      'media.missing', 'media.present', 'media.reappeared', 'torrent.detected', 'torrent.removed', 'torrent.reappeared',
-      'search.download_submitted', 'show.metadata_refreshed', 'qbittorrent.health',
-      'tag.created', 'tag.updated', 'tag.deleted', 'movie.tags_updated', 'movie.monitoring_updated',
-      'quality_profile.assignment_updated', 'parser.reevaluated', 'custom_formats.reevaluated', 'bulk.operation_completed',
-    ].forEach((name) => stream.addEventListener(name, onDurableEvent))
-    const timer = window.setInterval(refresh, 30000)
-    return () => { alive = false; stream.close(); window.clearInterval(timer) }
+    return () => { alive = false }
   }, [eventType, severity, entityType, page, pageSize, sort])
+  useLiveRefresh(() => refreshRef.current(), { events: durableEvents, coalesceMs: 500, pollMs: 30_000 })
 
   const removeEvent = async (item: EventHistoryItem) => {
     if (!await confirm({

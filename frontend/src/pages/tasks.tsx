@@ -7,7 +7,7 @@ import { systemApi } from '../api/modules/system'
 import { isTaskOverdue } from '../lib/taskTiming'
 import type { Job, ScheduledTask } from '../types'
 import { Page } from './shared'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveRefresh } from '../lib/liveRefresh'
 
 function taskInterval(seconds: number) {
   if (seconds < 60) return `${seconds} seconds`
@@ -68,14 +68,8 @@ export function TasksPage() {
     finally { if (foreground) setLoading(false) }
   }
 
-  useEffect(() => {
-    void load(true)
-    const stream = openLiveEvents()
-    const changed = () => void load()
-    stream.addEventListener('job.status', changed)
-    const timer = window.setInterval(changed, 10_000)
-    return () => { stream.close(); window.clearInterval(timer) }
-  }, [])
+  useEffect(() => { void load(true) }, [])
+  useLiveRefresh(() => load(), { events: ['job.status'], pollMs: 10_000 })
 
   // The server data only needs its normal ten-second refresh. A local clock
   // keeps countdowns and running durations accurate without extra API calls.

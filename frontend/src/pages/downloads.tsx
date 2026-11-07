@@ -13,7 +13,14 @@ import { contextMenuSelection, toggleIdSelection } from '../lib/uiState'
 import type { Download, DownloadClient } from '../types'
 import { Page, PosterImage } from './shared'
 import { DeleteDownloadsModal } from '../components/DeleteDownloadsModal'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveEvent, useLiveRefresh } from '../lib/liveRefresh'
+
+// Events that change which rows exist or what they show, beyond progress.
+const structuralDownloadEvents = [
+  'download.completed', 'download.failed', 'download.cancelled', 'torrent.detected', 'torrent.removed',
+  'torrent.reappeared', 'torrent.archived', 'torrent.archive_failed', 'torrent.tracker_unregistered',
+  'torrent.tracker_recovered', 'upgrade.execution', 'qbittorrent.health',
+]
 
 // The Downloads status rail, in qBittorrent's spirit: one row per filter with a
 // live count. Groups are ordered so the everyday activity filters come first
@@ -367,52 +374,23 @@ export function DownloadsPage() {
   // patch rows in place, structural events trigger one debounced reload, and
   // a slow timer picks up speeds/ETA (which events do not carry).
   const refreshFacetsRef = useRef<() => Promise<void>>(async () => undefined)
-  useEffect(() => {
-    let reloadTimer: number | undefined
-    const visible = () => document.visibilityState !== 'hidden'
-    const reload = () => {
-      if (reloadTimer !== undefined) return
-      reloadTimer = window.setTimeout(() => {
-        reloadTimer = undefined
-        if (!visible()) return
-        void load(false)
-        void refreshFacetsRef.current()
-      }, 1000)
-    }
-    const onProgress = (event: MessageEvent<string>) => {
-      let payload: { data?: { torrent_id?: unknown; client_id?: unknown; state?: unknown; progress?: unknown } }
-      try { payload = JSON.parse(event.data) } catch { return }
-      const data = payload?.data
-      if (!data || typeof data.torrent_id !== 'string') return
-      setItems((current) => current.map((item) => (
-        item.torrentId === data.torrent_id && (typeof data.client_id !== 'string' || item.clientId === data.client_id)
-          ? applyProgressUpdate(item, {
-            state: typeof data.state === 'string' ? data.state : undefined,
-            progress: typeof data.progress === 'number' ? data.progress : undefined,
-          })
-          : item
-      )))
-    }
-    const structural = [
-      'download.completed', 'download.failed', 'download.cancelled', 'torrent.detected', 'torrent.removed',
-      'torrent.reappeared', 'torrent.archived', 'torrent.archive_failed', 'torrent.tracker_unregistered',
-      'torrent.tracker_recovered', 'upgrade.execution', 'qbittorrent.health',
-    ]
-    const stream = openLiveEvents()
-    stream.addEventListener('download.progress', onProgress)
-    structural.forEach((name) => stream.addEventListener(name, reload))
-    const speeds = window.setInterval(() => { if (visible()) void load(false) }, 10_000)
-    const counts = window.setInterval(() => { if (visible()) void refreshFacetsRef.current() }, 30_000)
-    const onVisibility = () => { if (visible()) reload() }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      if (reloadTimer !== undefined) window.clearTimeout(reloadTimer)
-      window.clearInterval(speeds)
-      window.clearInterval(counts)
-      document.removeEventListener('visibilitychange', onVisibility)
-      stream.close()
-    }
-  }, [])
+  useLiveEvent(['download.progress'], (event) => {
+    let payload: { data?: { torrent_id?: unknown; client_id?: unknown; state?: unknown; progress?: unknown } }
+    try { payload = JSON.parse(event.data) } catch { return }
+    const data = payload?.data
+    if (!data || typeof data.torrent_id !== 'string') return
+    setItems((current) => current.map((item) => (
+      item.torrentId === data.torrent_id && (typeof data.client_id !== 'string' || item.clientId === data.client_id)
+        ? applyProgressUpdate(item, {
+          state: typeof data.state === 'string' ? data.state : undefined,
+          progress: typeof data.progress === 'number' ? data.progress : undefined,
+        })
+        : item
+    )))
+  })
+  useLiveRefresh(() => { void load(false); void refreshFacetsRef.current() }, { events: structuralDownloadEvents, coalesceMs: 1000 })
+  useLiveRefresh(() => load(false), { pollMs: 10_000, refreshOnVisible: false })
+  useLiveRefresh(() => refreshFacetsRef.current(), { pollMs: 30_000, refreshOnVisible: false })
 
   // Fall back to the first configured client when the stored one is gone.
   const activeClientId = clients.some((client) => client.id === clientId) ? clientId : clients[0]?.id ?? ''

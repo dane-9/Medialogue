@@ -25,7 +25,7 @@ import { settingsApi } from '../api/modules/settings'
 import { upgradesApi } from '../api/modules/upgrades'
 import type { DownloadClient, InteractiveSearchResult, QualityProfile, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults } from '../types'
 import { MIXED_PROFILE, Page, defaultProfileLabel, libraryInvalidationEvents, tmdbPosterUrl } from './shared'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveEvent, useLiveRefresh } from '../lib/liveRefresh'
 
 /** A score change, signed: +5, −10, ±0. */
 function formatScoreDelta(value: number) {
@@ -218,51 +218,35 @@ export function UpgradeMediaPage() {
       // A missed refresh is retried by the next event or the poll.
     }
   }
-  useEffect(() => {
-    let timer: number | undefined
-    const visible = () => document.visibilityState !== 'hidden'
-    const reload = () => {
-      if (timer !== undefined) return
-      timer = window.setTimeout(() => { timer = undefined; if (visible()) void loadLiveRef.current() }, 500)
-    }
-    const onProgress = (event: MessageEvent<string>) => {
-      let payload: { data?: Record<string, unknown> }
-      try { payload = JSON.parse(event.data) } catch { return }
-      const data = payload?.data
-      if (!data || typeof data.torrent_id !== 'string') return
-      const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
-      setItems((current) => {
-        let changed = false
-        const next = current.map((item) => {
-          if (item.torrentId !== data.torrent_id) return item
-          if (typeof data.client_id === 'string' && item.selectedDownloadClientId && item.selectedDownloadClientId !== data.client_id) return item
-          changed = true
-          return {
-            ...item,
-            downloadProgress: number(data.progress) ?? item.downloadProgress,
-            downloadState: typeof data.state === 'string' ? data.state : item.downloadState,
-            downloadSpeed: number(data.download_speed) ?? item.downloadSpeed,
-            downloadEtaSeconds: number(data.eta_seconds) ?? item.downloadEtaSeconds,
-          }
-        })
-        return changed ? next : current
+  useLiveEvent(['download.progress'], (event) => {
+    let payload: { data?: Record<string, unknown> }
+    try { payload = JSON.parse(event.data) } catch { return }
+    const data = payload?.data
+    if (!data || typeof data.torrent_id !== 'string') return
+    const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
+    setItems((current) => {
+      let changed = false
+      const next = current.map((item) => {
+        if (item.torrentId !== data.torrent_id) return item
+        if (typeof data.client_id === 'string' && item.selectedDownloadClientId && item.selectedDownloadClientId !== data.client_id) return item
+        changed = true
+        return {
+          ...item,
+          downloadProgress: number(data.progress) ?? item.downloadProgress,
+          downloadState: typeof data.state === 'string' ? data.state : item.downloadState,
+          downloadSpeed: number(data.download_speed) ?? item.downloadSpeed,
+          downloadEtaSeconds: number(data.eta_seconds) ?? item.downloadEtaSeconds,
+        }
       })
-    }
-    const structural = libraryInvalidationEvents.filter((name) => name !== 'download.progress')
-    const stream = openLiveEvents()
-    stream.addEventListener('download.progress', onProgress)
-    structural.forEach((name) => stream.addEventListener(name, reload))
-    // A safety net for missed events, not the refresh itself.
-    const poll = window.setInterval(() => { if (visible()) void loadLiveRef.current() }, 30_000)
-    const onVisibility = () => { if (visible()) reload() }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      window.clearInterval(poll)
-      document.removeEventListener('visibilitychange', onVisibility)
-      stream.close()
-    }
-  }, [])
+      return changed ? next : current
+    })
+  })
+  // Structural changes reload; the timer is a safety net for missed events.
+  useLiveRefresh(() => loadLiveRef.current(), {
+    events: libraryInvalidationEvents.filter((name) => name !== 'download.progress'),
+    coalesceMs: 500,
+    pollMs: 30_000,
+  })
 
   useEffect(() => {
     if (!confirming || !clientId) { setCategories([]); setCategory(''); return }

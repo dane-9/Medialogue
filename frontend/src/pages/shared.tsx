@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { badgeColor } from '../lib/badgeColor'
 import { useNavigate } from 'react-router-dom'
@@ -9,7 +8,7 @@ import { PageTopbar } from '../components/Shell'
 import { Badge } from '../components/ui'
 import type { MediaTorrentStatus, MovieEditionUpdate, QualityProfile, TMDBShowLookup, TMDBMovieLookup } from '../types'
 import { parseJobStatusLiveEvent } from '../validation/liveEvents'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveRefresh } from '../lib/liveRefresh'
 
 // TMDB serves posters at fixed widths. A library card or table thumbnail asks
 // for one near its own size: the full w500 image is several times the bytes
@@ -40,46 +39,18 @@ export const libraryInvalidationEvents = [
 ] as const
 
 export function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000, watchScanJobs = false) {
-  const refreshRef = useRef(refresh)
-  refreshRef.current = refresh
-
-  useEffect(() => {
-    let refreshTimer: number | undefined
-    let stopped = false
-    const run = () => {
-      if (!stopped && document.visibilityState !== 'hidden') void refreshRef.current()
-    }
-    // Throttle high-frequency scan progress to at most a couple of REST reads
-    // per second while still making newly discovered rows appear during a scan.
-    const invalidate = () => {
-      if (refreshTimer !== undefined) return
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = undefined
-        run()
-      }, 500)
-    }
-
-    const stream = openLiveEvents()
-    libraryInvalidationEvents.forEach((name) => stream.addEventListener(name, invalidate))
-    const scanJobChanged = (event: MessageEvent<string>) => {
-      if (!watchScanJobs) return
+  // Coalesced so high-frequency scan progress costs at most a couple of REST
+  // reads per second while newly discovered rows still appear during a scan.
+  useLiveRefresh(refresh, {
+    events: watchScanJobs ? [...libraryInvalidationEvents, 'job.status'] : libraryInvalidationEvents,
+    when: (event, name) => {
+      if (name !== 'job.status') return true
       const payload = parseJobStatusLiveEvent(event.data)
-      if (payload && (payload.data.job_type === 'storage_root_scan' || payload.data.job_type === 'reconciliation')) invalidate()
-    }
-    if (watchScanJobs) stream.addEventListener('job.status', scanJobChanged)
-    const poll = window.setInterval(run, pollIntervalMs)
-    const onVisibility = () => { if (document.visibilityState === 'visible') invalidate() }
-    document.addEventListener('visibilitychange', onVisibility)
-
-    return () => {
-      stopped = true
-      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
-      window.clearInterval(poll)
-      document.removeEventListener('visibilitychange', onVisibility)
-      if (watchScanJobs) stream.removeEventListener('job.status', scanJobChanged)
-      stream.close()
-    }
-  }, [pollIntervalMs, watchScanJobs])
+      return Boolean(payload && (payload.data.job_type === 'storage_root_scan' || payload.data.job_type === 'reconciliation'))
+    },
+    coalesceMs: 500,
+    pollMs: pollIntervalMs,
+  })
 }
 
 /** Library filter as a single select. */

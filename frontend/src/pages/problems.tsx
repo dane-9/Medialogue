@@ -14,7 +14,7 @@ import { systemApi } from '../api/modules/system'
 import { updateUrlParams, useUrlNumber, useUrlState } from '../lib/urlState'
 import type { Movie, MovieRelease, Problem } from '../types'
 import { CUSTOM_EDITION, EditionDraft, Page, PosterImage, THEATRICAL_EDITION, TMDBCandidate, editionChoices, editionUpdate, tmdbPosterUrl } from './shared'
-import { openLiveEvents } from '../lib/liveEvents'
+import { useLiveRefresh } from '../lib/liveRefresh'
 
 function problemRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -422,16 +422,10 @@ export function ProblemsPage() {
   reloadCurrent.current = () => void load(page, true)
 
   useEffect(() => { void load(1) }, [workflow, reasonFilter, severityFilter, queueStatus])
-  useEffect(() => {
-    const stream = openLiveEvents()
-    let timer: number | undefined
-    const invalidate = () => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = window.setTimeout(() => reloadCurrent.current(), 150)
-    }
-    stream.addEventListener('problem.created', invalidate); stream.addEventListener('problem.updated', invalidate); stream.addEventListener('problem.resolved', invalidate); stream.addEventListener('problem.deleted', invalidate)
-    return () => { if (timer !== undefined) window.clearTimeout(timer); stream.close() }
-  }, [])
+  useLiveRefresh(() => reloadCurrent.current(), {
+    events: ['problem.created', 'problem.updated', 'problem.resolved', 'problem.deleted'],
+    coalesceMs: 150,
+  })
   useEffect(() => { integrationsApi.plexConfiguration().then(setPlexConfiguration).catch(() => undefined) }, [])
 
   const visible = items.filter((problem) => !search.trim() || [problem.title, problem.subject, problem.detail, problem.code].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
