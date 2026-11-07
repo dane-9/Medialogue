@@ -308,7 +308,9 @@ DEFAULT_EXCLUDED_QUALITY_DEFINITIONS: frozenset[str] = frozenset({
 })
 
 
-DEFAULT_FORMAT_SCORES: dict[str, int] = {
+#: The first defaults, kept so an install's profile can tell which scores it
+#: still has at their original value and move just those to the new ones.
+DEFAULT_FORMAT_SCORES_V1: dict[str, int] = {
     # Video: efficient modern codecs first, legacy codecs last.
     "video-av1": 40,
     "video-hevc": 35,
@@ -357,6 +359,66 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "web-itunes": 0,
     "web-movies-anywhere": 0,
 }
+
+#: Scores rank tiers, not formats: two releases equally good in a part (any
+#: lossless audio, any codec) score the same there, so swapping one for the
+#: other is never an upgrade.
+DEFAULT_FORMAT_SCORES: dict[str, int] = {
+    # Video: the codec alone never makes an upgrade.
+    "video-av1": 0,
+    "video-hevc": 0,
+    "video-avc": 0,
+    "video-vc1": 0,
+    "video-mpeg2": -5,
+    # Audio: lossless with objects, lossless, lossy with objects, good lossy,
+    # basic lossy, low. Within a tier, 5-point nudges keep the preferred order
+    # (TrueHD over DTS:X, FLAC over PCM) for choosing between results; they
+    # are below the minimum gain, so they never make an upgrade on their own.
+    "audio-truehd-atmos": 60,
+    "audio-truehd": 55,
+    "audio-dtsx": 50,
+    "audio-dtshd-ma": 50,
+    "audio-flac": 50,
+    "audio-pcm": 45,
+    "audio-ddplus-atmos": 30,
+    "audio-dtshd-hra": 15,
+    "audio-ddplus": 15,
+    "audio-dts-es": 15,
+    "audio-dts": 0,
+    "audio-dd": 0,
+    "audio-aac": -10,
+    "audio-opus": -10,
+    # Dynamic range: anything with Dolby Vision above anything without; HLG is
+    # avoided; SDR or no tag is neutral.
+    "hdr-dv-hdr10-plus": 60,
+    "hdr-dv-hdr10": 55,
+    "hdr-dolby-vision": 50,
+    "hdr-hdr10-plus": 40,
+    "hdr-hdr10": 30,
+    "hdr-hlg": -50,
+    "hdr-sdr": 0,
+    "attr-repack-proper": 20,
+    "attr-proper": 18,
+    "attr-rerip": 16,
+    "attr-hybrid": 10,
+    "attr-internal-limited": 0,
+    "attr-re-encode": -40,
+    "web-amzn": 0,
+    "web-dsnp": 0,
+    "web-nf": 0,
+    "web-atvp": 0,
+    "web-bcore": 25,
+    "web-max": 0,
+    "web-hulu": 0,
+    "web-paramount": 0,
+    "web-sho": 0,
+    "web-peacock": 0,
+    "web-itunes": 0,
+    "web-movies-anywhere": 0,
+}
+#: Bumped whenever DEFAULT_FORMAT_SCORES changes.
+DEFAULT_FORMAT_SCORES_VERSION = 2
+
 
 if set(DEFAULT_FORMAT_SCORES) != BUILTIN_KEYS:
     raise RuntimeError("Default Quality Profile scores must cover every built-in Custom Format exactly once")

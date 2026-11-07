@@ -219,8 +219,10 @@ def test_default_profile_scores_reflect_the_intended_ranking() -> None:
     assert scores["audio-truehd"] > scores["audio-dtsx"]
     assert scores["audio-flac"] > scores["audio-pcm"]
     assert scores["hdr-dolby-vision"] > scores["hdr-hdr10-plus"]
-    assert scores["hdr-sdr"] == 10
-    assert scores["hdr-hlg"] == 0
+    assert scores["hdr-sdr"] == 0
+    assert scores["hdr-hlg"] < 0
+    # Anything with Dolby Vision above anything without.
+    assert scores["hdr-dolby-vision"] > scores["hdr-hdr10"]
     dynamic = {key: value for key, value in scores.items() if key.startswith("hdr-")}
     assert max(dynamic, key=lambda key: dynamic[key]) == "hdr-dv-hdr10-plus"
     streaming = {key: value for key, value in scores.items() if key.startswith("web-")}

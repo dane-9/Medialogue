@@ -112,6 +112,44 @@ def _quality_preference(quality: str | None, quality_order: tuple[str, ...]) -> 
         return None
 
 
+#: The smallest Custom Format gain that makes an upgrade on its own; less is
+#: not worth a whole new download.
+MINIMUM_FORMAT_GAIN = 15
+#: Groups ranked in tiers: an upgrade may not make any of them worse.
+TIERED_GROUPS = frozenset({"Audio", "Dynamic Range"})
+#: Groups a release name often leaves out (a bare folder name says nothing
+#: about audio): with no tag on the current release, the group is unknown
+#: rather than worst, so the candidate gets no credit there.
+UNKNOWN_WHEN_UNTAGGED = frozenset({"Audio"})
+#: Each Custom Format's group, filled when a search loads its formats.
+_FORMAT_GROUPS: dict[str, str | None] = {}
+
+
+def _format_gain(current_snapshot: dict[str, Any], candidate_formats: list[dict[str, Any]]) -> tuple[int, list[str]]:
+    """The Custom Format gain that counts toward an upgrade, and the tiered
+    groups the candidate makes worse."""
+
+    def by_group(rows) -> dict[str | None, int]:
+        sums: dict[str | None, int] = {}
+        for item in rows:
+            group = _FORMAT_GROUPS.get(str(item.get("custom_format_id") or ""))
+            sums[group] = sums.get(group, 0) + int(item.get("contribution") or 0)
+        return sums
+
+    current = by_group(_matched_formats(current_snapshot).values())
+    candidate = by_group(item for item in candidate_formats if item.get("matched"))
+    gain = 0
+    worse: list[str] = []
+    for group in set(current) | set(candidate):
+        before, after = current.get(group, 0), candidate.get(group, 0)
+        if group in UNKNOWN_WHEN_UNTAGGED and group not in current:
+            continue
+        if group in TIERED_GROUPS and after < before:
+            worse.append(str(group))
+        gain += after - before
+    return gain, sorted(worse)
+
+
 def _matched_formats(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
     rows = snapshot.get("breakdown") or []
     return {
@@ -559,6 +597,10 @@ async def _evaluation_policy(
             .order_by(CustomFormatModel.name)
         )
     ).all()
+    from app.services.builtin_formats import format_group
+
+    for row in rows:
+        _FORMAT_GROUPS[str(row.id)] = format_group(row.builtin_key, row.condition_definition)
     formats = [
         EvaluationFormat.from_dict(
             {
@@ -651,7 +693,10 @@ def _score_candidate(
     reasons: list[str] = []
     if preference < target.reference.quality_preference:
         reasons.append("quality")
-    if score > target.reference.custom_format_score:
+    # Better Custom Formats alone must gain enough, without trading away audio
+    # or dynamic range to get there.
+    format_gain, worse_groups = _format_gain(target.reference.score_snapshot, format_snapshots)
+    if format_gain >= MINIMUM_FORMAT_GAIN and not worse_groups:
         reasons.append("custom_format")
     if (
         target.media_type == MediaType.SHOWS

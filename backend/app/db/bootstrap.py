@@ -137,6 +137,7 @@ async def ensure_default_quality_profile(session: AsyncSession) -> None:
         BUILTIN_FORMATS,
         DEFAULT_EXCLUDED_QUALITY_DEFINITIONS,
         DEFAULT_FORMAT_SCORES,
+        DEFAULT_FORMAT_SCORES_VERSION,
         DEFAULT_QUALITY_PROFILE_MARKER,
         DEFAULT_QUALITY_PROFILE_NAME,
     )
@@ -168,6 +169,7 @@ async def ensure_default_quality_profile(session: AsyncSession) -> None:
                 if item.name not in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
             ],
             "system_profile": DEFAULT_QUALITY_PROFILE_MARKER,
+            "default_scores_version": DEFAULT_FORMAT_SCORES_VERSION,
             "default_profile": True,
             "season_pack_upgrades": True,
         },
@@ -186,6 +188,41 @@ async def ensure_default_quality_profile(session: AsyncSession) -> None:
                 )
             )
     await session.flush()
+
+
+async def refresh_default_profile_scores(session: AsyncSession) -> int:
+    """Move the Default profile's untouched scores to the current defaults.
+
+    Only a score still at its first default value changes; one the operator
+    set stays. Runs once per defaults version. Returns how many changed.
+    """
+
+    from app.models.domain import CustomFormat, ProfileCustomFormatScore, QualityProfile
+    from app.services.builtin_formats import (
+        DEFAULT_FORMAT_SCORES,
+        DEFAULT_FORMAT_SCORES_V1,
+        DEFAULT_FORMAT_SCORES_VERSION,
+        DEFAULT_QUALITY_PROFILE_MARKER,
+    )
+
+    changed = 0
+    keys = {row.id: row.builtin_key for row in (await session.scalars(select(CustomFormat).where(CustomFormat.builtin.is_(True)))).all()}
+    for profile in (await session.scalars(select(QualityProfile))).all():
+        settings = dict(profile.settings or {})
+        if settings.get("system_profile") != DEFAULT_QUALITY_PROFILE_MARKER:
+            continue
+        if int(settings.get("default_scores_version") or 1) >= DEFAULT_FORMAT_SCORES_VERSION:
+            continue
+        for row in (await session.scalars(select(ProfileCustomFormatScore).where(ProfileCustomFormatScore.profile_id == profile.id))).all():
+            key = keys.get(row.custom_format_id)
+            if key in DEFAULT_FORMAT_SCORES and row.score == DEFAULT_FORMAT_SCORES_V1.get(key) and row.score != DEFAULT_FORMAT_SCORES[key]:
+                row.score = DEFAULT_FORMAT_SCORES[key]
+                changed += 1
+        profile.settings = {**settings, "default_scores_version": DEFAULT_FORMAT_SCORES_VERSION}
+        if changed:
+            profile.revision = (profile.revision or 1) + 1
+    await session.flush()
+    return changed
 
 
 async def ensure_builtin_custom_formats(session: AsyncSession) -> bool:

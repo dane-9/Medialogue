@@ -16,6 +16,7 @@ from app.core.logging import configure_logging
 from app.db.bootstrap import (
     ensure_default_admin,
     ensure_default_quality_profile,
+    refresh_default_profile_scores,
     ensure_builtin_custom_formats,
     ensure_production_bootstrap_state,
     ensure_quality_definitions,
@@ -86,6 +87,9 @@ async def lifespan(_: FastAPI):
             await ensure_quality_definitions(db)
             builtins_changed = await ensure_builtin_custom_formats(db)
             await ensure_default_quality_profile(db)
+            # New default scores reach an existing Default profile, for every
+            # score the operator has not changed.
+            builtins_changed = bool(await refresh_default_profile_scores(db)) or builtins_changed
             if builtins_changed:
                 # Built-in conditions and takeover relationships affect saved
                 # release score snapshots used by searches and upgrades.

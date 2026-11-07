@@ -151,6 +151,10 @@ Quality Definitions are application-owned and hardcoded. They are exposed read-o
 
 Custom Format scores can be positive, zero, or negative. A matching zero-score format is still shown in the result evidence. Scores never hide or reject a result.
 
+The Default profile scores **tiers, not formats**: any codec scores 0; lossless audio (TrueHD, DTS:X, DTS-HD MA, FLAC, PCM) sits within 10 points, below TrueHD Atmos, with small nudges (TrueHD over DTS:X, FLAC over PCM) that only break ties between results; anything with Dolby Vision ranks above anything without (DV HDR10+ › DV HDR10 › DV › HDR10+ › HDR10); SDR or no tag is 0 and HLG is avoided. A new install starts with these; an existing Default profile is moved to them once, for every score still at its original default.
+
+In Upgrade Media, a release with the same quality is an upgrade on Custom Formats alone only when its score gains at least **15**, and **no audio or dynamic-range group gets worse** (DV with worse audio is not an upgrade). A higher quality, a season pack, or a PROPER/REPACK of the same release is an upgrade regardless. When the current release's name carries no audio tag (a bare folder name), its audio is treated as unknown, so a candidate gets no credit for listing one.
+
 Movies and Shows can have per-title profile settings. A title can select a base Quality Profile and optionally override its minimum quality and individual Custom Format scores. A per-title Custom Format override **replaces** the profile score for that format; it is not added on top. The title UI shows only these differences from the selected profile.
 
 Interactive Search freezes the effective policy when a search begins so every indexer result from that job is scored under the same rules. Each result stores:
