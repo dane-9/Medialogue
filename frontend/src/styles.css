@@ -3554,6 +3554,7 @@ a.download-kind:hover { filter: brightness(1.35); }
 .tooltip:has(.download-path) { max-width: min(1000px, calc(100vw - 32px)); }
 /* The format comparison is a table; it takes the width its columns need. */
 .tooltip:has(.cf-compare) { max-width: min(640px, calc(100vw - 32px)); }
+.tooltip:has(.upgrade-diff) { max-width: min(600px, calc(100vw - 32px)); }
 .download-path { display: block; overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .tooltip ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .tooltip li { color: var(--accent-text); font: var(--t-xs) var(--mono); overflow-wrap: anywhere; }
@@ -4518,6 +4519,28 @@ select.input { background-color: var(--input-bg); }
 .upgrade-v2-head > .upgrade-v2-seeds { position: relative; left: 0px; }
 .upgrade-v2-head > .upgrade-v2-size { position: relative; left: 14px; }
 .upgrade-v2-facts { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin-left: auto; }
+/* The upgrade's main improvement, beside the indexer it comes from. */
+.release-pill-upgrade { flex: none; color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-soft); }
+/* Qualities read as written (1080p, REMUX); only the label is capitals. */
+.release-pill-upgrade { text-transform: none; letter-spacing: .03em; }
+.release-pill-upgrade i { text-transform: uppercase; letter-spacing: .08em; }
+/* The UPGRADE pill's hover: each aspect that changes, before → after. */
+/* As wide as its longest row, so a value never runs past the edge. */
+.upgrade-diff { display: grid; gap: var(--s3); width: max-content; min-width: 260px; max-width: min(560px, calc(100vw - 32px)); }
+.upgrade-diff-rows { display: grid; grid-template-columns: auto auto auto auto; align-items: baseline; gap: 5px var(--s2); }
+/* The size-change caret turned to point right, as the "becomes" arrow. */
+.upgrade-caret { display: inline-grid; place-items: center; margin: 0 .35em; vertical-align: middle; }
+.upgrade-caret svg { transform: rotate(-90deg); }
+.upgrade-diff-rows > .upgrade-caret { align-self: center; margin: 0; color: var(--faint); }
+.upgrade-diff .upgrade-caret svg { width: 11px; height: 11px; }
+/* The pill already spaces its parts. */
+.release-pill .upgrade-caret { margin: 0; }
+.upgrade-diff-label { padding-right: var(--s3); color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.upgrade-diff-from { color: var(--muted); font-size: var(--t-xs); text-align: right; overflow-wrap: anywhere; }
+.upgrade-diff-to { font-size: var(--t-xs); font-weight: 600; overflow-wrap: anywhere; }
+.upgrade-diff-to.better { color: var(--ok); }
+.upgrade-diff-to.worse { color: var(--err); }
+.upgrade-diff-to.neutral { color: var(--text); }
 .upgrade-v2-facts .size-up { color: var(--warn); font-style: normal; }
 .upgrade-v2-facts .size-down { color: var(--ok); font-style: normal; }
 /* The folder cell makes every direct span a flex row; the placeholder icon
