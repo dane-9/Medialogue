@@ -9,7 +9,7 @@ import type { Message } from './components/settings'
 import { PageTopbar } from './components/Shell'
 import { formatAge } from './lib/age'
 import { formatBytes } from './components/ReleaseResults'
-import { RecoveryReimportSection, TorrentArchiveSection } from './pages'
+import { RecoveryReimportSection, TorrentArchiveSection } from './pages/backups'
 import type { Job } from './types'
 
 const DATABASE_INTERVALS = [

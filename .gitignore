@@ -21,3 +21,6 @@ frontend/dist/
 !.env.truenas-dockge.example
 /backend/.local
 frontend/.vite.log
+
+# Crash dumps from Git for Windows / MSYS tools
+*.stackdump

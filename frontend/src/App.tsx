@@ -1,5 +1,4 @@
-import ReplaceMediaPage from "./ReplaceMediaPage"
-import { Component, FormEvent, useEffect, useState } from 'react'
+import { Component, FormEvent, lazy, Suspense, useEffect, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import medialogueBanner from './assets/medialogue-banner.png'
@@ -10,9 +9,25 @@ import { ApiError } from './api/transport'
 import { authApi } from './api/modules/auth'
 import { AppShell } from './components/Shell'
 import { Button, Input } from './components/ui'
-import BackupsPage from './BackupsPage'
-import { BlocklistPage, CustomFormatsPage, DownloadsPage, EventHistoryPage, MovieDetailPage, MoviesPage, NewMediaPage, ProblemsPage, SettingsPage, ShowDetailPage, ShowsPage, TasksPage, UpgradeMediaPage } from './pages'
-import QualityProfilesPage from './QualityProfilesPage'
+
+// Each page is its own chunk, fetched the first time it is opened, so the
+// first load carries only the shell and the page in view.
+const MoviesPage = lazy(() => import('./pages/movies').then((m) => ({ default: m.MoviesPage })))
+const MovieDetailPage = lazy(() => import('./pages/movies').then((m) => ({ default: m.MovieDetailPage })))
+const ShowsPage = lazy(() => import('./pages/shows').then((m) => ({ default: m.ShowsPage })))
+const ShowDetailPage = lazy(() => import('./pages/shows').then((m) => ({ default: m.ShowDetailPage })))
+const DownloadsPage = lazy(() => import('./pages/downloads').then((m) => ({ default: m.DownloadsPage })))
+const BlocklistPage = lazy(() => import('./pages/blocklist').then((m) => ({ default: m.BlocklistPage })))
+const ReplaceMediaPage = lazy(() => import('./ReplaceMediaPage'))
+const UpgradeMediaPage = lazy(() => import('./pages/upgradeMedia').then((m) => ({ default: m.UpgradeMediaPage })))
+const NewMediaPage = lazy(() => import('./pages/newMedia').then((m) => ({ default: m.NewMediaPage })))
+const ProblemsPage = lazy(() => import('./pages/problems').then((m) => ({ default: m.ProblemsPage })))
+const BackupsPage = lazy(() => import('./BackupsPage'))
+const CustomFormatsPage = lazy(() => import('./pages/customFormats').then((m) => ({ default: m.CustomFormatsPage })))
+const QualityProfilesPage = lazy(() => import('./QualityProfilesPage'))
+const EventHistoryPage = lazy(() => import('./pages/events').then((m) => ({ default: m.EventHistoryPage })))
+const TasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.TasksPage })))
+const SettingsPage = lazy(() => import('./pages/settings').then((m) => ({ default: m.SettingsPage })))
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false)
@@ -50,7 +65,7 @@ function App() {
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const location = useLocation()
 
-  return <AppShell onLogout={onLogout}><PageErrorBoundary key={location.pathname}><Routes>
+  return <AppShell onLogout={onLogout}><PageErrorBoundary key={location.pathname}><Suspense fallback={<PageLoading />}><Routes>
     <Route path="/movies" element={<MoviesPage />} />
     <Route path="/movies/:id" element={<MovieDetailRoute />} />
     <Route path="/shows" element={<ShowsPage />} />
@@ -69,7 +84,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/tasks" element={<TasksPage />} />
     <Route path="/settings" element={<SettingsPage />} />
     <Route path="*" element={<Navigate to="/movies" replace />} />
-  </Routes></PageErrorBoundary></AppShell>
+  </Routes></Suspense></PageErrorBoundary></AppShell>
 }
 
 class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -89,6 +104,7 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
   }
 }
 
+function PageLoading() { return <div className="page" aria-busy="true" /> }
 function BootScreen() { return <div className="boot-screen"><picture className="boot-logo"><source media="(prefers-reduced-motion: reduce)" srcSet={medialogueLogo} /><img src={medialogueLogoAnimated} alt="" /></picture><span>Loading Medialogue…</span></div> }
 function MovieDetailRoute() { const { id = 'inception' } = useParams(); return <MovieDetailPage id={id} /> }
 function ShowDetailRoute() { const { id = '' } = useParams(); return <ShowDetailPage id={id} /> }

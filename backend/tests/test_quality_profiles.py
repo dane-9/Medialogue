@@ -1,5 +1,6 @@
 import asyncio
 import os
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -24,6 +25,7 @@ from app.models.domain import (
     MediaType,
     Movie,
     MovieRelease,
+    ProfileCustomFormatScore,
     ReleaseState,
     StorageRoot,
     Torrent,
@@ -754,6 +756,18 @@ def test_the_default_profile_cannot_be_deleted(client: TestClient):
     listed = {item["name"]: item["is_default"] for item in client.get("/api/v1/quality-profiles").json()}
     assert listed == {"Default": False, "Preferred": True}
     assert client.delete(f"/api/v1/quality-profiles/{default['id']}", headers=headers).status_code == 204
+
+    async def remaining_scores() -> int:
+        from sqlalchemy import func
+
+        async with db_session.async_session_factory() as db:
+            return await db.scalar(
+                select(func.count()).select_from(ProfileCustomFormatScore)
+                .where(ProfileCustomFormatScore.profile_id == uuid.UUID(default["id"]))
+            )
+
+    # The profile's score rows go with it, deleted once by the cascade.
+    assert asyncio.run(remaining_scores()) == 0
 
 
 def test_a_movie_with_no_profile_of_its_own_uses_the_default(client: TestClient):

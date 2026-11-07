@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { downloadPayloadGroups } from './pages'
+import { downloadPayloadGroups } from './pages/downloads'
 import type { Download } from './types'
 
 function torrent(id: string, trackerState: Download['trackerState']): Download {

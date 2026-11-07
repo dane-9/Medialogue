@@ -375,7 +375,8 @@ async def delete_quality_profile(
     for assignment in assignments:
         assignment.quality_profile_id = None
         assignment.revision += 1
-    await db.execute(delete(ProfileCustomFormatScore).where(ProfileCustomFormatScore.profile_id == row.id))
+    # The custom_format_scores relationship cascades: deleting the profile
+    # removes its score rows exactly once.
     await db.delete(row)
     await db.flush()
     for assignment in assignments:
