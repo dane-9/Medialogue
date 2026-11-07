@@ -5755,7 +5755,7 @@ export interface components {
             /** Reason */
             reason: string;
             /** Reason Code */
-            reason_code?: ("not_watched" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent") | null;
+            reason_code?: ("not_watched" | "files_missing" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent") | null;
             /** Reason Since */
             reason_since?: string | null;
             /** Root Name */
@@ -5829,7 +5829,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "not_watched" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent";
+            reason: "not_watched" | "files_missing" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent";
             /** Target Key */
             target_key: string;
         };

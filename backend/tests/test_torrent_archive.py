@@ -100,6 +100,8 @@ class ArchiveQBitBehavior:
     recovery_snapshots: dict[str, dict] = field(default_factory=dict)
     removed: list[dict] = field(default_factory=list)
     fail_file_priorities: bool = False
+    started: list[str] = field(default_factory=list)
+    rechecked: list[str] = field(default_factory=list)
 
     def factory(self, url: str, username: str, password: str):
         return ArchiveQBitClient(self, url, username, password)
@@ -143,6 +145,10 @@ class ArchiveQBitClient:
     async def start_torrents(self, hashes):
         assert self.behavior.added[-1]["stopped"] is True
         assert self.behavior.file_priorities, "Do not start downloads before restoring file selection"
+        self.behavior.started.extend(hashes)
+
+    async def recheck_torrents(self, hashes):
+        self.behavior.rechecked.extend(hashes)
 
     async def remove_torrent(self, info_hash: str, *, delete_files: bool = False):
         self.behavior.removed.append({"info_hash": info_hash, "delete_files": delete_files})
@@ -678,3 +684,92 @@ def test_bulk_recovery_plan_requires_preview_and_restores_saved_file_selection(a
         assert events.json()["total"] == 1
     finally:
         client.app.dependency_overrides.clear()
+
+
+def test_missing_torrent_is_readded_stopped_checked_and_started_only_when_complete(archive_client, monkeypatch) -> None:
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+
+    import app.services.replacements as replacements
+    from app.models.domain import TorrentClientObservation
+    from app.services.auto_readd import CHECKING, FILES_MISSING, SEEDING, readd_missing, settle_checks
+
+    client, base, archive_dir = archive_client
+    headers = _login(client)
+    media_root = base / "movies"
+    media_root.mkdir()
+    assert client.post("/api/v1/storage-roots", headers=headers,
+                       json={"name": "Movies", "path": str(media_root), "media_type": "movies"}).status_code == 201
+    configured = client.post("/api/v1/download-clients", headers=headers, json={
+        "name": "qbit", "url": "http://qbit.test:8080", "username": "u", "password": "p",
+        "scope": "movies", "enabled": True,
+    }).json()
+    payload = b"d4:infod4:name7:exampleee"
+    hashes = {"complete": "a" * 40, "partial": "b" * 40}
+
+    async def seed() -> dict[str, uuid.UUID]:
+        ids = {}
+        async with db_session.async_session_factory() as db:
+            for key, info_hash in hashes.items():
+                torrent_path = archive_dir / f"{info_hash}.torrent"
+                manifest_path = archive_dir / f"{info_hash}.json"
+                torrent_path.write_bytes(payload)
+                manifest_path.write_text(json.dumps({
+                    "schema_version": 1, "torrent_info_hash": info_hash, "torrent_name": key,
+                    "media_associations": [{"media_type": "movies", "title": key, "release_name": key, "paths": []}],
+                    "download_client_observations": [{
+                        "download_client_id": configured["id"], "download_client_name": "qbit", "scope": "movies",
+                        "reported_save_path": str(media_root), "resolved_save_path": str(media_root), "state": "uploading",
+                    }],
+                    "recovery": {"properties": {"save_path": str(media_root)},
+                                 "files": [{"index": 0, "name": "movie.mkv", "size": 10, "priority": 1}],
+                                 "trackers": [], "settings": {}},
+                    "archive": {"torrent_sha256": hashlib.sha256(payload).hexdigest()},
+                }), encoding="utf-8")
+                torrent = Torrent(info_hash=info_hash, name=key, archive_state=TorrentArchiveState.ARCHIVED,
+                                  archive_path=str(torrent_path), manifest_path=str(manifest_path), manifest_schema_version=1)
+                db.add(torrent)
+                await db.flush()
+                ids[key] = torrent.id
+            await db.commit()
+        return ids
+
+    ids = asyncio.run(seed())
+
+    async def targets(db, **_):
+        rows = (await db.scalars(select(Torrent))).all()
+        return [SimpleNamespace(readdable=True, torrents=[row]) for row in rows]
+
+    monkeypatch.setattr(replacements, "replacement_targets", targets)
+    behavior = ArchiveQBitBehavior()
+    now = datetime.now(timezone.utc)
+
+    async def readd() -> dict:
+        async with db_session.async_session_factory() as db:
+            return await readd_missing(db, client_factory=behavior.factory, now=now)
+
+    assert asyncio.run(readd())["readded"] == 2
+    # Added stopped and checked, never started before the check.
+    assert all(item["stopped"] is True for item in behavior.added)
+    assert sorted(behavior.rechecked) == sorted(hashes.values())
+    assert behavior.started == []
+    # Each torrent is re-added once; a later removal is left to the user.
+    assert asyncio.run(readd())["readded"] == 0
+
+    async def observe_and_settle() -> dict:
+        async with db_session.async_session_factory() as db:
+            for key, progress in (("complete", 1), ("partial", 0.4)):
+                db.add(TorrentClientObservation(
+                    torrent_id=ids[key], download_client_id=uuid.UUID(configured["id"]), is_present=True,
+                    state="stoppedUP" if progress == 1 else "stoppedDL", progress=progress,
+                    last_seen_at=now + timedelta(minutes=5),
+                ))
+            await db.commit()
+            counts = await settle_checks(db, client_factory=behavior.factory, now=now + timedelta(minutes=6))
+            states = {row.name: row.readd_state for row in (await db.scalars(select(Torrent))).all()}
+            return {"counts": counts, "states": states}
+
+    result = asyncio.run(observe_and_settle())
+    assert result["states"] == {"complete": SEEDING, "partial": FILES_MISSING}
+    assert behavior.started == [hashes["complete"]]
+    assert CHECKING not in result["states"].values()

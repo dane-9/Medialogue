@@ -1,13 +1,14 @@
 import { formatAge } from './age'
 
-export type ReplaceReasonCode = 'not_watched' | 'no_seeders' | 'tracker_gone' | 'removed_from_tracker' | 'no_torrent'
+export type ReplaceReasonCode = 'not_watched' | 'files_missing' | 'no_seeders' | 'tracker_gone' | 'removed_from_tracker' | 'no_torrent'
 
 /** Every reason, in the order the Reason filter shows them. */
-export const REPLACE_REASONS: { code: ReplaceReasonCode; label: string; icon: 'qbittorrent' | 'share-ratio' | 'tracker' | 'alert' | 'folder'; tone: string }[] = [
+export const REPLACE_REASONS: { code: ReplaceReasonCode; label: string; icon: 'qbittorrent' | 'share-ratio' | 'tracker' | 'alert' | 'folder' | 'archive'; tone: string }[] = [
   { code: 'removed_from_tracker', label: 'Removed from tracker', icon: 'alert', tone: 'red' },
   { code: 'tracker_gone', label: 'Tracker not responding', icon: 'tracker', tone: 'amber' },
   { code: 'no_seeders', label: 'No other seeders', icon: 'share-ratio', tone: 'amber' },
   { code: 'not_watched', label: 'Not in qBittorrent', icon: 'qbittorrent', tone: 'blue' },
+  { code: 'files_missing', label: 'Files missing', icon: 'archive', tone: 'amber' },
   { code: 'no_torrent', label: 'No torrent', icon: 'folder', tone: 'neutral' },
 ]
 
@@ -44,6 +45,11 @@ export function replaceReasonDetail(code: ReplaceReasonCode, since?: string | nu
       return {
         help: 'The torrent is no longer in qBittorrent, so Medialogue cannot check that its tracker still has it. Re-add it from the archive to check again.',
         note: age ? `Left qBittorrent ${age}` : 'Not in any qBittorrent client',
+      }
+    case 'files_missing':
+      return {
+        help: 'Medialogue put this torrent back into qBittorrent from the archive, but the files on disk are incomplete, so it was left stopped rather than downloaded again. Put the files back and recheck it in qBittorrent, or search for a new torrent.',
+        note: age ? `Re-added ${age}, files incomplete` : 'Files on disk are incomplete',
       }
     case 'no_seeders':
       return {

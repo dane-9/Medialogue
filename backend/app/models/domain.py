@@ -517,6 +517,15 @@ class Torrent(TimestampMixin, Base):
     manifest_schema_version: Mapped[int | None] = mapped_column(Integer)
     tracker_summary: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONType, default=dict, nullable=False)
+    #: When Medialogue last put this torrent back into qBittorrent from the
+    #: archive on its own. Set once: a torrent removed again after that is left
+    #: to the user.
+    auto_readded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Where that automatic re-add stands: "checking" while qBittorrent verifies
+    #: the files, "seeding" once they were complete and it was started,
+    #: "files_missing" when the check came up short (left stopped), "failed"
+    #: when qBittorrent could not take it.
+    readd_state: Mapped[str | None] = mapped_column(String(16))
 
     observations: Mapped[list["TorrentClientObservation"]] = relationship(back_populates="torrent", cascade="all, delete-orphan")
     tracker_observations: Mapped[list["TorrentTrackerObservation"]] = relationship(back_populates="torrent", cascade="all, delete-orphan")

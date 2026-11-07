@@ -39,6 +39,8 @@ ACTION_STATES = {"handoff_attention", "cleanup_required"}
 
 #: The torrent is not in qBittorrent, so nothing can check its tracker or swarm.
 NOT_WATCHED = "not_watched"
+#: Re-added from the archive, but qBittorrent found the files on disk incomplete.
+FILES_MISSING = "files_missing"
 #: Nobody but this client has seeded it for a long time.
 NO_SEEDERS = "no_seeders"
 #: No tracker has answered for a long time: the site may be gone.
@@ -49,9 +51,10 @@ REMOVED_FROM_TRACKER = "removed_from_tracker"
 NO_TORRENT = "no_torrent"
 #: When a title's releases fail in different ways, the cheapest fix leads:
 #: re-adding a torrent may clear it, a new torrent is the last resort.
-REASON_PRIORITY = (NOT_WATCHED, NO_SEEDERS, TRACKER_GONE, REMOVED_FROM_TRACKER, NO_TORRENT)
+REASON_PRIORITY = (NOT_WATCHED, FILES_MISSING, NO_SEEDERS, TRACKER_GONE, REMOVED_FROM_TRACKER, NO_TORRENT)
 REASON_LABELS = {
     NOT_WATCHED: "Not in qBittorrent",
+    FILES_MISSING: "Files missing",
     NO_SEEDERS: "No other seeders",
     TRACKER_GONE: "Tracker not responding",
     REMOVED_FROM_TRACKER: "Removed from tracker",
@@ -222,6 +225,8 @@ def classify_torrent(torrent: Torrent, now: datetime, *, confirmed_removed: bool
         if gone_at is None or gone_at <= now - NOT_WATCHED_GRACE:
             return SourceProblem(NOT_WATCHED, gone_at)
         return None
+    if getattr(torrent, "readd_state", None) == "files_missing":
+        return SourceProblem(FILES_MISSING, _aware(torrent.auto_readded_at))
     if confirmed_removed:
         return SourceProblem(REMOVED_FROM_TRACKER, _aware(summary.get("checked_at")))
     if (since := _tracker_gone(torrent, live, now)) is not None:
@@ -447,10 +452,10 @@ async def replacing_title_ids(db: AsyncSession) -> set[str]:
     reviews = await _reviews(db, [entry.target.target_key for entry in targets])
     for entry in targets:
         # Only titles whose torrent is beyond saving belong to Replace Media alone.
-        # One missing from qBittorrent is fixed by re-adding it, and one that
-        # never had a torrent gets one from any upgrade, so Upgrade Media keeps
-        # offering both.
-        if entry.reason not in {NOT_WATCHED, NO_TORRENT} and not _dismissed(reviews.get(entry.target.target_key), entry.reason):
+        # One missing from qBittorrent is fixed by re-adding it, one whose files
+        # are incomplete by putting them back, and one that never had a torrent
+        # gets one from any upgrade, so Upgrade Media keeps offering those.
+        if entry.reason not in {NOT_WATCHED, FILES_MISSING, NO_TORRENT} and not _dismissed(reviews.get(entry.target.target_key), entry.reason):
             ids.update(str(value) for value in (entry.target.movie_id, entry.target.season_id) if value)
     for movie_id, season_id in (await db.execute(
         select(UpgradeCandidate.movie_id, UpgradeCandidate.season_id).where(

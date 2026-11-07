@@ -8970,6 +8970,7 @@
               {
                 "enum": [
                   "not_watched",
+                  "files_missing",
                   "no_seeders",
                   "tracker_gone",
                   "removed_from_tracker",
@@ -9222,6 +9223,7 @@
           "reason": {
             "enum": [
               "not_watched",
+              "files_missing",
               "no_seeders",
               "tracker_gone",
               "removed_from_tracker",

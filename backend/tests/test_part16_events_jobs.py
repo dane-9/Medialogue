@@ -115,6 +115,7 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
         "scheduled_housekeeping",
         "remote_backup",
         "search_media_replacements",
+        "readd_missing_torrents",
     }
     task = next(item for item in listed if item["job_type"] == "integration_health_sweep")
     assert task["name"] == "Check Integration Health"

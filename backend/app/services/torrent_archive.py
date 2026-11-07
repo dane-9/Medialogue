@@ -827,7 +827,15 @@ async def restore_torrent_archive(
     category: str | None,
     tags: list[str] | None,
     client_factory: QBittorrentClientFactory,
+    verify_first: bool = False,
 ) -> dict[str, Any]:
+    """Add an archived torrent back to qBittorrent.
+
+    With `verify_first`, it is left stopped while qBittorrent checks the files
+    already on disk, so an incomplete copy is never downloaded again; the
+    caller starts it once the check shows every file complete.
+    """
+
     prepared = await prepare_torrent_restore(db, torrent_id, download_client_id, save_path)
     torrent = prepared["torrent"]
     client = prepared["client"]
@@ -879,7 +887,9 @@ async def restore_torrent_archive(
         try:
             await adapter.set_file_priorities(torrent.info_hash, priorities)
             await adapter.restore_torrent_settings(torrent.info_hash, settings)
-            if not str(original.get("state") or "").lower().startswith(("paused", "stopped")):
+            if verify_first:
+                await adapter.recheck_torrents([torrent.info_hash])
+            elif not str(original.get("state") or "").lower().startswith(("paused", "stopped")):
                 await adapter.start_torrents([torrent.info_hash])
         except Exception:
             # Do not leave a partially restored torrent running with the wrong
@@ -921,6 +931,9 @@ async def restore_torrent_archive(
         "save_path": save_path,
         "resolved_save_path": resolved_save_path,
         "status": "submitted",
+        # Whether it was running before it left qBittorrent, so a verified
+        # re-add knows whether to start it.
+        "start_after_check": not str(original.get("state") or "").lower().startswith(("paused", "stopped")),
     }
 
 

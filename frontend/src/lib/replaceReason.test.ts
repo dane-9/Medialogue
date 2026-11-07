@@ -8,6 +8,7 @@ describe('replaceReasonDetail', () => {
     expect(replaceReasonDetail('not_watched', twoDaysAgo).note).toBe('Left qBittorrent 2 days ago')
     expect(replaceReasonDetail('no_seeders', twoDaysAgo).note).toBe('Only seeder for 2 days')
     expect(replaceReasonDetail('tracker_gone', twoDaysAgo).note).toBe('Last answered 2 days ago')
+    expect(replaceReasonDetail('files_missing', twoDaysAgo).note).toBe('Re-added 2 days ago, files incomplete')
   })
 
   it('falls back to plain words without a date', () => {

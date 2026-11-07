@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.db.base import Base
 from app.models.domain import (AssociationType, IdentityState, Movie, MovieRelease, MovieReleaseTorrent, ReleaseState,
                                ReplacementReview, Torrent, TorrentArchiveState, TorrentClientObservation)
-from app.services.replacements import (NO_SEEDERS, NO_TORRENT, NOT_WATCHED, REMOVED_FROM_TRACKER, TRACKER_GONE,
+from app.services.replacements import (FILES_MISSING, NO_SEEDERS, NO_TORRENT, NOT_WATCHED, REMOVED_FROM_TRACKER, TRACKER_GONE,
                                        ReplacementTarget, _dismissed, classify_torrent, release_problems)
 from app.services.torrent_tracking import other_seeders, terminal_tracker_reason, track_other_seeders
 
@@ -174,3 +174,26 @@ def test_readd_needs_an_archived_torrent():
     assert not target(NOT_WATCHED, TorrentArchiveState.PRUNED).readdable
     assert not target(NOT_WATCHED).readdable
     assert not target(REMOVED_FROM_TRACKER, TorrentArchiveState.ARCHIVED).readdable
+
+
+def test_files_missing_after_a_readd_lists_the_title():
+    item = torrent([observation()], [tracker()])
+    item.readd_state = "files_missing"
+    item.auto_readded_at = NOW - timedelta(hours=3)
+    assert reason(item) == FILES_MISSING
+    item.readd_state = "seeding"
+    assert reason(item) is None
+
+
+def test_readd_check_outcome_waits_for_a_finished_check():
+    from app.services.auto_readd import FILES_MISSING as MISSING, SEEDING, check_outcome
+
+    def readded(state, progress, seen_after):
+        return SimpleNamespace(auto_readded_at=NOW, observations=[SimpleNamespace(
+            is_present=True, state=state, progress=progress, last_seen_at=NOW + seen_after)])
+
+    assert check_outcome(readded("stoppedUP", 1, timedelta(minutes=5)), NOW) == SEEDING
+    assert check_outcome(readded("stoppedDL", 0.3, timedelta(minutes=5)), NOW) == MISSING
+    assert check_outcome(readded("checkingUP", 0.3, timedelta(minutes=5)), NOW) is None
+    # Seen right after the re-add, qBittorrent may not have started checking.
+    assert check_outcome(readded("stoppedDL", 0, timedelta(seconds=30)), NOW) is None

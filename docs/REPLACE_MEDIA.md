@@ -8,7 +8,8 @@ Each title is listed with one reason:
 
 | Reason | When |
 |---|---|
-| **Not in qBittorrent** | Its torrent left qBittorrent more than 24 hours ago, or no client has it on record, so nothing can check its tracker or swarm. **Re-add** puts the archived torrent back so the checks resume. With no archived copy of its .torrent the row says *not archived*, offers no Re-add, and is searched like any lost source. |
+| **Not in qBittorrent** | Its torrent left qBittorrent more than 24 hours ago, or no client has it on record, so nothing can check its tracker or swarm. With an archived copy, the **Re-add Missing Torrents** task normally puts it back first (see below), so a title is listed here when it has no archived copy (the row says *not archived* and is searched like any lost source), when the task could not re-add it, or when it was removed again after the task re-added it. **Re-add** on the row puts it back by hand. |
+| **Files missing** | The task re-added the torrent, but qBittorrent's check found the files on disk incomplete, so it was left stopped rather than downloaded again. Put the files back and recheck it in qBittorrent, or search for a new torrent. |
 | **No other seeders** | For 14 days the swarm has reported no seeder besides this client. Unknown counts never start or stop the clock, and a paused torrent's own copy is not counted as another seeder. |
 | **Tracker not responding** | Every tracker of the torrent has answered with an error for 7 days. A tracker that was never contacted, as a paused torrent's is, does not count. |
 | **Removed from tracker** | Every tracker confirmed, twice in a row, that the torrent is gone ("unregistered", "deleted", "not registered", "not found", "trumped", "dupe of", or a message starting "Removed"). The verdict is kept after the torrent is deleted from qBittorrent. |
@@ -18,9 +19,19 @@ Evidence from a live client must be recent: a client that has stopped reporting,
 
 Cross-seeded releases are judged as one payload: a release is fine while **any** of its torrents is fine. When a title's releases fail in different ways, the cheapest fix is shown first, in the order of the table.
 
-Titles whose torrent is beyond saving (**Removed from tracker**, **Tracker not responding**, **No other seeders**) belong to Replace Media alone: their search accepts anything equal or better, so Upgrade Media hides them unless an upgrade is already running. Ignoring one hands it back. **Not in qBittorrent** and **No torrent** titles stay in Upgrade Media too.
+Titles whose torrent is beyond saving (**Removed from tracker**, **Tracker not responding**, **No other seeders**) belong to Replace Media alone: their search accepts anything equal or better, so Upgrade Media hides them unless an upgrade is already running. Ignoring one hands it back. **Not in qBittorrent**, **Files missing** and **No torrent** titles stay in Upgrade Media too.
 
 Ignoring is tied to the reason: if the same title later fails for a different reason, it comes back.
+
+## Re-adding missing torrents automatically
+
+The **Re-add Missing Torrents** task (Tasks, hourly, on by default) puts every torrent listed as **Not in qBittorrent** back from the archive when its .torrent is archived:
+
+1. It is added to the client and save path it had, **stopped**, with its saved file selection, and qBittorrent checks the files already on disk.
+2. On a later run, once the check has finished: complete files are started again (unless the torrent was stopped before it left), and the usual tracker and swarm checks resume. Incomplete files leave it stopped and list the title as **Files missing**. Nothing is ever downloaded again.
+3. Each torrent is re-added **once**. Removing it from qBittorrent again is taken as deliberate: the title is listed as **Not in qBittorrent** and left to you.
+
+Turning the task off in Tasks stops all of this; the **Re-add** button still works.
 
 ## The page
 
