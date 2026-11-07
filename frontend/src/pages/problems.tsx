@@ -80,6 +80,19 @@ function ProblemEvidenceDetails({ problem }: { problem: Problem }) {
     </div>
   }
 
+  if (problem.code === 'TORRENT_PATH_NOT_FOUND' && Array.isArray(details.torrents)) {
+    const torrents = details.torrents.map(problemRecord)
+    return <div className="problem-evidence-block">
+      <div className="problem-evidence-note">Each download below has been missing for several checks in a row. When they share a cause, it is usually a path mapping: compare what qBittorrent reports with where Medialogue looked.</div>
+      <div className="problem-candidate-list">{torrents.map((item, index) => <div className="problem-candidate" key={problemText(item.torrent_id) ?? index}>
+        <strong>{problemText(item.name) ?? 'Unnamed torrent'}</strong>
+        <span>qBittorrent: <code>{problemText(item.reported_path) ?? 'No path reported'}</code></span>
+        <span>Medialogue looked in: <code>{problemText(item.resolved_path) ?? problemText(item.path) ?? 'No local path'}</code></span>
+        {problemText(item.message) && <span>{problemText(item.message)}</span>}
+      </div>)}</div>
+    </div>
+  }
+
   if (problem.code === 'TORRENT_PATH_NOT_FOUND') {
     const observations = Array.isArray(details.qbit_observations) ? details.qbit_observations.map(problemRecord) : []
     const mapped = Array.isArray(details.mapped_files)
@@ -238,6 +251,13 @@ function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; dupl
         ].filter(Boolean).join(' · '),
       ])
     })
+  } else if (problem.code === 'TORRENT_PATH_NOT_FOUND' && Array.isArray(details.torrents)) {
+    const count = details.torrents.length
+    rows.push(['Download client', problemText(details.client_name) ?? problem.subject, `${count} completed download${count === 1 ? '' : 's'} not found on disk`])
+  } else if (problem.code === 'AMBIGUOUS_REPLACEMENT_TARGET') {
+    const parts = pathParts(problemText(details.path))
+    if (parts) rows.push(['New download', parts.name, parts.parent])
+    if (duplicateMovie) rows.push(['Movie', duplicateMovie.year ? `${duplicateMovie.title} (${duplicateMovie.year})` : duplicateMovie.title, `${replacementCandidates(problem, duplicateMovie).length} missing releases it could replace`])
   } else if (problem.code === 'PLEX_IDENTITY_MISMATCH' && Array.isArray(details.conflicts)) {
     const conflict = problemRecord(details.conflicts[0])
     rows.push(
@@ -257,6 +277,28 @@ function ProblemKeyDetails({ problem, duplicateMovie }: { problem: Problem; dupl
   }
   if (!rows.length) rows.push(['Affected media', problem.subject, problem.entityType ? `${problem.entityType} evidence` : undefined])
   return <section className="problems-key-details">{rows.map(([label, value, note], index) => <div className="problems-detail-row" key={`${label}-${index}`}><span>{label}</span><div><strong>{value}</strong>{note && <small>{note}</small>}</div></div>)}</section>
+}
+
+function replacementCandidates(problem: Problem, movie: Movie): MovieRelease[] {
+  const ids = new Set(Array.isArray(problem.details?.candidate_release_ids) ? problem.details.candidate_release_ids.map(String) : [])
+  return (movie.releasesDetail ?? []).filter((release) => ids.has(release.id))
+}
+
+/** The download matches a movie with several missing releases: say which one it replaces. */
+function ReplacementTargetPicker({ problem, movie, loading, onChoose, onRecheck }: { problem: Problem; movie: Movie; loading: boolean; onChoose: (releaseId: string) => void; onRecheck: () => void }) {
+  const releases = replacementCandidates(problem, movie)
+  const [chosen, setChosen] = useState('')
+  return <section className="replacement-target-picker">
+    <div className="problems-resolver-head"><div><div className="eyebrow">REPLACES</div><p>Choose the missing release this download replaces. The others stay listed as missing.</p></div></div>
+    {releases.length ? <div className="replacement-target-list">{releases.map((release) => {
+      const directory = release.directories[0]
+      return <label className={`replacement-target ${chosen === release.id ? 'selected' : ''}`} key={release.id}>
+        <input type="radio" name={`replacement-${problem.id}`} value={release.id} checked={chosen === release.id} onChange={() => setChosen(release.id)} />
+        <span><strong>{release.edition || THEATRICAL_EDITION}</strong><span>{release.name}</span><small>{[release.quality, directory?.path].filter(Boolean).join(' · ') || 'No details recorded'}</small></span>
+      </label>
+    })}</div> : <p className="delete-downloads-note">None of the listed releases is still missing. Recheck to update this Problem.</p>}
+    <div className="problems-resolution"><Button variant="primary" onClick={() => onChoose(chosen)} disabled={loading || !chosen}>Replace this release</Button><Button variant="ghost" icon="refresh" onClick={onRecheck} disabled={loading}>Recheck</Button></div>
+  </section>
 }
 
 function initialEditionDraft(release: MovieRelease, options: string[]): EditionDraft {
@@ -448,6 +490,9 @@ export function ProblemsPage() {
   useEffect(() => {
     setDuplicateMovie(null); setEditionOptions([]); setSelectedTmdb(undefined); setEditingPlexIdentity(false); setTmdbMatches([])
     if (!current) return
+    if (current.code === 'AMBIGUOUS_REPLACEMENT_TARGET' && current.entityId) {
+      void moviesApi.movie(current.entityId).then(setDuplicateMovie).catch(() => undefined)
+    }
     if (current.code === 'DUPLICATE_PHYSICAL_RELEASE' && current.entityId) {
       void Promise.all([moviesApi.movie(current.entityId), moviesApi.movieEditionOptions()]).then(([movie, options]) => { setDuplicateMovie(movie); setEditionOptions(options) }).catch(() => undefined)
     }
@@ -497,6 +542,17 @@ export function ProblemsPage() {
       await load(page, true)
       setMessage('Recheck finished. Solved problems were removed from the queue.')
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not recheck this Problem.') }
+    finally { setLoading(false) }
+  }
+
+  const chooseReplacement = async (releaseId: string) => {
+    if (!current || !releaseId) return
+    setLoading(true); setMessage('')
+    try {
+      await problemsApi.resolveProblem(current.id, 'choose_replacement_target', { release_id: releaseId })
+      removeSolvedProblem(current)
+      setMessage('The download now replaces the chosen release.')
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not attach the replacement.') }
     finally { setLoading(false) }
   }
 
@@ -571,7 +627,8 @@ export function ProblemsPage() {
         {queueStatus === 'open' && current.workflow === 'manual' && current.code !== 'DUPLICATE_PHYSICAL_RELEASE' && <div className="problems-resolution"><p>Delete the unwanted copy from your drive, then recheck. Medialogue will not delete media or choose a preferred copy for you.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && current.workflow === 'config' && <div className="problems-resolution"><p>Correct the relevant media-folder or path-mapping configuration, then recheck this Problem.</p><Button variant="primary" icon="folder" onClick={() => navigate('/settings?tab=Media%20Folders')}>Open Media Folders</Button><Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && current.code === 'PLEX_IDENTITY_MISMATCH' && !editingPlexIdentity && <div className="problems-resolution"><p>Which system needs correcting?</p><Button variant="primary" icon="external" onClick={openPlex}>Medialogue is correct, open Plex</Button>{current.availableActions?.some((action) => action === 'confirm_movie_match' || action === 'confirm_show_match') && <Button variant="ghost" onClick={beginPlexIdentityChange}>Medialogue is wrong, change identity</Button>}<Button variant="ghost" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
-        {queueStatus === 'open' && current.workflow === 'waiting' && current.code !== 'PLEX_IDENTITY_MISMATCH' && <div className="problems-resolution"><p>Recheck the current external and filesystem evidence. If the condition is gone, this Problem will leave the queue.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
+        {queueStatus === 'open' && current.code === 'AMBIGUOUS_REPLACEMENT_TARGET' && duplicateMovie && current.availableActions?.includes('choose_replacement_target') && <ReplacementTargetPicker key={current.id} problem={current} movie={duplicateMovie} loading={loading} onChoose={(releaseId) => void chooseReplacement(releaseId)} onRecheck={() => void recheckCurrent()} />}
+        {queueStatus === 'open' && current.workflow === 'waiting' && current.code !== 'PLEX_IDENTITY_MISMATCH' && current.code !== 'AMBIGUOUS_REPLACEMENT_TARGET' && <div className="problems-resolution"><p>Recheck the current external and filesystem evidence. If the condition is gone, this Problem will leave the queue.</p><Button variant="primary" icon="refresh" onClick={() => void recheckCurrent()} disabled={loading}>Recheck</Button></div>}
         {queueStatus === 'open' && (current.workflow === 'choice' || editingPlexIdentity) && <ProblemsIdentityPicker problem={current} matches={tmdbMatches} selected={selectedTmdb} query={tmdbQuery} loading={loading} onQuery={setTmdbQuery} onSearch={() => void runTmdbSearch()} onSelect={setSelectedTmdb} onApply={() => void applyTmdbMatch()} onCancel={editingPlexIdentity ? () => setEditingPlexIdentity(false) : undefined} />}
         <ProblemEvidenceDetails problem={current} />
       </div></> : <EmptyState icon="alert" title="Select a Problem" detail="Choose an item to see the details and what to do next." />}</article>

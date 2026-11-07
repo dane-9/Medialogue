@@ -135,6 +135,8 @@ async def _problem_download_client_ids(db: AsyncSession, problem: Problem) -> se
 
     if problem.entity_id is None:
         return set()
+    if problem.entity_type == "download_client":
+        return {problem.entity_id}
     torrent_ids: set[UUID] = set()
     if problem.entity_type == "torrent":
         torrent_ids.add(problem.entity_id)
@@ -568,6 +570,10 @@ async def _problem_subjects(db: AsyncSession, problems: list[Problem]) -> dict[t
     if torrent_ids:
         for torrent in (await db.scalars(select(Torrent).where(Torrent.id.in_(torrent_ids)))).all():
             subjects[("torrent", torrent.id)] = torrent.name
+
+    for client_id in by_type.get("download_client", set()):
+        configured = await get_configured_download_client(db, client_id)
+        subjects[("download_client", client_id)] = configured.name if configured is not None else "qBittorrent"
 
     directory_ids = by_type.get("media_directory", set())
     if directory_ids:

@@ -616,8 +616,13 @@ async def reconcile_movie_directory(
     edition_override_active: bool = False,
     manual_edition_override: str | None = None,
     force_new_media: bool = False,
+    replacement_of_release_id: str | None = None,
 ) -> str:
-    """Reconcile one filesystem directory; used by scans and qBit completion."""
+    """Reconcile one filesystem directory; used by scans and qBit completion.
+
+    ``replacement_of_release_id`` is the missing release the administrator
+    chose this directory to replace, when Medialogue could not tell.
+    """
 
     existing_directory = await db.scalar(
         select(MediaDirectory)
@@ -829,8 +834,8 @@ async def reconcile_movie_directory(
                 .with_for_update()
             )
         ).all()
-        preferred_replacement_id = None
-        if incoming_release is not None:
+        preferred_replacement_id = replacement_of_release_id
+        if preferred_replacement_id is None and incoming_release is not None:
             preferred_replacement_id = incoming_release.parse_snapshot.get("replacement_of_release_id")
         candidate = CandidateObservation(
             resolved_path=observation.path,
@@ -867,7 +872,15 @@ async def reconcile_movie_directory(
                 entity_type="movie",
                 entity_id=movie.id,
                 message="Automatic attachment needs approval before the new release can become current.",
-                details={**decision.details, "path": observation.path},
+                details={
+                    **decision.details,
+                    "path": observation.path,
+                    # What a later choice needs to finish this same attachment.
+                    "directory_id": str(directory.id),
+                    "storage_root_id": str(root.id),
+                    "torrent_id": str(torrent.id) if torrent is not None else None,
+                    "incoming_release_id": str(incoming_release.id) if incoming_release is not None else None,
+                },
             )
             return "review"
         await resolve_problem(db, "AMBIGUOUS_REPLACEMENT_TARGET", "movie", movie.id)

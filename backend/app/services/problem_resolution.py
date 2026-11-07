@@ -49,6 +49,8 @@ def available_actions(problem: Problem) -> list[str]:
 
     closing = ["dismiss", "recheck"]
     reason = problem.reason
+    if problem.entity_type == "movie" and reason == "AMBIGUOUS_REPLACEMENT_TARGET":
+        return ["choose_replacement_target", *closing]
     if problem.entity_type in {"media_directory", "movie"} and reason in MOVIE_MATCH_REASONS:
         return ["confirm_movie_match", *closing]
     if problem.entity_type in {"media_directory", "show"} and reason in SHOW_MATCH_REASONS:
@@ -116,6 +118,16 @@ async def resolve_explicit_problem_action(
         )
         return problem
 
+    if action == "choose_replacement_target":
+        release_id = await _choose_replacement_target(db, problem, payload)
+        # Reconciliation resolves the Problem when the attachment succeeds;
+        # record what the administrator chose on it.
+        problem.status = ProblemStatus.RESOLVED
+        problem.resolution = {"action": action, "release_id": release_id}
+        problem.resolved_at = problem.resolved_at or utcnow()
+        await _resolution_event(db, problem, "Replacement target chosen manually.")
+        return problem
+
     if action == "confirm_movie_match":
         await _confirm_movie_match(db, problem, payload, tmdb_client_factory=tmdb_client_factory)
         problem.status = ProblemStatus.RESOLVED
@@ -143,6 +155,67 @@ async def resolve_explicit_problem_action(
         return problem
 
     raise AppError("PROBLEM_ACTION_NOT_ALLOWED", f"Unsupported resolution action: {action}", status_code=422)
+
+
+async def _choose_replacement_target(db: AsyncSession, problem: Problem, payload: dict[str, Any]) -> str:
+    """Attach the waiting download as the replacement of the chosen release."""
+
+    from app.models.domain import Torrent
+
+    if problem.entity_type != "movie" or problem.entity_id is None:
+        raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "Only a Movie can have a replacement target.", status_code=409)
+    details = dict(problem.details or {})
+    release_id = str(payload.get("release_id") or "")
+    candidates = {str(item) for item in details.get("candidate_release_ids") or []}
+    if release_id not in candidates:
+        raise AppError("RELEASE_NOT_A_CANDIDATE", "Choose one of the missing releases listed on this Problem.", status_code=422)
+    release = await db.get(MovieRelease, UUID(release_id))
+    if release is None or release.movie_id != problem.entity_id:
+        raise AppError("NOT_FOUND", "That release no longer exists.", status_code=404)
+    if release.release_state not in {ReleaseState.CURRENT, ReleaseState.MISSING}:
+        raise AppError("RELEASE_NOT_MISSING", "That release is no longer waiting for a replacement.", status_code=409)
+
+    def _uuid(key: str) -> UUID | None:
+        try:
+            return UUID(str(details[key])) if details.get(key) else None
+        except ValueError:
+            return None
+
+    directory = None
+    if _uuid("directory_id"):
+        directory = await db.get(MediaDirectory, _uuid("directory_id"))
+    if directory is None and details.get("path"):
+        directory = await db.scalar(select(MediaDirectory).where(MediaDirectory.resolved_path == str(details["path"])))
+    if directory is None or directory.storage_root_id is None:
+        raise AppError("NOT_FOUND", "The new download's folder is no longer known. Recheck this Problem.", status_code=404)
+    root = await db.get(StorageRoot, directory.storage_root_id)
+    if root is None:
+        raise AppError("NOT_FOUND", "The download's media folder no longer exists.", status_code=404)
+    try:
+        observation = FilesystemObserver().inspect_directory(Path(directory.resolved_path), Path(root.resolved_root_path))
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+        raise AppError("MEDIA_PATH_UNAVAILABLE", f"Could not inspect the new download: {exc}", status_code=409) from exc
+
+    movie = await db.get(Movie, problem.entity_id)
+    torrent = await db.get(Torrent, _uuid("torrent_id")) if _uuid("torrent_id") else None
+    incoming = await db.get(MovieRelease, _uuid("incoming_release_id")) if _uuid("incoming_release_id") else None
+    result = await reconcile_movie_directory(
+        db,
+        root,
+        observation,
+        torrent=torrent,
+        movie_hint=movie,
+        incoming_release=incoming,
+        replacement_of_release_id=release_id,
+    )
+    await db.refresh(release)
+    if result != "matched" or release.release_state != ReleaseState.REPLACED:
+        raise AppError(
+            "REPLACEMENT_FAILED",
+            "The download could not replace that release. Recheck this Problem to see its current state.",
+            status_code=409,
+        )
+    return release_id
 
 
 async def _resolution_event(db: AsyncSession, problem: Problem, message: str) -> None:

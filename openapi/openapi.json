@@ -7648,7 +7648,8 @@
               "dismiss",
               "recheck",
               "confirm_movie_match",
-              "confirm_show_match"
+              "confirm_show_match",
+              "choose_replacement_target"
             ],
             "title": "Action",
             "type": "string"
@@ -7674,7 +7675,8 @@
                 "dismiss",
                 "recheck",
                 "confirm_movie_match",
-                "confirm_show_match"
+                "confirm_show_match",
+                "choose_replacement_target"
               ],
               "type": "string"
             },

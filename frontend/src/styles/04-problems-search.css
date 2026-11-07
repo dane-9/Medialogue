@@ -929,3 +929,13 @@
 @media (max-width: 1400px) {
   .new-media-workspace { --new-media-detected: 260px; grid-template-columns: 220px var(--new-media-detected) calc(var(--new-media-detected) + 20px); }
 }
+
+/* Replacement target: one missing release is chosen as the one a download replaces. */
+.replacement-target-picker { display: grid; gap: var(--s2); margin-top: 14px; }
+.replacement-target-list { display: grid; gap: var(--s2); }
+.replacement-target { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); cursor: pointer; }
+.replacement-target.selected { border-color: var(--accent); }
+.replacement-target input { margin-top: 3px; }
+.replacement-target > span { display: grid; gap: 2px; min-width: 0; }
+.replacement-target strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.replacement-target span span, .replacement-target small { color: var(--muted); font-size: var(--t-xs); overflow-wrap: anywhere; }

@@ -56,7 +56,7 @@ from app.services.torrent_tracking import (
     redact_tracker_message,
     tracker_endpoint_display,
 )
-from app.services.reconciliation import resolve_problem
+from app.services.missing_paths import clear_missing_path, path_check_pending
 from app.services.torrent_reconciliation import (
     associate_incoming_torrent,
     cancel_incoming_torrent,
@@ -619,7 +619,7 @@ async def _poll_download_client(
                             prior.is_present = True
                             prior.last_seen_at = utcnow()
                             prior.removed_at = None
-                            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+                            await clear_missing_path(db, torrent)
                             await cancel_incoming_torrent(db, torrent, emit_event=False)
                             await reconcile_torrent_disagreements(db, torrent, qbit_present=None)
                 continue
@@ -898,6 +898,7 @@ async def _poll_download_client(
                             torrent,
                             resolved_path=resolved_content,
                             scope=MediaType(client.scope.value),
+                            download_client_id=client.id,
                         )
 
                     if not torrent_archive_complete(torrent):
@@ -922,6 +923,7 @@ async def _poll_download_client(
                     await reconcile_torrent_disagreements(db, torrent, qbit_present=True)
                     if (
                         torrent_archive_complete(torrent)
+                        and not path_check_pending(torrent)
                         and str(client.id) in (read_manifest(torrent).get("client_recovery") or {})
                         and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
                     ):
@@ -1029,6 +1031,7 @@ async def _poll_download_client(
                     )
                     torrent = await db.get(Torrent, row.torrent_id)
                     if torrent is not None:
+                        await clear_missing_path(db, torrent)
                         await deactivate_client_tracker_health(db, torrent.id, client.id)
                         await cancel_incoming_torrent(db, torrent)
                         await reconcile_torrent_disagreements(db, torrent, qbit_present=False)

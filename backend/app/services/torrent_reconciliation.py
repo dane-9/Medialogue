@@ -33,12 +33,12 @@ from app.models.domain import (
 )
 from app.parser import parse_release
 from app.services.events import create_event
+from app.services.missing_paths import clear_missing_path, report_missing_path
 from app.services.quality_profiles import evaluate_current_release_score, preferred_release_name
 from app.services.reconciliation import (
     _confidence,
     _find_movie_by_identity,
     _same_edition,
-    open_problem,
     reconcile_movie_directory,
     resolve_problem,
     utcnow,
@@ -275,18 +275,20 @@ async def finalize_completed_torrent(
     *,
     resolved_path: str | None,
     scope: MediaType,
+    download_client_id: UUID | None = None,
 ) -> str:
     """Verify and attach a completed torrent, preserving old evidence."""
 
     if scope == MediaType.SHOWS:
-        return await _finalize_completed_show_torrent(db, torrent, resolved_path=resolved_path)
+        return await _finalize_completed_show_torrent(
+            db, torrent, resolved_path=resolved_path, download_client_id=download_client_id
+        )
 
     if scope != MediaType.MOVIES or not resolved_path:
-        await open_problem(
+        await report_missing_path(
             db,
-            reason="TORRENT_PATH_NOT_FOUND",
-            entity_type="torrent",
-            entity_id=torrent.id,
+            torrent,
+            download_client_id=download_client_id,
             message="Completed torrent has no resolved content path.",
             details={"torrent_id": str(torrent.id), "path": resolved_path},
         )
@@ -304,16 +306,15 @@ async def finalize_completed_torrent(
         # qBittorrent may manage many libraries that are intentionally outside
         # Medialogue's configured media folders. Such a path is out of scope,
         # not missing.  Never manufacture a filesystem-access Problem for it.
-        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+        await clear_missing_path(db, torrent)
         return "ignored"
     if not Path(root.resolved_root_path).is_dir():
         return "deferred"
     if not path.exists():
-        await open_problem(
+        await report_missing_path(
             db,
-            reason="TORRENT_PATH_NOT_FOUND",
-            entity_type="torrent",
-            entity_id=torrent.id,
+            torrent,
+            download_client_id=download_client_id,
             message="qBittorrent reports a completed path that is not accessible.",
             details={"torrent_id": str(torrent.id), "resolved_path": resolved_path, "root_id": str(root.id) if root else None},
         )
@@ -323,16 +324,15 @@ async def finalize_completed_torrent(
     try:
         observation = FilesystemObserver().inspect_directory(path, Path(root.resolved_root_path))
     except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-        await open_problem(
+        await report_missing_path(
             db,
-            reason="TORRENT_PATH_NOT_FOUND",
-            entity_type="torrent",
-            entity_id=torrent.id,
+            torrent,
+            download_client_id=download_client_id,
             message="Could not inspect completed torrent directory.",
             details={"resolved_path": str(path), "error": str(exc)},
         )
         return "problem"
-    await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+    await clear_missing_path(db, torrent)
     parsed = parse_release(observation.name)
     files = [parse_release(Path(name).stem) for name in observation.media_files]
     confidence = _confidence(parsed, files, has_disc_structure=observation.has_dvd_structure or observation.has_bluray_structure)
@@ -363,7 +363,7 @@ async def finalize_completed_torrent(
         force_new_media=confidence < 0.90,
     )
     if result in {"matched", "duplicates", "conflicts"}:
-        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+        await clear_missing_path(db, torrent)
     return result
 
 
@@ -372,13 +372,13 @@ async def _finalize_completed_show_torrent(
     torrent: Torrent,
     *,
     resolved_path: str | None,
+    download_client_id: UUID | None = None,
 ) -> str:
     if not resolved_path:
-        await open_problem(
+        await report_missing_path(
             db,
-            reason="TORRENT_PATH_NOT_FOUND",
-            entity_type="torrent",
-            entity_id=torrent.id,
+            torrent,
+            download_client_id=download_client_id,
             message="Completed Show torrent has no resolved content path.",
             details={"torrent_id": str(torrent.id), "path": resolved_path},
         )
@@ -396,16 +396,15 @@ async def _finalize_completed_show_torrent(
     ).all()
     root = next((item for item in roots if _inside_root(str(path), item.resolved_root_path)), None)
     if root is None:
-        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+        await clear_missing_path(db, torrent)
         return "ignored"
     if not Path(root.resolved_root_path).is_dir():
         return "deferred"
     if not path.exists():
-        await open_problem(
+        await report_missing_path(
             db,
-            reason="TORRENT_PATH_NOT_FOUND",
-            entity_type="torrent",
-            entity_id=torrent.id,
+            torrent,
+            download_client_id=download_client_id,
             message="qBittorrent reports a completed Show path that is not accessible.",
             details={"torrent_id": str(torrent.id), "resolved_path": resolved_path, "root_id": str(root.id) if root else None},
         )
@@ -418,11 +417,10 @@ async def _finalize_completed_show_torrent(
     except ValueError:
         relative = None
     if relative is None or not relative.parts:
-        await open_problem(
+        await report_missing_path(
             db,
-            reason="TORRENT_PATH_NOT_FOUND",
-            entity_type="torrent",
-            entity_id=torrent.id,
+            torrent,
+            download_client_id=download_client_id,
             message="Completed Show torrent does not resolve to a Show container beneath the configured root.",
             details={"resolved_path": str(path), "root": str(root_path)},
         )
@@ -430,20 +428,20 @@ async def _finalize_completed_show_torrent(
 
     container = root_path / relative.parts[0]
     if not container.is_dir():
-        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+        await clear_missing_path(db, torrent)
         return "ignored"
     try:
         observation = FilesystemObserver().inspect_directory(container, root_path)
     except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-        await open_problem(
+        await report_missing_path(
             db,
-            reason="TORRENT_PATH_NOT_FOUND",
-            entity_type="torrent",
-            entity_id=torrent.id,
+            torrent,
+            download_client_id=download_client_id,
             message="Could not inspect completed Show torrent directory.",
             details={"resolved_path": str(container), "error": str(exc)},
         )
         return "problem"
+    await clear_missing_path(db, torrent)
 
     assoc = await db.scalar(
         select(ShowReleaseTorrent)
@@ -503,7 +501,7 @@ async def _finalize_completed_show_torrent(
         torrent_member_paths=member_paths,
     )
     if result in {"matched", "review"}:
-        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+        await clear_missing_path(db, torrent)
     return result
 
 

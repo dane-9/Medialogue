@@ -9,7 +9,7 @@ from app.models.domain import ProblemStatus, ProblemWorkflow, Severity
 from .common import ORMModel
 
 
-ProblemAction = Literal["restore", "dismiss", "recheck", "confirm_movie_match", "confirm_show_match"]
+ProblemAction = Literal["restore", "dismiss", "recheck", "confirm_movie_match", "confirm_show_match", "choose_replacement_target"]
 
 
 class ProblemResponse(ORMModel):

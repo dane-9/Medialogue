@@ -5450,7 +5450,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match";
+            action: "restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match" | "choose_replacement_target";
             /** Payload */
             payload?: {
                 [key: string]: unknown;
@@ -5459,7 +5459,7 @@ export interface components {
         /** ProblemResponse */
         ProblemResponse: {
             /** Available Actions */
-            available_actions?: ("restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match")[];
+            available_actions?: ("restore" | "dismiss" | "recheck" | "confirm_movie_match" | "confirm_show_match" | "choose_replacement_target")[];
             /**
              * Created At
              * Format: date-time

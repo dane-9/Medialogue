@@ -650,12 +650,27 @@ def test_checking_torrent_updates_telemetry_without_reconciliation(client: TestC
             ]
             finished = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
             assert finished["completed"] == 1
-            assert client.get("/api/v1/problems?reason=TORRENT_PATH_NOT_FOUND").json()["total"] == 1
+            # A path missing once is not yet a Problem: it can be a move or a slow mount.
+            assert client.get("/api/v1/problems?reason=TORRENT_PATH_NOT_FOUND").json()["total"] == 0
+            for _ in range(2):
+                _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            problems = client.get("/api/v1/problems?reason=TORRENT_PATH_NOT_FOUND").json()
+            assert problems["total"] == 1
+            # One Problem per client, listing the torrent.
+            problem = problems["items"][0]
+            assert problem["entity_type"] == "download_client"
+            assert problem["entity_id"] == configured["id"]
+            assert [item["name"] for item in problem["details"]["torrents"]] == ["Checking Movie 2020 1080p WEB-DL"]
+
+            # The files appear: the torrent leaves the list and the Problem resolves.
+            (root / "Checking Movie 2020 1080p WEB-DL").mkdir()
+            (root / "Checking Movie 2020 1080p WEB-DL" / "Checking.Movie.2020.1080p.WEB-DL.mkv").write_bytes(b"video")
+            _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+            assert client.get("/api/v1/problems?status=open&reason=TORRENT_PATH_NOT_FOUND").json()["total"] == 0
         finally:
             client.app.dependency_overrides.clear()
     finally:
-        if root.exists():
-            root.rmdir()
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resolves(client: TestClient) -> None:
@@ -696,8 +711,10 @@ def test_known_torrent_outside_configured_root_is_ignored_and_path_problem_resol
         )
         _install_fake(client, behavior)
         try:
-            first = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
-            assert first["relevant"] == 1
+            # Missing on three passes in a row makes it a Problem.
+            for _ in range(3):
+                first = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)
+                assert first["relevant"] == 1
 
             open_paths = client.get(
                 "/api/v1/problems?status=open&reason=TORRENT_PATH_NOT_FOUND",
