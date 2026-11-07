@@ -677,7 +677,12 @@ async def _attach_root_names(db: AsyncSession, items: list[dict[str, Any]]) -> N
             item["root_name"] = show_roots.get(item["show_id"])
 
 
-async def run_replacement_search(job_id: UUID, *, target_key: str | None = None, client_factory=TorznabClient):
+async def run_replacement_search(job_id: UUID, *, target_key: str | None = None, only_new: bool = False, client_factory=TorznabClient):
+    """Search for replacements: one title, every title, or (`only_new`) those never searched.
+
+    The best equal-or-better release is kept for review; nothing is downloaded.
+    """
+
     async def worker(db, job):
         await update_job(db, job, status=JobStatus.RUNNING)
         await db.commit()
@@ -690,6 +695,11 @@ async def run_replacement_search(job_id: UUID, *, target_key: str | None = None,
             # missing from qBittorrent with an archived copy: re-adding is the fix.
             targets = [entry for entry in targets if not entry.readdable
                        and not _dismissed(reviews.get(entry.target.target_key), entry.reason)]
+            if only_new:
+                # A title is searched as soon as it arrives; later searches are
+                # the daily schedule's or the user's.
+                targets = [entry for entry in targets
+                           if (review := reviews.get(entry.target.target_key)) is None or review.last_search_at is None]
         indexers = await list_configured_indexers(db)
         found = failures = 0
         for position, entry in enumerate(targets):

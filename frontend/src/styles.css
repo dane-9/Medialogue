@@ -4523,9 +4523,18 @@ select.input { background-color: var(--input-bg); }
 
 /* A search button per row in a rail beyond the Upgrade panel. The workspace
    grows by exactly the rail, so Current and Upgrade keep their widths. */
-.new-media-workspace.upgrade-v3 { width: calc(100% + var(--upgrade-rail) + var(--s3)); }
+/* Growing past the content width only fits on very wide windows; below
+   that it pushed the rail and the list's scrollbar off the right edge, so the
+   rail is taken out of the two panels' width instead. */
+.new-media-workspace.upgrade-v3 { width: 100%; }
+@media (min-width: 2100px) {
+  .new-media-workspace.upgrade-v3 { width: calc(100% + var(--upgrade-rail) + var(--s3)); }
+}
 .new-media-workspace.upgrade-v3 > .new-media-scroll { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--upgrade-rail); }
 .new-media-workspace > .new-media-add { margin-right: var(--scrollbar-size); }
+/* Upgrade and Replace Media's list scrollbar: a thin grey thumb with no track
+   behind it. Standard properties, so Firefox and Chrome draw it alike. */
+.new-media-workspace.upgrade-v3 > .new-media-scroll { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .new-media-workspace.upgrade-v3 > .new-media-add { margin-right: calc(var(--upgrade-rail) + var(--s3) + var(--scrollbar-size)); }
 /* The rail's heading cell: blank, but it stays put like the column headings,
    painted with the page's own fixed background so row buttons scrolling up

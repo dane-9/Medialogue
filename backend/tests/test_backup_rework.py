@@ -134,10 +134,18 @@ def test_replacement_queue_search_review_and_submission_share_existing_execution
         async with db_session.async_session_factory() as db:
             job = await create_job(db, "search_media_replacements", cancellable=False)
             await db.commit(); job_id = job.id
-        await run_replacement_search(job_id, target_key=item["target_key"], client_factory=behavior.factory)
+        # A title new to Replace Media is searched by the "new titles" run.
+        await run_replacement_search(job_id, only_new=True, client_factory=behavior.factory)
         async with db_session.async_session_factory() as db:
             job = await db.get(Job, job_id)
             assert job.status == JobStatus.COMPLETED, job.error
+            assert job.summary["targets"] == 1
+            again = await create_job(db, "search_new_replacements", cancellable=False)
+            await db.commit(); again_id = again.id
+        # Once searched, it is not new any more.
+        await run_replacement_search(again_id, only_new=True, client_factory=behavior.factory)
+        async with db_session.async_session_factory() as db:
+            assert (await db.get(Job, again_id)).summary["targets"] == 0
     asyncio.run(search())
     item = client.get("/api/v1/replacements").json()["items"][0]
     assert item["candidate_title"] == behavior.movie_results[0].title

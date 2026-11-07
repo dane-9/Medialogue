@@ -24,6 +24,14 @@ logger = logging.getLogger(__name__)
 ACTIVE_STATES = (JobStatus.QUEUED, JobStatus.RUNNING)
 DEFAULT_SCHEDULES = {
     "search_media_replacements": {"name": "Search for Media Replacements", "description": "Finds equivalent or better releases for confirmed lost tracker sources. Never downloads automatically.", "interval_seconds": 86400, "interval_options": [21600, 43200, 86400, 604800], "configurable": True, "enabled": False},
+    "search_new_replacements": {
+        "name": "Search New Replace Media Titles",
+        "description": "Searches each title as soon as it appears in Replace Media and keeps the best equal-or-better release. It never downloads automatically.",
+        "interval_seconds": 900,
+        "interval_options": [300, 900, 3600],
+        "configurable": True,
+        "enabled": True,
+    },
     "readd_missing_torrents": {
         "name": "Re-add Missing Torrents",
         "description": "Puts torrents that left qBittorrent back from the archive. Each is checked against the files on disk and only started when complete; it never downloads.",
@@ -166,6 +174,9 @@ async def _run_schedule(schedule_id: UUID, job_id: UUID) -> None:
         if job_type == "search_media_replacements":
             from app.services.replacements import run_replacement_search
             await run_replacement_search(job_id)
+        elif job_type == "search_new_replacements":
+            from app.services.replacements import run_replacement_search
+            await run_replacement_search(job_id, only_new=True)
         elif job_type == "readd_missing_torrents":
             from app.services.auto_readd import run_readd_missing_torrents
             await run_readd_missing_torrents(job_id)

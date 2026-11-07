@@ -50,7 +50,7 @@ Each row shows why it is here. For **Removed from tracker**, a red **Indexer** p
 
 ## Finding a replacement
 
-Use **Search** on a row, or **Search all**. **Search for Media Replacements** in **Tasks** can search on a schedule; ignored titles, and titles only missing from qBittorrent, are left out. Searches never start downloads.
+Each title is searched automatically when it first appears here: **Search New Replace Media Titles** in **Tasks** runs every 15 minutes (on by default) and searches every title that has never been searched, keeping the best equal-or-better release in the Replacement column. To search again, use **Search** on a row, **Search all**, or turn on **Search for Media Replacements**, which re-searches every title on a schedule. Ignored titles, and titles only missing from qBittorrent with an archived copy, are left out. Searches never start downloads.
 
 A candidate must match the title, the movie's year and edition or the show's season, meet the Quality Profile's quality and Custom Format minimums, keep or improve the current quality, and score at least as high as every release it replaces under the current profile. Results known to have no seeders are left out. Torrents already in the library are excluded by hash, checked again after the torrent file is fetched.
 
