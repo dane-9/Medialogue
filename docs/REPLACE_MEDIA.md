@@ -8,7 +8,7 @@ Each title is listed with one reason:
 
 | Reason | When |
 |---|---|
-| **Not in qBittorrent** | Its torrent left qBittorrent more than 24 hours ago, or no client has it on record, so nothing can check its tracker or swarm. **Re-add** puts the archived torrent back so the checks resume. |
+| **Not in qBittorrent** | Its torrent left qBittorrent more than 24 hours ago, or no client has it on record, so nothing can check its tracker or swarm. **Re-add** puts the archived torrent back so the checks resume. With no archived copy of its .torrent the row says *not archived*, offers no Re-add, and is searched like any lost source. |
 | **No other seeders** | For 14 days the swarm has reported no seeder besides this client. Unknown counts never start or stop the clock, and a paused torrent's own copy is not counted as another seeder. |
 | **Tracker not responding** | Every tracker of the torrent has answered with an error for 7 days. A tracker that was never contacted, as a paused torrent's is, does not count. |
 | **Removed from tracker** | Every tracker confirmed, twice in a row, that the torrent is gone ("unregistered", "deleted", "not registered", "not found", "trumped", "dupe of", or a message starting "Removed"). The verdict is kept after the torrent is deleted from qBittorrent. |

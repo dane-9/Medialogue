@@ -20,7 +20,7 @@ from app.core.errors import AppError
 from app.integrations.torznab import TorznabClient, SearchResult
 from app.models.domain import (AssociationType, EpisodeMediaMap, Job, JobStatus, MediaDirectory, MediaFile, MediaType,
                                Movie, MovieRelease, MovieReleaseTorrent, ReleaseState, ReplacementReview, Season, Show,
-                               ShowRelease, ShowReleaseTorrent, StorageRoot, Torrent, TorrentClientObservation,
+                               ShowRelease, ShowReleaseTorrent, StorageRoot, Torrent, TorrentArchiveState, TorrentClientObservation,
                                TorrentTrackerObservation, UpgradeCandidate)
 from app.services.integration_state import list_configured_indexers, get_configured_indexer
 from app.services.jobs import run_job, update_job
@@ -82,6 +82,19 @@ class ReplacementTarget:
     reason: str
     #: When the problem started, where that is known.
     since: datetime | None = None
+
+    @property
+    def readdable(self) -> bool:
+        """Missing from qBittorrent with an archived .torrent to put back.
+
+        Any one archived torrent brings the files back; cross-seeds share them.
+        Without one, re-adding is impossible and the title needs a new torrent
+        like any other lost source.
+        """
+
+        return self.reason == NOT_WATCHED and any(
+            torrent.archive_state == TorrentArchiveState.ARCHIVED and torrent.archive_path for torrent in self.torrents
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -508,8 +521,7 @@ async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[d
             current_score=max(item.custom_format_score for item in target.releases),
             torrent_ids=[str(torrent.id) for torrent in torrents],
             media_present=all(release.release_state == ReleaseState.CURRENT for release in entry.releases),
-            # Re-adding needs the archived .torrent of every torrent behind the title.
-            readdable=entry.reason == NOT_WATCHED and bool(torrents),
+            readdable=entry.readdable,
             last_searched_at=searched_at, last_search_result=search_result, dismissed=dismissed,
             candidate_id=str(row.id) if row else None, candidate_title=row.title if row else None,
             candidate_quality=row.quality if row else None,
@@ -670,8 +682,8 @@ async def run_replacement_search(job_id: UUID, *, target_key: str | None = None,
             targets = [entry for entry in targets if entry.target.target_key == target_key]
         else:
             # Ignored issues stay out of bulk searches, and so do torrents only
-            # missing from qBittorrent: re-adding them is the fix.
-            targets = [entry for entry in targets if entry.reason != NOT_WATCHED
+            # missing from qBittorrent with an archived copy: re-adding is the fix.
+            targets = [entry for entry in targets if not entry.readdable
                        and not _dismissed(reviews.get(entry.target.target_key), entry.reason)]
         indexers = await list_configured_indexers(db)
         found = failures = 0

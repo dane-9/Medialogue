@@ -79,6 +79,8 @@
   --row: 48px;
   --sidebar: 220px;
   --topbar: 52px;
+  /* The WebKit scrollbar's width, for layouts that line up beside one. */
+  --scrollbar-size: 9px;
   --rail: 260px;
 
   --card-w: 180px;
@@ -105,7 +107,7 @@ body { margin: 0; min-width: 1080px; background: var(--bg); color: var(--text); 
 * {
   scrollbar-width: thin;
 }
-::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
 
 button, input, select, textarea { font: inherit; }
 button { color: inherit; cursor: pointer; }
@@ -3602,6 +3604,13 @@ a.download-kind:hover { filter: brightness(1.35); }
   align-content: start;
   min-height: 0;
   overflow-y: auto;
+  /* Rows are as tall as their content. With plain auto rows, Chrome squeezes
+     every row down to the cells' min-height once the list is taller than its
+     box and scrolls, so the posters and text are crushed together. */
+  grid-auto-rows: max-content;
+  /* Always keep the scrollbar's room, so the rows never change width when the
+     list grows past the window, and the bar below can line up with them. */
+  scrollbar-gutter: stable;
 }
 .new-media-alt-pane {
   display: flex;
@@ -3618,7 +3627,8 @@ a.download-kind:hover { filter: brightness(1.35); }
 .new-media-col-head {
   position: sticky;
   top: 0;
-  z-index: 1;
+  /* Above row content that lifts itself (Replace Media's reason line). */
+  z-index: 2;
   padding: var(--s2) var(--s3);
   border: 1px solid var(--line);
   border-radius: var(--r-md) var(--r-md) 0 0;
@@ -4403,7 +4413,6 @@ select.input { background-color: var(--input-bg); }
 .replace-reason-all { padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
 .replace-reason-all:hover { text-decoration: underline; }
 .downloads-rail-item.replace-reason:not(.active) { color: var(--faint); }
-.downloads-rail-item.replace-reason:not(.active) .rail-label { text-decoration: line-through; }
 .replace-rail-empty { padding: 0 var(--s1); color: var(--faint); font: var(--t-xs) var(--sans); }
 .new-media-workspace.upgrade-v2 { --new-media-detected: 280px; grid-template-columns: minmax(0, 1fr) var(--new-media-detected) 400px; }
 .upgrade-v2-empty { grid-column: 1 / -1; padding: var(--s5); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-md) var(--r-md); background: var(--surface); color: var(--faint); font-size: var(--t-sm); text-align: center; }
@@ -4516,7 +4525,22 @@ select.input { background-color: var(--input-bg); }
    grows by exactly the rail, so Current and Upgrade keep their widths. */
 .new-media-workspace.upgrade-v3 { width: calc(100% + var(--upgrade-rail) + var(--s3)); }
 .new-media-workspace.upgrade-v3 > .new-media-scroll { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--upgrade-rail); }
-.new-media-workspace.upgrade-v3 > .new-media-add { margin-right: calc(var(--upgrade-rail) + var(--s3)); }
+.new-media-workspace > .new-media-add { margin-right: var(--scrollbar-size); }
+.new-media-workspace.upgrade-v3 > .new-media-add { margin-right: calc(var(--upgrade-rail) + var(--s3) + var(--scrollbar-size)); }
+/* The rail's heading cell: blank, but it stays put like the column headings,
+   painted with the page's own fixed background so row buttons scrolling up
+   slip under it instead of showing beside the headings. */
+.upgrade-v3-rail-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--bg);
+  background-image: var(--app-background-image, url('/bg.webp')), linear-gradient(180deg, #171d25 0%, #24282f 42%, #20242a 100%);
+  background-position: center top, center top;
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
+  background-attachment: fixed;
+}
 .upgrade-v3-rail { display: grid; place-items: center; }
 .upgrade-v3 .upgrade-v2-change { cursor: default; }
 /* The rail is exactly one button wide and starts at the column gap, so the
@@ -4580,6 +4604,19 @@ select.input { background-color: var(--input-bg); }
 .main-area:has(.new-media-workspace) > .page-content { display: flex; width: 100%; flex: 1 1 0; flex-direction: column; }
 .page:has(> .new-media-workspace) { display: flex; flex: 1 1 0; flex-direction: column; }
 .page > .new-media-workspace { height: auto; min-height: 420px; flex: 1 1 0; }
+/* Replace Media puts the workspace beside its Reason rail, one level deeper. */
+/* The rail sits inside the page width: breaking out to the left like Downloads
+   needs room beside the content that only very wide windows have, and without
+   it the rail slides under the navigation. */
+.replace-layout { width: 100%; margin-left: 0; }
+@media (min-width: 2040px) {
+  .replace-layout { width: calc(100% + var(--downloads-rail) + var(--s4)); margin-left: calc(-1 * (var(--downloads-rail) + var(--s4))); }
+}
+.page:has(> .replace-layout) { display: flex; flex: 1 1 0; flex-direction: column; }
+.page > .replace-layout { flex: 1 1 0; align-items: stretch; min-height: 420px; }
+.replace-layout > .downloads-rail { align-self: start; }
+.replace-layout > .downloads-main { display: flex; min-height: 0; flex-direction: column; }
+.replace-layout > .downloads-main > .new-media-workspace { height: auto; min-height: 420px; flex: 1 1 0; }
 
 /* Replace Media: why a title is here, the tracker that dropped it and what
    it said, under the title; every lost torrent on hover. */
@@ -4588,10 +4625,17 @@ select.input { background-color: var(--input-bg); }
    line, stopping short of the score. 100cqw is the whole Current cell; the
    170px is the checkbox and poster on the left plus room for the score. */
 .replace-v3 .upgrade-v2-current { container-type: inline-size; }
-/* One fixed track, so the wider reason overflows it rather than widening the
-   column and pushing the title. */
+/* A row with both Re-add and Search puts them side by side rather than
+   stacking them into a taller row. */
+.new-media-workspace.upgrade-v3.replace-v3 { --upgrade-rail: 68px; }
+.replace-v3 .upgrade-v3-rail { display: flex; align-items: center; gap: 4px; }
+.replace-v3 .upgrade-v3-rail .icon-button { width: 32px; height: 32px; }
+/* One fixed track, and the reason line is zero wide in it: its content shows
+   in full but overflows, so only the title and year line size the column and
+   the release name gets the rest of the row. */
 .replace-v3 .upgrade-v2-current > .upgrade-v2-title { grid-template-columns: minmax(0, 1fr); }
-.replace-v3 .upgrade-v2-title > .replace-lost { position: relative; z-index: 1; width: max-content; max-width: calc(100cqw - 170px); }
+.replace-v3 .upgrade-v2-title > .replace-lost { position: relative; z-index: 1; width: 0; min-width: 0; overflow: visible; }
+.replace-lost-inner { display: flex; flex: none; width: max-content; max-width: calc(100cqw - 170px); align-items: center; gap: var(--s2); }
 .release-pill-lost { flex: none; color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
 .replace-lost-message { min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--err) 70%, var(--muted)); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .replace-lost-list { display: grid; gap: var(--s2); }

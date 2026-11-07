@@ -385,7 +385,7 @@ export default function ReplaceMediaPage() {
               className={`downloads-rail-item replace-reason ${on ? 'active' : ''}`}
               onClick={() => toggleReason(entry.code)}
             >
-              <span className={`downloads-rail-icon tone-${on ? entry.tone : 'neutral'}`}><Icon name={on ? entry.icon : 'eye-off'} size={14} /></span>
+              <span className={`downloads-rail-icon tone-${on ? entry.tone : 'neutral'}`}><Icon name={entry.icon} size={14} /></span>
               <span className="rail-label">{entry.label}</span>
               <span className="rail-count">{reasonCounts.get(entry.code)}</span>
             </button>
@@ -413,7 +413,7 @@ export default function ReplaceMediaPage() {
                 <span className="upgrade-v2-size-change" aria-hidden="true" />
               </>}
           </span>
-          <span aria-hidden="true" />
+          <span className="upgrade-v3-rail-head" aria-hidden="true" />
           {!rows.length && <div className="upgrade-v2-empty">{statusItems.length && !reasonItems.length ? 'Every reason with titles here is switched off.' : statusInfo.empty}</div>}
           {rows.map((item) => {
             const isPickable = pickable(item)
@@ -472,23 +472,23 @@ export default function ReplaceMediaPage() {
                       <span className="release-pill release-pill-lost"><i>Indexer</i>{entry.tracker ?? 'unknown'}</span>
                       <span>{entry.message ?? 'Removed by the tracker'}{entry.last_worked_at ? ` · last worked ${formatAge(entry.last_worked_at)}` : ''}</span>
                     </li>)}</ul>}>
-                      <span className="replace-lost">
+                      <span className="replace-lost"><span className="replace-lost-inner">
                         <span className="release-pill release-pill-lost"><i>Indexer</i>{item.lost_evidence[0].tracker ?? 'unknown'}</span>
                         <span className="replace-lost-message">{item.lost_evidence[0].message ?? 'Removed by the tracker'}{item.lost_evidence[0].last_worked_at ? ` · ${formatAge(item.lost_evidence[0].last_worked_at)}` : ''}</span>
-                      </span>
+                      </span></span>
                     </Tooltip>
                     : item.reason_code
-                      ? <Tooltip asChild content={replaceReasonDetail(item.reason_code, item.reason_since).help}>
-                        <span className="replace-lost">
+                      ? <Tooltip asChild content={replaceReasonDetail(item.reason_code, item.reason_since, item.readdable).help}>
+                        <span className="replace-lost"><span className="replace-lost-inner">
                           <span className="release-pill release-pill-lost"><i>Why</i>{item.reason}</span>
-                          <span className="replace-lost-message">{replaceReasonDetail(item.reason_code, item.reason_since).note}</span>
-                        </span>
+                          <span className="replace-lost-message">{replaceReasonDetail(item.reason_code, item.reason_since, item.readdable).note}</span>
+                        </span></span>
                       </Tooltip>
                       : <ReleaseSourcePill indexer={item.current_indexer} color={item.current_indexer_color} tracker={item.current_tracker} />}
                 </span>
                 <div className="upgrade-v2-side">
                   <div className="upgrade-v2-line">
-                    <span className="upgrade-v2-release">{item.current_release && item.current_release !== item.title ? breakable(item.current_release) : '—'}</span>
+                    <span className="upgrade-v2-release" title={item.current_release ?? undefined}>{item.current_release && item.current_release !== item.title ? breakable(item.current_release) : '—'}</span>
                   </div>
                   <small className="upgrade-v2-score">{item.current_score != null ? `CF: ${item.current_score}` : ''}</small>
                 </div>
@@ -497,7 +497,7 @@ export default function ReplaceMediaPage() {
                 <div className="upgrade-v2-side">
                   <div className="upgrade-v2-line">
                     {item.candidate_title
-                      ? <span className="upgrade-v2-release">{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
+                      ? <span className="upgrade-v2-release" title={item.candidate_title}>{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
                         <span className="upgrade-token-sep">{token.sep}</span>{token.sep && <wbr />}
                         <span className={lit[index] ? 'upgrade-token-new quality' : 'upgrade-token-same'}>{token.text}</span>
                       </Fragment>) : breakable(item.candidate_title)}</span>

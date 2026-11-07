@@ -537,7 +537,7 @@ export function UpgradeMediaPage() {
             </>}
             {shownStatus === 'attention' && <span className="upgrade-v2-action">Action</span>}
           </span>
-          <span aria-hidden="true" />
+          <span className="upgrade-v3-rail-head" aria-hidden="true" />
           {!rows.length && <div className="upgrade-v2-empty">{UPGRADE_STATUSES.find((entry) => entry.value === shownStatus)?.empty}</div>}
           {rows.map((item) => {
             const active = false

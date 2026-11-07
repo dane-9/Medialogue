@@ -33,10 +33,14 @@ export function reasonShown(code: string | null | undefined, hidden: Set<Replace
 }
 
 /** Why a title could not be restored from the backup, for its Replace Media row. */
-export function replaceReasonDetail(code: ReplaceReasonCode, since?: string | null): { help: string; note: string } {
+export function replaceReasonDetail(code: ReplaceReasonCode, since?: string | null, readdable = true): { help: string; note: string } {
   const age = since ? formatAge(since) : ''
   switch (code) {
     case 'not_watched':
+      if (!readdable) return {
+        help: 'The torrent is no longer in qBittorrent and the archive has no copy of its .torrent file, so it cannot be put back. Search for a new torrent.',
+        note: `${age ? `Left qBittorrent ${age}` : 'Not in any qBittorrent client'} · not archived`,
+      }
       return {
         help: 'The torrent is no longer in qBittorrent, so Medialogue cannot check that its tracker still has it. Re-add it from the archive to check again.',
         note: age ? `Left qBittorrent ${age}` : 'Not in any qBittorrent client',

@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
 from app.models.domain import (AssociationType, IdentityState, Movie, MovieRelease, MovieReleaseTorrent, ReleaseState,
-                               ReplacementReview, Torrent, TorrentClientObservation)
+                               ReplacementReview, Torrent, TorrentArchiveState, TorrentClientObservation)
 from app.services.replacements import (NO_SEEDERS, NO_TORRENT, NOT_WATCHED, REMOVED_FROM_TRACKER, TRACKER_GONE,
-                                       _dismissed, classify_torrent, release_problems)
+                                       ReplacementTarget, _dismissed, classify_torrent, release_problems)
 from app.services.torrent_tracking import other_seeders, terminal_tracker_reason, track_other_seeders
 
 NOW = datetime.now(timezone.utc)
@@ -160,3 +160,17 @@ def test_private_tracker_removal_wording_is_terminal():
     assert terminal_tracker_reason("Removed: source was retail-incorrect") == "removed"
     assert terminal_tracker_reason("timed out") is None
     assert terminal_tracker_reason("Connection refused") is None
+
+
+def test_readd_needs_an_archived_torrent():
+    def target(reason, *states):
+        torrents = [SimpleNamespace(archive_state=state, archive_path="/archive/x.torrent" if state == TorrentArchiveState.ARCHIVED else None)
+                    for state in states]
+        return ReplacementTarget(target=None, torrents=torrents, releases=[], reason=reason)
+
+    assert target(NOT_WATCHED, TorrentArchiveState.ARCHIVED).readdable
+    assert target(NOT_WATCHED, TorrentArchiveState.NOT_ARCHIVED, TorrentArchiveState.ARCHIVED).readdable
+    assert not target(NOT_WATCHED, TorrentArchiveState.NOT_ARCHIVED).readdable
+    assert not target(NOT_WATCHED, TorrentArchiveState.PRUNED).readdable
+    assert not target(NOT_WATCHED).readdable
+    assert not target(REMOVED_FROM_TRACKER, TorrentArchiveState.ARCHIVED).readdable

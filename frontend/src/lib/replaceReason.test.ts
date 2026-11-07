@@ -13,6 +13,7 @@ describe('replaceReasonDetail', () => {
   it('falls back to plain words without a date', () => {
     expect(replaceReasonDetail('not_watched').note).toBe('Not in any qBittorrent client')
     expect(replaceReasonDetail('no_torrent').note).toBe('Never linked to a torrent')
+    expect(replaceReasonDetail('not_watched', twoDaysAgo, false).note).toBe('Left qBittorrent 2 days ago · not archived')
   })
 })
 
