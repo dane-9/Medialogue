@@ -8,10 +8,6 @@ from .downloads import DownloadScope
 from .indexers import IndexerScope
 
 
-class LivenessResponse(BaseModel):
-    status: Literal["ok"]
-
-
 class ReadinessResponse(BaseModel):
     status: Literal["ok", "not_ready"]
     database: Literal["available", "unavailable"]

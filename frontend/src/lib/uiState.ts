@@ -1,5 +1,3 @@
-import type { Problem } from '../types'
-
 type MediaView = 'cards' | 'table'
 
 export function normalizeMediaView(value: string | null | undefined, fallback: MediaView = 'cards'): MediaView {
@@ -15,32 +13,6 @@ export function toggleIdSelection(current: ReadonlySet<string>, id: string): Set
 
 export function contextMenuSelection(current: ReadonlySet<string>, id: string): Set<string> {
   return current.has(id) ? new Set(current) : new Set([id])
-}
-
-export function problemMatchesFilter(
-  problem: Pick<Problem, 'code' | 'severity'>,
-  reasonFilter: string,
-  severityFilter: string,
-): boolean {
-  const reasonMatches = reasonFilter === 'all'
-    || (reasonFilter === 'duplicates' && problem.code.includes('DUPLICATE'))
-    || (reasonFilter === 'identity' && (
-      problem.code.includes('IDENTITY')
-      || problem.code.includes('CONFIDENCE')
-      || problem.code.includes('TMDB')
-    ))
-    || (reasonFilter === 'paths' && (problem.code.includes('PATH') || problem.code.includes('ROOT')))
-    || problem.code === reasonFilter
-  return reasonMatches && (severityFilter === 'all' || problem.severity === severityFilter)
-}
-
-export function duplicateLoserIds(releaseIds: readonly string[], winnerReleaseId: string): string[] {
-  if (!winnerReleaseId) return []
-  return releaseIds.filter((id) => id !== winnerReleaseId)
-}
-
-export function duplicatePreviewReady(releaseIds: readonly string[], winnerReleaseId: string): boolean {
-  return Boolean(winnerReleaseId) && releaseIds.includes(winnerReleaseId) && duplicateLoserIds(releaseIds, winnerReleaseId).length > 0
 }
 
 let fallbackIdCounter = 0

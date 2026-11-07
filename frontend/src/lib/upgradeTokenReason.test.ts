@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { diffReleaseTokens } from './releaseTokens'
-import { candidateFormatReasons, combinedDynamicRangeTokenGroups, shareCombinedDynamicRangeReasons, sharedUpgradeReasonTokenGroups, upgradeTokenReason, type UpgradeTokenContext } from './upgradeTokenReason'
+import { candidateFormatReasons, combinedDynamicRangeTokenGroups, shareCombinedDynamicRangeReasons, upgradeTokenReason, type UpgradeTokenContext } from './upgradeTokenReason'
 
 const CURRENT = 'The.Thing.1982.1080p.WEB-DL.DD5.1.H.264-GROUP'
 const CANDIDATE = 'The.Thing.1982.RERIP.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD.5.1-OTHER'
@@ -76,20 +76,6 @@ describe('upgradeTokenReason', () => {
     expect(reasonFor('HDR', combinedContext)).toBe('Custom Format: DV HDR10 +0')
   })
 
-  it('groups every adjacent token carrying the same reason', () => {
-    const groups = sharedUpgradeReasonTokenGroups([
-      undefined,
-      'Quality: 1080p WEB-DL to 2160p BluRay REMUX.',
-      'Quality: 1080p WEB-DL to 2160p BluRay REMUX.',
-      undefined,
-      'Custom Format: Lossless Atmos +60',
-      'Custom Format: Lossless Atmos +60',
-    ])
-    expect(groups.get(1)).toBe(groups.get(2))
-    expect(groups.get(4)).toBe(groups.get(5))
-    expect(groups.get(0)).toBeUndefined()
-  })
-
   it('attributes arbitrary user format names through condition match evidence', () => {
     const formats = candidateFormatReasons({
       candidate: {
@@ -113,9 +99,6 @@ describe('upgradeTokenReason', () => {
     const expected = 'Custom Format: Preferred lossless audio +75'
     expect(reasons[tokens.findIndex((token) => token.text === 'TrueHD')]).toBe(expected)
     expect(reasons[tokens.findIndex((token) => token.text === 'Atmos')]).toBe(expected)
-    const groups = sharedUpgradeReasonTokenGroups(reasons)
-    expect(groups.get(tokens.findIndex((token) => token.text === 'TrueHD')))
-      .toBe(groups.get(tokens.findIndex((token) => token.text === 'Atmos')))
   })
 
   it('matches a Custom Format named with the token itself', () => {

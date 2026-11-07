@@ -36,7 +36,6 @@ from app.services.torrent_archive import QBittorrentClientFactory, read_manifest
 
 logger = logging.getLogger(__name__)
 
-READD_JOB_TYPE = "readd_missing_torrents"
 
 CHECKING = "checking"
 SEEDING = "seeding"

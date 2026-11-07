@@ -8,7 +8,7 @@ from app.api.dependencies import require_admin
 from app.db.session import get_db
 from app.models.auth import AdminUser
 from app.models.domain import StorageRoot, Torrent, TorrentArchiveState
-from app.schemas.health import IntegrationHealthResponse, LivenessResponse, ReadinessResponse
+from app.schemas.health import IntegrationHealthResponse, ReadinessResponse
 
 from app.services.integration_state import get_configured_plex, get_configured_tmdb, list_configured_download_clients, list_configured_indexers
 from app.services.torrent_archive import archive_mount_health
@@ -16,12 +16,6 @@ from app.services.torrent_archive import archive_mount_health
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
-
-
-@router.get("/healthz", response_model=LivenessResponse)
-async def liveness() -> LivenessResponse:
-    return LivenessResponse(status="ok")
-
 
 
 @router.get("/readyz", response_model=ReadinessResponse)

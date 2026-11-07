@@ -1,5 +1,5 @@
 {
   "generator": "openapi-typescript@7.13.0",
-  "openapi_sha256": "af06df5352fa6b216129045768025fd598af43313cc3d00519b1cb25359e8b76",
-  "typescript_sha256": "02442c3d670d6b33c7c01ed155b755121c12c402c60b40738cca6960ba84e5c7"
+  "openapi_sha256": "f0bcff8fd48be9dc4b547423c2e9feaed24f3c162a3b7cb61b508979642c24ac",
+  "typescript_sha256": "f522295f758696c32b10669e748e2ce3a4839ad17670ce16a3365fd930b2fd2a"
 }

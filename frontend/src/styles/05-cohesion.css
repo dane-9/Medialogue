@@ -329,11 +329,6 @@ select.input { background-color: var(--input-bg); }
 }
 .poster { background: linear-gradient(155deg, #3d4450, #24282f 58%, #171d25); }
 .poster::after { background: linear-gradient(0deg, rgba(23,29,37,.94), rgba(23,29,37,.08) 62%); }
-.selection-mark {
-  border-radius: 2px;
-  color: #fff;
-  background: var(--accent-solid);
-}
 
 .dropdown-menu,
 .bulk-context-menu,

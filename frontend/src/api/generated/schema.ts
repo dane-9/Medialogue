@@ -801,23 +801,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/download-clients/{client_id}/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Download Client Health */
-        get: operations["download_client_health_api_v1_download_clients__client_id__health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/download-clients/{client_id}/health/refresh": {
         parameters: {
             query?: never;
@@ -2660,23 +2643,6 @@ export interface paths {
         put?: never;
         /** Execute Upgrade */
         post: operations["execute_upgrade_api_v1_upgrade_candidates__candidate_id__upgrade_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/healthz": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Liveness */
-        get: operations["liveness_healthz_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4533,14 +4499,6 @@ export interface components {
              * @default 0
              */
             unlinked_directories: number;
-        };
-        /** LivenessResponse */
-        LivenessResponse: {
-            /**
-             * Status
-             * @constant
-             */
-            status: "ok";
         };
         /** LoginRequest */
         LoginRequest: {
@@ -9069,37 +9027,6 @@ export interface operations {
             };
         };
     };
-    download_client_health_api_v1_download_clients__client_id__health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                client_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DownloadClientTestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     refresh_download_client_health_api_v1_download_clients__client_id__health_refresh_post: {
         parameters: {
             query?: never;
@@ -12877,26 +12804,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    liveness_healthz_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LivenessResponse"];
                 };
             };
         };

@@ -85,9 +85,6 @@ class ReleaseAttributes:
     proper_revision: int = 0
     rerip_revision: int = 0
 
-    def as_list(self) -> list[str]:
-        return list(self.values)
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "values": list(self.values),

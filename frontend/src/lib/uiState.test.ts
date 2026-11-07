@@ -3,10 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   browserSafeId,
   contextMenuSelection,
-  duplicateLoserIds,
-  duplicatePreviewReady,
   normalizeMediaView,
-  problemMatchesFilter,
   toggleIdSelection,
 } from './uiState'
 
@@ -25,29 +22,6 @@ describe('movie selection and context-menu state', () => {
     const selected = new Set(['movie-a', 'movie-b'])
     expect([...contextMenuSelection(selected, 'movie-b')]).toEqual(['movie-a', 'movie-b'])
     expect([...contextMenuSelection(selected, 'movie-c')]).toEqual(['movie-c'])
-  })
-})
-
-describe('Problems and duplicate-resolution UI state', () => {
-  const duplicate = { code: 'DUPLICATE_PHYSICAL_RELEASE', severity: 'high' } as const
-  const pathProblem = { code: 'TORRENT_PATH_NOT_FOUND', severity: 'medium' } as const
-  const identity = { code: 'PLEX_IDENTITY_MISMATCH', severity: 'low' } as const
-
-  it('applies reason and severity filters consistently', () => {
-    expect(problemMatchesFilter(duplicate, 'duplicates', 'all')).toBe(true)
-    expect(problemMatchesFilter(pathProblem, 'paths', 'medium')).toBe(true)
-    expect(problemMatchesFilter(identity, 'identity', 'low')).toBe(true)
-    expect(problemMatchesFilter(identity, 'paths', 'all')).toBe(false)
-    expect(problemMatchesFilter(duplicate, 'duplicates', 'low')).toBe(false)
-  })
-
-  it('requires a real winner and at least one loser before a duplicate preview can be requested', () => {
-    const releases = ['release-a', 'release-b', 'release-c']
-    expect(duplicateLoserIds(releases, 'release-b')).toEqual(['release-a', 'release-c'])
-    expect(duplicatePreviewReady(releases, 'release-b')).toBe(true)
-    expect(duplicatePreviewReady(releases, '')).toBe(false)
-    expect(duplicatePreviewReady(releases, 'not-a-candidate')).toBe(false)
-    expect(duplicatePreviewReady(['release-a'], 'release-a')).toBe(false)
   })
 })
 

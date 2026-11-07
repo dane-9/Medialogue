@@ -31,7 +31,6 @@ class CustomFormatConditionType(str, Enum):
     RELEASE_ATTRIBUTE = "release_attribute"
 
 
-REGEX_CONDITION_TYPES = set(CustomFormatConditionType)
 
 
 class StrictCustomFormatModel(BaseModel):

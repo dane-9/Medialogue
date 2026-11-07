@@ -135,7 +135,7 @@ h1, h2, h3, p { margin: 0; }
   flex-direction: column;
   border-right: 1px solid var(--line);
 }
-.login-brand { display: flex; align-items: center; gap: var(--s3); }
+
 .brand {
   height: var(--topbar);
   display: flex;
@@ -279,7 +279,6 @@ h1, h2, h3, p { margin: 0; }
 }
 .heading-copy p { color: var(--muted); font-size: var(--t-md); }
 .page-actions,
-.row-actions,
 .button-row,
 .detail-actions,
 .cf-test-actions {
@@ -287,7 +286,7 @@ h1, h2, h3, p { margin: 0; }
   align-items: center;
   gap: var(--s2);
 }
-.row-actions { justify-content: flex-end; }
+
 /* Four buttons beside a poster will not always fit on one line. */
 .detail-actions { flex-wrap: wrap; }
 

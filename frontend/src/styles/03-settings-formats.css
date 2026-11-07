@@ -608,7 +608,6 @@
 
   .media-grid, .show-grid { --card-w: 150px; }
 }
-@media (max-width: 1120px) { .selection-count { display: none; } }
 @media (max-width: 980px) {
   .show-season-workspace { grid-template-columns: 1fr; }
   .season-nav-list { display: flex; overflow-x: auto; }

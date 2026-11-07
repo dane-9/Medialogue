@@ -9,7 +9,7 @@ docker compose ps
 docker compose logs media-manager
 ```
 
-`/healthz` is process liveness. `/readyz` also verifies the database and is the container healthcheck target.
+`/readyz` verifies the database and is the container healthcheck target.
 
 ## Permission denied under /config or /torrent-archive
 

@@ -5059,20 +5059,6 @@
         "title": "LibrarySummary",
         "type": "object"
       },
-      "LivenessResponse": {
-        "properties": {
-          "status": {
-            "const": "ok",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "title": "LivenessResponse",
-        "type": "object"
-      },
       "LoginRequest": {
         "properties": {
           "password": {
@@ -16306,49 +16292,6 @@
         ]
       }
     },
-    "/api/v1/download-clients/{client_id}/health": {
-      "get": {
-        "operationId": "download_client_health_api_v1_download_clients__client_id__health_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "client_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Client Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DownloadClientTestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Download Client Health",
-        "tags": [
-          "downloads"
-        ]
-      }
-    },
     "/api/v1/download-clients/{client_id}/health/refresh": {
       "post": {
         "operationId": "refresh_download_client_health_api_v1_download_clients__client_id__health_refresh_post",
@@ -22133,27 +22076,6 @@
         "summary": "Execute Upgrade",
         "tags": [
           "upgrade candidates"
-        ]
-      }
-    },
-    "/healthz": {
-      "get": {
-        "operationId": "liveness_healthz_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LivenessResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Liveness",
-        "tags": [
-          "health"
         ]
       }
     },

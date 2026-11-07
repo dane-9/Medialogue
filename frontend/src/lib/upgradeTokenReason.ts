@@ -91,23 +91,6 @@ export function combinedDynamicRangeTokenGroups(tokens: ReleaseTokenDiff[]): Map
   return groups
 }
 
-/** Group any consecutive tokens explained by the same upgrade reason. */
-export function sharedUpgradeReasonTokenGroups(reasons: Array<string | undefined>): Map<number, string> {
-  const groups = new Map<number, string>()
-  let start = 0
-  while (start < reasons.length) {
-    const reason = reasons[start]
-    let end = start + 1
-    while (reason && end < reasons.length && reasons[end] === reason) end += 1
-    if (reason && end - start > 1) {
-      const group = `${start}:${end - 1}`
-      for (let index = start; index < end; index += 1) groups.set(index, group)
-    }
-    start = end
-  }
-  return groups
-}
-
 /** Give both halves of a combined dynamic-range label the same explanation.
  *
  * An indexer evaluation can credit only `DV` (for example, to a Dolby Vision

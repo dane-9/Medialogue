@@ -246,12 +246,6 @@ class IntegrationConfigStore:
                 )
             self._save(self._default_config(), self._default_secrets())
 
-    def export_for_recovery(self) -> dict[str, Any]:
-        """Return a decrypted snapshot for the already-sensitive Recovery Bundle."""
-
-        config, secrets = self._load()
-        return {"configuration": config, "secrets": secrets}
-
     def _load(self) -> tuple[dict[str, Any], dict[str, Any]]:
         with self._lock:
             config_mtime = self.config_path.stat().st_mtime_ns if self.config_path.exists() else None

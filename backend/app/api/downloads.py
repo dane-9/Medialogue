@@ -829,18 +829,6 @@ async def test_download_client(
     return DownloadClientTestResponse(**result)
 
 
-@router.get("/download-clients/{client_id}/health", response_model=DownloadClientTestResponse)
-async def download_client_health(
-    client_id: UUID,
-    _: AdminUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-) -> DownloadClientTestResponse:
-    client = await get_configured_download_client(db, client_id)
-    if client is None:
-        raise AppError("NOT_FOUND", "Download client was not found.", status_code=404)
-    return DownloadClientTestResponse(status=client.health or "unknown")
-
-
 @router.post("/download-clients/{client_id}/health/refresh", response_model=DownloadClientTestResponse)
 async def refresh_download_client_health(
     client_id: UUID,

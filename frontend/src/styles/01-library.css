@@ -312,9 +312,6 @@
   transition: opacity .12s;
 }
 .media-card:hover .media-card-actions, .media-card:focus-within .media-card-actions { opacity: 1; }
-@media (prefers-reduced-motion: reduce) {
-  .selection-mark { transition: none; }
-}
 /* Same box as the monitor mark in the opposite corner, so the two corners of a
    card carry controls of one size. */
 .media-card-actions .icon-button { width: 22px; height: 22px; border: 1px solid rgba(255,255,255,.14); }
@@ -465,24 +462,8 @@
   .episode-progress-fill { transition: none; }
 }
 
-.selection-mark {
-  position: absolute;
-  z-index: 2;
-  top: var(--s2);
-  left: var(--s2);
-  /* Yields its corner to the hover actions; the card's accent border still
-     says it is selected. */
-  transition: opacity .12s;
-  display: grid;
-  place-items: center;
-  width: var(--control-sm);
-  height: var(--control-sm);
-  border-radius: var(--r-full);
-  color: #171d25;
-  background: var(--accent);
-}
 .row-selected { background: var(--accent-soft) !important; box-shadow: inset 2px 0 var(--accent); }
-.selection-count { color: var(--muted); font: var(--t-micro) var(--sans); white-space: nowrap; }
+
 /* Toolbar summary of a library selection. */
 .selection-bar { display: inline-flex; align-items: center; gap: var(--s2); padding: 0 var(--s1) 0 var(--s3); height: var(--control-sm); border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-text); font-size: var(--t-xs); white-space: nowrap; }
 .selection-bar strong { font-weight: 600; }
@@ -693,7 +674,6 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
    override reads like every other setting in the app. */
 .profile-form { padding: var(--s4); }
 
-.history-list { display: block; }
 .history-row {
   display: flex;
   align-items: center;

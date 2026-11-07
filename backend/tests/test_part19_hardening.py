@@ -81,7 +81,7 @@ def test_api_docs_and_schema_require_admin_session(client: TestClient) -> None:
 
 
 def test_security_headers_are_applied_to_api_and_health_responses(client: TestClient) -> None:
-    health = client.get("/healthz")
+    health = client.get("/readyz")
     assert health.status_code == 200
     assert health.headers["x-content-type-options"] == "nosniff"
     assert health.headers["x-frame-options"] == "DENY"

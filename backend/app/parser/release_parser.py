@@ -313,10 +313,6 @@ def _tokens(value: str) -> list[str]:
     return [token for token in re.split(r"\s+", value.strip()) if token]
 
 
-def _casefold_token(value: str) -> str:
-    return value.casefold().strip()
-
-
 def _normalize_punctuation_phrase(value: str) -> str:
     value = value.replace("’", "'").replace("`", "'")
     value = re.sub(r"[._-]+", " ", value)

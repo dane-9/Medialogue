@@ -358,7 +358,7 @@ a.download-kind:hover { filter: brightness(1.35); }
   background: var(--raised);
 }
 .condition-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
-.condition-card > span { color: var(--muted); font: var(--t-xs) var(--sans); }.cf-test-actions { margin-bottom: var(--s3); }
+.cf-test-actions { margin-bottom: var(--s3); }
 
 .cf-evaluation { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); }
 .cf-evaluation { margin-top: var(--s3); }
