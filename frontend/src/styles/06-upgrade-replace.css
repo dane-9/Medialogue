@@ -1,0 +1,363 @@
+/* Replace Media, Upgrade Media, their rails and History. */
+
+/* Replace Media ---------------------------------------------------------- */
+.replace-spinner { flex: none; width: 12px; height: 12px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: var(--r-full); animation: replace-spin .8s linear infinite; }
+@keyframes replace-spin { to { transform: rotate(360deg); } }
+.replace-bulk-progress { display: flex; align-items: center; gap: var(--s2); color: var(--text); }
+.replace-choices { display: grid; gap: var(--s2); padding: 0 var(--s4) var(--s4); }
+.replace-choice { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--s2); align-items: center; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.replace-choice:hover:not(:disabled) { border-color: var(--accent-line); background: var(--control-hover); }
+.replace-choice:disabled { opacity: .55; cursor: default; }
+.replace-choice svg { color: var(--accent); }
+.replace-choice.danger svg { color: var(--err); }
+.replace-choice.danger:hover:not(:disabled) { border-color: var(--err-line); }
+.replace-choice strong { font-size: var(--t-sm); }
+.replace-choice span { grid-column: 2; color: var(--muted); font-size: var(--t-xs); }
+/* Downloads' delete dialog: what goes from disk and qBittorrent, then the choice. */
+.delete-downloads { display: grid; gap: var(--s4); min-width: 0; padding: var(--s4); }
+.delete-downloads section { display: grid; gap: var(--s2); }
+.delete-downloads h4 { margin: 0; color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.delete-downloads-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.delete-downloads-list li { display: flex; align-items: center; gap: var(--s2); min-width: 0; color: var(--text); font-size: var(--t-sm); }
+.delete-downloads-list li > svg { flex: none; color: var(--faint); }
+.delete-downloads-list code, .delete-downloads-list li > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.delete-downloads-list code { font: var(--t-xs) var(--mono); }
+.delete-downloads-list small { margin-left: auto; flex: none; color: var(--faint); font-size: var(--t-xs); }
+.delete-downloads-note { margin: 0; color: var(--muted); font-size: var(--t-xs); }
+.delete-downloads-choices { display: grid; gap: var(--s2); }
+.replace-choice.active { border-color: var(--accent); background: var(--accent-soft); }
+.replace-choice.danger.active { border-color: var(--err-line); background: var(--err-soft); }
+.replace-path-list { display: grid; gap: var(--s1); max-height: 240px; margin: var(--s2) 0 0; padding-left: var(--s4); overflow: auto; }
+
+/* Upgrade Media (New Media layout) ------------------------------------------ */
+.upgrade-v2-filters { display: flex; flex-wrap: wrap; gap: var(--s5); }
+.upgrade-status-box { border-color: var(--line); background: var(--raised); color: var(--muted); }
+.upgrade-status-box.tone-ok { color: var(--ok); }
+.upgrade-status-box.tone-blue { color: var(--accent); }
+.upgrade-status-box.tone-amber { color: var(--warn); }
+.upgrade-status-box.tone-red { color: var(--err); }
+/* Replace Media's Reason rail: the Downloads rail, but each reason toggles on
+   its own, so several can be on at once. */
+.replace-rail-title { justify-content: space-between; }
+.replace-reason-all { padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.replace-reason-all:hover { text-decoration: underline; }
+.downloads-rail-item.replace-reason:not(.active) { color: var(--faint); }
+.replace-rail-empty { padding: 0 var(--s1); color: var(--faint); font: var(--t-xs) var(--sans); }
+.new-media-workspace.upgrade-v2 { --new-media-detected: 280px; grid-template-columns: minmax(0, 1fr) var(--new-media-detected) 400px; }
+.upgrade-v2-empty { grid-column: 1 / -1; padding: var(--s5); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-md) var(--r-md); background: var(--surface); color: var(--faint); font-size: var(--t-sm); text-align: center; }
+.upgrade-v2-current .new-media-match-copy strong, .upgrade-v2-change .new-media-match-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-current .new-media-match-copy small, .upgrade-v2-change .new-media-match-copy small { color: var(--faint); font-size: var(--t-xs); }
+.upgrade-v2-change small em { font-style: normal; font-weight: 600; }
+.new-media-state .icon, .new-media-state svg { margin-right: 4px; }
+
+@media (max-width: 1500px) { .new-media-workspace.upgrade-v2 { grid-template-columns: minmax(0, 1fr) 240px 340px; --new-media-detected: 240px; } }
+.upgrade-status-box.tone-neutral { color: var(--muted); }
+
+/* Title over year/quality, never side by side: .new-media-folder-cell > span
+   makes every direct span a flex row, so the stack is restored here. */
+.upgrade-v2-current > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 120px; max-width: 45%; }
+/* The full current release fills the remaining width on one line. */
+.upgrade-v2-current .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s4); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Upgrade Media without a details pane: Current and Upgrade split the width
+   evenly, mirrored, with a slim releases/actions rail. */
+.new-media-workspace.upgrade-v3 { grid-template-columns: minmax(0, 1fr); }
+.new-media-workspace.upgrade-v3 > .new-media-scroll { grid-column: 1; }
+.new-media-workspace.upgrade-v3 > .new-media-add { grid-column: 1; }
+@media (max-width: 1500px) { .new-media-workspace.upgrade-v3 { grid-template-columns: minmax(0, 1fr); } }
+.upgrade-v2-change { cursor: default; }
+.upgrade-v3 .upgrade-v2-current, .upgrade-v3 .upgrade-v2-change { cursor: pointer; }
+.upgrade-v2-change > .new-media-match-copy.upgrade-v2-title { display: grid; flex: 0 1 auto; gap: 1px; min-width: 110px; max-width: 40%; }
+.upgrade-v2-change .upgrade-v2-release { display: block; flex: 1 1 0; min-width: 0; margin-left: var(--s3); overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new { color: var(--ok); font-weight: 600; }
+/* Quality words sit on a soft green chip, the look a word takes on hover,
+   so they read apart from the words a Custom Format scored. */
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.quality { background: var(--ok-soft); }
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.quality.hovered { background: var(--accent-soft); }
+/* A quality word under the pointer lights the quality it replaces. */
+.upgrade-current-quality { border-radius: var(--r-sm); transition: color .12s ease; }
+.upgrade-current-quality.hovered { margin: 0 -2px; padding: 0 2px; color: var(--accent-text); background: var(--accent-soft); }
+/* The word under the pointer and the score it earned, matched in blue. */
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.hovered,
+.upgrade-v2-score .cf-score-delta.hovered { color: var(--accent-text); }
+.upgrade-v2-change .upgrade-v2-release .upgrade-token-new.hovered { background: var(--accent-soft); }
+
+/* Names never truncate: proportional type, wrapping only at word breaks. */
+.upgrade-v3 .upgrade-v2-current .upgrade-v2-release,
+.upgrade-v3 .upgrade-v2-change .upgrade-v2-release { overflow: visible; font: var(--t-xs)/1.35 var(--sans); text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; }
+.upgrade-v3 .upgrade-v2-change .upgrade-v2-release { margin-left: 0; text-align: left; }
+
+/* Release name with its CF score underneath. An invisible spacer the score's
+   height sits above, so the name stays centred where it was. */
+.upgrade-v2-side { display: flex; flex: 1 1 0; flex-direction: column; justify-content: center; align-self: stretch; gap: 2px; min-width: 0; }
+.upgrade-v2-current > .upgrade-v2-side { margin-left: var(--s4); align-items: flex-end; text-align: right; }
+.upgrade-v2-change > .upgrade-v2-side { align-items: flex-start; }
+.upgrade-v2-side::before { content: ''; height: 18px; flex: none; }
+.upgrade-v3 .upgrade-v2-side > .upgrade-v2-release { flex: none; max-width: 100%; margin-left: 0; }
+.upgrade-v2-side .upgrade-v2-score { display: block; height: 18px; font: var(--t-xs)/18px var(--sans); }
+/* The Upgrade side's score line also carries the release facts, pushed right. */
+.upgrade-v2-meta { display: flex; align-self: stretch; align-items: center; gap: var(--s3); height: 18px; min-width: 0; }
+.upgrade-v2-line { display: flex; align-self: stretch; align-items: center; gap: var(--s3); min-width: 0; min-height: var(--upgrade-line); }
+.upgrade-v2-current .upgrade-v2-line { justify-content: flex-end; }
+.upgrade-v2-line > .upgrade-v2-release { flex: 0 1 auto; min-width: 0; margin-left: 0; }
+.upgrade-v3 { --upgrade-seeds: 34px; --upgrade-size: 40px; --upgrade-size-change: 44px; --upgrade-line: 18px; }
+/* Both sides' name lines share one height, so the CF scores under them sit
+   level. */
+/* Seeds, Size and the size change are fixed-width columns, so each lines up
+   under its header on every row. Size is right-aligned against the seeds; the
+   change fills its own column at the far right. */
+.upgrade-v2-seeds, .upgrade-v2-size, .upgrade-v2-size-change { flex: none; text-align: right; white-space: nowrap; }
+.upgrade-v2-seeds { width: var(--upgrade-seeds); }
+/* As a flex box, not inline text: inline, the pill sat on a text baseline and
+   the line grew taller than in the other tabs. */
+.upgrade-v2-line > .upgrade-v2-seeds { display: flex; align-items: center; justify-content: flex-end; }
+.upgrade-v2-size { width: var(--upgrade-size); }
+.upgrade-v2-size-change { width: var(--upgrade-size-change); text-align: left; }
+/* Seeds and Size read as a pair: a tighter gap than the row's own. */
+.upgrade-v2-line > .upgrade-v2-size, .upgrade-v2-head > .upgrade-v2-size { margin-left: calc(var(--s2) - var(--s3)); }
+.upgrade-v2-line > .upgrade-v2-size-change, .upgrade-v2-head > .upgrade-v2-size-change { margin-left: calc(4px - var(--s3)); }
+.upgrade-v2-line > .upgrade-v2-size-change { display: flex; align-items: center; }
+.upgrade-v2-size-change em { display: inline-flex; align-items: center; font-size: 9px; font-style: normal; line-height: 1; }
+.upgrade-v2-size-change em svg { flex: none; margin-right: -1px; }
+/* The caret points down; larger flips it up. */
+.upgrade-v2-size-change .size-up svg { transform: rotate(180deg); }
+/* Larger or smaller at a glance, toned down so it never outshouts the size. */
+.upgrade-v2-size-change .size-up { color: color-mix(in srgb, var(--err) 70%, var(--muted)); }
+.upgrade-batch-change { display: inline-flex; align-items: center; margin-left: -4px; font-size: var(--t-xs); font-style: normal; line-height: 1; opacity: .8; }
+.upgrade-batch-change.size-up svg { transform: rotate(180deg); }
+.upgrade-v2-size-change .size-down { color: color-mix(in srgb, var(--ok) 70%, var(--muted)); }
+.upgrade-v2-line > .upgrade-v2-seeds { margin-left: auto; }
+.upgrade-v2-head { display: flex; align-items: center; gap: var(--s3); }
+.upgrade-v2-head > :first-child { flex: 1; }
+/* Nudges for the header labels only; the columns below never move with them. */
+.upgrade-v2-head > .upgrade-v2-seeds { position: relative; left: 0px; }
+.upgrade-v2-head > .upgrade-v2-size { position: relative; left: 14px; }
+.upgrade-v2-facts { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin-left: auto; }
+/* The upgrade's main improvement, beside the indexer it comes from. */
+.release-pill-upgrade { flex: none; color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-soft); }
+/* Qualities read as written (1080p, REMUX); only the label is capitals. */
+.release-pill-upgrade { text-transform: none; letter-spacing: .03em; }
+.release-pill-upgrade i { text-transform: uppercase; letter-spacing: .08em; }
+/* The UPGRADE pill's hover: each aspect that changes, before → after. */
+/* As wide as its longest row, so a value never runs past the edge. */
+.upgrade-diff { display: grid; gap: var(--s3); width: max-content; min-width: 260px; max-width: min(560px, calc(100vw - 32px)); }
+.upgrade-diff-rows { display: grid; grid-template-columns: auto auto auto auto; align-items: baseline; gap: 5px var(--s2); }
+/* The size-change caret turned to point right, as the "becomes" arrow. */
+.upgrade-caret { display: inline-grid; place-items: center; margin: 0 .35em; vertical-align: middle; }
+.upgrade-caret svg { transform: rotate(-90deg); }
+.upgrade-diff-rows > .upgrade-caret { align-self: center; margin: 0; color: var(--faint); }
+.upgrade-diff .upgrade-caret svg { width: 11px; height: 11px; }
+/* The pill already spaces its parts. */
+.release-pill .upgrade-caret { margin: 0; }
+.upgrade-diff-label { padding-right: var(--s3); color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.upgrade-diff-from { color: var(--muted); font-size: var(--t-xs); text-align: right; overflow-wrap: anywhere; }
+.upgrade-diff-to { font-size: var(--t-xs); font-weight: 600; overflow-wrap: anywhere; }
+.upgrade-diff-to.better { color: var(--ok); }
+.upgrade-diff-to.worse { color: var(--err); }
+.upgrade-diff-to.neutral { color: var(--text); }
+.upgrade-v2-facts .size-up { color: var(--warn); font-style: normal; }
+.upgrade-v2-facts .size-down { color: var(--ok); font-style: normal; }
+/* The folder cell makes every direct span a flex row; the placeholder icon
+   still has to sit in the middle of the poster. */
+.new-media-folder-cell > .new-media-poster { justify-content: center; }
+/* Upgrade and Replace Media rows are taller than New Media's, so their
+   posters can be too. */
+.upgrade-v3 .new-media-folder-cell > .new-media-poster { width: 36px; }
+.upgrade-v2-current .upgrade-v2-score { color: var(--faint); }
+
+/* The Upgrade side opens the other releases. */
+
+/* Media folders on the far left, status on the far right. */
+.upgrade-v2-status-group { order: 2; margin-left: auto; }
+.upgrade-v2-status-group .new-media-roots-label { text-align: right; }
+.upgrade-v2-status-group .new-media-roots { justify-content: flex-end; }
+
+/* A search button per row in a rail beyond the Upgrade panel. The workspace
+   grows by exactly the rail, so Current and Upgrade keep their widths. */
+/* Growing past the content width only fits on very wide windows; below
+   that it pushed the rail and the list's scrollbar off the right edge, so the
+   rail is taken out of the two panels' width instead. */
+.new-media-workspace.upgrade-v3 { width: 100%; }
+@media (min-width: 2100px) {
+  .new-media-workspace.upgrade-v3 { width: calc(100% + var(--upgrade-rail) + var(--s3)); }
+}
+.new-media-workspace.upgrade-v3 > .new-media-scroll { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--upgrade-rail); }
+.new-media-workspace > .new-media-add { margin-right: var(--scrollbar-size); }
+/* Upgrade and Replace Media's list scrollbar: a thin grey thumb with no track
+   behind it. Standard properties, so Firefox and Chrome draw it alike. */
+.new-media-workspace.upgrade-v3 > .new-media-scroll { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.new-media-workspace.upgrade-v3 > .new-media-add { margin-right: calc(var(--upgrade-rail) + var(--s3) + var(--scrollbar-size)); }
+/* The rail's heading cell: blank, but it stays put like the column headings,
+   painted with the page's own fixed background so row buttons scrolling up
+   slip under it instead of showing beside the headings. */
+.upgrade-v3-rail-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--bg);
+  background-image: var(--app-background-image, url('/bg.webp')), linear-gradient(180deg, #171d25 0%, #24282f 42%, #20242a 100%);
+  background-position: center top, center top;
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
+  background-attachment: fixed;
+}
+.upgrade-v3-rail { display: grid; place-items: center; }
+.upgrade-v3 .upgrade-v2-change { cursor: default; }
+/* The rail is exactly one button wide and starts at the column gap, so the
+   button sits the same distance from Upgrade as Upgrade does from Current. */
+.new-media-workspace.upgrade-v3 { --upgrade-rail: 32px; }
+.upgrade-v3-rail { justify-items: start; }
+.upgrade-v3-rail .icon-button { width: var(--upgrade-rail); height: var(--upgrade-rail); margin: 0; }
+.upgrade-v3-rail .icon-button { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); }
+.upgrade-v3-rail .icon-button:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
+
+/* Upgrade stack refinements, same footprint. */
+.upgrade-v3 .upgrade-v2-score.big { color: var(--ok); font-weight: 700; }
+.upgrade-v3 .upgrade-v2-score.medium { color: var(--ok); }
+.upgrade-v3 .upgrade-v2-score.small { color: var(--faint); }
+
+/* In progress: live Progress / Speed / ETA columns, and the download as a
+   bar filling the space between the CF score and the indexer. */
+.upgrade-v3 { --upgrade-live: 64px; --upgrade-action: 92px; }
+.upgrade-v2-live { flex: none; width: var(--upgrade-live); color: var(--muted); font: var(--t-xs) var(--sans); text-align: right; white-space: nowrap; }
+.upgrade-v2-line > .upgrade-v2-release + .upgrade-v2-live { margin-left: auto; }
+.upgrade-v2-head > .upgrade-v2-live { font: inherit; }
+/* Speeds are wider than their header: centre them on it instead. The header
+   stays put; the nudge moves only the values. */
+.upgrade-v2-line > .upgrade-v2-speed { position: relative; left: 14px; text-align: center; }
+.upgrade-v2-bar { flex: 1; min-width: 40px; height: 3px; overflow: hidden; border-radius: var(--r-full); background: var(--line); }
+.upgrade-v2-bar::after { content: ''; display: block; width: var(--upgrade-progress); height: 100%; background: var(--accent); transition: width .4s ease; }
+/* The release being replaced steps back while its upgrade runs. */
+.upgrade-v2-current.replacing .upgrade-v2-release,
+.upgrade-v2-current.replacing .upgrade-v2-score { opacity: .55; }
+/* Needs attention: one action column, and the problem in place of the score. */
+.upgrade-v2-action { display: flex; flex: none; justify-content: flex-end; width: var(--upgrade-action); }
+.upgrade-v2-line > .upgrade-v2-action { margin-left: auto; }
+.upgrade-v2-head > .upgrade-v2-action { justify-content: flex-end; }
+.upgrade-v2-action .button { width: 100%; justify-content: center; }
+/* The button overhangs the line rather than growing it, so a row here is the
+   same height as in Ready and In progress. */
+.upgrade-v2-line > .upgrade-v2-action { height: var(--upgrade-line); align-items: center; }
+.upgrade-v2-line > .upgrade-v2-action .button { height: 28px; min-height: 0; margin-block: -5px; padding-inline: var(--s2); }
+.upgrade-v2-problem { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--warn) 75%, var(--muted)); font: var(--t-xs)/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-v2-problem svg { flex: none; }
+
+/* Replace Media: Upgrade Media's mirrored rows and rail, no details pane;
+   the row is its checkbox. */
+.replace-v3 .upgrade-v2-change { cursor: pointer; }
+.replace-confirm-note { margin: 0 0 var(--s3); color: var(--muted); font-size: var(--t-sm); }
+.replace-confirm-client { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: var(--s3); margin-top: var(--s2); color: var(--muted); font-size: var(--t-sm); }
+/* Lit words here carry no score to hover. */
+.replace-v3 .upgrade-token-new { cursor: inherit; }
+.replace-v3 .upgrade-token-new:hover { background: var(--ok-soft); }
+.replace-v3-note { display: inline-flex; align-items: center; gap: var(--s2); color: var(--faint); }
+.replace-v3-done { display: flex; align-items: center; gap: 5px; color: color-mix(in srgb, var(--ok) 75%, var(--muted)); font: var(--t-xs)/18px var(--sans); }
+
+/* The current release's source, a third line under the title. */
+.upgrade-v2-title > .release-pill { justify-self: start; margin-top: 3px; }
+.release-pill-tracker { max-width: 200px; }
+
+/* Pages built on the New Media workspace (New, Upgrade and Replace Media) fill
+   the window: the list takes whatever height is left, so its bar sits at the
+   bottom however much stands above it (notes, filters that wrap). */
+.main-area:has(.new-media-workspace) { display: flex; min-height: 100vh; flex-direction: column; }
+.main-area:has(.new-media-workspace) > .page-content { display: flex; width: 100%; flex: 1 1 0; flex-direction: column; }
+.page:has(> .new-media-workspace) { display: flex; flex: 1 1 0; flex-direction: column; }
+.page > .new-media-workspace { height: auto; min-height: 420px; flex: 1 1 0; }
+/* Replace Media puts the workspace beside its Reason rail, one level deeper. */
+/* The rail sits inside the page width: breaking out to the left like Downloads
+   needs room beside the content that only very wide windows have, and without
+   it the rail slides under the navigation. */
+.replace-layout { width: 100%; margin-left: 0; }
+@media (min-width: 2040px) {
+  .replace-layout { width: calc(100% + var(--downloads-rail) + var(--s4)); margin-left: calc(-1 * (var(--downloads-rail) + var(--s4))); }
+}
+.page:has(> .replace-layout) { display: flex; flex: 1 1 0; flex-direction: column; }
+.page > .replace-layout { flex: 1 1 0; align-items: stretch; min-height: 420px; }
+.replace-layout > .downloads-rail { align-self: start; }
+.replace-layout > .downloads-main { display: flex; min-height: 0; flex-direction: column; }
+.replace-layout > .downloads-main > .new-media-workspace { height: auto; min-height: 420px; flex: 1 1 0; }
+
+/* Replace Media: why a title is here, the tracker that dropped it and what
+   it said, under the title; every lost torrent on hover. */
+.upgrade-v2-title > .replace-lost { display: flex; min-width: 0; align-items: center; gap: var(--s2); margin-top: 3px; }
+/* The reason may run past the title column, over the empty start of the CF
+   line, stopping short of the score. 100cqw is the whole Current cell; the
+   170px is the checkbox and poster on the left plus room for the score. */
+.replace-v3 .upgrade-v2-current { container-type: inline-size; }
+/* A row with both Re-add and Search puts them side by side rather than
+   stacking them into a taller row. */
+.new-media-workspace.upgrade-v3.replace-v3 { --upgrade-rail: 68px; }
+.replace-v3 .upgrade-v3-rail { display: flex; align-items: center; gap: 4px; }
+.replace-v3 .upgrade-v3-rail .icon-button { width: 32px; height: 32px; }
+/* One fixed track, and the reason line is zero wide in it: its content shows
+   in full but overflows, so only the title and year line size the column and
+   the release name gets the rest of the row. */
+.replace-v3 .upgrade-v2-current > .upgrade-v2-title { grid-template-columns: minmax(0, 1fr); }
+.replace-v3 .upgrade-v2-title > .replace-lost { position: relative; z-index: 1; width: 0; min-width: 0; overflow: visible; }
+.replace-lost-inner { display: flex; flex: none; width: max-content; max-width: calc(100cqw - 170px); align-items: center; gap: var(--s2); }
+.release-pill-lost { flex: none; color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+.replace-lost-message { min-width: 0; overflow: hidden; color: color-mix(in srgb, var(--err) 70%, var(--muted)); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.replace-lost-list { display: grid; gap: var(--s2); }
+.replace-lost-list li { display: grid; justify-items: start; gap: 3px; }
+
+/* History: finished upgrades or replacements, opened from the page header. */
+.media-history-modal { width: min(760px, calc(100vw - 32px)); }
+.media-history-modal .modal-body { padding: var(--s4); }
+.media-history-list { display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
+.media-history-list li { display: grid; gap: 4px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.media-history-head { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.media-history-head strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.media-history-head small { color: var(--faint); font-size: var(--t-xs); }
+.media-history-when { margin-left: auto; color: var(--faint); font-size: var(--t-xs); white-space: nowrap; }
+.media-history-change { display: flex; align-items: center; gap: var(--s2); min-width: 0; color: var(--muted); font-size: var(--t-xs); }
+.media-history-change svg { flex: none; color: var(--faint); }
+.media-history-old, .media-history-new { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-history-old { color: var(--faint); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--faint) 60%, transparent); }
+.media-history-new { color: var(--text); }
+.media-history-foot { display: flex; align-items: center; gap: var(--s2); }
+.media-history-foot small { color: var(--faint); font-size: var(--t-xs); }
+.media-history-outcome { margin-left: auto; color: var(--ok); font-size: var(--t-xs); }
+.media-history-note { margin: 0; color: var(--muted); font-size: var(--t-sm); }
+.media-history-link { color: var(--accent-text); font-size: var(--t-xs); }
+.library-history-modal { width: min(1100px, calc(100vw - 32px)); }
+.library-history-table { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.library-history-head, .library-history-row { display: contents; }
+.library-history-head > * { position: sticky; top: calc(-1 * var(--s4)); z-index: 1; padding: var(--s2) 0 var(--s2) var(--s5); border-bottom: 1px solid var(--line); background: var(--surface) !important; }
+.library-history-sort { display: flex; align-items: center; gap: 4px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-align: left; text-transform: uppercase; cursor: pointer; }
+.library-history-sort.numeric { justify-content: flex-end; }
+.library-history-sort:hover, .library-history-sort.active { color: var(--text); }
+.library-history-sort svg.flipped { transform: rotate(180deg); }
+/* Cells are spaced by padding, not a grid gap, so each row's line runs unbroken. */
+.library-history-row > * { display: flex; align-items: center; min-width: 0; padding: var(--s2) 0 var(--s2) var(--s5); border-bottom: 1px solid var(--line); }
+.library-history-title { gap: var(--s3); }
+.library-history-head > :first-child, .library-history-row > :first-child { padding-left: var(--s3); }
+.library-history-head > :last-child, .library-history-row > :last-child { padding-right: var(--s3); }
+.library-history-size { min-width: 72px; }
+.library-history-when { min-width: 130px; }
+.library-history-copy { display: grid; gap: 2px; min-width: 0; }
+.library-history-copy strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.library-history-copy small { color: var(--faint); font-size: var(--t-xs); }
+.library-history-size { justify-content: flex-end; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.library-history-when { flex-direction: column; align-items: flex-end !important; justify-content: center; gap: 2px; color: var(--muted); font-size: var(--t-xs); text-align: right; }
+.library-history-when small { color: var(--faint); font-size: var(--t-micro); }
+/* Upgrade and Replace Media's History: the old release struck through, the new
+   one beside it, and the quality change in its own column. */
+.library-history-table.media-history-table { grid-template-columns: minmax(0, 1fr) auto auto; }
+/* Year and season beside the title, the releases under it. */
+.media-history-title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); }
+.media-history-table .media-history-change { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 0; margin-top: 1px; }
+/* Old and new release side by side in full; only when the row is too narrow
+   for both does the new one continue on the next line. */
+.media-history-table .media-history-old, .media-history-table .media-history-new { flex: none; max-width: 100%; overflow: visible; white-space: nowrap; }
+.media-history-table .media-history-change .upgrade-caret { color: var(--faint); }
+.media-history-quality { gap: 0; white-space: nowrap; }
+.media-history-quality .upgrade-caret { color: var(--faint); }
+.library-history-when small.media-history-outcome { color: var(--ok); }
+.library-history-action { justify-content: center; }
+.library-history-add { flex: none; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); }
+.library-history-add:hover:not(:disabled) { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
+.library-history-add:disabled { opacity: .4; cursor: default; }
+.library-history-poster { display: grid; flex: none; place-items: center; width: 36px; aspect-ratio: 2 / 3; overflow: hidden; border-radius: var(--r-sm); background: var(--raised); color: var(--faint); }
+.library-history-poster img { width: 100%; height: 100%; object-fit: cover; }
+.library-history-release { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }

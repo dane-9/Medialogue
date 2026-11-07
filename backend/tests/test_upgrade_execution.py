@@ -42,7 +42,8 @@ from app.models.domain import (
     TorrentClientObservation,
     UpgradeCandidate,
 )
-from app.services.upgrade_execution import advance_upgrade_handoff, associate_upgrade_torrent, run_automatic_cleanups
+from app.services.upgrade_cleanup import run_automatic_cleanups
+from app.services.upgrade_execution import advance_upgrade_handoff, associate_upgrade_torrent
 
 
 @pytest.fixture

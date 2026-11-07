@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import httpx
 
 from app.integrations.qbittorrent import QBittorrentClient, TorrentSyncState, close_shared_sessions
-from app.services.qbittorrent import _tracker_is_active, _tracker_request_budget
+from app.services.tracker_checks import _tracker_is_active, _tracker_request_budget
 
 
 def test_sync_torrents_merges_deltas_and_honours_removals_and_full_updates():

@@ -1,0 +1,387 @@
+/* Downloads: the activity table, context menus, progress bars and the filter rail. */
+
+/* Downloads is a dense, qBittorrent-style activity table: every cell is one
+   line, and the detail that used to sit on a second line moves to the cell's
+   tooltip. Row height is set here rather than on .data-table so the other
+   tables keep their roomier default. */
+.downloads-table th { padding: 0 var(--s2); }
+.downloads-table td { height: 34px; padding: 0 var(--s2); }
+.downloads-table tbody tr { cursor: default; user-select: none; }
+
+/* Compact vertical context menu: one action per row, sized to the text rather
+   than to a grid of buttons. */
+.download-menu {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  width: 165px;
+  gap: 1px;
+  padding: var(--s1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .55);
+}
+.download-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 26px;
+  padding: 0 var(--s2);
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: transparent;
+  font-size: var(--t-xs);
+  text-align: left;
+  white-space: nowrap;
+}
+.download-menu-item > svg { flex: none; color: var(--faint); }
+/* Icon colours follow the same language as the status rail, so an action reads
+   the same way here as the filter it relates to. */
+.download-menu-item.tone-neutral > svg { color: var(--faint); }
+.download-menu-item.tone-blue > svg { color: var(--accent-text); }
+.download-menu-item.tone-green > svg { color: var(--ok); }
+.download-menu-item.tone-amber > svg { color: var(--warn); }
+.download-menu-item.tone-red > svg { color: var(--err); }
+.download-menu-item.tone-teal > svg { color: var(--teal); }
+.download-menu-item:hover:not(:disabled) { color: var(--text); background: var(--raised); }
+/* Hover brightens the row, but must not repaint an icon that carries meaning. */
+.download-menu-item:hover:not(:disabled) > svg { filter: brightness(1.2); }
+.download-menu-item:disabled { opacity: .4; cursor: not-allowed; }
+.download-menu-label {
+  padding: var(--s1) var(--s2);
+  color: var(--faint);
+  font: 500 var(--t-micro) var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.download-menu-separator { height: 1px; margin: var(--s1) var(--s2); background: var(--line); }
+/* Queue submenu: opens beside its parent row, and the parent stays highlighted
+   while the pointer is anywhere over the pair. */
+.download-menu-sub { position: relative; display: grid; }
+.download-menu-sub:hover > .download-menu-item { color: var(--text); background: var(--raised); }
+.download-menu-arrow { margin-left: auto; transform: rotate(-90deg); }
+.download-menu-panel {
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--s1) * -1);
+  left: 100%;
+  display: grid;
+  width: 143px;
+  gap: 1px;
+  padding: var(--s1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .55);
+}
+.download-menu-panel.flip { left: auto; right: 100%; }
+.download-menu-prompt { display: grid; gap: var(--s2); padding: var(--s1); }
+.download-menu-prompt-actions { display: flex; justify-content: flex-end; gap: var(--s2); }
+/* A client that stopped reporting: keep the row, but make it read as not live. */
+.downloads-table tbody tr.row-stale td { opacity: .55; }
+.downloads-table tbody tr.row-stale td:nth-child(4) { opacity: 1; }
+.downloads-table tbody tr.row-selected,
+.downloads-table tbody tr.row-selected:hover { background: var(--accent-soft); }
+.downloads-table tbody tr.row-selected .download-name strong { color: var(--text); }
+.download-cross-seed-toggle { display: inline-grid; width: 20px; height: 20px; flex: none; place-items: center; padding: 0; border: 0; border-radius: var(--r-sm); color: var(--muted); background: transparent; cursor: pointer; }
+.download-cross-seed-toggle:hover { color: var(--text); background: var(--control-hover); }
+.download-cross-seed-toggle svg { transition: transform 120ms ease; }
+.download-cross-seed-toggle.open svg { transform: rotate(90deg); }
+.download-cross-seed-count { flex: none; color: var(--accent); font-size: 11px; font-weight: 650; }
+.downloads-table tbody tr.download-cross-seed-detail { background: var(--raised); }
+.downloads-table tbody tr.download-cross-seed-detail td { height: auto; padding: var(--s2) var(--s4) var(--s3) 46px; overflow: visible; }
+.download-cross-seed-members { display: grid; gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--line); }
+.download-cross-seed-member { display: grid; grid-template-columns: minmax(180px, 1fr) 120px 130px 110px 110px 90px; align-items: center; gap: var(--s3); min-height: 32px; padding: 0 var(--s3); background: var(--panel); color: var(--muted); font-size: 12px; }
+.download-cross-seed-member > span:first-child { display: flex; min-width: 0; align-items: center; gap: var(--s2); color: var(--text); }
+.download-cross-seed-member code { color: var(--muted); font-size: 11px; }
+/* Every column is an explicit width. table-layout:fixed makes the browser honour
+   them exactly instead of sizing to content, and width:auto sizes the table to
+   their sum so nothing is redistributed when the window is wider. Change a
+   number here and only that column moves. */
+.downloads-table { table-layout: fixed; width: auto; }
+.downloads-table th:nth-child(1),  .downloads-table td:nth-child(1)  { width: 575px; }  /* Release */
+.downloads-table th:nth-child(2),  .downloads-table td:nth-child(2)  { width: 60px; }   /* Size */
+.downloads-table th:nth-child(3),  .downloads-table td:nth-child(3)  { width: 145px; }  /* Progress */
+.downloads-table th:nth-child(4),  .downloads-table td:nth-child(4)  { width: 135px; }  /* Status */
+.downloads-table th:nth-child(5),  .downloads-table td:nth-child(5)  { width: 70px; }   /* Seeds */
+.downloads-table th:nth-child(6),  .downloads-table td:nth-child(6)  { width: 70px; }   /* Peers */
+.downloads-table th:nth-child(7),  .downloads-table td:nth-child(7)  { width: 95px; }   /* Down speed */
+.downloads-table th:nth-child(8),  .downloads-table td:nth-child(8)  { width: 95px; }   /* Up speed */
+.downloads-table th:nth-child(9),  .downloads-table td:nth-child(9)  { width: 65px; }   /* ETA */
+.downloads-table th:nth-child(10), .downloads-table td:nth-child(10) { width: 125px; }  /* Tracker */
+.downloads-table th:nth-child(11), .downloads-table td:nth-child(11) { width: 100px; }  /* Backup */
+/* Fixed layout clips rather than ellipsises unless the cell says otherwise. */
+.downloads-table td { overflow: hidden; }
+.download-name { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.download-name-tip { flex: 1; min-width: 0; }
+.download-name strong { display: block; min-width: 0; }
+/* Identity header for the kind marker's tooltip. The poster box is positioned
+   because .poster-image fills its nearest positioned ancestor. */
+.download-tip-media { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s2); }
+.download-tip-poster {
+  position: relative;
+  display: grid;
+  width: 44px;
+  flex: none;
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+.download-tip-copy { display: grid; gap: 2px; min-width: 0; }
+.download-tip-copy strong { color: var(--text); font: 600 var(--t-sm) var(--sans); }
+.download-tip-copy span { color: var(--muted); font: var(--t-xs) var(--sans); }
+.download-tip-root { display: flex; align-items: center; gap: var(--s1); color: var(--faint) !important; }
+/* The tooltip trigger wraps only the icon, so the bubble anchors to the icon's
+   17px box rather than centring on the whole 450px Release cell. */
+.download-kind-tip { display: flex; flex: none; }
+/* Kind marker, shrunk for the row: dimmed while nothing is matched to it yet. */
+.download-kind { width: 17px; height: 17px; }
+.download-kind.unmatched { color: var(--faint); border-color: var(--line-strong); background: transparent; }
+/* The marker is the link to the title, so it reacts to the pointer. */
+a.download-kind { cursor: pointer; transition: filter .12s; }
+a.download-kind:hover { filter: brightness(1.35); }
+.download-name strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+/* qBittorrent-style bar: full column width, tall enough to hold the percentage
+   centred inside it. No min-width and no fixed bar width, so column 3 is the
+   only thing controlling the size. */
+.download-progress { position: relative; display: block; width: 100%; min-width: 0; }
+.download-progress .progress { width: 100%; height: 18px; border-radius: var(--r-sm); }
+/* Darkened fills so the label stays legible over the filled part of the bar;
+   the track behind it is already dark. */
+.download-progress .progress span { background: color-mix(in srgb, var(--accent) 74%, #0d1218); }
+.download-progress .progress-green span { background: color-mix(in srgb, var(--ok) 74%, #0d1218); }
+.download-progress .progress-amber span { background: color-mix(in srgb, var(--warn) 74%, #0d1218); }
+.download-progress-value {
+  position: absolute;
+  display: grid;
+  inset: 0;
+  place-items: center;
+  color: var(--text);
+  /* Sans rather than the table's mono: at 10px inside the bar the monospace
+     digits read as cramped and mismatched. Tabular figures keep the number from
+     shifting as it ticks up. */
+  font: 500 var(--t-xs) var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+/* Same face as the progress percentage: sans with tabular figures, so the
+   numeric columns read as one set and digits do not shift as values tick. */
+.download-size, .download-eta, .download-count, .download-speed {
+  font: 500 var(--t-xs) var(--sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.download-size, .download-eta { color: var(--muted); }
+.download-count { color: var(--muted); }
+.download-speed.down { color: var(--accent-text); }
+.download-speed.up { color: var(--muted); }
+
+/* Downloads puts its filters in a left rail rather than stat cards plus a tab
+   strip, so the table starts at the top of the page instead of a third of the
+   way down it. The rail is sticky: the table scrolls, the filters stay put. */
+.downloads-layout {
+  --downloads-rail: 161px;
+  display: grid;
+  /* Mirrors .upgrade-scroll, which appends its Releases rail outside the normal
+     content width so the columns beside it keep exactly the space they had.
+     Upgrade Media grows rightwards; this grows leftwards, so the extra width is
+     taken back off the left edge. */
+  width: calc(100% + var(--downloads-rail) + var(--s4));
+  margin-left: calc(-1 * (var(--downloads-rail) + var(--s4)));
+  grid-template-columns: var(--downloads-rail) minmax(0, 1fr);
+  gap: 0 var(--s4);
+  align-items: start;
+}
+.downloads-main { min-width: 0; }
+/* The client switcher reuses the media-folder card row from New Media, sized
+   down a little since it sits above a dense table rather than a workspace. */
+.downloads-clients { margin-bottom: var(--s3); }
+.downloads-clients .new-media-root { min-width: 150px; padding: var(--s2); }
+.downloads-rail {
+  position: sticky;
+  /* Clear of the sticky 52px topbar, which sits at a higher z-index and would
+     otherwise cover the first group heading once the page scrolls. */
+  top: calc(var(--topbar) + var(--s4));
+  display: grid;
+  /* Taller than the viewport once categories and trackers are listed, so it
+     scrolls internally instead of letting its top scroll out of reach. */
+  max-height: calc(100vh - var(--topbar) - var(--s4) * 2);
+  overflow-y: auto;
+  align-content: start;
+  gap: var(--s4);
+  /* A grid item defaults to min-width:auto and would widen past its 170px track
+     to fit the longest tracker host; 0 lets the labels ellipsize instead. */
+  min-width: 0;
+  padding: var(--s3) 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.downloads-rail-group { display: grid; gap: 1px; min-width: 0; }
+.downloads-rail-title:hover { color: var(--muted); }
+.downloads-rail-title > svg { flex: none; transition: transform .18s ease; }
+.downloads-rail-title[aria-expanded="false"] > svg { transform: rotate(-90deg); }
+/* 1fr -> 0fr animates cleanly to the group's natural height, which a height
+   transition cannot do without measuring the content first. */
+.downloads-rail-items { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .18s ease; }
+.downloads-rail-items.collapsed { grid-template-rows: 0fr; }
+.downloads-rail-items > div { display: grid; overflow: hidden; gap: 1px; min-width: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .downloads-rail-items, .downloads-rail-title > svg { transition: none; }
+}
+.downloads-rail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0 var(--s1) var(--s2);
+  color: var(--faint);
+  font: 500 var(--t-micro) var(--mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.downloads-rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--s1);
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: transparent;
+  font: var(--t-sm) var(--sans);
+  text-align: left;
+}
+.downloads-rail-item:hover { color: var(--text); background: var(--raised); }
+.downloads-rail-item.active { color: var(--text); background: var(--accent-soft); }
+.downloads-rail-icon { display: grid; flex: none; place-items: center; width: 16px; }
+.downloads-rail-icon.tone-neutral { color: var(--faint); }
+.downloads-rail-icon.tone-blue { color: var(--accent-text); }
+.downloads-rail-icon.tone-green { color: var(--ok); }
+.downloads-rail-icon.tone-amber { color: var(--warn); }
+.downloads-rail-icon.tone-red { color: var(--err); }
+.downloads-rail-icon.tone-violet { color: var(--violet); }
+.downloads-rail-icon.tone-teal { color: var(--teal); }
+.rail-label { overflow: hidden; flex: 1; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.rail-count { flex: none; color: var(--faint); font: var(--t-micro) var(--sans); }
+.downloads-rail-settings { justify-content: center; margin-top: var(--s1); }
+.downloads-rail-item.active .rail-count { color: var(--accent-text); }
+
+@media (max-width: 1500px) {
+  /* Not enough slack beside .page-content to break out without sliding under
+     the nav, so the rail comes back inside the normal content width. */
+  .downloads-layout { width: 100%; margin-left: 0; }
+}
+@media (max-width: 1100px) {
+  /* Too narrow for a rail: the filters go back to a horizontal strip above the
+     table, which still costs less height than the cards did. */
+  .downloads-layout { width: 100%; margin-left: 0; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+  .downloads-rail { position: static; grid-auto-flow: row; }
+  .downloads-rail-group { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
+  .downloads-rail-title { padding: 0 var(--s2) 0 0; }
+  .downloads-rail-item { width: auto; }
+  .rail-label { flex: none; }
+}
+
+.incoming-replacement {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+}
+.incoming-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--s1); }
+.incoming-copy strong { font-size: var(--t-sm); font-weight: 500; }
+.incoming-copy > span { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.incoming-meta { display: flex; gap: var(--s3); color: var(--muted); font: var(--t-micro) var(--sans); }
+.incoming-copy .progress { width: 100%; }
+.incoming-percent { min-width: 40px; color: var(--accent-text); font: var(--t-lg) var(--sans); text-align: right; }
+
+.event-details pre {
+  max-height: 320px;
+  padding: var(--s3);
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  background: var(--bg);
+  font: var(--t-micro)/1.6 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.problem-evidence-block { display: grid; gap: var(--s3); padding: var(--s4); }
+.problem-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+}
+.problem-evidence-side, .problem-candidate {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+.problem-evidence-side strong, .problem-candidate strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.problem-evidence-side span:not(.eyebrow), .problem-candidate span { color: var(--muted); font-size: var(--t-xs); line-height: 1.5; overflow-wrap: anywhere; }
+.problem-evidence-side code { display: block; color: var(--muted); font: var(--t-micro)/1.6 var(--mono); overflow-wrap: anywhere; }
+.problem-candidate-list { display: grid; gap: var(--s2); }
+
+.score-positive { color: var(--ok); }
+.score-negative { color: var(--err); }
+.score-zero { color: var(--muted); }
+
+.cf-condition-card {
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+.condition-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.condition-card > span { color: var(--muted); font: var(--t-xs) var(--sans); }.cf-test-actions { margin-bottom: var(--s3); }
+
+.cf-evaluation { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); }
+.cf-evaluation { margin-top: var(--s3); }
+.cf-evaluation-summary { display: flex; align-items: center; gap: var(--s2); padding: var(--s3); }
+.cf-evaluation-summary.matched { color: var(--ok); background: var(--ok-soft); }
+.cf-evaluation-summary.not-matched { color: var(--err); background: var(--err-soft); }
+.cf-evaluation-summary strong { flex: 1; font-size: var(--t-sm); font-weight: 500; }
+.cf-evaluation-summary span { color: var(--muted); font: var(--t-micro) var(--sans); }
+.cf-condition-result {
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--t-xs);
+}
+.cf-result-head { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.cf-result-head strong { flex: 1; min-width: 0; color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.cf-result-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: var(--r-sm);
+}

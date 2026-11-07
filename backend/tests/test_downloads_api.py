@@ -249,7 +249,7 @@ def _install_fake(client: TestClient, behavior: FakeQBitBehavior) -> None:
 
 
 def test_qbit_remote_mapping_preserves_local_path_case() -> None:
-    from app.services.qbittorrent import _inside_local_root, resolve_remote_path
+    from app.services.qbittorrent_paths import _inside_local_root, resolve_remote_path
 
     mapping_id = uuid4()
     mapping = SimpleNamespace(

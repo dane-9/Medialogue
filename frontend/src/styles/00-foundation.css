@@ -1,0 +1,561 @@
+/* Design tokens, reset, app shell, buttons, inputs and other base controls. */
+
+:root {
+  color-scheme: dark;
+
+  /* Streamline default-theme palette. Keep these semantic so every Medialogue
+     surface follows the same hierarchy instead of accumulating one-off colors. */
+  --bg: #171d25;
+  --window-bg: #24282f;
+  --surface: #24282f;
+  --panel: #2c323b;
+  --raised: #2c323b;
+  --raised-2: #3d4450;
+  --control-bg: #272d37;
+  --control-hover: #3d4450;
+  --control-pressed: #2c3038;
+  --input-bg: #24282f;
+  --line: #343a43;
+  --line-strong: #414a52;
+
+  --text: #dcdedf;
+  --muted: #acb2b8;
+  --faint: #8f98a0;
+
+  --accent: #67c1f5;
+  --accent-solid: #417a9b;
+  --accent-pressed: #366682;
+  --accent-text: #67c1f5;
+  --accent-soft: rgba(65, 122, 155, .24);
+  --accent-soft-hover: rgba(65, 122, 155, .38);
+  --accent-line: rgba(103, 193, 245, .46);
+  --selection: #3e4e69;
+
+  --kind-movie: #67c1f5;
+  --kind-movie-soft: rgba(65, 122, 155, .24);
+  --kind-movie-line: rgba(103, 193, 245, .46);
+  --kind-show: #78b98d;
+  --kind-show-soft: rgba(120, 185, 141, .15);
+  --kind-show-line: rgba(120, 185, 141, .42);
+
+  --ok: #66cb8b;
+  --ok-soft: rgba(102, 203, 139, .14);
+  --ok-line: rgba(102, 203, 139, .38);
+  --warn: #d2a65c;
+  --warn-soft: rgba(210, 166, 92, .14);
+  --warn-line: rgba(210, 166, 92, .38);
+  --err: #d57373;
+  --err-soft: rgba(213, 115, 115, .14);
+  --err-line: rgba(213, 115, 115, .38);
+  --violet: #a78bd0;
+  --teal: #6fc2b8;
+
+  --overlay: rgba(0, 0, 0, .68);
+  --shadow-panel: 0 0 8px rgba(0, 0, 0, .34);
+  --shadow-floating: 0 0 12px rgba(0, 0, 0, .72);
+  --shadow-modal: 0 0 18px rgba(0, 0, 0, .72);
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  --t-micro: 10px;
+  --t-xs: 11px;
+  --t-sm: 12px;
+  --t-md: 13px;
+  --t-lg: 15px;
+  --t-xl: 20px;
+  --t-2xl: 26px;
+
+  --r-sm: 2px;
+  --r-md: 3px;
+  --r-lg: 4px;
+  --r-full: 999px;
+
+  --control: 32px;
+  --control-sm: 26px;
+  --row: 48px;
+  --sidebar: 220px;
+  --topbar: 52px;
+  /* The WebKit scrollbar's width, for layouts that line up beside one. */
+  --scrollbar-size: 9px;
+  --rail: 260px;
+
+  --card-w: 180px;
+
+  --sans: "Segoe UI", Tahoma, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  font-family: var(--sans);
+  font-size: var(--t-md);
+  line-height: 1.5;
+  font-synthesis: none;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+/* Reserve the scrollbar's width whether or not it is showing. Without this the
+   page jumps sideways every time content grows past one screen, and again when
+   a modal locks body scrolling. Set on both elements because body's overflow is
+   what propagates to the viewport once a modal locks it. */
+html, body { scrollbar-gutter: stable; }
+body { margin: 0; min-width: 1080px; background: var(--bg); color: var(--text); }
+
+* {
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
+
+button, input, select, textarea { font: inherit; }
+button { color: inherit; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, p { margin: 0; }
+
+.eyebrow, .field-label {
+  font: 500 var(--t-micro)/1.4 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.muted { color: var(--muted); }
+
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  position: fixed;
+  z-index: 3;
+  inset: 0 auto 0 0;
+  width: var(--sidebar);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+.login-brand { display: flex; align-items: center; gap: var(--s3); }
+.brand {
+  height: var(--topbar);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s2) 0 var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.brand-identity { display: flex; align-items: center; gap: var(--s3); flex: 1; min-width: 0; cursor: pointer; }
+.brand-banner { display: block; width: 100%; max-width: 156px; height: auto; object-fit: contain; }
+.brand-search {
+  display: grid;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--muted);
+}
+.brand-search:hover { color: var(--text); border-color: var(--faint); background: var(--raised-2); }
+
+.sidebar-scroll { flex: 1; padding: var(--s3) var(--s2); overflow: auto; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: var(--control);
+  padding: 0 var(--s2);
+  font-size: var(--t-md);
+  transition: color .12s, background .12s;
+}
+.nav-item + .nav-item { margin-top: 2px; }
+.nav-item svg { flex: none; color: var(--faint); transition: color .12s; }
+.nav-count {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  font: 500 var(--t-micro)/1 var(--sans);
+}
+/* Red is reserved for a fault. A queue of pending decisions and a count of
+   running jobs are informational, and reading them as errors made a healthy
+   install look broken. */
+/* Upgrades are an opportunity, not a fault or a plain queue. */
+
+.sidebar-footer { padding: var(--s2); border-top: 1px solid var(--line); }
+.sidebar-health { display: grid; gap: 2px; padding-bottom: var(--s2); margin-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.sidebar-health-link {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 32px;
+  padding: 0 var(--s2);
+  color: var(--muted);
+  font-size: var(--t-xs);
+}
+.sidebar-health-link > span:nth-child(2) { flex: 1; min-width: 0; }
+.sidebar-health-link > svg { flex: none; color: var(--faint); }
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.user-copy { flex: 1; min-width: 0; }
+.user-copy strong, .user-copy span { display: block; }
+.user-copy strong { font-size: var(--t-sm); font-weight: 500; }
+.user-copy span { color: var(--faint); font-size: var(--t-micro); }
+.user-row > svg { flex: none; color: var(--faint); }
+
+.main-area { flex: 1; min-width: 0; margin-left: var(--sidebar); }
+.topbar {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  height: var(--topbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: 0 var(--s5);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-page-host { min-width: 0; flex: 1; }
+.topbar-page-host > strong { font-size: var(--t-md); font-weight: 600; }
+.topbar-page-heading { display: flex; min-width: 0; align-items: center; gap: var(--s3); }
+.topbar-page-copy { min-width: 0; flex: 1; }
+.topbar-page-copy h1 { overflow: hidden; margin: 0; color: var(--text); font-size: var(--t-md); font-weight: 600; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-page-copy p { overflow: hidden; margin: 1px 0 0; font-size: var(--t-micro); line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-back { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border: 1px solid var(--line); border-radius: var(--r-md); color: var(--muted); background: transparent; }
+.topbar-back:hover { color: var(--text); border-color: var(--line-strong); background: var(--raised); }
+.topbar-back svg { transform: rotate(180deg); }
+.topbar-page-actions { display: flex; flex: none; align-items: center; gap: var(--s2); }
+.topbar-page-actions .button { height: var(--control-sm); padding: 0 var(--s2); font-size: var(--t-xs); }
+
+.health-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  display: inline-block;
+  border-radius: var(--r-full);
+  background: var(--faint);
+}
+.health-dot.green { background: var(--ok); }
+.health-dot.red { background: var(--err); }
+.health-dot.amber { background: var(--warn); }
+
+.page-content { max-width: 1600px; padding: var(--s5); margin: 0 auto; }
+.page { display: block; }
+
+.page-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s1) var(--s4);
+  margin-bottom: var(--s5);
+}
+.heading-copy { min-width: 0; }
+.heading-copy h1 {
+  margin: var(--s1) 0;
+  font: 600 var(--t-2xl)/1.15 var(--sans);
+  letter-spacing: -.02em;
+}
+.heading-copy p { color: var(--muted); font-size: var(--t-md); }
+.page-actions,
+.row-actions,
+.button-row,
+.detail-actions,
+.cf-test-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.row-actions { justify-content: flex-end; }
+/* Four buttons beside a poster will not always fit on one line. */
+.detail-actions { flex-wrap: wrap; }
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid transparent;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.button svg { flex: none; }
+.button-ghost { color: var(--muted); background: transparent; }
+.button:disabled { cursor: not-allowed; }
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  flex: none;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+}
+
+.input {
+  width: 100%;
+  height: var(--control);
+  padding: 0 var(--s3);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  outline: none;
+  background: var(--raised);
+  font-size: var(--t-sm);
+}
+.input::placeholder { color: var(--faint); }
+/* No focus highlight on text fields. :focus-visible matches them on a pointer
+   click too, not only on keyboard nav, so the global outline showed on every
+   click; the caret already says where focus is. Dropdown triggers are buttons
+   with no caret and only match on keyboard, so they keep the outline. */
+.input:focus-visible,
+.global-search-input:focus-visible,
+.cf-rule-title-input:focus-visible,
+.search-field:focus-within,
+.search-field .input:focus-visible { outline: none; }
+.input[readonly] { color: var(--muted); }
+
+textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); line-height: 1.5; }
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 260px;
+  height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--faint);
+}
+
+.search-field svg { flex: none; }
+/* The inner input is not a control in its own right here: the wrapper draws the
+   border and the focus ring, so the input must contribute neither. Its border
+   was already stripped; the box-shadow was not, which drew a second ring inside
+   the field whenever it had focus. */
+.search-field .input,
+.search-field .input:focus,
+.search-field .input:focus-visible { height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.search-field.compact { width: 200px; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+}
+.toolbar-spacer { flex: 1; }
+
+.view-toggle {
+  display: flex;
+  /* Pinned rather than left to padding + border + button height, so it always
+     matches the sort and filter controls it sits beside. */
+  height: var(--control);
+  box-sizing: border-box;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+.view-toggle button {
+  width: var(--control-sm);
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--faint);
+  background: transparent;
+}
+.view-toggle button:hover { color: var(--text); }
+.view-toggle button.selected { color: var(--accent-text); background: var(--accent-soft); }
+
+.filter-tabs { display: flex; gap: 2px; }
+.filter-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: var(--t-sm);
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+.inline-check input { accent-color: var(--accent); flex: none; }
+.inline-check span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.inline-check strong { color: var(--text); font-weight: 500; }
+.inline-check small { color: var(--faint); font: var(--t-micro) var(--sans); }
+
+.field-label { display: flex; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
+.field-label span { color: var(--faint); font-family: var(--sans); letter-spacing: 0; text-transform: none; }
+
+.field { display: grid; gap: var(--s1); min-width: 0; }
+.field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.field-head > span:first-child {
+  font: 500 var(--t-micro)/1.4 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.field-optional { color: var(--faint); font: var(--t-micro) var(--sans); }
+.field-help { margin-bottom: 2px; color: var(--muted); font-size: var(--t-xs); line-height: 1.55; }
+.field-help code { color: var(--accent-text); font: var(--t-micro) var(--mono); }
+.field-help strong { color: var(--text); font-weight: 600; }
+.field-error { display: flex; align-items: center; gap: var(--s1); color: var(--err); font-size: var(--t-xs); }
+.field-error svg { flex: none; }
+.field .input[aria-invalid="true"] { border-color: var(--err); }
+
+.secret { position: relative; display: flex; min-width: 0; }
+.secret .input { padding-right: var(--s6); }
+.secret button {
+  position: absolute;
+  top: 50%;
+  right: var(--s1);
+  transform: translateY(-50%);
+  width: var(--s5);
+  height: var(--s5);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--faint);
+}
+.secret button:hover { color: var(--text); background: var(--raised-2); }
+
+.section-head { display: flex; align-items: center; gap: var(--s3); padding: var(--s4); border-bottom: 1px solid var(--line); }
+.section-head + .section-head, .section-head.section-head-split { border-top: 1px solid var(--line); }
+.section-head-copy { flex: 1; min-width: 0; }
+.section-head h3 { margin-bottom: 2px; font: 600 var(--t-lg) var(--sans); }
+.section-head p { color: var(--muted); font-size: var(--t-sm); line-height: 1.55; }
+.section-head-status { display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1); text-align: right; }
+.status-detail { color: var(--faint); font: var(--t-micro) var(--sans); }
+.status-detail.ok { color: var(--ok); }
+
+.footer-state {
+  flex: 1;
+  color: var(--warn);
+  font: var(--t-micro) var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.footer-state.clean { color: var(--faint); }
+/* A settled, good state rather than something needing attention. */
+.footer-state.ok { color: var(--ok); }
+.autosave-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--ok);
+  font: var(--t-micro) var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.autosave-tag svg { flex: none; }
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  min-height: var(--s7);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.panel-heading { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+.panel-header h2 { font: 600 var(--t-lg)/1.3 var(--sans); }
+.panel-note { flex: none; color: var(--faint); font: 500 var(--t-micro) var(--mono); letter-spacing: .09em; text-transform: uppercase; }
+.panel-header .eyebrow + h2 { margin-top: 2px; }
+.table-panel, .event-history-panel { overflow: hidden; }
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s3);
+}
+.section-title h3 { font: 600 var(--t-lg)/1.3 var(--sans); }
+
+.data-table { width: 100%; border-collapse: collapse; text-align: left; }
+.data-table th {
+  height: var(--s6);
+  padding: 0 var(--s4);
+  border-bottom: 1px solid var(--line);
+  color: var(--faint);
+  font: 500 var(--t-micro) var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.data-table td {
+  height: var(--row);
+  font-variant-numeric: tabular-nums;
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+.data-table tr:last-child td { border-bottom: 0; }
+.data-table tbody tr:hover { background: var(--raised); }
+.table-sort { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; letter-spacing: inherit; text-transform: inherit; }
+.table-sort:hover { color: var(--text); }
+.table-loading { height: 120px; color: var(--muted); text-align: center; }
+.table-title { display: flex; align-items: center; gap: var(--s3); color: var(--text); font-weight: 500; }
+.table-title .muted, .data-table td > .muted { margin-left: var(--s2); color: var(--faint); font: var(--t-micro) var(--sans); }
+.table-sub { display: block; margin-top: 2px; color: var(--faint); font: var(--t-micro) var(--sans); }
+.table-poster {
+  position: relative;
+  width: 26px;
+  height: 36px;
+  flex: none;
+  display: inline-block;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--raised-2);
+}

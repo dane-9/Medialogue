@@ -61,7 +61,7 @@ def _path_key(path: str) -> str:
 def _compute_identities(work: list[tuple[UUID, Torrent, UUID, str]]) -> dict[UUID, tuple[str, list[list[int]]]]:
     """Filesystem part, run in a worker thread."""
 
-    from app.services.upgrade_execution import _archived_file_signatures, _payload_file_identities
+    from app.services.upgrade_payloads import _archived_file_signatures, _payload_file_identities
 
     result: dict[UUID, tuple[str, list[list[int]]]] = {}
     for torrent_id, torrent, client_id, resolved in work:

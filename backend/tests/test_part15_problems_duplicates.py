@@ -41,7 +41,8 @@ from app.models.domain import (
     StorageRoot,
     Torrent,
 )
-from app.services.reconciliation import mark_absent_known_directories, reconcile_torrent_disagreements
+from app.services.reconciliation import mark_absent_known_directories
+from app.services.torrent_reconciliation import reconcile_torrent_disagreements
 
 pytestmark = pytest.mark.usefixtures("scratch_cwd")
 

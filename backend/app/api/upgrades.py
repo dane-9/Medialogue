@@ -72,13 +72,8 @@ from app.services.scheduler import ensure_default_schedules, trigger_schedule
 from app.services.jobs import create_job
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.upgrade_candidates import run_upgrade_search_job
-from app.services.upgrade_execution import (
-    cleanup_preview,
-    commit_cleanup,
-    retry_upgrade_handoff,
-    run_automatic_cleanups,
-    submit_upgrade_candidate,
-)
+from app.services.upgrade_cleanup import cleanup_preview, commit_cleanup, run_automatic_cleanups
+from app.services.upgrade_execution import retry_upgrade_handoff, submit_upgrade_candidate
 
 router = APIRouter(tags=["upgrade candidates"])
 

@@ -170,7 +170,7 @@ async def retire(candidate_id: UUID, _: object = Depends(require_csrf), db: Asyn
 @router.post("/{candidate_id}/finish", response_model=ReplacementFinishResponse)
 async def finish(candidate_id: UUID, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> ReplacementFinishResponse:
     from app.services.torrent_archive import torrent_archive_complete
-    from app.services.upgrade_execution import _replacement_cleanup_guard
+    from app.services.upgrade_cleanup import _replacement_cleanup_guard
     row = await db.get(UpgradeCandidate, candidate_id)
     if not row or not row.target_key.startswith("replace:") or row.execution_state != "cleanup_required":
         raise AppError("REPLACEMENT_NOT_READY", "The replacement must be validated before finishing.", status_code=409)

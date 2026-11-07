@@ -1,0 +1,781 @@
+/* Tables, event rows, library cards and posters, selection, title pages and profile forms. */
+
+.path-cell {
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--faint) !important;
+  font: var(--t-micro) var(--mono) !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.confidence { color: var(--ok); font-family: var(--sans); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  height: 20px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: var(--raised);
+  font: 500 var(--t-micro) var(--sans);
+  white-space: nowrap;
+}
+.badge-green { border-color: var(--ok-line); color: var(--ok); background: var(--ok-soft); }
+.badge-amber { border-color: var(--warn-line); color: var(--warn); background: var(--warn-soft); }
+.badge-red { border-color: var(--err-line); color: var(--err); background: var(--err-soft); }
+.badge-blue { border-color: var(--accent-line); color: var(--accent-text); background: var(--accent-soft); }
+.badge-purple { border-color: var(--accent-line); color: var(--accent-text); background: var(--accent-soft); }
+.badge-row { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.badge-row.compact { margin-top: var(--s2); gap: var(--s1); }
+
+.stat {
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.progress { width: 100%; height: 4px; overflow: hidden; }
+.progress span { display: block; height: 100%; }
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  padding: var(--s7) var(--s5);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  color: var(--muted);
+  text-align: center;
+}
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: var(--s7);
+  height: var(--s7);
+  margin-bottom: var(--s4);
+  border-radius: var(--r-lg);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.empty-state h3 { margin-bottom: var(--s1); color: var(--text); font: 600 var(--t-lg) var(--sans); }
+.empty-state p { max-width: 380px; margin-bottom: var(--s4); color: var(--muted); font-size: var(--t-sm); }
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  margin-top: var(--s4);
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+
+.dropdown-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 130px;
+  height: var(--control);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 0 var(--s2) 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--text);
+  background: var(--raised);
+  font-size: var(--t-sm);
+  text-align: left;
+}
+
+.select { width: auto; min-width: 130px; max-width: 200px; }
+.select.library-control { width: 170px; min-width: 170px; max-width: 170px; }
+
+.field > .select { width: 100%; max-width: none; }
+
+.segmented { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--raised); }
+.segmented-option { height: calc(var(--control) - 6px); padding: 0 var(--s3); border: 1px solid transparent; border-radius: calc(var(--r-md) - 2px); color: var(--muted); background: none; font-size: var(--t-sm); cursor: pointer; transition: color .12s, background .12s, border-color .12s; }
+.segmented-option:hover:not(.selected):not(:disabled) { color: var(--text); background: var(--raised-2); }
+.segmented-option:disabled { cursor: not-allowed; opacity: .6; }
+.segmented-option.selected { color: var(--accent-text); border-color: var(--accent-line); background: var(--accent-soft); }
+
+.segmented-option.selected[data-tone="movie"] { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
+.segmented-option.selected[data-tone="show"] { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
+.scope-movies .segmented-option.selected:not([data-tone]) { color: var(--kind-movie); border-color: var(--kind-movie-line); background: var(--kind-movie-soft); }
+.scope-shows .segmented-option.selected:not([data-tone]) { color: var(--kind-show); border-color: var(--kind-show-line); background: var(--kind-show-soft); }
+
+.slider { display: flex; height: var(--control); align-items: center; gap: var(--s3); }
+.slider-input { flex: 1; min-width: 0; height: 4px; padding: 0; border-radius: var(--r-full); background: linear-gradient(to right, var(--accent) var(--slider-progress), var(--line-strong) var(--slider-progress)); appearance: none; cursor: pointer; }
+.slider-input::-webkit-slider-thumb { width: 14px; height: 14px; border: 2px solid var(--bg); border-radius: var(--r-full); background: var(--accent); appearance: none; cursor: pointer; }
+.slider-input::-moz-range-thumb { width: 14px; height: 14px; border: 2px solid var(--bg); border-radius: var(--r-full); background: var(--accent); cursor: pointer; }
+.slider-input:disabled { cursor: not-allowed; opacity: .6; }
+.slider-value { min-width: 56px; color: var(--muted); font: var(--t-xs) var(--sans); }
+
+.enabled-button { display: inline-flex; flex: none; align-items: center; gap: var(--s1); height: 26px; padding: 0 var(--s2); border: 1px solid transparent; border-radius: var(--r-sm); font: 500 var(--t-micro) var(--sans); white-space: nowrap; cursor: pointer; transition: color .12s, background .12s, border-color .12s; }
+.enabled-button.on { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
+.enabled-button:hover { border-color: currentColor; }
+.enabled-button.off { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+.enabled-button:disabled { cursor: not-allowed; opacity: .6; }
+
+.event-history-panel { padding: 0; }
+
+.event-columns { position: sticky; z-index: 2; top: 0; display: grid; align-items: center; grid-template-columns: 18px 116px 148px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s2) var(--s4); border-bottom: 1px solid var(--line-strong); color: var(--faint); background: var(--surface); font: 600 var(--t-micro) var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+.event-row + .event-row { border-top: 1px solid var(--line); }
+.event-row { border-left: 2px solid transparent; }
+.event-row:hover { background: var(--raised); }
+.event-row-warning { border-left-color: var(--warn); }
+.event-row-error { border-left-color: var(--err); }
+.event-row-main { display: grid; grid-template-columns: 18px 116px 148px minmax(0, 1fr) auto; align-items: baseline; gap: var(--s3); padding: var(--s2) var(--s4); cursor: pointer; list-style: none; }
+.event-row-main::-webkit-details-marker { display: none; }
+.event-sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; color: inherit; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.event-sort:hover { color: var(--muted); }
+.event-sort.active { color: var(--text); }
+
+.event-sort > svg { opacity: 0; transition: opacity .12s, transform .12s; }
+.event-sort:hover > svg, .event-sort.active > svg { opacity: 1; }
+.event-sort > svg.flipped { transform: rotate(180deg); }
+.event-severity { display: flex; align-items: center; justify-content: center; align-self: center; color: var(--faint); }
+.event-row-warning .event-severity { color: var(--warn); }
+.event-row-error .event-severity { color: var(--err); }
+.event-time { color: var(--faint); font: var(--t-micro) var(--sans); font-variant-numeric: tabular-nums; }
+.event-kind { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.event-body { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.event-message { min-width: 0; margin: 0; color: var(--text); font-size: var(--t-sm); }
+
+.event-row-actions { display: flex; align-items: center; gap: var(--s1); opacity: 0; transition: opacity .12s; }
+.event-row:hover .event-row-actions, .event-row:focus-within .event-row-actions { opacity: 1; }
+.event-delete { display: grid; width: 24px; height: 24px; place-items: center; border-radius: var(--r-sm); color: var(--faint); cursor: pointer; }
+.event-delete:hover { color: var(--err); background: var(--raised-2); }
+.event-details[open] .event-row-main { color: var(--text); }
+.event-details > pre { max-height: 260px; margin: 0; overflow: auto; padding: var(--s3) var(--s4) var(--s4) calc(var(--s4) + 134px); color: var(--muted); background: var(--bg); font: var(--t-micro) var(--mono); }
+.dropdown-trigger:hover:not(:disabled) { border-color: var(--muted); }
+.dropdown-trigger:disabled { color: var(--muted); cursor: not-allowed; opacity: .6; }
+.dropdown-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dropdown-value { display: flex; flex: 1; min-width: 0; align-items: baseline; gap: var(--s2); }
+.dropdown-value small { flex: none; color: var(--faint); font: 600 var(--t-micro)/1 var(--sans); letter-spacing: .08em; }
+.dropdown-value > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dropdown-trigger > svg { flex: none; color: var(--faint); transition: transform .12s; }
+.dropdown-trigger.open > svg { transform: rotate(180deg); }
+
+.dropdown-menu {
+  position: fixed;
+  z-index: 60;
+
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised-2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .5);
+  animation: dropdown-in .1s ease;
+}
+.dropdown-list { max-height: 292px; overflow-y: auto; }
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.dropdown-group {
+  padding: 6px 7px 3px;
+  color: var(--faint);
+  font: 600 var(--t-micro) var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.dropdown-option {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 5px 7px;
+  border: 0;
+  background: transparent;
+  font-size: var(--t-sm);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-option.active { color: var(--text); background: var(--raised); }
+.dropdown-option.selected { font-weight: 600; }
+.dropdown-option.selected.active { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.dropdown-option[aria-disabled="true"] { color: var(--faint); cursor: not-allowed; }
+
+.settings-note,
+.cf-banner,
+.reconciliation-banner,
+.problem-evidence-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  background: var(--raised);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+.settings-note svg,
+.cf-banner svg,
+.reconciliation-banner svg { flex: none; color: var(--faint); }
+
+.page > .settings-note,
+.page > .cf-banner,
+.page > .reconciliation-banner { margin-bottom: var(--s4); }
+.settings-note.error-note, .cf-banner-error, .reconciliation-banner-red {
+  color: var(--err);
+  border-color: var(--err-line);
+  background: var(--err-soft);
+}
+.cf-banner-success, .settings-note.note-ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
+.settings-note.note-ok svg, .settings-note.error-note svg { color: currentColor; }
+.problem-evidence-note { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
+.reconciliation-banner { margin-bottom: var(--s4); }
+.reconciliation-banner > div { display: flex; flex: 1; flex-direction: column; gap: 2px; }
+.reconciliation-banner span { color: var(--muted); font-size: var(--t-xs); }
+
+.split {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  gap: var(--s4);
+  align-items: start;
+}
+
+.split.split-narrow {
+  --rail: 196px;
+  grid-template-columns: var(--rail) minmax(0, 1fr) var(--rail);
+}
+
+.split.split-narrow::after { content: ''; }
+.qbit-editor, .settings-panel { min-width: 0; }
+
+.release-icon, .incoming-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  width: var(--control);
+  height: var(--control);
+  flex: none;
+  /* Every other icon chip in the app is outlined; this one was the exception. */
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+/* The chip grows to carry the media folder the release actually sits in, so the
+   fact travels with the release rather than being asserted once for the movie. */
+.release-icon-labelled { width: auto; padding: 0 var(--s3) 0 10px; }
+.release-icon-labelled > span { color: var(--accent-text); font: 500 var(--t-xs) var(--sans); white-space: nowrap; }
+
+.cf-list-state { padding: var(--s4); color: var(--muted); font-size: var(--t-sm); }
+.cf-file-input { display: none; }
+
+.media-grid, .show-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr));
+  gap: var(--s3);
+}
+.media-card {
+  position: relative;
+  /* Keeps the card's own layers (marks, washes, borders) inside the card, so
+     none of them can paint over the sticky page header while scrolling. */
+  isolation: isolate;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.media-attention::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  border: 2px solid rgba(210, 166, 92, .8);
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35);
+  pointer-events: none;
+  transition: border-color .12s;
+}
+.media-attention:hover::after { border-color: var(--warn); }
+.media-card-link { position: absolute; inset: 0; display: block; color: inherit; }
+.media-card-link:hover { color: inherit; }
+/* Sits inside the top-right cluster, ahead of the monitor toggle, so hovering
+   reveals the actions to the left of a control that is always there. */
+.media-card-actions {
+  display: flex;
+  gap: var(--s1);
+  opacity: 0;
+  transition: opacity .12s;
+}
+.media-card:hover .media-card-actions, .media-card:focus-within .media-card-actions { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .selection-mark { transition: none; }
+}
+/* Same box as the monitor mark in the opposite corner, so the two corners of a
+   card carry controls of one size. */
+.media-card-actions .icon-button { width: 22px; height: 22px; border: 1px solid rgba(255,255,255,.14); }
+.media-card-actions .icon-button:hover { color: var(--text); background: var(--raised-2); }
+
+.poster {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s3);
+}
+/* The caption sits on the artwork now, so the scrim has to carry it over a
+   bright poster while leaving most of the image untouched. It is always on:
+   gating legibility on hover would leave the grid unreadable at rest and would
+   never resolve on a touch screen. Hover only deepens what is already there. */
+.poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transition: opacity .16s ease, background .16s ease;
+}
+/* A second, taller wash fades in under the caption on hover, so the card reads
+   as lifting toward you rather than simply changing colour. */
+.poster::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(0deg, rgba(12, 16, 21, .92) 0%, rgba(12, 16, 21, .62) 32%, rgba(12, 16, 21, .18) 58%, transparent 82%);
+  transition: opacity .16s ease;
+  pointer-events: none;
+}
+.media-card:hover .poster::before,
+.media-card:focus-within .poster::before { opacity: 1; }
+/* The art itself drifts in a little, which reads as depth without moving the
+   caption sitting on top of it. */
+.media-card .poster-image { transition: transform .28s ease; }
+.media-card:hover .poster-image,
+.media-card:focus-within .poster-image { transform: scale(1.04); }
+@media (prefers-reduced-motion: reduce) {
+  .poster::after,
+  .poster::before,
+  .media-card .poster-image { transition: none; }
+  .media-card:hover .poster-image,
+  .media-card:focus-within .poster-image { transform: none; }
+}
+.poster-noise { display: none; }
+.poster-title, .poster-year { position: relative; z-index: 1; }
+.poster-title { max-width: 100%; font: 600 var(--t-md)/1.3 var(--sans); }
+.poster-year { margin-top: var(--s1); color: var(--muted); font: var(--t-xs) var(--sans); }
+.poster-fallback-title { position: relative; z-index: 1; max-width: 100%; margin-bottom: 22%; color: var(--muted); font: 600 var(--t-md)/1.3 var(--sans); text-align: center; overflow-wrap: anywhere; }
+
+.poster-image { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+.table-poster .poster-image, .detail-poster .poster-image, .tmdb-candidate-poster img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-card-body {
+  position: absolute;
+  z-index: 2;
+  inset-inline: 0;
+  bottom: 0;
+  display: grid;
+  gap: 6px;
+  padding: var(--s3);
+}
+
+.media-card-title { display: grid; gap: 2px; min-width: 0; }
+/* Two lines rather than an ellipsis: a truncated title is the one thing a
+   poster grid cannot afford to lose. */
+.media-card-title strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: #fff;
+  font: 500 var(--t-sm)/1.35 var(--sans);
+  white-space: normal;
+}
+.media-card-title span { color: rgba(255, 255, 255, .72); font: var(--t-micro) var(--sans); }
+/* An inline box rather than a flex row: a flex item cannot use a second line,
+   so a long edition could only ever be ellipsised away. Clamped at two lines so
+   the caption still cannot creep up the poster. */
+.media-card-sub {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.media-card-quality { color: rgba(255, 255, 255, .72); font-style: normal; }
+/* The tier on its own row, one step back from the year and edition above it. */
+.media-card-tier { color: rgba(255, 255, 255, .58); }
+
+.media-card-quality::before { color: rgba(255, 255, 255, .45); margin: 0 var(--s1); font-family: var(--sans); content: "·"; }
+.media-card-meta { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
+.media-card-meta .badge { border-color: rgba(255, 255, 255, .18); }
+.media-card-primary-badge { min-height: 22px; padding-inline: var(--s2); font-weight: 600; }
+.media-card-secondary-badge { opacity: .72; transition: opacity .16s ease; }
+/* Held back at rest so the artwork leads, brought fully forward once the card
+   is the one being looked at. */
+.media-card:hover .media-card-secondary-badge,
+.media-card:focus-within .media-card-secondary-badge { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .media-card-secondary-badge { transition: none; }
+}
+
+/* The pill is the progress bar: it fills to the proportion of episodes present
+   and takes its colour from whether any are missing, so one element carries the
+   count and its state instead of a label sitting above a bar saying the same. */
+.episode-progress {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  overflow: hidden;
+  min-height: 22px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  font: var(--t-micro) var(--sans);
+}
+.episode-progress-fill {
+  position: absolute;
+  z-index: 0;
+  inset: 0 auto 0 0;
+  transition: width .2s ease;
+}
+.episode-progress > .episode-progress-label,
+.episode-progress > strong { position: relative; z-index: 1; }
+.episode-progress strong { font-weight: 600; }
+
+.episode-progress.complete { border-color: var(--ok-line); color: var(--ok); }
+.episode-progress.complete .episode-progress-fill { background: var(--ok-soft); }
+.episode-progress.incomplete { border-color: var(--warn-line); color: var(--warn); }
+.episode-progress.incomplete .episode-progress-fill { background: var(--warn-soft); }
+@media (prefers-reduced-motion: reduce) {
+  .episode-progress-fill { transition: none; }
+}
+
+.selection-mark {
+  position: absolute;
+  z-index: 2;
+  top: var(--s2);
+  left: var(--s2);
+  /* Yields its corner to the hover actions; the card's accent border still
+     says it is selected. */
+  transition: opacity .12s;
+  display: grid;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border-radius: var(--r-full);
+  color: #171d25;
+  background: var(--accent);
+}
+.row-selected { background: var(--accent-soft) !important; box-shadow: inset 2px 0 var(--accent); }
+.selection-count { color: var(--muted); font: var(--t-micro) var(--sans); white-space: nowrap; }
+/* Toolbar summary of a library selection. */
+.selection-bar { display: inline-flex; align-items: center; gap: var(--s2); padding: 0 var(--s1) 0 var(--s3); height: var(--control-sm); border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-text); font-size: var(--t-xs); white-space: nowrap; }
+.selection-bar strong { font-weight: 600; }
+.selection-bar button { padding: 2px var(--s2); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); font-size: var(--t-xs); }
+.selection-bar button:hover { background: rgba(255, 255, 255, .08); }
+.selection-bar-actions { display: inline-flex; align-items: center; gap: 5px; }
+/* A round select button. On a card it sits in the poster's free top-left
+   corner: shown on hover, kept when selected, and on every card while any
+   card is selected so a second click needs no hunting. */
+.select-check { display: grid; flex: none; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid rgba(255, 255, 255, .7); border-radius: var(--r-full); background: rgba(23, 29, 37, .55); color: #171d25; cursor: pointer; }
+.select-check.on, .select-check.mixed { border-color: var(--accent); background: var(--accent); }
+.select-check-dash { width: 8px; height: 2px; border-radius: 1px; background: #171d25; }
+.media-card { position: relative; }
+.media-card > .select-check { position: absolute; z-index: 3; top: var(--s2); left: var(--s2); opacity: 0; transition: opacity .12s; }
+.media-card:hover > .select-check, .media-card > .select-check.on, .media-grid:has(.select-check.on) .media-card > .select-check { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .media-card > .select-check { transition: none; } }
+.select-check.inline { width: 16px; height: 16px; border-color: var(--line-strong); background: transparent; }
+.select-check.inline.on, .select-check.inline.mixed { border-color: var(--accent); background: var(--accent); }
+th.select-cell, td.select-cell { width: 28px; padding-right: 0 !important; }
+
+.media-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); margin: calc(var(--s3) * -1) 0 var(--s4); }
+.media-filter-row + .media-filter-row { margin-top: calc(var(--s3) * -1); }
+/* Squared, like every other control: round is reserved for Badge, which is
+   read-only status. A chip is pressable, so it should not look like a label. */
+.filter-chip { display: inline-flex; align-items: center; gap: var(--s2); min-height: 26px; padding: 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); background: transparent; font: 500 var(--t-micro) var(--sans); cursor: pointer; }
+.filter-chip svg { flex: none; }
+.filter-chip:disabled { cursor: wait; opacity: .6; }
+.filter-chip:hover { border-color: var(--line-strong); color: var(--text); background: var(--raised); }
+.filter-chip.active { border-color: var(--accent-line); color: var(--accent-text); background: var(--accent-soft); }
+.library-specials-toggle { height: var(--control); }
+.media-tag-filter { padding-top: var(--s1); margin-top: calc(var(--s4) * -1); }
+/* Poster corner marks share one cluster so a monitored flag and an incoming
+   download cannot land on top of each other. */
+.poster-marks { position: absolute; z-index: 2; top: var(--s2); right: var(--s2); display: flex; align-items: center; gap: var(--s1); }
+/* Monitoring applies to every title, so it is a persistent mark rather than a
+   badge that would say "normal" on almost every card in the grid. */
+.monitor-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+}
+.monitor-mark.on { color: var(--accent-text); border-color: var(--accent-line); background: rgba(23, 29, 37, .82); }
+.monitor-mark.off { color: var(--faint); border-color: var(--line-strong); background: rgba(23, 29, 37, .82); }
+/* An unmonitored card keeps its corner clear until you point at it. The mark is
+   still reachable: it fades in on hover and on keyboard focus. */
+.poster-marks .monitor-mark.off { opacity: 0; transition: opacity .12s; }
+.media-card:hover .monitor-mark.off,
+.media-card:focus-within .monitor-mark.off { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .poster-marks .monitor-mark.off { transition: none; }
+}
+/* It is the toggle where one is wired, so it has to look pressable. */
+button.monitor-mark { cursor: pointer; transition: color .12s, border-color .12s, background .12s; }
+button.monitor-mark:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
+@media (prefers-reduced-motion: reduce) {
+  button.monitor-mark { transition: none; }
+}
+/* In a table there is no artwork behind it, so it carries no plate. */
+.table-title .monitor-mark { width: auto; height: auto; border: 0; background: none; }
+
+.incoming-mark { position: static; z-index: 2; display: inline-flex; align-items: center; gap: var(--s1); padding: 3px var(--s2); border: 1px solid var(--accent-line); border-radius: var(--r-sm); color: var(--accent-text); background: rgba(36, 40, 47, .94); font: 600 var(--t-micro) var(--mono); text-transform: uppercase; }
+.incoming-mark svg { flex: none; }
+
+.tag-chip-row { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  background: var(--raised);
+  font: var(--t-micro) var(--sans);
+  cursor: pointer;
+}
+.tag-chip:hover { border-color: var(--accent-line); color: var(--accent-text); background: var(--accent-soft); }
+.detail-tag-row { margin-top: var(--s3); }
+
+.detail-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .7fr); gap: var(--s4); }
+.detail-layout > div, .detail-layout > aside { display: grid; align-content: start; gap: var(--s4); }
+.detail-hero { display: flex; gap: var(--s5); padding: var(--s5); }
+.detail-poster {
+  position: relative;
+  width: 150px;
+  aspect-ratio: 2 / 3;
+  flex: none;
+  /* The hero is a flex row that now stretches to the profile panel beside it.
+     Without this the poster stretches with it, its aspect-ratio is overridden
+     by the imposed height, and object-fit crops the artwork's sides. */
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--s3);
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+.detail-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(23, 29, 37, .90), transparent 60%);
+}
+.detail-poster > * { position: relative; z-index: 1; }
+.detail-poster .poster-title { font-size: var(--t-md); }
+/* Starts at the top alongside the poster. Centring left the title floating in
+   the middle of a card whose height is now set by the panel beside it. */
+.detail-intro { display: flex; min-width: 0; flex-direction: column; justify-content: flex-start; }
+.detail-intro h2 { margin: 0 0 var(--s3); font: 600 var(--t-2xl)/1.15 var(--sans); letter-spacing: -.02em; }
+.detail-year { color: var(--muted); font-weight: 400; }
+.detail-description { max-width: 560px; margin: var(--s4) 0; color: var(--muted); font-size: var(--t-sm); line-height: 1.6; }
+.detail-side .panel-header { border-bottom: 1px solid var(--line); }
+
+/* The movie page runs in one column. Its sidebar held two small cards and then
+   reserved its width down the whole page for nothing. */
+.detail-single { display: grid; align-content: start; gap: var(--s4); }
+/* The facts the sidebar used to carry, on the hero where the poster's height
+   already leaves room for them. */
+.detail-facts { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5); margin-bottom: var(--s4); }
+.detail-facts > span { display: grid; gap: 2px; min-width: 0; }
+.detail-facts em { color: var(--faint); font: var(--t-micro) var(--sans); font-style: normal; letter-spacing: .04em; text-transform: uppercase; }
+.detail-facts strong { overflow: hidden; color: var(--text); font-size: var(--t-xs); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The hero and the profile share the top row and end together: whichever is
+   taller sets the height and the other fills it, so neither leaves a hole
+   beside it. */
+.detail-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: stretch; gap: var(--s4); }
+.detail-top > .panel { min-width: 0; }
+/* The hero is the taller of the two, mostly on the strength of its overview.
+   Holding that to three lines keeps the pair close to the same height before
+   the stretch has to make up any difference. */
+.detail-hero .detail-description {
+  /* Fills the intro column instead of stopping at 560px: with the block held to
+     three lines, a wider measure means more of the overview survives. */
+  max-width: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@media (max-width: 1100px) {
+  .detail-top { grid-template-columns: minmax(0, 1fr); }
+}
+/* Rows stack only when this panel is genuinely too narrow for a control beside
+   its label, rather than whenever it sits in the side column. */
+.profile-panel { container-type: inline-size; }
+@container (max-width: 460px) {
+  .profile-panel .settings-card > .field {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'head' 'help' 'control' 'error';
+    align-items: stretch;
+    gap: var(--s2);
+  }
+  .profile-panel .settings-card .field > :not(.field-head):not(.field-help):not(.field-error) { justify-self: stretch; }
+  .profile-panel .settings-card .field > .input,
+  .profile-panel .settings-card .field > .select { width: 100%; }
+}
+.detail-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+}
+.detail-fact:first-of-type { padding-top: var(--s3); }
+.detail-fact:last-of-type { padding-bottom: var(--s3); }
+.detail-fact > span { color: var(--muted); font-size: var(--t-xs); }
+.detail-fact > strong { color: var(--text); font-size: var(--t-xs); font-weight: 500; text-align: right; }
+
+.release-row, .release-evidence-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+}
+.release-evidence-row { border-top: 1px solid var(--line); }
+.release-main { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.release-main strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.release-pill {
+  background: var(--raised-2);
+  font-size: var(--t-micro);
+}
+.release-pill svg { flex: none; color: var(--faint); }
+/* Proper / Repack / Hybrid: why this copy supersedes another. */
+.release-main span, .release-main small {
+  overflow: hidden;
+  color: var(--faint);
+  font: var(--t-micro) var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.release-tags { flex: none; }
+/* Its own right-aligned column so the figure lines up between releases. */
+.release-score { display: grid; flex: none; gap: 1px; width: 76px; justify-items: end; text-align: right; }
+.release-score em { color: var(--faint); font: var(--t-micro) var(--sans); font-style: normal; letter-spacing: .04em; text-transform: uppercase; }
+.release-score strong { color: var(--text); font: 600 var(--t-md) var(--sans); font-variant-numeric: tabular-nums; }
+.release-score small { color: var(--warn); font: var(--t-micro) var(--sans); white-space: nowrap; }
+
+/* The profile form uses the same titled-group rows as Settings, so a per-title
+   override reads like every other setting in the app. */
+.profile-form { padding: var(--s4); }
+
+.history-list { display: block; }
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.history-row:last-child { border-bottom: 0; }
+.history-line { width: 6px; height: 6px; flex: none; border-radius: var(--r-full); background: var(--accent); }
+.history-row > div { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.history-row strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.history-row span:not(.history-line) { color: var(--muted); font-size: var(--t-xs); }
+.history-empty { padding: var(--s4); color: var(--muted); font-size: var(--t-sm); }
+
+.problem-mini { display: flex; gap: var(--s3); padding: var(--s3) var(--s4); }
+.problem-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: var(--r-full);
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.problem-mini div:last-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.problem-mini strong { font-size: var(--t-sm); font-weight: 500; }
+.problem-mini span { color: var(--muted); font-size: var(--t-xs); }
+.problem-mini-alert { align-items: flex-start; }
+.problem-mini-alert .problem-icon { color: var(--err); background: var(--err-soft); }
+.problem-mini-alert strong { color: var(--err); }
+
+.detail-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); max-width: 560px; margin: var(--s3) 0; }
+.detail-summary-grid > div { display: grid; gap: 2px; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raised); }
+.detail-summary-grid strong { color: var(--text); font: 600 var(--t-lg) var(--sans); }
+.detail-summary-grid span { color: var(--faint); font: var(--t-micro) var(--mono); text-transform: uppercase; }
+.show-season-workspace { display: grid; grid-template-columns: minmax(190px, .34fr) minmax(0, 1fr); gap: var(--s3); align-items: start; }
+.season-nav-panel { min-width: 0; }
+.season-nav-list { display: grid; }
+.season-nav-item { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-width: 0; padding: var(--s3); border: 0; border-top: 1px solid var(--line); color: var(--muted); background: transparent; text-align: left; }
+.season-nav-item:first-child { border-top: 0; }
+.season-nav-item:hover { color: var(--text); background: var(--raised); }
+.season-nav-item.selected { color: var(--text); background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); }
+.season-nav-item > span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.season-nav-item strong { overflow: hidden; font-size: var(--t-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.season-nav-item small { color: var(--faint); font: var(--t-micro) var(--sans); }
+.season-nav-item .badge { flex: none; }
+.season-main { display: grid; align-content: start; gap: var(--s4); min-width: 0; }
+.season-header-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.season-control-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
+.season-control-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; color: var(--muted); font-size: var(--t-xs); }
+.season-control-copy span:first-child { color: var(--text); font-weight: 600; }
+.season-control-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--s3); }
+.episode-filter-chips { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--raised); }
+.episode-filter-chips button { padding: 3px var(--s2); border: 0; border-radius: var(--r-sm); color: var(--faint); background: transparent; font: 500 var(--t-micro) var(--sans); }
+.episode-filter-chips button:hover { color: var(--text); }
+.episode-filter-chips button.active { color: var(--accent-text); background: var(--accent-soft); }
+.episode-table-wrap { overflow-x: auto; }
+.episode-table { min-width: 720px; }
+.episode-table td { vertical-align: top; }
+.episode-title-cell, .episode-media-cell { display: flex; min-width: 140px; flex-direction: column; gap: 2px; }
+.episode-title-cell strong, .episode-media-cell strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.episode-title-cell small, .episode-media-cell small { max-width: 260px; overflow: hidden; color: var(--faint); font: var(--t-micro) var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.episode-actions-menu { position: relative; }
+.episode-actions-menu summary { display: inline-flex; align-items: center; gap: var(--s1); list-style: none; cursor: pointer; }
+.episode-actions-menu summary::-webkit-details-marker { display: none; }
+.episode-actions-popover { position: absolute; z-index: 12; right: 0; display: grid; min-width: 150px; gap: var(--s1); padding: var(--s2); border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--raised-2); box-shadow: 0 14px 34px rgba(0,0,0,.4); }
+.episode-actions-popover button { padding: var(--s2); border: 0; border-radius: var(--r-sm); color: var(--muted); background: transparent; font-size: var(--t-xs); text-align: left; white-space: nowrap; }
+.episode-actions-popover button:hover { color: var(--text); background: var(--raised); }
+.mapping-path {
+  margin: var(--s3) 0;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  background: var(--raised);
+  font: var(--t-xs) var(--mono);
+  overflow-wrap: anywhere;
+}
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--s2) var(--s4);
+  margin: var(--s3) 0;
+}
