@@ -243,3 +243,46 @@ def test_replacement_search_is_scoped_per_item_and_finish_is_recorded(recovery_e
     assert queue.status_code == 200, queue.text
     assert set(queue.json()["counts"]) == {"needs_search", "found", "in_progress", "dismissed"}
     assert client.get("/api/v1/replacements/count").json() == {"count": 0}
+
+
+def test_title_with_a_new_download_in_qbittorrent_is_left_alone(recovery_env):
+    """Removing a torrent by hand and adding its new version by hand must not
+    list the title or re-add the old torrent while the new one downloads."""
+
+    from uuid import UUID
+    from app.db import session as db_session
+    from app.models.domain import AssociationType, MovieRelease, MovieReleaseTorrent, Torrent, TorrentClientObservation
+    from sqlalchemy import select
+    from app.services.replacements import replacement_targets
+    from tests.test_upgrade_execution import _create_integrations, _seed_movie_upgrade
+    client, _, root = recovery_env
+    headers = login_headers(client)
+    qbit, indexer = _create_integrations(client, headers)
+    _, movie_id, _, old_torrent_id, _, _ = asyncio.run(_seed_movie_upgrade(root, qbit, indexer))
+
+    async def scenario():
+        async with db_session.async_session_factory() as db:
+            # The old torrent left qBittorrent two days ago.
+            old = (await db.scalars(select(TorrentClientObservation).where(TorrentClientObservation.torrent_id == old_torrent_id))).all()
+            for row in old:
+                row.is_present = False
+                row.removed_at = datetime.now(timezone.utc) - timedelta(days=2)
+            await db.commit()
+            assert [entry.reason for entry in await replacement_targets(db)] == ["not_watched"]
+
+            # The new version, added by hand, is downloading.
+            new = Torrent(info_hash="9" * 40, name="Upgrade.Movie.2024.2160p.WEB-DL-GRP")
+            release = MovieRelease(movie_id=movie_id, raw_release_name=new.name)
+            db.add_all([new, release]); await db.flush()
+            db.add(MovieReleaseTorrent(movie_release_id=release.id, torrent_id=new.id, association_type=AssociationType.INCOMING))
+            observation = TorrentClientObservation(torrent_id=new.id, download_client_id=UUID(qbit["id"]), is_present=True,
+                                                   last_seen_at=datetime.now(timezone.utc))
+            db.add(observation); await db.commit()
+            assert await replacement_targets(db) == []
+
+            # Removed again without finishing, the old problem shows once more.
+            observation.is_present = False
+            await db.commit()
+            assert [entry.reason for entry in await replacement_targets(db)] == ["not_watched"]
+
+    asyncio.run(scenario())

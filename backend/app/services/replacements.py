@@ -342,6 +342,18 @@ async def replacement_targets(
             upgrading_movies.add(movie_id)
         if season_id:
             upgrading_seasons.add(season_id)
+    # So is a title with a new download for it in qBittorrent, added there by
+    # hand: the old torrent was removed on purpose and the download will
+    # replace it, so it is neither listed nor re-added in the meantime.
+    present = select(TorrentClientObservation.torrent_id).where(TorrentClientObservation.is_present.is_(True))
+    upgrading_movies.update((await db.scalars(
+        select(MovieRelease.movie_id).join(MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id == MovieRelease.id).where(
+            MovieReleaseTorrent.association_type == AssociationType.INCOMING, MovieReleaseTorrent.torrent_id.in_(present))
+    )).all())
+    upgrading_seasons.update(value for value in (await db.scalars(
+        select(ShowRelease.season_id).join(ShowReleaseTorrent, ShowReleaseTorrent.show_release_id == ShowRelease.id).where(
+            ShowReleaseTorrent.association_type == AssociationType.INCOMING, ShowReleaseTorrent.torrent_id.in_(present))
+    )).all() if value)
     # Scoring every affected release reads the same few profiles each time.
     with profiles_cached():
         movies, _, _ = await _movie_targets(db, replacement=True, movie_ids=affected_movies - upgrading_movies)

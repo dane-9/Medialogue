@@ -15,7 +15,7 @@ Each title is listed with one reason:
 | **Removed from tracker** | Every tracker confirmed, twice in a row, that the torrent is gone ("unregistered", "deleted", "not registered", "not found", "trumped", "dupe of", or a message starting "Removed"). The verdict is kept after the torrent is deleted from qBittorrent. |
 | **No torrent** | The files were found on disk and never linked to a torrent. These are listed but not counted in the sidebar badge. |
 
-Evidence from a live client must be recent: a client that has stopped reporting, or an offline qBittorrent, never lists anything. A title with an upgrade under way is left to Upgrade Media.
+Evidence from a live client must be recent: a client that has stopped reporting, or an offline qBittorrent, never lists anything. A title with an upgrade under way is left to Upgrade Media, and so is a title with a new download for it in qBittorrent, such as a new version added there by hand after removing the old torrent: it is neither listed nor re-added until that download finishes and replaces the old release, or leaves qBittorrent.
 
 Cross-seeded releases are judged as one payload: a release is fine while **any** of its torrents is fine. When a title's releases fail in different ways, the cheapest fix is shown first, in the order of the table.
 
