@@ -542,74 +542,26 @@ async def _poll_download_client(
     completed_upgrade_torrent_ids: set[UUID] = set()
     failed_downloads: list[tuple[TorrentClientObservation, Torrent, str]] = []
     detail_adapter = None
-    for observed in observations:
-        info_hash = observed.info_hash.lower()
-        current_hashes.add(info_hash)
-        reported_content, resolved_content, mapping_id, in_scope = scopes[info_hash]
-        previously_known = info_hash in prior_by_hash
-        if observed.checking and previously_known and not in_scope:
-            # checkingResumeData can temporarily omit or alter paths. A known
-            # torrent must remain managed during that transient state; path
-            # scope is re-evaluated after qBittorrent finishes checking.
-            relevant_count += 1
-            prior = prior_by_hash[info_hash]
-            torrent = await db.get(Torrent, prior.torrent_id)
-            if torrent is not None:
-                async with db.begin_nested():
-                    if reported_content:
-                        prior.reported_save_path = reported_content
-                    if resolved_content:
-                        prior.resolved_save_path = resolved_content
-                    prior.state = observed.state
-                    prior.progress = observed.progress
-                    prior.category = observed.category or None
-                    prior.tags = list(observed.tags)
-                    prior.is_present = True
-                    prior.last_seen_at = utcnow()
-                    prior.removed_at = None
-                    torrent.name = observed.name
-                    torrent.last_seen_at = utcnow()
-                    torrent.metadata_json = {
-                        **(torrent.metadata_json or {}),
-                        "progress": float(observed.progress),
-                        "state": observed.state,
-                        "checking": True,
-                        "scope": client.scope.value,
-                    }
-                    publish_live_event(
-                        "download.progress",
-                        entity_type="torrent",
-                        entity_id=torrent.id,
-                        data={
-                            "torrent_id": str(torrent.id),
-                            "client_id": str(client.id),
-                            "client_name": client.name,
-                            "name": observed.name,
-                            "progress": float(observed.progress),
-                            "percent": round(float(observed.progress) * 100, 2),
-                            "state": observed.state,
-                            "scope": client.scope.value,
-                            "reported_path": prior.reported_save_path,
-                            "resolved_path": prior.resolved_save_path,
-                        },
-                    )
-            continue
-        # Configured media folders are the hard boundary for reconciliation.
-        # qBittorrent often contains torrents for libraries Medialogue cannot
-        # and should not see.  Even a historically-known torrent must not
-        # generate path/parser Problems after it moves outside those roots.
-        # Keep its durable qBit observation for history, but stop treating it
-        # as managed media and clear Problems whose premise was in-scope
-        # filesystem access.
-        if not in_scope:
-            ignored += 1
-            if previously_known:
+    # The lazily opened detail connection must close even when a later stage raises.
+    try:
+        for observed in observations:
+            info_hash = observed.info_hash.lower()
+            current_hashes.add(info_hash)
+            reported_content, resolved_content, mapping_id, in_scope = scopes[info_hash]
+            previously_known = info_hash in prior_by_hash
+            if observed.checking and previously_known and not in_scope:
+                # checkingResumeData can temporarily omit or alter paths. A known
+                # torrent must remain managed during that transient state; path
+                # scope is re-evaluated after qBittorrent finishes checking.
+                relevant_count += 1
                 prior = prior_by_hash[info_hash]
                 torrent = await db.get(Torrent, prior.torrent_id)
                 if torrent is not None:
                     async with db.begin_nested():
-                        prior.reported_save_path = reported_content
-                        prior.resolved_save_path = resolved_content
+                        if reported_content:
+                            prior.reported_save_path = reported_content
+                        if resolved_content:
+                            prior.resolved_save_path = resolved_content
                         prior.state = observed.state
                         prior.progress = observed.progress
                         prior.category = observed.category or None
@@ -617,417 +569,472 @@ async def _poll_download_client(
                         prior.is_present = True
                         prior.last_seen_at = utcnow()
                         prior.removed_at = None
-                        await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
-                        await cancel_incoming_torrent(db, torrent, emit_event=False)
-                        await reconcile_torrent_disagreements(db, torrent, qbit_present=None)
-            continue
+                        torrent.name = observed.name
+                        torrent.last_seen_at = utcnow()
+                        torrent.metadata_json = {
+                            **(torrent.metadata_json or {}),
+                            "progress": float(observed.progress),
+                            "state": observed.state,
+                            "checking": True,
+                            "scope": client.scope.value,
+                        }
+                        publish_live_event(
+                            "download.progress",
+                            entity_type="torrent",
+                            entity_id=torrent.id,
+                            data={
+                                "torrent_id": str(torrent.id),
+                                "client_id": str(client.id),
+                                "client_name": client.name,
+                                "name": observed.name,
+                                "progress": float(observed.progress),
+                                "percent": round(float(observed.progress) * 100, 2),
+                                "state": observed.state,
+                                "scope": client.scope.value,
+                                "reported_path": prior.reported_save_path,
+                                "resolved_path": prior.resolved_save_path,
+                            },
+                        )
+                continue
+            # Configured media folders are the hard boundary for reconciliation.
+            # qBittorrent often contains torrents for libraries Medialogue cannot
+            # and should not see.  Even a historically-known torrent must not
+            # generate path/parser Problems after it moves outside those roots.
+            # Keep its durable qBit observation for history, but stop treating it
+            # as managed media and clear Problems whose premise was in-scope
+            # filesystem access.
+            if not in_scope:
+                ignored += 1
+                if previously_known:
+                    prior = prior_by_hash[info_hash]
+                    torrent = await db.get(Torrent, prior.torrent_id)
+                    if torrent is not None:
+                        async with db.begin_nested():
+                            prior.reported_save_path = reported_content
+                            prior.resolved_save_path = resolved_content
+                            prior.state = observed.state
+                            prior.progress = observed.progress
+                            prior.category = observed.category or None
+                            prior.tags = list(observed.tags)
+                            prior.is_present = True
+                            prior.last_seen_at = utcnow()
+                            prior.removed_at = None
+                            await resolve_problem(db, "TORRENT_PATH_NOT_FOUND", "torrent", torrent.id)
+                            await cancel_incoming_torrent(db, torrent, emit_event=False)
+                            await reconcile_torrent_disagreements(db, torrent, qbit_present=None)
+                continue
 
-        relevant_count += 1
-        fingerprint = _settled_fingerprint(observed, reported_content, resolved_content)
-        settled = settled_cache.get(info_hash)
-        prior = prior_by_hash.get(info_hash)
-        if (
-            settled is not None
-            and settled[0] == fingerprint
-            and (checked_at - settled[1]).total_seconds() < _FULL_REPROCESS_SECONDS
-            and prior is not None
-            and prior.is_present
-            and _archive_files_present(prior_torrent_by_id.get(prior.torrent_id))
-            and info_hash not in detail_due
-            and not observed.checking
-            and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
-        ):
-            # Nothing that drives Medialogue's decisions changed since the last
-            # full pass: refresh the live numbers and move on.
-            prior.state = observed.state
-            prior.progress = observed.progress
-            prior.download_speed = observed.download_speed
-            prior.upload_speed = observed.upload_speed
-            prior.eta_seconds = observed.eta
-            prior.amount_left = observed.amount_left
-            prior.ratio = observed.ratio
-            prior.seeds = observed.seeds
-            prior.seeds_total = observed.seeds_total
-            prior.leeches = observed.leeches
-            prior.leeches_total = observed.leeches_total
-            prior.availability = observed.availability
-            track_other_seeders(prior, now=checked_at)
-            prior.last_seen_at = checked_at
-            fast_torrent_ids.append(prior.torrent_id)
-            continue
-        settled_cache.pop(info_hash, None)
-        added_before = added
-        completed_before = completed
-        try:
-            # Isolate each torrent in a SAVEPOINT. A malformed/unexpected
-            # torrent must not poison the entire qBittorrent client poll or
-            # prevent later torrents from being observed.
-            async with db.begin_nested():
-                torrent = await db.scalar(select(Torrent).where(Torrent.info_hash == info_hash))
-                timestamp_completed = _timestamp(observed.completed_at)
-                was_complete = False
-                if torrent is None:
-                    torrent = Torrent(
-                        info_hash=info_hash,
-                        name=observed.name,
-                        total_size=observed.total_size,
-                        # A completion timestamp reported during a force check
-                        # must not suppress the real completion transition once
-                        # qBittorrent returns to a normal state.
-                        completed_at=None if observed.checking else timestamp_completed,
-                        tracker_summary={"tracker": tracker_endpoint_display(observed.tracker)} if observed.tracker else {},
-                        metadata_json={
+            relevant_count += 1
+            fingerprint = _settled_fingerprint(observed, reported_content, resolved_content)
+            settled = settled_cache.get(info_hash)
+            prior = prior_by_hash.get(info_hash)
+            if (
+                settled is not None
+                and settled[0] == fingerprint
+                and (checked_at - settled[1]).total_seconds() < _FULL_REPROCESS_SECONDS
+                and prior is not None
+                and prior.is_present
+                and _archive_files_present(prior_torrent_by_id.get(prior.torrent_id))
+                and info_hash not in detail_due
+                and not observed.checking
+                and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
+            ):
+                # Nothing that drives Medialogue's decisions changed since the last
+                # full pass: refresh the live numbers and move on.
+                prior.state = observed.state
+                prior.progress = observed.progress
+                prior.download_speed = observed.download_speed
+                prior.upload_speed = observed.upload_speed
+                prior.eta_seconds = observed.eta
+                prior.amount_left = observed.amount_left
+                prior.ratio = observed.ratio
+                prior.seeds = observed.seeds
+                prior.seeds_total = observed.seeds_total
+                prior.leeches = observed.leeches
+                prior.leeches_total = observed.leeches_total
+                prior.availability = observed.availability
+                track_other_seeders(prior, now=checked_at)
+                prior.last_seen_at = checked_at
+                fast_torrent_ids.append(prior.torrent_id)
+                continue
+            settled_cache.pop(info_hash, None)
+            added_before = added
+            queued_handoff: UUID | None = None
+            completed_before = completed
+            try:
+                # Isolate each torrent in a SAVEPOINT. A malformed/unexpected
+                # torrent must not poison the entire qBittorrent client poll or
+                # prevent later torrents from being observed.
+                async with db.begin_nested():
+                    torrent = await db.scalar(select(Torrent).where(Torrent.info_hash == info_hash))
+                    timestamp_completed = _timestamp(observed.completed_at)
+                    was_complete = False
+                    if torrent is None:
+                        torrent = Torrent(
+                            info_hash=info_hash,
+                            name=observed.name,
+                            total_size=observed.total_size,
+                            # A completion timestamp reported during a force check
+                            # must not suppress the real completion transition once
+                            # qBittorrent returns to a normal state.
+                            completed_at=None if observed.checking else timestamp_completed,
+                            tracker_summary={"tracker": tracker_endpoint_display(observed.tracker)} if observed.tracker else {},
+                            metadata_json={
+                                "content_path": observed.content_path,
+                                "mapping_id": str(mapping_id) if mapping_id else None,
+                                "completed": observed.complete,
+                                "checking": observed.checking,
+                                **_portable_metadata(observed),
+                            },
+                        )
+                        db.add(torrent)
+                        await db.flush()
+                        added += 1
+                        await create_event(
+                            db,
+                            "torrent.detected",
+                            entity_type="torrent",
+                            entity_id=torrent.id,
+                            message=f"Torrent detected from qBittorrent client {client.name}.",
+                            details={"client_id": str(client.id), "info_hash": info_hash, "name": observed.name},
+                        )
+                        if observed.complete:
+                            completed += 1
+                            await create_event(
+                                db,
+                                "download.completed",
+                                entity_type="torrent",
+                                entity_id=torrent.id,
+                                message=f"Download completed: {observed.name}.",
+                                details={"client_id": str(client.id), "info_hash": info_hash},
+                            )
+                    else:
+                        was_complete = torrent.completed_at is not None or bool(
+                            torrent.metadata_json.get("completed") if torrent.metadata_json else False
+                        )
+                        torrent.name = observed.name
+                        torrent.total_size = observed.total_size
+                        torrent.last_seen_at = utcnow()
+                        if timestamp_completed:
+                            torrent.completed_at = timestamp_completed
+                        if observed.tracker:
+                            torrent.tracker_summary = {
+                                **(torrent.tracker_summary or {}),
+                                "tracker": tracker_endpoint_display(observed.tracker),
+                            }
+                        torrent.metadata_json = {
+                            **(torrent.metadata_json or {}),
                             "content_path": observed.content_path,
                             "mapping_id": str(mapping_id) if mapping_id else None,
-                            "completed": observed.complete,
+                            # A force recheck is transient and must not erase the
+                            # durable fact that this torrent completed previously.
+                            "completed": was_complete if observed.checking else observed.complete,
                             "checking": observed.checking,
                             **_portable_metadata(observed),
-                        },
-                    )
-                    db.add(torrent)
-                    await db.flush()
-                    added += 1
-                    await create_event(
-                        db,
-                        "torrent.detected",
-                        entity_type="torrent",
-                        entity_id=torrent.id,
-                        message=f"Torrent detected from qBittorrent client {client.name}.",
-                        details={"client_id": str(client.id), "info_hash": info_hash, "name": observed.name},
-                    )
-                    if observed.complete:
-                        completed += 1
-                        await create_event(
-                            db,
-                            "download.completed",
-                            entity_type="torrent",
-                            entity_id=torrent.id,
-                            message=f"Download completed: {observed.name}.",
-                            details={"client_id": str(client.id), "info_hash": info_hash},
-                        )
-                else:
-                    was_complete = torrent.completed_at is not None or bool(
-                        torrent.metadata_json.get("completed") if torrent.metadata_json else False
-                    )
-                    torrent.name = observed.name
-                    torrent.total_size = observed.total_size
-                    torrent.last_seen_at = utcnow()
-                    if timestamp_completed:
-                        torrent.completed_at = timestamp_completed
-                    if observed.tracker:
-                        torrent.tracker_summary = {
-                            **(torrent.tracker_summary or {}),
-                            "tracker": tracker_endpoint_display(observed.tracker),
                         }
+                        if observed.complete and not was_complete:
+                            completed += 1
+                            await create_event(
+                                db,
+                                "download.completed",
+                                entity_type="torrent",
+                                entity_id=torrent.id,
+                                message=f"Download completed: {observed.name}.",
+                                details={"client_id": str(client.id), "info_hash": info_hash},
+                            )
+
+                    tracker_title = await _selected_tracker_title(
+                        db,
+                        info_hash=info_hash,
+                        torrent_name=observed.name,
+                    )
+                    if tracker_title:
+                        torrent.metadata_json = {
+                            **(torrent.metadata_json or {}),
+                            "tracker_title": tracker_title,
+                        }
+
+                    row = await db.scalar(
+                        select(TorrentClientObservation).where(
+                            TorrentClientObservation.torrent_id == torrent.id,
+                            TorrentClientObservation.download_client_id == client.id,
+                        )
+                    )
+                    previous_present = row.is_present if row is not None else None
+                    previous_progress = float(row.progress) if row is not None and row.progress is not None else None
+                    previous_state = row.state if row is not None else None
+                    if row is None:
+                        row = TorrentClientObservation(
+                            torrent_id=torrent.id,
+                            download_client_id=client.id,
+                            first_seen_at=utcnow(),
+                        )
+                        db.add(row)
+                    row.reported_save_path = reported_content
+                    row.resolved_save_path = resolved_content
+                    row.state = observed.state
+                    row.progress = observed.progress
+                    row.download_speed = observed.download_speed
+                    row.upload_speed = observed.upload_speed
+                    row.eta_seconds = observed.eta
+                    row.amount_left = observed.amount_left
+                    row.ratio = observed.ratio
+                    row.seeds = observed.seeds
+                    row.seeds_total = observed.seeds_total
+                    row.leeches = observed.leeches
+                    row.leeches_total = observed.leeches_total
+                    row.availability = observed.availability
+                    track_other_seeders(row, now=utcnow())
+                    row.category = observed.category or None
+                    row.tags = list(observed.tags)
+                    row.is_present = True
+                    row.last_seen_at = utcnow()
+                    row.removed_at = None
                     torrent.metadata_json = {
                         **(torrent.metadata_json or {}),
-                        "content_path": observed.content_path,
-                        "mapping_id": str(mapping_id) if mapping_id else None,
-                        # A force recheck is transient and must not erase the
-                        # durable fact that this torrent completed previously.
-                        "completed": was_complete if observed.checking else observed.complete,
-                        "checking": observed.checking,
+                        "progress": float(observed.progress),
+                        "state": observed.state,
+                        "scope": client.scope.value,
                         **_portable_metadata(observed),
                     }
-                    if observed.complete and not was_complete:
-                        completed += 1
-                        await create_event(
-                            db,
-                            "download.completed",
+                    from app.services.blocklist import clear_recovered_failure_marker, terminal_incomplete_failure
+                    clear_recovered_failure_marker(torrent, row)
+                    if terminal_incomplete_failure(row, torrent):
+                        failed_downloads.append((row, torrent, info_hash))
+                    current_progress = float(observed.progress)
+                    if (
+                        previous_progress is None
+                        or abs(previous_progress - current_progress) >= 0.0001
+                        or previous_state != observed.state
+                        or previous_present is False
+                    ):
+                        publish_live_event(
+                            "download.progress",
                             entity_type="torrent",
                             entity_id=torrent.id,
-                            message=f"Download completed: {observed.name}.",
+                            data={
+                                "torrent_id": str(torrent.id),
+                                "client_id": str(client.id),
+                                "client_name": client.name,
+                                "name": observed.name,
+                                "progress": current_progress,
+                                "percent": round(current_progress * 100, 2),
+                                "state": observed.state,
+                                # Pages that show speed and ETA update from the event
+                                # instead of re-reading their lists.
+                                "download_speed": observed.download_speed,
+                                "eta_seconds": observed.eta,
+                                "scope": client.scope.value,
+                                "reported_path": reported_content,
+                                "resolved_path": resolved_content,
+                            },
+                        )
+                    if previous_present is False:
+                        await create_event(
+                            db,
+                            "torrent.reappeared",
+                            entity_type="torrent",
+                            entity_id=torrent.id,
+                            message=f"Torrent reappeared in qBittorrent client {client.name}.",
                             details={"client_id": str(client.id), "info_hash": info_hash},
                         )
 
-                tracker_title = await _selected_tracker_title(
-                    db,
-                    info_hash=info_hash,
-                    torrent_name=observed.name,
-                )
-                if tracker_title:
-                    torrent.metadata_json = {
-                        **(torrent.metadata_json or {}),
-                        "tracker_title": tracker_title,
-                    }
+                    if observed.checking:
+                        continue
 
-                row = await db.scalar(
-                    select(TorrentClientObservation).where(
-                        TorrentClientObservation.torrent_id == torrent.id,
-                        TorrentClientObservation.download_client_id == client.id,
-                    )
-                )
-                previous_present = row.is_present if row is not None else None
-                previous_progress = float(row.progress) if row is not None and row.progress is not None else None
-                previous_state = row.state if row is not None else None
-                if row is None:
-                    row = TorrentClientObservation(
-                        torrent_id=torrent.id,
-                        download_client_id=client.id,
-                        first_seen_at=utcnow(),
-                    )
-                    db.add(row)
-                row.reported_save_path = reported_content
-                row.resolved_save_path = resolved_content
-                row.state = observed.state
-                row.progress = observed.progress
-                row.download_speed = observed.download_speed
-                row.upload_speed = observed.upload_speed
-                row.eta_seconds = observed.eta
-                row.amount_left = observed.amount_left
-                row.ratio = observed.ratio
-                row.seeds = observed.seeds
-                row.seeds_total = observed.seeds_total
-                row.leeches = observed.leeches
-                row.leeches_total = observed.leeches_total
-                row.availability = observed.availability
-                track_other_seeders(row, now=utcnow())
-                row.category = observed.category or None
-                row.tags = list(observed.tags)
-                row.is_present = True
-                row.last_seen_at = utcnow()
-                row.removed_at = None
-                torrent.metadata_json = {
-                    **(torrent.metadata_json or {}),
-                    "progress": float(observed.progress),
-                    "state": observed.state,
-                    "scope": client.scope.value,
-                    **_portable_metadata(observed),
-                }
-                from app.services.blocklist import clear_recovered_failure_marker, terminal_incomplete_failure
-                clear_recovered_failure_marker(torrent, row)
-                if terminal_incomplete_failure(row, torrent):
-                    failed_downloads.append((row, torrent, info_hash))
-                current_progress = float(observed.progress)
-                if (
-                    previous_progress is None
-                    or abs(previous_progress - current_progress) >= 0.0001
-                    or previous_state != observed.state
-                    or previous_present is False
-                ):
-                    publish_live_event(
-                        "download.progress",
-                        entity_type="torrent",
-                        entity_id=torrent.id,
-                        data={
-                            "torrent_id": str(torrent.id),
-                            "client_id": str(client.id),
-                            "client_name": client.name,
-                            "name": observed.name,
-                            "progress": current_progress,
-                            "percent": round(current_progress * 100, 2),
-                            "state": observed.state,
-                            # Pages that show speed and ETA update from the event
-                            # instead of re-reading their lists.
-                            "download_speed": observed.download_speed,
-                            "eta_seconds": observed.eta,
-                            "scope": client.scope.value,
-                            "reported_path": reported_content,
-                            "resolved_path": resolved_content,
-                        },
-                    )
-                if previous_present is False:
-                    await create_event(
-                        db,
-                        "torrent.reappeared",
-                        entity_type="torrent",
-                        entity_id=torrent.id,
-                        message=f"Torrent reappeared in qBittorrent client {client.name}.",
-                        details={"client_id": str(client.id), "info_hash": info_hash},
-                    )
-
-                if observed.checking:
-                    continue
-
-                recovery_snapshot = None
-                tracker_snapshots: tuple[TorrentTrackerSnapshot, ...] = ()
-                tracker_details_collected = False
-                needs_archive = not torrent_archive_complete(torrent) or str(client.id) not in (read_manifest(torrent).get("client_recovery") or {})
-                if needs_archive or info_hash in detail_due:
-                    try:
-                        if detail_adapter is None:
-                            detail_adapter = client_factory(
-                                client.url, client.username or "", client.password or ""
+                    recovery_snapshot = None
+                    tracker_snapshots: tuple[TorrentTrackerSnapshot, ...] = ()
+                    tracker_details_collected = False
+                    needs_archive = not torrent_archive_complete(torrent) or str(client.id) not in (read_manifest(torrent).get("client_recovery") or {})
+                    if needs_archive or info_hash in detail_due:
+                        try:
+                            if detail_adapter is None:
+                                detail_adapter = client_factory(
+                                    client.url, client.username or "", client.password or ""
+                                )
+                            recovery_snapshot = await detail_adapter.get_torrent_recovery_snapshot(info_hash)
+                            tracker_snapshots = _snapshot_trackers(recovery_snapshot)
+                            tracker_details_collected = True
+                            torrent.metadata_json = {
+                                **(torrent.metadata_json or {}),
+                                "tracker_checked_at": checked_at.isoformat(),
+                                "tracker_check_error": None,
+                            }
+                        except Exception as exc:
+                            # Detail collection must never turn a reachable qBit client
+                            # into an integration outage or mutate torrent/media state.
+                            torrent.metadata_json = {
+                                **(torrent.metadata_json or {}),
+                                "tracker_checked_at": checked_at.isoformat(),
+                                "tracker_check_error": (
+                                    redact_tracker_message(str(exc)) or "qBittorrent detail request failed"
+                                )[:500],
+                            }
+                        if tracker_details_collected:
+                            await persist_tracker_health(
+                                db,
+                                torrent,
+                                client.id,
+                                tracker_snapshots,
+                                checked_at=checked_at,
                             )
-                        recovery_snapshot = await detail_adapter.get_torrent_recovery_snapshot(info_hash)
-                        tracker_snapshots = _snapshot_trackers(recovery_snapshot)
-                        tracker_details_collected = True
-                        torrent.metadata_json = {
-                            **(torrent.metadata_json or {}),
-                            "tracker_checked_at": checked_at.isoformat(),
-                            "tracker_check_error": None,
-                        }
-                    except Exception as exc:
-                        # Detail collection must never turn a reachable qBit client
-                        # into an integration outage or mutate torrent/media state.
-                        torrent.metadata_json = {
-                            **(torrent.metadata_json or {}),
-                            "tracker_checked_at": checked_at.isoformat(),
-                            "tracker_check_error": (
-                                redact_tracker_message(str(exc)) or "qBittorrent detail request failed"
-                            )[:500],
-                        }
-                    if tracker_details_collected:
-                        await persist_tracker_health(
-                            db,
-                            torrent,
-                            client.id,
-                            tracker_snapshots,
-                            checked_at=checked_at,
-                        )
 
-                # Persist an Incoming association while downloading. Completion is
-                # authoritative, but attachment additionally requires shared path,
-                # directory, filename, and TMDB/manual identity verification. Plex
-                # remains read-only presence/path evidence and never overrides identity.
-                association = await associate_incoming_torrent(
-                    db,
-                    torrent,
-                    resolved_path=resolved_content,
-                    scope=MediaType(client.scope.value),
-                    complete=observed.complete,
-                    download_client_id=client.id,
-                )
-                upgrade_execution = bool(association and association.get("upgrade_execution_id"))
-                if observed.complete and (client.completed_download_handling or upgrade_execution):
-                    await finalize_completed_torrent(
+                    # Persist an Incoming association while downloading. Completion is
+                    # authoritative, but attachment additionally requires shared path,
+                    # directory, filename, and TMDB/manual identity verification. Plex
+                    # remains read-only presence/path evidence and never overrides identity.
+                    association = await associate_incoming_torrent(
                         db,
                         torrent,
                         resolved_path=resolved_content,
                         scope=MediaType(client.scope.value),
+                        complete=observed.complete,
+                        download_client_id=client.id,
                     )
-
-                if not torrent_archive_complete(torrent):
-                    await ensure_torrent_archived(
-                        db,
-                        torrent,
-                        client,
-                        client_factory=client_factory,
-                        recovery_snapshot=recovery_snapshot,
-                    )
-                else:
-                    await refresh_torrent_manifest(db, torrent, recovery_snapshot=recovery_snapshot, download_client_id=client.id)
-
-                if observed.complete and upgrade_execution:
-                    # Remove the old qBittorrent torrent only after the entire
-                    # poll snapshot has been processed. Otherwise an old torrent
-                    # that appeared later in this same qBittorrent snapshot could
-                    # be marked present again after the replacement removed it.
-                    completed_upgrade_torrent_ids.add(torrent.id)
-
-                await reconcile_torrent_disagreements(db, torrent, qbit_present=True)
-                if (
-                    torrent_archive_complete(torrent)
-                    and str(client.id) in (read_manifest(torrent).get("client_recovery") or {})
-                    and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
-                ):
-                    settled_cache[info_hash] = (fingerprint, checked_at)
-        except Exception as exc:
-            settled_cache.pop(info_hash, None)
-            # Python-side counters are not part of the database SAVEPOINT.
-            # Restore them when the torrent's database work was rolled back.
-            added = added_before
-            completed = completed_before
-            # This torrent's SAVEPOINT rolled back, so its queued failure
-            # handling would act on state that no longer exists.
-            failed_downloads[:] = [item for item in failed_downloads if item[2] != info_hash]
-            processing_errors += 1
-            logger.exception(
-                "qBittorrent torrent processing failed; continuing with remaining torrents",
-                extra={
-                    "entity_type": "download_client",
-                    "entity_id": str(client.id),
-                    "torrent_info_hash": info_hash,
-                    "torrent_name": observed.name,
-                },
-            )
-            continue
-
-    if failed_downloads:
-        from app.services.blocklist import handle_failed_download
-
-        failure_adapter = client_factory(client.url, client.username or "", client.password or "")
-        try:
-            for failed_observation, failed_torrent, _failed_hash in failed_downloads:
-                try:
-                    async with db.begin_nested():
-                        await handle_failed_download(
+                    upgrade_execution = bool(association and association.get("upgrade_execution_id"))
+                    if observed.complete and (client.completed_download_handling or upgrade_execution):
+                        await finalize_completed_torrent(
                             db,
-                            torrent=failed_torrent,
-                            observation=failed_observation,
-                            client_name=client.name,
-                            adapter=failure_adapter,
+                            torrent,
+                            resolved_path=resolved_content,
+                            scope=MediaType(client.scope.value),
                         )
-                        if not failed_observation.is_present:
-                            await deactivate_client_tracker_health(db, failed_torrent.id, client.id)
-                            await cancel_incoming_torrent(db, failed_torrent)
-                            await reconcile_torrent_disagreements(db, failed_torrent, qbit_present=False)
-                except Exception:
-                    processing_errors += 1
-                    logger.exception(
-                        "Failed-download handling failed",
-                        extra={"torrent_id": str(failed_torrent.id), "client_id": str(client.id)},
-                    )
-        finally:
-            await failure_adapter.close()
 
-    if completed_upgrade_torrent_ids:
-        from app.services.upgrade_execution import advance_upgrade_handoff
-
-        for torrent_id in completed_upgrade_torrent_ids:
-            try:
-                async with db.begin_nested():
-                    upgrade_torrent = await db.get(Torrent, torrent_id)
-                    if upgrade_torrent is not None:
-                        await advance_upgrade_handoff(
+                    if not torrent_archive_complete(torrent):
+                        await ensure_torrent_archived(
                             db,
-                            upgrade_torrent,
-                            qbittorrent_client_factory=client_factory,
+                            torrent,
+                            client,
+                            client_factory=client_factory,
+                            recovery_snapshot=recovery_snapshot,
                         )
-            except Exception:
+                    else:
+                        await refresh_torrent_manifest(db, torrent, recovery_snapshot=recovery_snapshot, download_client_id=client.id)
+
+                    if observed.complete and upgrade_execution:
+                        # Remove the old qBittorrent torrent only after the entire
+                        # poll snapshot has been processed. Otherwise an old torrent
+                        # that appeared later in this same qBittorrent snapshot could
+                        # be marked present again after the replacement removed it.
+                        completed_upgrade_torrent_ids.add(torrent.id)
+                        queued_handoff = torrent.id
+
+                    await reconcile_torrent_disagreements(db, torrent, qbit_present=True)
+                    if (
+                        torrent_archive_complete(torrent)
+                        and str(client.id) in (read_manifest(torrent).get("client_recovery") or {})
+                        and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
+                    ):
+                        settled_cache[info_hash] = (fingerprint, checked_at)
+            except Exception as exc:
+                settled_cache.pop(info_hash, None)
+                # Python-side counters are not part of the database SAVEPOINT.
+                # Restore them when the torrent's database work was rolled back.
+                added = added_before
+                completed = completed_before
+                # This torrent's SAVEPOINT rolled back, so its queued failure
+                # handling would act on state that no longer exists.
+                failed_downloads[:] = [item for item in failed_downloads if item[2] != info_hash]
+                # Same for the upgrade handoff: it would act on rolled-back state.
+                if queued_handoff is not None:
+                    completed_upgrade_torrent_ids.discard(queued_handoff)
                 processing_errors += 1
                 logger.exception(
-                    "Upgrade replacement handoff failed after qBittorrent snapshot processing",
+                    "qBittorrent torrent processing failed; continuing with remaining torrents",
                     extra={
                         "entity_type": "download_client",
                         "entity_id": str(client.id),
-                        "torrent_id": str(torrent_id),
+                        "torrent_info_hash": info_hash,
+                        "torrent_name": observed.name,
                     },
                 )
+                continue
 
-    if fast_torrent_ids:
-        # One statement for every torrent that took the fast path.
-        for index in range(0, len(fast_torrent_ids), 500):
-            await db.execute(
-                update(Torrent)
-                .where(Torrent.id.in_(fast_torrent_ids[index : index + 500]))
-                .values(last_seen_at=checked_at)
-            )
+        if failed_downloads:
+            from app.services.blocklist import handle_failed_download
 
-    for row in prior_rows:
-        info_hash = prior_hash_by_torrent.get(row.torrent_id)
-        if info_hash not in current_hashes:
-            if row.is_present:
-                row.is_present = False
-                row.removed_at = utcnow()
-                row.last_seen_at = utcnow()
-                removed += 1
-                await create_event(
-                    db,
-                    "torrent.removed",
-                    entity_type="torrent",
-                    entity_id=row.torrent_id,
-                    message=f"Torrent removed externally from qBittorrent client {client.name}.",
-                    details={"client_id": str(client.id), "info_hash": info_hash},
+            failure_adapter = client_factory(client.url, client.username or "", client.password or "")
+            try:
+                for failed_observation, failed_torrent, _failed_hash in failed_downloads:
+                    try:
+                        async with db.begin_nested():
+                            await handle_failed_download(
+                                db,
+                                torrent=failed_torrent,
+                                observation=failed_observation,
+                                client_name=client.name,
+                                adapter=failure_adapter,
+                            )
+                            if not failed_observation.is_present:
+                                await deactivate_client_tracker_health(db, failed_torrent.id, client.id)
+                                await cancel_incoming_torrent(db, failed_torrent)
+                                await reconcile_torrent_disagreements(db, failed_torrent, qbit_present=False)
+                    except Exception:
+                        processing_errors += 1
+                        logger.exception(
+                            "Failed-download handling failed",
+                            extra={"torrent_id": str(failed_torrent.id), "client_id": str(client.id)},
+                        )
+            finally:
+                await failure_adapter.close()
+
+        if completed_upgrade_torrent_ids:
+            from app.services.upgrade_execution import advance_upgrade_handoff
+
+            for torrent_id in completed_upgrade_torrent_ids:
+                try:
+                    async with db.begin_nested():
+                        upgrade_torrent = await db.get(Torrent, torrent_id)
+                        if upgrade_torrent is not None:
+                            await advance_upgrade_handoff(
+                                db,
+                                upgrade_torrent,
+                                qbittorrent_client_factory=client_factory,
+                            )
+                except Exception:
+                    processing_errors += 1
+                    logger.exception(
+                        "Upgrade replacement handoff failed after qBittorrent snapshot processing",
+                        extra={
+                            "entity_type": "download_client",
+                            "entity_id": str(client.id),
+                            "torrent_id": str(torrent_id),
+                        },
+                    )
+
+        if fast_torrent_ids:
+            # One statement for every torrent that took the fast path.
+            for index in range(0, len(fast_torrent_ids), 500):
+                await db.execute(
+                    update(Torrent)
+                    .where(Torrent.id.in_(fast_torrent_ids[index : index + 500]))
+                    .values(last_seen_at=checked_at)
                 )
-                torrent = await db.get(Torrent, row.torrent_id)
-                if torrent is not None:
-                    await deactivate_client_tracker_health(db, torrent.id, client.id)
-                    await cancel_incoming_torrent(db, torrent)
-                    await reconcile_torrent_disagreements(db, torrent, qbit_present=False)
 
-    if detail_adapter is not None:
-        await detail_adapter.close()
+        for row in prior_rows:
+            info_hash = prior_hash_by_torrent.get(row.torrent_id)
+            if info_hash not in current_hashes:
+                if row.is_present:
+                    row.is_present = False
+                    row.removed_at = utcnow()
+                    row.last_seen_at = utcnow()
+                    removed += 1
+                    await create_event(
+                        db,
+                        "torrent.removed",
+                        entity_type="torrent",
+                        entity_id=row.torrent_id,
+                        message=f"Torrent removed externally from qBittorrent client {client.name}.",
+                        details={"client_id": str(client.id), "info_hash": info_hash},
+                    )
+                    torrent = await db.get(Torrent, row.torrent_id)
+                    if torrent is not None:
+                        await deactivate_client_tracker_health(db, torrent.id, client.id)
+                        await cancel_incoming_torrent(db, torrent)
+                        await reconcile_torrent_disagreements(db, torrent, qbit_present=False)
+    finally:
+        if detail_adapter is not None:
+            await detail_adapter.close()
 
     return {
         "client_id": client.id,

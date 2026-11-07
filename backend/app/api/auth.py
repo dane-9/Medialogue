@@ -120,11 +120,6 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> LoginResponse:
     settings = get_settings()
-    key = login_attempt_key(payload.username, request.client.host if request.client else None)
-    retry_after = login_rate_limiter.retry_after(key)
-    if retry_after is not None:
-        raise _login_throttle_error(retry_after)
-
     if settings.is_production and await production_bootstrap_required(db):
         raise AppError(
             "INITIAL_SETUP_REQUIRED",
@@ -132,14 +127,24 @@ async def login(
             status_code=401,
         )
 
+    key = login_attempt_key(payload.username, request.client.host if request.client else None)
+    retry_after = login_rate_limiter.retry_after(key)
+    if retry_after is not None:
+        raise _login_throttle_error(retry_after)
+    # Count the attempt before any await, so parallel guesses cannot all pass
+    # the check above before one of them is recorded. Success clears it.
+    login_rate_limiter.record_failure(key)
+
     result = await db.execute(select(AdminUser).where(AdminUser.username == payload.username))
     admin = result.scalar_one_or_none()
 
     # Always run one password verification so response timing does not reveal
-    # whether the username exists.
-    password_ok = verify_password(payload.password, admin.password_hash if admin is not None else _dummy_password_hash())
+    # whether the username exists. scrypt is CPU-bound, so it runs off the
+    # event loop.
+    password_ok = await asyncio.to_thread(
+        lambda: verify_password(payload.password, admin.password_hash if admin is not None else _dummy_password_hash())
+    )
     if admin is None or not password_ok:
-        login_rate_limiter.record_failure(key)
         raise AppError("INVALID_CREDENTIALS", "Username or password is incorrect.", status_code=401)
 
     login_rate_limiter.clear(key)
@@ -260,7 +265,10 @@ async def bootstrap(
             "Initial administrator setup is temporarily unavailable.",
             status_code=503,
         ) from exc
-    if not stored_token or not secrets.compare_digest(payload.setup_token, stored_token):
+    # Compare bytes: compare_digest raises TypeError on non-ASCII str input.
+    if not stored_token or not secrets.compare_digest(
+        payload.setup_token.encode("utf-8"), stored_token.encode("utf-8")
+    ):
         raise AppError("INVALID_SETUP_TOKEN", "The initial setup token is invalid.", status_code=403)
 
     async with _bootstrap_lock:
@@ -354,7 +362,7 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
 ) -> AdminResponse:
     admin = auth_session.admin
-    if not verify_password(payload.current_password, admin.password_hash):
+    if not await asyncio.to_thread(verify_password, payload.current_password, admin.password_hash):
         raise AppError("INVALID_PASSWORD", "Current password is incorrect.", status_code=400)
     admin.password_hash = hash_password(payload.new_password)
     admin.is_default_password = False

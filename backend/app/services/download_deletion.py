@@ -158,11 +158,13 @@ async def plan_deletion(db: AsyncSession, observation_ids: list[UUID]) -> Deleti
         for directory in others:
             if not (_inside(directory.resolved_path, folder) or _inside(folder, directory.resolved_path)):
                 continue
-            if directory.movie_release_id and directory.movie_release_id not in plan.movie_release_ids and _inside(directory.resolved_path, folder):
-                plan.blocked.append(f"{folder} also holds {directory.movie_release.movie.title}.")
+            if directory.movie_release_id and directory.movie_release_id not in plan.movie_release_ids:
+                # The folder may hold the other movie's whole directory, or sit
+                # inside it and hold some of its files.
+                if _inside(directory.resolved_path, folder) or await _holds_files_of(db, directory, folder):
+                    plan.blocked.append(f"{folder} also holds {directory.movie_release.movie.title}.")
             elif directory.show_release_id and directory.show_release_id not in plan.show_release_ids:
-                files = (await db.scalars(select(MediaFile).where(MediaFile.media_directory_id == directory.id, MediaFile.exists.is_(True)))).all()
-                if any(_inside(str(Path(directory.resolved_path) / item.relative_path), folder) for item in files):
+                if await _holds_files_of(db, directory, folder):
                     plan.blocked.append(f"{folder} also holds other files of {directory.show_release.show.title}.")
 
     # Every torrent seeding from the deleted files goes with them.
@@ -185,6 +187,17 @@ async def plan_deletion(db: AsyncSession, observation_ids: list[UUID]) -> Deleti
                                             observation.id in chosen))
     plan.blocked = list(dict.fromkeys(plan.blocked))
     return plan
+
+
+async def _holds_files_of(db: AsyncSession, directory: MediaDirectory, folder: str) -> bool:
+    files = (await db.scalars(
+        select(MediaFile).where(MediaFile.media_directory_id == directory.id, MediaFile.exists.is_(True))
+    )).all()
+    return any(_inside(_file_path(directory, item), folder) for item in files)
+
+
+def _file_path(directory: MediaDirectory, media_file: MediaFile) -> str:
+    return str(Path(directory.resolved_path) / media_file.relative_path)
 
 
 def _delete_path(path: str) -> None:
@@ -234,42 +247,93 @@ async def execute_deletion(db: AsyncSession, observation_ids: list[UUID], *, lib
         await deactivate_client_tracker_health(db, item.torrent_id, item.client_id)
     await db.commit()
 
+    # The torrents are already gone, so a folder that cannot be deleted must
+    # not stop the rest: the library is still brought in line and the failure
+    # reported, otherwise the deletion could never be finished or retried.
+    failures: list[str] = []
     for folder in plan.folders:
-        _delete_path(folder)
+        try:
+            _delete_path(folder)
+        except OSError as exc:
+            failures.append(f"{folder}: {exc.strerror or exc}")
 
-    if library == FORGET:
+    if library == FORGET and not failures:
         await _forget(db, plan)
     else:
+        # A folder that could not be deleted may be partly there; keeping the
+        # titles lets the next scan settle what is left.
         await _mark_missing(db, plan)
+    deleted_count = len(plan.folders) - len(failures)
     await create_event(
         db, "media.deleted", entity_type="torrent", entity_id=plan.torrents[0].torrent_id if plan.torrents else None,
-        severity=Severity.WARNING,
-        message=f"Deleted {len(plan.folders)} folder{'s' if len(plan.folders) != 1 else ''} and removed "
-                f"{len(plan.torrents)} torrent{'s' if len(plan.torrents) != 1 else ''} from Downloads.",
+        severity=Severity.ERROR if failures else Severity.WARNING,
+        message=f"Deleted {deleted_count} folder{'s' if deleted_count != 1 else ''} and removed "
+                f"{len(plan.torrents)} torrent{'s' if len(plan.torrents) != 1 else ''} from Downloads."
+                + (f" {len(failures)} folder{'s' if len(failures) != 1 else ''} could not be deleted." if failures else ""),
         details={"folders": plan.folders, "torrents": [item.info_hash for item in plan.torrents], "library": library,
-                 "titles": [item.title for item in plan.titles]},
+                 "titles": [item.title for item in plan.titles], "failed_folders": failures},
     )
     await db.commit()
+    if failures:
+        raise AppError(
+            "DELETE_INCOMPLETE",
+            "The torrents were removed, but some files could not be deleted: " + "; ".join(failures)
+            + (" The titles were kept and listed as Missing." if library == FORGET else ""),
+            status_code=500,
+        )
     return plan
 
 
-async def _deleted_directories(db: AsyncSession, plan: DeletionPlan) -> list[MediaDirectory]:
+async def _deleted_media(db: AsyncSession, plan: DeletionPlan) -> tuple[list[MediaDirectory], list[MediaFile]]:
+    """Directories deleted whole, and files deleted from directories that remain.
+
+    A show is one directory (the show folder) with files under season folders,
+    so deleting a season leaves the directory but takes some of its files.
+    """
+
     rows = (await db.scalars(select(MediaDirectory).options(selectinload(MediaDirectory.files)))).all()
-    return [row for row in rows if any(_inside(row.resolved_path, folder) for folder in plan.folders)]
+    whole: list[MediaDirectory] = []
+    files: list[MediaFile] = []
+    for row in rows:
+        if any(_inside(row.resolved_path, folder) for folder in plan.folders):
+            whole.append(row)
+        elif any(_inside(folder, row.resolved_path) for folder in plan.folders):
+            files.extend(
+                item for item in row.files
+                if any(_inside(_file_path(row, item), folder) for folder in plan.folders)
+            )
+    return whole, files
+
+
+async def _episode_ids(db: AsyncSession, media_files: list[MediaFile]) -> set[UUID]:
+    if not media_files:
+        return set()
+    maps = (await db.scalars(
+        select(EpisodeMediaMap).where(EpisodeMediaMap.media_file_id.in_([item.id for item in media_files]))
+    )).all()
+    return {item.episode_id for item in maps}
+
+
+async def _refresh_episodes(db: AsyncSession, episode_ids: set[UUID]) -> None:
+    from app.models.domain import Episode
+    from app.services.shows import refresh_episode_presence
+
+    for episode_id in episode_ids:
+        episode = await db.get(Episode, episode_id)
+        if episode is not None:
+            await refresh_episode_presence(db, episode, emit_event=False)
 
 
 async def _mark_missing(db: AsyncSession, plan: DeletionPlan) -> None:
     """Keep the titles; their files are gone, so Replace Media lists them as Missing."""
 
-    from app.services.shows import refresh_episode_presence
-
-    episode_ids: set[UUID] = set()
-    for directory in await _deleted_directories(db, plan):
+    whole, partial = await _deleted_media(db, plan)
+    gone_files = [media_file for directory in whole for media_file in directory.files] + partial
+    episode_ids = await _episode_ids(db, gone_files)
+    for directory in whole:
         directory.exists = False
-        for media_file in directory.files:
-            media_file.exists = False
-            maps = (await db.scalars(select(EpisodeMediaMap).where(EpisodeMediaMap.media_file_id == media_file.id))).all()
-            episode_ids.update(item.episode_id for item in maps)
+    for media_file in gone_files:
+        media_file.exists = False
     for release_id in plan.movie_release_ids:
         release = await db.get(MovieRelease, release_id)
         if release is not None and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}:
@@ -279,11 +343,7 @@ async def _mark_missing(db: AsyncSession, plan: DeletionPlan) -> None:
         if release is not None and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}:
             release.release_state = ReleaseState.MISSING
     await db.flush()
-    from app.models.domain import Episode
-    for episode_id in episode_ids:
-        episode = await db.get(Episode, episode_id)
-        if episode is not None:
-            await refresh_episode_presence(db, episode, emit_event=False)
+    await _refresh_episodes(db, episode_ids)
 
 
 async def _record_history(db: AsyncSession, plan: DeletionPlan, title: PlannedTitle, *, whole_show: bool) -> None:
@@ -332,8 +392,12 @@ async def _forget(db: AsyncSession, plan: DeletionPlan) -> None:
                 MovieRelease.release_state.in_([ReleaseState.CURRENT, ReleaseState.MISSING])).limit(1))
             if others is None:
                 await _record_history(db, plan, title, whole_show=False)
-    for directory in await _deleted_directories(db, plan):
+    whole, partial = await _deleted_media(db, plan)
+    episode_ids = await _episode_ids(db, partial)
+    for directory in whole:
         await db.delete(directory)
+    for media_file in partial:
+        await db.delete(media_file)
     await db.flush()
     for title in plan.titles:
         if title.kind == "movie":
@@ -366,3 +430,4 @@ async def _forget(db: AsyncSession, plan: DeletionPlan) -> None:
                 if show is not None:
                     await db.delete(show)
     await db.flush()
+    await _refresh_episodes(db, episode_ids)

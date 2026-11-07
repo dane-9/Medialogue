@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -894,6 +895,73 @@ def test_qbit_connectivity_health_survives_internal_processing_failure(client: T
     finally:
         if root.exists():
             root.rmdir()
+
+
+def test_a_rolled_back_torrent_is_not_handed_to_the_upgrade_handoff(client: TestClient, monkeypatch) -> None:
+    """A torrent whose SAVEPOINT rolled back must not reach the handoff on that state."""
+
+    from app.services import qbittorrent as qbit_service
+    from app.services import upgrade_execution
+
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    root = Path.cwd() / f"qbit-handoff-rollback-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    try:
+        root_response = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": f"Handoff-{os.urandom(5).hex()}", "path": str(root), "media_type": "movies"},
+        )
+        assert root_response.status_code == 201, root_response.text
+        _initialize_root(client, headers, root_response.json()["id"])
+        _create_client(client, headers)
+        behavior = FakeQBitBehavior(
+            torrents=[
+                _torrent(
+                    "upgraderollbackhash",
+                    "Upgrade Movie 2026 2160p WEB-DL-GROUP",
+                    progress=1.0,
+                    state="uploading",
+                    save_path=str(root),
+                    content_path=str(root / "Upgrade Movie 2026 2160p WEB-DL-GROUP"),
+                ),
+            ]
+        )
+
+        async def as_upgrade(db, torrent, **kwargs):
+            return {"upgrade_execution_id": "synthetic"}
+
+        async def no_finalize(db, torrent, *args, **kwargs):
+            return None
+
+        async def explode(db, torrent, **kwargs):
+            raise RuntimeError("synthetic failure after the handoff was queued")
+
+        handed_off: list[str] = []
+
+        async def record_handoff(db, torrent, **kwargs):
+            handed_off.append(torrent.info_hash)
+
+        monkeypatch.setattr(qbit_service, "associate_incoming_torrent", as_upgrade)
+        monkeypatch.setattr(qbit_service, "finalize_completed_torrent", no_finalize)
+        monkeypatch.setattr(qbit_service, "ensure_torrent_archived", no_finalize)
+        monkeypatch.setattr(qbit_service, "reconcile_torrent_disagreements", explode)
+        monkeypatch.setattr(upgrade_execution, "advance_upgrade_handoff", record_handoff)
+
+        async def scenario():
+            async with db_session.async_session_factory() as db:
+                # Known before the poll, so the row survives the rollback.
+                db.add(Torrent(info_hash="upgraderollbackhash", name="Upgrade Movie 2026 2160p WEB-DL-GROUP"))
+                await db.commit()
+                return await qbit_service.poll_due_download_clients(db, client_factory=behavior.factory)
+
+        results = asyncio.run(scenario())
+        assert results[0]["processing_errors"] == 1
+        assert handed_off == []
+    finally:
+        if root.exists():
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def test_an_indexer_needs_a_download_client_once_one_exists(client: TestClient) -> None:

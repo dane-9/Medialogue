@@ -261,3 +261,73 @@ def test_production_unknown_username_counts_toward_login_throttle(monkeypatch: p
         assert "Retry-After" in throttled.value.headers
     finally:
         auth_api.login_rate_limiter.reset()
+
+
+def test_parallel_wrong_logins_cannot_outrun_the_throttle(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("aiosqlite")
+
+    from fastapi import Request, Response
+
+    import app.api.auth as auth_api
+    from app.schemas.auth import LoginRequest
+
+    class _Result:
+        def scalar_one_or_none(self):
+            return None
+
+    class _SlowDb:
+        async def execute(self, _statement):
+            # Yield, so every request reaches this point before any finishes.
+            await asyncio.sleep(0.01)
+            return _Result()
+
+    async def _setup_complete(_db) -> bool:
+        return False
+
+    settings = Settings(environment="production", secret_key="production-test-secret-123456789")
+    monkeypatch.setattr(auth_api, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth_api, "production_bootstrap_required", _setup_complete)
+    auth_api.login_rate_limiter.reset()
+    request = Request({"type": "http", "method": "POST", "path": "/api/v1/auth/login", "headers": [],
+                       "client": ("127.0.0.1", 12345)})
+
+    async def attempt() -> str:
+        try:
+            await auth_api.login(LoginRequest(username="nobody", password="wrong-password"), request, Response(),
+                                 _SlowDb())  # type: ignore[arg-type]
+        except AppError as exc:
+            return exc.code
+        return "OK"
+
+    async def burst() -> list[str]:
+        return await asyncio.gather(*(attempt() for _ in range(12)))
+
+    try:
+        codes = asyncio.run(burst())
+    finally:
+        auth_api.login_rate_limiter.reset()
+    assert codes.count("INVALID_CREDENTIALS") == auth_api.login_rate_limiter.failure_limit
+    assert codes.count("LOGIN_THROTTLED") == 12 - auth_api.login_rate_limiter.failure_limit
+
+
+def test_bootstrap_rejects_a_non_ascii_setup_token_cleanly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("aiosqlite")
+
+    from fastapi import Response
+
+    import app.api.auth as auth_api
+    from app.db.bootstrap import initial_setup_token_path
+    from app.schemas.auth import BootstrapRequest
+
+    settings = _production_settings(tmp_path, secret_key="production-test-secret-123456789")
+    monkeypatch.setattr(auth_api, "get_settings", lambda: settings)
+    initial_setup_token_path(settings).write_text("a" * 40, encoding="utf-8")
+
+    with pytest.raises(AppError) as raised:
+        asyncio.run(auth_api.bootstrap(
+            BootstrapRequest(setup_token="é" * 30, password="long-enough-password"),
+            Response(),
+            None,  # type: ignore[arg-type]
+        ))
+    assert raised.value.code == "INVALID_SETUP_TOKEN"
+    assert raised.value.status_code == 403

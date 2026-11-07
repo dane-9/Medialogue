@@ -157,3 +157,125 @@ def test_a_torrent_saved_straight_into_the_media_folder_is_blocked(archive_clien
     download = asyncio.run(loose())
     plan = client.post("/api/v1/downloads/delete-plan", headers=headers, json={"download_ids": [str(download)]}).json()
     assert any("media folder itself" in item for item in plan["blocked"])
+
+
+def _delete(client, headers, download, library):
+    behavior = ArchiveQBitBehavior()
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
+    try:
+        return client.post("/api/v1/downloads/delete", headers=headers,
+                           json={"download_ids": [str(download)], "library": library})
+    finally:
+        client.app.dependency_overrides.clear()
+
+
+def test_a_folder_that_cannot_be_deleted_still_settles_the_library_and_reports_it(archive_client, monkeypatch):
+    from app.models.domain import Event
+    from app.services import download_deletion
+
+    client, base, _ = archive_client
+    headers, ids = _setup(client, base)
+
+    def refuse(path):
+        raise PermissionError(13, "Permission denied", path)
+
+    monkeypatch.setattr(download_deletion, "_delete_path", refuse)
+    done = _delete(client, headers, ids["Gone"]["download"], "forget")
+    assert done.status_code == 500, done.text
+    assert done.json()["error"]["code"] == "DELETE_INCOMPLETE"
+
+    async def check():
+        async with db_session.async_session_factory() as db:
+            # Forget falls back to keeping the title while files may remain.
+            assert await db.get(Movie, ids["Gone"]["movie"]) is not None
+            release = await db.get(MovieRelease, ids["Gone"]["release"])
+            assert release.release_state == ReleaseState.MISSING
+            event = await db.scalar(select(Event).where(Event.event_type == "media.deleted"))
+            assert event is not None and event.details["failed_folders"]
+    asyncio.run(check())
+
+
+def test_a_folder_inside_another_movies_folder_holding_its_files_is_blocked(archive_client):
+    client, base, _ = archive_client
+    headers, ids = _setup(client, base)
+    keep = ids["Keep"]["folder"]
+    (keep / "Sub").mkdir()
+    (keep / "Sub" / "Keep.part2.mkv").write_bytes(b"video")
+
+    async def nested():
+        async with db_session.async_session_factory() as db:
+            directory = await db.scalar(select(MediaDirectory).where(MediaDirectory.resolved_path == str(keep)))
+            db.add(MediaFile(media_directory_id=directory.id, relative_path="Sub/Keep.part2.mkv", filename="Keep.part2.mkv"))
+            client_id = (await db.scalar(select(TorrentClientObservation))).download_client_id
+            torrent = Torrent(info_hash="n" * 40, name="Nested")
+            db.add(torrent); await db.flush()
+            row = TorrentClientObservation(torrent_id=torrent.id, download_client_id=client_id, is_present=True,
+                                           resolved_save_path=str(keep / "Sub"), last_seen_at=datetime.now(timezone.utc))
+            db.add(row); await db.commit()
+            return row.id
+
+    download = asyncio.run(nested())
+    plan = client.post("/api/v1/downloads/delete-plan", headers=headers, json={"download_ids": [str(download)]}).json()
+    assert any("also holds Keep" in item for item in plan["blocked"]), plan
+
+
+def test_deleting_a_season_folder_inside_the_show_folder_marks_its_episodes_missing(archive_client):
+    from app.models.domain import (Episode, EpisodeMediaMap, PresenceState, Season, Show, ShowRelease,
+                                   ShowReleaseTorrent)
+
+    client, base, _ = archive_client
+    headers, _ids = _setup(client, base)
+    shows_root = base / "shows"
+    shows_root.mkdir()
+    assert client.post("/api/v1/storage-roots", headers=headers,
+                       json={"name": "Shows", "path": str(shows_root), "media_type": "shows"}).status_code == 201
+    show_folder = shows_root / "Example (2020)"
+    for season in (1, 2):
+        (show_folder / f"Season {season}").mkdir(parents=True)
+        (show_folder / f"Season {season}" / f"Example.S0{season}E01.mkv").write_bytes(b"video")
+
+    async def seed():
+        async with db_session.async_session_factory() as db:
+            root = await db.scalar(select(StorageRoot).where(StorageRoot.name == "Shows"))
+            root.access_mode = AccessMode.READ_WRITE
+            show = Show(title="Example", year=2020)
+            db.add(show); await db.flush()
+            directory = MediaDirectory(storage_root_id=root.id, resolved_path=str(show_folder))
+            db.add(directory); await db.flush()
+            client_id = (await db.scalar(select(TorrentClientObservation))).download_client_id
+            out = {}
+            for number in (1, 2):
+                season = Season(show_id=show.id, season_number=number)
+                db.add(season); await db.flush()
+                episode = Episode(show_id=show.id, season_id=season.id, season_number=number, episode_number=1,
+                                  presence_state=PresenceState.PRESENT)
+                release = ShowRelease(show_id=show.id, season_id=season.id, raw_release_name=f"Example.S0{number}",
+                                      release_state=ReleaseState.CURRENT)
+                media_file = MediaFile(media_directory_id=directory.id, relative_path=f"Season {number}/Example.S0{number}E01.mkv",
+                                       filename=f"Example.S0{number}E01.mkv")
+                db.add_all([episode, release, media_file]); await db.flush()
+                db.add(EpisodeMediaMap(episode_id=episode.id, media_file_id=media_file.id, show_release_id=release.id))
+                torrent = Torrent(info_hash=str(number) * 40, name=f"Example.S0{number}")
+                db.add(torrent); await db.flush()
+                db.add(ShowReleaseTorrent(show_release_id=release.id, torrent_id=torrent.id))
+                row = TorrentClientObservation(torrent_id=torrent.id, download_client_id=client_id, is_present=True,
+                                               resolved_save_path=str(show_folder / f"Season {number}"),
+                                               last_seen_at=datetime.now(timezone.utc))
+                db.add(row); await db.flush()
+                out[number] = {"episode": episode.id, "file": media_file.id, "download": row.id}
+            await db.commit()
+            return out
+
+    seeded = asyncio.run(seed())
+    done = _delete(client, headers, seeded[1]["download"], "replace")
+    assert done.status_code == 200, done.text
+    assert not (show_folder / "Season 1").exists()
+    assert (show_folder / "Season 2").exists()
+
+    async def check():
+        async with db_session.async_session_factory() as db:
+            assert (await db.get(MediaFile, seeded[1]["file"])).exists is False
+            assert (await db.get(MediaFile, seeded[2]["file"])).exists is True
+            assert (await db.get(Episode, seeded[1]["episode"])).presence_state == PresenceState.MISSING
+            assert (await db.get(Episode, seeded[2]["episode"])).presence_state == PresenceState.PRESENT
+    asyncio.run(check())
