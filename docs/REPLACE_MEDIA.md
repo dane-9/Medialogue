@@ -31,6 +31,8 @@ Rows are grouped by media folder, under four tabs:
 - **Needs attention**: replacements waiting for a decision, and failed attempts with their reason;
 - **Ignored**: titles you set aside. **Return to queue** brings one back.
 
+The **Reason** rail on the left lists each reason with titles in the current tab, with its count. Click one to switch it off or back on, in any combination; **All** turns every reason back on. The folder counts and **Select all** follow the filter, and this browser remembers the choice. Replacements already under way have no reason and always show.
+
 Each row shows why it is here. For **Removed from tracker**, a red **Indexer** pill names the tracker with its message and when it last worked; hover it for every tracker of the torrent. Otherwise a **Why** pill names the reason and when it started; hover it for what that means. Beside it are the current release and the best replacement found, with their Custom Format scores (hover a score for the breakdown under the title's Quality Profile), size, size change and seeders.
 
 **History** lists finished replacements: what was replaced, by what, and how it ended.

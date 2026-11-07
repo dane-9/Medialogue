@@ -14,7 +14,7 @@ import { useConfirm } from './components/Confirm'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { tmdbPosterUrl, UpgradeCompare } from './pages'
 import { formatAge } from './lib/age'
-import { replaceReasonDetail } from './lib/replaceReason'
+import { loadHiddenReasons, reasonShown, replaceReasonDetail, REPLACE_REASONS, saveHiddenReasons, type ReplaceReasonCode } from './lib/replaceReason'
 import { systemApi } from './api/modules/system'
 import { badgeColor } from './lib/badgeColor'
 import { diffReleaseTokens } from './lib/releaseTokens'
@@ -80,6 +80,7 @@ export default function ReplaceMediaPage() {
   const [status, setStatus] = useState<ReplaceStatus>('all')
   const [statusChosen, setStatusChosen] = useState(false)
   const [selectedRoot, setSelectedRoot] = useState('')
+  const [hiddenReasons, setHiddenReasons] = useState<Set<ReplaceReasonCode>>(loadHiddenReasons)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [loading, setLoading] = useState(true)
@@ -165,18 +166,29 @@ export default function ReplaceMediaPage() {
   const shownStatus: ReplaceStatus = statusChosen || statusCounts[status] ? status
     : (['all', 'attention', 'in_progress', 'ignored'] as ReplaceStatus[]).find((value) => statusCounts[value]) ?? 'all'
   const statusItems = useMemo(() => items.filter((item) => statusOf(item) === shownStatus), [items, shownStatus])
+  // Status, then reason, then folder: each step narrows the next one's counts.
+  const reasonCounts = useMemo(() => {
+    const counts = new Map<ReplaceReasonCode, number>()
+    for (const item of statusItems) {
+      const code = item.reason_code as ReplaceReasonCode | null | undefined
+      if (code) counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+    return counts
+  }, [statusItems])
+  const reasons = REPLACE_REASONS.filter((entry) => reasonCounts.get(entry.code))
+  const reasonItems = useMemo(() => statusItems.filter((item) => reasonShown(item.reason_code, hiddenReasons)), [statusItems, hiddenReasons])
   const roots = useMemo(() => {
     const grouped = new Map<string, { name: string; mediaType?: string | null; count: number }>()
-    for (const item of statusItems) {
+    for (const item of reasonItems) {
       const name = item.root_name ?? UNKNOWN_FOLDER
       const existing = grouped.get(name)
       if (existing) existing.count += 1
       else grouped.set(name, { name, mediaType: item.media_type, count: 1 })
     }
     return [...grouped.values()].sort((a, b) => a.name === UNKNOWN_FOLDER ? 1 : b.name === UNKNOWN_FOLDER ? -1 : a.name.localeCompare(b.name))
-  }, [statusItems])
+  }, [reasonItems])
   const rootName = roots.some((entry) => entry.name === selectedRoot) ? selectedRoot : roots[0]?.name ?? ''
-  const rows = useMemo(() => statusItems.filter((item) => (item.root_name ?? UNKNOWN_FOLDER) === rootName), [statusItems, rootName])
+  const rows = useMemo(() => reasonItems.filter((item) => (item.root_name ?? UNKNOWN_FOLDER) === rootName), [reasonItems, rootName])
   const chosen = rows.filter((item) => picked.has(item.target_key))
   const searchable = (item: ReplacementItem) => (item.tab === 'needs_search' || item.tab === 'found')
   const dismissable = (item: ReplacementItem) => Boolean(item.reason_code) && item.tab !== 'in_progress'
@@ -189,6 +201,12 @@ export default function ReplaceMediaPage() {
   })
   const chooseStatus = (value: ReplaceStatus) => { setStatus(value); setStatusChosen(true); setPicked(new Set()) }
   const chooseRoot = (name: string) => { setSelectedRoot(name); setPicked(new Set()) }
+  const setHidden = (next: Set<ReplaceReasonCode>) => { setHiddenReasons(next); saveHiddenReasons(next); setPicked(new Set()) }
+  const toggleReason = (code: ReplaceReasonCode) => {
+    const next = new Set(hiddenReasons)
+    if (!next.delete(code)) next.add(code)
+    setHidden(next)
+  }
   const clientsFor = (kind: MediaKind) => clients.filter((client) => client.enabled && client.scope === kind)
 
   const search = (targets: ReplacementItem[] | 'all') => act('search', async () => {
@@ -300,7 +318,7 @@ export default function ReplaceMediaPage() {
   return <div className="page replace-page">
     <PageTopbar
       title="Replace Media"
-      subtitle="Find a new source for media whose torrents were removed by their trackers, at equal or better quality."
+      subtitle="Find a new source for media the torrent backup could not bring back, at equal or better quality."
       action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}
     />
     {historyOpen && <MediaHistoryModal title="Finished replacements" load={replacementsApi.history} empty="No replacements have finished yet." onClose={() => setHistoryOpen(false)} />}
@@ -310,7 +328,7 @@ export default function ReplaceMediaPage() {
     {loading ? <div className="upgrade-media-loading">Checking tracker evidence…</div> : !total ? <EmptyState
       icon="refresh"
       title="Nothing needs replacing"
-      detail='Media appears here when every torrent behind it has been removed by its tracker (for example "unregistered torrent"). A cross-seed that still works keeps media off this list.'
+      detail="Media appears here when no torrent behind it could bring it back: it left qBittorrent, its tracker removed it or stopped answering, nobody else seeds it, or it never had a torrent. A cross-seed that still works keeps media off this list."
     /> : <>
       <div className="upgrade-v2-filters">
         <div className="upgrade-v2-status-group">
@@ -351,6 +369,31 @@ export default function ReplaceMediaPage() {
         </div>}
       </div>
 
+      <div className="downloads-layout replace-layout">
+      <aside className="downloads-rail" aria-label="Filter by reason">
+        <div className="downloads-rail-group">
+          <div className="downloads-rail-title replace-rail-title">
+            <span>Reason</span>
+            {reasons.some((entry) => hiddenReasons.has(entry.code)) && <button type="button" className="replace-reason-all" onClick={() => setHidden(new Set())}>All</button>}
+          </div>
+          {reasons.map((entry) => {
+            const on = !hiddenReasons.has(entry.code)
+            return <button
+              type="button"
+              key={entry.code}
+              aria-pressed={on}
+              className={`downloads-rail-item replace-reason ${on ? 'active' : ''}`}
+              onClick={() => toggleReason(entry.code)}
+            >
+              <span className={`downloads-rail-icon tone-${on ? entry.tone : 'neutral'}`}><Icon name={on ? entry.icon : 'eye-off'} size={14} /></span>
+              <span className="rail-label">{entry.label}</span>
+              <span className="rail-count">{reasonCounts.get(entry.code)}</span>
+            </button>
+          })}
+          {!reasons.length && <div className="replace-rail-empty">No reasons in this tab</div>}
+        </div>
+      </aside>
+      <div className="downloads-main">
       <div className="new-media-workspace upgrade-v2 upgrade-v3 replace-v3">
         <div className="new-media-scroll">
           <span className="new-media-col-head">Lost source</span>
@@ -371,7 +414,7 @@ export default function ReplaceMediaPage() {
               </>}
           </span>
           <span aria-hidden="true" />
-          {!rows.length && <div className="upgrade-v2-empty">{statusInfo.empty}</div>}
+          {!rows.length && <div className="upgrade-v2-empty">{statusItems.length && !reasonItems.length ? 'Every reason with titles here is switched off.' : statusInfo.empty}</div>}
           {rows.map((item) => {
             const isPickable = pickable(item)
             const on = isPickable && picked.has(item.target_key)
@@ -534,6 +577,8 @@ export default function ReplaceMediaPage() {
               {anyFound && <Button variant="primary" icon="download" disabled={!toDownload.length || Boolean(busy)} onClick={openConfirm}>{`Download ${toDownload.length} ${toDownload.length === 1 ? 'replacement' : 'replacements'}`}</Button>}
             </>}
         </div>
+      </div>
+      </div>
       </div>
     </>}
 
