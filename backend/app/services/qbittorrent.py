@@ -439,6 +439,9 @@ async def mark_removed_after_action(
     for observation, torrent in rows:
         observation.is_present = False
         observation.removed_at = now
+        # Removed on purpose from Downloads: the re-add task leaves it alone.
+        torrent.readd_state = "removed"
+        torrent.auto_readded_at = torrent.auto_readded_at or now
         await create_event(
             db,
             "torrent.removed",

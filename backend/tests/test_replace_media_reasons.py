@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.db.base import Base
 from app.models.domain import (AssociationType, IdentityState, Movie, MovieRelease, MovieReleaseTorrent, ReleaseState,
                                ReplacementReview, Torrent, TorrentArchiveState, TorrentClientObservation)
-from app.services.replacements import (FILES_MISSING, NO_SEEDERS, NO_TORRENT, NOT_WATCHED, REMOVED_FROM_TRACKER, TRACKER_GONE,
+from app.services.replacements import (FILES_MISSING, MISSING, NO_SEEDERS, NO_TORRENT, NOT_WATCHED, REMOVED_FROM_TRACKER, TRACKER_GONE,
                                        ReplacementTarget, _dismissed, classify_torrent, release_problems)
 from app.services.torrent_tracking import other_seeders, terminal_tracker_reason, track_other_seeders
 
@@ -18,9 +18,9 @@ NOW = datetime.now(timezone.utc)
 CLIENT = uuid4()
 
 
-def observation(*, present=True, removed_at=None, alone_since=None, client=CLIENT):
+def observation(*, present=True, removed_at=None, alone_since=None, client=CLIENT, state="stalledUP"):
     return SimpleNamespace(is_present=present, removed_at=removed_at, last_seen_at=removed_at or NOW,
-                           alone_since=alone_since, download_client_id=client)
+                           alone_since=alone_since, download_client_id=client, state=state)
 
 
 def tracker(*, state="working", checked=NOW, worked=None, first=None, client=CLIENT):
@@ -197,3 +197,39 @@ def test_readd_check_outcome_waits_for_a_finished_check():
     assert check_outcome(readded("checkingUP", 0.3, timedelta(minutes=5)), NOW) is None
     # Seen right after the re-add, qBittorrent may not have started checking.
     assert check_outcome(readded("stoppedDL", 0, timedelta(seconds=30)), NOW) is None
+
+
+def test_qbittorrent_reporting_missing_files_lists_files_missing():
+    assert reason(torrent([observation(state="missingFiles")], [tracker()])) == FILES_MISSING
+
+
+@pytest.mark.asyncio
+async def test_media_gone_is_missing_or_files_missing_and_never_readdable():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions() as db:
+        movie = Movie(title="Movie", sort_title="Movie", identity_state=IdentityState.MATCHED)
+        db.add(movie); await db.flush()
+        both_gone = MovieRelease(movie_id=movie.id, raw_release_name="Gone.2024.1080p", release_state=ReleaseState.MISSING)
+        files_gone = MovieRelease(movie_id=movie.id, raw_release_name="Files.2024.1080p", release_state=ReleaseState.MISSING)
+        db.add_all([both_gone, files_gone])
+        removed = Torrent(info_hash="5" * 40, name="removed", archive_state=TorrentArchiveState.ARCHIVED, archive_path="x")
+        present = Torrent(info_hash="6" * 40, name="present")
+        db.add_all([removed, present]); await db.flush()
+        db.add_all([
+            MovieReleaseTorrent(movie_release_id=both_gone.id, torrent_id=removed.id, association_type=AssociationType.HISTORICAL),
+            MovieReleaseTorrent(movie_release_id=files_gone.id, torrent_id=present.id, association_type=AssociationType.ATTACHED),
+            TorrentClientObservation(torrent_id=removed.id, download_client_id=CLIENT, is_present=False,
+                                     removed_at=NOW - timedelta(days=3), last_seen_at=NOW - timedelta(days=3)),
+            TorrentClientObservation(torrent_id=present.id, download_client_id=CLIENT, is_present=True, last_seen_at=NOW),
+        ])
+        await db.commit()
+        problems, _, _ = await release_problems(db)
+        assert {release_id: item.problem.reason for release_id, item in problems.items()} == {
+            both_gone.id: MISSING, files_gone.id: FILES_MISSING}
+        # Missing media is never put back into qBittorrent.
+        target = ReplacementTarget(target=None, torrents=problems[both_gone.id].torrents, releases=[], reason=MISSING)
+        assert not target.readdable
+    await engine.dispose()

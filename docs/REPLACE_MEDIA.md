@@ -9,7 +9,8 @@ Each title is listed with one reason:
 | Reason | When |
 |---|---|
 | **Not in qBittorrent** | Its torrent left qBittorrent more than 24 hours ago, or no client has it on record, so nothing can check its tracker or swarm. With an archived copy, the **Re-add Missing Torrents** task normally puts it back first (see below), so a title is listed here when it has no archived copy (the row says *not archived* and is searched like any lost source), when the task could not re-add it, or when it was removed again after the task re-added it. **Re-add** on the row puts it back by hand. |
-| **Files missing** | The task re-added the torrent, but qBittorrent's check found the files on disk incomplete, so it was left stopped rather than downloaded again. Put the files back and recheck it in qBittorrent, or search for a new torrent. |
+| **Files missing** | The torrent is in qBittorrent but its files are gone or incomplete: the media folder lost them, qBittorrent reports *missing files*, or the re-add task's file check came up short (it was left stopped rather than downloaded again). Put the files back and recheck it in qBittorrent, or search for a new torrent. |
+| **Missing** | The media files and the torrent are both gone, for example after **Delete with files…** in Downloads with *Find a replacement*. The torrent is never put back into qBittorrent; a replacement is searched for. |
 | **No other seeders** | For 14 days the swarm has reported no seeder besides this client. Unknown counts never start or stop the clock, and a paused torrent's own copy is not counted as another seeder. |
 | **Tracker not responding** | Every tracker of the torrent has answered with an error for 7 days. A tracker that was never contacted, as a paused torrent's is, does not count. |
 | **Removed from tracker** | Every tracker confirmed, twice in a row, that the torrent is gone ("unregistered", "deleted", "not registered", "not found", "trumped", "dupe of", or a message starting "Removed"). The verdict is kept after the torrent is deleted from qBittorrent. |
@@ -19,7 +20,7 @@ Evidence from a live client must be recent: a client that has stopped reporting,
 
 Cross-seeded releases are judged as one payload: a release is fine while **any** of its torrents is fine. When a title's releases fail in different ways, the cheapest fix is shown first, in the order of the table.
 
-Titles whose torrent is beyond saving (**Removed from tracker**, **Tracker not responding**, **No other seeders**) belong to Replace Media alone: their search accepts anything equal or better, so Upgrade Media hides them unless an upgrade is already running. Ignoring one hands it back. **Not in qBittorrent**, **Files missing** and **No torrent** titles stay in Upgrade Media too.
+Titles whose torrent is beyond saving (**Removed from tracker**, **Tracker not responding**, **No other seeders**) belong to Replace Media alone: their search accepts anything equal or better, so Upgrade Media hides them unless an upgrade is already running. Ignoring one hands it back. **Not in qBittorrent**, **Files missing** and **No torrent** titles stay in Upgrade Media too; **Missing** titles, like the other lost sources, belong to Replace Media alone.
 
 Ignoring is tied to the reason: if the same title later fails for a different reason, it comes back.
 
@@ -27,9 +28,11 @@ Ignoring is tied to the reason: if the same title later fails for a different re
 
 The **Re-add Missing Torrents** task (Tasks, hourly, on by default) puts every torrent listed as **Not in qBittorrent** back from the archive when its .torrent is archived:
 
-1. It is added to the client and save path it had, **stopped**, with its saved file selection, and qBittorrent checks the files already on disk.
+1. It is added back to the qBittorrent client it was seen leaving, never another one, and to the save path it had, **stopped**, with its saved file selection, and qBittorrent checks the files already on disk.
 2. On a later run, once the check has finished: complete files are started again (unless the torrent was stopped before it left), and the usual tracker and swarm checks resume. Incomplete files leave it stopped and list the title as **Files missing**. Nothing is ever downloaded again.
 3. Each torrent is re-added **once**. Removing it from qBittorrent again is taken as deliberate: the title is listed as **Not in qBittorrent** and left to you.
+
+At most 25 torrents are re-added per run, so a qBittorrent that lost everything is refilled over a few hours rather than checking the whole library at once. A torrent whose client was deleted from Medialogue is left alone, and so is one removed from Downloads.
 
 Turning the task off in Tasks stops all of this; the **Re-add** button still works.
 
@@ -50,7 +53,7 @@ Each row shows why it is here. For **Removed from tracker**, a red **Indexer** p
 
 ## Finding a replacement
 
-Each title is searched automatically when it first appears here: **Search New Replace Media Titles** in **Tasks** runs every 15 minutes (on by default) and searches every title that has never been searched, keeping the best equal-or-better release in the Replacement column. To search again, use **Search** on a row, **Search all**, or turn on **Search for Media Replacements**, which re-searches every title on a schedule. Ignored titles, and titles only missing from qBittorrent with an archived copy, are left out. Searches never start downloads.
+Each title is searched automatically when it first appears here: **Search New Replace Media Titles** in **Tasks** runs every 15 minutes (on by default) and searches every title that has never been searched, up to 25 per run, keeping the best equal-or-better release in the Replacement column. To search again, use **Search** on a row, **Search all**, or turn on **Search for Media Replacements**, which re-searches every title on a schedule. Ignored titles, and titles only missing from qBittorrent with an archived copy, are left out. Searches never start downloads.
 
 A candidate must match the title, the movie's year and edition or the show's season, meet the Quality Profile's quality and Custom Format minimums, keep or improve the current quality, and score at least as high as every release it replaces under the current profile. Results known to have no seeders are left out. Torrents already in the library are excluded by hash, checked again after the torrent file is fetched.
 

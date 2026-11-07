@@ -8,6 +8,12 @@ leaves it stopped, so nothing is ever downloaded again.
 
 Each torrent is re-added once. If it is removed again after that, the removal
 was deliberate, and the title stays in Replace Media for the user to decide.
+
+A torrent only goes back to the qBittorrent client it was seen leaving, never
+to another one: a client deleted from Medialogue, or one that no longer
+exists, leaves its torrents alone. At most READDS_PER_RUN are added per run,
+so a qBittorrent that lost everything is refilled over a few hours instead
+of checking the whole library at once.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ FAILED = "failed"
 #: its check, so it proves nothing about the files.
 SETTLE_AFTER = timedelta(minutes=2)
 _BUSY_STATES = ("checking", "moving", "queuedforchecking")
+READDS_PER_RUN = 25
 
 
 def _utcnow() -> datetime:
@@ -125,23 +132,32 @@ async def settle_checks(db: AsyncSession, *, client_factory: QBittorrentClientFa
 async def readd_missing(db: AsyncSession, *, client_factory: QBittorrentClientFactory, now: datetime) -> dict[str, int]:
     """Re-add, stopped and checking, every archived torrent Replace Media lists as missing."""
 
-    from app.services.recovery import _client_for_manifest, _manifest_media_type, _restore_category, _restore_save_path, _restore_tags
+    from app.services.recovery import _manifest_observations, _restore_category, _restore_save_path, _restore_tags
     from app.services.replacements import replacement_targets
 
     counts = {"readded": 0, "failed": 0}
-    clients = await list_configured_download_clients(db)
+    clients = {client.id: client for client in await list_configured_download_clients(db) if client.enabled}
     for entry in await replacement_targets(db):
         if not entry.readdable:
             continue
         for torrent in entry.torrents:
+            if counts["readded"] >= READDS_PER_RUN:
+                return counts
             if torrent.auto_readded_at is not None or torrent.archive_state != TorrentArchiveState.ARCHIVED or not torrent.archive_path:
                 continue
+            # The client it was last seen leaving, if Medialogue still has it.
+            left = sorted((item for item in torrent.observations if not item.is_present and item.removed_at),
+                          key=lambda item: _aware(item.removed_at), reverse=True)
+            client = next((clients[item.download_client_id] for item in left if item.download_client_id in clients), None)
+            if client is None:
+                continue
             manifest = read_manifest(torrent)
-            client, observation, _ = _client_for_manifest(manifest, clients, _manifest_media_type(manifest))
+            observation = next((item for item in reversed(_manifest_observations(manifest))
+                                if str(item.get("download_client_id") or "") == str(client.id)), None)
             save_path = _restore_save_path(manifest, observation)
             try:
-                if client is None or not save_path:
-                    raise AppError("READD_UNRESOLVED", "No qBittorrent client or save path could be worked out from the archive.")
+                if not save_path:
+                    raise AppError("READD_UNRESOLVED", "The archive does not record where this torrent was saved.")
                 result = await restore_torrent_archive(
                     db, torrent.id, client.id, save_path,
                     category=_restore_category(observation, client), tags=_restore_tags(observation, client),

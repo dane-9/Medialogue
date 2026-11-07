@@ -43,6 +43,11 @@ from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.downloads import (
     DownloadActionFailure,
+    DownloadDeletePlanRequest,
+    DownloadDeletePlanResponse,
+    DownloadDeleteRequest,
+    DownloadDeleteTitle,
+    DownloadDeleteTorrent,
     DownloadActionRequest,
     DownloadFacetsResponse,
     DownloadActionResponse,
@@ -885,6 +890,44 @@ async def poll_client(
     publish_job_status(job)
     launch_runtime_job(job.id, lambda: run_download_client_poll(job.id, client.id, client_factory=client_factory))
     return JobAcceptedResponse(job_id=job.id)
+
+
+def _plan_response(plan) -> DownloadDeletePlanResponse:
+    return DownloadDeletePlanResponse(
+        folders=plan.folders,
+        torrents=[DownloadDeleteTorrent(download_id=item.observation_id, name=item.name, client_name=item.client_name,
+                                        selected=item.selected) for item in plan.torrents],
+        titles=[DownloadDeleteTitle(kind=item.kind, title=item.title, year=item.year, season_numbers=sorted(item.season_numbers))
+                for item in plan.titles],
+        blocked=plan.blocked,
+    )
+
+
+@router.post("/downloads/delete-plan", response_model=DownloadDeletePlanResponse)
+async def plan_download_delete(
+    payload: DownloadDeletePlanRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> DownloadDeletePlanResponse:
+    """What deleting these downloads would remove, for the user to confirm."""
+
+    from app.services.download_deletion import plan_deletion
+
+    return _plan_response(await plan_deletion(db, payload.download_ids))
+
+
+@router.post("/downloads/delete", response_model=DownloadDeletePlanResponse)
+async def delete_downloads(
+    payload: DownloadDeleteRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_qbittorrent_client_factory),
+) -> DownloadDeletePlanResponse:
+    """Remove the torrents (and their cross-seeds) and delete their media folders."""
+
+    from app.services.download_deletion import execute_deletion
+
+    return _plan_response(await execute_deletion(db, payload.download_ids, library=payload.library, client_factory=client_factory))
 
 
 @router.post("/downloads/actions", response_model=DownloadActionResponse)

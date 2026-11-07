@@ -39,7 +39,11 @@ ACTION_STATES = {"handoff_attention", "cleanup_required"}
 
 #: The torrent is not in qBittorrent, so nothing can check its tracker or swarm.
 NOT_WATCHED = "not_watched"
-#: Re-added from the archive, but qBittorrent found the files on disk incomplete.
+#: The media files are gone and so is the torrent: nothing is left to restore
+#: from but the archive's record, so a new torrent is needed. Never re-added.
+MISSING = "missing"
+#: The torrent is in qBittorrent but its files are gone or incomplete: the
+#: media folder lost them, or a re-add's file check came up short.
 FILES_MISSING = "files_missing"
 #: Nobody but this client has seeded it for a long time.
 NO_SEEDERS = "no_seeders"
@@ -51,10 +55,11 @@ REMOVED_FROM_TRACKER = "removed_from_tracker"
 NO_TORRENT = "no_torrent"
 #: When a title's releases fail in different ways, the cheapest fix leads:
 #: re-adding a torrent may clear it, a new torrent is the last resort.
-REASON_PRIORITY = (NOT_WATCHED, FILES_MISSING, NO_SEEDERS, TRACKER_GONE, REMOVED_FROM_TRACKER, NO_TORRENT)
+REASON_PRIORITY = (NOT_WATCHED, FILES_MISSING, MISSING, NO_SEEDERS, TRACKER_GONE, REMOVED_FROM_TRACKER, NO_TORRENT)
 REASON_LABELS = {
     NOT_WATCHED: "Not in qBittorrent",
     FILES_MISSING: "Files missing",
+    MISSING: "Missing",
     NO_SEEDERS: "No other seeders",
     TRACKER_GONE: "Tracker not responding",
     REMOVED_FROM_TRACKER: "Removed from tracker",
@@ -65,6 +70,8 @@ REASON_LABELS = {
 NOT_WATCHED_GRACE = timedelta(hours=24)
 TRACKER_GONE_AFTER = timedelta(days=7)
 NO_SEEDERS_AFTER = timedelta(days=14)
+#: Titles the "new titles" search takes per run.
+NEW_SEARCHES_PER_RUN = 25
 
 
 def _aware(value):
@@ -227,6 +234,8 @@ def classify_torrent(torrent: Torrent, now: datetime, *, confirmed_removed: bool
         return None
     if getattr(torrent, "readd_state", None) == "files_missing":
         return SourceProblem(FILES_MISSING, _aware(torrent.auto_readded_at))
+    if all(str(item.state or "").casefold() == "missingfiles" for item in live):
+        return SourceProblem(FILES_MISSING)
     if confirmed_removed:
         return SourceProblem(REMOVED_FROM_TRACKER, _aware(summary.get("checked_at")))
     if (since := _tracker_gone(torrent, live, now)) is not None:
@@ -258,7 +267,7 @@ async def release_problems(
 
     now = datetime.now(timezone.utc)
     active_states = [ReleaseState.CURRENT, ReleaseState.MISSING]
-    releases: dict[UUID, tuple[str, UUID]] = {}
+    releases: dict[UUID, tuple[str, UUID, ReleaseState]] = {}
     links: dict[UUID, list[tuple[UUID, AssociationType]]] = {}
     for kind, model, link, link_release, owner in (
         ("movie", MovieRelease, MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id, MovieRelease.movie_id),
@@ -267,11 +276,11 @@ async def release_problems(
         scope = movie_ids if kind == "movie" else show_ids
         if scope is not None and not scope:
             continue
-        statement = select(model.id, owner).where(model.release_state.in_(active_states))
+        statement = select(model.id, owner, model.release_state).where(model.release_state.in_(active_states))
         if scope is not None:
             statement = statement.where(owner.in_(scope))
-        for release_id, owner_id in (await db.execute(statement)).all():
-            releases[release_id] = (kind, owner_id)
+        for release_id, owner_id, state in (await db.execute(statement)).all():
+            releases[release_id] = (kind, owner_id, state)
         link_statement = (
             select(link_release, link.torrent_id, link.association_type)
             .join(model, model.id == link_release)
@@ -298,12 +307,18 @@ async def release_problems(
     problems: dict[UUID, ReleaseProblem] = {}
     affected_movies: set[UUID] = set()
     affected_shows: set[UUID] = set()
-    for release_id, (kind, owner_id) in releases.items():
+    for release_id, (kind, owner_id, state) in releases.items():
         rows = links.get(release_id, [])
         sources = [torrent_id for torrent_id, association in rows if association != AssociationType.INCOMING]
         if rows and not sources:
             continue
-        if not sources:
+        if state == ReleaseState.MISSING:
+            # The files are gone, so no torrent can bring the media back by
+            # seeding; one still in qBittorrent only says where they were.
+            source_torrents = [torrents[item] for item in sources if item in torrents]
+            live = any(item.is_present for torrent in source_torrents for item in torrent.observations)
+            problem = ReleaseProblem(SourceProblem(FILES_MISSING if live else MISSING), source_torrents)
+        elif not sources:
             problem = ReleaseProblem(SourceProblem(NO_TORRENT), [])
         else:
             found = [verdicts.get(torrent_id) for torrent_id in sources]
@@ -712,6 +727,9 @@ async def run_replacement_search(job_id: UUID, *, target_key: str | None = None,
                 # the daily schedule's or the user's.
                 targets = [entry for entry in targets
                            if (review := reviews.get(entry.target.target_key)) is None or review.last_search_at is None]
+                # A lost drive turns many titles new at once; the rest wait for
+                # the next run instead of hammering the indexers in one go.
+                targets = targets[:NEW_SEARCHES_PER_RUN]
         indexers = await list_configured_indexers(db)
         found = failures = 0
         for position, entry in enumerate(targets):

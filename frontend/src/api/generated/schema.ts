@@ -903,6 +903,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/downloads/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Downloads
+         * @description Remove the torrents (and their cross-seeds) and delete their media folders.
+         */
+        post: operations["delete_downloads_api_v1_downloads_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/downloads/delete-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Download Delete
+         * @description What deleting these downloads would remove, for the user to confirm.
+         */
+        post: operations["plan_download_delete_api_v1_downloads_delete_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/downloads/facets": {
         parameters: {
             query?: never;
@@ -3686,6 +3726,60 @@ export interface components {
             /** Total Clients */
             total_clients: number;
         };
+        /** DownloadDeletePlanRequest */
+        DownloadDeletePlanRequest: {
+            /** Download Ids */
+            download_ids: string[];
+        };
+        /** DownloadDeletePlanResponse */
+        DownloadDeletePlanResponse: {
+            /** Blocked */
+            blocked: string[];
+            /** Folders */
+            folders: string[];
+            /** Titles */
+            titles: components["schemas"]["DownloadDeleteTitle"][];
+            /** Torrents */
+            torrents: components["schemas"]["DownloadDeleteTorrent"][];
+        };
+        /** DownloadDeleteRequest */
+        DownloadDeleteRequest: {
+            /** Download Ids */
+            download_ids: string[];
+            /**
+             * Library
+             * @enum {string}
+             */
+            library: "replace" | "forget";
+        };
+        /** DownloadDeleteTitle */
+        DownloadDeleteTitle: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "movie" | "show";
+            /** Season Numbers */
+            season_numbers?: number[];
+            /** Title */
+            title: string;
+            /** Year */
+            year?: number | null;
+        };
+        /** DownloadDeleteTorrent */
+        DownloadDeleteTorrent: {
+            /** Client Name */
+            client_name: string;
+            /**
+             * Download Id
+             * Format: uuid
+             */
+            download_id: string;
+            /** Name */
+            name: string;
+            /** Selected */
+            selected: boolean;
+        };
         /**
          * DownloadFacetsResponse
          * @description Rail counts and the category/tracker lists for one client.
@@ -5755,7 +5849,7 @@ export interface components {
             /** Reason */
             reason: string;
             /** Reason Code */
-            reason_code?: ("not_watched" | "files_missing" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent") | null;
+            reason_code?: ("not_watched" | "files_missing" | "missing" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent") | null;
             /** Reason Since */
             reason_since?: string | null;
             /** Root Name */
@@ -5829,7 +5923,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "not_watched" | "files_missing" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent";
+            reason: "not_watched" | "files_missing" | "missing" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent";
             /** Target Key */
             target_key: string;
         };
@@ -9005,6 +9099,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DownloadActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_downloads_api_v1_downloads_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadDeletePlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_download_delete_api_v1_downloads_delete_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadDeletePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadDeletePlanResponse"];
                 };
             };
             /** @description Validation Error */

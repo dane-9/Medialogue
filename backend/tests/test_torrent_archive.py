@@ -20,7 +20,7 @@ from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.qbittorrent import TorrentObservation
 from app.main import create_app
-from app.models.domain import IdentityState, Movie, Torrent, TorrentArchiveState
+from app.models.domain import IdentityState, Movie, Torrent, TorrentArchiveState, TorrentClientObservation
 from app.services.torrent_archive import verify_torrent_archive
 
 
@@ -730,19 +730,24 @@ def test_missing_torrent_is_readded_stopped_checked_and_started_only_when_comple
                                   archive_path=str(torrent_path), manifest_path=str(manifest_path), manifest_schema_version=1)
                 db.add(torrent)
                 await db.flush()
+                # Seen leaving the configured client two days ago.
+                db.add(TorrentClientObservation(
+                    torrent_id=torrent.id, download_client_id=uuid.UUID(configured["id"]), is_present=False,
+                    removed_at=now - timedelta(days=2), last_seen_at=now - timedelta(days=2)))
                 ids[key] = torrent.id
             await db.commit()
         return ids
 
+    now = datetime.now(timezone.utc)
     ids = asyncio.run(seed())
 
     async def targets(db, **_):
-        rows = (await db.scalars(select(Torrent))).all()
+        from sqlalchemy.orm import selectinload
+        rows = (await db.scalars(select(Torrent).options(selectinload(Torrent.observations)))).all()
         return [SimpleNamespace(readdable=True, torrents=[row]) for row in rows]
 
     monkeypatch.setattr(replacements, "replacement_targets", targets)
     behavior = ArchiveQBitBehavior()
-    now = datetime.now(timezone.utc)
 
     async def readd() -> dict:
         async with db_session.async_session_factory() as db:
@@ -759,11 +764,10 @@ def test_missing_torrent_is_readded_stopped_checked_and_started_only_when_comple
     async def observe_and_settle() -> dict:
         async with db_session.async_session_factory() as db:
             for key, progress in (("complete", 1), ("partial", 0.4)):
-                db.add(TorrentClientObservation(
-                    torrent_id=ids[key], download_client_id=uuid.UUID(configured["id"]), is_present=True,
-                    state="stoppedUP" if progress == 1 else "stoppedDL", progress=progress,
-                    last_seen_at=now + timedelta(minutes=5),
-                ))
+                row = await db.scalar(select(TorrentClientObservation).where(TorrentClientObservation.torrent_id == ids[key]))
+                row.is_present, row.removed_at = True, None
+                row.state = "stoppedUP" if progress == 1 else "stoppedDL"
+                row.progress, row.last_seen_at = progress, now + timedelta(minutes=5)
             await db.commit()
             counts = await settle_checks(db, client_factory=behavior.factory, now=now + timedelta(minutes=6))
             states = {row.name: row.readd_state for row in (await db.scalars(select(Torrent))).all()}
@@ -773,3 +777,42 @@ def test_missing_torrent_is_readded_stopped_checked_and_started_only_when_comple
     assert result["states"] == {"complete": SEEDING, "partial": FILES_MISSING}
     assert behavior.started == [hashes["complete"]]
     assert CHECKING not in result["states"].values()
+
+
+def test_readd_never_uses_another_client_and_caps_each_run(archive_client, monkeypatch) -> None:
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+
+    import app.services.auto_readd as auto_readd
+    import app.services.replacements as replacements
+    from app.models.domain import TorrentClientObservation
+
+    client, base, archive_dir = archive_client
+    headers = _login(client)
+    (base / "movies").mkdir()
+    assert client.post("/api/v1/storage-roots", headers=headers,
+                       json={"name": "Movies", "path": str(base / "movies"), "media_type": "movies"}).status_code == 201
+    client.post("/api/v1/download-clients", headers=headers, json={
+        "name": "only", "url": "http://qbit.test:8080", "username": "u", "password": "p", "scope": "movies", "enabled": True})
+    gone_client = uuid.uuid4()
+    torrent = SimpleNamespace(
+        id=uuid.uuid4(), info_hash="c" * 40, name="x", auto_readded_at=None, readd_state=None,
+        archive_state=TorrentArchiveState.ARCHIVED, archive_path="x.torrent",
+        observations=[SimpleNamespace(is_present=False, removed_at=datetime.now(timezone.utc) - timedelta(days=2),
+                                      download_client_id=gone_client)])
+
+    async def targets(db, **_):
+        return [SimpleNamespace(readdable=True, torrents=[torrent])]
+
+    monkeypatch.setattr(replacements, "replacement_targets", targets)
+    behavior = ArchiveQBitBehavior()
+
+    async def run():
+        async with db_session.async_session_factory() as db:
+            return await auto_readd.readd_missing(db, client_factory=behavior.factory, now=datetime.now(timezone.utc))
+
+    # It left a client Medialogue no longer has: the only remaining client is
+    # not a stand-in for it.
+    assert asyncio.run(run()) == {"readded": 0, "failed": 0}
+    assert behavior.added == []
+    assert auto_readd.READDS_PER_RUN == 25

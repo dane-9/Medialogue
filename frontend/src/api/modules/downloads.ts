@@ -37,6 +37,14 @@ export const downloadsApi = {
   ) => openApiData(openApiClient.POST('/api/v1/downloads/actions', {
     body: { download_ids: downloadIds, action, value: value ?? null },
   })),
+  /** What deleting these downloads would remove, for the user to confirm. */
+  deletePlan: (downloadIds: string[]) => openApiData(openApiClient.POST('/api/v1/downloads/delete-plan', {
+    body: { download_ids: downloadIds },
+  })),
+  /** Remove the torrents and their cross-seeds, and delete their media folders. */
+  deleteDownloads: (downloadIds: string[], library: 'replace' | 'forget') => openApiData(openApiClient.POST('/api/v1/downloads/delete', {
+    body: { download_ids: downloadIds, library },
+  })),
   torrentArchiveHealth: async () => {
     const { torrent_archive: archive } = await openApiData(openApiClient.GET('/api/v1/integrations/health'))
     return { ...archive, message: archive.message ?? undefined }

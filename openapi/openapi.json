@@ -2786,6 +2786,162 @@
         "title": "DownloadClientsHealth",
         "type": "object"
       },
+      "DownloadDeletePlanRequest": {
+        "properties": {
+          "download_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Download Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "download_ids"
+        ],
+        "title": "DownloadDeletePlanRequest",
+        "type": "object"
+      },
+      "DownloadDeletePlanResponse": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked",
+            "type": "array"
+          },
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Folders",
+            "type": "array"
+          },
+          "titles": {
+            "items": {
+              "$ref": "#/components/schemas/DownloadDeleteTitle"
+            },
+            "title": "Titles",
+            "type": "array"
+          },
+          "torrents": {
+            "items": {
+              "$ref": "#/components/schemas/DownloadDeleteTorrent"
+            },
+            "title": "Torrents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "folders",
+          "torrents",
+          "titles",
+          "blocked"
+        ],
+        "title": "DownloadDeletePlanResponse",
+        "type": "object"
+      },
+      "DownloadDeleteRequest": {
+        "properties": {
+          "download_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Download Ids",
+            "type": "array"
+          },
+          "library": {
+            "enum": [
+              "replace",
+              "forget"
+            ],
+            "title": "Library",
+            "type": "string"
+          }
+        },
+        "required": [
+          "download_ids",
+          "library"
+        ],
+        "title": "DownloadDeleteRequest",
+        "type": "object"
+      },
+      "DownloadDeleteTitle": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "movie",
+              "show"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "season_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Season Numbers",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ],
+        "title": "DownloadDeleteTitle",
+        "type": "object"
+      },
+      "DownloadDeleteTorrent": {
+        "properties": {
+          "client_name": {
+            "title": "Client Name",
+            "type": "string"
+          },
+          "download_id": {
+            "format": "uuid",
+            "title": "Download Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "download_id",
+          "name",
+          "client_name",
+          "selected"
+        ],
+        "title": "DownloadDeleteTorrent",
+        "type": "object"
+      },
       "DownloadFacetsResponse": {
         "description": "Rail counts and the category/tracker lists for one client.",
         "properties": {
@@ -8971,6 +9127,7 @@
                 "enum": [
                   "not_watched",
                   "files_missing",
+                  "missing",
                   "no_seeders",
                   "tracker_gone",
                   "removed_from_tracker",
@@ -9224,6 +9381,7 @@
             "enum": [
               "not_watched",
               "files_missing",
+              "missing",
               "no_seeders",
               "tracker_gone",
               "removed_from_tracker",
@@ -16250,6 +16408,90 @@
           }
         },
         "summary": "Apply Download Action",
+        "tags": [
+          "downloads"
+        ]
+      }
+    },
+    "/api/v1/downloads/delete": {
+      "post": {
+        "description": "Remove the torrents (and their cross-seeds) and delete their media folders.",
+        "operationId": "delete_downloads_api_v1_downloads_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadDeletePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Downloads",
+        "tags": [
+          "downloads"
+        ]
+      }
+    },
+    "/api/v1/downloads/delete-plan": {
+      "post": {
+        "description": "What deleting these downloads would remove, for the user to confirm.",
+        "operationId": "plan_download_delete_api_v1_downloads_delete_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadDeletePlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadDeletePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Download Delete",
         "tags": [
           "downloads"
         ]

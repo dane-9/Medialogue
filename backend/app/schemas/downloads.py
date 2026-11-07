@@ -147,6 +147,39 @@ class DownloadFacetsResponse(BaseModel):
     trackers: list[str]
 
 
+class DownloadDeletePlanRequest(BaseModel):
+    download_ids: list[UUID] = Field(min_length=1, max_length=500)
+
+
+class DownloadDeleteRequest(DownloadDeletePlanRequest):
+    #: "replace" lists the title in Replace Media as Missing; "forget" removes
+    #: it from Medialogue.
+    library: Literal["replace", "forget"]
+
+
+class DownloadDeleteTorrent(BaseModel):
+    download_id: UUID
+    name: str
+    client_name: str
+    #: False for a cross-seed of the deleted files that was not selected.
+    selected: bool
+
+
+class DownloadDeleteTitle(BaseModel):
+    kind: Literal["movie", "show"]
+    title: str
+    year: int | None = None
+    season_numbers: list[int] = Field(default_factory=list)
+
+
+class DownloadDeletePlanResponse(BaseModel):
+    folders: list[str]
+    torrents: list[DownloadDeleteTorrent]
+    titles: list[DownloadDeleteTitle]
+    #: Why the deletion cannot go ahead; empty when it can.
+    blocked: list[str]
+
+
 class DownloadActionFailure(BaseModel):
     client_id: UUID
     client_name: str

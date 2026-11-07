@@ -21,7 +21,7 @@ class LostSourceEvidence(BaseModel):
     last_worked_at: datetime | None = None
 
 
-ReplacementReason = Literal["not_watched", "files_missing", "no_seeders", "tracker_gone", "removed_from_tracker", "no_torrent"]
+ReplacementReason = Literal["not_watched", "files_missing", "missing", "no_seeders", "tracker_gone", "removed_from_tracker", "no_torrent"]
 
 
 class ReplacementItem(BaseModel):

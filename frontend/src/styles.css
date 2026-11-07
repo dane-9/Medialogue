@@ -4398,6 +4398,20 @@ select.input { background-color: var(--input-bg); }
 .replace-choice.danger:hover:not(:disabled) { border-color: var(--err-line); }
 .replace-choice strong { font-size: var(--t-sm); }
 .replace-choice span { grid-column: 2; color: var(--muted); font-size: var(--t-xs); }
+/* Downloads' delete dialog: what goes from disk and qBittorrent, then the choice. */
+.delete-downloads { display: grid; gap: var(--s4); min-width: 0; padding: var(--s4); }
+.delete-downloads section { display: grid; gap: var(--s2); }
+.delete-downloads h4 { margin: 0; color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.delete-downloads-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.delete-downloads-list li { display: flex; align-items: center; gap: var(--s2); min-width: 0; color: var(--text); font-size: var(--t-sm); }
+.delete-downloads-list li > svg { flex: none; color: var(--faint); }
+.delete-downloads-list code, .delete-downloads-list li > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.delete-downloads-list code { font: var(--t-xs) var(--mono); }
+.delete-downloads-list small { margin-left: auto; flex: none; color: var(--faint); font-size: var(--t-xs); }
+.delete-downloads-note { margin: 0; color: var(--muted); font-size: var(--t-xs); }
+.delete-downloads-choices { display: grid; gap: var(--s2); }
+.replace-choice.active { border-color: var(--accent); background: var(--accent-soft); }
+.replace-choice.danger.active { border-color: var(--err-line); background: var(--err-soft); }
 .replace-path-list { display: grid; gap: var(--s1); max-height: 240px; margin: var(--s2) 0 0; padding-left: var(--s4); overflow: auto; }
 
 /* Upgrade Media (New Media layout) ------------------------------------------ */

@@ -56,6 +56,16 @@ different cleanup path. qBittorrent removes the partial payload when it is
 exclusive, but preserves files when another observed torrent reports the exact
 same resolved payload path. See [Failed Downloads and Blocklist](FAILED_DOWNLOADS.md).
 
+## Deleting from Downloads
+
+**Delete with files…** (right-click a download) removes the torrent from qBittorrent and deletes its media from disk. A dialog first shows exactly what goes:
+
+- **From disk:** for a movie, the whole folder the movie is in, including files you added yourself such as subtitles. For a show, only the torrent's own season or episode content, never the show folder with its other seasons. For a torrent not in the library, its own content.
+- **From qBittorrent:** the selected torrents and every cross-seed of the same files, which would otherwise be left broken.
+- **Afterwards:** either **Find a replacement**, which keeps the title and lists it in Replace Media as *Missing*, or **Remove from Medialogue**. Removing a movie takes it out of the library. Removing a show forgets those releases and stops wanting the season; the show itself goes only when nothing of it is left.
+
+Nothing is deleted when the folder is a configured media folder itself, lies outside one, is in a read-only media folder, or also holds another title's media. qBittorrent lets go of the torrents before any file is touched; if it cannot, nothing is deleted. Torrents removed this way are never re-added by **Re-add Missing Torrents**.
+
 ## Disaster recovery re-import
 
 The torrent archive preserves qBittorrent recovery context independently of live client presence. After uploading a backup on **Backups → Restore**, Medialogue builds a read-only re-import plan before anything is submitted. See [Backup / Restore](BACKUP_RESTORE.md).

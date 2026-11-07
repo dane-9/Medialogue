@@ -5,7 +5,6 @@ import { Note, failed } from '../components/settings'
 import type { Message } from '../components/settings'
 import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
-import { useConfirm } from '../components/Confirm'
 import { Badge, Button, EmptyState, Input, Panel, Progress } from '../components/ui'
 import { downloadsApi } from '../api/modules/downloads'
 import { applyProgressUpdate } from '../api/mappers/downloads'
@@ -13,6 +12,7 @@ import { integrationsApi } from '../api/modules/integrations'
 import { contextMenuSelection, toggleIdSelection } from '../lib/uiState'
 import type { Download, DownloadClient } from '../types'
 import { Page, PosterImage } from './shared'
+import { DeleteDownloadsModal } from '../components/DeleteDownloadsModal'
 
 // The Downloads status rail, in qBittorrent's spirit: one row per filter with a
 // live count. Groups are ordered so the everyday activity filters come first
@@ -183,7 +183,7 @@ function DownloadContextMenu({ position, count, busy, allStopped, onRun }: {
       <button type="button" className="download-menu-item tone-teal" disabled={busy} onClick={() => void onRun('recheck')}><Icon name="checking" size={13} />Force recheck</button>
       <button type="button" className="download-menu-item tone-blue" disabled={busy} onClick={() => void onRun('reannounce')}><Icon name="tracker" size={13} />Force reannounce</button>
       <div className="download-menu-separator" />
-      <button type="button" className="download-menu-item tone-red" disabled={busy} onClick={() => void onRun('remove')}><Icon name="close" size={13} />Remove from qBittorrent…</button>
+      <button type="button" className="download-menu-item tone-red" disabled={busy} onClick={() => void onRun('remove')}><Icon name="close" size={13} />Delete with files…</button>
     </>}
   </div>
 }
@@ -276,7 +276,6 @@ const ACTIVITY_HINTS: Record<Download['activity'], string> = {
 const MEMBER_PREFIX = 'member:'
 
 export function DownloadsPage() {
-  const confirm = useConfirm()
   const [items, setItems] = useState<Download[]>([])
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState(0)
@@ -295,6 +294,8 @@ export function DownloadsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
+  // Deleting goes through its own dialog: what goes from disk is shown first.
+  const [deleting, setDeleting] = useState<string[] | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [anchorId, setAnchorId] = useState('')
   const [selection, setSelection] = useState<DownloadRailSelection>(readRailSelection)
@@ -500,13 +501,9 @@ export function DownloadsPage() {
       const targets = selectedDownloads()
       const downloadIds = targets.map((item) => item.id)
       if (action === 'remove') {
-        const approved = await confirm({
-          title: targets.length === 1 ? 'Remove this torrent from qBittorrent?' : `Remove ${targets.length} torrents from qBittorrent?`,
-          body: <p>{targets.length === 1 ? targets[0].name : 'The selected torrents'} will be removed from qBittorrent and stop seeding. Downloaded files are kept, so other cross-seeds of the same payload keep working.</p>,
-          confirmLabel: 'Remove',
-          icon: 'close',
-        })
-        if (!approved) return
+        setContext(null)
+        setDeleting(downloadIds)
+        return
       }
       const result = await downloadsApi.applyDownloadAction(downloadIds, action, value)
       const problems = [
@@ -547,6 +544,17 @@ export function DownloadsPage() {
   // only shown when the tracker actually reported one.
   const peerCount = (connected?: number, total?: number) => total === undefined ? `${connected ?? 0}` : `${connected ?? 0} (${total})`
   return <Page title="Downloads" subtitle="Live Medialogue-managed qBittorrent activity. Historical and archived-only torrents stay in release history and Backups.">
+    {deleting && <DeleteDownloadsModal
+      downloadIds={deleting}
+      onClose={() => setDeleting(null)}
+      onDone={(text) => {
+        setDeleting(null)
+        setSelected(new Set())
+        setActionNotice({ tone: 'ok', text })
+        void load(false)
+        void refreshFacets()
+      }}
+    />}
     <div className="downloads-layout">
       <aside className="downloads-rail">
         {DOWNLOAD_RAIL_GROUPS.map((group) => <div className="downloads-rail-group" key={group}>
