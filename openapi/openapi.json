@@ -8956,9 +8956,44 @@
             ],
             "title": "Profile Name"
           },
+          "readdable": {
+            "default": false,
+            "title": "Readdable",
+            "type": "boolean"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_watched",
+                  "no_seeders",
+                  "tracker_gone",
+                  "removed_from_tracker",
+                  "no_torrent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "reason_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Since"
           },
           "root_name": {
             "anyOf": [
@@ -9134,19 +9169,18 @@
             "title": "Action",
             "type": "string"
           },
-          "torrent_ids": {
+          "targets": {
             "items": {
-              "format": "uuid",
-              "type": "string"
+              "$ref": "#/components/schemas/ReviewTarget"
             },
             "maxItems": 250,
             "minItems": 1,
-            "title": "Torrent Ids",
+            "title": "Targets",
             "type": "array"
           }
         },
         "required": [
-          "torrent_ids",
+          "targets",
           "action"
         ],
         "title": "ReplacementReviewRequest",
@@ -9181,6 +9215,33 @@
           }
         },
         "title": "ReplacementSearchRequest",
+        "type": "object"
+      },
+      "ReviewTarget": {
+        "properties": {
+          "reason": {
+            "enum": [
+              "not_watched",
+              "no_seeders",
+              "tracker_gone",
+              "removed_from_tracker",
+              "no_torrent"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_key": {
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Target Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_key",
+          "reason"
+        ],
+        "title": "ReviewTarget",
         "type": "object"
       },
       "ScheduledTaskResponse": {

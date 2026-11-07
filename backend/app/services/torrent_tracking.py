@@ -24,7 +24,44 @@ _TERMINAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("deleted", re.compile(r"\btorrent\s+(?:has\s+been|was|is)\s+deleted\b", re.IGNORECASE)),
     ("not_registered", re.compile(r"\btorrent\s+(?:is\s+)?not\s+registered\b", re.IGNORECASE)),
     ("not_found", re.compile(r"\b(?:unknown\s+torrent|torrent\s+not\s+found)\b", re.IGNORECASE)),
+    # Private trackers retire a torrent in their own words: replaced by a better
+    # upload, a duplicate of another, or a moderator's "Removed: <why>".
+    ("trumped", re.compile(r"\btrumped\b", re.IGNORECASE)),
+    ("dupe", re.compile(r"\b(?:dupe|duplicate)\s+of\b", re.IGNORECASE)),
+    ("removed", re.compile(r"^\s*(?:torrent\s+)?removed\b", re.IGNORECASE)),
 )
+
+
+# qBittorrent states in which a complete torrent is announcing as a seeder,
+# so the tracker's seeder count includes this client.
+_SEEDING_STATES = {"uploading", "stalledup", "forcedup", "queuedup", "checkingup"}
+
+
+def other_seeders(*, seeds_total: int | None, seeds_connected: int | None, state: str | None, progress) -> int | None:
+    """Seeders in the swarm besides this client, or None when nobody can tell.
+
+    The tracker's count (`seeds_total`) includes this client while it seeds.
+    Seeders actually connected are real others whatever the tracker says, so
+    they win when the tracker reports fewer.
+    """
+
+    connected = seeds_connected if seeds_connected is not None and seeds_connected >= 0 else 0
+    if seeds_total is None or seeds_total < 0:
+        return connected or None
+    seeding = str(state or "").casefold() in _SEEDING_STATES and float(progress or 0) >= 1
+    return max(seeds_total - (1 if seeding else 0), connected, 0)
+
+
+def track_other_seeders(row, *, now: datetime) -> None:
+    """Start or clear the observation's `alone_since` from its latest counts."""
+
+    others = other_seeders(seeds_total=row.seeds_total, seeds_connected=row.seeds, state=row.state, progress=row.progress)
+    if others is None:
+        return
+    if others > 0:
+        row.alone_since = None
+    elif row.alone_since is None:
+        row.alone_since = now
 
 
 def tracker_endpoint_key(url: str) -> str:

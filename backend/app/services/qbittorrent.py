@@ -49,6 +49,7 @@ from app.services.torrent_archive import ensure_torrent_archived, refresh_torren
 from app.services.torrent_tracking import (
     deactivate_client_tracker_health,
     persist_tracker_health,
+    track_other_seeders,
     redact_tracker_message,
     tracker_endpoint_display,
 )
@@ -399,6 +400,7 @@ async def refresh_observations_after_action(
         row.leeches = observed.leeches
         row.leeches_total = observed.leeches_total
         row.availability = observed.availability
+        track_other_seeders(row, now=utcnow())
         row.last_seen_at = utcnow()
         torrent.metadata_json = {
             **(torrent.metadata_json or {}),
@@ -870,6 +872,7 @@ async def _poll_download_client(
             prior.leeches = observed.leeches
             prior.leeches_total = observed.leeches_total
             prior.availability = observed.availability
+            track_other_seeders(prior, now=checked_at)
             prior.last_seen_at = checked_at
             fast_torrent_ids.append(prior.torrent_id)
             continue
@@ -999,6 +1002,7 @@ async def _poll_download_client(
                 row.leeches = observed.leeches
                 row.leeches_total = observed.leeches_total
                 row.availability = observed.availability
+                track_other_seeders(row, now=utcnow())
                 row.category = observed.category or None
                 row.tags = list(observed.tags)
                 row.is_present = True

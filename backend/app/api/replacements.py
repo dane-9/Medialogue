@@ -12,20 +12,21 @@ from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import Job, JobStatus, Torrent, UpgradeCandidate
+from app.models.domain import Job, JobStatus, ReplacementReview, Torrent, UpgradeCandidate
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.replacements import (
     ReplacementCountResponse,
     ReplacementFinishResponse,
     ReplacementItem,
     ReplacementQueueResponse,
+    ReplacementReason,
     ReplacementRetireResponse,
     ReplacementReviewResponse,
 )
 from app.services.events import create_event
 from app.services.jobs import create_job
 from app.services.runtime_jobs import launch_runtime_job
-from app.services.replacements import SEARCH_JOB_TYPE, replacement_queue, run_replacement_search
+from app.services.replacements import NO_TORRENT, SEARCH_JOB_TYPE, replacement_queue, run_replacement_search
 from app.api import downloads as downloads_api
 
 router = APIRouter(prefix="/replacements", tags=["replacements"])
@@ -35,8 +36,14 @@ class ReplacementSearchRequest(BaseModel):
     target_key: str | None = Field(default=None, max_length=150)
 
 
+class ReviewTarget(BaseModel):
+    target_key: str = Field(min_length=1, max_length=150)
+    #: The reason being ignored; the title comes back if a different one appears.
+    reason: ReplacementReason
+
+
 class ReplacementReviewRequest(BaseModel):
-    torrent_ids: list[UUID] = Field(min_length=1, max_length=250)
+    targets: list[ReviewTarget] = Field(min_length=1, max_length=250)
     action: Literal["ignore", "restore"]
 
 
@@ -63,7 +70,13 @@ async def queue(_: AdminUser = Depends(require_admin), db: AsyncSession = Depend
 async def count(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> ReplacementCountResponse:
     """Items waiting on the user, for the sidebar badge."""
 
-    return ReplacementCountResponse(count=sum(1 for item in await replacement_queue(db, details=False) if item["needs_attention"]))
+    # Titles that never had a torrent are listed but not counted: a library
+    # imported from disk would otherwise keep the badge at a number nobody can
+    # clear in one sitting.
+    return ReplacementCountResponse(count=sum(
+        1 for item in await replacement_queue(db, details=False)
+        if item["needs_attention"] and item["reason_code"] != NO_TORRENT
+    ))
 
 
 @router.post("/search", response_model=JobAcceptedResponse, status_code=202)
@@ -95,14 +108,14 @@ async def history(_: AdminUser = Depends(require_admin), db: AsyncSession = Depe
 
 @router.post("/review", response_model=ReplacementReviewResponse)
 async def review(payload: ReplacementReviewRequest, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> ReplacementReviewResponse:
-    for torrent_id in payload.torrent_ids:
-        torrent = await db.get(Torrent, torrent_id)
-        if not torrent:
-            raise AppError("NOT_FOUND", "Torrent was not found", status_code=404)
-        torrent.metadata_json = {**(torrent.metadata_json or {}), "replacement_review": {
-            "ignored": payload.action == "ignore"}}
+    for target in payload.targets:
+        review = await db.get(ReplacementReview, target.target_key)
+        if review is None:
+            review = ReplacementReview(target_key=target.target_key)
+            db.add(review)
+        review.ignored_reason = target.reason if payload.action == "ignore" else None
     await db.commit()
-    return ReplacementReviewResponse(updated=len(payload.torrent_ids))
+    return ReplacementReviewResponse(updated=len(payload.targets))
 
 
 @router.post("/{candidate_id}/retire-torrents", response_model=ReplacementRetireResponse)

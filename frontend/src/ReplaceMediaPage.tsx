@@ -14,6 +14,8 @@ import { useConfirm } from './components/Confirm'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { tmdbPosterUrl, UpgradeCompare } from './pages'
 import { formatAge } from './lib/age'
+import { replaceReasonDetail } from './lib/replaceReason'
+import { systemApi } from './api/modules/system'
 import { badgeColor } from './lib/badgeColor'
 import { diffReleaseTokens } from './lib/releaseTokens'
 import { upgradeTokenReason } from './lib/upgradeTokenReason'
@@ -177,7 +179,7 @@ export default function ReplaceMediaPage() {
   const rows = useMemo(() => statusItems.filter((item) => (item.root_name ?? UNKNOWN_FOLDER) === rootName), [statusItems, rootName])
   const chosen = rows.filter((item) => picked.has(item.target_key))
   const searchable = (item: ReplacementItem) => (item.tab === 'needs_search' || item.tab === 'found')
-  const dismissable = (item: ReplacementItem) => (item.torrent_ids ?? []).length > 0 && item.tab !== 'in_progress'
+  const dismissable = (item: ReplacementItem) => Boolean(item.reason_code) && item.tab !== 'in_progress'
   const downloadable = (item: ReplacementItem) => item.tab === 'found' && Boolean(item.candidate_id)
   const pickable = (item: ReplacementItem) => searchable(item) || dismissable(item) || downloadable(item)
   const togglePicked = (key: string) => setPicked((current) => {
@@ -197,9 +199,28 @@ export default function ReplaceMediaPage() {
   })
 
   const decide = (targets: ReplacementItem[], action: 'ignore' | 'restore') => act('decide', async () => {
-    const torrentIds = targets.flatMap((item) => item.torrent_ids ?? [])
-    if (torrentIds.length) await replacementsApi.review(torrentIds, action)
+    const reviewed = targets.flatMap((item) => item.reason_code ? [{ target_key: item.target_key, reason: item.reason_code }] : [])
+    if (reviewed.length) await replacementsApi.review(reviewed, action)
     setPicked(new Set())
+  })
+
+  // A torrent only missing from qBittorrent goes back from the archive, so its
+  // tracker and swarm can be checked again. The restore's own plan decides
+  // where it goes and refuses anything it cannot verify.
+  const readd = (item: ReplacementItem) => act(`readd:${item.target_key}`, async () => {
+    const plan = await systemApi.recoveryReimportPlan()
+    const wanted = new Set(item.torrent_ids ?? [])
+    const mine = plan.items.filter((entry) => wanted.has(entry.torrentId))
+    const ready = mine.filter((entry) => entry.status === 'ready').map((entry) => entry.torrentId)
+    if (!ready.length) {
+      const why = mine.flatMap((entry) => entry.reasons)[0]
+      throw new Error(`Could not re-add ${item.title}${why ? `: ${why}` : ': no archived torrent is ready.'}`)
+    }
+    const accepted = await systemApi.startRecoveryReimport(plan.confirmationToken, ready)
+    const [job] = await systemApi.waitForJobs([accepted.job_id])
+    setMessage(job?.state === 'completed'
+      ? `${item.title} was added back to qBittorrent. It leaves this list once its tracker has been checked.`
+      : `Re-adding ${item.title} ${job?.state ?? 'failed'}. Check Tasks for details.`)
   })
 
   const openResults = async (item: ReplacementItem) => {
@@ -413,7 +434,14 @@ export default function ReplaceMediaPage() {
                         <span className="replace-lost-message">{item.lost_evidence[0].message ?? 'Removed by the tracker'}{item.lost_evidence[0].last_worked_at ? ` · ${formatAge(item.lost_evidence[0].last_worked_at)}` : ''}</span>
                       </span>
                     </Tooltip>
-                    : <ReleaseSourcePill indexer={item.current_indexer} color={item.current_indexer_color} tracker={item.current_tracker} />}
+                    : item.reason_code
+                      ? <Tooltip asChild content={replaceReasonDetail(item.reason_code, item.reason_since).help}>
+                        <span className="replace-lost">
+                          <span className="release-pill release-pill-lost"><i>Why</i>{item.reason}</span>
+                          <span className="replace-lost-message">{replaceReasonDetail(item.reason_code, item.reason_since).note}</span>
+                        </span>
+                      </Tooltip>
+                      : <ReleaseSourcePill indexer={item.current_indexer} color={item.current_indexer_color} tracker={item.current_tracker} />}
                 </span>
                 <div className="upgrade-v2-side">
                   <div className="upgrade-v2-line">
@@ -476,6 +504,9 @@ export default function ReplaceMediaPage() {
               </div>
               {/* Outside the panel, so the two columns keep their width. */}
               <span className="upgrade-v3-rail">
+                {item.readdable && item.tab !== 'in_progress' && <Tooltip asChild content="Re-add to qBittorrent from the archive">
+                  <button type="button" className="icon-button" aria-label={`Re-add ${item.title} to qBittorrent`} disabled={Boolean(busy)} onClick={() => void readd(item)}><Icon name="download" size={15} /></button>
+                </Tooltip>}
                 {item.tab === 'found' && item.candidate_id
                   ? <Tooltip asChild content="View all releases">
                     <button type="button" className="icon-button" aria-label={`View all releases for ${item.title}`} onClick={() => void openResults(item)}><Icon name="search" size={15} /></button>

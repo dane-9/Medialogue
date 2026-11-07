@@ -553,6 +553,9 @@ class TorrentClientObservation(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Since when the swarm has reported no seeder besides this client. Cleared
+    #: as soon as another seeder shows up; unknown counts leave it unchanged.
+    alone_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     torrent: Mapped[Torrent] = relationship(back_populates="observations")
     download_client: Mapped["DownloadClient"] = relationship(back_populates="observations")
@@ -911,6 +914,22 @@ class Indexer(TimestampMixin, Base):
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class ReplacementReview(TimestampMixin, Base):
+    """What the user decided about one Replace Media title, and its last search.
+
+    Keyed by the title's target key rather than by torrent, because a title with
+    no torrent at all can be listed and ignored too. Ignoring is tied to the
+    reason it was listed for, so a new problem brings the title back.
+    """
+
+    __tablename__ = "replacement_reviews"
+
+    target_key: Mapped[str] = mapped_column(String(150), primary_key=True)
+    ignored_reason: Mapped[str | None] = mapped_column(String(32))
+    last_search_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_search_result: Mapped[str | None] = mapped_column(String(32))
 
 
 class UpgradeCandidate(TimestampMixin, Base):

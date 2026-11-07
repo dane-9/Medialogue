@@ -5747,8 +5747,17 @@ export interface components {
             poster_ref?: string | null;
             /** Profile Name */
             profile_name?: string | null;
+            /**
+             * Readdable
+             * @default false
+             */
+            readdable: boolean;
             /** Reason */
             reason: string;
+            /** Reason Code */
+            reason_code?: ("not_watched" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent") | null;
+            /** Reason Since */
+            reason_since?: string | null;
             /** Root Name */
             root_name?: string | null;
             /**
@@ -5801,8 +5810,8 @@ export interface components {
              * @enum {string}
              */
             action: "ignore" | "restore";
-            /** Torrent Ids */
-            torrent_ids: string[];
+            /** Targets */
+            targets: components["schemas"]["ReviewTarget"][];
         };
         /** ReplacementReviewResponse */
         ReplacementReviewResponse: {
@@ -5813,6 +5822,16 @@ export interface components {
         ReplacementSearchRequest: {
             /** Target Key */
             target_key?: string | null;
+        };
+        /** ReviewTarget */
+        ReviewTarget: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "not_watched" | "no_seeders" | "tracker_gone" | "removed_from_tracker" | "no_torrent";
+            /** Target Key */
+            target_key: string;
         };
         /** ScheduledTaskResponse */
         ScheduledTaskResponse: {

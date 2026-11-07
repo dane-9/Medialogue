@@ -21,10 +21,20 @@ class LostSourceEvidence(BaseModel):
     last_worked_at: datetime | None = None
 
 
+ReplacementReason = Literal["not_watched", "no_seeders", "tracker_gone", "removed_from_tracker", "no_torrent"]
+
+
 class ReplacementItem(BaseModel):
     target_key: str
     title: str
+    #: Why the title cannot be restored, in words, and as a code for the page.
     reason: str
+    #: None only for a replacement still under way after its problem cleared.
+    reason_code: ReplacementReason | None = None
+    #: When the problem started, where that is known.
+    reason_since: datetime | None = None
+    #: Not in qBittorrent, with archived torrents that can be added back.
+    readdable: bool = False
     torrent_ids: list[str] = Field(default_factory=list)
     tab: ReplacementTab
     #: Needs a decision from the user (search/choose, or a finished handoff).
