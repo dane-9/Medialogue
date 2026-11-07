@@ -4689,6 +4689,7 @@ select.input { background-color: var(--input-bg); }
 
 /* History: finished upgrades or replacements, opened from the page header. */
 .media-history-modal { width: min(760px, calc(100vw - 32px)); }
+.media-history-modal .modal-body { padding: var(--s4); }
 .media-history-list { display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
 .media-history-list li { display: grid; gap: 4px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
 .media-history-head { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
@@ -4705,6 +4706,36 @@ select.input { background-color: var(--input-bg); }
 .media-history-outcome { margin-left: auto; color: var(--ok); font-size: var(--t-xs); }
 .media-history-note { margin: 0; color: var(--muted); font-size: var(--t-sm); }
 .media-history-link { color: var(--accent-text); font-size: var(--t-xs); }
+/* Removed movies and shows: poster beside what it was and how it went. */
+/* Removed movies and shows as a table: title, size, when, restore. */
+.library-history-modal { width: min(1100px, calc(100vw - 32px)); }
+.library-history-table { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.library-history-head, .library-history-row { display: contents; }
+.library-history-head > * { position: sticky; top: calc(-1 * var(--s4)); z-index: 1; padding: var(--s2) 0 var(--s2) var(--s5); border-bottom: 1px solid var(--line); background: var(--surface) !important; }
+.library-history-sort { display: flex; align-items: center; gap: 4px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--faint); font: 600 var(--t-micro) var(--mono); letter-spacing: .06em; text-align: left; text-transform: uppercase; cursor: pointer; }
+.library-history-sort.numeric { justify-content: flex-end; }
+.library-history-sort:hover, .library-history-sort.active { color: var(--text); }
+.library-history-sort svg.flipped { transform: rotate(180deg); }
+/* Cells are spaced by padding, not a grid gap, so each row's line runs unbroken. */
+.library-history-row > * { display: flex; align-items: center; min-width: 0; padding: var(--s2) 0 var(--s2) var(--s5); border-bottom: 1px solid var(--line); }
+.library-history-title { gap: var(--s3); }
+.library-history-head > :first-child, .library-history-row > :first-child { padding-left: var(--s3); }
+.library-history-head > :last-child, .library-history-row > :last-child { padding-right: var(--s3); }
+.library-history-size { min-width: 72px; }
+.library-history-when { min-width: 130px; }
+.library-history-copy { display: grid; gap: 2px; min-width: 0; }
+.library-history-copy strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
+.library-history-copy small { color: var(--faint); font-size: var(--t-xs); }
+.library-history-size { justify-content: flex-end; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.library-history-when { flex-direction: column; align-items: flex-end !important; justify-content: center; gap: 2px; color: var(--muted); font-size: var(--t-xs); text-align: right; }
+.library-history-when small { color: var(--faint); font-size: var(--t-micro); }
+.library-history-action { justify-content: center; }
+.library-history-add { flex: none; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); }
+.library-history-add:hover:not(:disabled) { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
+.library-history-add:disabled { opacity: .4; cursor: default; }
+.library-history-poster { display: grid; place-items: center; width: 36px; aspect-ratio: 2 / 3; overflow: hidden; border-radius: var(--r-sm); background: var(--raised); color: var(--faint); }
+.library-history-poster img { width: 100%; height: 100%; object-fit: cover; }
+.library-history-release { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 
 /* Backups: Google Drive copy, coverage, restore and the torrent list. */
 .backups-page { display: grid; gap: var(--s4); }

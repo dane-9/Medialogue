@@ -4911,6 +4911,113 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "LibraryHistoryItem": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "poster_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Ref"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "release_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Name"
+          },
+          "removed_at": {
+            "format": "date-time",
+            "title": "Removed At",
+            "type": "string"
+          },
+          "season_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Season Numbers",
+            "type": "array"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tmdb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmdb Id"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "media_type",
+          "title",
+          "reason",
+          "removed_at"
+        ],
+        "title": "LibraryHistoryItem",
+        "type": "object"
+      },
       "LibrarySummary": {
         "description": "Counts the Media Folders page needs to explain the library's state.",
         "properties": {
@@ -17841,6 +17948,52 @@
         "summary": "Cancel",
         "tags": [
           "jobs and events"
+        ]
+      }
+    },
+    "/api/v1/library/history": {
+      "get": {
+        "description": "Movies or shows that were removed from the library, newest first.",
+        "operationId": "library_history_api_v1_library_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "media_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MediaType"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryHistoryItem"
+                  },
+                  "title": "Response Library History Api V1 Library History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library History",
+        "tags": [
+          "library"
         ]
       }
     },

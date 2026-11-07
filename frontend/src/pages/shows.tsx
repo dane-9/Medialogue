@@ -7,6 +7,7 @@ import { Tooltip } from '../components/Tooltip'
 import { useConfirm } from '../components/Confirm'
 import { usePlexAvailable } from '../components/Shell'
 import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/ui'
+import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { settingsApi } from '../api/modules/settings'
 import { showsApi } from '../api/modules/shows'
 import { systemApi } from '../api/modules/system'
@@ -25,6 +26,7 @@ export function ShowsPage() {
   const [items, setItems] = useState<Show[]>([])
   const [view, setView] = useState<'cards' | 'table'>(() => normalizeMediaView(window.localStorage.getItem('medialogue.shows.view')))
   const [query, setQuery] = useState('')
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [filter, setFilter] = useState('All')
   const [sort, setSort] = useState('title')
   const [loading, setLoading] = useState(true)
@@ -87,7 +89,8 @@ export function ShowsPage() {
     return items.filter((show) => (filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsShowReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter))
       && (!needle || show.title.toLowerCase().includes(needle)))
   }, [items, filter, query])
-  return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files.">
+  return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
+    {historyOpen && <LibraryHistoryModal mediaType="shows" onClose={() => setHistoryOpen(false)} />}
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load Shows" detail={error} />}

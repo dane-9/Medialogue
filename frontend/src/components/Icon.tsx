@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react'
 
-type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'blocklist' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving' | 'tracker' | 'queue-top' | 'queue-bottom' | 'queue-up' | 'queue-down' | 'share-ratio' | 'tag' | 'category' | 'monitored' | 'monitored-off' | 'radio-selected'
+type IconName = 'download' | 'alert' | 'search' | 'archive' | 'sliders' | 'settings' | 'menu' | 'activity' | 'play' | 'pause' | 'check' | 'chevron' | 'plus' | 'refresh' | 'logout' | 'external' | 'grid' | 'list' | 'folder' | 'database' | 'server' | 'clock' | 'arrow' | 'close' | 'spark' | 'eye' | 'eye-off' | 'copy' | 'clapper' | 'tv-screen' | 'caret' | 'quality-profile' | 'custom-format' | 'new-media' | 'info' | 'lock' | 'unlock' | 'blocklist' | 'plex' | 'tmdb' | 'qbittorrent' | 'backup' | 'security' | 'indexers' | 'upgrade-media' | 'chevrons-up' | 'chevrons-down' | 'stop' | 'transfer' | 'play-solid' | 'checking' | 'shuffle' | 'moving' | 'tracker' | 'queue-top' | 'queue-bottom' | 'queue-up' | 'queue-down' | 'share-ratio' | 'tag' | 'category' | 'monitored' | 'monitored-off' | 'radio-selected' | 'open-in'
 
 const paths: Record<IconName, JSX.Element> = {
   // Queue moves: the full mark (outline chevron above a solid arrow) means
@@ -244,6 +244,11 @@ const paths: Record<IconName, JSX.Element> = {
     <path fill="currentColor" stroke="none" d="M488 384H24a8 8 0 0 1-8-8V88a8 8 0 0 1 8-8h464a8 8 0 0 1 8 8v288a8 8 0 0 1-8 8" />
     <rect width="288" height="32" x="112" y="400" rx="4" ry="4" fill="currentColor" stroke="none" />
   </>,
+  // An arrow going into a box: opens a further window.
+  'open-in': <g fill="currentColor" stroke="none">
+    <path d="m16 12l-6-5v4H3v2h7v4z" />
+    <path d="M19 3h-7v2h7v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2" />
+  </g>,
   // A selected radio button: ring and centre dot.
   'radio-selected': <>
     <path fill="currentColor" stroke="none" d="M12 5c-3.859 0-7 3.141-7 7s3.141 7 7 7s7-3.141 7-7s-3.141-7-7-7m0 12c-2.757 0-5-2.243-5-5s2.243-5 5-5s5 2.243 5 5s-2.243 5-5 5" />

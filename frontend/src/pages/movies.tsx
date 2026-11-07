@@ -11,6 +11,7 @@ import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
 import { usePlexAvailable } from '../components/Shell'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select } from '../components/ui'
+import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
 import { systemApi } from '../api/modules/system'
@@ -33,6 +34,7 @@ export function MoviesPage() {
   const [filter, setFilter] = useState('All')
   const [sort, setSort] = useState('title')
   const [query, setQuery] = useState('')
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [tagFilter, setTagFilter] = useState(searchParams.get('tag') ?? '')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
@@ -159,7 +161,8 @@ export function MoviesPage() {
       return matchesFilter && (!needle || movie.title.toLowerCase().includes(needle) || String(movie.year ?? '').includes(needle))
     })
   }, [movies, filter, query])
-  return <Page title="Movies" subtitle="Your library, exactly where it was downloaded.">
+  return <Page title="Movies" subtitle="Your library, exactly where it was downloaded." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
+    {historyOpen && <LibraryHistoryModal mediaType="movies" onClose={() => setHistoryOpen(false)} />}
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div>{selected.size > 0 && <span className="selection-count">{selected.size} selected · right-click for actions</span>}<div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}

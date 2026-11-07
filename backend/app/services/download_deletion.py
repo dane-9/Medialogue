@@ -286,9 +286,50 @@ async def _mark_missing(db: AsyncSession, plan: DeletionPlan) -> None:
             await refresh_episode_presence(db, episode, emit_event=False)
 
 
+async def _record_history(db: AsyncSession, plan: DeletionPlan, title: PlannedTitle, *, whole_show: bool) -> None:
+    """Keep a note of the title before its rows go, for the library's History."""
+
+    from app.models.domain import LibraryHistoryEntry, MediaType, QualityDefinition
+
+    if title.kind == "movie":
+        owner = await db.get(Movie, title.id)
+        releases = (await db.scalars(select(MovieRelease).options(selectinload(MovieRelease.torrents)).where(
+            MovieRelease.id.in_(plan.movie_release_ids), MovieRelease.movie_id == title.id))).all()
+    else:
+        owner = await db.get(Show, title.id)
+        releases = (await db.scalars(select(ShowRelease).options(selectinload(ShowRelease.torrents)).where(
+            ShowRelease.id.in_(plan.show_release_ids), ShowRelease.show_id == title.id))).all()
+    release = releases[0] if releases else None
+    quality = await db.get(QualityDefinition, release.quality_definition_id) if release and release.quality_definition_id else None
+    sizes = [torrent.total_size for item in releases for torrent in item.torrents if torrent.total_size]
+    db.add(LibraryHistoryEntry(
+        media_type=MediaType.MOVIES if title.kind == "movie" else MediaType.SHOWS,
+        title=title.title, year=title.year,
+        tmdb_id=getattr(owner, "tmdb_id", None), poster_ref=getattr(owner, "poster_ref", None),
+        season_numbers=[] if whole_show else sorted(title.season_numbers),
+        release_name=release.raw_release_name if release else None,
+        quality=quality.name if quality else None,
+        size=max(sizes) if sizes else None,
+        reason="Deleted from Downloads",
+    ))
+
+
 async def _forget(db: AsyncSession, plan: DeletionPlan) -> None:
     """Remove the titles from Medialogue, as far as this deletion reaches."""
 
+    for title in plan.titles:
+        if title.kind == "show":
+            # The show goes too when these are its last releases.
+            others = await db.scalar(select(ShowRelease.id).where(
+                ShowRelease.show_id == title.id, ShowRelease.id.not_in(plan.show_release_ids)).limit(1))
+            await _record_history(db, plan, title, whole_show=others is None)
+        else:
+            # A movie kept through another edition has not left the library.
+            others = await db.scalar(select(MovieRelease.id).where(
+                MovieRelease.movie_id == title.id, MovieRelease.id.not_in(plan.movie_release_ids),
+                MovieRelease.release_state.in_([ReleaseState.CURRENT, ReleaseState.MISSING])).limit(1))
+            if others is None:
+                await _record_history(db, plan, title, whole_show=False)
     for directory in await _deleted_directories(db, plan):
         await db.delete(directory)
     await db.flush()

@@ -925,6 +925,34 @@ class Indexer(TimestampMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
 
+class LibraryHistoryEntry(Base):
+    """A movie, or a show's seasons, that left the library.
+
+    Written when Medialogue removes a title, so what you once had is still on
+    record after the title's own rows are gone. Plain values only: nothing
+    here points at rows that no longer exist.
+    """
+
+    __tablename__ = "library_history"
+    __table_args__ = (Index("ix_library_history_removed_at", "removed_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    year: Mapped[int | None] = mapped_column(Integer)
+    tmdb_id: Mapped[int | None] = mapped_column(Integer)
+    poster_ref: Mapped[str | None] = mapped_column(Text)
+    #: The seasons removed, for a show; empty when the whole show went.
+    season_numbers: Mapped[list[int]] = mapped_column(JSONType, default=list, nullable=False)
+    #: What was on disk when it went.
+    release_name: Mapped[str | None] = mapped_column(Text)
+    quality: Mapped[str | None] = mapped_column(String(128))
+    size: Mapped[int | None] = mapped_column(BigInteger)
+    #: How it went, in words: "Deleted from Downloads", ...
+    reason: Mapped[str] = mapped_column(String(128), nullable=False)
+    removed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class ReplacementReview(TimestampMixin, Base):
     """What the user decided about one Replace Media title, and its last search.
 

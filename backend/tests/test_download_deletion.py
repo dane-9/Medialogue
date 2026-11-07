@@ -116,6 +116,13 @@ def test_forget_removes_the_movie_from_medialogue(archive_client):
             assert await db.get(Movie, ids["Keep"]["movie"]) is not None
     asyncio.run(check())
 
+    # It is still on record in the Movies History.
+    history = client.get("/api/v1/library/history?media_type=movies", headers=headers)
+    assert history.status_code == 200, history.text
+    assert [(item["title"], item["year"], item["release_name"], item["reason"]) for item in history.json()] == [
+        ("Gone", 2020, "Gone.2020.1080p", "Deleted from Downloads")]
+    assert client.get("/api/v1/library/history?media_type=shows", headers=headers).json() == []
+
 
 def test_read_only_media_folder_blocks_and_deletes_nothing(archive_client):
     client, base, _ = archive_client

@@ -1307,6 +1307,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library History
+         * @description Movies or shows that were removed from the library, newest first.
+         */
+        get: operations["library_history_api_v1_library_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/summary": {
         parameters: {
             query?: never;
@@ -4426,6 +4446,38 @@ export interface components {
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
+        /** LibraryHistoryItem */
+        LibraryHistoryItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            media_type: components["schemas"]["MediaType"];
+            /** Poster Ref */
+            poster_ref?: string | null;
+            /** Quality */
+            quality?: string | null;
+            /** Reason */
+            reason: string;
+            /** Release Name */
+            release_name?: string | null;
+            /**
+             * Removed At
+             * Format: date-time
+             */
+            removed_at: string;
+            /** Season Numbers */
+            season_numbers?: number[];
+            /** Size */
+            size?: number | null;
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id?: number | null;
+            /** Year */
+            year?: number | null;
+        };
         /**
          * LibrarySummary
          * @description Counts the Media Folders page needs to explain the library's state.
@@ -10001,6 +10053,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_history_api_v1_library_history_get: {
+        parameters: {
+            query: {
+                media_type: components["schemas"]["MediaType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryHistoryItem"][];
                 };
             };
             /** @description Validation Error */
