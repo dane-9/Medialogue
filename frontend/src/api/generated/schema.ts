@@ -5898,6 +5898,8 @@ export interface components {
             title: string;
             /** Torrent Ids */
             torrent_ids?: string[];
+            /** Upgrade Types */
+            upgrade_types?: string[];
             /** Year */
             year?: number | null;
         };

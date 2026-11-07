@@ -80,6 +80,8 @@ class ReplacementItem(BaseModel):
     profile_name: str | None = None
     current_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
     candidate_matched_formats: list[UpgradeMatchedFormat] = Field(default_factory=list)
+    #: Why the replacement is better: quality, custom_format, season_pack, proper, ...
+    upgrade_types: list[str] = Field(default_factory=list)
     #: Live from the download client while the replacement downloads, as
     #: Upgrade Media shows it: a 0..1 share, bytes per second, seconds left.
     download_progress: float | None = None

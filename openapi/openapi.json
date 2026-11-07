@@ -9238,6 +9238,13 @@
             "title": "Torrent Ids",
             "type": "array"
           },
+          "upgrade_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upgrade Types",
+            "type": "array"
+          },
           "year": {
             "anyOf": [
               {

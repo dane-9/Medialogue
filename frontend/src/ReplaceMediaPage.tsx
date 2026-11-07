@@ -9,6 +9,7 @@ import { Modal } from './components/Modal'
 import { Icon } from './components/Icon'
 import { Tooltip } from './components/Tooltip'
 import { ReleaseSourcePill } from './components/ReleaseSourcePill'
+import { UpgradePill } from './components/UpgradePill'
 import { MediaHistoryModal } from './components/MediaHistoryModal'
 import { useConfirm } from './components/Confirm'
 import { formatBytes, ReleaseResults } from './components/ReleaseResults'
@@ -550,7 +551,15 @@ export default function ReplaceMediaPage() {
                           </UpgradeCompare></span>
                           {/* The download fills the space between score and indexer. */}
                           {running && <span className="upgrade-v2-bar" style={{ '--upgrade-progress': `${runningPercent}%` } as CSSProperties} aria-hidden="true" />}
-                          {item.indexer && <span className="upgrade-v2-facts"><span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexer}</span></span>}
+                          {item.indexer && <span className="upgrade-v2-facts"><UpgradePill facts={{
+                            currentQuality: item.current_quality ?? undefined,
+                            quality: item.candidate_quality ?? undefined,
+                            upgradeTypes: item.upgrade_types ?? [],
+                            currentMatchedFormats: (item.current_matched_formats ?? []).map(toMatchedFormat),
+                            candidateMatchedFormats: (item.candidate_matched_formats ?? []).map(toMatchedFormat),
+                            currentCustomFormatScore: item.current_score ?? 0,
+                            customFormatScore: item.candidate_score ?? 0,
+                          }} /><span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexer}</span></span>}
                         </div>
                         : <div className="upgrade-v2-meta" />}
                 </div>

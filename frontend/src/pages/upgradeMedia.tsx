@@ -6,7 +6,7 @@ import { diffReleaseTokens } from '../lib/releaseTokens'
 import { candidateFormatReasons, shareCombinedDynamicRangeReasons, upgradeTokenReason, UPGRADE_REASON_SCORE } from '../lib/upgradeTokenReason'
 import { formatBytes, ReleaseResults } from '../components/ReleaseResults'
 import { ReleaseSourcePill } from '../components/ReleaseSourcePill'
-import { primaryUpgrade, upgradeChanges } from '../lib/primaryUpgrade'
+import { UpgradePill } from '../components/UpgradePill'
 import { MediaHistoryModal } from '../components/MediaHistoryModal'
 import { formatPeers, swarmHealth } from '../lib/swarm'
 import { qualityLabel } from '../lib/qualityLabel'
@@ -90,28 +90,6 @@ export function UpgradeCompare({ item, profile, children }: { item: UpgradeCompa
         </span>
       : <small>No Custom Formats matched either release.</small>}
   </span>}>{children}</Tooltip>
-}
-
-/** "1080p → 2160p" with the size-change caret, pointing right, for the arrow. */
-function CaretText({ text }: { text: string }) {
-  const parts = text.split(' → ')
-  return <>{parts.map((part, index) => <Fragment key={index}>{index > 0 && <span className="upgrade-caret" aria-label="to"><Icon name="caret" size={9} /></span>}{part}</Fragment>)}</>
-}
-
-/** What the upgrade changes against the current release, aspect by aspect,
- *  for the hover on its UPGRADE pill. */
-export function UpgradeChangesCard({ item }: { item: Parameters<typeof upgradeChanges>[0] }) {
-  const rows = upgradeChanges(item)
-  return <span className="upgrade-diff">
-    {rows.length > 0 && <span className="upgrade-diff-rows">
-      {rows.map((row, index) => <Fragment key={`${row.label}-${index}`}>
-        <span className="upgrade-diff-label">{row.label}</span>
-        <span className="upgrade-diff-from">{row.from}</span>
-        <span className="upgrade-caret" aria-label="to"><Icon name="caret" size={9} /></span>
-        <span className={`upgrade-diff-to ${row.tone}`}>{row.to}</span>
-      </Fragment>)}
-    </span>}
-  </span>
 }
 
 type UpgradeStatus = 'ready' | 'in_progress' | 'attention'
@@ -614,11 +592,8 @@ export function UpgradeMediaPage() {
             const scoreWeight = delta >= 100 ? 'big' : delta >= 25 ? 'medium' : 'small'
             // Seeds and size are columns level with the release name, under
             // their headers; the indexer sits below them on the score's line.
-            const improvement = primaryUpgrade(item)
             const releaseFacts = <span className="upgrade-v2-facts">
-              {improvement && <Tooltip className="release-pill release-pill-upgrade" placement="below" delay={250} content={<UpgradeChangesCard item={item} />}>
-                <i>Upgrade</i><CaretText text={improvement.label} />
-              </Tooltip>}
+              <UpgradePill facts={item} />
               <span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexerName}</span>
             </span>
             return <div className="new-media-row" key={item.id}>
