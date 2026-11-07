@@ -390,8 +390,6 @@ async def build_recovery_manifest(
         if isinstance(prior_observations, list):
             observations = prior_observations
 
-    primary = associations[0] if associations else {}
-    original_client = observations[0] if observations else {}
     metadata = torrent.metadata_json or {}
     archive_info = existing.get("archive") if isinstance(existing.get("archive"), dict) else {}
     existing_recovery = existing.get("recovery") if isinstance(existing.get("recovery"), dict) else {}
@@ -1063,7 +1061,7 @@ async def rebuild_catalogue_from_manifests(db: AsyncSession) -> dict[str, Any]:
 
 #: Release states that still mean "this is on the server". A release whose
 #: files went missing is still yours: a dead disk must never cost its backup.
-KEPT_RELEASE_STATES = (ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.CONFLICT, ReleaseState.DUPLICATE)
+KEPT_RELEASE_STATES = (ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE)
 #: How long Google Drive keeps a pruned torrent after it leaves the archive.
 DRIVE_GRACE = timedelta(days=30)
 

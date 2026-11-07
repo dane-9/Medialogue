@@ -61,8 +61,6 @@ class NewMediaState(StrEnum):
 class IdentityState(StrEnum):
     MATCHED = "matched"
     MANUAL = "manual"
-    UNCERTAIN = "uncertain"
-    CONFLICT = "conflict"
     UNMATCHED = "unmatched"
 
 
@@ -71,15 +69,12 @@ class ReleaseState(StrEnum):
     MISSING = "missing"
     REPLACED = "replaced"
     REMOVED = "removed"
-    CONFLICT = "conflict"
     DUPLICATE = "duplicate"
 
 
 class PresenceState(StrEnum):
     PRESENT = "present"
     MISSING = "missing"
-    UNMATCHED = "unmatched"
-    CONFLICT = "conflict"
 
 
 class ReleaseScope(StrEnum):
@@ -103,14 +98,11 @@ class SourceType(StrEnum):
     TORRENT_NAME = "torrent_name"
     DIRECTORY_NAME = "directory_name"
     FILENAME = "filename"
-    PROWLARR_RESULT = "prowlarr_result"
 
 
 class MatchMethod(StrEnum):
     PARSER = "parser"
-    PLEX = "plex"
     MANUAL = "manual"
-    COMBINED = "combined"
 
 
 class TorrentArchiveState(StrEnum):
@@ -140,7 +132,6 @@ class PlexMatchState(StrEnum):
 class PlexMatchMethod(StrEnum):
     EXACT_PATH = "exact_path"
     TITLE_YEAR = "title_year"
-    MANUAL = "manual"
 
 
 class JobStatus(StrEnum):
@@ -191,10 +182,6 @@ class Severity(StrEnum):
 
 class IntegrationType(StrEnum):
     QBITTORRENT = "qbittorrent"
-    PLEX = "plex"
-    PROWLARR = "prowlarr"
-    TMDB = "tmdb"
-    TVDB = "tvdb"
 
 
 class TimestampMixin:

@@ -14,4 +14,3 @@
 - [Troubleshooting](TROUBLESHOOTING.md)
 - [Replace Media](REPLACE_MEDIA.md)
 - [Release checklist](RELEASE_CHECKLIST.md)
-- [System Status page (proposal, not built)](SYSTEM_STATUS.md)

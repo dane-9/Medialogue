@@ -4,10 +4,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.domain import IdentityState, MediaRole, PresenceState, ReleaseScope, Severity
+from app.models.domain import IdentityState, PresenceState, ReleaseScope, Severity
 from app.schemas.torrent_status import MediaTorrentStatusResponse
 
-ShowCollectionState = Literal["Present", "Missing", "Conflict"]
+ShowCollectionState = Literal["Present", "Missing"]
 ShowPlexState = Literal[
     "matched",
     "pending",

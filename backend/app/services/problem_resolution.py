@@ -181,11 +181,7 @@ async def _choose_replacement_target(db: AsyncSession, problem: Problem, payload
         except ValueError:
             return None
 
-    directory = None
-    if _uuid("directory_id"):
-        directory = await db.get(MediaDirectory, _uuid("directory_id"))
-    if directory is None and details.get("path"):
-        directory = await db.scalar(select(MediaDirectory).where(MediaDirectory.resolved_path == str(details["path"])))
+    directory = await db.get(MediaDirectory, _uuid("directory_id")) if _uuid("directory_id") else None
     if directory is None or directory.storage_root_id is None:
         raise AppError("NOT_FOUND", "The new download's folder is no longer known. Recheck this Problem.", status_code=404)
     root = await db.get(StorageRoot, directory.storage_root_id)
@@ -293,7 +289,7 @@ async def _confirm_movie_match(
         except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
             raise AppError("MEDIA_PATH_UNAVAILABLE", f"Could not inspect the selected directory: {exc}", status_code=409) from exc
         result = await reconcile_movie_directory(db, root, observation, movie_hint=movie, manual_identity=True)
-        if result not in {"matched", "duplicates", "conflicts"}:
+        if result not in {"matched", "duplicates"}:
             raise AppError("MANUAL_MATCH_FAILED", "The selected Movie could not be attached to this directory.", status_code=409)
     else:
         raise AppError("PROBLEM_ACTION_NOT_ALLOWED", "This problem cannot be resolved as a Movie match.", status_code=409)

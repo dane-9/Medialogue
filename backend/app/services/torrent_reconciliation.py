@@ -275,7 +275,7 @@ async def finalize_completed_torrent(
     *,
     resolved_path: str | None,
     scope: MediaType,
-    download_client_id: UUID | None = None,
+    download_client_id: UUID,
 ) -> str:
     """Verify and attach a completed torrent, preserving old evidence."""
 
@@ -362,7 +362,7 @@ async def finalize_completed_torrent(
         incoming_release=incoming_release,
         force_new_media=confidence < 0.90,
     )
-    if result in {"matched", "duplicates", "conflicts"}:
+    if result in {"matched", "duplicates"}:
         await clear_missing_path(db, torrent)
     return result
 
@@ -372,7 +372,7 @@ async def _finalize_completed_show_torrent(
     torrent: Torrent,
     *,
     resolved_path: str | None,
-    download_client_id: UUID | None = None,
+    download_client_id: UUID,
 ) -> str:
     if not resolved_path:
         await report_missing_path(

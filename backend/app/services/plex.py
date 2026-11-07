@@ -120,7 +120,7 @@ async def recheck_movie_plex(
     releases = [
         release
         for release in loaded_releases
-        if release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
+        if release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}
         and any(directory.exists for directory in release.directories)
     ]
     client = None if snapshot is not None else client_factory(configuration.url, configuration.token)

@@ -26,7 +26,7 @@ export interface HealthIndicator {
 }
 
 type PlexHealthState = 'healthy' | 'unavailable' | 'unknown'
-type IdentityState = 'matched' | 'manual' | 'uncertain' | 'conflict' | 'unmatched'
+type IdentityState = 'matched' | 'manual' | 'unmatched'
 export type ReleaseState = 'current' | 'missing' | 'replaced' | 'removed' | 'conflict' | 'duplicate'
 type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
 type ProblemStatus = 'open' | 'resolved' | 'dismissed'
@@ -60,7 +60,7 @@ export interface Movie {
   releases: number
   quality: string
   edition?: string
-  status: 'Present' | 'Missing' | 'Conflict' | 'Duplicate'
+  status: 'Present' | 'Missing' | 'Duplicate'
   plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
   confidence: number
   location: string
@@ -273,7 +273,7 @@ export interface Episode {
   tmdbId?: number
   tvdbId?: number
   monitored: boolean
-  status: 'Present' | 'Missing' | 'Conflict' | 'Unmatched'
+  status: 'Present' | 'Missing'
   revision: number
   quality?: string
   plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
@@ -315,7 +315,7 @@ export interface Show {
   episodesPresent: number
   episodesTotal: number
   episodesMissing?: number
-  status: 'Present' | 'Missing' | 'Conflict'
+  status: 'Present' | 'Missing'
   plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
   tmdbId?: number
   tvdbId?: number

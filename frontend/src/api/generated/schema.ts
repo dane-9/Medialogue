@@ -4193,7 +4193,7 @@ export interface components {
          * IdentityState
          * @enum {string}
          */
-        IdentityState: "matched" | "manual" | "uncertain" | "conflict" | "unmatched";
+        IdentityState: "matched" | "manual" | "unmatched";
         /** IndexerCreate */
         IndexerCreate: {
             /** Api Key */
@@ -5045,7 +5045,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Conflict" | "Duplicate";
+            state: "Present" | "Missing" | "Duplicate";
             /** Storage Root */
             storage_root?: string | null;
             /** Tags */
@@ -5229,7 +5229,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Conflict" | "Duplicate";
+            state: "Present" | "Missing" | "Duplicate";
         };
         /** MovieReleaseResponse */
         MovieReleaseResponse: {
@@ -5334,7 +5334,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Conflict" | "Duplicate";
+            state: "Present" | "Missing" | "Duplicate";
             /** Tags */
             tags?: components["schemas"]["TagResponse"][];
             /** Title */
@@ -5453,7 +5453,7 @@ export interface components {
          * PresenceState
          * @enum {string}
          */
-        PresenceState: "present" | "missing" | "unmatched" | "conflict";
+        PresenceState: "present" | "missing";
         /** ProblemRecheckAllResponse */
         ProblemRecheckAllResponse: {
             /** Job Ids */
@@ -5804,7 +5804,7 @@ export interface components {
          * ReleaseState
          * @enum {string}
          */
-        ReleaseState: "current" | "missing" | "replaced" | "removed" | "conflict" | "duplicate";
+        ReleaseState: "current" | "missing" | "replaced" | "removed" | "duplicate";
         /** RemotePathMappingCreate */
         RemotePathMappingCreate: {
             /**
@@ -6498,7 +6498,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Conflict";
+            state: "Present" | "Missing";
             /** Storage Roots */
             storage_roots?: components["schemas"]["ShowStorageRootResponse"][];
             /** Title */
@@ -6660,7 +6660,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Conflict";
+            state: "Present" | "Missing";
             /** Title */
             title: string;
             /** Tmdb Episode Group Id */

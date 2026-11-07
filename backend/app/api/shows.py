@@ -74,8 +74,6 @@ def _counted_episodes(show: Show) -> list[Episode]:
 
 def _show_state(show: Show) -> str:
     counted = _counted_episodes(show)
-    if show.identity_state.value == "conflict":
-        return "Conflict"
     if not counted:
         return "Present" if any(episode.presence_state == PresenceState.PRESENT for episode in show.episodes) else "Missing"
     return "Missing" if any(episode.presence_state != PresenceState.PRESENT for episode in counted) else "Present"
@@ -209,9 +207,7 @@ async def _list_summaries(db: AsyncSession, shows: list[Show]) -> list[ShowSumma
     items = []
     for show in shows:
         total, counted_present, any_present = episodes.get(show.id, (0, 0, 0))
-        if show.identity_state.value == "conflict":
-            state = "Conflict"
-        elif not total:
+        if not total:
             state = "Present" if any_present else "Missing"
         else:
             state = "Missing" if counted_present < total else "Present"

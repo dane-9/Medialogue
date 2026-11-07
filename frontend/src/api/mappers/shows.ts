@@ -28,8 +28,6 @@ export function mapEpisode(value: EpisodeDto): Episode {
   const statuses: Record<EpisodeDto['presence_state'], Episode['status']> = {
     present: 'Present',
     missing: 'Missing',
-    conflict: 'Conflict',
-    unmatched: 'Unmatched',
   }
   return {
     id: value.id,

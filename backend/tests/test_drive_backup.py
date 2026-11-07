@@ -202,12 +202,11 @@ def test_database_copies_are_thinned_by_the_retention_rules(recovery_env, drive)
     assert len(FakeDrive.live("database")) == 1
 
 
-def test_the_old_keep_setting_becomes_the_daily_count():
+def test_retention_settings_default_where_unset():
     from app.services.remote_backups import retention_settings
 
-    assert retention_settings({"keep_database": 14}) == {"keep_recent": 0, "keep_daily": 14, "keep_weekly": 4, "keep_monthly": 6}
-    assert retention_settings({"keep_database": 14, "keep_daily": 3})["keep_daily"] == 3
     assert retention_settings({}) == {"keep_recent": 0, "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 6}
+    assert retention_settings({"keep_daily": 3, "keep_weekly": "x"}) == {"keep_recent": 0, "keep_daily": 3, "keep_weekly": 4, "keep_monthly": 6}
 
 
 def test_retention_keeps_every_recent_copy_and_one_per_week_and_month_after():

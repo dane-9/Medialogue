@@ -9,7 +9,6 @@ class ReleaseState(StrEnum):
     MISSING = "missing"
     REPLACED = "replaced"
     REMOVED = "removed"
-    CONFLICT = "conflict"
     DUPLICATE = "duplicate"
 
 
@@ -29,7 +28,6 @@ class DecisionKind(StrEnum):
     REAPPEARED = "reappeared"
     REPLACEMENT = "replacement"
     DUPLICATE = "duplicate"
-    CONFLICT = "conflict"
     REVIEW = "review"
     IGNORED = "ignored"
     PROBLEM = "problem"

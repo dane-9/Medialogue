@@ -4065,8 +4065,6 @@
         "enum": [
           "matched",
           "manual",
-          "uncertain",
-          "conflict",
           "unmatched"
         ],
         "title": "IdentityState",
@@ -6476,7 +6474,6 @@
             "enum": [
               "Present",
               "Missing",
-              "Conflict",
               "Duplicate"
             ],
             "title": "State",
@@ -6946,7 +6943,6 @@
             "enum": [
               "Present",
               "Missing",
-              "Conflict",
               "Duplicate"
             ],
             "title": "State",
@@ -7272,7 +7268,6 @@
             "enum": [
               "Present",
               "Missing",
-              "Conflict",
               "Duplicate"
             ],
             "title": "State",
@@ -7644,9 +7639,7 @@
       "PresenceState": {
         "enum": [
           "present",
-          "missing",
-          "unmatched",
-          "conflict"
+          "missing"
         ],
         "title": "PresenceState",
         "type": "string"
@@ -8627,7 +8620,6 @@
           "missing",
           "replaced",
           "removed",
-          "conflict",
           "duplicate"
         ],
         "title": "ReleaseState",
@@ -10943,8 +10935,7 @@
           "state": {
             "enum": [
               "Present",
-              "Missing",
-              "Conflict"
+              "Missing"
             ],
             "title": "State",
             "type": "string"
@@ -11374,8 +11365,7 @@
           "state": {
             "enum": [
               "Present",
-              "Missing",
-              "Conflict"
+              "Missing"
             ],
             "title": "State",
             "type": "string"

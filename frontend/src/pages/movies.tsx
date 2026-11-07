@@ -181,7 +181,7 @@ function MovieTagChips({ movie, onTagClick }: { movie: Movie; onTagClick?: (tag:
   return <div className="tag-chip-row">{movie.tags.map((tag) => <span key={tag.id} className="tag-chip" role={onTagClick ? 'button' : undefined} tabIndex={onTagClick ? 0 : undefined} onClick={(event) => { if (!onTagClick) return; event.preventDefault(); event.stopPropagation(); onTagClick(tag.name) }} onKeyDown={(event) => { if (onTagClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onTagClick(tag.name) } }}>{tag.name}</span>)}</div>
 }
 
-const needsReview = (movie: Movie) => movie.status === 'Conflict' || movie.status === 'Duplicate' || (movie.problemCount ?? 0) > 0
+const needsReview = (movie: Movie) => movie.status === 'Duplicate' || (movie.problemCount ?? 0) > 0
 
 const MovieCard = memo(function MovieCard({ movie, selected, onToggle, onContext, busy, onAction }: { movie: Movie; selected: boolean; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onAction: (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => Promise<void> }) {
   const plexAvailable = usePlexAvailable()

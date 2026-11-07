@@ -106,13 +106,11 @@ def update_backup_settings(changes: dict) -> dict:
 
 
 def retention_settings(state: dict) -> dict[str, int]:
-    """The retention counts, with the old single "keep N" setting as the daily count."""
+    """The retention counts, defaults where unset."""
 
     values: dict[str, int] = {}
     for key, default in DEFAULT_RETENTION.items():
         raw = state.get(key)
-        if raw is None and key == "keep_daily" and state.get("keep_database"):
-            raw = state["keep_database"]
         try:
             values[key] = max(0, int(raw if raw is not None else default))
         except (TypeError, ValueError):
@@ -197,7 +195,7 @@ def _write_copy_index(index: dict[str, dict]) -> None:
 
 
 def _catalogue_hashes(data: bytes) -> list[str] | None:
-    """The torrent list inside a database copy; None for a copy made before lists."""
+    """The torrent list inside a database copy; None when it cannot be read."""
 
     import io
 
@@ -228,8 +226,7 @@ async def protected_hashes(drive: "DriveBackups", folders: dict[str, str]) -> se
             hashes = _catalogue_hashes(await drive.download(row["id"]))
         except DriveMissing:
             continue
-        index[row["id"]] = {"name": row.get("name"), "created_at": row.get("createdTime"),
-                            "torrents": hashes or [], "listed": hashes is not None}
+        index[row["id"]] = {"name": row.get("name"), "created_at": row.get("createdTime"), "torrents": hashes or []}
         changed = True
     live = {row["id"] for row in copies}
     for file_id in [file_id for file_id in index if file_id not in live]:
@@ -642,7 +639,7 @@ async def backup_database(drive: DriveBackups, state: dict, folders: dict[str, s
         bundle.unlink(missing_ok=True)
 
         index = read_copy_index()
-        index[row["id"]] = {"name": name, "created_at": row.get("createdTime"), "torrents": hashes, "listed": True}
+        index[row["id"]] = {"name": name, "created_at": row.get("createdTime"), "torrents": hashes}
         _write_copy_index(index)
 
         # Older copies go only after this one is confirmed.

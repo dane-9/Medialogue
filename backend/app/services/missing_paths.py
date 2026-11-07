@@ -40,7 +40,7 @@ async def report_missing_path(
     db: AsyncSession,
     torrent: Torrent,
     *,
-    download_client_id: UUID | None,
+    download_client_id: UUID,
     message: str,
     details: dict[str, Any] | None = None,
 ) -> bool:
@@ -52,14 +52,6 @@ async def report_missing_path(
     torrent.metadata_json = metadata
     if passes < PASSES_BEFORE_PROBLEM:
         return False
-    if download_client_id is None:
-        # No client to group under: keep the problem on the torrent itself.
-        from app.services.reconciliation import open_problem
-
-        await open_problem(
-            db, reason=REASON, entity_type="torrent", entity_id=torrent.id, message=message, details=details or {},
-        )
-        return True
 
     entry = {
         "torrent_id": str(torrent.id),
@@ -86,14 +78,10 @@ async def report_missing_path(
 async def clear_missing_path(db: AsyncSession, torrent: Torrent) -> None:
     """The path was found, or no longer matters: forget the misses."""
 
-    from app.services.reconciliation import resolve_problem
-
     metadata = torrent.metadata_json or {}
     reported = int(metadata.get(_PASSES_KEY) or 0) >= PASSES_BEFORE_PROBLEM
     if _PASSES_KEY in metadata:
         torrent.metadata_json = {key: value for key, value in metadata.items() if key != _PASSES_KEY}
-    # Problems raised per torrent, before grouping or without a client.
-    await resolve_problem(db, REASON, "torrent", torrent.id)
     if not reported:
         return
     torrent_key = str(torrent.id)

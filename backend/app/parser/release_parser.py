@@ -576,10 +576,6 @@ def _resolution(normalized: str) -> str | None:
     return None
 
 
-def _token_values(normalized: str) -> set[str]:
-    return {_casefold_token(token.strip("[](){}")) for token in _tokens(normalized)}
-
-
 def _dvd_disc_layout(normalized: str) -> tuple[bool, bool, str | None]:
     """Return DVD capacities and a count-aware evidence label.
 
@@ -607,9 +603,7 @@ def _dvd_disc_layout(normalized: str) -> tuple[bool, bool, str | None]:
 
 
 def _quality(normalized: str) -> QualityInfo:
-    folded = normalized.casefold()
     resolution = _resolution(normalized)
-    values = _token_values(normalized)
     raw_tokens = tuple(_tokens(normalized))
 
     has_dvd5, has_dvd9, disc_layout = _dvd_disc_layout(normalized)

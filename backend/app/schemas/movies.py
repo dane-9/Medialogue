@@ -8,7 +8,7 @@ from app.models.domain import AssociationType, IdentityState, ReleaseState, Seve
 from app.schemas.tags import TagResponse
 from app.schemas.torrent_status import MediaTorrentStatusResponse
 
-MovieCollectionState = Literal["Present", "Missing", "Conflict", "Duplicate"]
+MovieCollectionState = Literal["Present", "Missing", "Duplicate"]
 MoviePlexState = Literal[
     "matched",
     "pending",

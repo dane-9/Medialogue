@@ -129,7 +129,7 @@ async def list_movies(
             release
             for release in movie.releases
             if release.release_state
-            in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
+            in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE}
         ]
         for movie in movies
     }
@@ -305,7 +305,7 @@ async def get_movie(
         release.id
         for release in movie.releases
         if release.release_state
-        in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
+        in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE}
     ]
     release_statuses = await release_torrent_statuses(
         db, active_release_ids, media_type="movies"
@@ -434,7 +434,7 @@ async def get_movie(
     active_directories = [
         directory
         for release in movie.releases
-        if release.release_state in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
+        if release.release_state in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE}
         for directory in release.directories
     ]
     root = await db.get(StorageRoot, active_directories[0].storage_root_id) if active_directories else None
@@ -567,13 +567,11 @@ def _summary(
     active = [
         release
         for release in movie.releases
-        if release.release_state in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}
+        if release.release_state in {ReleaseState.CURRENT, ReleaseState.MISSING, ReleaseState.DUPLICATE}
     ]
     physical = [release for release in active if any(directory.exists for directory in release.directories)]
     if any(release.release_state == ReleaseState.DUPLICATE for release in active):
         state = "Duplicate"
-    elif any(release.release_state == ReleaseState.CONFLICT for release in active):
-        state = "Conflict"
     elif physical:
         state = "Present"
     else:

@@ -111,7 +111,7 @@ async def execute_storage_root_scan(
 ) -> dict[str, int]:
     observer = observer or FilesystemObserver()
     if job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
-        return {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0}
+        return {"matched": 0, "review": 0, "duplicates": 0}
     await update_job(db, job, status=JobStatus.RUNNING, progress={"current": 0, "total": 0, "percent": 0, "stage": "enumerating"})
     await db.commit()
     publish_job_status(job)
@@ -138,7 +138,7 @@ async def execute_storage_root_scan(
         )
         await db.commit()
         publish_job_status(job)
-        return {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0, "affected": affected}
+        return {"matched": 0, "review": 0, "duplicates": 0, "affected": affected}
 
     observations = await asyncio.to_thread(observer.scan_root, root.resolved_root_path)
     await mark_root_available(db, root)
@@ -150,9 +150,9 @@ async def execute_storage_root_scan(
     await db.commit()
     await db.refresh(job)
     if job.status == JobStatus.CANCELLED:
-        return {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0}
+        return {"matched": 0, "review": 0, "duplicates": 0}
 
-    summary = {"matched": 0, "review": 0, "duplicates": 0, "conflicts": 0}
+    summary = {"matched": 0, "review": 0, "duplicates": 0}
     total = len(observations)
     for index, observation in enumerate(observations, start=1):
         await db.refresh(job)

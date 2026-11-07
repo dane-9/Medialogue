@@ -336,11 +336,11 @@ async def _mark_missing(db: AsyncSession, plan: DeletionPlan) -> None:
         media_file.exists = False
     for release_id in plan.movie_release_ids:
         release = await db.get(MovieRelease, release_id)
-        if release is not None and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}:
+        if release is not None and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}:
             release.release_state = ReleaseState.MISSING
     for release_id in plan.show_release_ids:
         release = await db.get(ShowRelease, release_id)
-        if release is not None and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE, ReleaseState.CONFLICT}:
+        if release is not None and release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE}:
             release.release_state = ReleaseState.MISSING
     await db.flush()
     await _refresh_episodes(db, episode_ids)

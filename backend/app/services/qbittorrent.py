@@ -928,7 +928,7 @@ async def _poll_download_client(
                         and str(observed.state or "").casefold() not in {"error", "missingfiles", "moving"}
                     ):
                         settled_cache[info_hash] = (fingerprint, checked_at)
-            except Exception as exc:
+            except Exception:
                 settled_cache.pop(info_hash, None)
                 # Python-side counters are not part of the database SAVEPOINT.
                 # Restore them when the torrent's database work was rolled back.
