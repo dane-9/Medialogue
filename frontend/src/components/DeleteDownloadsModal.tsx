@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { downloadsApi } from '../api/modules/downloads'
+import { ApiError } from '../api/transport'
 import { Modal } from './Modal'
 import { Button } from './ui'
 import { Icon } from './Icon'
@@ -11,7 +12,7 @@ type Plan = Awaited<ReturnType<typeof downloadsApi.deletePlan>>
 export function DeleteDownloadsModal({ downloadIds, onClose, onDone }: {
   downloadIds: string[]
   onClose: () => void
-  onDone: (message: string) => void
+  onDone: (message: string, tone?: 'ok' | 'error') => void
 }) {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [error, setError] = useState('')
@@ -40,6 +41,12 @@ export function DeleteDownloadsModal({ downloadIds, onClose, onDone }: {
         : library === 'replace' ? ' It is listed in Replace Media as Missing.' : ' It was removed from Medialogue.'
       onDone(`Deleted ${folders} and removed ${torrents}.${after}`)
     } catch (reason) {
+      // The torrents are already gone and the library was updated; only some
+      // files stayed. Retrying cannot help, so finish and say what is left.
+      if (reason instanceof ApiError && reason.code === 'DELETE_INCOMPLETE') {
+        onDone(reason.message, 'error')
+        return
+      }
       setError(reason instanceof Error ? reason.message : 'Could not delete the downloads.')
       setBusy(false)
     }

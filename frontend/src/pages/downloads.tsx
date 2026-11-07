@@ -546,10 +546,10 @@ export function DownloadsPage() {
     {deleting && <DeleteDownloadsModal
       downloadIds={deleting}
       onClose={() => setDeleting(null)}
-      onDone={(text) => {
+      onDone={(text, tone = 'ok') => {
         setDeleting(null)
         setSelected(new Set())
-        setActionNotice({ tone: 'ok', text })
+        setActionNotice({ tone, text })
         void load(false)
         void refreshFacets()
       }}
