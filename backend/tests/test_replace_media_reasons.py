@@ -233,3 +233,71 @@ async def test_media_gone_is_missing_or_files_missing_and_never_readdable():
         target = ReplacementTarget(target=None, torrents=problems[both_gone.id].torrents, releases=[], reason=MISSING)
         assert not target.readdable
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_cross_seed_on_the_same_files_protects_a_release_and_a_lone_removal_is_a_trump():
+    from app.models.domain import TorrentTrackerObservation
+    from app.services.payload_groups import GROUP_KEY
+    from app.services.replacements import TRUMPED
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions() as db:
+        movie = Movie(title="Movie", sort_title="Movie", identity_state=IdentityState.MATCHED)
+        db.add(movie); await db.flush()
+        releases = {name: MovieRelease(movie_id=movie.id, raw_release_name=f"{name}.2024.1080p")
+                    for name in ("trumped", "lonely_but_shared", "all_dead")}
+        db.add_all(releases.values()); await db.flush()
+
+        def make(name, group, *, tracker_state, terminal=None, alone=None):
+            item = Torrent(info_hash=uuid4().hex[:40], name=name, metadata_json={GROUP_KEY: group})
+            db.add(item)
+            return item, tracker_state, terminal, alone
+
+        made = {
+            # Linked and trumped on its tracker; an unlinked cross-seed of the files still seeds.
+            "x_linked": make("X linked", "payload:a", tracker_state="error", terminal="trumped"),
+            "x_cross": make("X cross-seed", "payload:a", tracker_state="working"),
+            # Linked and alone for two weeks; its unlinked cross-seed has seeders.
+            "y_linked": make("Y linked", "payload:b", tracker_state="working", alone=NOW - timedelta(days=15)),
+            "y_cross": make("Y cross-seed", "payload:b", tracker_state="working"),
+            # Both removed by their trackers: nothing left to restore from.
+            "z_linked": make("Z linked", "payload:c", tracker_state="error", terminal="trumped"),
+            "z_cross": make("Z cross-seed", "payload:c", tracker_state="error", terminal="unregistered"),
+        }
+        await db.flush()
+        for item, state, terminal, alone in made.values():
+            db.add(TorrentClientObservation(torrent_id=item.id, download_client_id=CLIENT, is_present=True, state="stalledUP",
+                                            progress=1, last_seen_at=NOW, alone_since=alone))
+            db.add(TorrentTrackerObservation(torrent_id=item.id, download_client_id=CLIENT, endpoint_key=item.info_hash,
+                                             endpoint_display=f"https://{item.name.split()[0].lower()}.example/announce",
+                                             health_state=state, terminal_reason=terminal, terminal_confirmed=terminal is not None,
+                                             message="Trumped by a newer upload" if terminal == "trumped" else None,
+                                             last_checked_at=NOW, first_seen_at=NOW - timedelta(days=30)))
+        for release, key in ((releases["trumped"], "x_linked"), (releases["lonely_but_shared"], "y_linked"), (releases["all_dead"], "z_linked")):
+            db.add(MovieReleaseTorrent(movie_release_id=release.id, torrent_id=made[key][0].id, association_type=AssociationType.ATTACHED))
+        await db.commit()
+
+        problems, _, _ = await release_problems(db)
+        assert {release_id: item.problem.reason for release_id, item in problems.items()} == {
+            releases["trumped"].id: TRUMPED,
+            releases["all_dead"].id: REMOVED_FROM_TRACKER,
+        }
+        trumped = problems[releases["trumped"].id]
+        # Only the removed torrent is the problem; the payload names both so a
+        # search never offers the healthy cross-seed back.
+        assert [item.name for item in trumped.torrents] == ["X linked"]
+        assert {item.name for item in trumped.payload} == {"X linked", "X cross-seed"}
+        assert {item.name for item in problems[releases["all_dead"].id].torrents} == {"Z linked", "Z cross-seed"}
+    await engine.dispose()
+
+
+def test_a_trumped_replacement_finishes_like_an_upgrade():
+    from app.services.upgrade_execution import _finishes_like_upgrade
+
+    assert _finishes_like_upgrade(SimpleNamespace(target_key="replace:movie-release:1", comparison_snapshot={"replacement_reason": "trumped"}))
+    assert not _finishes_like_upgrade(SimpleNamespace(target_key="replace:movie-release:1", comparison_snapshot={"replacement_reason": "removed_from_tracker"}))
+    assert not _finishes_like_upgrade(SimpleNamespace(target_key="movie-release:1", comparison_snapshot={"replacement_reason": "trumped"}))

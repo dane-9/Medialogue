@@ -6,7 +6,7 @@ reason below is one way that fails; the queue lists every title with one.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from typing import Any
@@ -24,6 +24,7 @@ from app.models.domain import (AssociationType, EpisodeMediaMap, Job, JobStatus,
                                TorrentTrackerObservation, UpgradeCandidate)
 from app.services.integration_state import list_configured_indexers, get_configured_indexer
 from app.services.jobs import run_job, update_job
+from app.services.payload_groups import GROUP_KEY
 from app.services.release_source import ReleaseSource, source_of_releases, source_of_torrents
 from app.services.format_breakdown import comparison_formats
 from app.services.quality_profiles import profiles_cached
@@ -51,11 +52,17 @@ NO_SEEDERS = "no_seeders"
 TRACKER_GONE = "tracker_gone"
 #: Every tracker confirmed the torrent was deleted.
 REMOVED_FROM_TRACKER = "removed_from_tracker"
+#: One torrent of the payload was removed by its tracker (nearly always a
+#: trump), while a cross-seed of the same files still seeds elsewhere. The
+#: files are safe; the title is here to find the release that replaced it.
+TRUMPED = "trumped"
 #: The files were never linked to any torrent.
 NO_TORRENT = "no_torrent"
+#: Listed but not counted in the sidebar badge: nothing is at risk.
+UNCOUNTED_REASONS = frozenset({NO_TORRENT, TRUMPED})
 #: When a title's releases fail in different ways, the cheapest fix leads:
 #: re-adding a torrent may clear it, a new torrent is the last resort.
-REASON_PRIORITY = (NOT_WATCHED, FILES_MISSING, MISSING, NO_SEEDERS, TRACKER_GONE, REMOVED_FROM_TRACKER, NO_TORRENT)
+REASON_PRIORITY = (NOT_WATCHED, FILES_MISSING, MISSING, NO_SEEDERS, TRACKER_GONE, REMOVED_FROM_TRACKER, TRUMPED, NO_TORRENT)
 REASON_LABELS = {
     NOT_WATCHED: "Not in qBittorrent",
     FILES_MISSING: "Files missing",
@@ -63,6 +70,7 @@ REASON_LABELS = {
     NO_SEEDERS: "No other seeders",
     TRACKER_GONE: "Tracker not responding",
     REMOVED_FROM_TRACKER: "Removed from tracker",
+    TRUMPED: "Trumped",
     NO_TORRENT: "No torrent",
 }
 #: A torrent removed from qBittorrent this recently may be on its way back
@@ -250,6 +258,9 @@ def classify_torrent(torrent: Torrent, now: datetime, *, confirmed_removed: bool
 class ReleaseProblem:
     problem: SourceProblem
     torrents: list[Torrent]
+    #: Every torrent on the release's files, cross-seeds included, so a search
+    #: never offers one of them back as the replacement.
+    payload: list[Torrent] = field(default_factory=list)
 
 
 async def release_problems(
@@ -300,6 +311,28 @@ async def release_problems(
             .where(Torrent.id.in_(torrent_ids[index:index + 500]))
         )).all():
             torrents[torrent.id] = torrent
+    # Cross-seeds Medialogue never linked to the release (another tracker's
+    # name, a hard link) still hold the same files. Downloads already groups
+    # them by payload; the same group decides whether the files are safe.
+    group_members: dict[str, set[UUID]] = {}
+    group_keys = sorted({key for torrent in torrents.values() if (key := (torrent.metadata_json or {}).get(GROUP_KEY))})
+    for index in range(0, len(group_keys), 500):
+        for torrent in (await db.scalars(
+            select(Torrent)
+            .options(selectinload(Torrent.observations), selectinload(Torrent.tracker_observations))
+            .where(Torrent.metadata_json[GROUP_KEY].as_string().in_(group_keys[index:index + 500]))
+        )).all():
+            torrents.setdefault(torrent.id, torrent)
+            group_members.setdefault((torrent.metadata_json or {}).get(GROUP_KEY), set()).add(torrent.id)
+    incoming = {torrent_id for rows in links.values() for torrent_id, association in rows if association == AssociationType.INCOMING}
+
+    def payload_of(sources: list[UUID]) -> list[UUID]:
+        members = dict.fromkeys(sources)
+        for torrent_id in sources:
+            key = (torrents[torrent_id].metadata_json or {}).get(GROUP_KEY) if torrent_id in torrents else None
+            members.update(dict.fromkeys(sorted(group_members.get(key, set()) - incoming, key=str)))
+        return list(members)
+
     removed = await lost_sources(db)
     verdicts = {torrent_id: classify_torrent(torrent, now, confirmed_removed=torrent_id in removed)
                 for torrent_id, torrent in torrents.items()}
@@ -321,10 +354,20 @@ async def release_problems(
         elif not sources:
             problem = ReleaseProblem(SourceProblem(NO_TORRENT), [])
         else:
-            found = [verdicts.get(torrent_id) for torrent_id in sources]
-            if any(item is None for item in found):
-                continue
-            problem = ReleaseProblem(_pick([item for item in found if item]), [torrents[item] for item in sources if item in torrents])
+            payload = payload_of(sources)
+            found = {torrent_id: verdicts.get(torrent_id) for torrent_id in payload}
+            payload_torrents = [torrents[item] for item in payload if item in torrents]
+            if any(item is None for item in found.values()):
+                # The files are safe while any torrent on them is fine. One
+                # removed by its tracker beside a healthy cross-seed was trumped.
+                dead = [torrent_id for torrent_id, item in found.items()
+                        if item is not None and item.reason == REMOVED_FROM_TRACKER]
+                if not dead:
+                    continue
+                since = max((found[item].since for item in dead if found[item].since), default=None)
+                problem = ReleaseProblem(SourceProblem(TRUMPED, since), [torrents[item] for item in dead], payload_torrents)
+            else:
+                problem = ReleaseProblem(_pick([item for item in found.values() if item]), payload_torrents, payload_torrents)
         problems[release_id] = problem
         (affected_movies if kind == "movie" else affected_shows).add(owner_id)
     return problems, affected_movies, affected_shows
@@ -396,7 +439,10 @@ async def replacement_targets(
         if not found:
             continue
         problem = _pick([item.problem for item in found])
-        excluded = tuple(sorted({torrent.info_hash.lower() for release in target_releases for torrent in release.torrents}))
+        excluded = tuple(sorted(
+            {torrent.info_hash.lower() for release in target_releases for torrent in release.torrents}
+            | {torrent.info_hash.lower() for item in found for torrent in item.payload}
+        ))
         result.append(ReplacementTarget(
             target=replace(target, target_key="replace:" + target.target_key, replacement=True, excluded_hashes=excluded),
             torrents=[torrent for item in found for torrent in item.torrents],
@@ -537,7 +583,7 @@ async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[d
         source = await source_of_torrents(db, torrents) if details else ReleaseSource()
         items.append(_item(
             reason=REASON_LABELS[entry.reason], reason_code=entry.reason, reason_since=entry.since,
-            lost_evidence=_lost_evidence(torrents) if entry.reason == REMOVED_FROM_TRACKER else [],
+            lost_evidence=_lost_evidence(torrents) if entry.reason in {REMOVED_FROM_TRACKER, TRUMPED} else [],
             # Cross-seeds share one payload, so the largest torrent is the size.
             current_size=max((torrent.total_size for torrent in torrents if torrent.total_size), default=None),
             current_indexer=source.indexer_name, current_tracker=source.tracker,
@@ -639,6 +685,8 @@ def _lost_evidence(torrents) -> list[dict[str, Any]]:
             "tracker": _tracker_host(observation.endpoint_display),
             "message": (observation.message or "").strip() or None,
             "last_worked_at": observation.last_success_at,
+            # "trumped" and "dupe" say so outright; the rest only say it is gone.
+            "terminal_reason": observation.terminal_reason,
         })
     return evidence
 
@@ -810,4 +858,6 @@ async def revalidate_replacement(db: AsyncSession, row: UpgradeCandidate) -> Non
     scored = _score_candidate(target=target, profile=profile, formats=formats, indexer=indexer, result=result)
     if scored is None or scored.custom_format_score != row.custom_format_score or profile.snapshot() != row.comparison_snapshot.get("profile"):
         raise AppError("REPLACEMENT_STALE", "The profile or replacement eligibility changed. Search again before downloading.", status_code=409)
-    row.comparison_snapshot = scored.snapshot
+    entry = next(entry for entry in targets if entry.target.target_key == row.target_key)
+    # Kept on the row: a trumped title finishes like an upgrade (see handoff).
+    row.comparison_snapshot = {**scored.snapshot, "replacement_reason": entry.reason}

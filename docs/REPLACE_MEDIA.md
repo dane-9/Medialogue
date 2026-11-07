@@ -14,13 +14,14 @@ Each title is listed with one reason:
 | **No other seeders** | For 14 days the swarm has reported no seeder besides this client. Unknown counts never start or stop the clock, and a paused torrent's own copy is not counted as another seeder. |
 | **Tracker not responding** | Every tracker of the torrent has answered with an error for 7 days. A tracker that was never contacted, as a paused torrent's is, does not count. |
 | **Removed from tracker** | Every tracker confirmed, twice in a row, that the torrent is gone ("unregistered", "deleted", "not registered", "not found", "trumped", "dupe of", or a message starting "Removed"). The verdict is kept after the torrent is deleted from qBittorrent. |
+| **Trumped** | One torrent of the files was removed by its tracker, confirmed twice in a row, while a cross-seed of the same files still seeds elsewhere. That is nearly always a trump: a better upload replaced it. The files are safe, so these are listed but not counted in the sidebar badge. The row's pill reads **TRUMPED** when the tracker says "trumped" or "dupe of", and **TRUMPED?** when it only says the torrent is gone. |
 | **No torrent** | The files were found on disk and never linked to a torrent. These are listed but not counted in the sidebar badge. |
 
 Evidence from a live client must be recent: a client that has stopped reporting, or an offline qBittorrent, never lists anything. A title with an upgrade under way is left to Upgrade Media, and so is a title with a new download for it in qBittorrent, such as a new version added there by hand after removing the old torrent: it is neither listed nor re-added until that download finishes and replaces the old release, or leaves qBittorrent.
 
-Cross-seeded releases are judged as one payload: a release is fine while **any** of its torrents is fine. When a title's releases fail in different ways, the cheapest fix is shown first, in the order of the table.
+Cross-seeded releases are judged as one payload: a release is fine while **any** torrent on its files is fine. That includes cross-seeds Medialogue never linked to the release, found the way Downloads groups them: the same content path or the same hard-linked files. When a title's releases fail in different ways, the cheapest fix is shown first, in the order of the table.
 
-Titles whose torrent is beyond saving (**Removed from tracker**, **Tracker not responding**, **No other seeders**) belong to Replace Media alone: their search accepts anything equal or better, so Upgrade Media hides them unless an upgrade is already running. Ignoring one hands it back. **Not in qBittorrent**, **Files missing** and **No torrent** titles stay in Upgrade Media too; **Missing** titles, like the other lost sources, belong to Replace Media alone.
+Titles whose torrent is beyond saving (**Removed from tracker**, **Tracker not responding**, **No other seeders**), and **Trumped** titles, belong to Replace Media alone: their search accepts anything equal or better, so Upgrade Media hides them unless an upgrade is already running. Ignoring one hands it back. **Not in qBittorrent**, **Files missing** and **No torrent** titles stay in Upgrade Media too; **Missing** titles, like the other lost sources, belong to Replace Media alone.
 
 Ignoring is tied to the reason: if the same title later fails for a different reason, it comes back.
 

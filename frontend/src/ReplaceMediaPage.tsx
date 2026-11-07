@@ -16,7 +16,7 @@ import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { tmdbPosterUrl } from './pages/shared'
 import { UpgradeCompare } from './pages/upgradeMedia'
 import { formatAge } from './lib/age'
-import { loadHiddenReasons, reasonShown, replaceReasonDetail, REPLACE_REASONS, saveHiddenReasons, type ReplaceReasonCode } from './lib/replaceReason'
+import { loadHiddenReasons, lostPillLabel, reasonShown, replaceReasonDetail, REPLACE_REASONS, saveHiddenReasons, type ReplaceReasonCode } from './lib/replaceReason'
 import { systemApi } from './api/modules/system'
 import { badgeColor } from './lib/badgeColor'
 import { diffReleaseTokens } from './lib/releaseTokens'
@@ -481,11 +481,11 @@ export default function ReplaceMediaPage() {
                       words. Hover lists every lost torrent behind the title. */}
                   {item.lost_evidence?.length
                     ? <Tooltip asChild content={<ul className="replace-lost-list">{item.lost_evidence.map((entry, index) => <li key={index}>
-                      <span className="release-pill release-pill-lost"><i>Indexer</i>{entry.tracker ?? 'unknown'}</span>
+                      <span className="release-pill release-pill-lost"><i>{lostPillLabel(item.reason_code, entry.terminal_reason)}</i>{entry.tracker ?? 'unknown'}</span>
                       <span>{entry.message ?? 'Removed by the tracker'}{entry.last_worked_at ? ` · last worked ${formatAge(entry.last_worked_at)}` : ''}</span>
                     </li>)}</ul>}>
                       <span className="replace-lost"><span className="replace-lost-inner">
-                        <span className="release-pill release-pill-lost"><i>Indexer</i>{item.lost_evidence[0].tracker ?? 'unknown'}</span>
+                        <span className="release-pill release-pill-lost"><i>{lostPillLabel(item.reason_code, item.lost_evidence[0].terminal_reason)}</i>{item.lost_evidence[0].tracker ?? 'unknown'}</span>
                         <span className="replace-lost-message">{item.lost_evidence[0].message ?? 'Removed by the tracker'}{item.lost_evidence[0].last_worked_at ? ` · ${formatAge(item.lost_evidence[0].last_worked_at)}` : ''}</span>
                       </span></span>
                     </Tooltip>

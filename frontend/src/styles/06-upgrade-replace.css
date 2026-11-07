@@ -36,6 +36,7 @@
 .upgrade-status-box.tone-blue { color: var(--accent); }
 .upgrade-status-box.tone-amber { color: var(--warn); }
 .upgrade-status-box.tone-red { color: var(--err); }
+.upgrade-status-box.tone-violet { color: var(--violet); }
 /* Replace Media's Reason rail: the Downloads rail, but each reason toggles on
    its own, so several can be on at once. */
 .replace-rail-title { justify-content: space-between; }

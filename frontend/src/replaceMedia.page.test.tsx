@@ -53,6 +53,17 @@ describe('Replace Media page', () => {
     expect(api.queue).toHaveBeenCalledTimes(1)
   })
 
+  it('tags a trumped title TRUMPED, and TRUMPED? when the tracker only says it is gone', async () => {
+    api.queue.mockResolvedValue({ items: [
+      item({ reason: 'Trumped', reason_code: 'trumped', lost_evidence: [{ torrent_name: 'A', tracker: 'alpha.example', message: 'Trumped by a newer upload', terminal_reason: 'trumped' }] }),
+      item({ target_key: 'movie:2', title: 'Memento', reason: 'Trumped', reason_code: 'trumped', lost_evidence: [{ torrent_name: 'B', tracker: 'beta.example', message: 'Unregistered torrent', terminal_reason: 'unregistered' }] }),
+    ] })
+    renderPage(<ReplaceMediaPage />, '/replace-media')
+    await waitFor(() => expect(text()).toContain('Memento'))
+    expect(text()).toContain('TRUMPEDalpha.example')
+    expect(text()).toContain('TRUMPED?beta.example')
+  })
+
   it('shows bulk search progress, then reloads once the search finishes', async () => {
     renderPage(<ReplaceMediaPage />, '/replace-media')
     await waitFor(() => expect(text()).toContain('Inception'))

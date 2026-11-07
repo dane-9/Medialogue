@@ -265,7 +265,11 @@ async def submit_upgrade_candidate(
     row.execution_error = None
     row.comparison_snapshot = {
         **(row.comparison_snapshot or {}),
-        "delete_old_media_after_upgrade": bool(delete_old_media and not row.target_key.startswith("replace:")),
+        # A trumped title's files are safe, so its replacement finishes like
+        # an upgrade: every old torrent retired, the old media deleted.
+        "delete_old_media_after_upgrade": bool(
+            delete_old_media and (not row.target_key.startswith("replace:") or _finishes_like_upgrade(row))
+        ),
     }
     await create_event(
         db,
@@ -467,6 +471,14 @@ async def _validate_show_replacement(db: AsyncSession, row: UpgradeCandidate, in
     return True, None
 
 
+def _finishes_like_upgrade(row: UpgradeCandidate) -> bool:
+    """A replacement for a trumped title retires and cleans up automatically."""
+
+    from app.services.replacements import TRUMPED
+
+    return row.target_key.startswith("replace:") and (row.comparison_snapshot or {}).get("replacement_reason") == TRUMPED
+
+
 async def advance_upgrade_handoff(
     db: AsyncSession,
     torrent: Torrent,
@@ -534,7 +546,7 @@ async def advance_upgrade_handoff(
                 "replacement_candidate_id": str(row.id),
                 "cross_seed_discovered_by_path": discovered_cross_seed,
             }
-    if row.target_key.startswith("replace:") and not allow_torrent_removal:
+    if row.target_key.startswith("replace:") and not allow_torrent_removal and not _finishes_like_upgrade(row):
         row.execution_state = "cleanup_required"
         row.execution_error = None
         return row

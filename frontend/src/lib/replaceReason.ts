@@ -1,10 +1,11 @@
 import { formatAge } from './age'
 
-export type ReplaceReasonCode = 'not_watched' | 'files_missing' | 'missing' | 'no_seeders' | 'tracker_gone' | 'removed_from_tracker' | 'no_torrent'
+export type ReplaceReasonCode = 'not_watched' | 'files_missing' | 'missing' | 'no_seeders' | 'tracker_gone' | 'removed_from_tracker' | 'trumped' | 'no_torrent'
 
 /** Every reason, in the order the Reason filter shows them. */
 export const REPLACE_REASONS: { code: ReplaceReasonCode; label: string; icon: 'qbittorrent' | 'share-ratio' | 'tracker' | 'alert' | 'folder' | 'archive'; tone: string }[] = [
   { code: 'removed_from_tracker', label: 'Removed from tracker', icon: 'alert', tone: 'red' },
+  { code: 'trumped', label: 'Trumped', icon: 'tracker', tone: 'violet' },
   { code: 'tracker_gone', label: 'Tracker not responding', icon: 'tracker', tone: 'amber' },
   { code: 'no_seeders', label: 'No other seeders', icon: 'share-ratio', tone: 'amber' },
   { code: 'not_watched', label: 'Not in qBittorrent', icon: 'qbittorrent', tone: 'blue' },
@@ -72,10 +73,23 @@ export function replaceReasonDetail(code: ReplaceReasonCode, since?: string | nu
         help: 'Every tracker confirmed the torrent was deleted, so it cannot be downloaded again.',
         note: age ? `Confirmed ${age}` : 'Removed by the tracker',
       }
+    case 'trumped':
+      return {
+        help: 'One tracker removed this torrent, nearly always because a better upload replaced it, while a cross-seed of the same files still seeds elsewhere. The files are safe, so this is not counted in the sidebar. Downloading the replacement retires every old torrent and deletes the old files, like an upgrade.',
+        note: age ? `Removed ${age}` : 'Removed by one tracker',
+      }
     case 'no_torrent':
       return {
         help: 'These files were never linked to a torrent, so the backup has nothing to bring them back from.',
         note: 'Never linked to a torrent',
       }
   }
+}
+
+/** The label on a lost torrent's tracker pill. A trump the tracker named
+ *  outright reads TRUMPED; a bare "unregistered" beside a live cross-seed is
+ *  almost always one too, but only TRUMPED?. */
+export function lostPillLabel(code: string | null | undefined, terminalReason?: string | null): string {
+  if (code !== 'trumped') return 'Indexer'
+  return terminalReason === 'trumped' || terminalReason === 'dupe' ? 'TRUMPED' : 'TRUMPED?'
 }

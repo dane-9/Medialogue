@@ -49,7 +49,7 @@ with that release has confirmed recent terminal tracker failure.
 
 ## Removal
 
-When Medialogue removes an associated torrent as part of an explicitly confirmed workflow, qBittorrent is called without deleting data. Starting a normal Upgrade Media workflow authorizes Medialogue to retire every recognized old cross-seed and delete the superseded media automatically after replacement validation and safety checks. Replace Media retains its separate keep/retire/cleanup choices.
+When Medialogue removes an associated torrent as part of an explicitly confirmed workflow, qBittorrent is called without deleting data. Starting a normal Upgrade Media workflow authorizes Medialogue to retire every recognized old cross-seed and delete the superseded media automatically after replacement validation and safety checks. Replace Media retains its separate keep/retire/cleanup choices, except for a **Trumped** title: its files were never at risk, so its replacement finishes like an upgrade, retiring every old torrent and cross-seed and deleting the old media.
 
 Terminal failures of incomplete torrents submitted by Medialogue follow a
 different cleanup path. qBittorrent removes the partial payload when it is

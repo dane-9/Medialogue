@@ -19,9 +19,11 @@ class LostSourceEvidence(BaseModel):
     message: str | None = None
     #: The last time this tracker answered normally, when it ever did.
     last_worked_at: datetime | None = None
+    #: How the tracker worded it: "trumped" and "dupe" name a trump outright.
+    terminal_reason: str | None = None
 
 
-ReplacementReason = Literal["not_watched", "files_missing", "missing", "no_seeders", "tracker_gone", "removed_from_tracker", "no_torrent"]
+ReplacementReason = Literal["not_watched", "files_missing", "missing", "no_seeders", "tracker_gone", "removed_from_tracker", "trumped", "no_torrent"]
 
 
 class ReplacementItem(BaseModel):

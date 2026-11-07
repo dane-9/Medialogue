@@ -5129,6 +5129,17 @@
             ],
             "title": "Message"
           },
+          "terminal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Reason"
+          },
           "torrent_name": {
             "title": "Torrent Name",
             "type": "string"
@@ -9240,6 +9251,7 @@
                   "no_seeders",
                   "tracker_gone",
                   "removed_from_tracker",
+                  "trumped",
                   "no_torrent"
                 ],
                 "type": "string"
@@ -9555,6 +9567,7 @@
               "no_seeders",
               "tracker_gone",
               "removed_from_tracker",
+              "trumped",
               "no_torrent"
             ],
             "title": "Reason",
