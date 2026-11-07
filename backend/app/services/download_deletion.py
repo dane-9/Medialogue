@@ -322,7 +322,9 @@ async def _forget(db: AsyncSession, plan: DeletionPlan) -> None:
             # The show goes too when these are its last releases.
             others = await db.scalar(select(ShowRelease.id).where(
                 ShowRelease.show_id == title.id, ShowRelease.id.not_in(plan.show_release_ids)).limit(1))
-            await _record_history(db, plan, title, whole_show=others is None)
+            # History lists shows that left the library, not single seasons.
+            if others is None:
+                await _record_history(db, plan, title, whole_show=True)
         else:
             # A movie kept through another edition has not left the library.
             others = await db.scalar(select(MovieRelease.id).where(

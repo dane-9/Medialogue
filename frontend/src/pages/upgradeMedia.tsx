@@ -467,7 +467,7 @@ export function UpgradeMediaPage() {
     subtitle="Review the best known replacement for each release. Starting an upgrade authorizes its validated replacement and automatic retirement of the old release."
     action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}
   >
-    {historyOpen && <MediaHistoryModal title="Finished upgrades" load={upgradesApi.upgradeHistory} empty="No upgrades have finished yet." onClose={() => setHistoryOpen(false)} />}
+    {historyOpen && <MediaHistoryModal load={upgradesApi.upgradeHistory} empty="No upgrades have finished yet." onClose={() => setHistoryOpen(false)} />}
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
     {/* One note for the folder setting, rather than one badge on every release

@@ -43,4 +43,6 @@ async def library_history(
         select(LibraryHistoryEntry).where(LibraryHistoryEntry.media_type == media_type)
         .order_by(LibraryHistoryEntry.removed_at.desc()).limit(500)
     )).all()
-    return [LibraryHistoryItem.model_validate(row, from_attributes=True) for row in rows]
+    # A show is listed once it left as a whole; seasons removed from a show
+    # still in the library are not.
+    return [LibraryHistoryItem.model_validate(row, from_attributes=True) for row in rows if not row.season_numbers]

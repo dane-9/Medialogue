@@ -332,7 +332,7 @@ export default function ReplaceMediaPage() {
       subtitle="Find a new source for media the torrent backup could not bring back, at equal or better quality."
       action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}
     />
-    {historyOpen && <MediaHistoryModal title="Finished replacements" load={replacementsApi.history} empty="No replacements have finished yet." onClose={() => setHistoryOpen(false)} />}
+    {historyOpen && <MediaHistoryModal load={replacementsApi.history} empty="No replacements have finished yet." onClose={() => setHistoryOpen(false)} />}
     {error && <div className="settings-note error-note"><Icon name="alert" size={16} /><span>{error}</span></div>}
     {message && !error && <div className="settings-note note-ok"><Icon name="check" size={16} /><span>{message}</span></div>}
 

@@ -4729,11 +4729,24 @@ select.input { background-color: var(--input-bg); }
 .library-history-size { justify-content: flex-end; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 .library-history-when { flex-direction: column; align-items: flex-end !important; justify-content: center; gap: 2px; color: var(--muted); font-size: var(--t-xs); text-align: right; }
 .library-history-when small { color: var(--faint); font-size: var(--t-micro); }
+/* Upgrade and Replace Media's History: the old release struck through, the new
+   one beside it, and the quality change in its own column. */
+.library-history-table.media-history-table { grid-template-columns: minmax(0, 1fr) auto auto; }
+/* Year and season beside the title, the releases under it. */
+.media-history-title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); }
+.media-history-table .media-history-change { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 0; margin-top: 1px; }
+/* Old and new release side by side in full; only when the row is too narrow
+   for both does the new one continue on the next line. */
+.media-history-table .media-history-old, .media-history-table .media-history-new { flex: none; max-width: 100%; overflow: visible; white-space: nowrap; }
+.media-history-table .media-history-change .upgrade-caret { color: var(--faint); }
+.media-history-quality { gap: 0; white-space: nowrap; }
+.media-history-quality .upgrade-caret { color: var(--faint); }
+.library-history-when small.media-history-outcome { color: var(--ok); }
 .library-history-action { justify-content: center; }
 .library-history-add { flex: none; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); }
 .library-history-add:hover:not(:disabled) { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
 .library-history-add:disabled { opacity: .4; cursor: default; }
-.library-history-poster { display: grid; place-items: center; width: 36px; aspect-ratio: 2 / 3; overflow: hidden; border-radius: var(--r-sm); background: var(--raised); color: var(--faint); }
+.library-history-poster { display: grid; flex: none; place-items: center; width: 36px; aspect-ratio: 2 / 3; overflow: hidden; border-radius: var(--r-sm); background: var(--raised); color: var(--faint); }
 .library-history-poster img { width: 100%; height: 100%; object-fit: cover; }
 .library-history-release { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 

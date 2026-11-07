@@ -80,16 +80,14 @@ export function LibraryHistoryModal({ mediaType, onClose }: { mediaType: 'movies
             </div>
             {sorted.map((item) => {
               const poster = tmdbPosterUrl(item.poster_ref ?? undefined)
-              const seasons = item.season_numbers?.length ? `Season ${item.season_numbers.join(', ')}` : undefined
-              const details = [item.year ? `${item.year}` : undefined, seasons, qualityLabel(item.quality ?? undefined) || item.quality].filter(Boolean).join(' · ')
+              const details = [item.year ? `${item.year}` : undefined, qualityLabel(item.quality ?? undefined) || item.quality].filter(Boolean).join(' · ')
               return <div key={item.id} className="library-history-row" role="row">
                 <span className="library-history-title">
                   <span className="library-history-poster">{poster
                     ? <img src={poster} alt="" loading="lazy" referrerPolicy="no-referrer" />
                     : <Icon name={mediaType === 'movies' ? 'clapper' : 'tv-screen'} size={16} />}</span>
                   <span className="library-history-copy">
-                    <strong>{item.title}</strong>
-                    <small>{details}</small>
+                    <span className="media-history-title-line"><strong>{item.title}</strong>{details && <small>{details}</small>}</span>
                     {item.release_name && <span className="library-history-release">{item.release_name}</span>}
                   </span>
                 </span>
