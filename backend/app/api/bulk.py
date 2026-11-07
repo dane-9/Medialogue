@@ -8,11 +8,14 @@ from app.api.plex import get_plex_client_factory
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.schemas.bulk import MovieBulkAction, MovieBulkRequest, MovieBulkResponse
+from app.schemas.bulk import MovieBulkAction, MovieBulkRequest, MovieBulkResponse, ShowBulkAction, ShowBulkRequest, ShowBulkResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.services.bulk import (
     add_movie_tags,
     change_movie_profile,
+    change_show_profile,
+    resolve_shows,
+    set_show_monitoring,
     create_bulk_summary_event,
     load_tags,
     reevaluate_movie_custom_formats,
@@ -26,6 +29,25 @@ from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 
 router = APIRouter(tags=["bulk operations"])
+
+
+@router.post("/shows/bulk", response_model=ShowBulkResponse)
+async def bulk_shows(
+    payload: ShowBulkRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> ShowBulkResponse:
+    """Monitor, unmonitor or change the Quality Profile of several shows at once."""
+
+    shows = await resolve_shows(db, payload.show_ids)
+    if payload.action is ShowBulkAction.MONITOR:
+        updated = await set_show_monitoring(db, shows, True)
+    elif payload.action is ShowBulkAction.UNMONITOR:
+        updated = await set_show_monitoring(db, shows, False)
+    else:
+        updated = await change_show_profile(db, shows, payload.quality_profile_id)
+    await db.commit()
+    return ShowBulkResponse(action=payload.action, requested=len(shows), updated=updated, show_ids=[str(show.id) for show in shows])
 
 
 @router.post("/movies/bulk", response_model=MovieBulkResponse | JobAcceptedResponse)

@@ -2054,6 +2054,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shows/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Shows
+         * @description Monitor, unmonitor or change the Quality Profile of several shows at once.
+         */
+        post: operations["bulk_shows_api_v1_shows_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shows/download-preferences": {
         parameters: {
             query?: never;
@@ -6380,6 +6400,29 @@ export interface components {
          * @enum {string}
          */
         Severity: "info" | "warning" | "error";
+        /**
+         * ShowBulkAction
+         * @enum {string}
+         */
+        ShowBulkAction: "change_profile" | "monitor" | "unmonitor";
+        /** ShowBulkRequest */
+        ShowBulkRequest: {
+            action: components["schemas"]["ShowBulkAction"];
+            /** Quality Profile Id */
+            quality_profile_id?: string | null;
+            /** Show Ids */
+            show_ids: string[];
+        };
+        /** ShowBulkResponse */
+        ShowBulkResponse: {
+            action: components["schemas"]["ShowBulkAction"];
+            /** Requested */
+            requested: number;
+            /** Show Ids */
+            show_ids: string[];
+            /** Updated */
+            updated: number;
+        };
         /** ShowCreate */
         ShowCreate: {
             /**
@@ -11573,6 +11616,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShowDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_shows_api_v1_shows_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShowBulkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowBulkResponse"];
                 };
             };
             /** @description Validation Error */

@@ -10702,6 +10702,79 @@
         "title": "Severity",
         "type": "string"
       },
+      "ShowBulkAction": {
+        "enum": [
+          "change_profile",
+          "monitor",
+          "unmonitor"
+        ],
+        "title": "ShowBulkAction",
+        "type": "string"
+      },
+      "ShowBulkRequest": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ShowBulkAction"
+          },
+          "quality_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Profile Id"
+          },
+          "show_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Show Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "show_ids",
+          "action"
+        ],
+        "title": "ShowBulkRequest",
+        "type": "object"
+      },
+      "ShowBulkResponse": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ShowBulkAction"
+          },
+          "requested": {
+            "title": "Requested",
+            "type": "integer"
+          },
+          "show_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Show Ids",
+            "type": "array"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "requested",
+          "updated",
+          "show_ids"
+        ],
+        "title": "ShowBulkResponse",
+        "type": "object"
+      },
       "ShowCreate": {
         "properties": {
           "monitored": {
@@ -20266,6 +20339,48 @@
         "summary": "Create Show",
         "tags": [
           "shows"
+        ]
+      }
+    },
+    "/api/v1/shows/bulk": {
+      "post": {
+        "description": "Monitor, unmonitor or change the Quality Profile of several shows at once.",
+        "operationId": "bulk_shows_api_v1_shows_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShowBulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowBulkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Shows",
+        "tags": [
+          "bulk operations"
         ]
       }
     },

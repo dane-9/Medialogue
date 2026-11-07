@@ -30,6 +30,26 @@ class MovieBulkRequest(BaseModel):
         return self
 
 
+class ShowBulkAction(str, Enum):
+    CHANGE_PROFILE = "change_profile"
+    MONITOR = "monitor"
+    UNMONITOR = "unmonitor"
+
+
+class ShowBulkRequest(BaseModel):
+    show_ids: list[str] = Field(min_length=1, max_length=1000)
+    action: ShowBulkAction
+    #: For change_profile; None returns the shows to the default profile.
+    quality_profile_id: UUID | None = None
+
+
+class ShowBulkResponse(BaseModel):
+    action: ShowBulkAction
+    requested: int
+    updated: int
+    show_ids: list[str]
+
+
 class MovieBulkResponse(BaseModel):
     action: MovieBulkAction
     requested: int

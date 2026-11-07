@@ -376,3 +376,37 @@ def test_bulk_plex_recheck_runs_without_operations_toggle(client: TestClient) ->
             root.rmdir()
         except OSError:
             pass
+
+
+def test_bulk_shows_monitor_and_profile(client):
+    from app.models.domain import Show
+
+    headers = login(client)
+
+    async def seed(db):
+        shows = [Show(title=f"Show {index}", identity_state=IdentityState.MATCHED, monitored=True) for index in range(2)]
+        db.add_all(shows)
+        profile = QualityProfile(name="Shows", settings={}, revision=1)
+        db.add(profile)
+        await db.flush()
+        return [str(show.id) for show in shows], str(profile.id)
+
+    ids, profile_id = db_run(seed)
+    response = client.post("/api/v1/shows/bulk", headers=headers, json={"show_ids": ids, "action": "unmonitor"})
+    assert response.status_code == 200, response.text
+    assert response.json()["updated"] == 2
+    again = client.post("/api/v1/shows/bulk", headers=headers, json={"show_ids": ids, "action": "unmonitor"})
+    assert again.json()["updated"] == 0, "already unmonitored"
+
+    profiled = client.post("/api/v1/shows/bulk", headers=headers, json={"show_ids": ids, "action": "change_profile", "quality_profile_id": profile_id})
+    assert profiled.status_code == 200, profiled.text
+    assert profiled.json()["updated"] == 2
+
+    async def check(db):
+        assert all(not show.monitored for show in (await db.scalars(select(Show))).all())
+        rows = (await db.scalars(select(MediaProfileOverride).where(MediaProfileOverride.show_id.is_not(None)))).all()
+        assert {str(row.quality_profile_id) for row in rows} == {profile_id} and len(rows) == 2
+    db_run(check)
+
+    missing = client.post("/api/v1/shows/bulk", headers=headers, json={"show_ids": [str(uuid.uuid4())], "action": "monitor"})
+    assert missing.status_code == 404

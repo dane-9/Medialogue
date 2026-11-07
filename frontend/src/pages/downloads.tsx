@@ -471,6 +471,26 @@ export function DownloadsPage() {
     setAnchorId(id)
   }
 
+  // Escape clears the selection; Ctrl/Cmd+A selects every row shown. Typing in
+  // a field or a dialog keeps its own keys.
+  const visibleOrder = useRef<string[]>([])
+  visibleOrder.current = filtered.map((item) => item.id)
+  useEffect(() => {
+    if (context || deleting) return
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.closest('input, textarea, select, [contenteditable="true"]') || target.closest('[role="dialog"], .modal'))) return
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        setSelected(new Set(visibleOrder.current))
+      } else if (event.key === 'Escape') {
+        setSelected((current) => current.size ? new Set() : current)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [context, deleting])
+
   const openContext = (event: React.MouseEvent, id: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -615,6 +635,7 @@ export function DownloadsPage() {
       return <Fragment key={group.id}><tr
       className={[selected.has(group.id) ? 'row-selected' : '', download.stale ? 'row-stale' : ''].filter(Boolean).join(' ')}
       onClick={(event) => rowClick(event, group.id)}
+      onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
       onContextMenu={(event) => openContext(event, group.id)}
     >
       <td><span className="download-name">{isCrossSeeded && <button type="button" className={`download-cross-seed-toggle ${expanded.has(group.id) ? 'open' : ''}`} aria-label={`${expanded.has(group.id) ? 'Collapse' : 'Expand'} ${download.name} cross-seeds`} aria-expanded={expanded.has(group.id)} onClick={(event) => { event.stopPropagation(); setExpanded((current) => { const next = new Set(current); if (!next.delete(group.id)) next.add(group.id); return next }) }}><Icon name="caret" size={11} /></button>}<Tooltip className="download-kind-tip" delay={250} content={releaseNote(download)}>{(download.movieId || download.showId)

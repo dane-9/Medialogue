@@ -13,6 +13,8 @@ import { showsApi } from '../api/modules/shows'
 import { systemApi } from '../api/modules/system'
 import { upgradesApi } from '../api/modules/upgrades'
 import { normalizeMediaView } from '../lib/uiState'
+import { useLibrarySelection, type SelectionModifiers } from '../lib/useLibrarySelection'
+import { SelectionBar, SelectCheck } from '../components/SelectionBar'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { EpisodeOrdering, MediaProfileSettings, QualityDefinition, QualityProfile, Show, Season, Episode, EpisodeMedia } from '../types'
@@ -33,6 +35,9 @@ export function ShowsPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [cardBusy, setCardBusy] = useState<string | null>(null)
+  const [context, setContext] = useState<{ x: number; y: number } | null>(null)
+  const [profiles, setProfiles] = useState<QualityProfile[]>([])
+  const [bulkBusy, setBulkBusy] = useState(false)
   // Matches the server default, so the chip does not flash on before the fetch.
   const [countSpecials, setCountSpecials] = useState(false)
   const [specialsBusy, setSpecialsBusy] = useState(false)
@@ -46,6 +51,7 @@ export function ShowsPage() {
   useLiveLibraryRefresh(() => load(false), 60000)
   useEffect(() => { void load(!items.length) }, [sort])
   useEffect(() => { showsApi.specialsCounting().then((value) => setCountSpecials(value.count_specials)).catch(() => undefined) }, [])
+  useEffect(() => { settingsApi.qualityProfiles().then(setProfiles).catch(() => undefined) }, [])
 
   // A hard switch, not a view filter: it rewrites the Counted flag on Season 0
   // for every show. Monitoring is left alone, so nothing stops being searched.
@@ -89,29 +95,66 @@ export function ShowsPage() {
     return items.filter((show) => (filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsShowReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter))
       && (!needle || show.title.toLowerCase().includes(needle)))
   }, [items, filter, query])
+  const visibleIds = useMemo(() => filtered.map((show) => show.id), [filtered])
+  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen })
+  const openContext = useCallback((event: React.MouseEvent, showId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    focus(showId)
+    setContext({ x: event.clientX, y: event.clientY })
+  }, [focus])
+  const openActions = (event: React.MouseEvent) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    setContext({ x: box.left, y: box.bottom + 4 })
+  }
+  const runBulk = async (action: 'change_profile' | 'monitor' | 'unmonitor', profileId?: string | null) => {
+    const ids = [...selected]
+    if (!ids.length) return
+    setBulkBusy(true); setMessage('')
+    try {
+      const result = await showsApi.bulkShows({ show_ids: ids, action, quality_profile_id: profileId })
+      setMessage(`${action.replace('_', ' ')}: ${result.updated} of ${result.requested} selected show${result.requested === 1 ? '' : 's'} updated.`)
+      await load(false)
+      setContext(null)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Bulk action failed.') }
+    finally { setBulkBusy(false) }
+  }
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="shows" onClose={() => setHistoryOpen(false)} />}
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><SelectionBar count={selected.size} total={filtered.length} noun="show" onSelectAll={selectAll} onClear={clear} onActions={openActions} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load Shows" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid show-grid" items={filtered} itemKey={(show) => show.id} renderItem={(show) => <ShowCard show={show} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />} /> : <ShowTable items={filtered} />)}
+    {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid show-grid" items={filtered} itemKey={(show) => show.id} renderItem={(show) => <ShowCard show={show} selected={selected.has(show.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />} /> : <ShowTable items={filtered} selected={selected} onToggle={toggleSelected} onSelectAll={selectAll} onClear={clear} onContext={openContext} />)}
+    {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><ShowBulkContextMenu position={context} count={selected.size} profiles={profiles} busy={bulkBusy} onRun={runBulk} onClear={() => { clear(); setContext(null) }} /></>}
     {!error && !loading && !filtered.length && <EmptyState icon="tv-screen" title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
 
 const needsShowReview = (show: Show) => show.status === 'Conflict' || (show.problemCount ?? 0) > 0
 
-function ShowTable({ items }: { items: Show[] }) {
-  const plexAvailable = usePlexAvailable()
-  const rows = useVirtualRows(items, plexAvailable ? 7 : 6)
-  return <Panel className="table-panel"><table className="data-table"><thead><tr><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((show) => <tr key={show.id}><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} size="w92" /></span><MonitorMark monitored={show.monitored !== false} />{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}{rows.after}</tbody></table></Panel>
+function ShowBulkContextMenu({ position, count, profiles, busy, onRun, onClear }: { position: { x: number; y: number }; count: number; profiles: QualityProfile[]; busy: boolean; onRun: (action: 'change_profile' | 'monitor' | 'unmonitor', profileId?: string | null) => Promise<void>; onClear: () => void }) {
+  const [profileId, setProfileId] = useState('')
+  const left = Math.max(12, Math.min(position.x, window.innerWidth - 340))
+  const top = Math.max(12, Math.min(position.y, window.innerHeight - 280))
+  return <div className="bulk-context-menu" style={{ left, top }} onClick={(event) => event.stopPropagation()}>
+    <div className="bulk-context-head"><div><div className="eyebrow">BULK SHOW ACTIONS</div><strong>{count} selected</strong></div><button className="icon-button" onClick={onClear} aria-label="Clear selection"><Icon name="close" size={14} /></button></div>
+    <div className="context-action-grid"><button onClick={() => void onRun('monitor')} disabled={busy}><Icon name="check" size={14} />Monitor</button><button onClick={() => void onRun('unmonitor')} disabled={busy}><Icon name="pause" size={14} />Unmonitor</button></div>
+    <div className="context-section"><span className="field-label">Quality Profile</span><div className="context-inline"><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select><Button variant="ghost" disabled={busy} onClick={() => void onRun('change_profile', profileId || null)}>Apply</Button></div></div>
+    <div className="context-foot">Shift-click selects a range; Ctrl/Cmd+A selects every show shown, Escape clears.</div>
+  </div>
 }
 
-const ShowCard = memo(function ShowCard({ show, busy, onCheckUpgrade }: { show: Show; busy: boolean; onCheckUpgrade: (show: Show) => Promise<void> }) {
+function ShowTable({ items, selected, onToggle, onSelectAll, onClear, onContext }: { items: Show[]; selected: Set<string>; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onSelectAll: () => void; onClear: () => void; onContext: (event: React.MouseEvent, id: string) => void }) {
+  const plexAvailable = usePlexAvailable()
+  const rows = useVirtualRows(items, plexAvailable ? 8 : 7)
+  return <Panel className="table-panel"><table className="data-table"><thead><tr><th className="select-cell"><SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all shows" onToggle={() => selected.size ? onClear() : onSelectAll()} /></th><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((show) => <tr key={show.id} className={selected.has(show.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, show.id)} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(show.id, event) } }}><td className="select-cell"><SelectCheck inline checked={selected.has(show.id)} label={show.title} onToggle={(modifiers) => onToggle(show.id, modifiers)} /></td><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} size="w92" /></span><MonitorMark monitored={show.monitored !== false} />{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}{rows.after}</tbody></table></Panel>
+}
+
+const ShowCard = memo(function ShowCard({ show, selected, onToggle, onContext, busy, onCheckUpgrade }: { show: Show; selected: boolean; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onCheckUpgrade: (show: Show) => Promise<void> }) {
   const plexAvailable = usePlexAvailable()
   const percent = show.episodesTotal ? Math.round((show.episodesPresent / show.episodesTotal) * 100) : 0
   const checkUpgrade = (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); void onCheckUpgrade(show) }
-  return <article className={`media-card ${needsAttention(show.status) ? 'media-attention' : ''}`}><Link className="media-card-link" to={`/shows/${show.id}`}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} size="w342" />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-marks"><span className="media-card-actions" aria-label={`Actions for ${show.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${show.title} for upgrades`} disabled={busy} onClick={checkUpgrade}><Icon name="upgrade-media" size={13} /></button></Tooltip></span><MonitorMark monitored={show.monitored !== false} /></span></div><div className="media-card-body"><div className="media-card-meta">{needsAttention(show.status) && show.status !== 'Missing' && <Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge>}<QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
+  return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(show.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, show.id)}><SelectCheck checked={selected} label={show.title} onToggle={(modifiers) => onToggle(show.id, modifiers)} /><Link className="media-card-link" to={`/shows/${show.id}`} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(show.id, event) } }}><div className={`poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} size="w342" />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}<span className="poster-marks"><span className="media-card-actions" aria-label={`Actions for ${show.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${show.title} for upgrades`} disabled={busy} onClick={checkUpgrade}><Icon name="upgrade-media" size={13} /></button></Tooltip></span><MonitorMark monitored={show.monitored !== false} /></span></div><div className="media-card-body"><div className="media-card-meta"><QbitStatusBadge status={show.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${show.plex}`}><Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{show.title}</strong><span>{show.year || 'Year unknown'}</span></div>{/* The count and its completeness are one fact, so they are one control: the
                   pill fills to the proportion present and is coloured by whether any
                   are missing. A separate bar repeated what the numbers already said. */}
               <div className={`episode-progress ${percent === 100 ? 'complete' : 'incomplete'}`} title={`${show.episodesPresent} of ${show.episodesTotal} episodes present`}>

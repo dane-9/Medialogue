@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.errors import AppError
 from app.models.domain import (
+    Show,
     JobStatus,
     MediaProfileOverride,
     MediaType,
@@ -202,6 +203,62 @@ async def change_movie_profile(
                 "bulk": True,
                 "overrides_preserved": True,
             },
+        )
+    if changed:
+        await invalidate_idle_upgrade_candidates(db)
+    return changed
+
+
+async def resolve_shows(db: AsyncSession, show_ids: list[str]) -> list[Show]:
+    """The requested shows, refusing the batch if any is unknown."""
+
+    wanted: list[UUID] = []
+    for value in dict.fromkeys(show_ids):
+        try:
+            wanted.append(UUID(str(value)))
+        except ValueError as exc:
+            raise AppError("NOT_FOUND", f"Show {value} was not found.", status_code=404) from exc
+    shows = (await db.scalars(select(Show).where(Show.id.in_(wanted)))).all()
+    if len(shows) != len(wanted):
+        raise AppError("NOT_FOUND", "One or more selected shows no longer exist.", status_code=404)
+    return list(shows)
+
+
+async def set_show_monitoring(db: AsyncSession, shows: list[Show], monitored: bool) -> int:
+    changed = 0
+    for show in shows:
+        if show.monitored != monitored:
+            show.monitored = monitored
+            show.revision += 1
+            changed += 1
+    return changed
+
+
+async def change_show_profile(db: AsyncSession, shows: list[Show], quality_profile_id: UUID | None) -> int:
+    from app.services.quality_profiles import refresh_show_release_scores
+
+    if quality_profile_id is not None and await db.get(QualityProfile, quality_profile_id) is None:
+        raise AppError("INVALID_QUALITY_PROFILE", "Quality Profile does not exist.", status_code=422)
+    changed = 0
+    for show in shows:
+        assignment = await db.scalar(select(MediaProfileOverride).where(MediaProfileOverride.show_id == show.id))
+        if assignment is None:
+            if quality_profile_id is None:
+                continue
+            db.add(MediaProfileOverride(media_type=MediaType.SHOWS, show_id=show.id, quality_profile_id=quality_profile_id,
+                                        override_definition={}, revision=1))
+            await db.flush()
+        elif assignment.quality_profile_id != quality_profile_id:
+            assignment.quality_profile_id = quality_profile_id
+            assignment.revision += 1
+        else:
+            continue
+        changed += 1
+        await refresh_show_release_scores(db, show.id)
+        await create_event(
+            db, "quality_profile.assignment_updated", entity_type="show", entity_id=show.id,
+            message="Quality Profile assignment was changed by a bulk action.",
+            details={"quality_profile_id": str(quality_profile_id) if quality_profile_id else None, "bulk": True},
         )
     if changed:
         await invalidate_idle_upgrade_candidates(db)

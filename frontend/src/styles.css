@@ -851,8 +851,9 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   position: absolute;
   z-index: 3;
   inset: 0;
-  border: 1px solid var(--warn-line);
+  border: 2px solid rgba(210, 166, 92, .8);
   border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35);
   pointer-events: none;
   transition: border-color .12s;
 }
@@ -868,7 +869,6 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
   transition: opacity .12s;
 }
 .media-card:hover .media-card-actions, .media-card:focus-within .media-card-actions { opacity: 1; }
-.media-card:hover .selection-mark, .media-card:focus-within .selection-mark { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .selection-mark { transition: none; }
 }
@@ -1040,6 +1040,25 @@ textarea.input { height: auto; min-height: 80px; padding: var(--s2) var(--s3); l
 }
 .row-selected { background: var(--accent-soft) !important; box-shadow: inset 2px 0 var(--accent); }
 .selection-count { color: var(--muted); font: var(--t-micro) var(--sans); white-space: nowrap; }
+/* Toolbar summary of a library selection. */
+.selection-bar { display: inline-flex; align-items: center; gap: var(--s2); padding: 0 var(--s1) 0 var(--s3); height: var(--control-sm); border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-text); font-size: var(--t-xs); white-space: nowrap; }
+.selection-bar strong { font-weight: 600; }
+.selection-bar button { padding: 2px var(--s2); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); font-size: var(--t-xs); }
+.selection-bar button:hover { background: rgba(255, 255, 255, .08); }
+.selection-bar-actions { display: inline-flex; align-items: center; gap: 5px; }
+/* A round select button. On a card it sits in the poster's free top-left
+   corner: shown on hover, kept when selected, and on every card while any
+   card is selected so a second click needs no hunting. */
+.select-check { display: grid; flex: none; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid rgba(255, 255, 255, .7); border-radius: var(--r-full); background: rgba(23, 29, 37, .55); color: #171d25; cursor: pointer; }
+.select-check.on, .select-check.mixed { border-color: var(--accent); background: var(--accent); }
+.select-check-dash { width: 8px; height: 2px; border-radius: 1px; background: #171d25; }
+.media-card { position: relative; }
+.media-card > .select-check { position: absolute; z-index: 3; top: var(--s2); left: var(--s2); opacity: 0; transition: opacity .12s; }
+.media-card:hover > .select-check, .media-card > .select-check.on, .media-grid:has(.select-check.on) .media-card > .select-check { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .media-card > .select-check { transition: none; } }
+.select-check.inline { width: 16px; height: 16px; border-color: var(--line-strong); background: transparent; }
+.select-check.inline.on, .select-check.inline.mixed { border-color: var(--accent); background: var(--accent); }
+th.select-cell, td.select-cell { width: 28px; padding-right: 0 !important; }
 
 .media-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); margin: calc(var(--s3) * -1) 0 var(--s4); }
 .media-filter-row + .media-filter-row { margin-top: calc(var(--s3) * -1); }
