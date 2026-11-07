@@ -2774,10 +2774,25 @@ export interface components {
              */
             enabled: boolean;
             /**
-             * Keep Database
+             * Keep Daily
              * @default 7
              */
-            keep_database: number;
+            keep_daily: number;
+            /**
+             * Keep Monthly
+             * @default 6
+             */
+            keep_monthly: number;
+            /**
+             * Keep Recent
+             * @default 0
+             */
+            keep_recent: number;
+            /**
+             * Keep Weekly
+             * @default 4
+             */
+            keep_weekly: number;
         };
         /** BlocklistBulkDeleteRequest */
         BlocklistBulkDeleteRequest: {

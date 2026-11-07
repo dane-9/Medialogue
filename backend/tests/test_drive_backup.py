@@ -191,11 +191,47 @@ def test_a_deleted_drive_folder_is_recreated_and_filled_again(recovery_env, driv
     assert (status, summary["uploaded"]) == ("completed", 2)
 
 
-def test_only_the_newest_database_copies_are_kept(recovery_env, drive):
-    drive.update_backup_settings({"keep_database": 2})
+def test_database_copies_are_thinned_by_the_retention_rules(recovery_env, drive):
+    # Every copy in these tests is made the same day, so only "recent" keeps more than one.
+    drive.update_backup_settings({"keep_recent": 2})
     for _ in range(3):
         assert _run("remote_backup")[0] == "completed"
     assert len(FakeDrive.live("database")) == 2
+    drive.update_backup_settings({"keep_recent": 0})
+    assert _run("remote_backup")[0] == "completed"
+    assert len(FakeDrive.live("database")) == 1
+
+
+def test_the_old_keep_setting_becomes_the_daily_count():
+    from app.services.remote_backups import retention_settings
+
+    assert retention_settings({"keep_database": 14}) == {"keep_recent": 0, "keep_daily": 14, "keep_weekly": 4, "keep_monthly": 6}
+    assert retention_settings({"keep_database": 14, "keep_daily": 3})["keep_daily"] == 3
+    assert retention_settings({}) == {"keep_recent": 0, "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 6}
+
+
+def test_retention_keeps_every_recent_copy_and_one_per_week_and_month_after():
+    from app.services.remote_backups import copies_to_keep
+
+    start = datetime(2026, 11, 8, 3, tzinfo=timezone.utc)
+    # A copy every day for a year, newest first, plus a second copy today.
+    copies = [{"id": f"d{day}", "createdTime": (start - timedelta(days=day)).isoformat()} for day in range(365)]
+    copies.append({"id": "today-early", "createdTime": (start - timedelta(hours=2)).isoformat()})
+    copies.append({"id": "undated", "createdTime": ""})
+    keep = copies_to_keep(copies, keep_recent=0, keep_daily=7, keep_weekly=4, keep_monthly=6)
+
+    assert "undated" in keep  # never deleted when its age is unknown
+    assert keep["d0"][0] == "newest"
+    assert "today-early" not in keep  # same day as a newer copy
+    assert {f"d{day}" for day in range(7)} <= set(keep)  # the last seven days
+    weekly = {key for key, rules in keep.items() if "weekly" in rules}
+    monthly = {key for key, rules in keep.items() if "monthly" in rules}
+    assert len(weekly) == 4 and len(monthly) == 6
+    # Six calendar months, this one included: the oldest is the last copy of
+    # the month five before this one, and nothing older.
+    oldest = max(int(key[1:]) for key in keep if key.startswith("d"))
+    assert oldest == (start - datetime(2026, 6, 30, 3, tzinfo=timezone.utc)).days
+    assert len(keep) <= 1 + 7 + 4 + 6
 
 
 def _drive_download_zip(torrent: Path, manifest: Path) -> bytes:
@@ -467,8 +503,39 @@ def test_pruned_torrents_leave_drive_only_after_the_grace_period(recovery_env, d
     assert hashes["upgraded"] in on_drive()  # still within the grace period
 
     asyncio.run(prune(31))
+    # The database copy from the first run still lists it, so it stays on Drive.
+    status, summary, _ = _run("remote_backup", manual=False)
+    assert (status, summary["removed"]) == ("completed", 0)
+    assert hashes["upgraded"] in on_drive()
+    # A new copy no longer lists it and replaces the old one (same day), which
+    # releases the torrent: the next run removes it.
+    assert _run("remote_backup")[0] == "completed"
     status, summary, _ = _run("remote_backup", manual=False)
     assert (status, summary["removed"]) == ("completed", 2)  # its .torrent and manifest
     assert hashes["upgraded"] not in on_drive()
     assert hashes["unlinked_gone"] in on_drive()  # pruned a day ago, still kept
     assert hashes["current_gone"] in on_drive()
+
+
+def test_each_database_copy_lists_its_torrents_and_keeps_its_manifests(recovery_env, drive):
+    import io
+    import zipfile
+
+    _, settings, _ = recovery_env
+    _archive_fixture(Path(settings.torrent_archive_dir))
+    assert _run("remote_backup")[0] == "completed"
+    [copy] = FakeDrive.live("database")
+    with zipfile.ZipFile(io.BytesIO(FakeDrive.files[copy["id"]]["data"])) as archive:
+        assert json.loads(archive.read("catalogue/torrents.json"))["torrents"] == [INFO_HASH]
+        assert f"catalogue/manifests/{INFO_HASH}.json" in archive.namelist()
+
+    # A lost local index is rebuilt from the copies on Drive.
+    from app.services.remote_backups import _index_path, protected_hashes, read_backup_settings
+
+    _index_path().unlink()
+
+    async def protected():
+        return await protected_hashes(FakeDrive("token"), read_backup_settings()["folders"])
+
+    assert asyncio.run(protected()) == {INFO_HASH}
+    assert _index_path().is_file()

@@ -112,11 +112,32 @@
             "title": "Enabled",
             "type": "boolean"
           },
-          "keep_database": {
+          "keep_daily": {
             "default": 7,
             "maximum": 90.0,
-            "minimum": 1.0,
-            "title": "Keep Database",
+            "minimum": 0.0,
+            "title": "Keep Daily",
+            "type": "integer"
+          },
+          "keep_monthly": {
+            "default": 6,
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Keep Monthly",
+            "type": "integer"
+          },
+          "keep_recent": {
+            "default": 0,
+            "maximum": 90.0,
+            "minimum": 0.0,
+            "title": "Keep Recent",
+            "type": "integer"
+          },
+          "keep_weekly": {
+            "default": 4,
+            "maximum": 52.0,
+            "minimum": 0.0,
+            "title": "Keep Weekly",
             "type": "integer"
           }
         },

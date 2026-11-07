@@ -21,7 +21,8 @@ from app.schemas.jobs import JobAcceptedResponse
 from app.services.backup_coverage import archive_coverage
 from app.services.backup_import import import_backup_zip
 from app.services.remote_backups import (DATABASE, DEFAULT_DATABASE_INTERVAL, DriveBackups, access_token, begin_oauth,
-    finish_oauth, oauth_ready, read_backup_settings, update_backup_settings)
+    copies_to_keep, finish_oauth, oauth_ready, read_backup_settings, read_copy_index, retention_settings,
+    update_backup_settings)
 from app.services.torrent_archive import rebuild_catalogue_from_manifests
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
 
@@ -31,7 +32,10 @@ router = APIRouter(prefix="/backups", tags=["backups"])
 
 class BackupSettingsRequest(BaseModel):
     enabled: bool = False
-    keep_database: int = Field(default=7, ge=1, le=90)
+    keep_recent: int = Field(default=0, ge=0, le=90)
+    keep_daily: int = Field(default=7, ge=0, le=90)
+    keep_weekly: int = Field(default=4, ge=0, le=52)
+    keep_monthly: int = Field(default=6, ge=0, le=60)
     database_interval_seconds: int = Field(default=DEFAULT_DATABASE_INTERVAL, ge=3600, le=2592000)
 
 
@@ -59,7 +63,7 @@ async def backup_status(_: AdminUser = Depends(require_admin), db: AsyncSession 
         "last_sync_at": saved.get("last_sync_at"),
         "last_database_at": saved.get("last_database_at"),
         "last_error": saved.get("last_error"),
-        "keep_database": int(saved.get("keep_database") or 7),
+        **retention_settings(saved),
         "database_interval_seconds": int(saved.get("database_interval_seconds") or DEFAULT_DATABASE_INTERVAL),
         "torrents_on_drive": sum(1 for key in mirror if key.startswith("torrents/")),
         "folder_url": f"https://drive.google.com/drive/folders/{saved['folders']['root']}" if (saved.get("folders") or {}).get("root") else None,
@@ -73,7 +77,8 @@ async def save_backup_settings(payload: BackupSettingsRequest, _: object = Depen
     saved = read_backup_settings()
     if payload.enabled and not saved.get("refresh_token"):
         raise AppError("BACKUP_SETUP_INCOMPLETE", "Connect Google Drive before turning on backups.", status_code=409)
-    update_backup_settings({"keep_database": payload.keep_database,
+    update_backup_settings({"keep_recent": payload.keep_recent, "keep_daily": payload.keep_daily,
+                            "keep_weekly": payload.keep_weekly, "keep_monthly": payload.keep_monthly,
                             "database_interval_seconds": payload.database_interval_seconds})
     await ensure_default_schedules(db)
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
@@ -185,8 +190,15 @@ async def database_copies(_: AdminUser = Depends(require_admin)) -> dict:
     drive = DriveBackups(await access_token())
     try:
         rows = sorted(await drive.children(folder), key=lambda row: row.get("createdTime", ""), reverse=True)
+        saved = read_backup_settings()
+        kept = copies_to_keep([row for row in rows if (row.get("appProperties") or {}).get("kind") == "database"],
+                              **retention_settings(saved))
+        index = read_copy_index()
         return {"items": [{"id": row["id"], "name": row["name"], "size": int(row["size"]) if row.get("size") else None,
                            "created_at": row.get("createdTime"),
+                           # Why it is still there; empty means the next copy trashes it.
+                           "kept_by": kept.get(row["id"], []),
+                           "torrents": len((index.get(row["id"]) or {}).get("torrents") or []) or None,
                            "url": f"https://drive.google.com/file/d/{row['id']}/view"} for row in rows]}
     finally:
         await drive.close()

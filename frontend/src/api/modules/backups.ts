@@ -9,7 +9,10 @@ export type BackupStatus = {
   last_sync_at?: string | null
   last_database_at?: string | null
   last_error?: string | null
-  keep_database: number
+  keep_recent: number
+  keep_daily: number
+  keep_weekly: number
+  keep_monthly: number
   database_interval_seconds: number
   torrents_on_drive: number
   folder_url?: string | null
@@ -32,13 +35,15 @@ export type BackupCoverage = {
 
 type BackupUploadResult = { written: number; present: number; skipped: number; listed: number; errors: string[] }
 
-export type DatabaseCopy = { id: string; name: string; size?: number | null; created_at?: string | null; url: string }
+export type DatabaseCopy = { id: string; name: string; size?: number | null; created_at?: string | null; url: string; kept_by?: string[]; torrents?: number | null }
+
+export type BackupRetention = Pick<BackupStatus, 'keep_recent' | 'keep_daily' | 'keep_weekly' | 'keep_monthly'>
 
 // The backup endpoints answer with plain objects; their shapes live here.
 export const backupsApi = {
   status: async () => await openApiData(openApiClient.GET('/api/v1/backups/status')) as unknown as BackupStatus,
   coverage: async (status?: 'no_torrent' | 'not_archived' | 'local_only') => await openApiData(openApiClient.GET('/api/v1/backups/coverage', { params: { query: { status } } })) as unknown as BackupCoverage,
-  saveSettings: (body: { enabled: boolean; keep_database: number; database_interval_seconds: number }) =>
+  saveSettings: (body: { enabled: boolean; database_interval_seconds: number } & BackupRetention) =>
     openApiData(openApiClient.PUT('/api/v1/backups/settings', { body })),
   connect: async () => await openApiData(openApiClient.POST('/api/v1/backups/google/connect')) as unknown as { authorization_url: string },
   disconnect: () => openApiData(openApiClient.POST('/api/v1/backups/google/disconnect')),

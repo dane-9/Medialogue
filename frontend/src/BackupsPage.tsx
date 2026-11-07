@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { backupsApi } from './api/modules/backups'
-import type { BackupStatus, DatabaseCopy } from './api/modules/backups'
+import type { BackupRetention, BackupStatus, DatabaseCopy } from './api/modules/backups'
 import { systemApi } from './api/modules/system'
 import { Badge, Button, Panel, Progress, Segmented, Select } from './components/ui'
 import { useUrlState } from './lib/urlState'
@@ -51,6 +51,21 @@ const TABS = [
 ] as const
 type Tab = typeof TABS[number]['value']
 
+/** The retention rules, as the Google Drive tab offers them. */
+const RETENTION: { key: keyof BackupRetention; label: string; aria: string; options: number[]; option: (value: number) => string }[] = [
+  { key: 'keep_daily', label: 'Daily', aria: 'Daily copies to keep', options: [0, 3, 7, 14, 30], option: (value) => `Last ${value} days` },
+  { key: 'keep_weekly', label: 'Weekly', aria: 'Weekly copies to keep', options: [0, 2, 4, 8, 12], option: (value) => `Last ${value} weeks` },
+  { key: 'keep_monthly', label: 'Monthly', aria: 'Monthly copies to keep', options: [0, 3, 6, 12, 24], option: (value) => `Last ${value} months` },
+  { key: 'keep_recent', label: 'Also keep', aria: 'Newest copies always kept', options: [0, 3, 6, 12, 24], option: (value) => `${value} newest` },
+]
+
+/** Why a database copy is still on Drive, in words. */
+export function copyKeptBy(rules?: string[]): string {
+  if (!rules?.length) return 'trashed after the next copy'
+  const words: Record<string, string> = { newest: 'newest', recent: 'among the newest', daily: 'daily', weekly: 'weekly', monthly: 'monthly', undated: 'date unknown' }
+  return `kept: ${rules.map((rule) => words[rule] ?? rule).join(', ')}`
+}
+
 export default function BackupsPage() {
   const [tabParam, setTab] = useUrlState('tab', 'torrents')
   const tab: Tab = TABS.some((item) => item.value === tabParam) ? tabParam as Tab : 'torrents'
@@ -82,9 +97,13 @@ export default function BackupsPage() {
     try { await action(); await load() } catch (reason) { setMessage(failed(reason, 'That did not work.')) }
     finally { setBusy(false) }
   }
-  const save = (changes: Partial<{ enabled: boolean; keep_database: number; database_interval_seconds: number }>) => act(async () => {
+  const save = (changes: Partial<{ enabled: boolean; database_interval_seconds: number } & BackupRetention>) => act(async () => {
     if (!status) return
-    await backupsApi.saveSettings({ enabled: status.enabled, keep_database: status.keep_database, database_interval_seconds: status.database_interval_seconds, ...changes })
+    await backupsApi.saveSettings({
+      enabled: status.enabled, database_interval_seconds: status.database_interval_seconds,
+      keep_recent: status.keep_recent, keep_daily: status.keep_daily, keep_weekly: status.keep_weekly, keep_monthly: status.keep_monthly,
+      ...changes,
+    })
   })
 
   const connected = Boolean(status?.connected)
@@ -122,18 +141,18 @@ export default function BackupsPage() {
       </div>
 
       {connected && status && <div className="backups-database">
-        <SectionHead title="Database" description="The library database and settings, copied separately from the torrents. Older copies are moved to Drive's trash." />
+        <SectionHead title="Database" description="The library database and settings, copied separately from the torrents. Every copy from the last few days is kept, then one a week, then one a month; the rest go to Drive's trash. Torrents a kept copy lists stay on Drive." />
         <label>Copy<Select aria-label="Database copy interval" value={String(status.database_interval_seconds)} onChange={(event) => void save({ database_interval_seconds: Number(event.target.value) })}>
           {DATABASE_INTERVALS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </Select></label>
-        <label>Keep<Select aria-label="Database copies to keep" value={String(status.keep_database)} onChange={(event) => void save({ keep_database: Number(event.target.value) })}>
-          {[3, 7, 14, 30].map((value) => <option key={value} value={value}>{value} newest</option>)}
-        </Select></label>
+        {RETENTION.map((rule) => <label key={rule.key}>{rule.label}<Select aria-label={rule.aria} value={String(status[rule.key])} onChange={(event) => void save({ [rule.key]: Number(event.target.value) })}>
+          {[...new Set([...rule.options, status[rule.key]])].sort((a, b) => a - b).map((value) => <option key={value} value={value}>{value === 0 ? 'None' : rule.option(value)}</option>)}
+        </Select></label>)}
         <Button variant="ghost" disabled={busy} onClick={() => void act(async () => setCopies(await backupsApi.databaseCopies()))}>Show copies</Button>
       </div>}
       {copies && <ul className="backups-copies">{copies.length ? copies.map((copy) => <li key={copy.id}>
         <a href={copy.url} target="_blank" rel="noreferrer">{copy.name}</a>
-        <span>{copy.created_at ? formatAge(copy.created_at) : ''}{copy.size ? ` · ${formatBytes(copy.size)}` : ''}</span>
+        <span>{copy.created_at ? formatAge(copy.created_at) : ''}{copy.size ? ` · ${formatBytes(copy.size)}` : ''}{copy.torrents ? ` · ${copy.torrents.toLocaleString()} torrents` : ''} · {copyKeptBy(copy.kept_by)}</span>
       </li>) : <li>No database copies yet.</li>}</ul>}
       <p className="backups-note">Files in Drive are not encrypted. Torrent files contain your tracker passkeys, so keep the folder private.</p>
       <Note message={message} />

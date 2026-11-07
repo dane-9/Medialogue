@@ -7,7 +7,12 @@ Drive holds plain files in a "Medialogue Backups" folder:
   its torrent downloaded to, so the files alone are enough to re-add
   everything to qBittorrent at its original location.
 * ``database/medialogue-database-<time>.zip``: the database and configuration,
-  on their own slower schedule, keeping the newest few.
+  on their own slower schedule. Each copy also holds the list of torrents in
+  the archive at that moment and their manifests as they were, so an old copy
+  restores the library it describes. Recent copies are all kept, older ones
+  thinned to one a week, then one a month (see ``copies_to_keep``).
+
+A torrent that left the archive leaves Drive only once no kept copy lists it.
 
 Nothing is encrypted. The torrent files carry tracker passkeys, so anyone with
 access to the folder can use those tracker accounts.
@@ -58,8 +63,12 @@ MIRRORED = ("torrents", "manifests")
 DATABASE = "database"
 #: Marks the files Medialogue owns in Drive.
 MARK = {"medialogue": "mirror-v1"}
-DEFAULT_KEEP_DATABASE = 7
 DEFAULT_DATABASE_INTERVAL = 86400
+#: How many copies each retention rule keeps (see ``copies_to_keep``).
+DEFAULT_RETENTION = {"keep_recent": 0, "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 6}
+#: Inside each database copy: the torrents it covers, and their manifests then.
+CATALOGUE_TORRENTS = "catalogue/torrents.json"
+CATALOGUE_MANIFESTS = "catalogue/manifests"
 #: Uploads in flight at once while mirroring.
 PARALLEL_UPLOADS = 4
 #: Larger files go up in resumable chunks instead of one request.
@@ -77,7 +86,7 @@ def _settings_path() -> Path:
 def read_backup_settings() -> dict:
     """Connection and mirror state, stored encrypted with the app secret (it holds the Drive token)."""
 
-    defaults = {"keep_database": DEFAULT_KEEP_DATABASE, "database_interval_seconds": DEFAULT_DATABASE_INTERVAL}
+    defaults = {"database_interval_seconds": DEFAULT_DATABASE_INTERVAL}
     path = _settings_path()
     if not path.exists():
         return defaults
@@ -94,6 +103,141 @@ def update_backup_settings(changes: dict) -> dict:
     key = hashlib.sha256(get_settings().secret_key.encode()).digest()
     _atomic_write(_settings_path(), nonce + AESGCM(key).encrypt(nonce, json.dumps(state).encode(), STORE_AAD))
     return state
+
+
+def retention_settings(state: dict) -> dict[str, int]:
+    """The retention counts, with the old single "keep N" setting as the daily count."""
+
+    values: dict[str, int] = {}
+    for key, default in DEFAULT_RETENTION.items():
+        raw = state.get(key)
+        if raw is None and key == "keep_daily" and state.get("keep_database"):
+            raw = state["keep_database"]
+        try:
+            values[key] = max(0, int(raw if raw is not None else default))
+        except (TypeError, ValueError):
+            values[key] = default
+    return values
+
+
+def _created(row: dict) -> datetime | None:
+    try:
+        value = datetime.fromisoformat(str(row.get("createdTime") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def copies_to_keep(copies: list[dict], *, keep_recent: int = 0, keep_daily: int = 7, keep_weekly: int = 4,
+                   keep_monthly: int = 6) -> dict[str, list[str]]:
+    """Which database copies stay, by file id, with the rules that keep each one.
+
+    Every rule looks at the copies newest first and keeps the newest copy of
+    each period, for as many periods (that have a copy) as it is allowed:
+
+    - ``newest``: the latest copy, always;
+    - ``recent``: the latest ``keep_recent`` copies, whatever their age;
+    - ``daily``: one per day, for the last ``keep_daily`` days;
+    - ``weekly``: one per ISO week, for the last ``keep_weekly`` weeks;
+    - ``monthly``: one per month, for the last ``keep_monthly`` months.
+
+    A copy whose time cannot be read is never deleted.
+    """
+
+    keep: dict[str, list[str]] = {}
+    dated: list[tuple[datetime, dict]] = []
+    for row in copies:
+        created = _created(row)
+        if created is None:
+            keep.setdefault(row["id"], []).append("undated")
+        else:
+            dated.append((created, row))
+    dated.sort(key=lambda item: item[0], reverse=True)
+    if dated:
+        keep.setdefault(dated[0][1]["id"], []).append("newest")
+    for _, row in dated[:keep_recent]:
+        keep.setdefault(row["id"], []).append("recent")
+    periods = (
+        ("daily", keep_daily, lambda value: value.date()),
+        ("weekly", keep_weekly, lambda value: tuple(value.isocalendar())[:2]),
+        ("monthly", keep_monthly, lambda value: (value.year, value.month)),
+    )
+    for rule, count, period in periods:
+        seen: set = set()
+        for created, row in dated:
+            key = period(created)
+            if key in seen:
+                continue
+            if len(seen) >= count:
+                break
+            seen.add(key)
+            keep.setdefault(row["id"], []).append(rule)
+    return keep
+
+
+# --- Copy index ---------------------------------------------------------------
+
+
+def _index_path() -> Path:
+    return Path(get_settings().config_dir) / "backup-copies.json"
+
+
+def read_copy_index() -> dict[str, dict]:
+    """The torrents each database copy on Drive lists, by Drive file id."""
+
+    try:
+        value = json.loads(_index_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _write_copy_index(index: dict[str, dict]) -> None:
+    _atomic_write(_index_path(), json.dumps(index, sort_keys=True).encode("utf-8"))
+
+
+def _catalogue_hashes(data: bytes) -> list[str] | None:
+    """The torrent list inside a database copy; None for a copy made before lists."""
+
+    import io
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            payload = json.loads(archive.read(CATALOGUE_TORRENTS))
+    except (KeyError, ValueError, zipfile.BadZipFile):
+        return None
+    torrents = payload.get("torrents") if isinstance(payload, dict) else None
+    return [str(item).lower() for item in torrents] if isinstance(torrents, list) else None
+
+
+async def protected_hashes(drive: "DriveBackups", folders: dict[str, str]) -> set[str]:
+    """Every torrent a database copy still on Drive lists, so it stays on Drive.
+
+    Copies the local index does not know (it was lost, or another install made
+    them) are read from Drive once and remembered.
+    """
+
+    index = read_copy_index()
+    copies = [row for row in await drive.children(folders[DATABASE])
+              if (row.get("appProperties") or {}).get("kind") == "database"]
+    changed = False
+    for row in copies:
+        if row["id"] in index:
+            continue
+        try:
+            hashes = _catalogue_hashes(await drive.download(row["id"]))
+        except DriveMissing:
+            continue
+        index[row["id"]] = {"name": row.get("name"), "created_at": row.get("createdTime"),
+                            "torrents": hashes or [], "listed": hashes is not None}
+        changed = True
+    live = {row["id"] for row in copies}
+    for file_id in [file_id for file_id in index if file_id not in live]:
+        del index[file_id]
+        changed = True
+    if changed:
+        _write_copy_index(index)
+    return {item for entry in index.values() for item in entry.get("torrents") or []}
 
 
 # --- Google account ---------------------------------------------------------
@@ -449,7 +593,7 @@ def _database_due(state: dict) -> bool:
 
 
 async def backup_database(drive: DriveBackups, state: dict, folders: dict[str, str]) -> dict[str, Any]:
-    """Upload the database and configuration as one ZIP, keeping the newest few."""
+    """Upload the database, configuration and torrent list as one ZIP, then thin old copies."""
 
     from app.services.recovery import run_sqlite_backup
 
@@ -465,6 +609,17 @@ async def backup_database(drive: DriveBackups, state: dict, folders: dict[str, s
             if source.is_file():
                 (work / "config").mkdir(exist_ok=True)
                 shutil.copy2(source, work / "config" / source.name)
+        # What this copy covers: the torrents an old copy needs kept on Drive,
+        # and their manifests as they were, so it restores the paths it knew.
+        hashes = sorted({path.stem.lower() for path in _local_files("torrents") if path.suffix == ".torrent"})
+        catalogue = work / CATALOGUE_TORRENTS
+        catalogue.parent.mkdir(parents=True, exist_ok=True)
+        catalogue.write_text(json.dumps({"created_at": datetime.now(timezone.utc).isoformat(), "torrents": hashes}),
+                             encoding="utf-8")
+        manifests = work / CATALOGUE_MANIFESTS
+        manifests.mkdir(parents=True, exist_ok=True)
+        for path in _local_files("manifests"):
+            shutil.copy2(path, manifests / path.name)
         name = f"medialogue-database-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.zip"
         bundle = work.parent / f"{work.name}.zip"
 
@@ -486,15 +641,22 @@ async def backup_database(drive: DriveBackups, state: dict, folders: dict[str, s
         _checked(row, digest, data_size)
         bundle.unlink(missing_ok=True)
 
+        index = read_copy_index()
+        index[row["id"]] = {"name": name, "created_at": row.get("createdTime"), "torrents": hashes, "listed": True}
+        _write_copy_index(index)
+
         # Older copies go only after this one is confirmed.
-        keep = max(1, int(state.get("keep_database") or DEFAULT_KEEP_DATABASE))
-        copies = sorted(
-            (row for row in await drive.children(folders[DATABASE]) if (row.get("appProperties") or {}).get("kind") == "database"),
-            key=lambda item: item.get("createdTime", ""), reverse=True,
-        )
-        for old in copies[keep:]:
-            await drive.trash(old["id"])
-        return {"file": name, "size": data_size}
+        copies = [item for item in await drive.children(folders[DATABASE])
+                  if (item.get("appProperties") or {}).get("kind") == "database"]
+        keep = copies_to_keep(copies, **retention_settings(state))
+        trashed = 0
+        for old in copies:
+            if old["id"] not in keep:
+                await drive.trash(old["id"])
+                index.pop(old["id"], None)
+                trashed += 1
+        _write_copy_index(index)
+        return {"file": name, "size": data_size, "kept": len(keep), "trashed": trashed}
     finally:
         shutil.rmtree(work, ignore_errors=True)
         (work.parent / f"{work.name}.zip").unlink(missing_ok=True)
@@ -540,6 +702,9 @@ async def run_remote_backup(job_id: UUID) -> None:
             from app.services.torrent_archive import drive_retired_hashes
             async with db_session.async_session_factory() as db:
                 retired = await drive_retired_hashes(db)
+            # A torrent a kept database copy lists stays, so that copy can
+            # still be restored with every torrent it knew.
+            retired -= await protected_hashes(drive, folders)
             mirrored = await mirror_archive(drive, read_backup_settings(), folders, rebuilt=rebuilt, retired=retired)
             now = datetime.now(timezone.utc).isoformat()
             changes: dict[str, Any] = {"last_sync_at": now}

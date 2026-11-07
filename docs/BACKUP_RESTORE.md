@@ -33,9 +33,22 @@ Medialogue Backups/
 ```
 
 - **Torrents and manifests** are copied every 10 minutes (configurable in **Tasks**). Only new or changed files are uploaded, and each upload is checked against the checksum Drive reports. A manifest is uploaded again only when something a restore uses changes (paths, file selection, settings), not when live statistics are refreshed.
-- **Database copies** hold the library database (a consistent SQLite online backup) and the configuration: `medialogue.json`, `secrets.enc`, `custom-format-layout.json` and `application-secret`. They are made on their own schedule (daily by default, set on the **Google Drive** tab) and the newest few are kept (7 by default). Older copies are moved to Drive's trash only after a new one is confirmed.
+- **Database copies** hold the library database (a consistent SQLite online backup) and the configuration: `medialogue.json`, `secrets.enc`, `custom-format-layout.json` and `application-secret`. Each copy also holds `catalogue/torrents.json`, the list of every torrent in the archive at that moment, and `catalogue/manifests/`, their manifests as they were then, so an old copy describes exactly the library it came from. Copies are made on their own schedule (daily by default, set on the **Google Drive** tab).
 
-A torrent removed from the archive stays in Drive for 30 days, then the next backup deletes it from Drive too, in case an upgrade or removal needs undoing. Nothing else is ever deleted from Drive. If the Drive folder itself is deleted, the next run recreates it and uploads everything again.
+### Which database copies are kept
+
+Recent copies are all kept; older ones are thinned out. After each new copy is confirmed on Drive, a copy stays if any of these rules keeps it, and the rest go to Drive's trash:
+
+| Rule | Default | Keeps |
+|---|---|---|
+| **Daily** | 7 | the newest copy of each of the last 7 days that have one |
+| **Weekly** | 4 | the newest copy of each of the last 4 weeks |
+| **Monthly** | 6 | the newest copy of each of the last 6 calendar months, this one included |
+| **Also keep** | none | the newest few copies, whatever their age, for copies made more than once a day |
+
+The newest copy is always kept, and so is a copy whose date cannot be read. With daily copies and the defaults that is about 17 copies, reaching back five to six months. Each rule can be set to none. Before this setting existed there was a single "keep the newest N"; that number becomes the daily count. **Show copies** lists every copy with the rules that keep it.
+
+A torrent removed from the archive stays in Drive for 30 days, in case an upgrade or removal needs undoing. After that, the next backup deletes it from Drive, but only once no kept database copy lists it, so every kept copy can still be restored with all of its torrents. Nothing else is ever deleted from Drive. If the Drive folder itself is deleted, the next run recreates it and uploads everything again.
 
 > **Nothing in Drive is encrypted.** Torrent files contain your tracker passkeys, and the database copies contain the application secret together with `secrets.enc`, so they reveal the qBittorrent, indexer, Plex and TMDB credentials. Anyone who can open the folder can use them. Keep the folder private.
 
