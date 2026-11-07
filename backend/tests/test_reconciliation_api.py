@@ -35,6 +35,8 @@ from app.models.domain import (
 )
 from app.services.library_scan import storage_root_scan_running, _root_locks
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 @pytest.fixture
 

@@ -43,6 +43,8 @@ from app.models.domain import (
 )
 from app.services.reconciliation import mark_absent_known_directories, reconcile_torrent_disagreements
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 @pytest.fixture
 def client(tmp_path):

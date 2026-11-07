@@ -9,7 +9,7 @@ Detailed deployment and administration guides are under [`docs/`](docs/README.md
 
 ## TrueNAS SCALE + Dockge
 
-For TrueNAS SCALE with Dockge installed as an App, use the GHCR deployment path rather than building source inside Dockge. GHCR publishing remains an explicit manual workflow; CI runs automatically on pull requests and pushes to `main`. Secrets stay in Dockge's local `.env`, not in the GitHub repository. Follow [`TRUENAS_DOCKGE_GHCR.md`](TRUENAS_DOCKGE_GHCR.md), then paste [`compose.truenas-dockge.yml`](compose.truenas-dockge.yml) into Dockge.
+For TrueNAS SCALE with Dockge installed as an App, use the GHCR deployment path rather than building source inside Dockge. GHCR publishing remains an explicit manual workflow; CI runs automatically on pull requests and pushes to `main`. Secrets stay in Dockge's local `.env`, not in the GitHub repository. Follow [`docs/TRUENAS_DOCKGE_GHCR.md`](docs/TRUENAS_DOCKGE_GHCR.md), then paste [`compose.truenas-dockge.yml`](compose.truenas-dockge.yml) into Dockge.
 
 ## Quick start
 

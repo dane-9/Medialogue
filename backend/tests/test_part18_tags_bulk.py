@@ -33,6 +33,8 @@ from app.models.domain import (
     AccessMode,
 )
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 @pytest.fixture
 def client(tmp_path):

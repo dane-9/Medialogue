@@ -15,6 +15,8 @@ from app.db import session as db_session
 from app.main import create_app
 from app.integrations.tmdb import TMDBEpisodeMetadata, TMDBMovieMatch, TMDBSeasonMetadata, TMDBShowDetails, TMDBShowMatch
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 @pytest.fixture
 def client(tmp_path):

@@ -16,6 +16,8 @@ from app.integrations.plex import PlexMediaMatch, PlexTitleMatch
 from app.integrations.tmdb import TMDBEpisodeMetadata, TMDBMovieMatch, TMDBSeasonMetadata, TMDBShowDetails, TMDBShowMatch
 from app.main import create_app
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 @pytest.fixture
 def client(tmp_path):

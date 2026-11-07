@@ -23,6 +23,8 @@ from app.main import create_app
 from app.models.domain import EpisodeMediaMap, MatchMethod, Problem, Show, StorageRoot, Torrent
 from app.services.shows import reconcile_show_directory
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 class FakeTMDBClient:
     def __init__(self, api_key: str):

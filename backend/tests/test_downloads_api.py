@@ -39,6 +39,8 @@ from app.models.domain import (
     TorrentClientObservation,
 )
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 class _NoMatchTMDBClient:
     """Reachable TMDB that recognises nothing.

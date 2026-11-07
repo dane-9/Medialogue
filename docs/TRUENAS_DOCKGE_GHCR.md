@@ -174,12 +174,19 @@ http://YOUR_TRUENAS_IP:8000
 
 Initial setup:
 
-```sh
-docker compose exec medialogue cat /config/initial-setup-token
-```
+1. Read the one-time token from the container:
 
-Paste the one-time token into the First Run screen and choose an administrator
-password of at least 12 characters. The token is deleted after setup.
+   ```sh
+   docker compose exec medialogue cat /config/initial-setup-token
+   ```
+
+   (or `docker exec <medialogue-container> cat /config/initial-setup-token`
+   from outside the stack directory)
+2. Open the First Run page and paste the token.
+3. Choose an administrator username and a password of at least 12 characters.
+
+The token is deleted after successful setup. Normal login is unavailable until
+this step is complete.
 
 The supplied deployment defaults to the non-root TrueNAS identity
 (`PUID=568`, `PGID=568`). UID 0 is rejected unless

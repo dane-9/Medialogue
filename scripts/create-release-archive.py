@@ -25,7 +25,6 @@ ALLOWED_FILES = frozenset(
         "Dockerfile",
         "README.md",
         "THIRD_PARTY_NOTICES.md",
-        "TRUENAS_DOCKGE_GHCR.md",
         "compose.truenas-dockge.yml",
         "docker-compose.yml",
         "backend/alembic.ini",

@@ -23,6 +23,8 @@ from app.main import create_app
 from app.models.domain import IdentityState, Movie, Torrent, TorrentArchiveState, TorrentClientObservation
 from app.services.torrent_archive import verify_torrent_archive
 
+pytestmark = pytest.mark.usefixtures("scratch_cwd")
+
 
 class _NoMatchTMDBClient:
     """Reachable TMDB that recognises nothing.
