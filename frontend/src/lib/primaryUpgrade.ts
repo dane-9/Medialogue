@@ -59,6 +59,18 @@ export function primaryUpgrade(facts: UpgradeFacts): { label: string; details: s
 
 interface ComparedFormat { id: string; name: string; contribution: number; group?: string }
 
+/**
+ * A video codec named the way its release is: an encode by its encoder (x264,
+ * x265), anything else (Remux, WEB-DL) by the codec (AVC, HEVC). Other
+ * formats keep their own name.
+ */
+export function codecName(format: ComparedFormat, source?: string): ComparedFormat {
+  const encode = /encode/i.test(source ?? '')
+  if (/(^|[^a-z0-9])(avc|x264|h\.?264)($|[^a-z0-9])/i.test(format.name)) return { ...format, name: encode ? 'x264' : 'AVC' }
+  if (/(^|[^a-z0-9])(hevc|x265|h\.?265)($|[^a-z0-9])/i.test(format.name)) return { ...format, name: encode ? 'x265' : 'HEVC' }
+  return format
+}
+
 export interface UpgradeChange {
   label: string
   from: string
@@ -107,8 +119,8 @@ export function upgradeChanges(item: {
   }
   // Re-release formats (Proper, Repack, Rerip) are the Release row below.
   const revisionFormat = (format: ComparedFormat) => /^(proper|repack\d*|rerip\d*|revision)$/i.test(format.name.trim())
-  item.currentMatchedFormats.filter((format) => !revisionFormat(format)).forEach((format) => add(format, 'current'))
-  item.candidateMatchedFormats.filter((format) => !revisionFormat(format)).forEach((format) => add(format, 'candidate'))
+  item.currentMatchedFormats.filter((format) => !revisionFormat(format)).forEach((format) => add(codecName(format, from.type), 'current'))
+  item.candidateMatchedFormats.filter((format) => !revisionFormat(format)).forEach((format) => add(codecName(format, to.type), 'candidate'))
   const total = (formats: ComparedFormat[]) => formats.reduce((sum, format) => sum + format.contribution, 0)
   const names = (formats: ComparedFormat[]) => formats.map((format) => format.name).join(' · ') || '—'
   // A format that only names a source (Remux, WEB-DL) repeats the Source row.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { primaryUpgrade, upgradeChanges } from './primaryUpgrade'
+import { codecName, primaryUpgrade, upgradeChanges } from './primaryUpgrade'
 
 const base = { upgradeTypes: [] as string[], addedCustomFormats: [], scoreDelta: 0 }
 
@@ -52,5 +52,17 @@ describe('upgradeChanges', () => {
       ['Dynamic Range', '—', 'DV HDR10+', 'better'],
       ['Audio', 'DD', 'TrueHD', 'better'],
     ])
+  })
+})
+
+describe('codecName', () => {
+  const format = (name: string) => ({ id: name, name, contribution: 0, group: 'Video' })
+  it('names an encode by its encoder and anything else by the codec', () => {
+    expect(codecName(format('AVC / x264'), 'Encode').name).toBe('x264')
+    expect(codecName(format('HEVC / x265'), 'Encode').name).toBe('x265')
+    expect(codecName(format('AVC / x264'), 'REMUX').name).toBe('AVC')
+    expect(codecName(format('h264'), 'WEB-DL').name).toBe('AVC')
+    expect(codecName(format('HEVC'), 'REMUX').name).toBe('HEVC')
+    expect(codecName(format('TrueHD'), 'Encode').name).toBe('TrueHD')
   })
 })
