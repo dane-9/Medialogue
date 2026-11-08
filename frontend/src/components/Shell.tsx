@@ -8,6 +8,7 @@ import { systemApi } from '../api/modules/system'
 import { replacementsApi } from '../api/modules/replacements'
 import { upgradesApi } from '../api/modules/upgrades'
 import { jobEventChangesBadges } from '../lib/badgeRefresh'
+import { DATA_CHANGED_EVENT } from '../api/transport'
 import medialogueBanner from '../assets/medialogue-banner.png'
 import type { HealthIndicator } from '../types'
 import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
@@ -110,14 +111,33 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   // authoritative count, so reconnects, rollbacks and duplicate-resolution
   // events can never leave the badge drifting from the queue.
   useLiveRefresh(refreshProblemCount, { events: problemEvents, pollMs: 300_000, immediate: true })
-  useLiveRefresh(refreshUpgradeCount, { events: ['job.status'], when: badgeJob, pollMs: 300_000, immediate: true })
-  useLiveRefresh(refreshReplaceCount, {
-    events: ['job.status', 'upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished'],
-    when: badgeJob,
-    pollMs: 300_000,
-    immediate: true,
+  // Upgrade searches report each candidate as found, and scans each folder as
+  // read, so the counts follow along; coalescing keeps that to one query every
+  // few seconds however busy the stream is.
+  useLiveRefresh(refreshUpgradeCount, {
+    events: ['job.status', 'upgrade.candidate', 'upgrade.execution', 'upgrade.submitted', 'upgrade.result_selected'],
+    when: badgeJob, coalesceMs: 2_000, pollMs: 300_000, immediate: true,
   })
-  useLiveRefresh(refreshNewMediaCount, { events: ['job.status'], when: badgeJob, pollMs: 60_000 })
+  useLiveRefresh(refreshReplaceCount, {
+    events: ['job.status', 'upgrade.candidate', 'upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished'],
+    when: badgeJob, coalesceMs: 2_000, pollMs: 300_000, immediate: true,
+  })
+  useLiveRefresh(refreshNewMediaCount, {
+    events: ['job.status', 'scan.progress', 'show.discovered', 'movie.added', 'show.added'],
+    when: badgeJob, coalesceMs: 2_000, pollMs: 60_000,
+  })
+
+  // Anything changed from this browser (adding New Media, grabbing an upgrade,
+  // dismissing a replacement…) refreshes all three, once the burst settles.
+  useEffect(() => {
+    let timer: number | undefined
+    const changed = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => { void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount() }, 500)
+    }
+    window.addEventListener(DATA_CHANGED_EVENT, changed)
+    return () => { window.clearTimeout(timer); window.removeEventListener(DATA_CHANGED_EVENT, changed) }
+  }, [refreshNewMediaCount])
   useLiveRefresh(refreshHealthAndPlex, { events: healthEvents, pollMs: 60_000, immediate: true })
 
   useEffect(() => {

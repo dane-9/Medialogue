@@ -62,6 +62,13 @@ function needsCsrf(method: string): boolean {
   return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())
 }
 
+/** Fired after any change succeeds, so counts shown elsewhere (the sidebar badges) can refresh. */
+export const DATA_CHANGED_EVENT = 'medialogue-data-changed'
+
+function announceDataChanged() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(DATA_CHANGED_EVENT))
+}
+
 const transportMiddleware: Middleware = {
   async onRequest({ request }) {
     request.headers.set('Accept', 'application/json')
@@ -71,8 +78,9 @@ const transportMiddleware: Middleware = {
     }
     return request
   },
-  async onResponse({ response }) {
+  async onResponse({ request, response }) {
     if (!response.ok) throw await apiErrorFromResponse(response)
+    if (needsCsrf(request.method)) announceDataChanged()
   },
 }
 
@@ -83,6 +91,7 @@ export async function uploadFile<T>(url: string, file: Blob): Promise<T> {
   if (csrf) headers.set('X-CSRF-Token', csrf)
   const response = await fetch(url, { method: 'POST', credentials: 'include', headers, body: file })
   if (!response.ok) throw await apiErrorFromResponse(response)
+  announceDataChanged()
   return await response.json() as T
 }
 
