@@ -3,7 +3,7 @@ import { openApiClient, openApiData } from '../transport'
 export const authApi = {
   login: (username: string, password: string) => openApiData(openApiClient.POST('/api/v1/auth/login', { body: { username, password } })),
   bootstrapStatus: () => openApiData(openApiClient.GET('/api/v1/auth/bootstrap/status')),
-  bootstrap: (setupToken: string, username: string, password: string) => openApiData(openApiClient.POST('/api/v1/auth/bootstrap', { body: { setup_token: setupToken, username, password } })),
+  bootstrap: (username: string, password: string) => openApiData(openApiClient.POST('/api/v1/auth/bootstrap', { body: { username, password } })),
   logout: () => openApiData(openApiClient.POST('/api/v1/auth/logout')),
   session: () => openApiData(openApiClient.GET('/api/v1/auth/me')),
   sessions: () => openApiData(openApiClient.GET('/api/v1/auth/sessions')),

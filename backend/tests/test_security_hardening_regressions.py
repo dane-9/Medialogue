@@ -311,26 +311,3 @@ def test_parallel_wrong_logins_cannot_outrun_the_throttle(monkeypatch: pytest.Mo
         auth_api.login_rate_limiter.reset()
     assert codes.count("INVALID_CREDENTIALS") == auth_api.login_rate_limiter.failure_limit
     assert codes.count("LOGIN_THROTTLED") == 12 - auth_api.login_rate_limiter.failure_limit
-
-
-def test_bootstrap_rejects_a_non_ascii_setup_token_cleanly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("aiosqlite")
-
-    from fastapi import Response
-
-    import app.api.auth as auth_api
-    from app.db.bootstrap import initial_setup_token_path
-    from app.schemas.auth import BootstrapRequest
-
-    settings = _production_settings(tmp_path, secret_key="production-test-secret-123456789")
-    monkeypatch.setattr(auth_api, "get_settings", lambda: settings)
-    initial_setup_token_path(settings).write_text("a" * 40, encoding="utf-8")
-
-    with pytest.raises(AppError) as raised:
-        asyncio.run(auth_api.bootstrap(
-            BootstrapRequest(setup_token="é" * 30, password="long-enough-password"),
-            Response(),
-            None,  # type: ignore[arg-type]
-        ))
-    assert raised.value.code == "INVALID_SETUP_TOKEN"
-    assert raised.value.status_code == 403

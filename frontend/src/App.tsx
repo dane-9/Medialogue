@@ -139,7 +139,6 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
 }
 
 function FirstRunSetupPage({ onSetup }: { onSetup: () => void }) {
-  const [setupToken, setSetupToken] = useState('')
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -159,7 +158,7 @@ function FirstRunSetupPage({ onSetup }: { onSetup: () => void }) {
     }
     setLoading(true)
     try {
-      await authApi.bootstrap(setupToken, username, password)
+      await authApi.bootstrap(username, password)
       onSetup()
     } catch (reason) {
       if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500) setError(reason.message || 'The setup details were rejected.')
@@ -173,14 +172,13 @@ function FirstRunSetupPage({ onSetup }: { onSetup: () => void }) {
     <div className="login-panel">
       <img className="login-brand-banner" src={medialogueBanner} alt="Medialogue" />
       <div className="login-form">
-        <div className="heading-copy"><details><summary>Restoring after losing a server?</summary><p>Finish setup first. Then add your media folders and qBittorrent clients, download the Medialogue Backups folder from Google Drive, and upload it on <strong>Backups → Restore</strong>. Every torrent goes back to its original folder and downloads again.</p></details><div className="eyebrow">FIRST RUN</div><h1>Set up your administrator account</h1><p>Read the one-time setup token from the container, then choose the password used for normal sign-in.</p></div>
+        <div className="heading-copy"><details><summary>Restoring after losing a server?</summary><p>Finish setup first. Then add your media folders and qBittorrent clients, download the Medialogue Backups folder from Google Drive, and upload it on <strong>Backups → Restore</strong>. Every torrent goes back to its original folder and downloads again.</p></details><div className="eyebrow">FIRST RUN</div><h1>Set up your administrator account</h1><p>Choose the username and password used for normal sign-in.</p></div>
         <form onSubmit={submit} className="login-form">
-          <label><span className="field-label">Setup token</span><Input value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="off" spellCheck={false} /></label>
           <label><span className="field-label">Administrator username</span><Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label>
           <label><span className="field-label">Password</span><Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" autoFocus /></label>
           <label><span className="field-label">Confirm password</span><Input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} type="password" autoComplete="new-password" /></label>
           {error && <div className="login-error">{error}</div>}
-          <Button type="submit" variant="primary" disabled={loading || !setupToken || !username || !password || !confirmation}>{loading ? 'Setting up…' : 'Create administrator'}</Button>
+          <Button type="submit" variant="primary" disabled={loading || !username || !password || !confirmation}>{loading ? 'Setting up…' : 'Create administrator'}</Button>
         </form>
       </div>
     </div>

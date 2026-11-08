@@ -20,7 +20,6 @@ class AuthRuntimeConfigResponse(BaseModel):
 
 
 class BootstrapRequest(BaseModel):
-    setup_token: str = Field(min_length=20, max_length=256)
     username: str = Field(default="admin", min_length=1, max_length=128)
     password: str = Field(min_length=12, max_length=1024)
 

@@ -18,7 +18,7 @@ from app.db.bootstrap import (
     ensure_default_quality_profile,
     refresh_default_profile_scores,
     ensure_builtin_custom_formats,
-    ensure_production_bootstrap_state,
+    production_bootstrap_required,
     ensure_quality_definitions,
     mark_running_jobs_interrupted,
 )
@@ -72,13 +72,9 @@ async def lifespan(_: FastAPI):
 
     if settings.is_production:
         async with db_session.async_session_factory() as db:
-            setup_required = await ensure_production_bootstrap_state(db, settings)
-            await db.commit()
+            setup_required = await production_bootstrap_required(db)
         if setup_required:
-            logger.warning(
-                "Initial administrator setup is required. Retrieve the one-time setup token with: "
-                "docker exec <medialogue-container> cat /config/initial-setup-token"
-            )
+            logger.warning("No administrator yet: open Medialogue in a browser to create one.")
 
     try:
         async with db_session.async_session_factory() as db:

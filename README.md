@@ -30,14 +30,7 @@ services:
       - /path/to/shows:/media/shows
 ```
 
-The media paths inside the container (`/media/movies`, `/media/shows`) are what you add as media folders in Settings. Then start it and read the one-time setup token:
-
-```sh
-docker compose up -d
-docker compose exec medialogue cat /config/initial-setup-token
-```
-
-Open `http://HOST:8000`, enter the setup token, and create the administrator. Then, in **Settings**:
+The media paths inside the container (`/media/movies`, `/media/shows`) are what you add as media folders in Settings. Start it with `docker compose up -d`, open `http://HOST:8000`, and create the administrator. Then, in **Settings**:
 
 1. add TMDB (recommended before the first scan), qBittorrent, indexers and Plex as needed;
 2. add your media folders, and run the first scan of each one by hand.

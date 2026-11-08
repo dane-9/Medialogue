@@ -295,12 +295,6 @@
             "title": "Password",
             "type": "string"
           },
-          "setup_token": {
-            "maxLength": 256,
-            "minLength": 20,
-            "title": "Setup Token",
-            "type": "string"
-          },
           "username": {
             "default": "admin",
             "maxLength": 128,
@@ -310,7 +304,6 @@
           }
         },
         "required": [
-          "setup_token",
           "password"
         ],
         "title": "BootstrapRequest",

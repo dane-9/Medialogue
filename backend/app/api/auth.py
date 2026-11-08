@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.login_rate_limit import login_attempt_key, login_rate_limiter
 from app.core.security import digest_token, hash_password, new_token, verify_password
-from app.db.bootstrap import initial_setup_token_path, production_bootstrap_required
+from app.db.bootstrap import production_bootstrap_required
 from app.db.session import get_db
 from app.models.auth import AdminUser, AuthSession
 from app.schemas.auth import (
@@ -250,27 +250,6 @@ async def bootstrap(
     username = payload.username.strip()
     if not username:
         raise AppError("INVALID_USERNAME", "Administrator username cannot be blank.", status_code=422)
-    token_path = initial_setup_token_path(settings)
-    try:
-        stored_token = token_path.read_text(encoding="utf-8").strip()
-    except FileNotFoundError as exc:
-        raise AppError(
-            "BOOTSTRAP_NOT_AVAILABLE",
-            "Initial administrator setup is no longer available.",
-            status_code=409,
-        ) from exc
-    except OSError as exc:
-        raise AppError(
-            "BOOTSTRAP_UNAVAILABLE",
-            "Initial administrator setup is temporarily unavailable.",
-            status_code=503,
-        ) from exc
-    # Compare bytes: compare_digest raises TypeError on non-ASCII str input.
-    if not stored_token or not secrets.compare_digest(
-        payload.setup_token.encode("utf-8"), stored_token.encode("utf-8")
-    ):
-        raise AppError("INVALID_SETUP_TOKEN", "The initial setup token is invalid.", status_code=403)
-
     async with _bootstrap_lock:
         try:
             # SQLite's write-intent transaction serializes competing bootstrap
@@ -322,16 +301,6 @@ async def bootstrap(
             await db.rollback()
             raise
 
-    try:
-        token_path.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError:
-        # The consumed database state and one-time session are still safe if
-        # cleanup loses a filesystem race. A later startup removes stale files.
-        import logging
-
-        logging.getLogger(__name__).error("Could not remove the consumed initial setup token file.", exc_info=True)
     return result
 
 

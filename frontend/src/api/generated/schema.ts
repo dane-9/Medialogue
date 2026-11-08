@@ -2806,8 +2806,6 @@ export interface components {
         BootstrapRequest: {
             /** Password */
             password: string;
-            /** Setup Token */
-            setup_token: string;
             /**
              * Username
              * @default admin
