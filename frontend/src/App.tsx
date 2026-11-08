@@ -148,8 +148,8 @@ function FirstRunSetupPage({ onSetup }: { onSetup: () => void }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     setError('')
-    if (password.length < 12) {
-      setError('Choose a password with at least 12 characters.')
+    if (!password) {
+      setError('Choose a password.')
       return
     }
     if (password !== confirmation) {

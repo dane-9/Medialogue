@@ -24,7 +24,7 @@ export function SecuritySettings() {
     void loadSessions()
   }, [])
   const change = async () => {
-    if (newPassword.length < 12) { setMessage({ tone: 'error', text: 'New password must contain at least 12 characters.' }); return }
+    if (!newPassword) { setMessage({ tone: 'error', text: 'Enter a new password.' }); return }
     if (newPassword !== confirmPassword) { setMessage({ tone: 'error', text: 'New password confirmation does not match.' }); return }
     setBusy(true); setMessage(pending('Changing password…'))
     try { await authApi.changePassword(currentPassword, newPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setSecurity((value) => value ? { ...value, default_password_warning: false } : value); await loadSessions(); setMessage(ok('Password changed. Other active sessions were revoked.')) }
@@ -43,7 +43,6 @@ export function SecuritySettings() {
     catch (reason) { setMessage(failed(reason, 'Could not revoke other sessions.')) }
     finally { setBusy(false) }
   }
-  const tooShort = newPassword.length > 0 && newPassword.length < 12
   const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword
   const otherSessions = sessions.filter((session) => !session.current)
   const orderedSessions = [...sessions].sort((a, b) => Number(b.current) - Number(a.current) || ageValue(b.created_at) - ageValue(a.created_at))
@@ -59,9 +58,8 @@ export function SecuritySettings() {
         <Field label="Current password" help="Required to prove this session belongs to you.">
           <Secret value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" />
         </Field>
-        <Field label="New password" error={tooShort ? 'Must contain at least 12 characters.' : undefined}
-          help={<><strong>At least 12 characters.</strong> Length matters more than symbols, a passphrase of four uncommon words beats a short complex string.</>}>
-          <Secret value={newPassword} onChange={(event) => setNewPassword(event.target.value)} aria-invalid={tooShort} />
+        <Field label="New password" help="Length matters more than symbols: a passphrase of a few uncommon words beats a short complex string.">
+          <Secret value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
         </Field>
         <Field label="Confirm new password" error={mismatch ? 'Does not match the new password.' : undefined} help="Must match exactly.">
           <Secret value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} aria-invalid={mismatch} />
@@ -71,7 +69,7 @@ export function SecuritySettings() {
     <div className="settings-note"><Icon name="lock" size={15} /><span>Changing the password revokes every other active session immediately. You stay signed in on this device.</span></div>
     <Note message={message} />
     <div className="settings-footer">
-      <Button variant="primary" onClick={() => void change()} disabled={busy || !currentPassword || tooShort || mismatch || !newPassword}>{busy ? 'Changing…' : 'Change password'}</Button>
+      <Button variant="primary" onClick={() => void change()} disabled={busy || !currentPassword || mismatch || !newPassword}>{busy ? 'Changing…' : 'Change password'}</Button>
     </div>
     <SectionHead title="Active Sessions" divided
       description="Every signed-in browser holds its own session cookie. Revoke any you no longer recognise. The tokens themselves are opaque and never shown here."
