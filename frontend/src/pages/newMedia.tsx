@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CONFIDENT, newMediaRoots } from '../lib/newMediaTriage'
+import { newMediaRoots } from '../lib/newMediaTriage'
 import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
 import { Dropdown } from '../components/Dropdown'
@@ -202,85 +202,76 @@ export function NewMediaPage() {
 
     <div className="new-media-workspace">
 
-      <div className="new-media-scroll">
-        <span className="new-media-col-head">{noun === 'show' ? 'Show' : 'Movie'} folder</span>
-        <span className="new-media-col-head">Detected {noun}</span>
+      <div className="new-media-scroll new-media-combined">
+        <span className="new-media-col-head">{noun === 'show' ? 'Show' : 'Movie'} folder and match</span>
         {rows.map((item) => {
             const match = item.selected
-              const active = false
-              const blocked = !item.exists || !match
+            const active = false
+            const blocked = !item.exists || !match
             const included = !excluded.has(item.id)
             const editionConflict = included && conflictingIds.has(item.id)
-            const state = !match ? { tone: 'needs-match', text: 'No results' }
-              : item.confidence !== undefined && item.confidence < CONFIDENT ? { tone: 'unsure', text: `${Math.round(item.confidence * 100)}%` }
-              : null
-            // A display:contents wrapper, so both cells stay direct grid items
-            // while still sharing one hover target across the whole row.
+            const state = !match ? { tone: 'needs-match', text: 'No results' } : null
+            const folder = newMediaFolderName(item.path)
             return <div className="new-media-row" key={item.id}>
               <div
-                className={`new-media-folder-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
+                className={`new-media-folder-cell new-media-combined-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
                 onClick={() => setSelectedId(active ? '' : item.id)}
               >
                 <button
                   type="button"
                   role="checkbox"
                   aria-checked={included && !blocked}
-                  aria-label={`Add ${newMediaFolderName(item.path)} to the library`}
+                  aria-label={`Add ${folder} to the library`}
                   className={`new-media-check ${included && !blocked ? 'on' : ''}`}
                   // Including or leaving out a folder is not the same intent as
                   // opening it, so the checkbox must not also select the row.
                   onClick={(event) => { event.stopPropagation(); toggle(item.id) }}
                   disabled={blocked}
                 >{included && !blocked && <Icon name="check" size={11} />}</button>
-                <div className="new-media-folder-copy">
-                  <Tooltip content={item.path}><code>{newMediaFolderName(item.path)}</code></Tooltip>
-                  {/* Reveals on row hover like the edition control, but keeps its
-                      space so the row does not resize under the pointer. */}
+                <span className="new-media-poster">{match?.posterRef
+                  ? <img src={tmdbPosterUrl(match.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  : <Icon name={item.mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
+                {/* The folder as found, then what it was matched to, then the
+                    year: three short lines in the height the two columns had. */}
+                <span className="new-media-combined-copy">
+                  <Tooltip content={<span className="download-path">{item.path}</span>}><code>{folder}</code></Tooltip>
+                  {/* Without a match there is no title or year to show, only that
+                      the search found nothing; the folder name above is what it searched. */}
+                  {state
+                    ? <span className={`new-media-state new-media-state-inline ${state.tone}`}>{state.text}</span>
+                    : <>
+                      <strong>{match?.title}</strong>
+                      <small>{match?.year ?? '-'}</small>
+                    </>}
+                </span>
+                {/* Edition over Quality Profile, one width, stacked in the row's height. */}
+                <span className="new-media-combined-end">
+                  {item.mediaType === 'movies' && <span
+                    className={`new-media-edition-cell ${editionConflict ? 'clash' : item.parsedEdition || item.manualEditionOverride || sharedMovieIds.has(item.id) ? '' : 'optional'}`}
+                    title={editionConflict ? (item.libraryEditionConflict ? 'Already in your library with this edition' : 'Another copy in this queue has the same movie and edition') : undefined}
+                    onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+                  >
+                    <NewMediaDiscoveryEdition
+                      key={`${item.id}:${item.editionOverrideActive}:${item.manualEditionOverride ?? ''}`}
+                      item={item}
+                      options={editionOptions}
+                      onChanged={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
+                      onError={setError}
+                    />
+                  </span>}
                   <span
                     className={`new-media-profile-cell ${item.qualityProfileId ? '' : 'optional'}`}
                     onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
                   >
                     <Dropdown
-                      ariaLabel={`Quality Profile for ${newMediaFolderName(item.path)}`}
+                      ariaLabel={`Quality Profile for ${folder}`}
                       value={item.qualityProfileId ?? ''}
                       disabled={profileBusy}
                       options={[{ value: '', label: defaultProfileLabel(profiles) }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]}
                       onChange={(value) => void setRowProfile(item, value || null)}
                     />
                   </span>
-                </div>
-                {state && <span className={`new-media-state ${state.tone}`}>{state.text}</span>}
-              </div>
-
-              <div
-                className={`new-media-match-cell ${active ? 'active' : ''} ${included ? '' : 'excluded'}`}
-                onClick={() => setSelectedId(active ? '' : item.id)}
-              >
-                <button type="button" className="new-media-match-main">
-                  <span className="new-media-poster">{match?.posterRef
-                    ? <img src={tmdbPosterUrl(match.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                    : <Icon name={item.mediaType === 'shows' ? 'tv-screen' : 'clapper'} size={16} />}</span>
-                  <span className="new-media-match-copy">
-                    <strong>{match?.title ?? item.parsedTitle ?? 'Nothing found'}</strong>
-
-                    <span className="new-media-match-sub">
-                      <small>{match?.year ?? item.parsedYear ?? '-'}</small>
-                      {item.mediaType === 'movies' && <span
-                        className={`new-media-edition-cell ${editionConflict ? 'clash' : item.parsedEdition || item.manualEditionOverride || sharedMovieIds.has(item.id) ? '' : 'optional'}`}
-                        title={editionConflict ? (item.libraryEditionConflict ? 'Already in your library with this edition' : 'Another copy in this queue has the same movie and edition') : undefined}
-                        onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-                      >
-                        <NewMediaDiscoveryEdition
-                          key={`${item.id}:${item.editionOverrideActive}:${item.manualEditionOverride ?? ''}`}
-                          item={item}
-                          options={editionOptions}
-                          onChanged={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
-                          onError={setError}
-                        />
-                      </span>}
-                    </span>
-                  </span>
-                </button>
+                </span>
               </div>
             </div>
         })}

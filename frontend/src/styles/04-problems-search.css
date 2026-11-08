@@ -939,3 +939,31 @@
 .replacement-target > span { display: grid; gap: 2px; min-width: 0; }
 .replacement-target strong { color: var(--text); font-size: var(--t-sm); font-weight: 500; }
 .replacement-target span span, .replacement-target small { color: var(--muted); font-size: var(--t-xs); overflow-wrap: anywhere; }
+
+/* New Media, one cell per folder: poster, then folder name, matched title and
+   year stacked in the height the old two-column row had; the state, edition
+   and Quality Profile sit at the far right. */
+.new-media-scroll.new-media-combined { grid-template-columns: minmax(0, 1fr); }
+/* The thin, trackless scrollbar Upgrade and Replace Media use. */
+.new-media-workspace > .new-media-scroll.new-media-combined { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+/* Same row height and poster size as Upgrade and Replace Media. */
+.new-media-combined-cell { gap: var(--s3); min-height: 67px; }
+.new-media-combined-cell > .new-media-poster { width: 36px; }
+/* Beats .new-media-folder-cell > span, which lays spans out in a row. */
+.new-media-folder-cell > .new-media-combined-copy { display: grid; flex: 1; align-content: center; justify-items: start; min-width: 0; }
+.new-media-combined-copy > * { max-width: 100%; }
+.new-media-combined-copy code,
+.new-media-combined-copy strong,
+.new-media-combined-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-media-folder-cell .new-media-combined-copy code { font: var(--t-sm)/1.25 var(--sans); }
+.new-media-combined-copy strong { margin-top: 3px; color: var(--text); font: 500 var(--t-xs)/1.25 var(--sans); }
+.new-media-combined-copy small { color: var(--faint); font: var(--t-micro)/1.2 var(--sans); }
+/* In the title's place, at the title line's height. */
+.new-media-combined-copy > .new-media-state-inline { min-height: 0; height: 18px; margin-top: 3px; padding: 0 5px; font-size: var(--t-micro); line-height: 1; }
+/* Right-aligned, each control at its own width (edition 175-190px, profile
+   175-220px), so both end flush with the row's right edge. */
+.new-media-folder-cell > .new-media-combined-end { display: grid; flex: none; align-content: center; justify-items: end; gap: 2px; }
+.new-media-combined-end > span { display: block; justify-self: end; min-width: 0; }
+.new-media-row:hover .new-media-combined-end .new-media-edition-cell.optional,
+.new-media-combined-cell:focus-within .new-media-edition-cell.optional,
+.new-media-combined-cell:has(.dropdown-trigger.open) .new-media-edition-cell.optional { visibility: visible; opacity: 1; }

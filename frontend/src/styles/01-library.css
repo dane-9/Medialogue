@@ -172,7 +172,8 @@
   box-shadow: 0 10px 28px rgba(0, 0, 0, .5);
   animation: dropdown-in .1s ease;
 }
-.dropdown-list { max-height: 292px; overflow-y: auto; }
+/* A thin thumb with no track behind it, as Upgrade and Replace Media's lists. */
+.dropdown-list { max-height: 292px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 @keyframes dropdown-in {
   from { opacity: 0; transform: translateY(-4px) scale(.98); }
   to { opacity: 1; transform: none; }
