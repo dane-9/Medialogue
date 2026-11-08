@@ -23,10 +23,14 @@ function capitalise(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+/** Folders added per request: small enough to finish in seconds, with progress. */
+const ADD_BATCH = 25
+
 export function NewMediaPage() {
   const [items, setItems] = useState<MediaDiscovery[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [addProgress, setAddProgress] = useState<{ done: number; total: number } | null>(null)
   const [rootName, setRootName] = useState('')
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState('')
@@ -142,17 +146,31 @@ export function NewMediaPage() {
     const ids = addable.map((item) => item.id)
     if (!ids.length || hasEditionConflicts) return
     setAdding(true); setError(''); setMessage('')
+    // In batches: each new title is fetched from TMDB, so a whole library in
+    // one request ran for many minutes (and the server takes at most 500).
+    // Each batch's titles leave the list as soon as they are in.
+    let added = 0
+    const failed: string[] = []
     try {
-      const result = await discoveryApi.bulkNewMediaDiscoveries(ids, 'approve')
-      setItems((current) => current.filter((item) => !result.succeeded.includes(item.id)))
+      for (let start = 0; start < ids.length; start += ADD_BATCH) {
+        setAddProgress({ done: start, total: ids.length })
+        const result = await discoveryApi.bulkNewMediaDiscoveries(ids.slice(start, start + ADD_BATCH), 'approve')
+        added += result.succeeded.length
+        failed.push(...result.failed.map((failure) => failure.message))
+        setItems((current) => current.filter((item) => !result.succeeded.includes(item.id)))
+      }
+    } catch (reason) {
+      failed.push(reason instanceof Error ? reason.message : 'Could not add the rest.')
+    } finally {
       window.dispatchEvent(new Event('medialogue-new-media-changed'))
-      setMessage(`${result.succeeded.length} ${result.succeeded.length === 1 ? noun : `${noun}s`} added to the library.`)
-      if (result.failed.length) {
-        setError(`${result.failed.length} could not be added: ${result.failed.map((failure) => failure.message).join(' ')}`)
+      setMessage(added ? `${added} ${added === 1 ? noun : `${noun}s`} added to the library.` : '')
+      if (failed.length) {
+        setError(`${failed.length} could not be added: ${[...new Set(failed)].join(' ')}`)
         await load()
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not add those.') }
-    finally { setAdding(false) }
+      setAddProgress(null)
+      setAdding(false)
+    }
   }
 
   const choose = async (item: MediaDiscovery, candidate: TMDBCandidate) => {
@@ -300,7 +318,7 @@ export function NewMediaPage() {
         <div className="toolbar-spacer" />
         {hasEditionConflicts && <span className="new-media-add-warning">Resolve same-edition copies or leave one out before adding.</span>}
         <Button variant="primary" icon="check" onClick={() => void runAdd()} disabled={adding || !addable.length || hasEditionConflicts}>
-          {adding ? 'Adding…' : `Add ${addable.length} ${addable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
+          {adding ? (addProgress && addProgress.total > ADD_BATCH ? `Adding ${addProgress.done.toLocaleString()} of ${addProgress.total.toLocaleString()}…` : 'Adding…') : `Add ${addable.length} ${addable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
         </Button>
       </div>
 
