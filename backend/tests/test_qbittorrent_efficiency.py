@@ -68,3 +68,20 @@ def test_tracker_budget_checks_settled_torrents_far_less_often():
     assert not _tracker_is_active(settled)
     assert _tracker_is_active(SimpleNamespace(progress=1, state="uploading", tracker=""))
     assert _tracker_is_active(SimpleNamespace(progress=0.4, state="downloading", tracker="x"))
+
+
+def test_tracker_summary_compares_stored_and_fresh_success_times():
+    """SQLite hands back stored times without a zone; a success recorded this
+    poll has one. Comparing them raised on every poll of a known torrent."""
+
+    from datetime import datetime, timezone
+
+    from app.services.torrent_tracking import _aggregate
+
+    stored = SimpleNamespace(active=True, health_state="working", terminal_confirmed=False,
+                             last_success_at=datetime(2026, 1, 1, 12, 0))
+    fresh = SimpleNamespace(active=True, health_state="working", terminal_confirmed=False,
+                            last_success_at=datetime(2026, 1, 2, 12, 0, tzinfo=timezone.utc))
+    summary = _aggregate([stored, fresh], datetime(2026, 1, 2, 12, 0, tzinfo=timezone.utc))
+    assert summary["state"] == "healthy"
+    assert summary["last_success_at"] == "2026-01-02T12:00:00+00:00"

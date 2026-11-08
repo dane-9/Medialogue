@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -104,6 +104,14 @@ def tracker_health_state(status: int) -> str:
     return {0: "disabled", 1: "not_contacted", 2: "working", 3: "updating", 4: "error"}.get(status, "unknown")
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    """SQLite returns stored times without their zone; values set this session have it."""
+
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
 def _aggregate(rows: list[TorrentTrackerObservation], checked_at: datetime) -> dict[str, object]:
     considered = [row for row in rows if row.active and row.health_state != "disabled"]
     working = [row for row in considered if row.health_state == "working"]
@@ -117,7 +125,7 @@ def _aggregate(rows: list[TorrentTrackerObservation], checked_at: datetime) -> d
         state = "unavailable"
     else:
         state = "unknown"
-    last_success = max((row.last_success_at for row in considered if row.last_success_at), default=None)
+    last_success = max((_aware(row.last_success_at) for row in considered if row.last_success_at), default=None)
     return {
         "state": state,
         "checked_at": checked_at.isoformat(),

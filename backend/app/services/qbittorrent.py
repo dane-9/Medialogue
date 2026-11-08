@@ -954,6 +954,12 @@ async def _poll_download_client(
                 if queued_handoff is not None:
                     completed_upgrade_torrent_ids.discard(queued_handoff)
                 processing_errors += 1
+                # With SQLite's driver, rolling back to a SAVEPOINT leaves the
+                # transaction it began open, holding the database's one write
+                # lock until the poll ends; on a large client every other save
+                # (choosing a New Media match, the scheduler) then timed out.
+                # The torrents before this one are complete: commit them now.
+                await db.commit()
                 logger.exception(
                     "qBittorrent torrent processing failed; continuing with remaining torrents",
                     extra={
