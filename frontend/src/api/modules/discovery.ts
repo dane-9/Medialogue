@@ -1,4 +1,5 @@
 import { mapMediaDiscovery } from '../mappers/discovery'
+import { mapJob } from '../mappers/system'
 import { openApiClient, openApiData } from '../transport'
 
 export const discoveryApi = {
@@ -18,6 +19,13 @@ export const discoveryApi = {
     return { succeeded: payload.succeeded ?? [], failed: payload.failed ?? [] }
   },
   searchDiscoveryCandidates: async (id: string, query?: string) => mapMediaDiscovery(await openApiData(openApiClient.POST('/api/v1/discoveries/{discovery_id}/search', { params: { path: { discovery_id: id } }, body: { query: query ?? null } }))),
+  /** Add folders in a background job; a running add is joined, not repeated. */
+  startAddJob: async (ids: string[]) => (await openApiData(openApiClient.POST('/api/v1/discoveries/add-job', { body: { ids } }))).job_id,
+  /** The add running now, if any. */
+  currentAddJob: async () => {
+    const job = await openApiData(openApiClient.GET('/api/v1/discoveries/add-job'))
+    return job ? mapJob(job) : null
+  },
   discoveryCount: async () => (await openApiData(openApiClient.GET('/api/v1/discoveries/count'))).count,
   selectDiscovery: async (id: string, candidate: { tmdbId: number; title?: string; originalTitle?: string; year?: number; posterRef?: string }) => mapMediaDiscovery(await openApiData(openApiClient.POST('/api/v1/discoveries/{discovery_id}/select', {
     params: { path: { discovery_id: id } },

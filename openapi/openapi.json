@@ -5248,6 +5248,25 @@
         "title": "MediaDirectoryResponse",
         "type": "object"
       },
+      "MediaDiscoveryAddJobRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20000,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "MediaDiscoveryAddJobRequest",
+        "type": "object"
+      },
       "MediaDiscoveryBulk": {
         "description": "Approve or ignore a batch of New Media directories.",
         "properties": {
@@ -15716,6 +15735,76 @@
           }
         },
         "summary": "List Discoveries",
+        "tags": [
+          "discoveries"
+        ]
+      }
+    },
+    "/api/v1/discoveries/add-job": {
+      "get": {
+        "description": "The add running now, if any, so a page opened mid-run shows it.",
+        "operationId": "current_add_job_api_v1_discoveries_add_job_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/JobResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Current Add Job Api V1 Discoveries Add Job Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Current Add Job",
+        "tags": [
+          "discoveries"
+        ]
+      },
+      "post": {
+        "description": "Add these folders to the library in the background; a running add is reused.",
+        "operationId": "start_add_job_api_v1_discoveries_add_job_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaDiscoveryAddJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Add Job",
         "tags": [
           "discoveries"
         ]

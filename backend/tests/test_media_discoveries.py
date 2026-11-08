@@ -1011,3 +1011,37 @@ def test_a_scan_never_holds_the_write_lock_while_it_asks_tmdb(client: TestClient
     first = list(locked_during_lookup)
     scan(client, headers, created.json()["id"])  # the rescan of folders already known
     assert (first, locked_during_lookup[len(first):]) == ([], [])
+
+
+def test_adding_runs_as_one_background_job_that_a_second_request_reuses(client: TestClient, tmp_path: Path, monkeypatch) -> None:
+    """The add carries on when the page is left, and pressing Add again while it
+    runs joins it instead of adding the same folders a second time."""
+
+    from app.api import discoveries as discoveries_api
+
+    launched: list = []
+    monkeypatch.setattr(discoveries_api, "launch_runtime_job", lambda job_id, factory: launched.append((job_id, factory)) or True)
+    headers = login(client)
+    configure_tmdb(client, headers)
+    root = tmp_path / "movies"
+    for name in ("Dune.2021.2160p.UHD.BluRay", "Arrival.2016.1080p.BluRay"):
+        (root / name).mkdir(parents=True)
+        (root / name / "movie.mkv").write_bytes(b"movie")
+    created = client.post("/api/v1/storage-roots", headers=headers, json={"name": "Add", "path": str(root), "media_type": "movies", "discovery_mode": "review"})
+    scan(client, headers, created.json()["id"])
+    ids = [item["id"] for item in client.get("/api/v1/discoveries?page_size=250").json()["items"]]
+    assert len(ids) == 2 and client.get("/api/v1/discoveries/add-job").json() is None
+
+    first = client.post("/api/v1/discoveries/add-job", headers=headers, json={"ids": ids})
+    assert first.status_code == 202
+    again = client.post("/api/v1/discoveries/add-job", headers=headers, json={"ids": ids})
+    assert again.json()["job_id"] == first.json()["job_id"] and len(launched) == 1
+    active = client.get("/api/v1/discoveries/add-job").json()
+    assert active["id"] == first.json()["job_id"] and active["progress"]["total"] == 2
+
+    job_id, factory = launched[0]
+    asyncio.run(factory())
+    job = client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "completed" and job["summary"]["added"] == 2 and job["progress"]["current"] == 2
+    assert client.get("/api/v1/discoveries/count").json()["count"] == 0
+    assert client.get("/api/v1/discoveries/add-job").json() is None

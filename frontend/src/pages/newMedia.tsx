@@ -6,9 +6,10 @@ import { Tooltip } from '../components/Tooltip'
 import { Dropdown } from '../components/Dropdown'
 import { Button, EmptyState, Input } from '../components/ui'
 import { discoveryApi } from '../api/modules/discovery'
+import { systemApi } from '../api/modules/system'
 import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
-import type { MediaDiscovery, QualityProfile } from '../types'
+import type { Job, MediaDiscovery, QualityProfile } from '../types'
 import { CUSTOM_EDITION, EditionDraft, MIXED_PROFILE, Page, THEATRICAL_EDITION, TMDBCandidate, defaultProfileLabel, editionChoices, editionUpdate, tmdbPosterUrl, useLiveLibraryRefresh } from './shared'
 
 function movieEditionSlot(edition?: string): string {
@@ -24,15 +25,11 @@ function capitalise(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-/** Folders added per request. Each new title is fetched from TMDB, so a
- * request takes a few seconds per folder: small batches keep the count moving. */
-const ADD_BATCH = 5
-
 export function NewMediaPage() {
   const [items, setItems] = useState<MediaDiscovery[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
-  const [addProgress, setAddProgress] = useState<{ done: number; total: number } | null>(null)
+  const [addJob, setAddJob] = useState<Job | null>(null)
   const [rootName, setRootName] = useState('')
   // Folders left out stay left out across reloads and devices.
   const [excluded, setExcluded, pruneExcluded] = usePersistentSet('new-media-excluded')
@@ -150,38 +147,52 @@ export function NewMediaPage() {
     finally { setProfileBusy(false) }
   }
 
+  // Adding runs on the server, so it carries on when this page is left or
+  // closed, and a page opened mid-run shows it instead of offering to add the
+  // same folders again.
   const runAdd = async () => {
     const ids = addable.map((item) => item.id)
-    if (!ids.length || hasEditionConflicts) return
+    if (!ids.length || hasEditionConflicts || addJob) return
     setAdding(true); setError(''); setMessage('')
-    setAddProgress({ done: 0, total: ids.length })
-    // In batches: each new title is fetched from TMDB, so a whole library in
-    // one request ran for many minutes (and the server takes at most 500).
-    // Each batch's titles leave the list as soon as they are in.
-    let added = 0
-    const failed: string[] = []
     try {
-      for (let start = 0; start < ids.length; start += ADD_BATCH) {
-        const batch = ids.slice(start, start + ADD_BATCH)
-        const result = await discoveryApi.bulkNewMediaDiscoveries(batch, 'approve')
-        setAddProgress({ done: start + batch.length, total: ids.length })
-        added += result.succeeded.length
-        failed.push(...result.failed.map((failure) => failure.message))
-        setItems((current) => current.filter((item) => !result.succeeded.includes(item.id)))
-      }
-    } catch (reason) {
-      failed.push(reason instanceof Error ? reason.message : 'Could not add the rest.')
-    } finally {
-      window.dispatchEvent(new Event('medialogue-new-media-changed'))
-      setMessage(added ? `${added} ${added === 1 ? noun : `${noun}s`} added to the library.` : '')
-      if (failed.length) {
-        setError(`${failed.length} could not be added: ${[...new Set(failed)].join(' ')}`)
-        await load()
-      }
-      setAddProgress(null)
-      setAdding(false)
-    }
+      const jobId = await discoveryApi.startAddJob(ids)
+      setAddJob(await systemApi.job(jobId))
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not start adding.') }
+    finally { setAdding(false) }
   }
+
+  useEffect(() => {
+    let alive = true
+    discoveryApi.currentAddJob().then((job) => { if (alive && job) setAddJob(job) }).catch(() => undefined)
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    if (!addJob) return
+    let alive = true
+    let lastDone = Number(addJob.summary?.done ?? 0)
+    const timer = window.setInterval(() => void (async () => {
+      try {
+        const job = await systemApi.job(addJob.id)
+        if (!alive) return
+        const done = Number(job.summary?.done ?? 0)
+        // Added titles leave the list as each batch finishes.
+        if (done !== lastDone) { lastDone = done; void load(true) }
+        if (['queued', 'running'].includes(job.state)) { setAddJob(job); return }
+        setAddJob(null)
+        window.dispatchEvent(new Event('medialogue-new-media-changed'))
+        await load(true)
+        const added = Number(job.summary?.added ?? 0)
+        const failures = Array.isArray(job.summary?.failures) ? job.summary.failures as string[] : []
+        const failed = Number(job.summary?.failed ?? 0)
+        if (job.state === 'completed') setMessage(`${added} ${added === 1 ? noun : `${noun}s`} added to the library.`)
+        if (failed) setError(`${failed} could not be added: ${[...new Set(failures)].join(' ')}`)
+        else if (job.state !== 'completed') setError(job.error || 'Adding stopped before it finished; the folders not added are still here.')
+      } catch { /* the next tick retries */ }
+    })(), 2000)
+    return () => { alive = false; window.clearInterval(timer) }
+  // Follows one job: a new id restarts the poll; progress updates do not.
+  }, [addJob?.id])
 
   const choose = async (item: MediaDiscovery, candidate: TMDBCandidate) => {
     setError('')
@@ -327,8 +338,10 @@ export function NewMediaPage() {
         </span>
         <div className="toolbar-spacer" />
         {hasEditionConflicts && <span className="new-media-add-warning">Resolve same-edition copies or leave one out before adding.</span>}
-        <Button variant="primary" icon="check" onClick={() => void runAdd()} disabled={adding || !addable.length || hasEditionConflicts}>
-          {adding ? (addProgress && addProgress.total > 1 ? `Adding ${addProgress.done.toLocaleString()} of ${addProgress.total.toLocaleString()}…` : 'Adding…') : `Add ${addable.length} ${addable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
+        <Button variant="primary" icon="check" onClick={() => void runAdd()} disabled={adding || Boolean(addJob) || !addable.length || hasEditionConflicts}>
+          {addJob
+            ? `Adding ${Number(addJob.summary?.done ?? 0).toLocaleString()} of ${Number(addJob.summary?.total ?? 0).toLocaleString()}…`
+            : adding ? 'Starting…' : `Add ${addable.length} ${addable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
         </Button>
       </div>
 

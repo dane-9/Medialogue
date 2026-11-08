@@ -6,6 +6,7 @@ type JobDto = components['schemas']['JobResponse']
 export function mapJob(item: JobDto): Job {
   const titles: Record<string, string> = {
       plex_movie_recheck: 'Plex movie recheck',
+      new_media_add: 'Add New Media',
       plex_show_recheck: 'Plex show recheck',
       plex_library_sync: 'Plex library verification',
       tmdb_show_metadata_refresh: 'TMDB metadata refresh',

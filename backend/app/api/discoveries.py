@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,6 +18,8 @@ from app.db.session import get_db
 from app.integrations.filesystem import DirectoryObservation
 from app.models.auth import AdminUser
 from app.models.domain import (
+    Job,
+    JobStatus,
     MediaDirectory,
     MediaDiscovery,
     MediaRole,
@@ -50,6 +53,9 @@ from app.services.movies import add_movie_from_tmdb
 from app.services.reconciliation import prefetch_plex_snapshot, reconcile_movie_directory
 from app.services.shows import add_show_from_tmdb, reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration
+from app.services.jobs import create_job, update_job
+from app.services.runtime_jobs import launch_runtime_job
+from app.schemas.jobs import JobAcceptedResponse, JobResponse
 
 router = APIRouter(prefix="/discoveries", tags=["discoveries"])
 
@@ -638,14 +644,29 @@ async def bulk_new_media(
     title whose metadata fetch times out must not discard the twenty-nine that
     already succeeded, and the caller is told exactly which ones failed and why.
     """
+    approved, failures = await _apply_bulk(db, payload.ids, payload.action, client_factory)
+    return MediaDiscoveryBulkResult(succeeded=approved, failed=failures)
+
+
+async def _apply_bulk(
+    db: AsyncSession,
+    ids: list[UUID],
+    action: str,
+    client_factory,
+    *,
+    prefetch: bool = True,
+) -> tuple[list[UUID], list[MediaDiscoveryBulkFailure]]:
+    """Approve, ignore or restore these discoveries, each committed on its own."""
+
     approved: list[UUID] = []
     failures: list[MediaDiscoveryBulkFailure] = []
     unavailable: set[UUID] = set()
     batch_collision_ids: set[UUID] = set()
-    if payload.action == "approve":
-        await prefetch_plex_snapshot(db)
+    if action == "approve":
+        if prefetch:
+            await prefetch_plex_snapshot(db)
         loaded: list[MediaDiscovery] = []
-        for discovery_id in payload.ids:
+        for discovery_id in ids:
             try:
                 loaded.append(await _get_discovery(db, discovery_id))
             except AppError as exc:
@@ -666,17 +687,17 @@ async def bulk_new_media(
                 code="DISCOVERY_BATCH_EDITION_CONFLICT",
                 message="Another selected folder is the same movie edition. Leave one out or correct its edition.",
             )
-            for discovery_id in payload.ids
+            for discovery_id in ids
             if discovery_id in batch_collision_ids
         )
-    for discovery_id in payload.ids:
+    for discovery_id in ids:
         if discovery_id in unavailable or discovery_id in batch_collision_ids:
             continue
         try:
             discovery = await _get_discovery(db, discovery_id)
-            if payload.action == "approve":
+            if action == "approve":
                 await _approve_one(db, discovery, client_factory)
-            elif payload.action == "restore":
+            elif action == "restore":
                 await _restore_one(db, discovery)
             else:
                 await _ignore_one(db, discovery)
@@ -684,4 +705,107 @@ async def bulk_new_media(
         except AppError as exc:
             await db.rollback()
             failures.append(MediaDiscoveryBulkFailure(id=discovery_id, code=exc.code, message=exc.message))
-    return MediaDiscoveryBulkResult(succeeded=approved, failed=failures)
+    return approved, failures
+
+
+
+# --- Adding in the background ------------------------------------------------
+#
+# Adding a whole queue takes minutes (each new title is fetched from TMDB). Run
+# from the browser it stopped when the page was left, and the page then offered
+# to add the same folders again over the run still going. As a Job it carries
+# on whatever the browser does, its progress shows on return, and only one runs.
+
+ADD_JOB_TYPE = "new_media_add"
+ADD_JOB_CHUNK = 25
+ADD_JOB_FAILURES_KEPT = 50
+
+
+class MediaDiscoveryAddJobRequest(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=20000)
+
+
+async def _active_add_job(db: AsyncSession) -> Job | None:
+    return await db.scalar(
+        select(Job)
+        .where(Job.job_type == ADD_JOB_TYPE, Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )
+
+
+@router.post("/add-job", response_model=JobAcceptedResponse, status_code=202)
+async def start_add_job(
+    payload: MediaDiscoveryAddJobRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> JobAcceptedResponse:
+    """Add these folders to the library in the background; a running add is reused."""
+
+    active = await _active_add_job(db)
+    if active is not None:
+        return JobAcceptedResponse(job_id=active.id)
+    ids = list(dict.fromkeys(payload.ids))
+    job = await create_job(db, ADD_JOB_TYPE, cancellable=True, summary={
+        "total": len(ids), "done": 0, "added": 0, "failed": 0, "failures": [],
+        "message": f"Adding {len(ids)} New Media {'folder' if len(ids) == 1 else 'folders'}",
+    })
+    await update_job(db, job, progress={"current": 0, "total": len(ids), "percent": 0})
+    await db.commit()
+    # The ids go to the worker, not the Job's summary, which every progress
+    # event carries. After a restart the Job is interrupted and the folders not
+    # yet added are simply still in New Media.
+    launch_runtime_job(job.id, lambda: run_add_job(job.id, ids))
+    return JobAcceptedResponse(job_id=job.id)
+
+
+@router.get("/add-job", response_model=JobResponse | None)
+async def current_add_job(
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Job | None:
+    """The add running now, if any, so a page opened mid-run shows it."""
+
+    return await _active_add_job(db)
+
+
+async def run_add_job(job_id: UUID, ids: list[UUID]) -> None:
+    from app.db import session as db_session
+
+    async with db_session.async_session_factory() as db:
+        job = await db.get(Job, job_id)
+        if job is None:
+            return
+        await update_job(db, job, status=JobStatus.RUNNING)
+        await db.commit()
+        await prefetch_plex_snapshot(db)
+        added = failed = 0
+        failures: list[str] = []
+        try:
+            for start in range(0, len(ids), ADD_JOB_CHUNK):
+                await db.refresh(job)
+                if job.status == JobStatus.CANCELLED:
+                    return
+                chunk = ids[start : start + ADD_JOB_CHUNK]
+                succeeded, chunk_failures = await _apply_bulk(db, chunk, "approve", get_tmdb_client_factory(), prefetch=False)
+                added += len(succeeded)
+                failed += len(chunk_failures)
+                failures = (failures + [item.message for item in chunk_failures])[-ADD_JOB_FAILURES_KEPT:]
+                done = start + len(chunk)
+                await update_job(
+                    db, job,
+                    progress={"current": done, "total": len(ids), "percent": round(done * 100 / len(ids), 1)},
+                    summary={**dict(job.summary or {}), "done": done, "added": added, "failed": failed, "failures": failures},
+                )
+                await db.commit()
+            message = f"Added {added} to the library" + (f"; {failed} could not be added" if failed else "")
+            await update_job(db, job, status=JobStatus.COMPLETED,
+                             summary={**dict(job.summary or {}), "message": message})
+            await db.commit()
+        except Exception as exc:
+            await db.rollback()
+            job = await db.get(Job, job_id)
+            if job is not None:
+                await update_job(db, job, status=JobStatus.FAILED, error={"message": str(exc)})
+                await db.commit()
+            raise
