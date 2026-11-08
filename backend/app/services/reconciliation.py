@@ -324,21 +324,41 @@ async def mark_root_available(db: AsyncSession, root: StorageRoot) -> None:
         )
 
 
+def directories_within(folder: str | None) -> list:
+    """Conditions selecting one folder and the directories inside it (none: every one)."""
+
+    if folder is None:
+        return []
+    base = folder.rstrip("/\\")
+    # LIKE with "!" as its escape character, so a backslash in a path (Windows)
+    # stays an ordinary character.
+    escaped = base.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+    return [
+        (MediaDirectory.resolved_path == base)
+        | MediaDirectory.resolved_path.like(escaped + "/%", escape="!")
+        | MediaDirectory.resolved_path.like(escaped + "\\%", escape="!")
+    ]
+
+
 async def mark_absent_known_directories(
     db: AsyncSession,
     root: StorageRoot,
     seen_paths: set[str],
     *,
     grace_checks: int | None = None,
+    within: str | None = None,
 ) -> dict[str, int]:
-    """Apply configurable missing grace without treating an outage as absence."""
+    """Apply configurable missing grace without treating an outage as absence.
+
+    ``within`` limits the check to one folder (and what is inside it), for the media folder watcher.
+    """
 
     threshold = max(1, grace_checks or root.missing_grace_checks or 3)
     rows = (
         await db.scalars(
             select(MediaDirectory)
             .options(selectinload(MediaDirectory.movie_release))
-            .where(MediaDirectory.storage_root_id == root.id)
+            .where(MediaDirectory.storage_root_id == root.id, *directories_within(within))
         )
     ).all()
     now = utcnow()

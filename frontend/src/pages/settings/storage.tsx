@@ -325,6 +325,8 @@ export function StorageSettings() {
             <code>{root.resolved_root_path}</code>
           </span>
           <span className="root-row-end">
+            {root.watch_state === 'watching' && <Tooltip asChild content="Watched live: folders added, changed or deleted here show up within a minute."><span className="root-row-watch"><Icon name="eye" size={14} /></span></Tooltip>}
+            {root.watch_state === 'unavailable' && <Tooltip asChild content="Live watching is not available for this folder, so changes show up at the next scheduled scan."><span className="root-row-watch unwatched"><Icon name="eye-off" size={14} /></span></Tooltip>}
             {root.access_mode === 'read_write' && <Tooltip asChild content="Read/write. Medialogue is allowed to delete inside this folder."><span className="root-row-write"><Icon name="unlock" size={14} /></span></Tooltip>}
             {root.scanning
               ? <Tooltip asChild content={describeScan(root.scan)}><span className={`root-row-state tone-${state.tone}`}><i /><span>{state.text}</span></span></Tooltip>

@@ -244,6 +244,8 @@ export interface StorageRoot {
   affected_media_count?: number
   missing_media_count?: number
   scanning: boolean
+  /** Live folder watching: changes show up within a minute, or only at scheduled scans. */
+  watch_state?: 'watching' | 'unavailable' | null
 
   scan?: StorageRootScan
 

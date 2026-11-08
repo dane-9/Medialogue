@@ -128,6 +128,10 @@ class StorageRootResponse(ORMModel):
     scanning: bool = False
     scan: StorageRootScan | None = None
     media_count: int = 0
+    #: Live watching of this folder: "watching" (changes show up within a
+    #: minute), "unavailable" (events are not delivered here; scheduled scans
+    #: only), or None (not watched: never scanned, switched off, or disabled).
+    watch_state: Literal["watching", "unavailable"] | None = None
     created_at: datetime
     updated_at: datetime
 

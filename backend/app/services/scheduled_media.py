@@ -23,7 +23,7 @@ from app.models.domain import (
 from app.services.events import create_event
 from app.services.jobs import JobFailure, checkpoint_job, create_job, publish_job_status, run_job, update_job
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
-from app.services.reconciliation import mark_absent_known_directories, mark_root_available, mark_root_unavailable
+from app.services.reconciliation import directories_within, mark_absent_known_directories, mark_root_available, mark_root_unavailable
 from app.services.shows import mark_absent_show_directories, refresh_episode_presence
 
 
@@ -41,8 +41,14 @@ def _existing_paths(paths: list[tuple[str, bool]]) -> set[str]:
     return existing
 
 
-async def _verify_root(db: AsyncSession, root: StorageRoot) -> dict[str, int | str]:
+async def _verify_root(db: AsyncSession, root: StorageRoot, *, within: str | None = None) -> dict[str, int | str]:
+    """Check known media under ``root`` (or only ``within`` one folder of it)."""
+
     if not await asyncio.to_thread(Path(root.resolved_root_path).is_dir):
+        if within is not None:
+            # The watcher checks one folder; an unreachable root is the health
+            # check's to report, not a reason to mark this folder missing.
+            return {"root": root.name, "unavailable": 1, "checked": 0, "missing": 0, "restored": 0, "affected": 0}
         affected = await mark_root_unavailable(db, root)
         return {"root": root.name, "unavailable": 1, "checked": 0, "missing": 0, "restored": 0, "affected": affected}
 
@@ -54,7 +60,7 @@ async def _verify_root(db: AsyncSession, root: StorageRoot) -> dict[str, int | s
                 selectinload(MediaDirectory.files).selectinload(MediaFile.episode_maps),
                 selectinload(MediaDirectory.movie_release),
             )
-            .where(MediaDirectory.storage_root_id == root.id)
+            .where(MediaDirectory.storage_root_id == root.id, *directories_within(within))
         )
     ).unique().all()
     directory_paths = await asyncio.to_thread(
@@ -62,9 +68,9 @@ async def _verify_root(db: AsyncSession, root: StorageRoot) -> dict[str, int | s
         [(item.resolved_path, True) for item in directories],
     )
     directory_result = (
-        await mark_absent_show_directories(db, root, directory_paths)
+        await mark_absent_show_directories(db, root, directory_paths, within=within)
         if root.media_type == MediaType.SHOWS
-        else await mark_absent_known_directories(db, root, directory_paths)
+        else await mark_absent_known_directories(db, root, directory_paths, within=within)
     )
 
     file_candidates = [

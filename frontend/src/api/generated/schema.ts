@@ -6859,6 +6859,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Watch State */
+            watch_state?: ("watching" | "unavailable") | null;
         };
         /**
          * StorageRootScan

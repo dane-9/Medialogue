@@ -1,4 +1,10 @@
+import os
+
 import pytest
+
+# Live folder watching holds directory handles open (on Windows that blocks
+# deleting a test's temporary media folders). Tests drive it directly instead.
+os.environ.setdefault("MEDIALOGUE_WATCH_MEDIA_FOLDERS", "false")
 
 
 @pytest.fixture

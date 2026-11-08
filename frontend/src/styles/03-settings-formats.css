@@ -402,6 +402,8 @@
 .root-row-copy code { overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .root-row-end { display: flex; align-items: center; gap: var(--s3); flex: none; color: var(--faint); font-size: var(--t-xs); }
 .root-row-write { display: grid; place-items: center; color: var(--warn); }
+.root-row-watch { display: grid; place-items: center; color: var(--faint); }
+.root-row-watch.unwatched { color: var(--line-strong); }
 
 .root-row-state { display: flex; align-items: center; gap: var(--s2); flex: none; color: var(--muted); font-size: var(--t-xs); }
 .root-row-state i { width: 6px; height: 6px; flex: none; border-radius: var(--r-full); background: currentcolor; }

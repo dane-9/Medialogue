@@ -11752,6 +11752,21 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "watch_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "watching",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watch State"
           }
         },
         "required": [

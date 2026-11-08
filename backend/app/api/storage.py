@@ -17,6 +17,7 @@ from app.models.auth import AdminUser
 from app.models.domain import AccessMode, DiscoveryMode, Episode, EpisodeMediaMap, MediaDirectory, MediaFile, MediaType, Movie, MovieRelease, Problem, Season, RemotePathMapping, Show, ShowRelease, StorageRoot
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
+from app.services.media_watcher import watch_state
 from app.schemas.storage import (
     FilesystemEntry,
     FilesystemListing,
@@ -150,6 +151,7 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
             "media_count": media_count,
             "scanning": job is not None,
             "scan": scan,
+            "watch_state": watch_state(root.id),
         }
     )
 

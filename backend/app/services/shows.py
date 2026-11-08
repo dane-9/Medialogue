@@ -1099,15 +1099,21 @@ async def mark_absent_show_directories(
     seen_paths: set[str],
     *,
     grace_checks: int | None = None,
+    within: str | None = None,
 ) -> dict[str, int]:
-    """Apply root-level Missing grace to Show containers and all mapped episodes."""
+    """Apply root-level Missing grace to Show containers and all mapped episodes.
+
+    ``within`` limits the check to one folder (and what is inside it), for the media folder watcher.
+    """
+
+    from app.services.reconciliation import directories_within
 
     threshold = max(1, grace_checks or root.missing_grace_checks or 3)
     directories = (
         await db.scalars(
             select(MediaDirectory)
             .options(selectinload(MediaDirectory.files).selectinload(MediaFile.episode_maps))
-            .where(MediaDirectory.storage_root_id == root.id)
+            .where(MediaDirectory.storage_root_id == root.id, *directories_within(within))
         )
     ).unique().all()
     now = utcnow()

@@ -104,6 +104,8 @@ async def lifespan(_: FastAPI):
     stop_event = asyncio.Event()
     poll_task = asyncio.create_task(_qbittorrent_poll_loop(stop_event))
     scheduler_task = asyncio.create_task(run_scheduler_loop(stop_event))
+    from app.services.media_watcher import run_media_watcher
+    watcher_task = asyncio.create_task(run_media_watcher(stop_event))
     try:
         yield
     finally:
@@ -121,6 +123,10 @@ async def lifespan(_: FastAPI):
             await asyncio.wait_for(scheduler_task, timeout=5.0)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             logger.warning("scheduled task loop did not stop in time; cancelled")
+        try:
+            await asyncio.wait_for(watcher_task, timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("media folder watcher did not stop in time; cancelled")
         from app.integrations.qbittorrent import close_shared_sessions
 
         await close_shared_sessions()

@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     bootstrap_admin: bool = True
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
+    # Follow filesystem events under media folders (see services/media_watcher).
+    watch_media_folders: bool = True
 
     @field_validator("secret_key", mode="before")
     @classmethod
