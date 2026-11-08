@@ -109,11 +109,12 @@ class TorznabClient:
                     "Torznab capabilities response exceeded the maximum size.",
                 )
         except httpx.HTTPError as exc:
-            raise TorznabError("Torznab request failed.") from exc
+            raise TorznabError(f"Torznab request failed: {_describe_http_error(exc)}") from exc
         try:
             root = ElementTree.fromstring(payload)
         except (ElementTree.ParseError, DefusedXmlException) as exc:
             raise TorznabError("Torznab capabilities response was not valid XML.") from exc
+        _raise_for_error_document(root)
         server = root.find("server")
         return {
             "status": "healthy",
@@ -152,11 +153,14 @@ class TorznabClient:
                     "Torznab search response exceeded the maximum size.",
                 )
         except httpx.HTTPError as exc:
-            raise TorznabError("Torznab search failed.") from exc
+            raise TorznabError(f"Torznab search failed: {_describe_http_error(exc)}") from exc
         try:
             root = ElementTree.fromstring(payload)
         except (ElementTree.ParseError, DefusedXmlException) as exc:
             raise TorznabError("Torznab search response was not valid XML.") from exc
+        _raise_for_error_document(root)
+        if root.find("channel") is None:
+            raise TorznabError(f"Torznab search returned an unexpected <{root.tag}> document instead of results.")
         return [self._parse_item(item) for item in root.findall("./channel/item")[:2000]]
 
     async def fetch_torrent(self, download_url: str) -> bytes:
@@ -224,6 +228,25 @@ class TorznabClient:
             languages=tuple(languages),
             published=item.findtext("pubDate"),
         )
+
+
+def _raise_for_error_document(root: ElementTree.Element) -> None:
+    """Torznab reports failures as a 200 response holding <error code description/>.
+
+    Read as a feed it has no items, so a rejected API key or a tracker error
+    looked exactly like "searched, nothing found".
+    """
+
+    if root.tag == "error":
+        code = root.attrib.get("code") or "?"
+        description = root.attrib.get("description") or "no description"
+        raise TorznabError(f"Indexer returned error {code}: {description}")
+
+
+def _describe_http_error(exc: httpx.HTTPError) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    return type(exc).__name__
 
 
 def _safe_int(value: str | None) -> int | None:

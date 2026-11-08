@@ -1077,3 +1077,36 @@ def test_upgrade_response_exposes_current_custom_format_breakdown(client: TestCl
     assert len(rows) == 1
     assert rows[0]["current_custom_format_score"] == 100
     assert any(item["custom_format_name"] == "Group GRP" and item["contribution"] == 100 for item in rows[0]["current_matched_formats"])
+
+
+def test_a_run_where_every_indexer_search_failed_is_a_failure_that_says_why(client: TestClient) -> None:
+    """Every search failing used to finish as "Completed, 0 found"."""
+
+    headers = _login(client)
+    _create_indexer(client, headers, scope="movies")
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            root = StorageRoot(name="Movies", resolved_root_path="/media/movies", media_type=MediaType.MOVIES, access_mode=AccessMode.READ_WRITE)
+            movie = Movie(title="Upgrade Movie", sort_title="Upgrade Movie", year=2024, tmdb_id=1001, identity_state=IdentityState.MATCHED)
+            db.add_all([root, movie])
+            await db.flush()
+            release = MovieRelease(movie_id=movie.id, raw_release_name="Upgrade Movie (2024)", tracker_title="Upgrade.Movie.2024.1080p.WEB-DL.x264-GRP")
+            db.add(release)
+            await db.flush()
+            db.add(MediaDirectory(storage_root_id=root.id, resolved_path="/media/movies/Upgrade Movie (2024)", movie_release_id=release.id))
+            await db.commit()
+
+    asyncio.run(seed())
+
+    class Broken(FakeTorznab):
+        async def search(self, *args, **kwargs):
+            raise RuntimeError("Indexer returned error 100: Invalid API Key")
+
+    behavior = FakeBehavior()
+    behavior.factory = lambda url, api_key, *, timeout=15.0: Broken(behavior)
+    job_id = asyncio.run(_create_upgrade_job())
+    asyncio.run(run_upgrade_search_job(UUID(job_id), client_factory=behavior.factory, today=date(2026, 8, 31)))
+    job = client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["status"] == "failed"
+    assert "Invalid API Key" in str(job["error"])

@@ -473,3 +473,25 @@ def test_plex_snapshot_title_lookup_ignores_punctuation_and_ampersand_variants()
     matches = snapshot.search_title_year("Oliver and Company", 1988)
     assert len(matches) == 1
     assert matches[0].rating_key == "1"
+
+
+def test_a_torznab_error_document_is_an_error_not_an_empty_result():
+    """Prowlarr answers a rejected key or tracker failure with HTTP 200 and
+    <error code description/>; read as a feed it looked like "nothing found"."""
+
+    import asyncio
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text='<?xml version="1.0" encoding="UTF-8"?><error code="100" description="Invalid API Key" />')
+
+    async def scenario():
+        client = TorznabClient("http://prowlarr/1/api", "bad", transport=httpx.MockTransport(handler))
+        try:
+            with pytest.raises(Exception, match="error 100: Invalid API Key"):
+                await client.search("Dune 2021", media_type="movies")
+            with pytest.raises(Exception, match="error 100: Invalid API Key"):
+                await client.health()
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())

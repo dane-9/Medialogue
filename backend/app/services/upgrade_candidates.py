@@ -37,7 +37,7 @@ from app.parser import parse_release
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
 from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, list_configured_indexers
-from app.services.jobs import run_job, update_job
+from app.services.jobs import JobFailure, run_job, update_job
 from app.services.movie_editions import same_edition
 from app.services.quality_profiles import (
     EffectiveProfile,
@@ -893,6 +893,7 @@ async def _search_target(
     target: UpgradeTarget,
     indexers: list[ConfiguredIndexer],
     client_factory: TorznabClientFactory,
+    errors: list[str] | None = None,
 ) -> tuple[ScoredCandidate | None, list[dict[str, Any]], int, bool]:
     profile, formats = await _evaluation_policy(db, media_type=target.media_type, entity_id=target.profile_entity_id)
     eligible_scopes = (
@@ -926,6 +927,8 @@ async def _search_target(
     for indexer_id, outcome in outcomes:
         if outcome.get("status") != "completed":
             failures += 1
+            if errors is not None:
+                errors.append(f"{outcome.get('name') or 'Indexer'}: {outcome.get('error') or outcome.get('status')}")
             continue
         successful_indexers += 1
         indexer = by_id[indexer_id]
@@ -1086,6 +1089,7 @@ async def _worker(
 
     indexers = await list_configured_indexers(db)
     found = removed = failures = searched = 0
+    errors: list[str] = []
     total = len(targets)
     for position, target in enumerate(targets, start=1):
         best, search_results, target_failures, completed_search = await _search_target(
@@ -1093,6 +1097,7 @@ async def _worker(
             target=target,
             indexers=indexers,
             client_factory=client_factory,
+            errors=errors,
         )
         failures += target_failures
         if completed_search:
@@ -1139,7 +1144,17 @@ async def _worker(
         "skipped_unknown_current_quality": movie_skipped_quality + show_skipped_quality,
         "skipped_read_only_roots": read_only_roots,
         "automatic_grabs": False,
+        # What the indexers said, so a run that found nothing says why.
+        "indexer_errors": list(dict.fromkeys(errors))[:10],
     }
+    if total and not searched and failures:
+        # Every search failed: "0 found" would read as "nothing better exists".
+        raise JobFailure(
+            "UPGRADE_SEARCH_INDEXERS_FAILED",
+            f"No indexer search succeeded ({failures} failed). " + (errors[0] if errors else ""),
+            details=summary,
+            progress={"completed": total, "total": total, "percent": 100},
+        )
     await update_job(
         db,
         job,

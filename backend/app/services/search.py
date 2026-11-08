@@ -387,6 +387,7 @@ async def _query_indexer(
                 timeout=float(indexer.timeout_seconds),
             )
         except TimeoutError:
+            logger.warning("Indexer search timed out", extra={"indexer": indexer.name, "query": query})
             return indexer.id, {
                 "name": indexer.name,
                 "status": "timeout",
@@ -395,6 +396,7 @@ async def _query_indexer(
                 "error": f"Timed out after {indexer.timeout_seconds} seconds.",
             }
         except Exception as exc:
+            logger.warning(f"Indexer search failed for {indexer.name}: {exc}", extra={"indexer": indexer.name, "query": query})
             return indexer.id, {
                 "name": indexer.name,
                 "status": "failed",
@@ -402,6 +404,11 @@ async def _query_indexer(
                 "elapsed_ms": round((perf_counter() - started) * 1000),
                 "error": str(exc),
             }
+        if not results:
+            logger.info(
+                f"Indexer {indexer.name} returned no results",
+                extra={"indexer": indexer.name, "query": query, "tmdb_id": target.tmdb_id, "categories": list(indexer.categories)},
+            )
         eligible = [
             result for result in results
             if result.seeders is None or result.seeders >= indexer.minimum_seeders
