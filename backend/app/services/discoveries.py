@@ -68,7 +68,12 @@ async def stage_media_discovery(
     suggested_tmdb_id: int | None = None
     if title:
         resolver = resolve_movie_identity_detailed if media_type == MediaType.MOVIES else resolve_show_identity_detailed
-        resolution = identity_resolution or await resolver(db, title, year)
+        # TMDB is a network call. Flushing first would take SQLite's only
+        # write lock and hold it for the whole lookup; during a scan of
+        # thousands of folders every other save then timed out ("database is
+        # locked"). The lookup only reads, so pending changes wait for it.
+        with db.no_autoflush:
+            resolution = identity_resolution or await resolver(db, title, year)
         if resolution.reason in {"not_configured", "unavailable"}:
             label = "movie" if media_type == MediaType.MOVIES else "show"
             raise TMDBUnavailable(

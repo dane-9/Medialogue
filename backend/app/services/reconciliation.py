@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -708,11 +708,17 @@ async def reconcile_movie_directory(
     year = folder_parse.identity.year
     movie = movie_hint
     if movie is None and title and year is not None:
-        movie = await _find_movie_by_identity(db, title, year)
+        # A read: it must not flush this folder's pending changes, or the
+        # write lock would be held through the TMDB lookup that may follow.
+        with db.no_autoflush:
+            movie = await _find_movie_by_identity(db, title, year)
 
     directory = existing_directory
     if directory is None:
+        # Its id is set here rather than by a flush, so nothing is written (and
+        # no write lock taken) before a TMDB lookup that may follow.
         directory = MediaDirectory(
+            id=uuid4(),
             storage_root_id=root.id,
             resolved_path=observation.path,
             reported_path=observation.path,
@@ -723,7 +729,6 @@ async def reconcile_movie_directory(
             files=[],
         )
         db.add(directory)
-        await db.flush()
         _sync_files(directory, observation)
     db.add(
         ParseEvidence(
@@ -757,7 +762,8 @@ async def reconcile_movie_directory(
         confidence = max(confidence, 0.95)
 
     if root.media_type != MediaType.MOVIES or not title or year is None or (confidence < 0.80 and not manual_identity):
-        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
+        # Staged before resolve_problem: that query would flush this folder's
+        # changes and hold the write lock through the TMDB lookup.
         discovery = await stage_media_discovery(
             db,
             directory,
@@ -767,16 +773,21 @@ async def reconcile_movie_directory(
             year=year,
             confidence=confidence,
         )
+        await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         return "review" if discovery.new_media_state.value == "pending" else "matched"
 
-    plex_evidence = await _plex_evidence_for_candidate(db, movie.title if movie else title, movie.year if movie else year, observation)
+    # Reads and a network lookup: nothing is flushed (no write lock taken)
+    # until TMDB has answered.
+    with db.no_autoflush:
+        plex_evidence = await _plex_evidence_for_candidate(db, movie.title if movie else title, movie.year if movie else year, observation)
 
     # A brand-new logical Movie may be discovered by either an explicit root
     # scan or an in-scope completed qBittorrent torrent, but the filename alone
     # is never sufficient authority. TMDB must establish the external identity
     # and Plex is used only as read-only presence/path evidence.
     if movie is None:
-        tmdb_resolution = await resolve_movie_identity_detailed(db, title, year)
+        with db.no_autoflush:
+            tmdb_resolution = await resolve_movie_identity_detailed(db, title, year)
         tmdb_match, tmdb_reason = tmdb_resolution.match, tmdb_resolution.reason
         if tmdb_match is None:
             if tmdb_reason in {"not_configured", "unavailable"}:

@@ -955,3 +955,59 @@ def test_queue_pages_are_cut_in_the_database_and_cover_every_item(client: TestCl
     assert client.get("/api/v1/discoveries/count").json()["count"] == 5
     assert client.get("/api/v1/discoveries?page=4&page_size=2").json()["items"] == []
     assert client.get("/api/v1/discoveries?media_type=shows").json()["total"] == 0
+
+
+@pytest.mark.parametrize("mode", ["review", "automatic"])
+def test_a_scan_never_holds_the_write_lock_while_it_asks_tmdb(client: TestClient, tmp_path: Path, monkeypatch, mode) -> None:
+    """SQLite has one writer. A scan that wrote before its TMDB lookup held that
+    lock through the network call, folder after folder, and every other save
+    (choosing a New Media match, the qBittorrent poll) failed as locked."""
+
+    import sqlite3
+
+    from app.db import session as db_session_module
+
+    database = db_session_module.engine.url.database
+    locked_during_lookup: list[str] = []
+    original = FakeTMDBClient.search_movie
+
+    async def checking(self, title: str, year: int | None = None):
+        probe = sqlite3.connect(database, timeout=0)
+        try:
+            probe.execute("BEGIN IMMEDIATE")
+            probe.execute("ROLLBACK")
+        except sqlite3.OperationalError:
+            locked_during_lookup.append(title)
+        finally:
+            probe.close()
+        return await original(self, title, year)
+
+    monkeypatch.setattr(FakeTMDBClient, "search_movie", checking)
+    original_get = FakeTMDBClient.get_movie
+
+    async def checking_get(self, tmdb_id: int):
+        probe = sqlite3.connect(database, timeout=0)
+        try:
+            probe.execute("BEGIN IMMEDIATE")
+            probe.execute("ROLLBACK")
+        except sqlite3.OperationalError:
+            locked_during_lookup.append(f"details {tmdb_id}")
+        finally:
+            probe.close()
+        return await original_get(self, tmdb_id)
+
+    monkeypatch.setattr(FakeTMDBClient, "get_movie", checking_get)
+    headers = login(client)
+    configure_tmdb(client, headers)
+    root = tmp_path / "movies"
+    for name in ("Dune.2021.2160p.UHD.BluRay", "Odd Folder Name"):
+        (root / name).mkdir(parents=True)
+        (root / name / "video.mkv").write_bytes(b"movie")
+    created = client.post("/api/v1/storage-roots", headers=headers, json={
+        "name": f"Lock {mode}", "path": str(root), "media_type": "movies", "discovery_mode": mode,
+    })
+    assert created.status_code == 201, created.text
+    scan(client, headers, created.json()["id"])
+    first = list(locked_during_lookup)
+    scan(client, headers, created.json()["id"])  # the rescan of folders already known
+    assert (first, locked_during_lookup[len(first):]) == ([], [])
