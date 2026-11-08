@@ -4,10 +4,37 @@ A self-hosted manager for a movie and show library that lives where qBittorrent 
 
 ## Install with Docker Compose
 
+Create a `compose.yaml`:
+
+```yaml
+services:
+  medialogue:
+    image: ghcr.io/dane-9/medialogue:latest
+    container_name: medialogue
+    restart: unless-stopped
+    ports:
+      - 8000:8000
+    environment:
+      - PUID=1000                  # user and group that own your media
+      - PGID=1000
+      - TZ=Etc/UTC
+      - MEDIALOGUE_COOKIE_SECURE=false   # true behind an HTTPS reverse proxy
+      # Optional: Google Drive backups (see Backups below)
+      - MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID=
+      - MEDIALOGUE_GOOGLE_DRIVE_CLIENT_SECRET=
+      - MEDIALOGUE_GOOGLE_DRIVE_REDIRECT_URI=
+    volumes:
+      - /path/to/medialogue/config:/config                    # database and settings, on local storage
+      - /path/to/medialogue/torrent-archive:/torrent-archive  # backed-up .torrent files
+      - /path/to/movies:/media/movies
+      - /path/to/shows:/media/shows
+```
+
+The media paths inside the container (`/media/movies`, `/media/shows`) are what you add as media folders in Settings. Then start it and read the one-time setup token:
+
 ```sh
-cp .env.example .env          # review PUID/PGID, paths and the media folder
-docker compose up -d --build
-docker compose exec media-manager cat /config/initial-setup-token
+docker compose up -d
+docker compose exec medialogue cat /config/initial-setup-token
 ```
 
 Open `http://HOST:8000`, enter the setup token, and create the administrator. Then, in **Settings**:
@@ -15,13 +42,13 @@ Open `http://HOST:8000`, enter the setup token, and create the administrator. Th
 1. add TMDB (recommended before the first scan), qBittorrent, indexers and Plex as needed;
 2. add your media folders, and run the first scan of each one by hand.
 
-To run a published image instead of building, set `MEDIALOGUE_IMAGE` in `.env` (for example `ghcr.io/OWNER/medialogue:latest`, made with the manual **Publish GHCR Image** workflow) and use `docker compose up -d --no-build`.
+To build from source instead, clone the repository, copy `.env.example` to `.env`, and run `docker compose up -d --build` with the included `docker-compose.yml`.
 
 ## What to know
 
 - **Media mounts are writable.** Upgrades, replacements and **Delete with files** remove old media. To keep a folder untouched, set it to **Read only** in Settings → Media Folders. A folder set to read/write on a read-only mount is refused.
 - **Path mappings.** When qBittorrent reports paths that differ from the container's (for example `/downloads/movies` vs `/media/movies`), add a mapping in Settings → Media Folders. Medialogue never guesses one.
-- **HTTPS.** Behind an HTTPS reverse proxy, set `COOKIE_SECURE=true`.
+- **HTTPS.** Behind an HTTPS reverse proxy, set `MEDIALOGUE_COOKIE_SECURE=true`.
 - **Keep `/config` on local storage**, not SMB/NFS. It holds the SQLite database, the settings, and `application-secret`, which unlocks the stored credentials.
 
 ## Backups
