@@ -6,8 +6,8 @@ const WIN = 'D:\\Media\\Movies\\Thing (2024)'
 
 describe('mediaFolderPath', () => {
   it('trims a media file back to its folder', () => {
-    expect(mediaFolderPath('//TRUENAS/Movies/TEST/Catwoman 2004 Remux/Catwoman 2004 Remux.mkv'))
-      .toBe('//TRUENAS/Movies/TEST/Catwoman 2004 Remux')
+    expect(mediaFolderPath('//NAS/Movies/TEST/Catwoman 2004 Remux/Catwoman 2004 Remux.mkv'))
+      .toBe('//NAS/Movies/TEST/Catwoman 2004 Remux')
   })
 
   it('keeps a folder whose name merely contains dots', () => {

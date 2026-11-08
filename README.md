@@ -15,9 +15,7 @@ Open `http://HOST:8000`, enter the setup token, and create the administrator. Th
 1. add TMDB (recommended before the first scan), qBittorrent, indexers and Plex as needed;
 2. add your media folders, and run the first scan of each one by hand.
 
-### TrueNAS SCALE / Dockge
-
-Publish an image with the manual **Publish GHCR Image** workflow in GitHub Actions, and make the package public. In Dockge, create a stack from `compose.truenas-dockge.yml`, and put the values from `.env.truenas-dockge.example` in Dockge's `.env` editor, never in the compose text.
+To run a published image instead of building, set `MEDIALOGUE_IMAGE` in `.env` (for example `ghcr.io/OWNER/medialogue:latest`, made with the manual **Publish GHCR Image** workflow) and use `docker compose up -d --no-build`.
 
 ## What to know
 

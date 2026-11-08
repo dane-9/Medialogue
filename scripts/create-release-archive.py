@@ -20,12 +20,10 @@ ALLOWED_FILES = frozenset(
     {
         ".dockerignore",
         ".env.example",
-        ".env.truenas-dockge.example",
         "CHANGELOG.md",
         "Dockerfile",
         "README.md",
         "THIRD_PARTY_NOTICES.md",
-        "compose.truenas-dockge.yml",
         "docker-compose.yml",
         "backend/alembic.ini",
         "backend/pyproject.toml",

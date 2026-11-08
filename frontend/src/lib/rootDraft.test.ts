@@ -3,7 +3,7 @@ import { rootBrowseStart, rootDraftChanged, rootPathAfterBrowse } from './rootDr
 import type { RootDraft } from './rootDraft'
 
 const base: RootDraft = {
-  name: 'Movies', path: '\\TRUENAS\Movies', mediaType: 'movies',
+  name: 'Movies', path: '\\NAS\Movies', mediaType: 'movies',
   accessMode: 'read_only', approveNewMedia: false, missingGraceChecks: 2,
 }
 const draft = (over: Partial<RootDraft> = {}): RootDraft => ({ ...base, ...over })
@@ -14,11 +14,11 @@ describe('rootDraftChanged', () => {
   })
 
   it('is unchanged when the browser writes back the same path it opened at', () => {
-    expect(rootDraftChanged(draft({ path: '\\TRUENAS\Movies' }), base)).toBe(false)
+    expect(rootDraftChanged(draft({ path: '\\NAS\Movies' }), base)).toBe(false)
   })
 
   it('notices a navigated path', () => {
-    expect(rootDraftChanged(draft({ path: '\\TRUENAS\Movies\Cartoons' }), base)).toBe(true)
+    expect(rootDraftChanged(draft({ path: '\\NAS\Movies\Cartoons' }), base)).toBe(true)
   })
 
   it('notices each editable field', () => {
@@ -42,7 +42,7 @@ describe('rootBrowseStart', () => {
   it('keeps POSIX, drive-letter, and UNC roots intact', () => {
     expect(rootBrowseStart('/media/movies')).toBe('/media/movies')
     expect(rootBrowseStart('D:\\Movies')).toBe('D:\\Movies')
-    expect(rootBrowseStart('\\\\TRUENAS\\Movies')).toBe('\\\\TRUENAS\\Movies')
+    expect(rootBrowseStart('\\\\NAS\\Movies')).toBe('\\\\NAS\\Movies')
   })
 
   it('uses the filesystem top level for a non-absolute value', () => {
@@ -52,8 +52,8 @@ describe('rootBrowseStart', () => {
 
 describe('rootPathAfterBrowse', () => {
   it('does not change an existing draft during its initial browse', () => {
-    expect(rootPathAfterBrowse('\\\\TRUENAS\\Movies', '\\\\truenas\\Movies\\', false, false, true))
-      .toBe('\\\\TRUENAS\\Movies')
+    expect(rootPathAfterBrowse('\\\\NAS\\Movies', '\\\\nas\\Movies\\', false, false, true))
+      .toBe('\\\\NAS\\Movies')
   })
 
   it('updates the draft when the user navigates to another folder', () => {
@@ -61,6 +61,6 @@ describe('rootPathAfterBrowse', () => {
   })
 
   it('preserves an existing path when browsing it fails', () => {
-    expect(rootPathAfterBrowse('\\\\TRUENAS\\Movies', '', true, true, true)).toBe('\\\\TRUENAS\\Movies')
+    expect(rootPathAfterBrowse('\\\\NAS\\Movies', '', true, true, true)).toBe('\\\\NAS\\Movies')
   })
 })

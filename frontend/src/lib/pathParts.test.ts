@@ -3,9 +3,9 @@ import { pathParts } from './pathParts'
 
 describe('pathParts', () => {
   it('splits a Windows path into its leaf and the folder holding it', () => {
-    expect(pathParts('\\\\TRUENAS\\Shows 2\\Cartoons\\Super Friends')).toEqual({
+    expect(pathParts('\\\\NAS\\Shows 2\\Cartoons\\Super Friends')).toEqual({
       name: 'Super Friends',
-      parent: '\\\\TRUENAS\\Shows 2\\Cartoons',
+      parent: '\\\\NAS\\Shows 2\\Cartoons',
     })
   })
 
