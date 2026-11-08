@@ -490,7 +490,7 @@ class IntegrationConfigStore:
                 timeout_seconds=int(row["timeout_seconds"]), revision=int(row["revision"]),
                 enable_rss=bool(row["enable_rss"]),
                 enable_interactive_search=bool(row["enable_interactive_search"]),
-                categories=[int(value) for value in row["categories"]],
+                categories=[int(value) for value in row["categories"] if int(value) > 0],
                 minimum_seeders=int(row["minimum_seeders"]), priority=int(row["priority"]),
                 color=(str(row["color"]) or None) if row["color"] else None,
                 multi_languages=[str(value) for value in row["multi_languages"]],

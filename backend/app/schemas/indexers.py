@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
 from .common import ORMModel
 
@@ -14,6 +14,12 @@ class IndexerScope(str, Enum):
     MOVIES = "movies"
     SHOWS = "shows"
     BOTH = "both"
+
+
+def _positive(categories: list[int]) -> list[int]:
+    """Torznab categories are positive; 0 would filter every search to nothing."""
+
+    return [value for value in dict.fromkeys(categories) if value > 0]
 
 
 class IndexerCreate(BaseModel):
@@ -31,6 +37,11 @@ class IndexerCreate(BaseModel):
     multi_languages: list[str] = Field(default_factory=list, max_length=20)
     download_client_ids: list[UUID] = Field(default_factory=list, max_length=50)
 
+    @field_validator("categories")
+    @classmethod
+    def _positive_categories(cls, value: list[int]) -> list[int]:
+        return _positive(value)
+
 
 class IndexerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
@@ -47,6 +58,11 @@ class IndexerUpdate(BaseModel):
     multi_languages: list[str] | None = Field(default=None, max_length=20)
     download_client_ids: list[UUID] | None = Field(default=None, max_length=50)
     expected_revision: int | None = Field(default=None, ge=1)
+
+    @field_validator("categories")
+    @classmethod
+    def _positive_categories(cls, value: list[int] | None) -> list[int] | None:
+        return None if value is None else _positive(value)
 
 
 class IndexerOrderRequest(BaseModel):

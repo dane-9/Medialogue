@@ -495,3 +495,31 @@ def test_a_torznab_error_document_is_an_error_not_an_empty_result():
             await client.close()
 
     asyncio.run(scenario())
+
+
+def test_category_zero_is_never_sent_and_never_saved():
+    """A blank Categories field was saved as [0]; sent as cat=0 it filtered
+    every search on every indexer down to nothing."""
+
+    import asyncio
+
+    from app.schemas.indexers import IndexerCreate, IndexerUpdate
+
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(dict(request.url.params))
+        return httpx.Response(200, text='<rss><channel></channel></rss>')
+
+    async def scenario():
+        client = TorznabClient("http://prowlarr/1/api", "key", transport=httpx.MockTransport(handler))
+        try:
+            await client.search("Zodiac 2007", media_type="movies", categories=(0,))
+            await client.search("Zodiac 2007", media_type="movies", categories=(0, 2000))
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
+    assert "cat" not in sent[0] and sent[1]["cat"] == "2000"
+    assert IndexerUpdate(categories=[0]).categories == []
+    assert IndexerCreate(name="x", torznab_url="http://p/1/api", api_key="k", categories=[0, 2000, 2000]).categories == [2000]

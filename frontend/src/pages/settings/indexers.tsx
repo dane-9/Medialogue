@@ -203,7 +203,9 @@ export function IndexerSettings() {
         timeout_seconds: draft.timeoutSeconds,
         enable_rss: draft.enableRss,
         enable_interactive_search: draft.enableInteractiveSearch,
-        categories: draft.categories.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0),
+        // A blank field is no categories: Number('') is 0, and category 0 made
+        // every search return nothing.
+        categories: draft.categories.split(',').map((value) => value.trim()).filter(Boolean).map(Number).filter((value) => Number.isInteger(value) && value > 0),
         minimum_seeders: draft.minimumSeeders,
         color: draft.color,
         multi_languages: draft.multiLanguages.split(',').map((value) => value.trim()).filter(Boolean),

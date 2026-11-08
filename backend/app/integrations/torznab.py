@@ -142,6 +142,9 @@ class TorznabClient:
             params["season"] = season
         if episode is not None:
             params["ep"] = episode
+        # Torznab categories are positive; a stored 0 (once saved for a blank
+        # field) filtered every search down to nothing.
+        categories = tuple(value for value in categories if value > 0)
         if categories:
             params["cat"] = ",".join(str(value) for value in categories)
         try:
