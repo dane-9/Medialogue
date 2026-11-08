@@ -30,7 +30,6 @@ ALLOWED_FILES = frozenset(
         "backend/alembic.ini",
         "backend/pyproject.toml",
         "backend/requirements.lock",
-        "docker/README.md",
         "docker/entrypoint.sh",
         "frontend/index.html",
         "frontend/package-lock.json",
@@ -47,7 +46,7 @@ ALLOWED_FILES = frozenset(
         "scripts/verify.sh",
     }
 )
-ALLOWED_DIRECTORIES = ("backend/app/", "backend/alembic/", "docs/", "frontend/public/", "frontend/src/")
+ALLOWED_DIRECTORIES = ("backend/app/", "backend/alembic/", "frontend/public/", "frontend/src/")
 FORBIDDEN_PARTS = frozenset(
     {
         ".git",
