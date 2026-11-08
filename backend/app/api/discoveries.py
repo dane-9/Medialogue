@@ -251,23 +251,27 @@ async def list_discoveries(
         new_media_state = NewMediaState(state)
     except ValueError as exc:
         raise AppError("INVALID_DISCOVERY_STATE", "Unknown New Media state.", status_code=422) from exc
-    statement = _query().where(MediaDiscovery.new_media_state == new_media_state)
+    conditions = [MediaDiscovery.new_media_state == new_media_state]
     if new_media_state == NewMediaState.PENDING:
         # A confirmed-missing folder is not actionable New Media work and must
         # disappear from the queue as soon as the inventory says the path is gone.
-        statement = statement.join(
-            MediaDirectory, MediaDirectory.id == MediaDiscovery.media_directory_id
-        ).where(MediaDirectory.exists.is_(True))
+        conditions.append(MediaDiscovery.media_directory.has(MediaDirectory.exists.is_(True)))
     if media_type is not None:
         try:
-            statement = statement.where(MediaDiscovery.media_type == MediaType(media_type))
+            conditions.append(MediaDiscovery.media_type == MediaType(media_type))
         except ValueError as exc:
             raise AppError("INVALID_MEDIA_TYPE", "Unknown media type.", status_code=422) from exc
-    statement = statement.order_by(MediaDiscovery.created_at)
-    rows = (await db.scalars(statement)).unique().all()
-    total = len(rows)
-    start = (page - 1) * page_size
-    page_rows = rows[start : start + page_size]
+    # Count and page in SQL: loading every discovery, with every file of every
+    # folder, to keep one page of them made each page cost the whole queue.
+    total = int(await db.scalar(select(func.count()).select_from(MediaDiscovery).where(*conditions)) or 0)
+    statement = (
+        _query()
+        .where(*conditions)
+        .order_by(MediaDiscovery.created_at, MediaDiscovery.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    page_rows = list((await db.scalars(statement)).unique().all())
     library_conflicts = await _library_conflict_ids(db, page_rows)
     page_profiles = await _profile_names(db, page_rows)
     items = [

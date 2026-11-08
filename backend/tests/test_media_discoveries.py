@@ -926,3 +926,32 @@ def test_a_quality_profile_chosen_in_review_reaches_the_imported_show(client: Te
     show_id = client.get("/api/v1/shows").json()["items"][0]["id"]
     settings = client.get(f"/api/v1/shows/{show_id}/profile-settings").json()
     assert settings["quality_profile_id"] == profile["id"]
+
+
+def test_queue_pages_are_cut_in_the_database_and_cover_every_item(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    root = tmp_path / "movies"
+    for index in range(5):
+        folder = root / f"Dune.2021.Copy{index}"
+        folder.mkdir(parents=True)
+        (folder / "Dune.2021.mkv").write_bytes(b"movie")
+    # A folder gone from disk is counted out of the pending queue too.
+    gone = root / "Arrival.2016"
+    gone.mkdir()
+    (gone / "Arrival.2016.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, root, "movies")
+    scan(client, headers, storage["id"])
+    for path in gone.iterdir():
+        path.unlink()
+    gone.rmdir()
+    scan(client, headers, storage["id"])
+
+    pages = [client.get(f"/api/v1/discoveries?page={page}&page_size=2").json() for page in (1, 2, 3)]
+    assert [page["total"] for page in pages] == [5, 5, 5] and pages[0]["pages"] == 3
+    assert [len(page["items"]) for page in pages] == [2, 2, 1]
+    ids = [item["id"] for page in pages for item in page["items"]]
+    assert len(set(ids)) == 5
+    assert client.get("/api/v1/discoveries/count").json()["count"] == 5
+    assert client.get("/api/v1/discoveries?page=4&page_size=2").json()["items"] == []
+    assert client.get("/api/v1/discoveries?media_type=shows").json()["total"] == 0
