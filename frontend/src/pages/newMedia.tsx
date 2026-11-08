@@ -24,8 +24,9 @@ function capitalise(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-/** Folders added per request: small enough to finish in seconds, with progress. */
-const ADD_BATCH = 25
+/** Folders added per request. Each new title is fetched from TMDB, so a
+ * request takes a few seconds per folder: small batches keep the count moving. */
+const ADD_BATCH = 5
 
 export function NewMediaPage() {
   const [items, setItems] = useState<MediaDiscovery[]>([])
@@ -153,6 +154,7 @@ export function NewMediaPage() {
     const ids = addable.map((item) => item.id)
     if (!ids.length || hasEditionConflicts) return
     setAdding(true); setError(''); setMessage('')
+    setAddProgress({ done: 0, total: ids.length })
     // In batches: each new title is fetched from TMDB, so a whole library in
     // one request ran for many minutes (and the server takes at most 500).
     // Each batch's titles leave the list as soon as they are in.
@@ -160,8 +162,9 @@ export function NewMediaPage() {
     const failed: string[] = []
     try {
       for (let start = 0; start < ids.length; start += ADD_BATCH) {
-        setAddProgress({ done: start, total: ids.length })
-        const result = await discoveryApi.bulkNewMediaDiscoveries(ids.slice(start, start + ADD_BATCH), 'approve')
+        const batch = ids.slice(start, start + ADD_BATCH)
+        const result = await discoveryApi.bulkNewMediaDiscoveries(batch, 'approve')
+        setAddProgress({ done: start + batch.length, total: ids.length })
         added += result.succeeded.length
         failed.push(...result.failed.map((failure) => failure.message))
         setItems((current) => current.filter((item) => !result.succeeded.includes(item.id)))
@@ -325,7 +328,7 @@ export function NewMediaPage() {
         <div className="toolbar-spacer" />
         {hasEditionConflicts && <span className="new-media-add-warning">Resolve same-edition copies or leave one out before adding.</span>}
         <Button variant="primary" icon="check" onClick={() => void runAdd()} disabled={adding || !addable.length || hasEditionConflicts}>
-          {adding ? (addProgress && addProgress.total > ADD_BATCH ? `Adding ${addProgress.done.toLocaleString()} of ${addProgress.total.toLocaleString()}…` : 'Adding…') : `Add ${addable.length} ${addable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
+          {adding ? (addProgress && addProgress.total > 1 ? `Adding ${addProgress.done.toLocaleString()} of ${addProgress.total.toLocaleString()}…` : 'Adding…') : `Add ${addable.length} ${addable.length === 1 ? capitalise(noun) : `${capitalise(noun)}s`}`}
         </Button>
       </div>
 
