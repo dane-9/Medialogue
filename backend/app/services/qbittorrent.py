@@ -19,7 +19,7 @@ from time import perf_counter
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, inspect, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import (
@@ -351,6 +351,11 @@ _SETTLED: dict[UUID, dict[str, tuple[tuple, datetime]]] = {}
 #: Even an unchanged torrent is fully re-processed this often, so associations,
 #: archive state and reconciliation still catch up with library changes.
 _FULL_REPROCESS_SECONDS = 600
+#: At most this many unchanged torrents are re-processed for age in one poll.
+#: Torrents settle together (after a restart, all in the first poll), so
+#: without a cap they all come due in the same poll every ten minutes: one long
+#: write transaction that blocks every other write. Capped, they spread out.
+_PERIODIC_REPROCESS_PER_POLL = 100
 
 
 async def _fetch_observations(adapter, client: ConfiguredDownloadClient) -> list[TorrentObservation]:
@@ -529,6 +534,7 @@ async def _poll_download_client(
     current_hashes: set[str] = set()
     settled_cache = _SETTLED.setdefault(client.id, {})
     fast_torrent_ids: list[UUID] = []
+    periodic_budget = _PERIODIC_REPROCESS_PER_POLL
     detail_due = await _tracker_detail_batch(
         db,
         [item.info_hash for item in managed],
@@ -628,10 +634,17 @@ async def _poll_download_client(
             fingerprint = _settled_fingerprint(observed, reported_content, resolved_content)
             settled = settled_cache.get(info_hash)
             prior = prior_by_hash.get(info_hash)
+            unchanged = settled is not None and settled[0] == fingerprint
+            # Age alone sends a torrent down the full path only while this
+            # poll's budget lasts; the rest wait for a later poll.
+            refresh_for_age = (
+                unchanged and (checked_at - settled[1]).total_seconds() >= _FULL_REPROCESS_SECONDS and periodic_budget > 0
+            )
+            if refresh_for_age:
+                periodic_budget -= 1
             if (
-                settled is not None
-                and settled[0] == fingerprint
-                and (checked_at - settled[1]).total_seconds() < _FULL_REPROCESS_SECONDS
+                unchanged
+                and not refresh_for_age
                 and prior is not None
                 and prior.is_present
                 and _archive_files_present(prior_torrent_by_id.get(prior.torrent_id))
@@ -951,6 +964,15 @@ async def _poll_download_client(
                     },
                 )
                 continue
+
+        if processing_errors:
+            # A rolled-back SAVEPOINT expires what it touched, this client's
+            # observation of that torrent included. Reload those rows here:
+            # reading an expired attribute below would need a lazy load, which
+            # async SQLAlchemy cannot do, and would fail the whole poll.
+            for row in prior_rows:
+                if inspect(row).expired_attributes:
+                    await db.refresh(row)
 
         if failed_downloads:
             from app.services.blocklist import handle_failed_download

@@ -1285,3 +1285,111 @@ def test_one_failed_poll_is_retried_before_the_client_is_unavailable(client: Tes
     # Recovery is announced too.
     health, error, _, events = asyncio.run(poll(healthy.factory))
     assert (health, error, events) == ("healthy", None, 3)
+
+
+def test_a_known_torrent_failing_does_not_fail_the_rest_of_the_poll(client: TestClient, monkeypatch) -> None:
+    """A rolled-back torrent's observation row is expired by the rollback; the
+    end of the poll must still be able to read it (async cannot lazy-load)."""
+
+    from app.services import qbittorrent as qbit_service
+
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    root = Path.cwd() / f"qbit-known-failure-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    try:
+        root_response = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": f"Known-{os.urandom(5).hex()}", "path": str(root), "media_type": "movies"},
+        )
+        assert root_response.status_code == 201, root_response.text
+        _initialize_root(client, headers, root_response.json()["id"])
+        _create_client(client, headers)
+        names = {"knownbrokenhash": "Broken Movie 2026 2160p WEB-DL-GROUP", "knownhealthyhash": "Healthy Movie 2026 2160p WEB-DL-GROUP"}
+        behavior = FakeQBitBehavior(torrents=[
+            _torrent(info_hash, name, save_path=str(root), content_path=str(root / name)) for info_hash, name in names.items()
+        ])
+        # The first poll records both torrents and their observations.
+        assert asyncio.run(_poll_once(qbit_service, behavior))[0]["processing_errors"] == 0
+
+        original_associate = qbit_service.associate_incoming_torrent
+
+        async def explode_one(db, torrent, **kwargs):
+            if torrent.info_hash == "knownbrokenhash":
+                raise RuntimeError("synthetic reconciliation failure")
+            return await original_associate(db, torrent, **kwargs)
+
+        monkeypatch.setattr(qbit_service, "associate_incoming_torrent", explode_one)
+        qbit_service._SETTLED.clear()
+        results = asyncio.run(_poll_once(qbit_service, behavior))
+        assert results[0]["status"] == "healthy"
+        assert results[0]["processing_errors"] == 1
+        assert results[0]["removed"] == 0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+async def _poll_once(qbit_service, behavior):
+    from app.models.domain import DownloadClient as DownloadClientState
+    async with db_session.async_session_factory() as db:
+        # Due now, whatever the last poll set.
+        for row in (await db.scalars(select(DownloadClientState))).all():
+            row.last_polled_at = None
+        await db.commit()
+        return await qbit_service.poll_due_download_clients(db, client_factory=behavior.factory)
+
+
+def test_torrents_due_for_a_periodic_refresh_are_spread_across_polls(client: TestClient, monkeypatch) -> None:
+    """Torrents that settled together must not all be re-processed in one poll."""
+
+    from datetime import timedelta
+    from app.services import qbittorrent as qbit_service
+
+    headers = _login(client)
+    _configure_tmdb(client, headers)
+    root = Path.cwd() / f"qbit-periodic-{os.urandom(8).hex()}"
+    root.mkdir(parents=True)
+    try:
+        root_response = client.post(
+            "/api/v1/storage-roots",
+            headers=headers,
+            json={"name": f"Periodic-{os.urandom(5).hex()}", "path": str(root), "media_type": "movies"},
+        )
+        assert root_response.status_code == 201, root_response.text
+        _initialize_root(client, headers, root_response.json()["id"])
+        _create_client(client, headers)
+        behavior = FakeQBitBehavior(torrents=[
+            _torrent(f"periodic{index}hash", f"Periodic Movie {index} 2026 2160p WEB-DL-GROUP", save_path=str(root),
+                     content_path=str(root / f"Periodic Movie {index} 2026 2160p WEB-DL-GROUP"))
+            for index in range(3)
+        ])
+        full_passes: list[str] = []
+        original_associate = qbit_service.associate_incoming_torrent
+
+        async def counting(db, torrent, **kwargs):
+            full_passes.append(torrent.info_hash)
+            return await original_associate(db, torrent, **kwargs)
+
+        monkeypatch.setattr(qbit_service, "associate_incoming_torrent", counting)
+        monkeypatch.setattr(qbit_service, "_archive_files_present", lambda torrent: True)
+        monkeypatch.setattr(qbit_service, "_PERIODIC_REPROCESS_PER_POLL", 1)
+        qbit_service._SETTLED.clear()
+        asyncio.run(_poll_once(qbit_service, behavior))
+        assert len(full_passes) == 3
+        # All three settled in the same poll, long enough ago to be due again.
+        async def nothing_due(*args, **kwargs):
+            return set()
+
+        monkeypatch.setattr(qbit_service, "_settled_fingerprint", lambda *args: ("unchanged",))
+        monkeypatch.setattr(qbit_service, "_tracker_detail_batch", nothing_due)
+        old = qbit_service.utcnow() - timedelta(seconds=qbit_service._FULL_REPROCESS_SECONDS + 1)
+        qbit_service._SETTLED.clear()
+        for client_id in [UUID(item["id"]) for item in client.get("/api/v1/download-clients").json()["items"]]:
+            qbit_service._SETTLED[client_id] = {f"periodic{index}hash": (("unchanged",), old) for index in range(3)}
+        full_passes.clear()
+        asyncio.run(_poll_once(qbit_service, behavior))
+        # One aged torrent refreshed (the cap); the rest stayed on the fast path.
+        assert len(full_passes) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
