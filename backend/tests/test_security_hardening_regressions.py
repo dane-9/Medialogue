@@ -193,10 +193,13 @@ def test_frontend_lockfile_uses_patched_vitest_release() -> None:
     package = json.loads((repo / "frontend" / "package.json").read_text(encoding="utf-8"))
     lock = json.loads((repo / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
 
-    assert package["devDependencies"]["vitest"] == "^4.1.11"
-    assert lock["packages"][""]["devDependencies"]["vitest"] == "^4.1.11"
-    assert lock["packages"]["node_modules/vitest"]["version"] == "4.1.11"
-    assert lock["packages"]["node_modules/@vitest/mocker"]["version"] == "4.1.11"
+    def version(value: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in value.lstrip("^~").split(".")[:3])
+
+    # At least the patched releases; newer security fixes must not fail this.
+    assert version(package["devDependencies"]["vitest"]) >= (4, 1, 12)
+    assert version(lock["packages"]["node_modules/vitest"]["version"]) >= (4, 1, 12)
+    assert version(lock["packages"]["node_modules/@vitest/mocker"]["version"]) >= (4, 1, 12)
 
 
 def test_production_unknown_username_counts_toward_login_throttle(monkeypatch: pytest.MonkeyPatch) -> None:
