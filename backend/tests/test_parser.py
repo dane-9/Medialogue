@@ -524,3 +524,61 @@ def test_release_tokens_before_the_year_are_not_part_of_the_title(name, title, y
 def test_a_remux_without_its_source_is_a_bluray_remux_but_a_dvd_remux_stays_one() -> None:
     assert parse_release("Movie.2009.1080p.DTS-HD.MA.5.1.AVC.REMUX-GRP").quality.canonical == "1080p BluRay REMUX"
     assert parse_release("Movie.2009.DVD.REMUX.MPEG-2-GRP").quality.source == "DVD"
+
+
+@pytest.mark.parametrize(
+    ("name", "title"),
+    [
+        ("Gangs.of.New.York.Remastered.2002.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR", "Gangs of New York"),
+        ("Movie.Remastered.1080p.2009.BluRay-GRP", "Movie"),
+        ("The.Remaster.Show.2019.1080p-GRP", "The Remaster Show"),
+        ("Remastered.2019.1080p.WEB-DL-GRP", "Remastered"),
+    ],
+)
+def test_remastered_right_before_the_year_is_not_part_of_the_title(name, title) -> None:
+    assert parse_release(name).identity.title_candidate == title
+
+
+def test_alternate_and_international_cuts_are_editions() -> None:
+    from app.parser.release_parser import EDITION_OPTIONS
+
+    assert parse_release("Movie.2010.Alternate.Cut.1080p.BluRay-GRP").edition == "Alternate Cut"
+    assert parse_release("Movie.2010.Alternative.Cut.1080p.BluRay-GRP").edition == "Alternate Cut"
+    assert parse_release("Movie.2010.International.Cut.1080p.BluRay-GRP").edition == "International Cut"
+    assert {"Alternate Cut", "International Cut"} <= set(EDITION_OPTIONS)
+
+
+def test_hdr10p_is_hdr10_plus() -> None:
+    parsed = parse_release("Jurassic.World.Rebirth.2025.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR")
+    assert parsed.hdr.hdr10_plus and not parsed.hdr.hdr10
+    assert parsed.hdr.values == ("Dolby Vision", "HDR10+")
+
+
+@pytest.mark.parametrize(
+    ("name", "edition"),
+    [
+        ("Sahara.2005.OpenMatte.BluRay.1080p.TrueHD.5.1.AVC.REMUX-FraMeSToR", "Open Matte"),
+        ("Movie.2010.DirectorsCut.1080p.BluRay-GRP", "Director's Cut"),
+        ("Movie.2010.Open.Matte.1080p.BluRay-GRP", "Open Matte"),
+    ],
+)
+def test_editions_are_found_with_their_words_run_together(name, edition) -> None:
+    assert parse_release(name).edition == edition
+
+
+@pytest.mark.parametrize(
+    ("name", "title", "edition"),
+    [
+        ("Twilight.Eclipse.Extended.Cut.2010.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-OiCuNTs", "Twilight Eclipse", "Extended Cut"),
+        ("Twilight.Extended.2008.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-RiPPERSDELiGHT", "Twilight", "Extended Cut"),
+        ("Movie.Directors.Cut.Remastered.1999.1080p.BluRay-GRP", "Movie", "Director's Cut"),
+        ("Apocalypse.Now.Redux.1979.1080p.BluRay-GRP", "Apocalypse Now", "Redux"),
+        # A film named like an edition keeps its title (its edition is not asserted here).
+        ("The.Final.Cut.2004.1080p.BluRay-GRP", "The Final Cut", None),
+    ],
+)
+def test_an_edition_right_before_the_year_is_not_part_of_the_title(name, title, edition) -> None:
+    parsed = parse_release(name)
+    assert parsed.identity.title_candidate == title
+    if edition is not None:
+        assert parsed.edition == edition

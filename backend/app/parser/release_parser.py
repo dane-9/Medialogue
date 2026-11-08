@@ -66,6 +66,9 @@ _EDITION_ALIASES: tuple[tuple[str, str], ...] = (
     ("imax", "IMAX"),
     ("recut", "Recut"),
     ("rogue cut", "Rogue Cut"),
+    ("alternate cut", "Alternate Cut"),
+    ("alternative cut", "Alternate Cut"),
+    ("international cut", "International Cut"),
 )
 
 # Canonical choices exposed to edition pickers. Keep this derived from the
@@ -326,7 +329,9 @@ def _edition_from_name(normalized: str) -> tuple[str | None, str | None]:
     # being matched inside a future token.
     for alias, canonical in sorted(_EDITION_ALIASES, key=lambda item: len(item[0]), reverse=True):
         phrase = _normalize_punctuation_phrase(alias)
-        if re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", folded):
+        # Words may also be run together: OpenMatte, DirectorsCut, ExtendedCut.
+        words = r"\s*".join(re.escape(word) for word in phrase.split())
+        if re.search(rf"(?<![a-z0-9]){words}(?![a-z0-9])", folded):
             return canonical, alias
     return None, None
 
@@ -506,6 +511,16 @@ def _year_match(normalized: str, *, before: int | None = None) -> re.Match[str] 
     return matches[-1] if matches else None
 
 
+def _trailing_release_words() -> re.Pattern[str]:
+    phrases = sorted({alias for alias, _ in _EDITION_ALIASES} | {"remastered"}, key=len, reverse=True)
+    # Words may be separated by spaces, dots or hyphens, or run together.
+    alternatives = "|".join(r"[\s.\-']*".join(re.escape(word) for word in re.split(r"[\s\-']+", phrase)) for phrase in phrases)
+    return re.compile(rf"(?i)(?:^|[\s.\-]+)(?:{alternatives})\s*$")
+
+
+_TRAILING_RELEASE_WORDS = _trailing_release_words()
+
+
 def _without_technical_suffix(title: str) -> str:
     """Drop release tokens a name put before its year (``Title.1080p.2009``).
 
@@ -514,10 +529,23 @@ def _without_technical_suffix(title: str) -> str:
     """
 
     boundary = _technical_boundary(title)
-    if boundary is None or boundary == 0:
-        return title
-    cut = title[:boundary].strip(" -.([")
-    return cut if re.search(r"[A-Za-z0-9]", cut) else title
+    cut = title if boundary is None or boundary == 0 else title[:boundary].strip(" -.([")
+    if not re.search(r"[A-Za-z0-9]", cut):
+        cut = title
+    # An edition or "Remastered" right before the year describes the release,
+    # not the film (Twilight.Eclipse.Extended.Cut.2010, Gangs.of.New.York.
+    # Remastered.2002). Elsewhere in a title the same words may be real.
+    trimmed = cut
+    while True:
+        match = _TRAILING_RELEASE_WORDS.search(trimmed)
+        if match is None:
+            break
+        remainder = trimmed[: match.start()].strip(" -.([")
+        # "The Final Cut" (2004) is a film: never cut a title down to articles.
+        if not any(word.casefold() not in {"the", "a", "an"} for word in re.findall(r"[A-Za-z0-9']+", remainder)):
+            break
+        trimmed = remainder
+    return trimmed
 
 
 def _technical_boundary(normalized: str, *, start: int = 0) -> int | None:
@@ -747,8 +775,8 @@ def _hdr(normalized: str) -> HDRInfo:
         dolby_vision=bool(re.search(r"(?<![a-z0-9])(?:dv|dolby vision)(?![a-z0-9])", folded)),
         hdr=bool(re.search(r"(?<![a-z0-9])hdr(?![0-9a-z])", folded)),
         hdr10=bool(re.search(r"(?<![a-z0-9])hdr10(?!\+| ?plus(?![a-z0-9])|[a-z0-9])", folded)),
-        # HDR10+ is also spelled out: HDR10Plus, HDR10.Plus.
-        hdr10_plus=bool(re.search(r"(?<![a-z0-9])hdr10(?:\+| ?plus)(?![a-z0-9])", folded)),
+        # HDR10+ is also spelled out (HDR10Plus, HDR10.Plus) or shortened (HDR10P).
+        hdr10_plus=bool(re.search(r"(?<![a-z0-9])hdr10(?:\+| ?plus|p)(?![a-z0-9])", folded)),
         hlg=bool(re.search(r"(?<![a-z0-9])hlg(?![a-z0-9])", folded)),
     )
 

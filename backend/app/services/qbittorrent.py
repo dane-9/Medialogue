@@ -561,6 +561,7 @@ async def _poll_download_client(
                 # scope is re-evaluated after qBittorrent finishes checking.
                 relevant_count += 1
                 prior = prior_by_hash[info_hash]
+                await db.commit()  # see _PER_TORRENT_TRANSACTIONS
                 torrent = await db.get(Torrent, prior.torrent_id)
                 if torrent is not None:
                     async with db.begin_nested():
@@ -613,6 +614,7 @@ async def _poll_download_client(
                 ignored += 1
                 if previously_known:
                     prior = prior_by_hash[info_hash]
+                    await db.commit()  # see _PER_TORRENT_TRANSACTIONS
                     torrent = await db.get(Torrent, prior.torrent_id)
                     if torrent is not None:
                         async with db.begin_nested():
@@ -674,6 +676,14 @@ async def _poll_download_client(
             added_before = added
             queued_handoff: UUID | None = None
             completed_before = completed
+            # _PER_TORRENT_TRANSACTIONS: save the fast-path updates queued so far
+            # before this torrent's SAVEPOINT. SQLite's driver only begins a
+            # transaction for a write, so the SAVEPOINT then starts (and its
+            # release commits) its own short transaction. Flushing them inside
+            # it instead opened one outer transaction that every later SAVEPOINT
+            # nested in, holding the only write lock until the poll ended: on
+            # a large client every other save waited past its 30s and failed.
+            await db.commit()
             try:
                 # Isolate each torrent in a SAVEPOINT. A malformed/unexpected
                 # torrent must not poison the entire qBittorrent client poll or
