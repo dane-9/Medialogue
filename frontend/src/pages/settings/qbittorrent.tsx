@@ -140,14 +140,24 @@ export function QBittorrentSettings() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save qBittorrent client.'); setMessage('') }
     finally { setBusy(false) }
   }
-  const refresh = async () => {
-    if (!selectedId) return
-    setBusy(true); setError(''); setMessage('Refreshing qBittorrent health…')
+  /** Tests the connection as typed in the editor, saved or not. */
+  const test = async () => {
+    const url = draft.url.trim()
+    if (!url) { setError('Enter the qBittorrent URL to test.'); return }
+    if (!selectedId && !draft.password) { setError('Enter the password to test a new qBittorrent client.'); return }
+    setBusy(true); setError(''); setMessage('Testing qBittorrent connection…')
     try {
-      const result = await integrationsApi.refreshDownloadClient(selectedId)
-      setClients((items) => items.map((item) => item.id === selectedId ? { ...item, health: result.status, latency_ms: result.latency_ms, last_error: result.message, last_checked_at: new Date().toISOString() } : item))
-      setMessage(result.status === 'healthy' ? 'Client health is healthy.' : result.message ?? `qBittorrent status: ${result.status}.`)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not refresh qBittorrent health.'); setMessage('') }
+      const current = clients.find((item) => item.id === selectedId)
+      const result = selectedId
+        ? await integrationsApi.testDownloadClient(selectedId, { url, username: draft.username, ...(draft.password ? { password: draft.password } : {}) })
+        : await integrationsApi.testDownloadClient(undefined, { url, username: draft.username, password: draft.password })
+      // Only a test of the stored connection says anything about the saved client's health.
+      if (current && url.replace(/\/+$/, '') === current.url && draft.username === (current.username ?? '') && !draft.password) {
+        setClients((items) => items.map((item) => item.id === selectedId ? { ...item, health: result.status, latency_ms: result.latency_ms, last_error: result.message, last_checked_at: new Date().toISOString() } : item))
+      }
+      if (result.status === 'healthy') setMessage(`Connected${result.version ? ` · qBittorrent ${result.version}` : ''}${result.latency_ms !== undefined ? ` · ${result.latency_ms} ms` : ''}.`)
+      else { setError(result.message ? `Could not connect: ${result.message}` : 'Could not connect to qBittorrent.'); setMessage('') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not test the qBittorrent connection.'); setMessage('') }
     finally { setBusy(false) }
   }
   const refreshAll = async () => {
@@ -219,7 +229,7 @@ export function QBittorrentSettings() {
     {editorOpen && <Modal wide title={selected ? selected.name : 'Add qBittorrent client'} onClose={closeEditor}
       titleAction={<>
         <EnabledButton enabled={draft.enabled} onChange={(next) => updateDraft('enabled', next)} />
-        {selected && <Button variant="ghost" icon="refresh" onClick={refresh} disabled={busy}>Refresh health</Button>}
+        <Button variant="ghost" icon="refresh" onClick={() => void test()} disabled={busy}>{busy ? 'Working…' : 'Test'}</Button>
       </>}
       headerAction={selected ? <div className="provider-header-status">{connectionDetail && <span className={`status-detail ${selected.health === 'healthy' ? 'ok' : selected.last_error ? 'err' : ''}`}>{connectionDetail}</span>}<Badge tone={healthTone}>{loading ? 'Loading' : selected.health}</Badge></div> : undefined}
       footer={<>
