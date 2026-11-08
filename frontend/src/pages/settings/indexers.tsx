@@ -9,6 +9,8 @@ import { Modal } from '../../components/Modal'
 import { Badge, Button, EmptyState, EnabledButton, Input, Segmented, Select } from '../../components/ui'
 import { integrationsApi } from '../../api/modules/integrations'
 import { useUrlState } from '../../lib/urlState'
+import { useLeaveGuard } from '../../lib/leaveGuard'
+import { moveItem } from '../../lib/reorder'
 import type { DownloadClient, Indexer, IndexerScope } from '../../types'
 import prowlarrIcon from '../../assets/prowlarr.svg'
 import jackettIcon from '../../assets/jackett.svg'
@@ -26,7 +28,6 @@ type IndexerDraft = {
   enableInteractiveSearch: boolean
   categories: string
   minimumSeeders: number
-  priority: number
   color: string
   multiLanguages: string
   downloadClientIds: string[]
@@ -79,7 +80,6 @@ const emptyIndexer: IndexerDraft = {
   enableInteractiveSearch: true,
   categories: '',
   minimumSeeders: 1,
-  priority: 25,
   color: '',
   multiLanguages: '',
   downloadClientIds: [],
@@ -97,7 +97,6 @@ function draftFromIndexer(indexer: Indexer): IndexerDraft {
     enableInteractiveSearch: indexer.enableInteractiveSearch,
     categories: indexer.categories.join(', '),
     minimumSeeders: indexer.minimumSeeders,
-    priority: indexer.priority,
     color: indexer.color ?? '',
     multiLanguages: indexer.multiLanguages.join(', '),
     downloadClientIds: [...indexer.downloadClientIds],
@@ -118,6 +117,10 @@ export function IndexerSettings() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [presetPickerOpen, setPresetPickerOpen] = useState(false)
   const [preset, setPreset] = useState<IndexerPreset>('prowlarr')
+  // The order being dragged into, until saved; null shows the saved order.
+  const [order, setOrder] = useState<string[] | null>(null)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [savingOrder, setSavingOrder] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -138,6 +141,31 @@ export function IndexerSettings() {
   useEffect(() => { void load() }, [])
 
   const selected = indexers.find((item) => item.id === selectedId)
+  // Indexers added or removed meanwhile: new ones at the end, gone ones dropped.
+  const shown = order
+    ? [...order.flatMap((id) => indexers.filter((item) => item.id === id)), ...indexers.filter((item) => !order.includes(item.id))]
+    : indexers
+  const orderDirty = shown.some((item, index) => item.id !== indexers[index]?.id)
+  useLeaveGuard(orderDirty, async () => {
+    if (!await confirm({ title: 'Discard the new indexer order?', body: 'The indexers go back to their saved order.', confirmLabel: 'Discard' })) return false
+    setOrder(null)
+    return true
+  })
+  const moveIndexer = (id: string, to: number) => {
+    const ids = shown.map((item) => item.id)
+    const from = ids.indexOf(id)
+    if (from < 0 || to < 0 || to >= ids.length || from === to) return
+    setOrder(moveItem(ids, from, to))
+  }
+  const saveOrder = async () => {
+    setSavingOrder(true); setError(''); setMessage('')
+    try {
+      setIndexers(await integrationsApi.reorderIndexers(shown.map((item) => item.id)))
+      setOrder(null)
+      setMessage('Indexer order saved. When results are otherwise equal, the higher indexer wins.')
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save the indexer order.') }
+    finally { setSavingOrder(false) }
+  }
   const selectIndexer = (id: string) => {
     const item = indexers.find((candidate) => candidate.id === id)
     setSelectedId(id)
@@ -177,7 +205,6 @@ export function IndexerSettings() {
         enable_interactive_search: draft.enableInteractiveSearch,
         categories: draft.categories.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0),
         minimum_seeders: draft.minimumSeeders,
-        priority: draft.priority,
         color: draft.color,
         multi_languages: draft.multiLanguages.split(',').map((value) => value.trim()).filter(Boolean),
         download_client_ids: draft.downloadClientIds,
@@ -185,7 +212,7 @@ export function IndexerSettings() {
       const value = selectedId
         ? await integrationsApi.updateIndexer(selectedId, { ...base, ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}), expected_revision: selected?.revision })
         : await integrationsApi.createIndexer({ ...base, color: draft.color || undefined, api_key: draft.apiKey.trim() })
-      setIndexers((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value].sort((a, b) => a.name.localeCompare(b.name)))
+      setIndexers((items) => selectedId ? items.map((item) => item.id === value.id ? value : item) : [...items, value])
       setSelectedId(value.id)
       setDraft(draftFromIndexer(value))
       setDirty(false)
@@ -274,13 +301,30 @@ export function IndexerSettings() {
     setEditorOpen(false); setMessage(''); setError('')
   }
   return <div className="provider-settings indexer-settings">
-    <SectionHead title="Indexers" description="Torznab endpoints used for interactive Movie and Show searches." action={<div className="button-row"><Button variant="secondary" onClick={() => void testAll()} disabled={busy || !indexers.length}>{busy ? 'Testing…' : 'Test all'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add indexer</Button></div>} />
+    <SectionHead title="Indexers" description="Torznab endpoints used for interactive Movie and Show searches." action={<div className="button-row"><Button variant="secondary" onClick={() => void testAll()} disabled={busy || !indexers.length}>{busy ? 'Testing…' : 'Test all'}</Button><Button variant="primary" icon="plus" onClick={beginAdd}>Add indexer</Button><Button variant={orderDirty ? 'primary' : 'secondary'} onClick={() => void saveOrder()} disabled={!orderDirty || savingOrder}>{savingOrder ? 'Saving…' : 'Save order'}</Button></div>} />
     {error && !editorOpen && <Note message={{ tone: 'error', text: error }} />}
     {message && !editorOpen && <Note message={{ tone: 'ok', text: message }} />}
+    {indexers.length > 1 && <p className="indexer-order-hint">{orderDirty ? 'Order changed. Save it to keep it.' : 'Drag to reorder (or Alt + arrow keys). When results are otherwise equal, the first indexer wins.'}</p>}
     {indexers.length > 0 && <div className="provider-card-grid">
-      {indexers.map((indexer) => { const source = presetFromUrl(indexer.torznabUrl); return <article className={`provider-card ${indexer.enabled ? '' : 'provider-card-disabled'}`} role="button" tabIndex={0} key={indexer.id} onClick={() => selectIndexer(indexer.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectIndexer(indexer.id) } }}>
+      {shown.map((indexer, index) => { const source = presetFromUrl(indexer.torznabUrl); return <article className={`provider-card provider-card-sortable ${indexer.enabled ? '' : 'provider-card-disabled'} ${dragId === indexer.id ? 'provider-card-dragging' : ''}`} role="button" tabIndex={0} key={indexer.id}
+        aria-label={`${indexer.name}, position ${index + 1} of ${shown.length}`}
+        draggable={!savingOrder}
+        onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', indexer.id); setDragId(indexer.id) }}
+        onDragOver={(event) => { if (!dragId) return; event.preventDefault(); if (dragId !== indexer.id) moveIndexer(dragId, index) }}
+        onDrop={(event) => { event.preventDefault(); setDragId(null) }}
+        onDragEnd={() => setDragId(null)}
+        onClick={() => selectIndexer(indexer.id)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'ArrowRight' || event.key === 'ArrowDown')) {
+            event.preventDefault()
+            moveIndexer(indexer.id, index + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1))
+            const card = event.currentTarget
+            requestAnimationFrame(() => card.focus())
+          } else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectIndexer(indexer.id) }
+        }}>
         <div className="provider-card-head"><div className={`provider-card-icon indexer-source-icon indexer-source-${source}`} style={indexerBadgePreview(indexer.color ?? '')}><img src={indexerPresets[source].icon} alt={`${indexerPresets[source].name} icon`} /></div><button type="button" className={`enabled-button cf-card-toggle ${indexer.enabled ? 'on' : 'off'}`} aria-pressed={indexer.enabled} aria-label={`Turn ${indexer.name} ${indexer.enabled ? 'off' : 'on'}`} disabled={togglingId === indexer.id} onClick={(event) => { event.stopPropagation(); void toggleIndexer(indexer) }}>{togglingId === indexer.id ? 'Saving…' : indexer.enabled ? 'On' : 'Off'}</button></div>
-        <strong>{indexer.name}</strong><span>{indexer.torznabUrl}</span>
+        <strong><span className="provider-card-position">{index + 1}</span>{indexer.name}</strong><span>{indexer.torznabUrl}</span>
         <div className="provider-card-meta"><span className={`provider-health ${indexer.health === 'healthy' ? 'healthy' : indexer.health === 'unavailable' ? 'error' : ''}`}><i />{indexer.health}</span></div>
       </article>})}
     </div>}
@@ -355,9 +399,6 @@ export function IndexerSettings() {
           <SettingsGroup legend="Results">
             <Field label="Minimum seeders" help="Results with fewer seeders are rejected. Unknown counts stay.">
               <Input type="number" min="0" value={String(draft.minimumSeeders)} onChange={(event) => updateDraft('minimumSeeders', Math.max(0, Number(event.target.value) || 0))} />
-            </Field>
-            <Field label="Indexer priority" help="Tie-breaker from 1 (highest) to 50 (lowest). All are still searched.">
-              <Input type="number" min="1" max="50" value={String(draft.priority)} onChange={(event) => updateDraft('priority', Math.min(50, Math.max(1, Number(event.target.value) || 25)))} />
             </Field>
             <Field label="MULTI languages" help="What a MULTI-tagged release here actually contains. Comma-separated.">
               <Input value={draft.multiLanguages} onChange={(event) => updateDraft('multiLanguages', event.target.value)} placeholder="English, French" />

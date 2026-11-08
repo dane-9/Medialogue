@@ -700,7 +700,7 @@ def test_indexer_colour_round_trips_and_distinguishes_clearing_from_omitting(cli
 
     assert client.get(f"/api/v1/indexers/{indexer_id}").json()["color"] == "#7C8CF8"
 
-    kept = client.put(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"priority": 30})
+    kept = client.put(f"/api/v1/indexers/{indexer_id}", headers=headers, json={"minimum_seeders": 3})
     assert kept.status_code == 200, kept.text
     assert kept.json()["color"] == "#7C8CF8"
 

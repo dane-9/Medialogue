@@ -529,6 +529,26 @@ class IntegrationConfigStore:
         self._save(config, secrets)
         return self.get_indexer(item.id)  # type: ignore[return-value]
 
+    def next_indexer_priority(self) -> int:
+        """The position after the last indexer, so a new one joins at the end."""
+
+        return max((item.priority for item in self.list_indexers()), default=0) + 1
+
+    def reorder_indexers(self, ids: list[UUID]) -> None:
+        """Number the indexers 1, 2, 3… in this order, which must name each of them once."""
+
+        config, secrets = self._load()
+        rows = {str(row["id"]): row for row in config["indexers"]}
+        wanted = [str(value) for value in ids]
+        if len(set(wanted)) != len(wanted) or set(wanted) != set(rows):
+            raise ValueError("order_mismatch")
+        for position, key in enumerate(wanted, start=1):
+            row = rows[key]
+            if int(row["priority"]) != position:
+                rows[key] = {**row, "priority": position, "revision": int(row["revision"]) + 1}
+        config["indexers"] = [rows[key] for key in wanted]
+        self._save(config, secrets)
+
     def delete_indexer(self, indexer_id: UUID | str) -> None:
         target = str(self._uuid(indexer_id))
         config, secrets = self._load()

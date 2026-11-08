@@ -27,7 +27,6 @@ class IndexerCreate(BaseModel):
     enable_interactive_search: bool = True
     categories: list[int] = Field(default_factory=list, max_length=100)
     minimum_seeders: int = Field(default=1, ge=0, le=100000)
-    priority: int = Field(default=25, ge=1, le=50)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     multi_languages: list[str] = Field(default_factory=list, max_length=20)
     download_client_ids: list[UUID] = Field(default_factory=list, max_length=50)
@@ -44,11 +43,16 @@ class IndexerUpdate(BaseModel):
     enable_interactive_search: bool | None = None
     categories: list[int] | None = Field(default=None, max_length=100)
     minimum_seeders: int | None = Field(default=None, ge=0, le=100000)
-    priority: int | None = Field(default=None, ge=1, le=50)
     color: str | None = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
     multi_languages: list[str] | None = Field(default=None, max_length=20)
     download_client_ids: list[UUID] | None = Field(default=None, max_length=50)
     expected_revision: int | None = Field(default=None, ge=1)
+
+
+class IndexerOrderRequest(BaseModel):
+    """Every indexer's ID, first to last."""
+
+    ids: list[UUID] = Field(max_length=500)
 
 
 class IndexerResponse(ORMModel):
@@ -63,7 +67,7 @@ class IndexerResponse(ORMModel):
     enable_interactive_search: bool
     categories: list[int]
     minimum_seeders: int
-    priority: int
+    priority: int  # Position in the user's order, 1 first; breaks ties between equal results.
     color: str | None
     multi_languages: list[str]
     download_client_ids: list[UUID]

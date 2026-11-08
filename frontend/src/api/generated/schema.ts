@@ -1092,6 +1092,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/indexers/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Indexers
+         * @description Put the indexers in this order. The first wins ties between otherwise equal results.
+         */
+        put: operations["reorder_indexers_api_v1_indexers_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/indexers/test": {
         parameters: {
             query?: never;
@@ -4226,11 +4246,6 @@ export interface components {
             multi_languages?: string[];
             /** Name */
             name: string;
-            /**
-             * Priority
-             * @default 25
-             */
-            priority: number;
             /** @default both */
             scope: components["schemas"]["IndexerScope"];
             /**
@@ -4269,6 +4284,14 @@ export interface components {
             /** Name */
             name: string;
             scope: components["schemas"]["IndexerScope"];
+        };
+        /**
+         * IndexerOrderRequest
+         * @description Every indexer's ID, first to last.
+         */
+        IndexerOrderRequest: {
+            /** Ids */
+            ids: string[];
         };
         /** IndexerResponse */
         IndexerResponse: {
@@ -4388,8 +4411,6 @@ export interface components {
             multi_languages?: string[] | null;
             /** Name */
             name?: string | null;
-            /** Priority */
-            priority?: number | null;
             scope?: components["schemas"]["IndexerScope"] | null;
             /** Timeout Seconds */
             timeout_seconds?: number | null;
@@ -9619,6 +9640,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IndexerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_indexers_api_v1_indexers_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexerOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexerResponse"][];
                 };
             };
             /** @description Validation Error */

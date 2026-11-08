@@ -1,6 +1,7 @@
 // Settings: one file per tab beside this one.
 import { Icon } from '../../components/Icon'
 import { useUrlState } from '../../lib/urlState'
+import { confirmLeave } from '../../lib/leaveGuard'
 import { Page } from '../shared'
 import { SecuritySettings } from './security'
 import { StorageSettings } from './storage'
@@ -27,7 +28,7 @@ export function SettingsPage() {
     <div className="split split-narrow">
       <nav className="settings-nav">{settingsTabItems.map((item) => <button
         className={current === item.name ? 'active' : ''}
-        onClick={() => setTab(item.name)}
+        onClick={() => void (async () => { if (item.name !== current && !await confirmLeave()) return; setTab(item.name) })()}
         key={item.name}
       ><Icon name={item.icon} size={16} />{item.name}</button>)}</nav>
       <section className="panel settings-panel">

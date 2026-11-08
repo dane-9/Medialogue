@@ -16,6 +16,7 @@ from app.models.domain import Indexer
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.indexers import (
     IndexerCreate,
+    IndexerOrderRequest,
     IndexerResponse,
     IndexerScope,
     IndexerTestRequest,
@@ -71,6 +72,12 @@ def _response(indexer: ConfiguredIndexer) -> IndexerResponse:
     )
 
 
+def _ordered(rows: list[ConfiguredIndexer]) -> list[ConfiguredIndexer]:
+    """The user's order; indexers sharing a position (from before ordering existed) by name."""
+
+    return sorted(rows, key=lambda item: (item.priority, item.name.casefold()))
+
+
 @router.get("", response_model=Collection[IndexerResponse])
 async def list_indexers(
     page: int = 1,
@@ -80,7 +87,7 @@ async def list_indexers(
 ) -> Collection[IndexerResponse]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 250)
-    rows = sorted(await list_configured_indexers(db), key=lambda item: item.name.casefold())
+    rows = _ordered(await list_configured_indexers(db))
     total = len(rows)
     start = (page - 1) * page_size
     rows = rows[start : start + page_size]
@@ -139,7 +146,7 @@ async def create_indexer(
             enable_interactive_search=payload.enable_interactive_search,
             categories=list(payload.categories),
             minimum_seeders=payload.minimum_seeders,
-            priority=payload.priority,
+            priority=store.next_indexer_priority(),
             color=payload.color,
             multi_languages=_clean_languages(payload.multi_languages),
             download_client_ids=list(payload.download_client_ids),
@@ -152,6 +159,21 @@ async def create_indexer(
     indexer = await get_configured_indexer(db, config.id)
     assert indexer is not None
     return _response(indexer)
+
+
+@router.put("/order", response_model=list[IndexerResponse])
+async def reorder_indexers(
+    payload: IndexerOrderRequest,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> list[IndexerResponse]:
+    """Put the indexers in this order. The first wins ties between otherwise equal results."""
+
+    try:
+        get_integration_config_store().reorder_indexers(payload.ids)
+    except ValueError as exc:
+        raise AppError("INDEXER_ORDER_MISMATCH", "The indexers changed while you were reordering. Refresh and try again.", status_code=409) from exc
+    return [_response(row) for row in _ordered(await list_configured_indexers(db))]
 
 
 @router.get("/{indexer_id}", response_model=IndexerResponse)
@@ -189,7 +211,7 @@ async def update_indexer(
         enable_interactive_search=(payload.enable_interactive_search if payload.enable_interactive_search is not None else current.enable_interactive_search),
         categories=(list(payload.categories) if payload.categories is not None else list(current.categories)),
         minimum_seeders=(payload.minimum_seeders if payload.minimum_seeders is not None else current.minimum_seeders),
-        priority=(payload.priority if payload.priority is not None else current.priority),
+        priority=current.priority,
         color=((payload.color or None) if payload.color is not None else current.color),
         multi_languages=(_clean_languages(payload.multi_languages) if payload.multi_languages is not None else list(current.multi_languages)),
         download_client_ids=(list(payload.download_client_ids) if payload.download_client_ids is not None else list(current.download_client_ids)),

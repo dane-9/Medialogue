@@ -892,7 +892,7 @@ def test_indexer_download_client_restriction_round_trips_and_defaults_open(clien
     assert updated.status_code == 200, updated.text
     assert set(updated.json()["download_client_ids"]) == {str(first), str(second)}
 
-    untouched = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"priority": 30})
+    untouched = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"minimum_seeders": 3})
     assert set(untouched.json()["download_client_ids"]) == {str(first), str(second)}
     cleared = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"download_client_ids": []})
     assert cleared.status_code == 422
@@ -901,3 +901,28 @@ def test_indexer_download_client_restriction_round_trips_and_defaults_open(clien
     assert mismatch.json()["error"]["code"] == "DOWNLOAD_CLIENT_SCOPE_MISMATCH"
     valid = client.put(f"/api/v1/indexers/{indexer['id']}", headers=headers, json={"scope": "shows", "download_client_ids": [str(second)]})
     assert valid.status_code == 200, valid.text
+
+
+def test_indexers_keep_the_order_they_are_dragged_into(client: TestClient) -> None:
+    headers = _login(client)
+    names = ["Bravo", "Alpha", "Charlie"]
+    created = [_create_indexer(client, headers, name=name, url=f"https://{name.lower()}.test/api") for name in names]
+    # New indexers join at the end, in the order they were added.
+    assert [item["priority"] for item in created] == [1, 2, 3]
+    assert [item["name"] for item in client.get("/api/v1/indexers").json()["items"]] == names
+
+    ids = {item["name"]: item["id"] for item in created}
+    wanted = ["Charlie", "Bravo", "Alpha"]
+    response = client.put("/api/v1/indexers/order", headers=headers, json={"ids": [ids[name] for name in wanted]})
+    assert response.status_code == 200, response.text
+    assert [(item["name"], item["priority"]) for item in response.json()] == [("Charlie", 1), ("Bravo", 2), ("Alpha", 3)]
+    assert [item["name"] for item in client.get("/api/v1/indexers").json()["items"]] == wanted
+
+    # Editing an indexer keeps its place, and a priority sent by an old client is ignored.
+    edited = client.put(f"/api/v1/indexers/{ids['Alpha']}", headers=headers, json={"minimum_seeders": 4, "priority": 1})
+    assert edited.status_code == 200 and edited.json()["priority"] == 3
+
+    for partial in ([ids["Charlie"], ids["Bravo"]], [ids["Charlie"], ids["Charlie"], ids["Bravo"]]):
+        mismatch = client.put("/api/v1/indexers/order", headers=headers, json={"ids": partial})
+        assert mismatch.status_code == 409 and mismatch.json()["error"]["code"] == "INDEXER_ORDER_MISMATCH"
+    assert client.put("/api/v1/indexers/order", json={"ids": list(ids.values())}).status_code in {401, 403}

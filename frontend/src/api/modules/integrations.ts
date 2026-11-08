@@ -86,6 +86,8 @@ export const integrationsApi = {
   },
   createIndexer: async (configuration: IndexerCreateDto) => mapIndexer(await openApiData(openApiClient.POST('/api/v1/indexers', { body: configuration }))),
   updateIndexer: async (id: string, configuration: IndexerUpdateDto) => mapIndexer(await openApiData(openApiClient.PUT('/api/v1/indexers/{indexer_id}', { params: { path: { indexer_id: id } }, body: configuration }))),
+  /** Every indexer's ID, first to last; answers with the indexers in their new order. */
+  reorderIndexers: async (ids: string[]) => (await openApiData(openApiClient.PUT('/api/v1/indexers/order', { body: { ids } }))).map(mapIndexer),
   deleteIndexer: (id: string) => openApiData(openApiClient.DELETE('/api/v1/indexers/{indexer_id}', { params: { path: { indexer_id: id } } })),
   testIndexer,
 }

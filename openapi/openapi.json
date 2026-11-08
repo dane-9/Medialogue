@@ -4158,13 +4158,6 @@
             "title": "Name",
             "type": "string"
           },
-          "priority": {
-            "default": 25,
-            "maximum": 50.0,
-            "minimum": 1.0,
-            "title": "Priority",
-            "type": "integer"
-          },
           "scope": {
             "$ref": "#/components/schemas/IndexerScope",
             "default": "both"
@@ -4273,6 +4266,25 @@
           "health"
         ],
         "title": "IndexerHealthItem",
+        "type": "object"
+      },
+      "IndexerOrderRequest": {
+        "description": "Every indexer's ID, first to last.",
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "IndexerOrderRequest",
         "type": "object"
       },
       "IndexerResponse": {
@@ -4682,19 +4694,6 @@
               }
             ],
             "title": "Name"
-          },
-          "priority": {
-            "anyOf": [
-              {
-                "maximum": 50.0,
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Priority"
           },
           "scope": {
             "anyOf": [
@@ -17362,6 +17361,52 @@
           }
         },
         "summary": "Create Indexer",
+        "tags": [
+          "indexers"
+        ]
+      }
+    },
+    "/api/v1/indexers/order": {
+      "put": {
+        "description": "Put the indexers in this order. The first wins ties between otherwise equal results.",
+        "operationId": "reorder_indexers_api_v1_indexers_order_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexerOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IndexerResponse"
+                  },
+                  "title": "Response Reorder Indexers Api V1 Indexers Order Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Indexers",
         "tags": [
           "indexers"
         ]
