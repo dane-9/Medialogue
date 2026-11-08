@@ -190,6 +190,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def protected_redoc(_: AdminUser = Depends(require_admin)):
         return get_redoc_html(openapi_url="/api/openapi.json", title=f"{app.title} - ReDoc")
 
+    # Library lists run to megabytes of JSON (2,000 movies: 1.3 MB, 83 KB
+    # gzipped). Starlette leaves the live event stream uncompressed.
+    from starlette.middleware.gzip import GZipMiddleware
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cachedList, rememberList } from '../lib/listCache'
 import { needsAttention, statusTone } from '../lib/status'
 import { MovieInteractiveSearch } from '../components/MovieInteractiveSearch'
 import { ChangeMatchModal } from '../components/ChangeMatchModal'
@@ -24,12 +25,15 @@ import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { IncomingDownload, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
 import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, useLiveLibraryRefresh } from './shared'
 
+const moviesKey = (tag: string, sort: string) => `movies:${tag}:${sort}`
+
 export function MoviesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [movies, setMovies] = useState<Movie[]>([])
+  // The library as last loaded in this tab: shown at once on return.
+  const [movies, setMovies] = useState<Movie[]>(() => cachedList<Movie>(moviesKey(searchParams.get('tag') ?? '', 'title')) ?? [])
   const [tags, setTags] = useState<Tag[]>([])
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => cachedList(moviesKey(searchParams.get('tag') ?? '', 'title')) === undefined)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [view, setView] = useState<'cards' | 'table'>(() => normalizeMediaView(window.localStorage.getItem('medialogue.movies.view')))
@@ -43,6 +47,7 @@ export function MoviesPage() {
   const [cardBusy, setCardBusy] = useState<string | null>(null)
 
   const applyMovies = (items: Movie[]) => {
+    rememberList(moviesKey(tagFilter, sort), items)
     setMovies((current) => reuseUnchanged(current, items))
     setError('')
   }
@@ -58,6 +63,8 @@ export function MoviesPage() {
 
   useEffect(() => {
     let alive = true
+    const cached = cachedList<Movie>(moviesKey(tagFilter, sort))
+    if (cached) { setMovies((current) => reuseUnchanged(current, cached)); setLoading(false) }
     moviesApi.movies('', tagFilter, sort).then((items) => { if (alive) applyMovies(items) })
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load movies.') })
       .finally(() => { if (alive) setLoading(false) })

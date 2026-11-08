@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cachedList, rememberList } from '../lib/listCache'
 import { needsAttention, statusTone } from '../lib/status'
 import { Link } from 'react-router-dom'
 import { Field, SettingsGroup } from '../components/settings'
@@ -25,13 +26,14 @@ function DetailFact({ label, value, tone }: { label: string; value: string; tone
 export function ShowsPage() {
   const confirm = useConfirm()
   const plexAvailable = usePlexAvailable()
-  const [items, setItems] = useState<Show[]>([])
+  // The library as last loaded in this tab: shown at once on return.
+  const [items, setItems] = useState<Show[]>(() => cachedList<Show>('shows:title') ?? [])
   const [view, setView] = useState<'cards' | 'table'>(() => normalizeMediaView(window.localStorage.getItem('medialogue.shows.view')))
   const [query, setQuery] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [filter, setFilter] = useState('All')
   const [sort, setSort] = useState('title')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => cachedList('shows:title') === undefined)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [cardBusy, setCardBusy] = useState<string | null>(null)
@@ -43,13 +45,17 @@ export function ShowsPage() {
   const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
-    try { const next = await showsApi.shows('', sort); setItems((current) => reuseUnchanged(current, next)); setError('') }
+    try { const next = await showsApi.shows('', sort); rememberList(`shows:${sort}`, next); setItems((current) => reuseUnchanged(current, next)); setError('') }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load shows.') }
     finally { if (foreground) setLoading(false) }
   }
   // Live events already trigger a reload, so the poll is only a fallback.
   useLiveLibraryRefresh(() => load(false), 60000)
-  useEffect(() => { void load(!items.length) }, [sort])
+  useEffect(() => {
+    const cached = cachedList<Show>(`shows:${sort}`)
+    if (cached) { setItems((current) => reuseUnchanged(current, cached)); setLoading(false) }
+    void load(!cached && !items.length)
+  }, [sort])
   useEffect(() => { showsApi.specialsCounting().then((value) => setCountSpecials(value.count_specials)).catch(() => undefined) }, [])
   useEffect(() => { settingsApi.qualityProfiles().then(setProfiles).catch(() => undefined) }, [])
 

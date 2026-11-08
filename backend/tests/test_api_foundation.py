@@ -547,3 +547,14 @@ def test_ui_selections_are_stored_per_list_and_replaced_whole(client) -> None:
     assert client.get("/api/v1/ui-selections/replace-media-unticked").json() == {"ids": ["x"]}
     assert client.get("/api/v1/ui-selections/anything-else").status_code == 422
     assert client.put("/api/v1/ui-selections/new-media-excluded", json={"ids": []}).status_code in {401, 403}
+
+
+def test_large_responses_are_gzipped_for_clients_that_accept_it(client) -> None:
+    from tests.test_part17_recovery import login_headers
+
+    login_headers(client)
+    large = client.get("/api/openapi.json", headers={"Accept-Encoding": "gzip"})
+    assert large.status_code == 200 and large.headers.get("content-encoding") == "gzip"
+    assert large.json()["openapi"]
+    plain = client.get("/api/openapi.json", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers
