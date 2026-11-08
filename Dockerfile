@@ -18,9 +18,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MEDIALOGUE_TORRENT_ARCHIVE_DIR=/torrent-archive \
     MEDIALOGUE_DATABASE_URL=sqlite+aiosqlite:////config/medialogue.db
 WORKDIR /app
+# Security fixes published since the base image was built are applied here.
+# setpriv (util-linux, part of the base image) drops privileges in the
+# entrypoint, so no separate gosu binary is needed.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl gosu passwd \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends passwd \
     && rm -rf /var/lib/apt/lists/* \
+    && command -v setpriv \
     && groupadd --gid 10001 appuser \
     && useradd --create-home --uid 10001 --gid 10001 appuser
 COPY backend/ /app/backend/

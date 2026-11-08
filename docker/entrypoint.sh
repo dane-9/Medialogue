@@ -22,7 +22,7 @@ run_app() {
   exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --no-access-log
 }
 
-# Internal re-entry target used when gosu keeps UID 0 but changes the primary
+# Internal re-entry target used when setpriv keeps UID 0 but changes the primary
 # group (for example PUID=0, PGID=1000). This must be checked
 # before the root setup block or UID 0 would recurse forever.
 if [ "${1:-}" = "--run-app" ]; then
@@ -33,14 +33,14 @@ fi
 # Bind-mounted application-owned directories are prepared before privileges are
 # dropped. Media roots are deliberately never chowned or modified here.
 if [ "$(id -u)" = "0" ]; then
-  mkdir -p /config/recovery-exports /torrent-archive
+  mkdir -p /torrent-archive
 
   # Some NAS deployments run containers as PUID=0. Do not mutate
   # appuser to UID 0 and then re-exec the entrypoint: that would recurse forever.
   # Instead, keep UID 0 and optionally adopt the requested primary GID.
   if [ "$PUID" = "0" ]; then
-    chown 0:"$PGID" /config /torrent-archive /config/recovery-exports
-    exec gosu "0:$PGID" "$0" --run-app "$@"
+    chown 0:"$PGID" /config /torrent-archive
+    exec setpriv --reuid=0 --regid="$PGID" --clear-groups "$0" --run-app "$@"
   fi
 
   current_gid="$(id -g appuser)"
@@ -55,9 +55,9 @@ if [ "$(id -u)" = "0" ]; then
   if [ "$identity_changed" = "1" ]; then
     chown -R "$PUID:$PGID" /config /torrent-archive
   else
-    chown "$PUID:$PGID" /config /torrent-archive /config/recovery-exports
+    chown "$PUID:$PGID" /config /torrent-archive
   fi
-  exec gosu appuser "$0" "$@"
+  exec setpriv --reuid=appuser --regid=appuser --init-groups "$0" "$@"
 fi
 
 run_app
