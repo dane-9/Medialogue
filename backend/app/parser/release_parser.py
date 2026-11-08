@@ -506,6 +506,20 @@ def _year_match(normalized: str, *, before: int | None = None) -> re.Match[str] 
     return matches[-1] if matches else None
 
 
+def _without_technical_suffix(title: str) -> str:
+    """Drop release tokens a name put before its year (``Title.1080p.2009``).
+
+    Only a cut that leaves title text applies, so a title made of such a
+    token alone is kept as it is.
+    """
+
+    boundary = _technical_boundary(title)
+    if boundary is None or boundary == 0:
+        return title
+    cut = title[:boundary].strip(" -.([")
+    return cut if re.search(r"[A-Za-z0-9]", cut) else title
+
+
 def _technical_boundary(normalized: str, *, start: int = 0) -> int | None:
     """Locate the earliest high-confidence release token after ``start``."""
 
@@ -644,6 +658,11 @@ def _quality(normalized: str) -> QualityInfo:
     if has_dvd_remux:
         canonical = f"{resolution} DVD REMUX" if resolution else "DVD REMUX"
         return QualityInfo(canonical, resolution, "DVD", "REMUX", None, standard, raw_tokens)
+
+    # Remux groups often omit the source (``Movie.1080p.DTS-HD.MA.AVC.REMUX``).
+    # A remux at HD or UHD resolution that is not a DVD remux is a Blu-ray one.
+    if has_remux and resolution in {"720p", "1080p", "2160p"}:
+        return QualityInfo(f"{resolution} BluRay REMUX", resolution, "BluRay", "REMUX", None, standard, raw_tokens)
 
     # BluRay without REMUX is an encode in this application's taxonomy.  The
     # codec evidence is intentionally left untouched by this classification.
@@ -1032,7 +1051,7 @@ def parse_release(raw_name: str) -> ReleaseParseResult:
         # title.  Keep the title text before that year for consistency with
         # movie identity parsing.
         if year_match:
-            title_part = normalized[: year_match.start()].strip(" -([.")
+            title_part = _without_technical_suffix(normalized[: year_match.start()].strip(" -([."))
             identity_year = year
         else:
             identity_year = None
@@ -1085,7 +1104,7 @@ def parse_release(raw_name: str) -> ReleaseParseResult:
                 )
                 boundary_for_technical = leading_tech if leading_tech is not None else len(normalized)
             else:
-                title_part = normalized[: year_match.start()].strip(" -")
+                title_part = _without_technical_suffix(normalized[: year_match.start()].strip(" -"))
                 primary_title, alternate_titles, geographic = _identity_title_parts(title_part)
                 identity = IdentityInfo(
                     title_candidate=primary_title,

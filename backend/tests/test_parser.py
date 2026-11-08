@@ -1,3 +1,5 @@
+import pytest
+
 from app.parser import parse_release
 
 
@@ -498,3 +500,27 @@ def test_redux_is_detected_as_a_movie_edition():
 
     assert parsed.edition == "Redux"
     assert parsed.identity.title_candidate == "Apocalypse Now"
+
+
+@pytest.mark.parametrize(
+    ("name", "title", "year", "quality"),
+    [
+        ("500.Days.of.Summer.1080p.2009.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR", "500 Days of Summer", 2009, "1080p BluRay REMUX"),
+        ("Movie.Name.2160p.2019.UHD.BluRay-GRP", "Movie Name", 2019, "2160p Encode"),
+        ("Movie.Name.1080p.BluRay.2019-GRP", "Movie Name", 2019, "1080p Encode"),
+        ("Blade.Runner.2049.1080p.2017.BluRay-GRP", "Blade Runner 2049", 2017, "1080p Encode"),
+        ("Show.Name.1080p.2019.S01E01.WEB-DL-GRP", "Show Name", 2019, "1080p WEB-DL"),
+        ("1917.2019.2160p.UHD.BluRay.REMUX.HDR.HEVC-GRP", "1917", 2019, "2160p BluRay REMUX"),
+    ],
+)
+def test_release_tokens_before_the_year_are_not_part_of_the_title(name, title, year, quality) -> None:
+    parsed = parse_release(name)
+
+    assert parsed.identity.title_candidate == title
+    assert parsed.identity.year == year
+    assert parsed.quality.canonical == quality
+
+
+def test_a_remux_without_its_source_is_a_bluray_remux_but_a_dvd_remux_stays_one() -> None:
+    assert parse_release("Movie.2009.1080p.DTS-HD.MA.5.1.AVC.REMUX-GRP").quality.canonical == "1080p BluRay REMUX"
+    assert parse_release("Movie.2009.DVD.REMUX.MPEG-2-GRP").quality.source == "DVD"
