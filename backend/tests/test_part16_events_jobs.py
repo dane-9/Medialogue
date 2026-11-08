@@ -119,14 +119,14 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     }
     task = next(item for item in listed if item["job_type"] == "integration_health_sweep")
     assert task["name"] == "Check Integration Health"
-    assert task["interval_seconds"] == 60
+    assert task["interval_seconds"] == 300
     assert task["configurable"] is True
     assert 300 in task["interval_options"]
     assert task["next_run_at"] is not None
     assert task["next_run_at"].endswith(("Z", "+00:00"))
 
     full_scan = next(item for item in listed if item["job_type"] == "full_media_folder_scan")
-    assert full_scan["interval_seconds"] == 21600
+    assert full_scan["interval_seconds"] == 86400
     assert full_scan["enabled"] is True
     assert full_scan["next_run_at"] is not None
     assert {3600, 7200, 14400, 21600} <= set(full_scan["interval_options"])
@@ -134,8 +134,8 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
     plex_sync = next(item for item in listed if item["job_type"] == "plex_library_sync")
     assert plex_sync["name"] == "Sync Plex Library"
     assert plex_sync["configurable"] is True
-    assert plex_sync["enabled"] is False
-    assert plex_sync["next_run_at"] is None
+    assert plex_sync["enabled"] is True
+    assert plex_sync["next_run_at"] is not None
     assert 86400 in plex_sync["interval_options"]
 
     upgrade_search = next(item for item in listed if item["job_type"] == "search_media_upgrades")
@@ -745,3 +745,47 @@ def test_events_reject_a_sort_field_the_list_does_not_show(client: TestClient) -
 def test_events_accept_the_largest_page_size_the_list_offers(client: TestClient) -> None:
     login_headers(client)
     assert client.get("/api/v1/events?page_size=1000").status_code == 200
+
+
+
+def test_tasks_still_on_their_old_default_move_to_the_new_one_once(tmp_path) -> None:
+    """Changed defaults reach existing installs only where the user kept the old ones."""
+
+    import asyncio as _asyncio
+
+    from sqlalchemy import select as _select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.db.base import Base
+    from app.models.domain import Schedule
+    from app.services.scheduler import ensure_default_schedules
+
+    async def scenario():
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'defaults.db'}")
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions() as db:
+            db.add_all([
+                Schedule(job_type="integration_health_sweep", expression="60", enabled=True, settings={}),  # old default
+                Schedule(job_type="full_media_folder_scan", expression="3600", enabled=True, settings={}),  # user's choice
+                Schedule(job_type="plex_library_sync", expression="86400", enabled=False, settings={}),  # old default
+            ])
+            await db.commit()
+            await ensure_default_schedules(db)
+            await db.commit()
+            # The user then puts the health check back to a minute: it stays.
+            health = await db.scalar(_select(Schedule).where(Schedule.job_type == "integration_health_sweep"))
+            health.expression = "60"
+            await db.commit()
+            await ensure_default_schedules(db)
+            await db.commit()
+            rows = {row.job_type: (row.expression, row.enabled) for row in (await db.scalars(_select(Schedule))).all()}
+        await engine.dispose()
+        return rows
+
+    rows = _asyncio.run(scenario())
+    assert rows["integration_health_sweep"] == ("60", True)
+    assert rows["full_media_folder_scan"] == ("3600", True)
+    assert rows["plex_library_sync"] == ("86400", True)
+    assert rows["search_media_replacements"] == ("604800", True)

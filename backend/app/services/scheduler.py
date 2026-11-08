@@ -22,10 +22,16 @@ from app.services.runtime_jobs import launch_runtime_job
 
 logger = logging.getLogger(__name__)
 ACTIVE_STATES = (JobStatus.QUEUED, JobStatus.RUNNING)
+#: Raised when defaults change; tasks still on a "previous_default" then move.
+DEFAULTS_REVISION = 2
+
 DEFAULT_SCHEDULES = {
-    "search_media_replacements": {"name": "Search for Media Replacements", "description": "Finds equivalent or better releases for confirmed lost tracker sources. Never downloads automatically.", "interval_seconds": 86400, "interval_options": [21600, 43200, 86400, 604800], "configurable": True, "enabled": False},
+    # Weekly: a title searched when it first appeared, with nothing suitable
+    # then, is otherwise never searched again while new releases keep coming.
+    "search_media_replacements": {"name": "Re-search All Replace Media Titles", "description": "Searches every title in Replace Media again for an equal-or-better release, since new ones keep appearing. It never downloads automatically.", "interval_seconds": 604800, "interval_options": [21600, 43200, 86400, 604800], "configurable": True, "enabled": True,
+                                  "previous_default": {"interval_seconds": 86400, "enabled": False}},
     "search_new_replacements": {
-        "name": "Search New Replace Media Titles",
+        "name": "Search Newly Listed Replace Media Titles",
         "description": "Searches each title as soon as it appears in Replace Media and keeps the best equal-or-better release. It never downloads automatically.",
         "interval_seconds": 900,
         "interval_options": [300, 900, 3600],
@@ -40,11 +46,14 @@ DEFAULT_SCHEDULES = {
         "configurable": True,
         "enabled": True,
     },
-    "remote_backup": {"name": "Back Up to Google Drive", "description": "Copies new and changed torrents to Google Drive, and the database on its own schedule.", "interval_seconds": 600, "interval_options": [300, 600, 1800, 3600], "configurable": True, "enabled": False},
+    # Switched on and off on the Backups page, the one place it is set.
+    "remote_backup": {"name": "Back Up to Google Drive", "description": "Copies new and changed torrents to Google Drive, and the database on its own schedule. Turned on and off on the Backups page.", "interval_seconds": 600, "interval_options": [300, 600, 1800, 3600], "configurable": False, "enabled": False},
     "integration_health_sweep": {
         "name": "Check Integration Health",
         "description": "Checks configured integrations and media-folder availability.",
-        "interval_seconds": 60,
+        # Each run is a Job in the history: every minute was 1,440 a day.
+        "interval_seconds": 300,
+        "previous_default": {"interval_seconds": 60, "enabled": True},
         "interval_options": [60, 300, 900, 3600, 21600],
         "configurable": True,
         "enabled": True,
@@ -52,7 +61,9 @@ DEFAULT_SCHEDULES = {
     "verify_known_media_files": {
         "name": "Verify Known Media Files",
         "description": "Checks only media paths already known to Medialogue; it does not discover new folders.",
-        "interval_seconds": 21600,
+        # Watched media folders report deletions within minutes; this is the net.
+        "interval_seconds": 86400,
+        "previous_default": {"interval_seconds": 21600, "enabled": True},
         "interval_options": [21600, 43200, 86400, 604800],
         "configurable": True,
         "enabled": True,
@@ -60,7 +71,10 @@ DEFAULT_SCHEDULES = {
     "full_media_folder_scan": {
         "name": "Full Media Folder Scan",
         "description": "Recursively scans initialized media folders and reconciles newly discovered or changed media.",
-        "interval_seconds": 21600,
+        # Watched media folders pick up changes within a minute. Daily still
+        # finds new folders where watching is unavailable.
+        "interval_seconds": 86400,
+        "previous_default": {"interval_seconds": 21600, "enabled": True},
         "interval_options": [3600, 7200, 14400, 21600, 86400, 259200, 604800, 1209600, 2592000],
         "configurable": True,
         "enabled": True,
@@ -71,7 +85,8 @@ DEFAULT_SCHEDULES = {
         "interval_seconds": 86400,
         "interval_options": [21600, 43200, 86400, 259200, 604800],
         "configurable": True,
-        "enabled": False,
+        "enabled": True,
+        "previous_default": {"interval_seconds": 86400, "enabled": False},
     },
     "search_media_upgrades": {
         "name": "Search for Media Upgrades",
@@ -129,11 +144,21 @@ async def ensure_default_schedules(db: AsyncSession) -> None:
                 job_type=job_type,
                 expression=str(definition["interval_seconds"]),
                 enabled=enabled,
-                settings={"name": definition["name"]},
+                settings={"name": definition["name"], "defaults_revision": DEFAULTS_REVISION},
                 next_run_at=now + timedelta(seconds=int(definition["interval_seconds"])) if enabled else None,
             ))
         else:
-            schedule.settings = {**dict(schedule.settings or {}), "name": definition["name"]}
+            settings = {**dict(schedule.settings or {}), "name": definition["name"]}
+            # A task still exactly on its previous default moves to the new one,
+            # once; a task the user set differently is left as it is.
+            previous = definition.get("previous_default")
+            if previous and settings.get("defaults_revision", 1) < DEFAULTS_REVISION:
+                if schedule.expression == str(previous["interval_seconds"]) and schedule.enabled == previous["enabled"]:
+                    schedule.expression = str(definition["interval_seconds"])
+                    schedule.enabled = bool(definition["enabled"])
+                    schedule.next_run_at = now + timedelta(seconds=int(definition["interval_seconds"])) if schedule.enabled else None
+            settings["defaults_revision"] = DEFAULTS_REVISION
+            schedule.settings = settings
             # Backups used to run daily; torrents now go up within minutes.
             if job_type == "remote_backup" and schedule.expression not in {str(value) for value in definition["interval_options"]}:
                 schedule.expression = str(definition["interval_seconds"])
