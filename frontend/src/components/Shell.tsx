@@ -128,12 +128,16 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   })
 
   // Anything changed from this browser (adding New Media, grabbing an upgrade,
-  // dismissing a replacement…) refreshes all three, once the burst settles.
+  // removing a media folder and its Problems, saving an integration…)
+  // refreshes every badge and health dot, once the burst settles.
   useEffect(() => {
     let timer: number | undefined
     const changed = () => {
       window.clearTimeout(timer)
-      timer = window.setTimeout(() => { void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount() }, 500)
+      timer = window.setTimeout(() => {
+        void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount()
+        void refreshProblemCount(); refreshHealthAndPlex()
+      }, 500)
     }
     window.addEventListener(DATA_CHANGED_EVENT, changed)
     return () => { window.clearTimeout(timer); window.removeEventListener(DATA_CHANGED_EVENT, changed) }
