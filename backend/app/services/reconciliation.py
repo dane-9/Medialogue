@@ -8,6 +8,8 @@ release state.  It never creates, moves, renames, copies, or deletes media.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -485,6 +487,57 @@ class PlexCandidateEvidence:
     checked_path: str | None = None
 
 
+#: Plex's whole-library listing, reused for a few minutes. Checking one folder
+#: fetched every section of the library; adding hundreds of New Media folders
+#: (or scanning them) fetched it once per folder, 15-20s each on a large Plex.
+_PLEX_SNAPSHOT_TTL_SECONDS = 300
+_plex_snapshot_cache: dict[tuple[str, str], tuple[float, Any]] = {}
+_plex_snapshot_locks: dict[int, asyncio.Lock] = {}
+
+
+def clear_plex_snapshot_cache() -> None:
+    """Forget the cached listing, e.g. once Plex settings change."""
+
+    _plex_snapshot_cache.clear()
+
+
+async def _shared_plex_snapshot(client: PlexClient, url: str, token: str | None):
+    key = (url, hashlib.sha256((token or "").encode()).hexdigest())
+    # One fetch at a time, so a batch of adds waits for the first listing
+    # rather than each starting its own. A lock per event loop: tests run many.
+    lock = _plex_snapshot_locks.setdefault(id(asyncio.get_running_loop()), asyncio.Lock())
+    async with lock:
+        cached = _plex_snapshot_cache.get(key)
+        if cached is not None and time.monotonic() - cached[0] < _PLEX_SNAPSHOT_TTL_SECONDS:
+            return cached[1]
+        await client.health()
+        snapshot = await client.library_snapshot()
+        _plex_snapshot_cache.clear()
+        _plex_snapshot_cache[key] = (time.monotonic(), snapshot)
+        return snapshot
+
+
+async def prefetch_plex_snapshot(db: AsyncSession) -> None:
+    """Fetch Plex's listing before a batch writes anything.
+
+    Adding a movie writes first and checks Plex after, so a listing fetched
+    then is fetched while holding SQLite's only write lock; every other save
+    (the qBittorrent poll) fails meanwhile. Fetched up front, each add reads
+    it from the cache. Best effort: a failure here is retried per folder.
+    """
+
+    configuration = await get_configured_plex(db)
+    if configuration is None or not configuration.enabled:
+        return
+    client = PlexClient(configuration.url, configuration.token)
+    try:
+        await _shared_plex_snapshot(client, configuration.url, configuration.token)
+    except Exception:
+        return
+    finally:
+        await client.close()
+
+
 async def _plex_evidence_for_candidate(
     db: AsyncSession,
     title: str,
@@ -526,8 +579,7 @@ async def _plex_evidence_for_candidate(
     client = PlexClient(configuration.url, configuration.token)
     configuration.last_checked_at = utcnow()
     try:
-        await client.health()
-        snapshot = await client.library_snapshot()
+        snapshot = await _shared_plex_snapshot(client, configuration.url, configuration.token)
         configuration.health = "healthy"
         configuration.last_success_at = utcnow()
         configuration.last_error = None

@@ -365,3 +365,35 @@ def test_preferred_incoming_replacement_target_resolves_multiple_missing_release
 
     assert result.kind is DecisionKind.REPLACEMENT
     assert result.old_release_id == "two"
+
+
+def test_plex_listing_is_fetched_once_for_a_batch_and_again_after_a_settings_change() -> None:
+    """Checking one folder fetched Plex's whole library; adding hundreds of
+    folders fetched it once each (15-20s apiece on a large Plex)."""
+
+    import asyncio as _asyncio
+
+    from app.services import reconciliation as module
+
+    class CountingPlex:
+        fetches = 0
+
+        async def health(self):
+            return {}
+
+        async def library_snapshot(self):
+            CountingPlex.fetches += 1
+            return f"listing {CountingPlex.fetches}"
+
+    async def scenario():
+        module.clear_plex_snapshot_cache()
+        client = CountingPlex()
+        first = [await module._shared_plex_snapshot(client, "http://plex", "token") for _ in range(5)]
+        module.clear_plex_snapshot_cache()
+        after_change = await module._shared_plex_snapshot(client, "http://plex", "token")
+        module.clear_plex_snapshot_cache()
+        return first, after_change
+
+    first, after_change = _asyncio.run(scenario())
+    assert first == ["listing 1"] * 5
+    assert after_change == "listing 2" and CountingPlex.fetches == 2

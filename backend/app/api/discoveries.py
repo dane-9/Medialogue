@@ -47,7 +47,7 @@ from app.schemas.discoveries import (
 )
 from app.services.discoveries import DISCOVERY_CANDIDATE_LIMIT
 from app.services.movies import add_movie_from_tmdb
-from app.services.reconciliation import reconcile_movie_directory
+from app.services.reconciliation import prefetch_plex_snapshot, reconcile_movie_directory
 from app.services.shows import add_show_from_tmdb, reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration
 
@@ -643,6 +643,7 @@ async def bulk_new_media(
     unavailable: set[UUID] = set()
     batch_collision_ids: set[UUID] = set()
     if payload.action == "approve":
+        await prefetch_plex_snapshot(db)
         loaded: list[MediaDiscovery] = []
         for discovery_id in payload.ids:
             try:

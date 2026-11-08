@@ -87,6 +87,8 @@ async def save_configuration(
     configuration.latency_ms = None
     await request_health_sweep(db)
     await db.commit()
+    from app.services.reconciliation import clear_plex_snapshot_cache
+    clear_plex_snapshot_cache()  # a cached listing may be from the old server or token
     return _response(configuration)
 
 
