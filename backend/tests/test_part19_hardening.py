@@ -1,6 +1,4 @@
 import asyncio
-import os
-import uuid
 from pathlib import Path
 
 import pytest

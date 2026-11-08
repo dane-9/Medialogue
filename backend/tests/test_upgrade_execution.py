@@ -969,3 +969,63 @@ def test_handoff_attention_can_retry_old_torrent_removal_without_touching_media(
         assert old_dir.exists(), "handoff retry must still leave filesystem cleanup explicit"
     finally:
         test_client.app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize(("reason", "finishes"), [("trumped", True), ("removed_from_tracker", False)])
+def test_a_trumped_replacement_retires_and_cleans_up_like_an_upgrade(client, monkeypatch, reason, finishes) -> None:
+    """End to end: start, download, handoff, automatic cleanup.
+
+    A trumped title's files were never at risk, so its replacement finishes
+    like an upgrade. Any other Replace Media reason stops at the manual
+    Retire / Finish step.
+    """
+
+    from app.services import replacements, torrent_archive
+
+    test_client, tmp_path = client
+    headers = _login(test_client)
+    qbit, indexer = _create_integrations(test_client, headers)
+    candidate_id, _movie_id, old_release_id, _old_torrent_id, old_dir, new_dir = asyncio.run(
+        _seed_movie_upgrade(tmp_path, qbit, indexer)
+    )
+
+    async def as_replacement() -> None:
+        async with db_session.async_session_factory() as db:
+            row = await db.get(UpgradeCandidate, candidate_id)
+            row.target_key = "replace:" + row.target_key
+            await db.commit()
+
+    asyncio.run(as_replacement())
+
+    async def revalidated(db, row) -> None:
+        # Replace Media re-checks the title is still listed; here it is, for this reason.
+        row.comparison_snapshot = {**(row.comparison_snapshot or {}), "replacement_reason": reason}
+
+    monkeypatch.setattr(replacements, "revalidate_replacement", revalidated)
+    # The fake archive paths do not exist on disk; the backup itself is not under test.
+    monkeypatch.setattr(torrent_archive, "torrent_archive_complete", lambda torrent: True)
+
+    behavior = FakeQBitBehavior()
+    from app.api import downloads as downloads_api
+
+    test_client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: behavior.factory
+    try:
+        response = test_client.post(
+            f"/api/v1/upgrade-candidates/{candidate_id}/upgrade",
+            headers=headers,
+            json={"download_client_id": qbit["id"], "category": "movies", "delete_old_media": True},
+        )
+        assert response.status_code == 200, response.text
+        asyncio.run(_simulate_movie_download_and_handoff(
+            tmp_path, qbit, candidate_id, old_release_id, new_dir, behavior,
+            expected_handoff_state="completed" if finishes else "cleanup_required",
+        ))
+        if finishes:
+            assert ("old-upgrade-hash", False) in {(item["info_hash"], item["delete_files"]) for item in behavior.removals}
+            assert not old_dir.exists()
+        else:
+            assert behavior.removals == []
+            assert old_dir.exists()
+        assert new_dir.exists()
+    finally:
+        test_client.app.dependency_overrides.clear()

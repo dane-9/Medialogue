@@ -32,9 +32,11 @@ services:
       - ${CONFIG_HOST_PATH:?Set CONFIG_HOST_PATH in Dockge .env}:/config
       - ${TORRENT_ARCHIVE_HOST_PATH:?Set TORRENT_ARCHIVE_HOST_PATH in Dockge .env}:/torrent-archive
 
-      # Existing media. Read-only is deliberate for the first deployment.
-      - ${MOVIES_HOST_PATH:?Set MOVIES_HOST_PATH in Dockge .env}:/media/movies:ro
-      - ${SHOWS_HOST_PATH:?Set SHOWS_HOST_PATH in Dockge .env}:/media/shows:ro
+      # Writable so upgrades, replacements and Delete with files can remove old
+      # media. Set a folder to Read only in Settings -> Media Folders to keep
+      # Medialogue from changing it.
+      - ${MOVIES_HOST_PATH:?Set MOVIES_HOST_PATH in Dockge .env}:/media/movies
+      - ${SHOWS_HOST_PATH:?Set SHOWS_HOST_PATH in Dockge .env}:/media/shows
 
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]

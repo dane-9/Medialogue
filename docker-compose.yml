@@ -27,9 +27,10 @@ services:
     volumes:
       - ${CONFIG_DIR:-./.local/config}:/config
       - ${TORRENT_ARCHIVE_DIR:-./.local/torrent-archive}:/torrent-archive
-      # Add only media paths Medialogue may inspect. Read-only is the safe default.
-      # Change a specific bind to :rw only if explicit GUI deletion is desired.
-      - ${MEDIA_DIR:-./media}:/media:ro
+      # Writable so upgrades, replacements and Delete with files can remove old
+      # media. To keep a folder untouched, set it to Read only in Settings ->
+      # Media Folders (or add :ro here, and set it Read only there too).
+      - ${MEDIA_DIR:-./media}:/media
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
       interval: 30s

@@ -10,7 +10,6 @@ from app.core.errors import AppError
 from app.db.base import Base
 from app.models.domain import MediaProfileOverride, MediaType, Movie, MovieRelease, QualityDefinition, QualityProfile
 from app.schemas.quality_profiles import MediaProfileSettingsUpdate
-from app.services.quality_profiles import load_effective_profile
 from app.services.upgrade_candidates import _movie_targets
 
 

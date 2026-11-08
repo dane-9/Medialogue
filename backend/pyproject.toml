@@ -36,6 +36,16 @@ addopts = "-ra"
 line-length = 120
 target-version = "py312"
 
+[tool.ruff.lint]
+# Correctness only: undefined names, unused imports and variables, syntax.
+select = ["F", "E9"]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-exports every model so Alembic and the app see one metadata.
+"app/models/__init__.py" = ["F401", "F403"]
+# Pytest fixtures are imported, then named again as test parameters.
+"tests/**" = ["F811"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]

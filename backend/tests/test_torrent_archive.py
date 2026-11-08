@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
 import shutil
 import time
 import uuid
@@ -20,7 +19,7 @@ from app.db import session as db_session
 from app.db.base import Base
 from app.integrations.qbittorrent import TorrentObservation
 from app.main import create_app
-from app.models.domain import IdentityState, Movie, Torrent, TorrentArchiveState, TorrentClientObservation
+from app.models.domain import IdentityState, Movie, Torrent, TorrentArchiveState
 from app.services.torrent_archive import verify_torrent_archive
 
 pytestmark = pytest.mark.usefixtures("scratch_cwd")
@@ -787,7 +786,6 @@ def test_readd_never_uses_another_client_and_caps_each_run(archive_client, monke
 
     import app.services.auto_readd as auto_readd
     import app.services.replacements as replacements
-    from app.models.domain import TorrentClientObservation
 
     client, base, archive_dir = archive_client
     headers = _login(client)

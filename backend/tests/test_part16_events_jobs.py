@@ -25,7 +25,6 @@ from app.models.domain import (
     MediaDirectory,
     MediaFile,
     MediaType,
-    Movie,
     Problem,
     Severity,
     StorageRoot,

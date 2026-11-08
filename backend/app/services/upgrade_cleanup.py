@@ -20,7 +20,7 @@ from app.services.media_history import history_snapshot
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.security import consume_confirmation_jti, sign_confirmation_payload, verify_confirmation_payload
-from app.integrations.filesystem import VIDEO_SUFFIXES
+from app.integrations.filesystem import VIDEO_SUFFIXES, folder_writable
 from app.models.domain import (
     AccessMode,
     Episode,
@@ -229,6 +229,9 @@ async def _cleanup_core(db: AsyncSession, row: UpgradeCandidate) -> dict[str, An
             if root is None or not root.enabled or root.access_mode != AccessMode.READ_WRITE:
                 blocked.append(f"{path}: media folder is not read/write")
                 continue
+            if not folder_writable(root.resolved_root_path):
+                blocked.append(f"{path}: media folder is mounted read-only")
+                continue
             root_path = Path(root.resolved_root_path)
             if not _inside(path, root_path) or path.resolve(strict=False) == root_path.resolve(strict=False) or path.is_symlink():
                 blocked.append(f"{path}: unsafe deletion target")
@@ -301,6 +304,9 @@ async def _cleanup_core(db: AsyncSession, row: UpgradeCandidate) -> dict[str, An
             path = Path(directory.resolved_path) / media_file.relative_path
             if root is None or not root.enabled or root.access_mode != AccessMode.READ_WRITE:
                 blocked.append(f"{path}: media folder is not read/write")
+                continue
+            if not folder_writable(root.resolved_root_path):
+                blocked.append(f"{path}: media folder is mounted read-only")
                 continue
             root_path = Path(root.resolved_root_path)
             if not _inside(path, root_path) or path.resolve(strict=False) == root_path.resolve(strict=False):

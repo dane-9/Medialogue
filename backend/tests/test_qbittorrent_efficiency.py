@@ -1,7 +1,6 @@
 """Request-volume behaviour of the qBittorrent integration."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import httpx

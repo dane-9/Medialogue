@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
+from app.integrations.filesystem import folder_writable
 from app.models.auth import AdminUser
 from app.models.domain import AccessMode, DiscoveryMode, Episode, EpisodeMediaMap, MediaDirectory, MediaFile, MediaType, Movie, MovieRelease, Problem, Season, RemotePathMapping, Show, ShowRelease, StorageRoot
 from app.schemas.common import Collection, DeleteResponse
@@ -98,6 +99,18 @@ async def _reject_duplicate_mapping(
         raise AppError(
             "REMOTE_PATH_MAPPING_DUPLICATE",
             "A mapping for this client scope and remote prefix already exists.",
+            status_code=409,
+        )
+
+
+def _reject_read_only_mount(path: str, access_mode: AccessMode) -> None:
+    """A read/write media folder must really be writable where Medialogue sees it."""
+
+    if access_mode == AccessMode.READ_WRITE and Path(path).is_dir() and not folder_writable(path):
+        raise AppError(
+            "MEDIA_FOLDER_NOT_WRITABLE",
+            f"{path} is mounted read-only, so Medialogue could not delete or clean up media there. "
+            "Mount it writable, or set this media folder to Read only.",
             status_code=409,
         )
 
@@ -314,6 +327,7 @@ async def create_storage_root(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> StorageRootResponse:
+    _reject_read_only_mount(_resolved_path(payload.path), AccessMode(payload.access_mode.value))
     root = StorageRoot(
         name=payload.name,
         resolved_root_path=_resolved_path(payload.path),
@@ -405,6 +419,8 @@ async def update_storage_root(
             "Wait for the current scan to finish before changing this root's path or media type.",
             status_code=409,
         )
+    _reject_read_only_mount(values.get("resolved_root_path", root.resolved_root_path),
+                            values.get("access_mode", root.access_mode))
     for key, value in values.items():
         setattr(root, key, value)
     if scan_identity_changed:

@@ -8,6 +8,16 @@ import stat
 VIDEO_SUFFIXES = {".mkv", ".mp4", ".m4v", ".avi", ".ts", ".m2ts"}
 
 
+def folder_writable(path: str | Path) -> bool:
+    """Whether Medialogue can change files in this folder.
+
+    A read/write media folder on a read-only mount (Docker ``:ro``, a read-only
+    share) would let a delete get as far as the filesystem and then fail.
+    """
+
+    return os.access(path, os.W_OK)
+
+
 class OutsideMediaRootError(PermissionError):
     """An intentionally excluded path, not a failed filesystem read."""
 

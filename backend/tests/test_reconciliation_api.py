@@ -25,7 +25,6 @@ from app.models.domain import (
     AssociationType,
     Event,
     MediaType,
-    Movie,
     MovieRelease,
     MovieReleaseTorrent,
     PlexMatchState,
@@ -323,7 +322,7 @@ def test_completed_inception_replacement_promotes_same_release_and_is_idempotent
         _install_qbit_fake(client, behavior)
         qbit = _create_qbit(client, headers)
         try:
-            incoming = _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
+            _poll_job(client, f"/api/v1/download-clients/{qbit['id']}/poll", headers)
             new_dir.mkdir()
             (new_dir / f"{new_name}.mkv").write_bytes(b"new-media")
             behavior.torrents = [_torrent("replacement-hash", new_name, progress=1, state="uploading", root=root)]

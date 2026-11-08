@@ -279,3 +279,30 @@ def test_deleting_a_season_folder_inside_the_show_folder_marks_its_episodes_miss
             assert (await db.get(Episode, seeded[1]["episode"])).presence_state == PresenceState.MISSING
             assert (await db.get(Episode, seeded[2]["episode"])).presence_state == PresenceState.PRESENT
     asyncio.run(check())
+
+
+def test_a_read_only_mount_blocks_deleting_and_saving_a_read_write_media_folder(archive_client, monkeypatch):
+    from app.api import storage as storage_api
+    from app.services import download_deletion
+
+    client, base, _ = archive_client
+    headers, ids = _setup(client, base)
+    # Docker ":ro" (or a read-only share): the folder is there but cannot be changed.
+    monkeypatch.setattr(download_deletion, "folder_writable", lambda path: False)
+    monkeypatch.setattr(storage_api, "folder_writable", lambda path: False)
+
+    plan = client.post("/api/v1/downloads/delete-plan", headers=headers, json={"download_ids": [str(ids["Gone"]["download"])]})
+    assert any("mounted read-only" in item for item in plan.json()["blocked"])
+    assert _delete(client, headers, ids["Gone"]["download"], "replace").status_code == 409
+    assert ids["Gone"]["folder"].exists()
+
+    root = client.get("/api/v1/storage-roots", headers=headers).json()["items"][0]
+    refused = client.patch(f"/api/v1/storage-roots/{root['id']}", headers=headers, json={"access_mode": "read_write"})
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "MEDIA_FOLDER_NOT_WRITABLE"
+    # Read only is always allowed.
+    assert client.patch(f"/api/v1/storage-roots/{root['id']}", headers=headers, json={"access_mode": "read_only"}).status_code == 200
+    (base / "shows").mkdir()
+    created = client.post("/api/v1/storage-roots", headers=headers, json={
+        "name": "Shows", "path": str(base / "shows"), "media_type": "shows", "access_mode": "read_write"})
+    assert created.status_code == 409

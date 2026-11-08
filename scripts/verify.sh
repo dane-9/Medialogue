@@ -12,6 +12,7 @@ Usage: ./scripts/verify.sh [--docker]
 Runs Medialogue's manual verification suite:
   - backend dependency preflight
   - Python compilation
+  - backend lint (ruff)
   - OpenAPI snapshot + generated TypeScript contract drift check
   - backend pytest suite
   - frontend dependency preflight
@@ -86,6 +87,13 @@ fi
 
 section "Backend compile"
 "$PYTHON_BIN" -m compileall -q backend/app backend/tests
+
+section "Backend lint"
+"$PYTHON_BIN" -m ruff --version >/dev/null 2>&1 || fail "ruff is missing. Install it with: $PYTHON_BIN -m pip install ruff==0.17.4"
+(
+  cd backend
+  "$PYTHON_BIN" -m ruff check app tests
+)
 
 section "OpenAPI contract"
 "$PYTHON_BIN" scripts/generate_api_contract.py --check

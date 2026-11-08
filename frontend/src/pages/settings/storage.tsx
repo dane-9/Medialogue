@@ -395,7 +395,7 @@ export function StorageSettings() {
                 options={[{ value: 'review', label: 'Approve before adding' }, { value: 'auto', label: 'Add automatically' }]}
               />
             </Field>
-            <Field label="Missing grace checks" help="How many scans in a row must miss a file before it counts as missing.">
+            <Field label="Missing grace checks" help="How many scans in a row must miss a folder before its media counts as missing.">
               <Slider
                 ariaLabel="Missing grace checks"
                 min={1}

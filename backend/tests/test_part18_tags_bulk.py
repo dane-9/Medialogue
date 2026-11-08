@@ -104,7 +104,7 @@ async def seed_movies(db):
 
 def test_tag_creation_assignment_filter_and_case_insensitive_uniqueness(client: TestClient) -> None:
     headers = login(client)
-    movies = db_run(seed_movies)
+    db_run(seed_movies)
 
     created = client.post("/api/v1/tags", headers=headers, json={"name": "Reference Quality"})
     assert created.status_code == 201, created.text

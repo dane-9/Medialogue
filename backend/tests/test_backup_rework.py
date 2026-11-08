@@ -1,13 +1,9 @@
 import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-import hashlib
-import json
-from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
-import httpx
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
@@ -18,7 +14,7 @@ from app.services.replacements import lost_sources
 from app.services.upgrade_candidates import CurrentReleaseEvidence, UpgradeTarget, _score_candidate
 from app.services.search import SearchTarget
 from app.integrations.torznab import SearchResult
-from tests.test_part17_recovery import recovery_env, login_headers
+from tests.test_part17_recovery import recovery_env, login_headers  # noqa: F401 - fixture
 
 
 def test_client_file_selections_remain_distinct_and_coverage_ignores_progress():
@@ -102,7 +98,7 @@ def test_replacement_allows_equivalent_but_blocks_quality_score_edition_and_hash
 def test_replacement_queue_search_review_and_submission_share_existing_execution(recovery_env):
     from uuid import UUID
     from app.db import session as db_session
-    from app.models.domain import Job, JobStatus, UpgradeCandidate
+    from app.models.domain import Job, JobStatus
     from app.services.jobs import create_job
     from app.services.replacements import run_replacement_search
     from tests.test_upgrade_execution import _create_integrations, _seed_movie_upgrade, FakeQBitBehavior
@@ -218,8 +214,7 @@ async def test_lost_cross_seed_with_a_working_partner_is_not_listed():
 
 def test_replacement_search_is_scoped_per_item_and_finish_is_recorded(recovery_env):
     from app.db import session as db_session
-    from app.models.domain import Event, Job, JobStatus
-    from sqlalchemy import select
+    from app.models.domain import Job, JobStatus
 
     client, _, _ = recovery_env
     headers = login_headers(client)

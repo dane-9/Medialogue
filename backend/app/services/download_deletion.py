@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.errors import AppError
+from app.integrations.filesystem import folder_writable
 from app.models.domain import (AccessMode, EpisodeMediaMap, MediaDirectory, MediaFile, Movie, MovieRelease,
                                MovieReleaseTorrent, ReleaseState, Season, Severity, Show, ShowRelease,
                                ShowReleaseTorrent, StorageRoot, Torrent, TorrentClientObservation, UpgradeCandidate)
@@ -146,6 +147,8 @@ async def plan_deletion(db: AsyncSession, observation_ids: list[UUID]) -> Deleti
             plan.blocked.append(f"{folder} is the {root.name} media folder itself.")
         elif root.access_mode != AccessMode.READ_WRITE:
             plan.blocked.append(f"{folder} is in {root.name}, which Medialogue may only read.")
+        elif not folder_writable(root.resolved_root_path):
+            plan.blocked.append(f"{root.name} is mounted read-only, so nothing in it can be deleted.")
 
     # Another title's media in the same folder would be deleted with it.
     others = (await db.scalars(
