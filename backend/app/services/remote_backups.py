@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 
 import asyncio
-import base64
 import hashlib
 import json
 import os
@@ -35,7 +34,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import httpx
@@ -238,60 +237,133 @@ async def protected_hashes(drive: "DriveBackups", folders: dict[str, str]) -> se
 
 
 # --- Google account ---------------------------------------------------------
+#
+# Medialogue signs in with Google's device flow: it shows a short code, the
+# administrator approves it at google.com/device on any device, and Medialogue
+# polls until Google hands over the token. There is no redirect URI, so it
+# works on a plain LAN address. The OAuth client must be of type "TVs and
+# Limited Input devices". Its ID and secret are entered on the Backups page
+# (kept encrypted here), or come from MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID/_SECRET.
+
+DEVICE_CODE = "https://oauth2.googleapis.com/device/code"
+DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
+
+
+def client_credentials(state: dict | None = None) -> tuple[str, str, str]:
+    """The OAuth client ID and secret, and where they came from ("saved", "environment" or "")."""
+
+    state = read_backup_settings() if state is None else state
+    if state.get("client_id") and state.get("client_secret"):
+        return state["client_id"], state["client_secret"], "saved"
+    s = get_settings()
+    if s.google_drive_client_id and s.google_drive_client_secret:
+        return s.google_drive_client_id, s.google_drive_client_secret, "environment"
+    return "", "", ""
 
 
 def oauth_ready() -> bool:
-    s = get_settings()
-    return bool(s.google_drive_client_id and s.google_drive_client_secret and s.google_drive_redirect_uri)
+    return bool(client_credentials()[2])
 
 
-def begin_oauth(admin_id: str) -> str:
-    if not oauth_ready():
-        raise AppError("DRIVE_SETUP_REQUIRED", "Configure Google OAuth client ID, secret and redirect URI first.", status_code=409)
-    state = secrets.token_urlsafe(32)
-    verifier = secrets.token_urlsafe(48)
-    update_backup_settings({"oauth_state": state, "oauth_admin": admin_id,
-                            "oauth_expires": time.time() + 600, "oauth_verifier": verifier})
-    s = get_settings()
-    return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
-        "client_id": s.google_drive_client_id, "redirect_uri": s.google_drive_redirect_uri,
-        "response_type": "code", "scope": SCOPE, "access_type": "offline", "prompt": "consent",
-        "state": state, "code_challenge_method": "S256",
-        "code_challenge": base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("="),
-    })
+def save_client_credentials(client_id: str, client_secret: str) -> None:
+    """A different client cannot use the account connected through the old one."""
+
+    client_id, client_secret = client_id.strip(), client_secret.strip()
+    if not client_id.endswith(".apps.googleusercontent.com") or not client_secret:
+        raise AppError("DRIVE_CLIENT_INVALID", "Paste the client ID (ending in .apps.googleusercontent.com) and its client secret.", status_code=422)
+    state = read_backup_settings()
+    changes: dict[str, Any] = {"client_id": client_id, "client_secret": client_secret, "device_code": None}
+    if client_id != client_credentials(state)[0]:
+        changes["refresh_token"] = None
+    update_backup_settings(changes)
 
 
-async def finish_oauth(code: str, state: str, admin_id: str) -> None:
-    saved = read_backup_settings()
-    if (not secrets.compare_digest(state.encode(), (saved.get("oauth_state") or "").encode())
-            or saved.get("oauth_admin") != admin_id or saved.get("oauth_expires", 0) < time.time()):
-        raise AppError("DRIVE_OAUTH_STATE_INVALID", "Google connection expired. Start connecting again.", status_code=400)
-    update_backup_settings({"oauth_state": None, "oauth_expires": 0})
-    s = get_settings()
+def clear_client_credentials() -> None:
+    """Forget the saved client, and the account connected through it."""
+
+    update_backup_settings({"client_id": None, "client_secret": None, "device_code": None, "refresh_token": None})
+
+
+def _oauth_error(response: httpx.Response) -> str:
+    try:
+        return str(response.json().get("error") or "")
+    except ValueError:
+        return ""
+
+
+async def begin_device_sign_in(admin_id: str) -> dict:
+    client_id, _, source = client_credentials()
+    if not source:
+        raise AppError("DRIVE_SETUP_REQUIRED", "Add the Google OAuth client ID and secret first.", status_code=409)
     async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(TOKEN, data={"code": code, "grant_type": "authorization_code",
-            "client_id": s.google_drive_client_id, "client_secret": s.google_drive_client_secret,
-            "redirect_uri": s.google_drive_redirect_uri, "code_verifier": saved["oauth_verifier"]})
+        try:
+            response = await client.post(DEVICE_CODE, data={"client_id": client_id, "scope": SCOPE})
+        except httpx.HTTPError:
+            raise AppError("DRIVE_UNREACHABLE", "Google could not be reached. Try again.", status_code=502) from None
     if response.status_code != 200:
-        raise AppError("DRIVE_AUTH_FAILED", "Google authorization failed. Connect again.", status_code=400)
+        if _oauth_error(response) in {"invalid_client", "unauthorized_client"}:
+            raise AppError("DRIVE_CLIENT_INVALID", "Google rejected this OAuth client. Create it as type \"TVs and Limited Input devices\", "
+                           "in a project with the Google Drive API enabled.", status_code=400)
+        raise AppError("DRIVE_AUTH_FAILED", "Google would not start the sign-in. Check the client ID and try again.", status_code=400)
+    payload = response.json()
+    expires_at = time.time() + int(payload.get("expires_in") or 1800)
+    interval = max(1, int(payload.get("interval") or 5))
+    update_backup_settings({"device_code": payload["device_code"], "device_admin": admin_id,
+                            "device_expires": expires_at, "device_interval": interval, "device_next_poll": 0})
+    return {"user_code": payload["user_code"],
+            "verification_url": payload.get("verification_url") or "https://www.google.com/device",
+            "expires_at": datetime.fromtimestamp(expires_at, timezone.utc).isoformat(), "interval": interval}
+
+
+async def check_device_sign_in(admin_id: str) -> str:
+    """'pending' until the code is approved at google.com/device, then 'connected'."""
+
+    saved = read_backup_settings()
+    if not saved.get("device_code") or saved.get("device_admin") != admin_id:
+        raise AppError("DRIVE_OAUTH_STATE_INVALID", "No Google sign-in is in progress. Start connecting again.", status_code=409)
+    if saved.get("device_expires", 0) < time.time():
+        update_backup_settings({"device_code": None})
+        raise AppError("DRIVE_OAUTH_STATE_INVALID", "The sign-in code expired. Start connecting again.", status_code=409)
+    if saved.get("device_next_poll", 0) > time.time():
+        return "pending"  # Google asks for its interval between polls.
+    client_id, client_secret, _ = client_credentials(saved)
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            response = await client.post(TOKEN, data={"client_id": client_id, "client_secret": client_secret,
+                                                      "device_code": saved["device_code"], "grant_type": DEVICE_GRANT})
+        except httpx.HTTPError:
+            return "pending"
+    if response.status_code != 200:
+        error = _oauth_error(response)
+        if error in {"authorization_pending", "slow_down"}:
+            interval = int(saved.get("device_interval") or 5) + (5 if error == "slow_down" else 0)
+            update_backup_settings({"device_interval": interval, "device_next_poll": time.time() + interval})
+            return "pending"
+        update_backup_settings({"device_code": None})
+        if error == "access_denied":
+            raise AppError("DRIVE_AUTH_DENIED", "Access was declined in Google. Connect again and allow Drive access.", status_code=400)
+        if error == "expired_token":
+            raise AppError("DRIVE_OAUTH_STATE_INVALID", "The sign-in code expired. Start connecting again.", status_code=409)
+        raise AppError("DRIVE_AUTH_FAILED", "Google authorization failed. Check the client secret and connect again.", status_code=400)
     payload = response.json()
     if not payload.get("refresh_token") or SCOPE not in payload.get("scope", "").split():
+        update_backup_settings({"device_code": None})
         raise AppError("DRIVE_AUTH_FAILED", "Google did not grant offline backup access. Connect again and allow Drive access.", status_code=400)
     # A different account starts from an empty mirror; the next run rebuilds
     # what this account already holds from Drive itself.
-    update_backup_settings({"refresh_token": payload["refresh_token"], "folders": {}, "mirror": {},
-                            "oauth_verifier": None, "last_sync_at": None, "last_database_at": None})
+    update_backup_settings({"refresh_token": payload["refresh_token"], "folders": {}, "mirror": {}, "device_code": None,
+                            "last_sync_at": None, "last_database_at": None, "last_error": None})
+    return "connected"
 
 
 async def access_token() -> str:
     saved = read_backup_settings()
     if not saved.get("refresh_token"):
         raise AppError("DRIVE_NOT_CONNECTED", "Connect Google Drive first.", status_code=409)
-    s = get_settings()
+    client_id, client_secret, _ = client_credentials(saved)
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(TOKEN, data={"grant_type": "refresh_token",
-            "refresh_token": saved["refresh_token"], "client_id": s.google_drive_client_id,
-            "client_secret": s.google_drive_client_secret})
+            "refresh_token": saved["refresh_token"], "client_id": client_id, "client_secret": client_secret})
     if response.status_code != 200:
         raise AppError("DRIVE_RECONNECT_REQUIRED", "Google Drive authorization failed. Reconnect your account.", status_code=409)
     return response.json()["access_token"]

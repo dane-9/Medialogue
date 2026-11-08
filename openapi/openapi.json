@@ -4041,6 +4041,28 @@
         "title": "FilesystemListing",
         "type": "object"
       },
+      "GoogleClientRequest": {
+        "properties": {
+          "client_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Client Id",
+            "type": "string"
+          },
+          "client_secret": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Client Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "client_secret"
+        ],
+        "title": "GoogleClientRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -14682,37 +14704,50 @@
         ]
       }
     },
-    "/api/v1/backups/google/callback": {
-      "get": {
-        "operationId": "google_callback_api_v1_backups_google_callback_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "code",
-            "required": false,
-            "schema": {
-              "default": "",
-              "maxLength": 4096,
-              "title": "Code",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "state",
-            "required": true,
-            "schema": {
-              "maxLength": 256,
-              "title": "State",
-              "type": "string"
-            }
-          }
-        ],
+    "/api/v1/backups/google/client": {
+      "delete": {
+        "operationId": "remove_google_client_api_v1_backups_google_client_delete",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Google Client Api V1 Backups Google Client Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Remove Google Client",
+        "tags": [
+          "backups"
+        ]
+      },
+      "put": {
+        "description": "The OAuth client (type \"TVs and Limited Input devices\") Medialogue signs in with.",
+        "operationId": "save_google_client_api_v1_backups_google_client_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleClientRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Google Client Api V1 Backups Google Client Put",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -14728,7 +14763,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Google Callback",
+        "summary": "Save Google Client",
         "tags": [
           "backups"
         ]
@@ -14736,6 +14771,7 @@
     },
     "/api/v1/backups/google/connect": {
       "post": {
+        "description": "Start a device sign-in: the code to enter at the returned Google address.",
         "operationId": "connect_google_api_v1_backups_google_connect_post",
         "responses": {
           "200": {
@@ -14752,6 +14788,30 @@
           }
         },
         "summary": "Connect Google",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/v1/backups/google/connect/check": {
+      "post": {
+        "description": "Polled while the code is shown; 'connected' once it was approved.",
+        "operationId": "check_google_connection_api_v1_backups_google_connect_check_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Check Google Connection Api V1 Backups Google Connect Check Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check Google Connection",
         "tags": [
           "backups"
         ]

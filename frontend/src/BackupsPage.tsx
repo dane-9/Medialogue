@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { backupsApi } from './api/modules/backups'
-import type { BackupRetention, BackupStatus, DatabaseCopy } from './api/modules/backups'
+import type { BackupRetention, BackupStatus, DatabaseCopy, DeviceSignIn } from './api/modules/backups'
 import { systemApi } from './api/modules/system'
-import { Badge, Button, Panel, Progress, Segmented, Select } from './components/ui'
+import { Badge, Button, Input, Panel, Progress, Segmented, Select } from './components/ui'
 import { useUrlState } from './lib/urlState'
-import { Note, SectionHead, failed } from './components/settings'
+import { Field, Note, Secret, SectionHead, failed } from './components/settings'
 import type { Message } from './components/settings'
 import { PageTopbar } from './components/Shell'
 import { formatAge } from './lib/age'
@@ -66,6 +66,66 @@ export function copyKeptBy(rules?: string[]): string {
   return `kept: ${rules.map((rule) => words[rule] ?? rule).join(', ')}`
 }
 
+const CONSOLE = 'https://console.cloud.google.com'
+
+/** The one-time Google Cloud setup, and the client ID and secret it gives. */
+function GoogleClientSetup({ status, onSaved, onCancel }: { status: BackupStatus; onSaved: () => void; onCancel?: () => void }) {
+  const [clientId, setClientId] = useState('')
+  const [secret, setSecret] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<Message>(null)
+  const submit = async () => {
+    setSaving(true); setMessage(null)
+    try { await backupsApi.saveClient({ client_id: clientId, client_secret: secret }); onSaved() }
+    catch (reason) { setMessage(failed(reason, 'Could not save the Google client.')) }
+    finally { setSaving(false) }
+  }
+  return <div className="backups-client">
+    <SectionHead title="Google client" description="Once only: Medialogue signs in to your Drive through an OAuth client in your own Google Cloud project." />
+    <ol className="backups-steps">
+      <li>Create a project in the <a href={`${CONSOLE}/projectcreate`} target="_blank" rel="noreferrer">Google Cloud console</a>, and enable the <a href={`${CONSOLE}/apis/library/drive.googleapis.com`} target="_blank" rel="noreferrer">Google Drive API</a> in it.</li>
+      <li>In <a href={`${CONSOLE}/auth/overview`} target="_blank" rel="noreferrer">Google Auth Platform</a>, get started with any app name and your email, audience <strong>External</strong>. Then under <strong>Audience</strong>, click <strong>Publish app</strong>: while it is in Testing, Google signs Medialogue out every 7 days.</li>
+      <li>Under <a href={`${CONSOLE}/auth/clients/create`} target="_blank" rel="noreferrer">Clients → Create client</a>, choose type <strong>TVs and Limited Input devices</strong>.</li>
+      <li>Paste its client ID and secret here.</li>
+    </ol>
+    <div className="backups-client-fields">
+      <Field label="Client ID"><Input value={clientId} placeholder="….apps.googleusercontent.com" autoComplete="off" spellCheck={false} onChange={(event) => setClientId(event.target.value)} /></Field>
+      <Field label="Client secret"><Secret value={secret} onChange={(event) => setSecret(event.target.value)} /></Field>
+    </div>
+    {status.client_source === 'environment' && <p className="backups-note">This server also has a client set by environment variables. One saved here is used instead.</p>}
+    <div className="button-row">
+      <Button variant="primary" disabled={saving || !clientId.trim() || !secret.trim()} onClick={() => void submit()}>{saving ? 'Saving…' : 'Save client'}</Button>
+      {onCancel && <Button variant="ghost" disabled={saving} onClick={onCancel}>Cancel</Button>}
+    </div>
+    <Note message={message} />
+  </div>
+}
+
+/** The code to enter at google.com/device, polled until it is approved. */
+function DeviceCode({ signIn, onConnected, onFailed, onCancel }: { signIn: DeviceSignIn; onConnected: () => void; onFailed: (reason: unknown) => void; onCancel: () => void }) {
+  const done = useRef({ onConnected, onFailed })
+  done.current = { onConnected, onFailed }
+  useEffect(() => {
+    let alive = true
+    let timer = 0
+    const tick = async () => {
+      try {
+        if (await backupsApi.checkConnect() === 'connected') { if (alive) done.current.onConnected(); return }
+      } catch (reason) { if (alive) done.current.onFailed(reason); return }
+      if (alive) timer = window.setTimeout(() => void tick(), signIn.interval * 1000)
+    }
+    timer = window.setTimeout(() => void tick(), signIn.interval * 1000)
+    return () => { alive = false; window.clearTimeout(timer) }
+  }, [signIn])
+  return <div className="backups-device">
+    <p>On any phone or computer, open <a href={signIn.verification_url} target="_blank" rel="noreferrer">{signIn.verification_url.replace(/^https:\/\//, '')}</a>, sign in with the Google account to back up to, and enter:</p>
+    <div className="backups-device-code"><code>{signIn.user_code}</code>
+      <Button variant="ghost" onClick={() => void navigator.clipboard?.writeText(signIn.user_code)}>Copy</Button></div>
+    <p className="backups-note">Waiting for approval… The code works until {new Date(signIn.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>
+    <div className="button-row"><Button variant="ghost" onClick={onCancel}>Cancel</Button></div>
+  </div>
+}
+
 export default function BackupsPage() {
   const [tabParam, setTab] = useUrlState('tab', 'torrents')
   const tab: Tab = TABS.some((item) => item.value === tabParam) ? tabParam as Tab : 'torrents'
@@ -78,6 +138,8 @@ export default function BackupsPage() {
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [copies, setCopies] = useState<DatabaseCopy[] | null>(null)
+  const [signIn, setSignIn] = useState<DeviceSignIn | null>(null)
+  const [editingClient, setEditingClient] = useState(false)
 
   const load = async () => {
     try {
@@ -116,7 +178,13 @@ export default function BackupsPage() {
 
     {tab === 'drive' && 
 <Panel title="Google Drive" action={<Badge tone={tone}>{label}</Badge>}><div className="backups-body">
-      {status && !status.oauth_configured && <Note message={{ tone: 'error', text: 'Google Drive is not set up on this server. Create a Google OAuth web application with the Drive API enabled, set MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID, MEDIALOGUE_GOOGLE_DRIVE_CLIENT_SECRET and MEDIALOGUE_GOOGLE_DRIVE_REDIRECT_URI (this address followed by /api/v1/backups/google/callback), then restart.' }} />}
+      {status && (!status.oauth_configured || editingClient) && <GoogleClientSetup status={status}
+        onSaved={() => { setEditingClient(false); setMessage({ tone: 'ok', text: 'Google client saved. Now connect your Google Drive.' }); void load() }}
+        onCancel={status.oauth_configured ? () => setEditingClient(false) : undefined} />}
+      {signIn && <DeviceCode signIn={signIn}
+        onConnected={() => { setSignIn(null); setMessage({ tone: 'ok', text: 'Google Drive connected. Turn on backups to start copying.' }); void load() }}
+        onFailed={(reason) => { setSignIn(null); setMessage(failed(reason, 'Google sign-in failed.')) }}
+        onCancel={() => setSignIn(null)} />}
       {connected && status && <div className="backups-status">
         <div><strong>{status.torrents_on_drive.toLocaleString()}</strong><span>torrents on Drive</span></div>
         <div><strong>{status.last_sync_at ? formatAge(status.last_sync_at) : 'Never'}</strong><span>last torrent copy</span></div>
@@ -134,9 +202,12 @@ export default function BackupsPage() {
         })}>{backingUp ? 'Backing up…' : 'Back up now'}</Button>}
         {status?.folder_url && <a className="button button-ghost" href={status.folder_url} target="_blank" rel="noreferrer">Open in Google Drive</a>}
         <span className="modal-foot-spacer" />
-        <Button variant={connected ? 'ghost' : 'primary'} disabled={busy || backingUp || !status?.oauth_configured} onClick={() => void act(async () => {
-          window.location.assign((await backupsApi.connect()).authorization_url)
-        })}>{connected ? 'Reconnect' : 'Connect Google Drive'}</Button>
+        {status?.oauth_configured && !editingClient && !signIn && <>
+          <Button variant={connected ? 'ghost' : 'primary'} disabled={busy || backingUp} onClick={() => void act(async () => {
+            setSignIn(await backupsApi.connect())
+          })}>{connected ? 'Reconnect' : 'Connect Google Drive'}</Button>
+          <Button variant="ghost" disabled={busy || backingUp} onClick={() => setEditingClient(true)}>Change client</Button>
+        </>}
         {connected && <Button variant="ghost" disabled={busy || backingUp} onClick={() => void act(async () => { await backupsApi.disconnect(); setMessage({ tone: 'ok', text: 'Disconnected. Everything already in Drive stays there.' }) })}>Disconnect</Button>}
       </div>
 

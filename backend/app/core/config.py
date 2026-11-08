@@ -40,7 +40,6 @@ class Settings(BaseSettings):
     torrent_archive_dir: str = "/torrent-archive"
     google_drive_client_id: str = ""
     google_drive_client_secret: str = ""
-    google_drive_redirect_uri: str = ""
     session_cookie_name: str = "medialogue_session"
     csrf_cookie_name: str = "medialogue_csrf"
     session_ttl_hours: int = 24 * 14

@@ -43,3 +43,12 @@
 /* Stand-ins for the rows a virtualised list leaves unrendered. */
 .data-table tbody tr.virtual-spacer,
 .data-table tbody tr.virtual-spacer:hover { background: none; }
+
+/* Backups → Google Drive: the client setup and the device sign-in code. */
+.backups-client, .backups-device { display: grid; gap: var(--s3); padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }
+.backups-client a, .backups-device a { color: var(--accent-text); }
+.backups-client-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); }
+@media (max-width: 760px) { .backups-client-fields { grid-template-columns: 1fr; } }
+.backups-device p { margin: 0; font-size: var(--t-sm); }
+.backups-device-code { display: flex; align-items: center; gap: var(--s3); }
+.backups-device-code code { padding: var(--s2) var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--text); font-size: var(--t-lg); font-weight: 600; letter-spacing: 0.12em; }

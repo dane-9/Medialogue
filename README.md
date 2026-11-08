@@ -19,10 +19,6 @@ services:
       - PGID=1000
       - TZ=Etc/UTC
       - MEDIALOGUE_COOKIE_SECURE=false   # true behind an HTTPS reverse proxy
-      # Optional: Google Drive backups (see Backups below)
-      - MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID=
-      - MEDIALOGUE_GOOGLE_DRIVE_CLIENT_SECRET=
-      - MEDIALOGUE_GOOGLE_DRIVE_REDIRECT_URI=
     volumes:
       - /path/to/medialogue/config:/config                    # database and settings, on local storage
       - /path/to/medialogue/torrent-archive:/torrent-archive  # backed-up .torrent files
@@ -46,7 +42,15 @@ To build from source instead, clone the repository, copy `.env.example` to `.env
 
 ## Backups
 
-Connect Google Drive under **Backups → Google Drive**. This needs a Google OAuth web client with the Drive API enabled, set through `MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID`, `_CLIENT_SECRET` and `_REDIRECT_URI` (`https://HOST/api/v1/backups/google/callback`). Every torrent, its manifest and a daily database copy go to a **Medialogue Backups** folder.
+Connect Google Drive under **Backups → Google Drive**. Once, create an OAuth client in your own Google Cloud project; the page walks through it:
+
+1. Create a project and enable the **Google Drive API**.
+2. In **Google Auth Platform**, set it up with audience **External**, then **Publish app** (while it is in Testing, Google signs Medialogue out every 7 days).
+3. Create a client of type **TVs and Limited Input devices**, and paste its ID and secret on the Backups page.
+
+Then **Connect Google Drive** shows a code to enter at `google.com/device` on any phone or computer. No redirect URI or HTTPS is needed. (`MEDIALOGUE_GOOGLE_DRIVE_CLIENT_ID` and `_CLIENT_SECRET` still work in place of the page.)
+
+Every torrent, its manifest and a daily database copy go to a **Medialogue Backups** folder.
 
 Nothing in Drive is encrypted: torrent files carry tracker passkeys, and database copies hold the integration credentials. Keep the folder private.
 

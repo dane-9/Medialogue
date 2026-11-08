@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +19,9 @@ from app.models.domain import Job, JobStatus, Schedule
 from app.schemas.jobs import JobAcceptedResponse
 from app.services.backup_coverage import archive_coverage
 from app.services.backup_import import import_backup_zip
-from app.services.remote_backups import (DATABASE, DEFAULT_DATABASE_INTERVAL, DriveBackups, access_token, begin_oauth,
-    copies_to_keep, finish_oauth, oauth_ready, read_backup_settings, read_copy_index, retention_settings,
-    update_backup_settings)
+from app.services.remote_backups import (DATABASE, DEFAULT_DATABASE_INTERVAL, DriveBackups, access_token,
+    begin_device_sign_in, check_device_sign_in, clear_client_credentials, client_credentials, copies_to_keep,
+    read_backup_settings, read_copy_index, retention_settings, save_client_credentials, update_backup_settings)
 from app.services.torrent_archive import rebuild_catalogue_from_manifests
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
 
@@ -37,6 +36,11 @@ class BackupSettingsRequest(BaseModel):
     keep_weekly: int = Field(default=4, ge=0, le=52)
     keep_monthly: int = Field(default=6, ge=0, le=60)
     database_interval_seconds: int = Field(default=DEFAULT_DATABASE_INTERVAL, ge=3600, le=2592000)
+
+
+class GoogleClientRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=512)
+    client_secret: str = Field(min_length=1, max_length=512)
 
 
 async def _active(db: AsyncSession, job_type: str) -> Job | None:
@@ -54,8 +58,11 @@ async def backup_status(_: AdminUser = Depends(require_admin), db: AsyncSession 
     schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
     backup = await _active(db, "remote_backup")
     mirror = saved.get("mirror") or {}
+    client_id, _, client_source = client_credentials(saved)
     return {
-        "oauth_configured": oauth_ready(),
+        "oauth_configured": bool(client_source),
+        "client_id": client_id or None,
+        "client_source": client_source or None,
         "connected": bool(saved.get("refresh_token")),
         "enabled": bool(schedule and schedule.enabled),
         "sync_interval_seconds": int(schedule.expression) if schedule else 600,
@@ -89,33 +96,64 @@ async def save_backup_settings(payload: BackupSettingsRequest, _: object = Depen
     return {"saved": True}
 
 
+@router.put("/google/client")
+async def save_google_client(payload: GoogleClientRequest, _: object = Depends(require_csrf),
+                             db: AsyncSession = Depends(get_db)) -> dict:
+    """The OAuth client (type "TVs and Limited Input devices") Medialogue signs in with."""
+
+    if await _drive_busy(db):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before changing the Google client.", status_code=409)
+    save_client_credentials(payload.client_id, payload.client_secret)
+    await _pause_without_account(db)
+    return {"saved": True}
+
+
+@router.delete("/google/client")
+async def remove_google_client(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
+    if await _drive_busy(db):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before removing the Google client.", status_code=409)
+    clear_client_credentials()
+    await _pause_without_account(db)
+    return {"removed": True}
+
+
+async def _pause_without_account(db: AsyncSession) -> None:
+    """Scheduled backups stop once no Google account is connected."""
+
+    if read_backup_settings().get("refresh_token"):
+        return
+    schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
+    if schedule:
+        schedule.enabled = False
+        schedule.next_run_at = None
+    await db.commit()
+
+
 @router.post("/google/connect")
 async def connect_google(session=Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
+    """Start a device sign-in: the code to enter at the returned Google address."""
+
     if await _drive_busy(db):
         raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before changing its Google account.", status_code=409)
-    return {"authorization_url": begin_oauth(str(session.admin.id))}
+    return await begin_device_sign_in(str(session.admin.id))
+
+
+@router.post("/google/connect/check")
+async def check_google_connection(session=Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
+    """Polled while the code is shown; 'connected' once it was approved."""
+
+    if await _drive_busy(db):
+        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup, then reconnect Google Drive.", status_code=409)
+    return {"status": await check_device_sign_in(str(session.admin.id))}
 
 
 @router.post("/google/disconnect")
 async def disconnect_google(_: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)) -> dict:
     if await _drive_busy(db):
         raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup before disconnecting Google Drive.", status_code=409)
-    update_backup_settings({"refresh_token": None, "oauth_state": None, "oauth_verifier": None})
-    schedule = await db.scalar(select(Schedule).where(Schedule.job_type == "remote_backup"))
-    if schedule:
-        schedule.enabled = False
-        schedule.next_run_at = None
-    await db.commit()
+    update_backup_settings({"refresh_token": None, "device_code": None})
+    await _pause_without_account(db)
     return {"disconnected": True, "drive_files_kept": True}
-
-
-@router.get("/google/callback")
-async def google_callback(code: str = Query(default="", max_length=4096), state: str = Query(max_length=256),
-                          admin: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    if await _drive_busy(db):
-        raise AppError("BACKUP_IN_PROGRESS", "Wait for the current backup, then reconnect Google Drive.", status_code=409)
-    await finish_oauth(code, state, str(admin.id))
-    return RedirectResponse("/backups", status_code=303, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
 @router.post("/run", response_model=JobAcceptedResponse, status_code=202)

@@ -538,3 +538,117 @@ def test_each_database_copy_lists_its_torrents_and_keeps_its_manifests(recovery_
 
     assert asyncio.run(protected()) == {INFO_HASH}
     assert _index_path().is_file()
+
+
+class FakeGoogle:
+    """Google's device-flow endpoints: the token answers from ``replies`` in turn."""
+
+    calls: list[tuple[str, dict]] = []
+    replies: list[httpx.Response] = []
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, url, data=None, **kwargs):
+        from app.services import remote_backups as remote
+        FakeGoogle.calls.append((url, dict(data or {})))
+        if url == remote.DEVICE_CODE:
+            return httpx.Response(200, json={"device_code": "dev-code", "user_code": "ABCD-EFGH",
+                                             "verification_url": "https://www.google.com/device", "expires_in": 1800, "interval": 5})
+        return FakeGoogle.replies.pop(0)
+
+
+@pytest.fixture
+def google(monkeypatch):
+    from app.services import remote_backups as remote
+
+    FakeGoogle.calls, FakeGoogle.replies = [], []
+    monkeypatch.setattr(remote.httpx, "AsyncClient", FakeGoogle)
+    return remote
+
+
+CLIENT = {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret"}
+
+
+def test_google_client_is_saved_from_the_ui_without_exposing_the_secret(recovery_env, google):
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+    assert client.get("/api/v1/backups/status").json()["oauth_configured"] is False
+    assert client.post("/api/v1/backups/google/connect", headers=headers).json()["error"]["code"] == "DRIVE_SETUP_REQUIRED"
+    bad = client.put("/api/v1/backups/google/client", headers=headers, json={"client_id": "nope", "client_secret": "x"})
+    assert bad.json()["error"]["code"] == "DRIVE_CLIENT_INVALID"
+
+    assert client.put("/api/v1/backups/google/client", headers=headers, json=CLIENT).status_code == 200
+    status = client.get("/api/v1/backups/status").json()
+    assert status["oauth_configured"] is True and status["client_source"] == "saved"
+    assert status["client_id"] == CLIENT["client_id"] and "GOCSPX" not in json.dumps(status)
+
+    assert client.delete("/api/v1/backups/google/client", headers=headers).status_code == 200
+    assert client.get("/api/v1/backups/status").json()["oauth_configured"] is False
+
+
+def test_environment_client_is_used_when_none_is_saved(recovery_env, google):
+    _, settings, _ = recovery_env
+    settings.google_drive_client_id, settings.google_drive_client_secret = "env.apps.googleusercontent.com", "env-secret"
+    assert google.client_credentials() == ("env.apps.googleusercontent.com", "env-secret", "environment")
+    google.save_client_credentials(**CLIENT)
+    assert google.client_credentials()[2] == "saved"
+
+
+def test_device_sign_in_waits_for_approval_then_connects(recovery_env, google, monkeypatch):
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+    client.put("/api/v1/backups/google/client", headers=headers, json=CLIENT)
+
+    started = client.post("/api/v1/backups/google/connect", headers=headers).json()
+    assert started["user_code"] == "ABCD-EFGH" and started["verification_url"] == "https://www.google.com/device"
+    assert FakeGoogle.calls[0][1] == {"client_id": CLIENT["client_id"], "scope": google.SCOPE}
+
+    FakeGoogle.replies = [httpx.Response(428, json={"error": "authorization_pending"})]
+    assert client.post("/api/v1/backups/google/connect/check", headers=headers).json()["status"] == "pending"
+    # Polled again before Google's interval: answered without asking Google.
+    assert client.post("/api/v1/backups/google/connect/check", headers=headers).json()["status"] == "pending"
+    assert len(FakeGoogle.calls) == 2
+
+    google.update_backup_settings({"device_next_poll": 0})
+    FakeGoogle.replies = [httpx.Response(200, json={"access_token": "a", "refresh_token": "r", "scope": google.SCOPE})]
+    assert client.post("/api/v1/backups/google/connect/check", headers=headers).json()["status"] == "connected"
+    url, data = FakeGoogle.calls[-1]
+    assert url == google.TOKEN and data["grant_type"] == google.DEVICE_GRANT and data["client_secret"] == CLIENT["client_secret"]
+    assert client.get("/api/v1/backups/status").json()["connected"] is True
+    assert client.post("/api/v1/backups/google/connect/check", headers=headers).json()["error"]["code"] == "DRIVE_OAUTH_STATE_INVALID"
+
+
+def test_declined_sign_in_and_a_new_client_leave_no_account(recovery_env, google):
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+    client.put("/api/v1/backups/google/client", headers=headers, json=CLIENT)
+    client.post("/api/v1/backups/google/connect", headers=headers)
+    FakeGoogle.replies = [httpx.Response(403, json={"error": "access_denied"})]
+    assert client.post("/api/v1/backups/google/connect/check", headers=headers).json()["error"]["code"] == "DRIVE_AUTH_DENIED"
+    assert client.get("/api/v1/backups/status").json()["connected"] is False
+
+    google.update_backup_settings({"refresh_token": "r"})
+    client.put("/api/v1/backups/google/client", headers=headers, json=CLIENT)  # same client: account kept
+    assert client.get("/api/v1/backups/status").json()["connected"] is True
+    client.put("/api/v1/backups/google/client", headers=headers, json={**CLIENT, "client_id": "other.apps.googleusercontent.com"})
+    assert client.get("/api/v1/backups/status").json()["connected"] is False
+
+
+def test_a_web_client_is_rejected_with_the_type_to_create(recovery_env, google, monkeypatch):
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+    client.put("/api/v1/backups/google/client", headers=headers, json=CLIENT)
+
+    async def reject(self, url, data=None, **kwargs):
+        return httpx.Response(401, json={"error": "invalid_client"})
+
+    monkeypatch.setattr(FakeGoogle, "post", reject)
+    error = client.post("/api/v1/backups/google/connect", headers=headers).json()["error"]
+    assert error["code"] == "DRIVE_CLIENT_INVALID" and "TVs and Limited Input devices" in error["message"]

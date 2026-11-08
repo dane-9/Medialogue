@@ -231,18 +231,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/backups/google/callback": {
+    "/api/v1/backups/google/client": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Google Callback */
-        get: operations["google_callback_api_v1_backups_google_callback_get"];
-        put?: never;
+        get?: never;
+        /**
+         * Save Google Client
+         * @description The OAuth client (type "TVs and Limited Input devices") Medialogue signs in with.
+         */
+        put: operations["save_google_client_api_v1_backups_google_client_put"];
         post?: never;
-        delete?: never;
+        /** Remove Google Client */
+        delete: operations["remove_google_client_api_v1_backups_google_client_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -257,8 +261,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Connect Google */
+        /**
+         * Connect Google
+         * @description Start a device sign-in: the code to enter at the returned Google address.
+         */
         post: operations["connect_google_api_v1_backups_google_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/google/connect/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Google Connection
+         * @description Polled while the code is shown; 'connected' once it was approved.
+         */
+        post: operations["check_google_connection_api_v1_backups_google_connect_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4148,6 +4175,13 @@ export interface components {
             /** Problem */
             problem?: string | null;
         };
+        /** GoogleClientRequest */
+        GoogleClientRequest: {
+            /** Client Id */
+            client_id: string;
+            /** Client Secret */
+            client_secret: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -7860,17 +7894,18 @@ export interface operations {
             };
         };
     };
-    google_callback_api_v1_backups_google_callback_get: {
+    save_google_client_api_v1_backups_google_client_put: {
         parameters: {
-            query: {
-                code?: string;
-                state: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleClientRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -7878,7 +7913,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -7892,7 +7929,51 @@ export interface operations {
             };
         };
     };
+    remove_google_client_api_v1_backups_google_client_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     connect_google_api_v1_backups_google_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    check_google_connection_api_v1_backups_google_connect_check_post: {
         parameters: {
             query?: never;
             header?: never;
