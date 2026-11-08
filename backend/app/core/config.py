@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Follow filesystem events under media folders (see services/media_watcher).
     watch_media_folders: bool = True
+    # How long Replace Media's computed queue is shared between requests (0: off).
+    replacement_results_seconds: float = 30.0
 
     @field_validator("secret_key", mode="before")
     @classmethod

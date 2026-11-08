@@ -322,3 +322,40 @@ def test_replace_media_count_matches_the_full_queue_without_scoring_uncounted_ti
     expected = asyncio.run(scenario())
     assert expected == 1
     assert client.get("/api/v1/replacements/count").json() == {"count": expected}
+
+
+def test_replace_media_results_are_shared_until_something_changes(recovery_env, monkeypatch):
+    """The page, its count and Upgrade Media share one computed queue; a change
+    through the API or a recorded event makes the next request compute afresh."""
+
+    from app.core.config import get_settings
+    from app.services import replacements as module
+    from app.services.events import publish_live_event
+
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+    monkeypatch.setattr(get_settings(), "replacement_results_seconds", 30.0)
+    module.invalidate_replacement_results()
+    computed: list[str] = []
+    original = module._replacement_queue
+
+    async def counting(db, **kwargs):
+        computed.append("queue")
+        return await original(db, **kwargs)
+
+    monkeypatch.setattr(module, "_replacement_queue", counting)
+    for _ in range(3):
+        assert client.get("/api/v1/replacements/count").status_code == 200
+    assert computed == ["queue"]
+
+    client.put("/api/v1/ui-selections/replace-media-picked", headers=headers, json={"ids": []})
+    client.get("/api/v1/replacements/count")
+    assert computed == ["queue", "queue"]
+
+    publish_live_event("download.progress", entity_type="torrent", data={})
+    client.get("/api/v1/replacements/count")
+    assert len(computed) == 2
+    publish_live_event("torrent.removed", entity_type="torrent", data={})
+    client.get("/api/v1/replacements/count")
+    assert len(computed) == 3
+    module.invalidate_replacement_results()

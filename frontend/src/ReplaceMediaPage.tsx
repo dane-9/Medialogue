@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { cachedList, rememberList } from './lib/listCache'
 import { usePersistentSet } from './lib/persistentSet'
 import { PageTopbar } from './components/Shell'
 import { upgradesApi } from './api/modules/upgrades'
@@ -80,7 +81,8 @@ function Poster({ item }: { item: ReplacementItem }) {
 
 export default function ReplaceMediaPage() {
   const confirm = useConfirm()
-  const [items, setItems] = useState<ReplacementItem[]>([])
+  // The queue as last loaded in this tab: shown at once on return.
+  const [items, setItems] = useState<ReplacementItem[]>(() => cachedList<ReplacementItem>('replaceMedia') ?? [])
   const [status, setStatus] = useState<ReplaceStatus>('all')
   const [statusChosen, setStatusChosen] = useState(false)
   const [selectedRoot, setSelectedRoot] = useState('')
@@ -95,7 +97,7 @@ export default function ReplaceMediaPage() {
   // from Download stays unticked until ticked again or it leaves the list.
   const clearPicks = () => setPicked(new Set())
   const [clients, setClients] = useState<DownloadClient[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => cachedList('replaceMedia') === undefined)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -114,6 +116,7 @@ export default function ReplaceMediaPage() {
   const load = async () => {
     try {
       const [queue, configured] = await Promise.all([replacementsApi.queue(), integrationsApi.downloadClients()])
+      rememberList('replaceMedia', queue.items)
       setItems(queue.items)
       prunePicked(queue.items.map((item) => item.target_key))
       pruneUnticked(queue.items.map((item) => item.target_key))

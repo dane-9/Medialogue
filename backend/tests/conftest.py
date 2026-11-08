@@ -5,6 +5,9 @@ import pytest
 # Live folder watching holds directory handles open (on Windows that blocks
 # deleting a test's temporary media folders). Tests drive it directly instead.
 os.environ.setdefault("MEDIALOGUE_WATCH_MEDIA_FOLDERS", "false")
+# Tests change the database directly between requests; sharing computed
+# results would hide those changes. One test turns it on to check it.
+os.environ.setdefault("MEDIALOGUE_REPLACEMENT_RESULTS_SECONDS", "0")
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { cachedList, rememberList } from '../lib/listCache'
 import { usePersistentSet } from '../lib/persistentSet'
 import { newMediaRoots } from '../lib/newMediaTriage'
 import { Icon } from '../components/Icon'
@@ -26,8 +27,9 @@ function capitalise(value: string): string {
 }
 
 export function NewMediaPage() {
-  const [items, setItems] = useState<MediaDiscovery[]>([])
-  const [loading, setLoading] = useState(true)
+  // The queue as last loaded in this tab: shown at once on return.
+  const [items, setItems] = useState<MediaDiscovery[]>(() => cachedList<MediaDiscovery>('newMedia') ?? [])
+  const [loading, setLoading] = useState(() => cachedList('newMedia') === undefined)
   const [adding, setAdding] = useState(false)
   const [addJob, setAddJob] = useState<Job | null>(null)
   const [rootName, setRootName] = useState('')
@@ -44,6 +46,7 @@ export function NewMediaPage() {
     if (!quiet) setLoading(true)
     try {
       const next = await discoveryApi.discoveries()
+      rememberList('newMedia', next)
       setItems(next)
       pruneExcluded(next.map((item) => item.id))
       setError('')
@@ -52,7 +55,7 @@ export function NewMediaPage() {
     finally { if (!quiet) setLoading(false) }
   }
   useEffect(() => {
-    void load()
+    void load(cachedList('newMedia') !== undefined)
     void moviesApi.movieEditionOptions().then(setEditionOptions).catch(() => undefined)
     void settingsApi.qualityProfiles().then(setProfiles).catch(() => undefined)
   }, [])

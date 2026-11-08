@@ -25,6 +25,7 @@ vi.mock('../api/modules/settings', () => ({
 }))
 
 import { UpgradeMediaPage } from './upgradeMedia'
+import { clearListCache } from '../lib/listCache'
 
 function candidate(overrides: Partial<UpgradeCandidate> = {}): UpgradeCandidate {
   return {
@@ -54,7 +55,7 @@ beforeEach(() => {
   api.customFormats.mockResolvedValue([])
   api.customFormatLayout.mockResolvedValue([])
 })
-afterEach(() => { cleanup(); live.uninstall(); vi.clearAllMocks() })
+afterEach(() => { clearListCache(); cleanup(); live.uninstall(); vi.clearAllMocks() })
 
 describe('Upgrade Media page', () => {
   it('lists a ready upgrade with the release it would replace', async () => {

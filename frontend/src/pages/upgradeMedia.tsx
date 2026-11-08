@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { cachedList, rememberList } from '../lib/listCache'
 import { usePersistentSet } from '../lib/persistentSet'
 import type { CSSProperties, ReactNode } from 'react'
 import { badgeColor } from '../lib/badgeColor'
@@ -139,12 +140,13 @@ function formatUpgradeBytes(bytes?: number) {
 }
 
 export function UpgradeMediaPage() {
-  const [items, setItems] = useState<UpgradeCandidate[]>([])
+  // The list as last loaded in this tab: shown at once on return.
+  const [items, setItems] = useState<UpgradeCandidate[]>(() => cachedList<UpgradeCandidate>('upgradeMedia') ?? [])
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [formatSections, setFormatSections] = useState<Record<string, string>>({})
   const [profileBusy, setProfileBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => cachedList('upgradeMedia') === undefined)
   const [searching, setSearching] = useState(false)
   const [busyId, setBusyId] = useState('')
   // The lit word under the pointer: its reason, so every word sharing it
@@ -181,10 +183,13 @@ export function UpgradeMediaPage() {
     searchResults && resultsTarget ? upgradeResultsToReleases(searchResults, resultsTarget.id, resultsTarget.mediaType) : []
   ), [searchResults, resultsTarget])
 
-  const load = async (quiet = false) => {
+  // `quiet`: no loading state (a cached list is showing, or a live refresh).
+  // Live refreshes also keep errors quiet; the first load always reports them.
+  const load = async (quiet = false, reportError = !quiet) => {
     if (!quiet) setLoading(true)
     try {
       const [nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout] = await Promise.all([upgradesApi.upgradeCandidates(), integrationsApi.downloadClients(), settingsApi.qualityProfiles(), upgradesApi.upgradeCandidateCount(), settingsApi.customFormats(), settingsApi.customFormatLayout()])
+      rememberList('upgradeMedia', nextItems)
       setItems(nextItems)
       pruneExcluded(nextItems.map((item) => item.id))
       setClients(nextClients)
@@ -199,13 +204,13 @@ export function UpgradeMediaPage() {
       setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
       setError('')
     } catch (reason) {
-      if (!quiet) setError(reason instanceof Error ? reason.message : 'Could not load upgrade candidates.')
+      if (reportError) setError(reason instanceof Error ? reason.message : 'Could not load upgrade candidates.')
     } finally {
       if (!quiet) setLoading(false)
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load(cachedList('upgradeMedia') !== undefined, true) }, [])
 
   // Live updates. Progress events patch the downloading rows in place; only a
   // change of state (an upgrade submitted, finished or failed, a library
@@ -215,6 +220,7 @@ export function UpgradeMediaPage() {
   loadLiveRef.current = async () => {
     try {
       const [nextItems, nextCount] = await Promise.all([upgradesApi.upgradeCandidates(), upgradesApi.upgradeCandidateCount()])
+      rememberList('upgradeMedia', nextItems)
       setItems(nextItems)
       setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
     } catch {

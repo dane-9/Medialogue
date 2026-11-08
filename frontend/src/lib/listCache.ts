@@ -11,3 +11,8 @@ export function cachedList<T>(key: string): T[] | undefined {
 export function rememberList<T>(key: string, items: T[]): void {
   lists.set(key, items)
 }
+
+/** Forget every list (tests start from an empty tab). */
+export function clearListCache(): void {
+  lists.clear()
+}

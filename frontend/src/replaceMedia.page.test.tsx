@@ -17,6 +17,7 @@ vi.mock('./api/modules/upgrades', () => ({ upgradesApi: stub({}) }))
 vi.mock('./api/modules/system', () => ({ systemApi: stub({}) }))
 
 import ReplaceMediaPage from './ReplaceMediaPage'
+import { clearListCache } from './lib/listCache'
 
 function item(overrides: Partial<ReplacementItem> = {}): ReplacementItem {
   return {
@@ -44,7 +45,7 @@ beforeEach(() => {
   api.queue.mockResolvedValue({ items: [item()] })
   api.downloadClients.mockResolvedValue([])
 })
-afterEach(() => { cleanup(); live.uninstall(); vi.clearAllMocks() })
+afterEach(() => { clearListCache(); cleanup(); live.uninstall(); vi.clearAllMocks() })
 
 describe('Replace Media page', () => {
   it('lists a title whose source was lost', async () => {

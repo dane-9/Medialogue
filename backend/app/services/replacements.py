@@ -6,6 +6,8 @@ reason below is one way that fails; the queue lists every title with one.
 """
 from __future__ import annotations
 
+import asyncio
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
@@ -379,22 +381,26 @@ async def replacement_targets(
     movie_ids: set[UUID] | None = None,
     show_ids: set[UUID] | None = None,
     counted_only: bool = False,
+    ignore_reasons: frozenset[str] | None = None,
 ) -> list[ReplacementTarget]:
     """Movie releases and show seasons that could not be restored, with why.
 
     Only titles with a problem release are scored, instead of every profile and
-    release in the library. ``counted_only`` also leaves out titles whose every
-    problem is one the sidebar count ignores (see ``UNCOUNTED_REASONS``), since
-    scoring them is most of the work and they can never be counted.
+    release in the library. ``ignore_reasons`` also leaves out titles whose
+    every problem has one of these reasons, for a caller that would discard
+    them anyway: scoring them is most of the work. ``counted_only`` is the
+    sidebar count's set (see ``UNCOUNTED_REASONS``).
     """
 
+    if counted_only:
+        ignore_reasons = UNCOUNTED_REASONS
     problems, affected_movies, affected_shows = await release_problems(db, movie_ids=movie_ids, show_ids=show_ids)
     if not problems:
         return []
-    if counted_only:
+    if ignore_reasons:
         counted_movies: set[UUID] = set()
         counted_shows: set[UUID] = set()
-        counted_ids = [release_id for release_id, item in problems.items() if item.problem.reason not in UNCOUNTED_REASONS]
+        counted_ids = [release_id for release_id, item in problems.items() if item.problem.reason not in ignore_reasons]
         for index in range(0, len(counted_ids), 500):
             chunk = counted_ids[index : index + 500]
             counted_movies.update((await db.scalars(select(MovieRelease.movie_id).where(MovieRelease.id.in_(chunk)))).all())
@@ -526,7 +532,55 @@ def _item(**values: Any) -> dict[str, Any]:
     return base
 
 
+#: Reasons Upgrade Media still offers a title for (see replacing_title_ids).
+UPGRADE_KEEPS_REASONS = frozenset({NOT_WATCHED, FILES_MISSING, NO_TORRENT})
+
+
+# --- Shared results ---------------------------------------------------------
+#
+# Building the queue scores every affected title against every Custom Format.
+# The Replace Media page, its sidebar count, Upgrade Media and its count all
+# asked for it, each on its own, often within the same few seconds. Their plain
+# results are now shared for a short while; any change made through the API
+# clears them (see main.py), and the poll's changes show up when they expire.
+
+_shared_results: dict[tuple, tuple[float, int, Any]] = {}
+_shared_generation = 0
+_shared_locks: dict[tuple[int, tuple], asyncio.Lock] = {}
+
+
+def invalidate_replacement_results() -> None:
+    global _shared_generation
+    _shared_generation += 1
+    _shared_results.clear()
+
+
+async def _shared(key: tuple, compute):
+    from app.core.config import get_settings
+
+    ttl = get_settings().replacement_results_seconds
+    if ttl <= 0:
+        return await compute()
+    key = (get_settings().database_url, *key)
+    lock = _shared_locks.setdefault((id(asyncio.get_running_loop()), key), asyncio.Lock())
+    # One computation at a time per result: a request arriving meanwhile waits
+    # for it and gets the same answer instead of starting its own.
+    async with lock:
+        hit = _shared_results.get(key)
+        if hit is not None and hit[1] == _shared_generation and time.monotonic() - hit[0] < ttl:
+            return hit[2]
+        generation = _shared_generation
+        value = await compute()
+        if generation == _shared_generation:
+            _shared_results[key] = (time.monotonic(), generation, value)
+        return value
+
+
 async def replacing_title_ids(db: AsyncSession) -> set[str]:
+    return set(await _shared(("titles",), lambda: _replacing_title_ids(db)))
+
+
+async def _replacing_title_ids(db: AsyncSession) -> set[str]:
     """Movies and seasons Replace Media is handling, without building its rows.
 
     The same titles the queue lists and does not ignore: a lost source still
@@ -534,14 +588,14 @@ async def replacing_title_ids(db: AsyncSession) -> set[str]:
     """
 
     ids: set[str] = set()
-    targets = await replacement_targets(db)
+    targets = await replacement_targets(db, ignore_reasons=UPGRADE_KEEPS_REASONS)
     reviews = await _reviews(db, [entry.target.target_key for entry in targets])
     for entry in targets:
         # Only titles whose torrent is beyond saving belong to Replace Media alone.
         # One missing from qBittorrent is fixed by re-adding it, one whose files
         # are incomplete by putting them back, and one that never had a torrent
         # gets one from any upgrade, so Upgrade Media keeps offering those.
-        if entry.reason not in {NOT_WATCHED, FILES_MISSING, NO_TORRENT} and not _dismissed(reviews.get(entry.target.target_key), entry.reason):
+        if entry.reason not in UPGRADE_KEEPS_REASONS and not _dismissed(reviews.get(entry.target.target_key), entry.reason):
             ids.update(str(value) for value in (entry.target.movie_id, entry.target.season_id) if value)
     for movie_id, season_id in (await db.execute(
         select(UpgradeCandidate.movie_id, UpgradeCandidate.season_id).where(
@@ -553,6 +607,12 @@ async def replacing_title_ids(db: AsyncSession) -> set[str]:
 
 
 async def replacement_queue(db: AsyncSession, *, details: bool = True, counted_only: bool = False) -> list[dict[str, Any]]:
+    """Every title Replace Media lists (shared briefly, see _shared). Callers must not change the rows."""
+
+    return await _shared(("queue", details, counted_only), lambda: _replacement_queue(db, details=details, counted_only=counted_only))
+
+
+async def _replacement_queue(db: AsyncSession, *, details: bool = True, counted_only: bool = False) -> list[dict[str, Any]]:
     """Every title Replace Media lists, with its status.
 
     ``details=False`` skips what only the page shows (sources, score

@@ -141,7 +141,26 @@ def publish_live_event(
     _publish_payload(_live_payload(event_type, entity_type=entity_type, entity_id=entity_id, data=data))
 
 
+#: Live events that report progress, not a change to what Replace Media lists.
+_PROGRESS_ONLY_EVENTS = frozenset({"download.progress", "scan.progress", "search.started", "search.result", "search.indexer_status"})
+_FINISHED_JOB_STATES = frozenset({"completed", "failed", "cancelled", "interrupted"})
+
+
+def _changes_library_state(payload: dict[str, Any]) -> bool:
+    event = payload.get("event")
+    if event in _PROGRESS_ONLY_EVENTS:
+        return False
+    if event == "job.status":
+        return str((payload.get("data") or {}).get("status") or "").lower() in _FINISHED_JOB_STATES
+    return True
+
+
 def _publish_payload(payload: dict[str, Any]) -> None:
+    # A finished job or a recorded change (a torrent removed, an upgrade
+    # submitted, a replacement found) may change Replace Media's queue.
+    if _changes_library_state(payload):
+        from app.services.replacements import invalidate_replacement_results
+        invalidate_replacement_results()
     for queue in list(_subscribers):
         try:
             queue.put_nowait(payload)
