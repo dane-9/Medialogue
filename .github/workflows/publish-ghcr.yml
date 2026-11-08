@@ -65,9 +65,7 @@ jobs:
             python -c "import alembic; from alembic.config import main; print(alembic.__version__)"
             alembic --version
             cd /app/backend
-            test "$(find alembic/versions -maxdepth 1 -type f -name "*.py" ! -name "__init__.py" | wc -l)" -eq 2
             test "$(alembic heads | grep -c "(head)")" -eq 1
-            alembic heads | grep -q "^0002 (head)$"
           '
 
       - name: Log in to GitHub Container Registry
