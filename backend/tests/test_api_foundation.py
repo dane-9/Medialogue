@@ -558,3 +558,20 @@ def test_large_responses_are_gzipped_for_clients_that_accept_it(client) -> None:
     assert large.json()["openapi"]
     plain = client.get("/api/openapi.json", headers={"Accept-Encoding": "identity"})
     assert "content-encoding" not in plain.headers
+
+
+def test_recent_log_lines_are_readable_by_the_admin_only(client) -> None:
+    import logging
+
+    from app.core.logging import recent_logs
+    from tests.test_part17_recovery import login_headers
+
+    if recent_logs not in logging.getLogger().handlers:
+        logging.getLogger().addHandler(recent_logs)
+    assert client.get("/api/v1/logs").status_code in {401, 403}
+    login_headers(client)
+    logging.getLogger("app.services.search").warning("Indexer search failed for BLU: boom", extra={"indexer": "BLU"})
+    logging.getLogger("app.other").info("routine line")
+    lines = client.get("/api/v1/logs", params={"level": "WARNING", "contains": "indexer search"}).json()["items"]
+    assert lines and lines[-1]["message"] == "Indexer search failed for BLU: boom" and lines[-1]["indexer"] == "BLU"
+    assert all(line["level"] in {"WARNING", "ERROR", "CRITICAL"} for line in lines)

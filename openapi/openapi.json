@@ -18277,6 +18277,85 @@
         ]
       }
     },
+    "/api/v1/logs": {
+      "get": {
+        "description": "The latest lines kept in memory since the last start, oldest first.",
+        "operationId": "read_logs_api_v1_logs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Lowest level to include: DEBUG, INFO, WARNING, ERROR.",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "default": "INFO",
+              "description": "Lowest level to include: DEBUG, INFO, WARNING, ERROR.",
+              "title": "Level",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only lines whose message or logger contains this.",
+            "in": "query",
+            "name": "contains",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only lines whose message or logger contains this.",
+              "title": "Contains"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Logs Api V1 Logs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Logs",
+        "tags": [
+          "logs"
+        ]
+      }
+    },
     "/api/v1/media-files/{media_file_id}/episode-mappings": {
       "put": {
         "operationId": "correct_episode_mapping_api_v1_media_files__media_file_id__episode_mappings_put",
