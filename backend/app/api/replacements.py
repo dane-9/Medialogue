@@ -76,7 +76,7 @@ async def count(_: AdminUser = Depends(require_admin), db: AsyncSession = Depend
     # imported from disk would otherwise keep the badge at a number nobody can
     # clear in one sitting. Nor are trumped ones: their files are still safe.
     return ReplacementCountResponse(count=sum(
-        1 for item in await replacement_queue(db, details=False)
+        1 for item in await replacement_queue(db, details=False, counted_only=True)
         if item["needs_attention"] and item["reason_code"] not in UNCOUNTED_REASONS
     ))
 

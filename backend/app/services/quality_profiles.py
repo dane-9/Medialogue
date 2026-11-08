@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -145,6 +146,14 @@ async def get_assignment(
     entity_id: UUID,
     for_update: bool = False,
 ) -> MediaProfileOverride | None:
+    if not for_update and _PROFILE_CACHE.get() is not None:
+        # Scoring a whole queue asks once per title; read every assignment of
+        # this media type in one query instead.
+        async def load_all() -> dict[UUID, MediaProfileOverride]:
+            rows = (await db.scalars(select(MediaProfileOverride).where(MediaProfileOverride.media_type == media_type))).all()
+            return {(row.movie_id if media_type == MediaType.MOVIES else row.show_id): row for row in rows}
+
+        return (await _cached(("assignments", id(db), media_type), load_all)).get(entity_id)
     statement = select(MediaProfileOverride).where(MediaProfileOverride.media_type == media_type)
     if media_type == MediaType.MOVIES:
         statement = statement.where(MediaProfileOverride.movie_id == entity_id)
@@ -156,6 +165,16 @@ async def get_assignment(
 
 
 async def load_effective_profile(
+    db: AsyncSession,
+    *,
+    media_type: MediaType,
+    entity_id: UUID,
+) -> EffectiveProfile:
+    return await _cached(("effective", id(db), media_type, entity_id),
+                         lambda: _load_effective_profile(db, media_type=media_type, entity_id=entity_id))
+
+
+async def _load_effective_profile(
     db: AsyncSession,
     *,
     media_type: MediaType,
@@ -465,6 +484,10 @@ async def profile_name_exists(db: AsyncSession, name: str, *, excluding: UUID | 
     return (await db.scalar(statement)) is not None
 
 
+async def _enabled_formats(db: AsyncSession) -> list[CustomFormat]:
+    return list((await db.scalars(select(CustomFormat).where(CustomFormat.enabled.is_(True)).order_by(CustomFormat.name))).all())
+
+
 async def evaluate_current_release_score(
     db: AsyncSession,
     *,
@@ -483,25 +506,21 @@ async def evaluate_current_release_score(
     from app.parser import parse_release
 
     effective = await load_effective_profile(db, media_type=media_type, entity_id=entity_id)
-    rows = (
-        await db.scalars(
-            select(CustomFormat)
-            .where(CustomFormat.enabled.is_(True))
-            .order_by(CustomFormat.name)
-        )
-    ).all()
-    formats = [
-        EvaluationFormat.from_dict(
-            {
-                "id": str(row.id),
-                "name": row.name,
-                "description": row.description,
-                "enabled": row.enabled,
-                "condition_definition": dict(row.condition_definition or {}),
-            }
-        )
-        for row in rows
-    ]
+    async def build_formats() -> list[EvaluationFormat]:
+        return [
+            EvaluationFormat.from_dict(
+                {
+                    "id": str(row.id),
+                    "name": row.name,
+                    "description": row.description,
+                    "enabled": row.enabled,
+                    "condition_definition": dict(row.condition_definition or {}),
+                }
+            )
+            for row in await _enabled_formats(db)
+        ]
+
+    formats = await _cached(("enabled-formats", id(db)), build_formats)
     parsed = parse_release(release_name)
     evaluation = evaluate_custom_formats(
         formats,
@@ -605,6 +624,22 @@ async def release_indexer_name(
     info_hashes = [torrent.info_hash for torrent in release.torrents if torrent.info_hash]
     if not info_hashes:
         return None
+    if _PROFILE_CACHE.get() is not None:
+        # Scoring a whole queue: every grab's indexer, newest first, in one query.
+        async def load_grabs() -> dict[str, tuple[datetime, str | None]]:
+            grabs: dict[str, tuple[datetime, str | None]] = {}
+            for info_hash, selected_at, indexer_name in (await db.execute(
+                select(InteractiveSearchResult.submitted_info_hash, InteractiveSearchResult.selected_at, InteractiveSearchResult.indexer_name)
+                .where(InteractiveSearchResult.selected_at.is_not(None), InteractiveSearchResult.submitted_info_hash.is_not(None))
+                .order_by(InteractiveSearchResult.selected_at.desc())
+            )).all():
+                grabs.setdefault(info_hash, (selected_at, indexer_name))
+            return grabs
+
+        grabs = await _cached(("grab-indexers", id(db)), load_grabs)
+        found = [grabs[value] for value in info_hashes if value in grabs]
+        newest = max(found, key=lambda item: item[0], default=None)
+        return str(newest[1]).strip() if newest is not None and newest[1] else None
     selected = await db.scalar(
         select(InteractiveSearchResult)
         .where(

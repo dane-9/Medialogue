@@ -25,7 +25,7 @@ from app.models.domain import (AssociationType, EpisodeMediaMap, Job, JobStatus,
 from app.services.integration_state import list_configured_indexers, get_configured_indexer
 from app.services.jobs import run_job, update_job
 from app.services.payload_groups import GROUP_KEY
-from app.services.release_source import ReleaseSource, source_of_releases, source_of_torrents
+from app.services.release_source import ReleaseSource, source_lookup, source_of_releases
 from app.services.format_breakdown import comparison_formats
 from app.services.quality_profiles import profiles_cached
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
@@ -378,16 +378,29 @@ async def replacement_targets(
     *,
     movie_ids: set[UUID] | None = None,
     show_ids: set[UUID] | None = None,
+    counted_only: bool = False,
 ) -> list[ReplacementTarget]:
     """Movie releases and show seasons that could not be restored, with why.
 
     Only titles with a problem release are scored, instead of every profile and
-    release in the library.
+    release in the library. ``counted_only`` also leaves out titles whose every
+    problem is one the sidebar count ignores (see ``UNCOUNTED_REASONS``), since
+    scoring them is most of the work and they can never be counted.
     """
 
     problems, affected_movies, affected_shows = await release_problems(db, movie_ids=movie_ids, show_ids=show_ids)
     if not problems:
         return []
+    if counted_only:
+        counted_movies: set[UUID] = set()
+        counted_shows: set[UUID] = set()
+        counted_ids = [release_id for release_id, item in problems.items() if item.problem.reason not in UNCOUNTED_REASONS]
+        for index in range(0, len(counted_ids), 500):
+            chunk = counted_ids[index : index + 500]
+            counted_movies.update((await db.scalars(select(MovieRelease.movie_id).where(MovieRelease.id.in_(chunk)))).all())
+            counted_shows.update((await db.scalars(select(ShowRelease.show_id).where(ShowRelease.id.in_(chunk)))).all())
+        affected_movies &= counted_movies
+        affected_shows &= counted_shows
     # A title being upgraded is expected to lose its old torrent; the upgrade
     # owns it until it finishes.
     upgrading_movies: set[UUID] = set()
@@ -539,14 +552,14 @@ async def replacing_title_ids(db: AsyncSession) -> set[str]:
     return ids
 
 
-async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:
+async def replacement_queue(db: AsyncSession, *, details: bool = True, counted_only: bool = False) -> list[dict[str, Any]]:
     """Every title Replace Media lists, with its status.
 
     ``details=False`` skips what only the page shows (sources, score
     breakdowns, live downloads, folders), for the polled sidebar count.
     """
 
-    targets = await replacement_targets(db)
+    targets = await replacement_targets(db, counted_only=counted_only)
     bulk_search, searching_keys = await _search_scope(db)
     reviews = await _reviews(db, [entry.target.target_key for entry in targets])
 
@@ -569,6 +582,8 @@ async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[d
     ).all()
     seasons = {season.id: (season, show) for season, show in season_rows}
 
+    # Every listed title's source in a few queries, not a few per title.
+    sources = await source_lookup(db, [torrent for entry in targets for torrent in entry.torrents]) if details else None
     items: list[dict[str, Any]] = []
     for entry in targets:
         target, torrents = entry.target, entry.torrents
@@ -580,7 +595,7 @@ async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[d
         movie = movies.get(target.movie_id) if target.movie_id else None
         season, show = seasons.get(target.season_id, (None, None)) if target.season_id else (None, None)
         in_progress = bool(row and row.execution_state in ACTIVE_STATES)
-        source = await source_of_torrents(db, torrents) if details else ReleaseSource()
+        source = sources.source(torrents) if sources is not None else ReleaseSource()
         items.append(_item(
             reason=REASON_LABELS[entry.reason], reason_code=entry.reason, reason_since=entry.since,
             lost_evidence=_lost_evidence(torrents) if entry.reason in {REMOVED_FROM_TRACKER, TRUMPED} else [],

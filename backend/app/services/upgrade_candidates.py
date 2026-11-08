@@ -412,9 +412,11 @@ async def _movie_targets(
     targets: list[UpgradeTarget] = []
     skipped_quality = 0
     skipped_read_only: set[str] = set()
-    for movie in movies:
-        profile = await load_effective_profile(db, media_type=MediaType.MOVIES, entity_id=movie.id)
-        releases = (
+    # Every movie's releases in a few queries rather than a handful per movie.
+    releases_by_movie: dict[UUID, list[MovieRelease]] = {}
+    movie_ids_in_order = [movie.id for movie in movies]
+    for index in range(0, len(movie_ids_in_order), 500):
+        for release in (
             await db.scalars(
                 select(MovieRelease)
                 .options(
@@ -422,11 +424,17 @@ async def _movie_targets(
                     selectinload(MovieRelease.directories).selectinload(MediaDirectory.storage_root),
                     selectinload(MovieRelease.torrents),
                 )
-                .where(MovieRelease.movie_id == movie.id, MovieRelease.release_state.in_([ReleaseState.CURRENT, ReleaseState.MISSING] if replacement else [ReleaseState.CURRENT]))
+                .where(
+                    MovieRelease.movie_id.in_(movie_ids_in_order[index : index + 500]),
+                    MovieRelease.release_state.in_([ReleaseState.CURRENT, ReleaseState.MISSING] if replacement else [ReleaseState.CURRENT]),
+                )
                 .order_by(MovieRelease.first_seen_at, MovieRelease.id)
             )
-        ).all()
-        for release in releases:
+        ).all():
+            releases_by_movie.setdefault(release.movie_id, []).append(release)
+    for movie in movies:
+        profile = await load_effective_profile(db, media_type=MediaType.MOVIES, entity_id=movie.id)
+        for release in releases_by_movie.get(movie.id, []):
             evidence = await _release_evidence(
                 db,
                 media_type=MediaType.MOVIES,
