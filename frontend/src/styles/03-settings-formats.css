@@ -275,6 +275,12 @@
 /* Indexers: dragged into the order that breaks ties between equal results. */
 .indexer-order-hint { margin: 0; padding: var(--s3) var(--s4) 0; color: var(--faint); font-size: var(--t-xs); }
 .indexer-order-hint + .provider-card-grid { padding-top: var(--s3); }
+.provider-card-actions { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.indexer-scope-pill { display: inline-flex; align-items: center; height: 20px; padding: 0 var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); font-size: var(--t-xs); white-space: nowrap; }
+/* Both libraries: a movie half and a show half, joined into one pill. */
+.indexer-scope-split { display: inline-flex; }
+.indexer-scope-split > .indexer-scope-pill:first-child { border-right-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.indexer-scope-split > .indexer-scope-pill:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .provider-card-sortable { cursor: grab; }
 .provider-card-sortable:active { cursor: grabbing; }
 .provider-card-dragging { opacity: .5; border-color: var(--accent); }
