@@ -531,3 +531,19 @@ def test_change_match_requires_csrf(client: TestClient) -> None:
 
     unprotected = client.post(f"/api/v1/movies/{movie['id']}/rematch", json={"tmdb_id": 329865})
     assert unprotected.status_code == 403, unprotected.text
+
+
+def test_ui_selections_are_stored_per_list_and_replaced_whole(client) -> None:
+    from tests.test_part17_recovery import login_headers
+
+    headers = login_headers(client)
+    assert client.get("/api/v1/ui-selections/new-media-excluded").json() == {"ids": []}
+    saved = client.put("/api/v1/ui-selections/new-media-excluded", headers=headers, json={"ids": ["b", "a", "a"]})
+    assert saved.status_code == 200 and saved.json() == {"ids": ["a", "b"]}
+    client.put("/api/v1/ui-selections/replace-media-unticked", headers=headers, json={"ids": ["x"]})
+    assert client.get("/api/v1/ui-selections/new-media-excluded").json() == {"ids": ["a", "b"]}
+    client.put("/api/v1/ui-selections/new-media-excluded", headers=headers, json={"ids": ["c"]})
+    assert client.get("/api/v1/ui-selections/new-media-excluded").json() == {"ids": ["c"]}
+    assert client.get("/api/v1/ui-selections/replace-media-unticked").json() == {"ids": ["x"]}
+    assert client.get("/api/v1/ui-selections/anything-else").status_code == 422
+    assert client.put("/api/v1/ui-selections/new-media-excluded", json={"ids": []}).status_code in {401, 403}

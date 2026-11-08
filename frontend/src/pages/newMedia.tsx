@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { usePersistentSet } from '../lib/persistentSet'
 import { newMediaRoots } from '../lib/newMediaTriage'
 import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
@@ -32,7 +33,8 @@ export function NewMediaPage() {
   const [adding, setAdding] = useState(false)
   const [addProgress, setAddProgress] = useState<{ done: number; total: number } | null>(null)
   const [rootName, setRootName] = useState('')
-  const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  // Folders left out stay left out across reloads and devices.
+  const [excluded, setExcluded, pruneExcluded] = usePersistentSet('new-media-excluded')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState('')
@@ -42,7 +44,12 @@ export function NewMediaPage() {
 
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
-    try { setItems(await discoveryApi.discoveries()); setError('') }
+    try {
+      const next = await discoveryApi.discoveries()
+      setItems(next)
+      pruneExcluded(next.map((item) => item.id))
+      setError('')
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load New Media.') }
     finally { if (!quiet) setLoading(false) }
   }

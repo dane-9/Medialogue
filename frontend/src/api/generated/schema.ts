@@ -2499,6 +2499,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ui-selections/{list_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Selection */
+        get: operations["get_selection_api_v1_ui_selections__list_key__get"];
+        /**
+         * Replace Selection
+         * @description Replace the whole set: what the page shows is what is stored.
+         */
+        put: operations["replace_selection_api_v1_ui_selections__list_key__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/upgrade-candidates": {
         parameters: {
             query?: never;
@@ -7201,6 +7222,11 @@ export interface components {
             total_size?: number | null;
             /** Tvdb Id */
             tvdb_id?: number | null;
+        };
+        /** UiSelectionSet */
+        UiSelectionSet: {
+            /** Ids */
+            ids?: string[];
         };
         /** UpgradeCandidateCount */
         UpgradeCandidateCount: {
@@ -12594,6 +12620,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_selection_api_v1_ui_selections__list_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list_key: "new-media-excluded" | "upgrade-media-excluded" | "replace-media-unticked" | "replace-media-picked";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UiSelectionSet"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_selection_api_v1_ui_selections__list_key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list_key: "new-media-excluded" | "upgrade-media-excluded" | "replace-media-unticked" | "replace-media-picked";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UiSelectionSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UiSelectionSet"];
                 };
             };
             /** @description Validation Error */

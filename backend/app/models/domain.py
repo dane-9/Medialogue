@@ -1103,3 +1103,17 @@ class PlexConfiguration(TimestampMixin, Base):
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class UiSelection(Base):
+    """A row left out of a list's bulk action (New Media, Upgrade, Replace).
+
+    Kept on the server, not in one browser, so unticking a row sticks across
+    reloads and devices. ``item_id`` is the row's id in that list.
+    """
+
+    __tablename__ = "ui_selections"
+
+    list_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    item_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

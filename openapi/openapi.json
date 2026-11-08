@@ -13069,6 +13069,20 @@
         "title": "TorrentArchiveSummary",
         "type": "object"
       },
+      "UiSelectionSet": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50000,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "title": "UiSelectionSet",
+        "type": "object"
+      },
       "UpgradeCandidateCount": {
         "properties": {
           "count": {
@@ -21677,6 +21691,111 @@
         "summary": "Retry Torrent Archive",
         "tags": [
           "torrent-archive"
+        ]
+      }
+    },
+    "/api/v1/ui-selections/{list_key}": {
+      "get": {
+        "operationId": "get_selection_api_v1_ui_selections__list_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "list_key",
+            "required": true,
+            "schema": {
+              "enum": [
+                "new-media-excluded",
+                "upgrade-media-excluded",
+                "replace-media-unticked",
+                "replace-media-picked"
+              ],
+              "title": "List Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiSelectionSet"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Selection",
+        "tags": [
+          "ui-selections"
+        ]
+      },
+      "put": {
+        "description": "Replace the whole set: what the page shows is what is stored.",
+        "operationId": "replace_selection_api_v1_ui_selections__list_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "list_key",
+            "required": true,
+            "schema": {
+              "enum": [
+                "new-media-excluded",
+                "upgrade-media-excluded",
+                "replace-media-unticked",
+                "replace-media-picked"
+              ],
+              "title": "List Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UiSelectionSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiSelectionSet"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Selection",
+        "tags": [
+          "ui-selections"
         ]
       }
     },

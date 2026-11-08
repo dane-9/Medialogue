@@ -80,7 +80,8 @@ const transportMiddleware: Middleware = {
   },
   async onResponse({ request, response }) {
     if (!response.ok) throw await apiErrorFromResponse(response)
-    if (needsCsrf(request.method)) announceDataChanged()
+    // Remembered ticks change no count; they would only refresh every badge per click.
+    if (needsCsrf(request.method) && !new URL(request.url).pathname.includes('/ui-selections/')) announceDataChanged()
   },
 }
 

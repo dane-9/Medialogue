@@ -133,19 +133,51 @@ def test_upgrade_head_offline_sql_generation_succeeds() -> None:
     assert "CREATE TABLE tmdb_configurations" in completed.stdout
     assert "CREATE TABLE plex_configurations" in completed.stdout
     assert "INSERT INTO alembic_version" in completed.stdout
-    assert "'0001'" in completed.stdout
+    assert "'0002'" in completed.stdout
 
 
-def test_migration_history_is_the_single_fresh_baseline() -> None:
+def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None:
     backend_dir = _backend_dir()
     versions_dir = backend_dir / "alembic" / "versions"
     migrations = sorted(path for path in versions_dir.glob("*.py") if path.name != "__init__.py")
-    assert [path.name for path in migrations] == ["0001_fresh_baseline.py"]
+    assert [path.name for path in migrations] == ["0001_fresh_baseline.py", "0002_ui_selections.py"]
 
-    source = migrations[0].read_text(encoding="utf-8")
-    assert 'revision = "0001"' in source
-    assert "down_revision = None" in source
-    assert "Base.metadata.create_all" in source
+    baseline = migrations[0].read_text(encoding="utf-8")
+    assert 'revision = "0001"' in baseline
+    assert "down_revision = None" in baseline
+    assert "Base.metadata.create_all" in baseline
+    # The baseline creates every current model, so later revisions must also
+    # apply cleanly on top of a database that already has their tables.
+    later = migrations[1].read_text(encoding="utf-8")
+    assert 'down_revision = "0001"' in later
+    assert "IF NOT EXISTS" in later
+
+
+def test_a_database_created_before_ui_selections_gains_the_table(tmp_path) -> None:
+    """Existing installs were created by 0001 without the table; 0002 adds it."""
+
+    backend_dir = _backend_dir()
+    database_path = tmp_path / "old.db"
+    database_url = f"sqlite:///{database_path}"
+    environment = {**os.environ, "MEDIALOGUE_DATABASE_URL": database_url}
+    upgraded = subprocess.run(["alembic", "-c", str(backend_dir / "alembic.ini"), "upgrade", "head"],
+                              cwd=backend_dir, env=environment, capture_output=True, text=True)
+    assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE ui_selections")
+            connection.exec_driver_sql("UPDATE alembic_version SET version_num = '0001'")
+    finally:
+        engine.dispose()
+    again = subprocess.run(["alembic", "-c", str(backend_dir / "alembic.ini"), "upgrade", "head"],
+                           cwd=backend_dir, env=environment, capture_output=True, text=True)
+    assert again.returncode == 0, again.stdout + again.stderr
+    engine = create_engine(database_url)
+    try:
+        assert "ui_selections" in inspect(engine).get_table_names()
+    finally:
+        engine.dispose()
 
 
 def test_online_sqlite_migrations_use_installed_aiosqlite_driver() -> None:

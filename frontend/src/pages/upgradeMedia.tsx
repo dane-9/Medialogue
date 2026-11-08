@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { usePersistentSet } from '../lib/persistentSet'
 import type { CSSProperties, ReactNode } from 'react'
 import { badgeColor } from '../lib/badgeColor'
 import { formatAge } from '../lib/age'
@@ -155,7 +156,8 @@ export function UpgradeMediaPage() {
   const [selectedRoot, setSelectedRoot] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  // Rows left out stay left out across reloads and devices.
+  const [excluded, setExcluded, pruneExcluded] = usePersistentSet('upgrade-media-excluded')
   const [profilePrompt, setProfilePrompt] = useState<string | null>(null)
   const [readOnlyRoots, setReadOnlyRoots] = useState<string[]>([])
   const [confirming, setConfirming] = useState(false)
@@ -184,6 +186,7 @@ export function UpgradeMediaPage() {
     try {
       const [nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout] = await Promise.all([upgradesApi.upgradeCandidates(), integrationsApi.downloadClients(), settingsApi.qualityProfiles(), upgradesApi.upgradeCandidateCount(), settingsApi.customFormats(), settingsApi.customFormatLayout()])
       setItems(nextItems)
+      pruneExcluded(nextItems.map((item) => item.id))
       setClients(nextClients)
       setProfiles(nextProfiles)
       // Token tooltips name a format by the section it is filed under on the
@@ -312,7 +315,6 @@ export function UpgradeMediaPage() {
         failures.push(`${item.mediaTitle}: ${reason instanceof Error ? reason.message : 'submission failed'}`)
       }
     }
-    setExcluded(new Set())
     setConfirming(false)
     if (submitted) setMessage(`Started ${submitted} ${submitted === 1 ? 'upgrade' : 'upgrades'}. Old torrents and media will be removed automatically after each replacement validates.`)
     if (failures.length) setError(failures.join(' · '))
@@ -435,8 +437,6 @@ export function UpgradeMediaPage() {
   const mediaType = rows[0]?.mediaType ?? 'movies'
   const noun = mediaType === 'movies' ? 'Movie' : 'Show'
   const eligibleClients = useMemo(() => clients.filter((client) => client.enabled && client.scope === mediaType), [clients, mediaType])
-
-  useEffect(() => { setExcluded(new Set()) }, [rootName])
 
   // One destination for the whole selection, chosen when the dialog opens.
   const openConfirm = () => {

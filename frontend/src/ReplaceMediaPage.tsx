@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { usePersistentSet } from './lib/persistentSet'
 import { PageTopbar } from './components/Shell'
 import { upgradesApi } from './api/modules/upgrades'
 import { formatEta } from './api/mappers/downloads'
@@ -87,9 +88,12 @@ export default function ReplaceMediaPage() {
   // Rows ticked by hand. A row with a replacement found starts ticked for
   // Download (like Upgrade Media) unless unticked; Ignore and Search only
   // ever act on rows ticked by hand.
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [unticked, setUnticked] = useState<Set<string>>(new Set())
-  const clearPicks = () => { clearPicks(); setUnticked(new Set()) }
+  // Both are kept on the server, so unticking a row sticks everywhere.
+  const [picked, setPicked, prunePicked] = usePersistentSet('replace-media-picked')
+  const [unticked, setUnticked, pruneUnticked] = usePersistentSet('replace-media-unticked')
+  // Switching view or acting clears hand-ticked rows only: a row unticked
+  // from Download stays unticked until ticked again or it leaves the list.
+  const clearPicks = () => setPicked(new Set())
   const [clients, setClients] = useState<DownloadClient[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
@@ -111,6 +115,8 @@ export default function ReplaceMediaPage() {
     try {
       const [queue, configured] = await Promise.all([replacementsApi.queue(), integrationsApi.downloadClients()])
       setItems(queue.items)
+      prunePicked(queue.items.map((item) => item.target_key))
+      pruneUnticked(queue.items.map((item) => item.target_key))
       setClients(configured)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load Replace Media.')
