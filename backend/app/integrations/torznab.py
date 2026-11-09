@@ -99,7 +99,7 @@ class TorznabClient:
             raise TorznabError("Indexer download URL points to an untrusted origin.")
         return resolved
 
-    async def health(self) -> dict[str, str | None]:
+    async def _capabilities(self) -> ElementTree.Element:
         try:
             async with self._client.stream("GET", "", params={"apikey": self.api_key, "t": "caps"}) as response:
                 response.raise_for_status()
@@ -115,6 +115,27 @@ class TorznabClient:
         except (ElementTree.ParseError, DefusedXmlException) as exc:
             raise TorznabError("Torznab capabilities response was not valid XML.") from exc
         _raise_for_error_document(root)
+        return root
+
+    async def _accepts_tmdb_id(self, media_type: str) -> bool:
+        """Whether this indexer can search by TMDB id.
+
+        Prowlarr answers an id it cannot use with no results rather than an
+        error, so an id is only sent where the indexer says it is supported. A
+        plain title search works everywhere, so doubt means leaving it out.
+        """
+
+        try:
+            root = await self._capabilities()
+        except TorznabError:
+            return False
+        mode = root.find(f"searching/{'movie-search' if media_type == 'movies' else 'tv-search'}")
+        if mode is None:
+            return False
+        return "tmdbid" in {value.strip().casefold() for value in mode.attrib.get("supportedParams", "").split(",")}
+
+    async def health(self) -> dict[str, str | None]:
+        root = await self._capabilities()
         server = root.find("server")
         return {
             "status": "healthy",
@@ -136,7 +157,7 @@ class TorznabClient:
             "t": "movie" if media_type == "movies" else "tvsearch",
             "q": query,
         }
-        if tmdb_id is not None:
+        if tmdb_id is not None and await self._accepts_tmdb_id(media_type):
             params["tmdbid"] = tmdb_id
         if season is not None:
             params["season"] = season

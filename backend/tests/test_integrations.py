@@ -452,7 +452,46 @@ async def test_torznab_result_parsing():
     assert results[0].guid == "g1"
     assert results[0].size == 123
     assert results[0].seeders == 42
-    assert requests[0].url.params["cat"] == "2000,2040"
+    assert requests[-1].url.params["cat"] == "2000,2040"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("caps", "media_type", "sent"),
+    [
+        ('<caps><searching><movie-search available="yes" supportedParams="q,imdbid,tmdbid"/></searching></caps>', "movies", True),
+        ('<caps><searching><movie-search available="yes" supportedParams="q,imdbid"/></searching></caps>', "movies", False),
+        ('<caps><searching><movie-search available="yes" supportedParams="q"/></searching></caps>', "movies", False),
+        ('<caps><searching><tv-search available="yes" supportedParams="q,season,ep,tmdbid"/></searching></caps>', "shows", True),
+        # Movie support says nothing about shows, and unusable caps mean no id.
+        ('<caps><searching><movie-search available="yes" supportedParams="q,tmdbid"/></searching></caps>', "shows", False),
+        ("not xml", "movies", False),
+    ],
+)
+async def test_torznab_sends_a_tmdb_id_only_where_the_indexer_accepts_one(caps, media_type, sent):
+    searches = []
+
+    def handler(request):
+        if request.url.params["t"] == "caps":
+            return httpx.Response(200, text=caps)
+        searches.append(request)
+        return httpx.Response(200, text="<rss><channel></channel></rss>")
+
+    client = TorznabClient("http://indexer/api", "key", transport=httpx.MockTransport(handler))
+    await client.search("Before Sunset 2004", media_type=media_type, tmdb_id=80)
+    await client.close()
+    assert searches[0].url.params["q"] == "Before Sunset 2004"
+    assert ("tmdbid" in searches[0].url.params) is sent
+
+
+@pytest.mark.asyncio
+async def test_torznab_asks_for_capabilities_only_when_it_has_an_id_to_send():
+    requests = []
+    transport = httpx.MockTransport(lambda request: requests.append(request) or httpx.Response(200, text="<rss><channel></channel></rss>"))
+    client = TorznabClient("http://indexer/api", "key", transport=transport)
+    await client.search("Inception", media_type="movies")
+    await client.close()
+    assert [request.url.params["t"] for request in requests] == ["movie"]
 
 
 def test_plex_snapshot_title_lookup_ignores_punctuation_and_ampersand_variants() -> None:
