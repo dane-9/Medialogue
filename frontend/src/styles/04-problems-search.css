@@ -270,7 +270,8 @@
 /* Same box as the download wizard's search step and the upgrade results
    browser, so every release list in the app opens at one size. */
 .movie-search-modal { width: min(1103px, calc(100vw - 32px)); height: min(860px, calc(100vh - 48px)); max-height: none; }
-.movie-search-modal .modal-body { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+/* The list scrolls itself, so the body keeps no empty strip for a scrollbar. */
+.movie-search-modal .modal-body { display: flex; min-height: 0; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
 .movie-search-body { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: var(--s3); padding: var(--s4); overflow: hidden; }
 .movie-search-destination {
   display: grid;
@@ -293,7 +294,8 @@
   .movie-search-destination { grid-template-columns: minmax(0, 1fr); }
 }
 .movie-search-body > .settings-note { margin: 0; }
-.movie-search-body .release-list { min-height: 180px; }
+/* Out to the modal's edge, so the scrollbar sits in the side space. */
+.movie-search-body .release-list { min-height: 180px; margin-right: calc(-1 * var(--s4)); }
 
 .wizard-destination-path {
   display: grid;
@@ -416,16 +418,32 @@
   .wizard-movie-card { grid-template-columns: 72px minmax(0, 1fr); }
   .wizard-poster { width: 72px; }}
 
-.release-list { flex: 1; min-height: 0; overflow: auto; }
+/* Every release table's columns, and the current-release row above some of
+   them. The name takes all that the fixed columns leave. */
+.release-list,
+.upgrade-results-current { --release-columns: 54px minmax(200px, 1fr) 68px 72px 60px 66px; }
+
+/* A trackless scrollbar, its room kept so the rows never change width. */
+.release-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
 
 .release-head,
 .release-row {
   display: grid;
-  grid-template-columns: 54px minmax(200px, 1fr) 72px 84px 74px 96px 34px;
+  grid-template-columns: var(--release-columns);
   align-items: center;
-  gap: var(--s4);
+  gap: var(--s3);
   padding: 0 var(--s4);
 }
+/* Only a table with a search-again button spends a column on it. */
+.release-list.has-refresh > .release-head,
+.release-list.has-refresh > .release-row { grid-template-columns: var(--release-columns) 34px; }
 .release-head {
   position: sticky;
   top: 0;
@@ -648,9 +666,8 @@
 .release-empty { display: grid; min-height: 200px; place-items: center; padding: var(--s5); color: var(--muted); font-size: var(--t-sm); text-align: center; }
 
 @media (max-width: 900px) {
-  .release-head,
-  .release-row,
-  .upgrade-results-current-row { grid-template-columns: 54px minmax(140px, 1fr) 72px 84px 34px; }
+  .release-list,
+  .upgrade-results-current { --release-columns: 54px minmax(140px, 1fr) 68px 72px; }
   .release-head > *:nth-child(n+5):not(.release-refresh),
   .release-row > *:nth-child(n+5):not(.release-refresh) { display: none; }
 }

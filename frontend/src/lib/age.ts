@@ -33,6 +33,11 @@ export function formatAge(published?: string | null, now: number = Date.now()): 
   return 'just now'
 }
 
+/** For a column already headed Age: "2 years", where "ago" would only add width. */
+export function formatAgeBrief(published?: string | null, now: number = Date.now()): string {
+  return formatAge(published, now).replace(/ ago$/, '')
+}
+
 export function formatUntil(expires?: string | null, now: number = Date.now()): string {
   if (!expires) return '-'
   const at = Date.parse(expires)

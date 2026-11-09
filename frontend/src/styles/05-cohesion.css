@@ -496,14 +496,15 @@ select.input { background-color: var(--input-bg); }
 .upgrade-confirm-steps { display: grid; gap: var(--s3); margin: 0; padding-left: 1.35rem; }
 .upgrade-confirm-steps li { padding-left: var(--s1); color: var(--text); }
 .upgrade-confirm-steps li span { display: block; margin-top: 2px; color: var(--muted); line-height: 1.45; }
-.upgrade-results-current { display: grid; padding: var(--s3) 0; border-bottom: 1px solid var(--line); background: var(--raised); }
+/* Keeps the same scrollbar room as the list below, so the columns line up. */
+.upgrade-results-current { display: grid; padding: var(--s3) 0; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--raised); scrollbar-gutter: stable; scrollbar-width: thin; }
 /* The list's own grid, so the current release lines its columns up with the
    header beneath it: format box under FORMAT, score under CF SCORE. */
 .upgrade-results-current-row {
   display: grid;
-  grid-template-columns: 54px minmax(200px, 1fr) 72px 84px 74px 96px 34px;
+  grid-template-columns: var(--release-columns);
   align-items: center;
-  gap: var(--s4);
+  gap: var(--s3);
   padding: 0 var(--s4);
 }
 .upgrade-results-current-row > .release-quality { justify-self: center; }
@@ -516,7 +517,8 @@ select.input { background-color: var(--input-bg); }
   max-height: none;
 }
 .upgrade-results-title-year { color: var(--muted); font-weight: 400; }
-.upgrade-results-modal .modal-body { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+/* The list scrolls itself, so the body keeps no empty strip for a scrollbar. */
+.upgrade-results-modal .modal-body { display: flex; min-height: 0; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
 .upgrade-results-browser { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
 .upgrade-results-browser .release-list { min-height: 180px; }
 .upgrade-results-browser .release-row:disabled { opacity: .68; }

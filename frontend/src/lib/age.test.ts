@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageValue, formatAge, formatUntil } from './age'
+import { ageValue, formatAge, formatAgeBrief, formatUntil } from './age'
 
 const NOW = Date.parse('2026-08-24T12:00:00Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -8,6 +8,14 @@ const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 const WEEK = 7 * DAY
+
+describe('formatAgeBrief', () => {
+  it('drops only the "ago"', () => {
+    expect(formatAgeBrief(ago(2 * WEEK), NOW)).toBe('2 weeks')
+    expect(formatAgeBrief(ago(30_000), NOW)).toBe('just now')
+    expect(formatAgeBrief(undefined, NOW)).toBe('-')
+  })
+})
 
 describe('formatAge', () => {
   it('describes an age in a single coarse unit', () => {

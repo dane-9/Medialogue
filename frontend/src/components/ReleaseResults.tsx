@@ -5,7 +5,7 @@ import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
 import { parserWarningMessage } from '../lib/parserWarnings'
 import { formatPeers, swarmHealth } from '../lib/swarm'
-import { formatAge } from '../lib/age'
+import { formatAgeBrief } from '../lib/age'
 import { languageLabel, releaseLanguages, UNKNOWN_LANGUAGE } from '../lib/languages'
 import { parsedResolution, splitQuality } from '../lib/quality'
 import { badgeColor } from '../lib/badgeColor'
@@ -87,7 +87,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
     <div className="release-empty">{empty}</div>
   </div>
 
-  return <div className="release-list" role="listbox" aria-label={label}>
+  return <div className={`release-list ${onRefresh ? 'has-refresh' : ''}`} role="listbox" aria-label={label}>
     <div className="release-head">
       {header('quality', 'Format', true)}
       {header('title', 'Name')}
@@ -125,7 +125,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
           </span>
         </Tooltip>
         <span className="release-name">
-          <strong>{result.title}</strong>
+          <strong title={result.title}>{result.title}</strong>
           <span className="release-tags">
             <span
               className="release-pill release-pill-indexer"
@@ -177,7 +177,7 @@ export function ReleaseResults({ results, selectedId, onSelect, disabled, empty,
         <Tooltip
           className="release-numeric release-age"
           content={result.publishedAt ? new Date(result.publishedAt).toLocaleString() : 'This indexer reported no publication date'}
-        >{formatAge(result.publishedAt)}</Tooltip>
+        >{formatAgeBrief(result.publishedAt)}</Tooltip>
       </button>
     })}
   </div>
