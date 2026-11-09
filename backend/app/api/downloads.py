@@ -952,7 +952,9 @@ async def apply_download_action(
             skipped += len(hashes)
             continue
         try:
-            await run_torrent_action(client, payload.action, hashes, value=payload.value, client_factory=client_factory)
+            await run_torrent_action(
+                client, payload.action, hashes, value=payload.value, category=payload.category, client_factory=client_factory
+            )
         except Exception as exc:
             # One unreachable client must not hide that the others succeeded.
             failures.append(

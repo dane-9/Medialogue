@@ -3588,7 +3588,9 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "start" | "stop" | "recheck" | "reannounce" | "queue_top" | "queue_up" | "queue_down" | "queue_bottom" | "download_limit" | "upload_limit" | "share_ratio" | "remove";
+            action: "start" | "stop" | "recheck" | "reannounce" | "queue_top" | "queue_up" | "queue_down" | "queue_bottom" | "download_limit" | "upload_limit" | "share_ratio" | "set_category" | "remove";
+            /** Category */
+            category?: string | null;
             /** Download Ids */
             download_ids: string[];
             /** Value */

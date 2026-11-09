@@ -114,22 +114,41 @@ function trackerEntries(hosts: string[]): DownloadRailEntry[] {
   ]
 }
 
-function DownloadContextMenu({ position, count, busy, allStopped, onRun }: {
+function DownloadContextMenu({ position, count, busy, allStopped, clientId, currentCategory, onRun, onCategory }: {
   position: { x: number; y: number }
   count: number
   busy: boolean
   allStopped: boolean
+  clientId?: string
+  /** The category every selected torrent shares; undefined when they differ. */
+  currentCategory?: string
   onRun: (action: Parameters<typeof downloadsApi.applyDownloadAction>[1], value?: number) => Promise<void>
+  onCategory: (category: string) => Promise<void>
 }) {
   // A limit row swaps the menu for a small prompt rather than embedding inputs
   // in the list, which keeps every row a single line.
   const [prompt, setPrompt] = useState<null | 'download_limit' | 'upload_limit' | 'share_ratio'>(null)
   const [queueOpen, setQueueOpen] = useState(false)
+  const [categoryOpen, setCategoryOpen] = useState(false)
+  const [categories, setCategories] = useState<string[] | null>(null)
+  const [categoriesFailed, setCategoriesFailed] = useState(false)
   const [value, setValue] = useState('')
   const left = Math.max(12, Math.min(position.x, window.innerWidth - 177))
-  const top = Math.max(12, Math.min(position.y, window.innerHeight - (prompt ? 140 : 260)))
+  const top = Math.max(12, Math.min(position.y, window.innerHeight - (prompt ? 140 : 300)))
   // Open the submenu leftwards when the parent menu is already near the edge.
   const flipQueue = left + 165 + 143 > window.innerWidth
+  const flipCategory = left + 165 + 180 > window.innerWidth
+
+  // Read from qBittorrent when first wanted, so a category no torrent uses yet
+  // can still be chosen.
+  const openCategories = () => {
+    setCategoryOpen(true)
+    if (categories || !clientId) return
+    setCategoriesFailed(false)
+    integrationsApi.downloadClientCategories(clientId)
+      .then((rows) => setCategories(rows.map((row) => row.name).sort((a, b) => a.localeCompare(b))))
+      .catch(() => setCategoriesFailed(true))
+  }
 
   const prompts = {
     download_limit: { title: 'Limit download', hint: 'KiB/s, 0 for unlimited', mode: 'numeric' as const },
@@ -185,6 +204,23 @@ function DownloadContextMenu({ position, count, busy, allStopped, onRun }: {
           <button type="button" className="download-menu-item tone-blue" disabled={busy} onClick={() => void onRun('queue_up')}><Icon name="queue-up" size={13} />Move up</button>
           <button type="button" className="download-menu-item tone-blue" disabled={busy} onClick={() => void onRun('queue_down')}><Icon name="queue-down" size={13} />Move down</button>
           <button type="button" className="download-menu-item tone-blue" disabled={busy} onClick={() => void onRun('queue_bottom')}><Icon name="queue-bottom" size={13} />Move to bottom</button>
+        </div>}
+      </div>
+      <div
+        className="download-menu-sub"
+        onMouseEnter={openCategories}
+        onMouseLeave={() => setCategoryOpen(false)}
+      >
+        <button type="button" className="download-menu-item tone-blue" aria-haspopup="menu" aria-expanded={categoryOpen} disabled={busy} onClick={openCategories}>
+          <Icon name="category" size={13} />Category
+          <Icon name="caret" size={12} className="download-menu-arrow" />
+        </button>
+        {categoryOpen && <div className={`download-menu-panel download-menu-categories ${flipCategory ? 'flip' : ''}`}>
+          {categories ? <>
+            {/* The current category is greyed out: choosing it would change nothing. */}
+            <button type="button" className="download-menu-item tone-neutral" disabled={busy || currentCategory === ''} onClick={() => void onCategory('')}><Icon name="close" size={13} /><span>No category</span></button>
+            {categories.map((name) => <button type="button" className="download-menu-item tone-blue" key={name} title={name} disabled={busy || currentCategory === name} onClick={() => void onCategory(name)}><Icon name="category" size={13} /><span>{name}</span></button>)}
+          </> : <div className="download-menu-label">{categoriesFailed ? 'Could not load' : 'Loading…'}</div>}
         </div>}
       </div>
       <div className="download-menu-separator" />
@@ -493,7 +529,7 @@ export function DownloadsPage() {
     return [...result.values()]
   }
 
-  const runAction = async (action: Parameters<typeof downloadsApi.applyDownloadAction>[1], value?: number) => {
+  const runAction = async (action: Parameters<typeof downloadsApi.applyDownloadAction>[1], value?: number, category?: string) => {
     if (!selected.size) return
     setActionBusy(true)
     try {
@@ -504,7 +540,7 @@ export function DownloadsPage() {
         setDeleting(downloadIds)
         return
       }
-      const result = await downloadsApi.applyDownloadAction(downloadIds, action, value)
+      const result = await downloadsApi.applyDownloadAction(downloadIds, action, value, category)
       const problems = [
         ...(result.failures ?? []).map((item) => `${item.client_name}: ${item.error}`),
         ...(result.skipped ? [`${result.skipped} torrent${result.skipped === 1 ? '' : 's'} skipped because the client is disabled`] : []),
@@ -654,7 +690,13 @@ export function DownloadsPage() {
         count={selected.size}
         busy={actionBusy}
         allStopped={selectedDownloads().every((item) => item.state === 'Paused')}
+        clientId={selectedDownloads()[0]?.clientId}
+        currentCategory={(() => {
+          const shared = new Set(selectedDownloads().map((item) => item.category ?? ''))
+          return shared.size === 1 ? [...shared][0] : undefined
+        })()}
         onRun={runAction}
+        onCategory={(category) => runAction('set_category', undefined, category)}
       />
     </>}
   </Page>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Download, DownloadClient } from '../types'
 import { installLiveEvents, renderPage } from '../test/pageHarness'
@@ -9,11 +9,12 @@ const api = vi.hoisted(() => ({
   downloadFacets: vi.fn(),
   applyDownloadAction: vi.fn(),
   downloadClients: vi.fn(),
+  downloadClientCategories: vi.fn(),
 }))
 vi.mock('../api/modules/downloads', () => ({
   downloadsApi: { downloads: api.downloads, downloadFacets: api.downloadFacets, applyDownloadAction: api.applyDownloadAction },
 }))
-vi.mock('../api/modules/integrations', () => ({ integrationsApi: { downloadClients: api.downloadClients } }))
+vi.mock('../api/modules/integrations', () => ({ integrationsApi: { downloadClients: api.downloadClients, downloadClientCategories: api.downloadClientCategories } }))
 
 import { DownloadsPage } from './downloads'
 
@@ -76,6 +77,19 @@ describe('Downloads page', () => {
     act(() => { live.emit('download.completed'); live.emit('torrent.detected'); live.emit('download.completed') })
     expect(await screen.findByText('100%', {}, { timeout: 3000 })).toBeTruthy()
     expect(api.downloads.mock.calls.length).toBe(reads + 1)
+  })
+
+  it('sets the category of the selected torrents from the row menu', async () => {
+    api.downloads.mockResolvedValue({ items: [download({ category: 'Movies' })], total: 1, pages: 1, page: 1 })
+    api.downloadClientCategories.mockResolvedValue([{ name: 'Requested' }, { name: 'Movies' }])
+    api.applyDownloadAction.mockResolvedValue({ applied: 1, clients: 1, skipped: 0, failures: [] })
+    renderPage(<DownloadsPage />, '/downloads')
+    fireEvent.contextMenu(await screen.findByText('Inception.2010.1080p.BluRay-GRP'))
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Category' }).parentElement!)
+    const requested = await screen.findByRole('button', { name: 'Requested' }) as HTMLButtonElement
+    expect((screen.getByRole('button', { name: 'Movies' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(requested)
+    await waitFor(() => expect(api.applyDownloadAction).toHaveBeenCalledWith(['dl-1'], 'set_category', undefined, 'Requested'))
   })
 
   it('says so when the list cannot be read, and retries', async () => {

@@ -1931,10 +1931,23 @@
               "download_limit",
               "upload_limit",
               "share_ratio",
+              "set_category",
               "remove"
             ],
             "title": "Action",
             "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
           },
           "download_ids": {
             "items": {

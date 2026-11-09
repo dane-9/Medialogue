@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_validator
 
 from app.models.domain import TorrentArchiveState
 
@@ -132,10 +132,18 @@ class DownloadActionRequest(BaseModel):
     action: Literal[
         "start", "stop", "recheck", "reannounce",
         "queue_top", "queue_up", "queue_down", "queue_bottom",
-        "download_limit", "upload_limit", "share_ratio", "remove",
+        "download_limit", "upload_limit", "share_ratio", "set_category", "remove",
     ]
     #: Bytes/s for the rate limits, a ratio for share_ratio. Ignored otherwise.
     value: float | None = None
+    #: For set_category: the category's name, empty to clear it. Ignored otherwise.
+    category: str | None = Field(default=None, max_length=256)
+
+    @model_validator(mode="after")
+    def _category_given(self) -> "DownloadActionRequest":
+        if self.action == "set_category" and self.category is None:
+            raise ValueError("set_category needs a category.")
+        return self
 
 
 class DownloadFacetsResponse(BaseModel):

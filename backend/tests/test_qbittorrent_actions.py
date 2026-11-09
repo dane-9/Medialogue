@@ -36,6 +36,40 @@ async def test_accepted_submission_survives_priority_failure(kind, failure):
     assert len(adds) == 1
 
 
+def _category_client(posted):
+    def handler(request):
+        path = request.url.path
+        if path.endswith("/login"):
+            return httpx.Response(200, text="Ok.")
+        if path.endswith("/categories"):
+            return httpx.Response(200, json={"Movies": {"name": "Movies", "savePath": "/movies"}})
+        if path.endswith("/preferences"):
+            return httpx.Response(200, json={"save_path": "/downloads"})
+        posted.append((path.rsplit("/", 1)[-1], parse_qs(request.content.decode(), keep_blank_values=True)))
+        return httpx.Response(200)
+
+    return QBittorrentClient("http://qbit", "u", "p", transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.parametrize("category", ["Movies", ""])
+async def test_setting_a_category_turns_off_auto_management_first_so_files_stay(category):
+    posted = []
+    async with _category_client(posted) as client:
+        await client.set_category(["ABC"], category)
+    assert posted == [
+        ("setAutoManagement", {"hashes": ["abc"], "enable": ["false"]}),
+        ("setCategory", {"hashes": ["abc"], "category": [category]}),
+    ]
+
+
+async def test_an_unknown_category_changes_nothing():
+    posted = []
+    async with _category_client(posted) as client:
+        with pytest.raises(QBittorrentError, match="no category named Gone"):
+            await client.set_category(["abc"], "Gone")
+    assert posted == []
+
+
 async def test_rejected_add_still_fails():
     def handler(request):
         if request.url.path.endswith("/login"):

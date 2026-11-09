@@ -77,6 +77,9 @@
   box-shadow: 0 16px 44px rgba(0, 0, 0, .55);
 }
 .download-menu-panel.flip { left: auto; right: 100%; }
+.download-menu-categories { width: 180px; max-height: 260px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.download-menu-categories .download-menu-item { flex: none; }
+.download-menu-categories .download-menu-item > span { overflow: hidden; min-width: 0; text-overflow: ellipsis; }
 .download-menu-prompt { display: grid; gap: var(--s2); padding: var(--s1); }
 .download-menu-prompt-actions { display: flex; justify-content: flex-end; gap: var(--s2); }
 /* A client that stopped reporting: keep the row, but make it read as not live. */

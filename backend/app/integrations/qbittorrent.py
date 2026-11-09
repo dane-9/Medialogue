@@ -820,6 +820,19 @@ class QBittorrentClient:
     async def reannounce_torrents(self, hashes: Sequence[str]) -> None:
         await self._post_hashes("/api/v2/torrents/reannounce", hashes)
 
+    async def set_category(self, hashes: Sequence[str], category: str) -> None:
+        """Change the category only; an empty one clears it.
+
+        With Automatic Torrent Management on, qBittorrent moves a torrent's files
+        to its new category's folder, which would pull media out of the library.
+        Turning it off first leaves every file where it is.
+        """
+
+        if category and not any(row.name == category for row in await self.list_categories()):
+            raise QBittorrentError(f"qBittorrent has no category named {category}.")
+        await self._post_hashes("/api/v2/torrents/setAutoManagement", hashes, enable="false")
+        await self._post_hashes("/api/v2/torrents/setCategory", hashes, category=category)
+
     async def set_queue_position(self, hashes: Sequence[str], move: str) -> None:
         paths = {
             "top": "/api/v2/torrents/topPrio",

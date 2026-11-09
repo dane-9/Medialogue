@@ -11,7 +11,7 @@ import asyncio
 import os
 import shutil
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -1148,6 +1148,67 @@ def test_download_action_reports_partial_failure_instead_of_failing_everything(c
     assert body["applied"] == 1
     assert [item["client_name"] for item in body["failures"]] == ["bad-client"]
     assert "connection refused" in body["failures"][0]["error"]
+
+
+def test_download_action_sets_a_category_and_shows_it_at_once(client: TestClient) -> None:
+    headers = _login(client)
+    qbit = _create_client(client, headers, name="category-client")
+    ids: dict[str, str] = {}
+    info_hash = "c" * 40
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            torrent = Torrent(info_hash=info_hash, name="wrong.category")
+            db.add(torrent)
+            await db.flush()
+            observation = TorrentClientObservation(
+                torrent_id=torrent.id, download_client_id=UUID(qbit["id"]),
+                state="uploading", progress=1, category="Wrong", is_present=True,
+            )
+            db.add(observation)
+            await db.flush()
+            ids["row"] = str(observation.id)
+            await db.commit()
+
+    asyncio.run(seed())
+    calls: list[tuple[list[str], str]] = []
+
+    class Adapter:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def set_category(self, hashes, category):
+            calls.append((list(hashes), category))
+
+        async def list_torrents(self):
+            return [replace(_torrent(info_hash, "wrong.category"), category="Movies")]
+
+        async def close(self):
+            return None
+
+    from app.api import downloads as downloads_api
+
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: Adapter
+    try:
+        missing = client.post(
+            "/api/v1/downloads/actions", headers=headers,
+            json={"download_ids": [ids["row"]], "action": "set_category"},
+        )
+        response = client.post(
+            "/api/v1/downloads/actions", headers=headers,
+            json={"download_ids": [ids["row"]], "action": "set_category", "category": "Movies"},
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+    assert missing.status_code == 422
+    assert response.status_code == 200, response.text
+    assert calls == [([info_hash], "Movies")]
+
+    async def stored() -> str | None:
+        async with db_session.async_session_factory() as db:
+            return (await db.get(TorrentClientObservation, UUID(ids["row"]))).category
+
+    assert asyncio.run(stored()) == "Movies"
 
 
 def test_cross_seeds_are_grouped_paged_together_and_removable_individually(client: TestClient) -> None:

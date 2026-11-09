@@ -32,10 +32,11 @@ export const downloadsApi = {
     downloadIds: string[],
     action: 'start' | 'stop' | 'recheck' | 'reannounce'
       | 'queue_top' | 'queue_up' | 'queue_down' | 'queue_bottom'
-      | 'download_limit' | 'upload_limit' | 'share_ratio' | 'remove',
+      | 'download_limit' | 'upload_limit' | 'share_ratio' | 'set_category' | 'remove',
     value?: number,
+    category?: string,
   ) => openApiData(openApiClient.POST('/api/v1/downloads/actions', {
-    body: { download_ids: downloadIds, action, value: value ?? null },
+    body: { download_ids: downloadIds, action, value: value ?? null, category: category ?? null },
   })),
   /** What deleting these downloads would remove, for the user to confirm. */
   deletePlan: (downloadIds: string[]) => openApiData(openApiClient.POST('/api/v1/downloads/delete-plan', {

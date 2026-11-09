@@ -165,6 +165,7 @@ async def refresh_observations_after_action(
         if observed is None:
             continue
         row.state = observed.state
+        row.category = observed.category or None
         row.progress = observed.progress
         row.download_speed = observed.download_speed
         row.upload_speed = observed.upload_speed
@@ -239,6 +240,7 @@ async def run_torrent_action(
     info_hashes: Sequence[str],
     *,
     value: float | None = None,
+    category: str | None = None,
     client_factory: QBittorrentClientFactory = QBittorrentClient,
 ) -> None:
     """Apply one qBittorrent action to a batch of torrents on one client.
@@ -266,6 +268,8 @@ async def run_torrent_action(
         elif action == "share_ratio":
             # -2 hands the torrent back to qBittorrent's global limit.
             await adapter.set_share_limits(info_hashes, float(value if value is not None else -2))
+        elif action == "set_category":
+            await adapter.set_category(info_hashes, category or "")
         elif action == "remove":
             # Removal from qBittorrent only. Files are never deleted here: a
             # cross-seed member shares its payload with the rest of its group.
