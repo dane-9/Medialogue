@@ -28,7 +28,7 @@ from app.schemas.replacements import (
 from app.services.events import create_event
 from app.services.jobs import create_job
 from app.services.runtime_jobs import launch_runtime_job
-from app.services.replacements import UNCOUNTED_REASONS, SEARCH_JOB_TYPE, replacement_queue, run_replacement_search, search_replacement_now
+from app.services.replacements import SEARCH_JOB_TYPE, replacement_queue, run_replacement_search, search_replacement_now
 from app.api import downloads as downloads_api
 
 router = APIRouter(prefix="/replacements", tags=["replacements"])
@@ -72,12 +72,8 @@ async def queue(_: AdminUser = Depends(require_admin), db: AsyncSession = Depend
 async def count(_: AdminUser = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> ReplacementCountResponse:
     """Items waiting on the user, for the sidebar badge."""
 
-    # Titles that never had a torrent are listed but not counted: a library
-    # imported from disk would otherwise keep the badge at a number nobody can
-    # clear in one sitting. Nor are trumped ones: their files are still safe.
     return ReplacementCountResponse(count=sum(
-        1 for item in await replacement_queue(db, details=False, counted_only=True)
-        if item["needs_attention"] and item["reason_code"] not in UNCOUNTED_REASONS
+        1 for item in await replacement_queue(db, details=False) if item["needs_attention"]
     ))
 
 

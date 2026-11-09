@@ -728,6 +728,29 @@ def test_movie_upgrade_handoff_rejects_a_different_edition(client) -> None:
     asyncio.run(run())
 
 
+def test_upgrade_count_leaves_out_a_candidate_of_a_different_edition(client) -> None:
+    test_client, tmp_path = client
+    headers = _login(test_client)
+    qbit, indexer = _create_integrations(test_client, headers)
+    candidate_id, _movie_id, old_release_id, _old_torrent_id, _old_dir, _new_dir = asyncio.run(
+        _seed_movie_upgrade(tmp_path, qbit, indexer)
+    )
+    assert test_client.get("/api/v1/upgrade-candidates/count").json()["count"] == 1
+
+    async def change_edition() -> None:
+        async with db_session.async_session_factory() as db:
+            old = await db.get(MovieRelease, old_release_id)
+            assert old is not None
+            old.parsed_edition = "Director's Cut"
+            old.effective_edition = "Director's Cut"
+            await db.commit()
+
+    asyncio.run(change_edition())
+    listed = next(item for item in test_client.get("/api/v1/upgrade-candidates").json() if item["id"] == str(candidate_id))
+    assert listed["execution_eligible"] is False
+    assert test_client.get("/api/v1/upgrade-candidates/count").json()["count"] == 0
+
+
 def test_cleanup_refuses_when_replacement_disappears_after_preview(client) -> None:
     test_client, tmp_path = client
     headers = _login(test_client)

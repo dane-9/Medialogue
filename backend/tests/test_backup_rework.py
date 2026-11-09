@@ -291,14 +291,13 @@ def test_title_with_a_new_download_in_qbittorrent_is_left_alone(recovery_env):
     asyncio.run(scenario())
 
 
-def test_replace_media_count_matches_the_full_queue_without_scoring_uncounted_titles(recovery_env):
-    """The sidebar count skips scoring titles it would never count; the number
-    must still be what the full queue would count."""
+def test_replace_media_count_includes_every_reason_the_queue_lists(recovery_env):
+    """A title listed as waiting on the user is counted, whatever its reason."""
 
     from app.db import session as db_session
     from app.models.domain import Movie, MovieRelease, TorrentClientObservation, IdentityState
     from sqlalchemy import select
-    from app.services.replacements import UNCOUNTED_REASONS, replacement_queue
+    from app.services.replacements import replacement_queue
     from tests.test_upgrade_execution import _create_integrations, _seed_movie_upgrade
     client, _, root = recovery_env
     headers = login_headers(client)
@@ -310,17 +309,17 @@ def test_replace_media_count_matches_the_full_queue_without_scoring_uncounted_ti
             for row in (await db.scalars(select(TorrentClientObservation).where(TorrentClientObservation.torrent_id == old_torrent_id))).all():
                 row.is_present = False
                 row.removed_at = datetime.now(timezone.utc) - timedelta(days=2)
-            # A title imported from disk with no torrent: listed, never counted.
+            # A title imported from disk with no torrent still counts.
             bare = Movie(title="Bare Movie", sort_title="bare movie", year=2020, identity_state=IdentityState.MATCHED)
             db.add(bare); await db.flush()
             db.add(MovieRelease(movie_id=bare.id, raw_release_name="Bare.Movie.2020.1080p.BluRay.x264-GRP"))
             await db.commit()
             full = await replacement_queue(db, details=False)
             assert {item["reason_code"] for item in full} == {"not_watched", "no_torrent"}
-            return sum(1 for item in full if item["needs_attention"] and item["reason_code"] not in UNCOUNTED_REASONS)
+            return sum(1 for item in full if item["needs_attention"])
 
     expected = asyncio.run(scenario())
-    assert expected == 1
+    assert expected == 2
     assert client.get("/api/v1/replacements/count").json() == {"count": expected}
 
 

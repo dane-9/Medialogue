@@ -60,8 +60,6 @@ REMOVED_FROM_TRACKER = "removed_from_tracker"
 TRUMPED = "trumped"
 #: The files were never linked to any torrent.
 NO_TORRENT = "no_torrent"
-#: Listed but not counted in the sidebar badge: nothing is at risk.
-UNCOUNTED_REASONS = frozenset({NO_TORRENT, TRUMPED})
 #: When a title's releases fail in different ways, the cheapest fix leads:
 #: re-adding a torrent may clear it, a new torrent is the last resort.
 REASON_PRIORITY = (NOT_WATCHED, FILES_MISSING, MISSING, NO_SEEDERS, TRACKER_GONE, REMOVED_FROM_TRACKER, TRUMPED, NO_TORRENT)
@@ -380,7 +378,6 @@ async def replacement_targets(
     *,
     movie_ids: set[UUID] | None = None,
     show_ids: set[UUID] | None = None,
-    counted_only: bool = False,
     ignore_reasons: frozenset[str] | None = None,
 ) -> list[ReplacementTarget]:
     """Movie releases and show seasons that could not be restored, with why.
@@ -388,12 +385,9 @@ async def replacement_targets(
     Only titles with a problem release are scored, instead of every profile and
     release in the library. ``ignore_reasons`` also leaves out titles whose
     every problem has one of these reasons, for a caller that would discard
-    them anyway: scoring them is most of the work. ``counted_only`` is the
-    sidebar count's set (see ``UNCOUNTED_REASONS``).
+    them anyway: scoring them is most of the work.
     """
 
-    if counted_only:
-        ignore_reasons = UNCOUNTED_REASONS
     problems, affected_movies, affected_shows = await release_problems(db, movie_ids=movie_ids, show_ids=show_ids)
     if not problems:
         return []
@@ -606,20 +600,20 @@ async def _replacing_title_ids(db: AsyncSession) -> set[str]:
     return ids
 
 
-async def replacement_queue(db: AsyncSession, *, details: bool = True, counted_only: bool = False) -> list[dict[str, Any]]:
+async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:
     """Every title Replace Media lists (shared briefly, see _shared). Callers must not change the rows."""
 
-    return await _shared(("queue", details, counted_only), lambda: _replacement_queue(db, details=details, counted_only=counted_only))
+    return await _shared(("queue", details), lambda: _replacement_queue(db, details=details))
 
 
-async def _replacement_queue(db: AsyncSession, *, details: bool = True, counted_only: bool = False) -> list[dict[str, Any]]:
+async def _replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:
     """Every title Replace Media lists, with its status.
 
     ``details=False`` skips what only the page shows (sources, score
     breakdowns, live downloads, folders), for the polled sidebar count.
     """
 
-    targets = await replacement_targets(db, counted_only=counted_only)
+    targets = await replacement_targets(db)
     bulk_search, searching_keys = await _search_scope(db)
     reviews = await _reviews(db, [entry.target.target_key for entry in targets])
 

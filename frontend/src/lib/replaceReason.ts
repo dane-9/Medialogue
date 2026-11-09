@@ -75,7 +75,7 @@ export function replaceReasonDetail(code: ReplaceReasonCode, since?: string | nu
       }
     case 'trumped':
       return {
-        help: 'One tracker removed this torrent, nearly always because a better upload replaced it, while a cross-seed of the same files still seeds elsewhere. The files are safe, so this is not counted in the sidebar. Downloading the replacement retires every old torrent and deletes the old files, like an upgrade.',
+        help: 'One tracker removed this torrent, nearly always because a better upload replaced it, while a cross-seed of the same files still seeds elsewhere. The files are safe. Downloading the replacement retires every old torrent and deletes the old files, like an upgrade.',
         note: age ? `Removed ${age}` : 'Removed by one tracker',
       }
     case 'no_torrent':

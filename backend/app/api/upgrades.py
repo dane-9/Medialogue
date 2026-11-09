@@ -241,6 +241,13 @@ async def _responses(db: AsyncSession, rows: list[UpgradeCandidate]) -> list[Upg
     return [_build_response(row, found) for row in rows]
 
 
+def _candidate_edition(row: UpgradeCandidate) -> str | None:
+    candidate = (row.comparison_snapshot or {}).get("candidate") or {}
+    if isinstance(candidate, dict) and "edition" in candidate:
+        return candidate.get("edition")
+    return parse_release(row.title).edition
+
+
 def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateResponse:
     media_title = "Unknown media"
     media_year: int | None = None
@@ -333,16 +340,11 @@ def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateR
         profile_id = profile.id if profile else None
 
     snapshot = dict(row.comparison_snapshot or {})
-    candidate_snapshot = snapshot.get("candidate") or {}
     current_formats, candidate_formats = found.formats.get(row.id, ([], []))
     source = found.sources.source(
         torrent for release_id in release_ids for torrent in found.release_torrents.get(release_id, [])
     )
-    candidate_edition = (
-        candidate_snapshot.get("edition")
-        if isinstance(candidate_snapshot, dict) and "edition" in candidate_snapshot
-        else parse_release(row.title).edition
-    )
+    candidate_edition = _candidate_edition(row)
     edition_matches = row.media_type != MediaType.MOVIES or same_edition(current_edition, candidate_edition)
     execution_eligible = bool(row.execution_eligible and edition_matches)
     execution_block_reason = row.execution_block_reason
@@ -619,7 +621,20 @@ async def count_upgrade_candidates(
         )
     ).all()
     replacing = await _titles_in_replace_media(db) if pending else set()
-    count = sum(1 for row in pending if not _left_to_replace_media(row, replacing))
+    # The same edition check the list applies: a different edition cannot be started.
+    editions: dict[UUID, str | None] = {}
+    for chunk in _in_chunks({ids[0] for row in pending if row.media_type == MediaType.MOVIES and (ids := _release_ids(row))}):
+        editions.update((await db.execute(
+            select(MovieRelease.id, MovieRelease.effective_edition).where(MovieRelease.id.in_(chunk))
+        )).tuples().all())
+
+    def startable(row: UpgradeCandidate) -> bool:
+        if row.media_type != MediaType.MOVIES:
+            return True
+        release_ids = _release_ids(row)
+        return same_edition(editions.get(release_ids[0]) if release_ids else None, _candidate_edition(row))
+
+    count = sum(1 for row in pending if not _left_to_replace_media(row, replacing) and startable(row))
     read_only = list(
         await db.scalars(
             select(StorageRoot.name)
