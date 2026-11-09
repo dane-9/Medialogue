@@ -537,6 +537,33 @@ def test_open_problem_updates_one_canonical_row(client: TestClient) -> None:
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize(
+    ("job_type", "stoppable"),
+    [("search_media_upgrades", True), ("search_media_replacements", True), ("search_new_replacements", True), ("readd_missing_torrents", False)],
+)
+def test_searches_can_be_cancelled_but_tasks_that_change_things_cannot(client: TestClient, monkeypatch, job_type, stoppable) -> None:
+    from sqlalchemy import select
+
+    from app.models.domain import Schedule
+    from app.services import scheduler
+
+    headers = login_headers(client)
+    monkeypatch.setattr(scheduler, "launch_runtime_job", lambda *_args, **_kwargs: True)
+
+    async def start():
+        async with db_session.async_session_factory() as db:
+            await scheduler.ensure_default_schedules(db)
+            await db.commit()
+            schedule = await db.scalar(select(Schedule).where(Schedule.job_type == job_type))
+            return (await scheduler.trigger_schedule(db, schedule, trigger="manual")).id
+
+    job_id = asyncio.run(start())
+    response = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["cancellable"] is stoppable
+    assert response.json()["status"] == ("cancelled" if stoppable else "queued")
+
+
 def test_cancelled_queued_job_is_not_resurrected_and_restart_interrupts_running_work(client: TestClient) -> None:
     headers = login_headers(client)
 

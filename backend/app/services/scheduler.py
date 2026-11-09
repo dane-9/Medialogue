@@ -107,6 +107,11 @@ DEFAULT_SCHEDULES = {
 }
 
 
+#: Safe to stop at any moment: each title's result is saved as it is found, and
+#: nothing is downloaded or changed on disk. A later run picks up the rest.
+CANCELLABLE_SCHEDULED_JOBS = frozenset({"search_media_upgrades", "search_media_replacements", "search_new_replacements"})
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -241,7 +246,7 @@ async def trigger_schedule(db: AsyncSession, schedule: Schedule, *, trigger: str
             db,
             schedule.job_type,
             schedule_id=schedule_id,
-            cancellable=False,
+            cancellable=schedule.job_type in CANCELLABLE_SCHEDULED_JOBS,
             summary={"schedule_id": str(schedule_id), "schedule_name": schedule_name(schedule), "trigger": trigger},
         )
         schedule.last_started_at = now

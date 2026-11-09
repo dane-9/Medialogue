@@ -659,7 +659,7 @@ async def search_upgrade_candidates(
         job = await create_job(
             db,
             "search_media_upgrades",
-            cancellable=False,
+            cancellable=True,
             summary={"trigger": "manual", "target": target},
         )
         await db.commit()

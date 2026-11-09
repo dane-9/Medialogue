@@ -88,7 +88,7 @@ async def search(payload: ReplacementSearchRequest, _: object = Depends(require_
         # different item must not be answered with another item's job.
         if not active_key or active_key == payload.target_key:
             return JobAcceptedResponse(job_id=active.id)
-    job = await create_job(db, SEARCH_JOB_TYPE, cancellable=False, summary={
+    job = await create_job(db, SEARCH_JOB_TYPE, cancellable=True, summary={
         "target_key": payload.target_key,
         "message": "Searching for a replacement" if payload.target_key else "Searching for replacements",
     })
