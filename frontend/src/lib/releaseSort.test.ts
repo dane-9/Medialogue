@@ -52,12 +52,12 @@ describe('quality outranks Custom Format score', () => {
     expect(ids(asRanked(list))).toEqual(['best', 'mid', 'plain'])
   })
 
-  it('uses seeders only when quality and score both tie', () => {
+  it('keeps the server order, which follows tracker priority, when quality and score both tie', () => {
     const list = [
-      release({ id: 'thin', qualityPreference: REMUX, customFormatScore: 100, seeders: 2 }),
-      release({ id: 'healthy', qualityPreference: REMUX, customFormatScore: 100, seeders: 200 }),
+      release({ id: 'priority-tracker', qualityPreference: REMUX, customFormatScore: 100, seeders: 2 }),
+      release({ id: 'busier-tracker', qualityPreference: REMUX, customFormatScore: 100, seeders: 200 }),
     ]
-    expect(ids(asRanked(list))).toEqual(['healthy', 'thin'])
+    expect(ids(asRanked(list))).toEqual(['priority-tracker', 'busier-tracker'])
   })
 
   it('orders a full mixed list by quality tier first', () => {

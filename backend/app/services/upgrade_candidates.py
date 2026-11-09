@@ -874,9 +874,12 @@ def _candidate_sort_key(candidate: ScoredCandidate) -> tuple[Any, ...]:
         candidate.quality_preference,
         -candidate.custom_format_score,
         -candidate.revision_rank,
+        # Your tracker order decides between equal releases, unless the
+        # preferred copy has nobody seeding it.
+        (candidate.result.seeders or 0) <= 0,
+        candidate.indexer_priority,
         -(candidate.result.seeders if candidate.result.seeders is not None else -1),
         published_rank,
-        candidate.indexer_priority,
         candidate.result.title.casefold(),
         (candidate.result.guid or candidate.result.download_url or candidate.result.title).casefold(),
     )
@@ -1047,7 +1050,7 @@ async def evaluate_results(
             not bool(item["eligible"]),
             next(
                 (_candidate_sort_key(candidate) for candidate in candidates if str(candidate.indexer_id) == item["indexer_id"] and candidate.result.title == item["title"]),
-                (9999, 0, 0, 0, 0, 9999, str(item["title"]).casefold(), str(item["id"])),
+                (9999, 0, 0, True, 9999, 0, 0, str(item["title"]).casefold(), str(item["id"])),
             ),
         )
     )

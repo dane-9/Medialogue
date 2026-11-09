@@ -26,9 +26,8 @@ function value(item: InteractiveSearchResult, sort: SortKey): number {
 function compareRank(left: InteractiveSearchResult, right: InteractiveSearchResult): number {
   const quality = (right.qualityPreference ?? 0) - (left.qualityPreference ?? 0)
   if (quality) return quality
-  const score = (right.customFormatScore ?? 0) - (left.customFormatScore ?? 0)
-  if (score) return score
-  return (right.seeders ?? 0) - (left.seeders ?? 0)
+  // Beyond this the server has already ranked them, by your tracker order.
+  return (right.customFormatScore ?? 0) - (left.customFormatScore ?? 0)
 }
 
 export function sortReleases(

@@ -54,6 +54,22 @@ from app.services.tmdb import get_show_details, get_tmdb_configuration
 router = APIRouter(tags=["interactive search"])
 
 
+def search_result_order(item: InteractiveSearchResult) -> tuple:
+    """Best first. Tracker order decides between equals, unless nobody seeds the preferred copy."""
+
+    snapshot = item.custom_format_snapshot or {}
+    return (
+        -int(bool(snapshot.get("quality_allowed", True))),
+        -int(snapshot.get("minimum_custom_format_score_met") is not False),
+        -int(snapshot.get("quality_preference", 0)),
+        -int(item.custom_format_score or 0),
+        (item.seeders or 0) <= 0,
+        int(snapshot.get("indexer_priority", 25)),
+        -int(item.seeders or 0),
+        item.created_at,
+    )
+
+
 def _search_result_response(
     row: InteractiveSearchResult,
     colors: dict[UUID, str | None] | None = None,
@@ -324,18 +340,7 @@ async def get_search_job(
             .where(InteractiveSearchResult.job_id == job.id, active_clause)
         )
     ).all()
-    ordered_rows = sorted(
-        all_rows,
-        key=lambda item: (
-            -int(bool((item.custom_format_snapshot or {}).get("quality_allowed", True))),
-            -int((item.custom_format_snapshot or {}).get("minimum_custom_format_score_met") is not False),
-            -int((item.custom_format_snapshot or {}).get("quality_preference", 0)),
-            -int(item.custom_format_score or 0),
-            -int(item.seeders or 0),
-            int((item.custom_format_snapshot or {}).get("indexer_priority", 25)),
-            item.created_at,
-        ),
-    )
+    ordered_rows = sorted(all_rows, key=search_result_order)
     rows = ordered_rows[(page - 1) * page_size:page * page_size]
     summary = dict(job.summary or {})
     indexer_states = summary.get("indexers") or {}
