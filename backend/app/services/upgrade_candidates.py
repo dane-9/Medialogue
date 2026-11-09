@@ -36,6 +36,7 @@ from app.models.domain import (
     UpgradeSearchMark,
 )
 from app.parser import parse_release
+from app.services.builtin_formats import BANNED_RELEASE_GROUP, BANNED_RELEASE_GROUPS_FORMAT, RELEASE_GROUP_FORMAT
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
 from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, list_configured_indexers
@@ -127,6 +128,15 @@ UNKNOWN_WHEN_UNTAGGED = frozenset({"Audio"})
 _FORMAT_GROUPS: dict[str, str | None] = {}
 
 
+def _release_group_points(rows: Any) -> int:
+    """Points from release group tiers, which only choose between results."""
+
+    return sum(
+        int(item.get("contribution") or 0) for item in rows
+        if item.get("matched", True) and _FORMAT_GROUPS.get(str(item.get("custom_format_id") or "")) == RELEASE_GROUP_FORMAT
+    )
+
+
 def _format_gain(current_snapshot: dict[str, Any], candidate_formats: list[dict[str, Any]]) -> tuple[int, list[str]]:
     """The Custom Format gain that counts toward an upgrade, and the tiered
     groups the candidate makes worse."""
@@ -143,6 +153,8 @@ def _format_gain(current_snapshot: dict[str, Any], candidate_formats: list[dict[
     gain = 0
     worse: list[str] = []
     for group in set(current) | set(candidate):
+        if group == RELEASE_GROUP_FORMAT:
+            continue
         before, after = current.get(group, 0), candidate.get(group, 0)
         if group in UNKNOWN_WHEN_UNTAGGED and group not in current:
             continue
@@ -671,6 +683,8 @@ def _score_candidate(
         score_overrides=profile.overrides,
         context={"indexer": indexer.name},
     )
+    if any(item.matched and item.custom_format_name == BANNED_RELEASE_GROUPS_FORMAT for item in evaluation.formats):
+        return None
     same_release_group = _same_release_group(target.reference, parsed)
     revision_context_matches = _revision_context_matches(target, parsed)
     format_snapshots: list[dict[str, Any]] = []
@@ -726,7 +740,9 @@ def _score_candidate(
         reasons.extend(revision_reasons)
     reasons = list(dict.fromkeys(reasons))
     if target.replacement:
-        if score < max(item.custom_format_score for item in target.releases):
+        # A lost source is replaced by the same quality from any group.
+        without_groups = score - _release_group_points(format_snapshots)
+        if without_groups < max(item.custom_format_score - _release_group_points(_matched_formats(item.score_snapshot).values()) for item in target.releases):
             return None
         if profile.minimum_custom_format_score is not None and score < profile.minimum_custom_format_score:
             return None
@@ -827,6 +843,8 @@ def _rejection_reasons(
         return ["The indexer returned an empty release title."]
     if not result.download_url:
         return ["The indexer did not provide a downloadable torrent."]
+    if BANNED_RELEASE_GROUP.search(result.title):
+        return ["This release group is banned."]
     parsed = parse_release(result.title)
     if target.replacement:
         from app.integrations.qbittorrent import magnet_info_hash

@@ -26,6 +26,7 @@ from app.models.domain import (
 )
 from app.parser import parse_release
 from app.parser.language_aggregation import aggregate_languages
+from app.services.builtin_formats import BANNED_RELEASE_GROUPS_FORMAT
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
 from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
@@ -496,6 +497,8 @@ async def _store_results(
             score_overrides=score_overrides,
             context={"indexer": indexer_name},
         )
+        if any(item.matched and item.custom_format_name == BANNED_RELEASE_GROUPS_FORMAT for item in evaluation.formats):
+            warnings.append("This release group is banned.")
         minimum_custom_format_score_met = (
             int(evaluation.total_score) >= int(minimum_custom_format_score)
             if minimum_custom_format_score is not None

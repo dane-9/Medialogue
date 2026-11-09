@@ -151,10 +151,12 @@ async def refresh_default_profile_scores(session: AsyncSession) -> int:
         DEFAULT_FORMAT_SCORES_V1,
         DEFAULT_FORMAT_SCORES_VERSION,
         DEFAULT_QUALITY_PROFILE_MARKER,
+        FORMATS_ADDED_IN_SCORES_V3,
     )
 
     changed = 0
     keys = {row.id: row.builtin_key for row in (await session.scalars(select(CustomFormat).where(CustomFormat.builtin.is_(True)))).all()}
+    ids_by_key = {key: format_id for format_id, key in keys.items()}
     for profile in (await session.scalars(select(QualityProfile))).all():
         settings = dict(profile.settings or {})
         if settings.get("system_profile") != DEFAULT_QUALITY_PROFILE_MARKER:
@@ -166,6 +168,15 @@ async def refresh_default_profile_scores(session: AsyncSession) -> int:
             if key in DEFAULT_FORMAT_SCORES and row.score == DEFAULT_FORMAT_SCORES_V1.get(key) and row.score != DEFAULT_FORMAT_SCORES[key]:
                 row.score = DEFAULT_FORMAT_SCORES[key]
                 changed += 1
+        # New in version 3: formats an existing profile has no score for yet.
+        if int(settings.get("default_scores_version") or 1) < 3:
+            scored = set(await session.scalars(
+                select(ProfileCustomFormatScore.custom_format_id).where(ProfileCustomFormatScore.profile_id == profile.id)
+            ))
+            for key in FORMATS_ADDED_IN_SCORES_V3:
+                if key in ids_by_key and ids_by_key[key] not in scored:
+                    session.add(ProfileCustomFormatScore(profile_id=profile.id, custom_format_id=ids_by_key[key], score=DEFAULT_FORMAT_SCORES[key]))
+                    changed += 1
         profile.settings = {**settings, "default_scores_version": DEFAULT_FORMAT_SCORES_VERSION}
         if changed:
             profile.revision = (profile.revision or 1) + 1

@@ -15,7 +15,7 @@ Quality Profile decision.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
 from app.parser import list_quality_definitions
@@ -59,7 +59,89 @@ def _codec(key: str, name: str, description: str, values: list[str], group: str)
     )
 
 
+#: TRaSH Guides' Remux and WEB release group tiers, as a one-time copy. Their Radarr and Sonarr lists are merged, and where the
+#: two place a group differently, Radarr's tier is kept.
+_RELEASE_GROUP_TIERS: dict[str, tuple[str, ...]] = {
+    "remux-tier-01": ("3L", "ATELiER", "BiZKiT", "BLURANiUM", "BMF", "CiNEPHiLES", "FraMeSToR", "PiRAMiDHEAD", "PmP", "WiLDCAT", "ZQ"),
+    "remux-tier-02": ("NCmt", "playBD", "PTer", "SiCFoI", "SURFINBIRD", "TEPES"),
+    "remux-tier-03": ("12GaugeShotgun", "decibeL", "EPSiLON", "HiFi", "iFT", "KRaLiMaRKo", "NTb", "PTP", "SumVision", "TOA", "TRiToN"),
+    "web-tier-01": (
+        "ABBIE", "AJP69", "APEX", "BLUTONiUM", "BYNDR", "CasStudio", "CMRG", "CRFW", "CRUD", "CtrlHD", "FLUX", "GNOME", "HONE", "KiNGS",
+        "Kitsune", "MADSKY", "NOSiViD", "NTb", "NTG", "PAXA", "PEXA", "QOQ", "RAWR", "RTN", "SiC", "T6D", "TEPES", "TheFarm", "ViSUM", "XEPA",
+        "ZoroSenpai",
+    ),
+    "web-tier-02": (
+        "3cTWeB", "4KBEC", "BTW", "CEBEX", "Chotab", "Cinefeel", "CiT", "Coo7", "dB", "DEEP", "END", "ETHiCS", "FC", "Flights", "iJP", "iKA",
+        "iT00NZ", "JETIX", "KHN", "KiMCHI", "LAZY", "MiU", "monkee", "MZABI", "NYH", "orbitron", "PHOENiX", "playWEB", "PSiG", "RTFM", "SA89",
+        "SbR", "SDCC", "SMURF", "SPiRiT", "TOMMY", "TVSmash", "WELP", "XEBEC",
+    ),
+    "web-tier-03": (
+        "BLOOM", "Dooky", "DRACULA", "GNOMiSSiON", "NINJACENTRAL", "NPMS", "ROCCaT", "SiGMA", "SLiGNOME", "SwAgLaNdEr", "T4H", "ViSiON",
+    ),
+}
+
+RELEASE_GROUP_FORMAT = "Release Group"
+_FILE_EXTENSION = r"(?:\.(?:mkv|mp4|m2ts|avi|ts))?"
+
+BANNED_RELEASE_GROUPS_FORMAT = "Banned Release Groups"
+#: Releases from these are rejected outright, whatever else they score.
+_BANNED_RELEASE_GROUPS = ("Data Lass", "seedpool", "DepraveD")
+_BANNED_RELEASE_GROUP_PATTERN = (
+    r"(?:^|[-\[(\s._])(?:" + "|".join(re.escape(group).replace(r"\ ", r"[ ._]+") for group in _BANNED_RELEASE_GROUPS)
+    + r")[\])]?" + _FILE_EXTENSION + r"\s*$"
+)
+BANNED_RELEASE_GROUP = re.compile(_BANNED_RELEASE_GROUP_PATTERN, re.IGNORECASE)
+
+#: A reputable group outweighs a tag or two (Tier 1 beats an unknown group's
+#: HDR10), but not a real difference in the picture: Dolby Vision scores more.
+_RELEASE_GROUP_TIER_SCORES = {"01": 40, "02": 25, "03": 10}
+
+
+def _release_group_format(tier: str, groups: tuple[str, ...]) -> BuiltinFormat:
+    kind, _, number = tier.split("-")
+    names = "|".join(re.escape(group) for group in groups)
+    # The title's end, not the parser's group: trackers also write " - GROUP"
+    # and leave the file extension on.
+    group = BuiltinCondition(type="release_title", name="Release group", required=True,
+                             pattern=rf"-\s*(?:{names}){_FILE_EXTENSION}\s*$")
+    source = (
+        BuiltinCondition(type="quality_modifier", name="Remux", required=True, value=["REMUX"])
+        if kind == "remux"
+        else BuiltinCondition(type="source", name="WEB", required=True, value=["WEB-DL", "WEBRip"])
+    )
+    label = "Remux" if kind == "remux" else "WEB"
+    return BuiltinFormat(
+        key=f"group-{tier}", name=f"{label} Tier {number}", group=RELEASE_GROUP_FORMAT, conditions=(group, source),
+        description=f"{label} releases from groups in TRaSH Guides' Tier {number}. Counts when choosing between releases of the same quality, and never makes an upgrade on its own.",
+    )
+
+
+RELEASE_GROUP_FORMAT_KEYS = tuple(f"group-{tier}" for tier in _RELEASE_GROUP_TIERS)
+#: Formats an existing Default profile gained a score for in scores version 3.
+FORMATS_ADDED_IN_SCORES_V3 = (*RELEASE_GROUP_FORMAT_KEYS, "attr-no-group", "group-banned")
+#: One release can carry several audio tracks. Only its best counts, so a
+#: compatibility track beside TrueHD never adds to the score.
+_AUDIO_BEST_FIRST = (
+    "audio-truehd-atmos", "audio-truehd", "audio-dtsx", "audio-dtshd-ma", "audio-flac", "audio-pcm", "audio-ddplus-atmos",
+    "audio-dtshd-hra", "audio-ddplus", "audio-dts-es", "audio-dts", "audio-dd", "audio-aac", "audio-opus",
+)
+
+
 BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
+    *(_release_group_format(tier, groups) for tier, groups in _RELEASE_GROUP_TIERS.items()),
+    BuiltinFormat(
+        key="group-banned", name=BANNED_RELEASE_GROUPS_FORMAT, group=RELEASE_GROUP_FORMAT,
+        description="Release groups you never want. Their releases are rejected in upgrade and replacement searches, and manual searches warn about them.",
+        conditions=(BuiltinCondition(type="release_title", name="Banned group", pattern=_BANNED_RELEASE_GROUP_PATTERN),)),
+    BuiltinFormat(
+        key="attr-no-group", name="No Release Group", group=RELEASE_GROUP_FORMAT,
+        description="A release whose name does not credit any release group.",
+        conditions=(
+            BuiltinCondition(type="release_group", name="No group", required=True, value=["NoGroup"]),
+            # The parser only reads "-GROUP"; these credit one in other ways.
+            BuiltinCondition(type="release_title", name="Group written another way", required=True, negate=True,
+                             pattern=r"(?:\s-\s+[A-Za-z0-9]+|\[[^\]]+\])" + _FILE_EXTENSION + r"\s*$"),
+        )),
     _codec("video-hevc", "HEVC / x265",
            "H.265 in any of its spellings. Smaller files at equal quality, but some players and older TVs cannot decode it.",
            ["HEVC", "x265", "H.265"], "Video"),
@@ -260,6 +342,12 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
 )
 
 
+BUILTIN_FORMATS = tuple(
+    replace(item, supersedes=tuple(dict.fromkeys((*item.supersedes, *_AUDIO_BEST_FIRST[_AUDIO_BEST_FIRST.index(item.key) + 1:]))))
+    if item.key in _AUDIO_BEST_FIRST else item
+    for item in BUILTIN_FORMATS
+)
+
 BUILTIN_KEYS = frozenset(item.key for item in BUILTIN_FORMATS)
 
 #: What a typed condition describes, for formats that are not built-in.
@@ -401,7 +489,7 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "attr-repack-proper": 20,
     "attr-proper": 18,
     "attr-rerip": 16,
-    "attr-hybrid": 10,
+    "attr-hybrid": -5,
     "attr-internal-limited": 0,
     "attr-re-encode": -40,
     "web-amzn": 0,
@@ -416,9 +504,13 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "web-peacock": 0,
     "web-itunes": 0,
     "web-movies-anywhere": 0,
+    "attr-no-group": -5,
+    # Rejected outright, so a score would only skew what is already owned.
+    "group-banned": 0,
+    **{f"group-{tier}": _RELEASE_GROUP_TIER_SCORES[tier.rsplit("-", 1)[1]] for tier in _RELEASE_GROUP_TIERS},
 }
 #: Bumped whenever DEFAULT_FORMAT_SCORES changes.
-DEFAULT_FORMAT_SCORES_VERSION = 2
+DEFAULT_FORMAT_SCORES_VERSION = 3
 
 
 if set(DEFAULT_FORMAT_SCORES) != BUILTIN_KEYS:

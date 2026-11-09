@@ -76,7 +76,8 @@ async def test_default_profile_moves_only_untouched_scores():
         profile.settings = {key: value for key, value in profile.settings.items() if key != "default_scores_version"}
         keys = {row.id: row.builtin_key for row in (await db.scalars(select(CustomFormat))).all()}
         for row in (await db.scalars(select(ProfileCustomFormatScore))).all():
-            row.score = DEFAULT_FORMAT_SCORES_V1[keys[row.custom_format_id]]
+            # Formats added since have no version 1 score to go back to.
+            row.score = DEFAULT_FORMAT_SCORES_V1.get(keys[row.custom_format_id], row.score)
             if keys[row.custom_format_id] == "hdr-sdr":
                 row.score = 7
         await db.flush()

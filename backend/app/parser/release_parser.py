@@ -587,7 +587,7 @@ def _release_group(raw: str, normalized: str) -> tuple[str, str, bool]:
     # Hyphens embedded in technical compounds are not release-group
     # separators (WEB-DL, Blu-Ray, DTS-HD).  A terminal token such as ``DL``
     # must therefore remain part of the source token.
-    if group.casefold() in {"dl", "ray", "rip", "hd"} and re.search(
+    if group.split(".", 1)[0].casefold() in {"dl", "ray", "rip", "hd"} and re.search(
         r"(?:WEB|Blu|DTS)\s*$", prefix, re.IGNORECASE
     ):
         return "NoGroup", normalized, False
