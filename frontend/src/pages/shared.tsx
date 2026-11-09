@@ -38,11 +38,14 @@ export const libraryInvalidationEvents = [
   'upgrade.execution',
 ] as const
 
-export function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000, watchScanJobs = false) {
+/** For the Movies and Shows lists: no row there shows progress, so a torrent's is not worth re-reading the library. */
+export const libraryListEvents = libraryInvalidationEvents.filter((name) => name !== 'download.progress')
+
+export function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000, watchScanJobs = false, invalidationEvents: readonly string[] = libraryInvalidationEvents) {
   // Coalesced so high-frequency scan progress costs at most a couple of REST
   // reads per second while newly discovered rows still appear during a scan.
   useLiveRefresh(refresh, {
-    events: watchScanJobs ? [...libraryInvalidationEvents, 'job.status'] : libraryInvalidationEvents,
+    events: watchScanJobs ? [...invalidationEvents, 'job.status'] : invalidationEvents,
     when: (event, name) => {
       if (name !== 'job.status') return true
       const payload = parseJobStatusLiveEvent(event.data)

@@ -23,7 +23,7 @@ import { SelectionBar, SelectCheck } from '../components/SelectionBar'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { IncomingDownload, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
-import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, useLiveLibraryRefresh } from './shared'
+import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 
 const moviesKey = (tag: string, sort: string) => `movies:${tag}:${sort}`
 
@@ -59,7 +59,7 @@ export function MoviesPage() {
   }
 
   // Live events already trigger a reload, so the poll is only a fallback.
-  useLiveLibraryRefresh(loadMovies, 60000)
+  useLiveLibraryRefresh(loadMovies, 60000, false, libraryListEvents)
 
   useEffect(() => {
     let alive = true

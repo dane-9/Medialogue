@@ -199,11 +199,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
-        # A change made through the API may change what Replace Media lists:
-        # its shared results must not outlive it.
+        # A change made through the API may change what the library and Replace
+        # Media list: their shared results must not outlive it.
         if request.method not in {"GET", "HEAD", "OPTIONS"} and response.status_code < 400:
-            from app.services.replacements import invalidate_replacement_results
-            invalidate_replacement_results()
+            from app.services.shared_results import invalidate_shared_results
+            invalidate_shared_results()
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")

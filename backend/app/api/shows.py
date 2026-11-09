@@ -44,6 +44,7 @@ from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
+from app.services.shared_results import shared_result
 
 logger = logging.getLogger(__name__)
 
@@ -432,6 +433,15 @@ async def list_shows(
     sort: str = "title",
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
+) -> Collection[ShowSummaryResponse]:
+    return await shared_result(
+        ("shows", page, page_size, query, state, sort),
+        lambda: _list_shows(db, page=page, page_size=page_size, query=query, state=state, sort=sort),
+    )
+
+
+async def _list_shows(
+    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, sort: str
 ) -> Collection[ShowSummaryResponse]:
     statement = select(Show)
     if query:

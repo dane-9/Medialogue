@@ -7,6 +7,7 @@ import medialogueLogo from './assets/medialogue-logo.svg'
 import { ConfirmProvider } from './components/Confirm'
 import { ApiError } from './api/transport'
 import { authApi } from './api/modules/auth'
+import { clearListCache } from './lib/listCache'
 import { AppShell } from './components/Shell'
 import { Button, Input } from './components/ui'
 
@@ -53,7 +54,7 @@ function App() {
   }, [])
 
   const login = () => { setAuthenticated(true); setChecking(false) }
-  const logout = async () => { try { await authApi.logout() } catch {} setAuthenticated(false) }
+  const logout = async () => { try { await authApi.logout() } catch {} clearListCache(); setAuthenticated(false) }
   if (checking) return <BootScreen />
   return authenticated
     ? <ConfirmProvider><BrowserRouter><AuthenticatedApp onLogout={logout} /></BrowserRouter></ConfirmProvider>

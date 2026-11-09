@@ -19,7 +19,7 @@ import { SelectionBar, SelectCheck } from '../components/SelectionBar'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { EpisodeOrdering, MediaProfileSettings, QualityDefinition, QualityProfile, Show, Season, Episode, EpisodeMedia } from '../types'
-import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, useLiveLibraryRefresh } from './shared'
+import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 
 function DetailFact({ label, value, tone }: { label: string; value: string; tone?: string }) { return <div className="detail-fact"><span>{label}</span>{tone ? <Badge tone={tone as 'green' | 'amber' | 'red' | 'neutral'}>{value}</Badge> : <strong>{value}</strong>}</div> }
 
@@ -50,7 +50,7 @@ export function ShowsPage() {
     finally { if (foreground) setLoading(false) }
   }
   // Live events already trigger a reload, so the poll is only a fallback.
-  useLiveLibraryRefresh(() => load(false), 60000)
+  useLiveLibraryRefresh(() => load(false), 60000, false, libraryListEvents)
   useEffect(() => {
     const cached = cachedList<Show>(`shows:${sort}`)
     if (cached) { setItems((current) => reuseUnchanged(current, cached)); setLoading(false) }

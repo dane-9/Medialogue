@@ -51,6 +51,7 @@ from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
+from app.services.shared_results import shared_result
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,15 @@ async def list_movies(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[MovieSummaryResponse]:
+    return await shared_result(
+        ("movies", page, page_size, query, state, tag, sort),
+        lambda: _list_movies(db, page=page, page_size=page_size, query=query, state=state, tag=tag, sort=sort),
+    )
+
+
+async def _list_movies(
+    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, tag: str | None, sort: str
+) -> Collection[MovieSummaryResponse]:
     statement = _movie_query(for_list=True)
     if query:
         pattern = f"%{query.strip()}%"
@@ -100,14 +110,6 @@ async def list_movies(
     movies = list((await db.scalars(statement)).unique().all())
     movie_ids = [movie.id for movie in movies]
     problems = await _problem_counts(db, movie_ids)
-    confidences = dict(
-        (
-            await db.execute(
-                select(MovieRelease.id, func.json_extract(MovieRelease.parse_snapshot, "$.identity_confidence"))
-                .where(MovieRelease.movie_id.in_(movie_ids))
-            )
-        ).all()
-    ) if movies else {}
     incoming_rows = (
         await db.execute(
             select(MovieRelease.movie_id, func.json_extract(MovieRelease.parse_snapshot, "$.incoming_kind"))
@@ -147,7 +149,6 @@ async def list_movies(
                 release_statuses.get(release.id, MediaTorrentStatusResponse())
                 for release in active_by_movie[movie.id]
             ),
-            confidences=confidences,
         )
         for movie in movies
     ]
@@ -561,8 +562,6 @@ def _summary(
     problem_count: int,
     incoming_kind: str | None = None,
     torrent_status: MediaTorrentStatusResponse | None = None,
-    *,
-    confidences: dict[UUID, object] | None = None,
 ) -> MovieSummaryResponse:
     active = [
         release
@@ -602,10 +601,7 @@ def _summary(
         key=lambda item: (plex_priority.get(item.match_state, 0), item.last_seen_at),
         default=None,
     )
-    confidence = None
-    if current:
-        raw_confidence = confidences.get(current.id) if confidences is not None else current.parse_snapshot.get("identity_confidence")
-        confidence = float(raw_confidence) if raw_confidence is not None else None
+    confidence = current.identity_confidence if current else None
     last_observed = max(
         (directory.last_seen_at for release in active for directory in release.directories),
         default=None,

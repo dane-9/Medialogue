@@ -330,11 +330,12 @@ def test_replace_media_results_are_shared_until_something_changes(recovery_env, 
     from app.core.config import get_settings
     from app.services import replacements as module
     from app.services.events import publish_live_event
+    from app.services.shared_results import invalidate_shared_results
 
     client, _, _ = recovery_env
     headers = login_headers(client)
     monkeypatch.setattr(get_settings(), "replacement_results_seconds", 30.0)
-    module.invalidate_replacement_results()
+    invalidate_shared_results()
     computed: list[str] = []
     original = module._replacement_queue
 
@@ -357,4 +358,59 @@ def test_replace_media_results_are_shared_until_something_changes(recovery_env, 
     publish_live_event("torrent.removed", entity_type="torrent", data={})
     client.get("/api/v1/replacements/count")
     assert len(computed) == 3
-    module.invalidate_replacement_results()
+    invalidate_shared_results()
+
+
+@pytest.mark.parametrize(("path", "module_name", "function"), [
+    ("/api/v1/movies", "movies", "_list_movies"),
+    ("/api/v1/shows", "shows", "_list_shows"),
+])
+def test_library_lists_are_shared_until_the_library_changes(recovery_env, monkeypatch, path, module_name, function):
+    from importlib import import_module
+
+    from app.core.config import get_settings
+    from app.services.events import publish_live_event
+    from app.services.shared_results import invalidate_shared_results
+
+    client, _, _ = recovery_env
+    headers = login_headers(client)
+    monkeypatch.setattr(get_settings(), "replacement_results_seconds", 30.0)
+    invalidate_shared_results()
+    module = import_module(f"app.api.{module_name}")
+    original = getattr(module, function)
+    computed: list[str] = []
+
+    async def counting(db, **kwargs):
+        computed.append(kwargs["sort"])
+        return await original(db, **kwargs)
+
+    monkeypatch.setattr(module, function, counting)
+    for _ in range(3):
+        assert client.get(path).status_code == 200
+    assert computed == ["title"]
+
+    # Each sort is its own result, and download progress changes nothing listed.
+    client.get(path, params={"sort": "year"})
+    publish_live_event("download.progress", entity_type="torrent", data={})
+    client.get(path)
+    assert computed == ["title", "year"]
+
+    # A scan adds titles as it goes; a change through the API may change any.
+    publish_live_event("scan.progress", entity_type="storage_root", data={})
+    client.get(path)
+    assert len(computed) == 3
+    client.put("/api/v1/ui-selections/replace-media-picked", headers=headers, json={"ids": []})
+    client.get(path)
+    assert len(computed) == 4
+    invalidate_shared_results()
+
+
+def test_a_movie_release_keeps_its_confidence_in_step_with_its_snapshot():
+    from app.models.domain import MovieRelease
+
+    release = MovieRelease(raw_release_name="A", parse_snapshot={"identity_confidence": 0.9})
+    assert release.identity_confidence == 0.9
+    release.parse_snapshot = {**release.parse_snapshot, "identity_confidence": 1}
+    assert release.identity_confidence == 1.0
+    release.parse_snapshot = {}
+    assert release.identity_confidence is None

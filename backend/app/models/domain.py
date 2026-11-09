@@ -12,9 +12,9 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import JSON, Uuid
 
 from app.db.base import Base
@@ -243,12 +243,21 @@ class MovieRelease(TimestampMixin, Base):
     original_custom_format_score: Mapped[int | None] = mapped_column(Integer)
     current_custom_format_score: Mapped[int | None] = mapped_column(Integer)
     parse_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
+    # Copied out of parse_snapshot whenever that is set, so the library list can
+    # read it for every release without loading the snapshots.
+    identity_confidence: Mapped[float | None] = mapped_column(Float)
     selection_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
 
     movie: Mapped[Movie] = relationship(back_populates="releases")
     quality_definition: Mapped["QualityDefinition | None"] = relationship(back_populates="movie_releases")
     directories: Mapped[list["MediaDirectory"]] = relationship(back_populates="movie_release")
     torrents: Mapped[list["Torrent"]] = relationship(secondary="movie_release_torrents", back_populates="movie_releases")
+
+    @validates("parse_snapshot")
+    def _copy_identity_confidence(self, _key: str, value: dict[str, Any]) -> dict[str, Any]:
+        confidence = (value or {}).get("identity_confidence")
+        self.identity_confidence = float(confidence) if confidence is not None else None
+        return value
 
 
 class Show(TimestampMixin, Base):

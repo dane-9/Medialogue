@@ -6,8 +6,6 @@ reason below is one way that fails; the queue lists every title with one.
 """
 from __future__ import annotations
 
-import asyncio
-import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
@@ -30,6 +28,7 @@ from app.services.payload_groups import GROUP_KEY
 from app.services.release_source import ReleaseSource, source_lookup, source_of_releases
 from app.services.format_breakdown import comparison_formats
 from app.services.quality_profiles import profiles_cached
+from app.services.shared_results import shared_result
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
     _persist_candidate, _evaluation_policy, _score_candidate)
 
@@ -530,48 +529,8 @@ def _item(**values: Any) -> dict[str, Any]:
 UPGRADE_KEEPS_REASONS = frozenset({NOT_WATCHED, FILES_MISSING, NO_TORRENT})
 
 
-# --- Shared results ---------------------------------------------------------
-#
-# Building the queue scores every affected title against every Custom Format.
-# The Replace Media page, its sidebar count, Upgrade Media and its count all
-# asked for it, each on its own, often within the same few seconds. Their plain
-# results are now shared for a short while; any change made through the API
-# clears them (see main.py), and the poll's changes show up when they expire.
-
-_shared_results: dict[tuple, tuple[float, int, Any]] = {}
-_shared_generation = 0
-_shared_locks: dict[tuple[int, tuple], asyncio.Lock] = {}
-
-
-def invalidate_replacement_results() -> None:
-    global _shared_generation
-    _shared_generation += 1
-    _shared_results.clear()
-
-
-async def _shared(key: tuple, compute):
-    from app.core.config import get_settings
-
-    ttl = get_settings().replacement_results_seconds
-    if ttl <= 0:
-        return await compute()
-    key = (get_settings().database_url, *key)
-    lock = _shared_locks.setdefault((id(asyncio.get_running_loop()), key), asyncio.Lock())
-    # One computation at a time per result: a request arriving meanwhile waits
-    # for it and gets the same answer instead of starting its own.
-    async with lock:
-        hit = _shared_results.get(key)
-        if hit is not None and hit[1] == _shared_generation and time.monotonic() - hit[0] < ttl:
-            return hit[2]
-        generation = _shared_generation
-        value = await compute()
-        if generation == _shared_generation:
-            _shared_results[key] = (time.monotonic(), generation, value)
-        return value
-
-
 async def replacing_title_ids(db: AsyncSession) -> set[str]:
-    return set(await _shared(("titles",), lambda: _replacing_title_ids(db)))
+    return set(await shared_result(("titles",), lambda: _replacing_title_ids(db)))
 
 
 async def _replacing_title_ids(db: AsyncSession) -> set[str]:
@@ -601,9 +560,9 @@ async def _replacing_title_ids(db: AsyncSession) -> set[str]:
 
 
 async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:
-    """Every title Replace Media lists (shared briefly, see _shared). Callers must not change the rows."""
+    """Every title Replace Media lists (shared briefly). Callers must not change the rows."""
 
-    return await _shared(("queue", details), lambda: _replacement_queue(db, details=details))
+    return await shared_result(("queue", details), lambda: _replacement_queue(db, details=details))
 
 
 async def _replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:

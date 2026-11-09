@@ -133,14 +133,16 @@ def test_upgrade_head_offline_sql_generation_succeeds() -> None:
     assert "CREATE TABLE tmdb_configurations" in completed.stdout
     assert "CREATE TABLE plex_configurations" in completed.stdout
     assert "INSERT INTO alembic_version" in completed.stdout
-    assert "'0002'" in completed.stdout
+    assert "'0003'" in completed.stdout
 
 
 def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None:
     backend_dir = _backend_dir()
     versions_dir = backend_dir / "alembic" / "versions"
     migrations = sorted(path for path in versions_dir.glob("*.py") if path.name != "__init__.py")
-    assert [path.name for path in migrations] == ["0001_fresh_baseline.py", "0002_ui_selections.py"]
+    assert [path.name for path in migrations] == [
+        "0001_fresh_baseline.py", "0002_ui_selections.py", "0003_release_identity_confidence.py",
+    ]
 
     baseline = migrations[0].read_text(encoding="utf-8")
     assert 'revision = "0001"' in baseline
@@ -151,6 +153,38 @@ def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None
     later = migrations[1].read_text(encoding="utf-8")
     assert 'down_revision = "0001"' in later
     assert "IF NOT EXISTS" in later
+
+
+def test_an_existing_movie_release_gains_its_confidence_column(tmp_path) -> None:
+    import sqlite3
+
+    backend_dir = _backend_dir()
+    database_path = tmp_path / "old.db"
+    environment = {**os.environ, "MEDIALOGUE_DATABASE_URL": f"sqlite:///{database_path}"}
+
+    def alembic(*arguments: str) -> None:
+        done = subprocess.run(["alembic", "-c", str(backend_dir / "alembic.ini"), *arguments],
+                              cwd=backend_dir, env=environment, capture_output=True, text=True)
+        assert done.returncode == 0, done.stdout + done.stderr
+
+    alembic("upgrade", "head")
+    alembic("downgrade", "0002")
+    connection = sqlite3.connect(database_path)
+    now = "2026-01-01 00:00:00"
+    for release_id, snapshot in (("a", '{"identity_confidence": 0.75}'), ("b", "{}")):
+        connection.execute(
+            "INSERT INTO movie_releases (id, movie_id, raw_release_name, release_state, first_seen_at, "
+            "edition_override_active, parse_snapshot, created_at, updated_at) VALUES (?, 'm', 'R', 'CURRENT', ?, 0, ?, ?, ?)",
+            (release_id, now, snapshot, now, now),
+        )
+    connection.commit()
+    connection.close()
+
+    alembic("upgrade", "head")
+    connection = sqlite3.connect(database_path)
+    rows = dict(connection.execute("SELECT id, identity_confidence FROM movie_releases").fetchall())
+    connection.close()
+    assert rows == {"a": 0.75, "b": None}
 
 
 def test_a_database_created_before_ui_selections_gains_the_table(tmp_path) -> None:

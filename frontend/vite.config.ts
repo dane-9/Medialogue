@@ -11,6 +11,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    define: {
+      __BUILD_ID__: JSON.stringify(String(Date.now())),
+    },
     server: {
       // LAN exposure is an explicit opt-in: VITE_DEV_HOST=0.0.0.0.
       host: env.VITE_DEV_HOST || 'localhost',
