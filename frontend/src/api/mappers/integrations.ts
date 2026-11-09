@@ -68,6 +68,7 @@ export function mapIndexer(value: IndexerDto): Indexer {
     timeoutSeconds: value.timeout_seconds,
     enableRss: value.enable_rss,
     enableInteractiveSearch: value.enable_interactive_search,
+    useForUpgrades: value.use_for_upgrades,
     categories: value.categories,
     minimumSeeders: value.minimum_seeders,
     color: value.color ?? undefined,

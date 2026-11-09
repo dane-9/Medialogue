@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Callable
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -333,6 +333,32 @@ async def invalidate_idle_upgrade_candidates(
         row.execution_block_reason = reason
     await db.flush()
     return len(rows)
+
+
+async def remove_unstarted_upgrades_from(db: AsyncSession, indexer_id: UUID) -> int:
+    """Forget what a tracker offered, once it stops being used for upgrades.
+
+    Started upgrades finish, and Replace Media keeps its own. A title losing
+    its row is marked unsearched, so another tracker gets the first chance at
+    it. Returns how many rows were removed.
+    """
+
+    rows = (await db.scalars(select(UpgradeCandidate).where(
+        ~UpgradeCandidate.target_key.startswith("replace:"),
+        or_(UpgradeCandidate.execution_state.is_(None), UpgradeCandidate.execution_state == "failed"),
+    ))).all()
+    removed = 0
+    for row in rows:
+        if row.indexer_id == indexer_id:
+            await db.execute(delete(UpgradeSearchMark).where(UpgradeSearchMark.target_key == row.target_key))
+            await db.delete(row)
+            removed += 1
+            continue
+        kept = [entry for entry in row.search_results or [] if entry.get("indexer_id") != str(indexer_id)]
+        if len(kept) != len(row.search_results or []):
+            row.search_results = kept
+    await db.flush()
+    return removed
 
 
 def _read_only_root(releases: list[MovieRelease | ShowRelease]) -> str | None:
@@ -945,7 +971,9 @@ async def _search_target(
     scoped = [
         indexer
         for indexer in indexers
+        # Replace Media keeps every tracker: a lost source needs the widest search.
         if indexer.enabled and indexer.enable_interactive_search and indexer.scope in eligible_scopes
+        and (target.replacement or indexer.use_for_upgrades)
     ]
     if not scoped:
         return None, [], 0, False

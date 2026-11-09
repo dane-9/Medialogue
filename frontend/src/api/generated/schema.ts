@@ -4345,6 +4345,11 @@ export interface components {
              * Format: uri
              */
             torznab_url: string;
+            /**
+             * Use For Upgrades
+             * @default true
+             */
+            use_for_upgrades: boolean;
         };
         /** IndexerHealthItem */
         IndexerHealthItem: {
@@ -4439,6 +4444,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Use For Upgrades */
+            use_for_upgrades: boolean;
         };
         /**
          * IndexerScope
@@ -4503,6 +4510,8 @@ export interface components {
             timeout_seconds?: number | null;
             /** Torznab Url */
             torznab_url?: string | null;
+            /** Use For Upgrades */
+            use_for_upgrades?: boolean | null;
         };
         /** IndexersHealth */
         IndexersHealth: {

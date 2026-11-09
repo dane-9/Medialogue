@@ -26,6 +26,7 @@ from app.schemas.indexers import (
 from app.services.indexers import refresh_indexer_health, test_indexer_connection
 from app.services.scheduler import request_health_sweep
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
+from app.services.upgrade_candidates import remove_unstarted_upgrades_from
 
 def _clean_languages(values: list[str] | None) -> list[str]:
     """Normalise configured languages, dropping anything unrecognised."""
@@ -55,6 +56,7 @@ def _response(indexer: ConfiguredIndexer) -> IndexerResponse:
         timeout_seconds=indexer.timeout_seconds,
         enable_rss=indexer.enable_rss,
         enable_interactive_search=indexer.enable_interactive_search,
+        use_for_upgrades=indexer.use_for_upgrades,
         categories=list(indexer.categories),
         minimum_seeders=indexer.minimum_seeders,
         priority=indexer.priority,
@@ -144,6 +146,7 @@ async def create_indexer(
             timeout_seconds=payload.timeout_seconds,
             enable_rss=payload.enable_rss,
             enable_interactive_search=payload.enable_interactive_search,
+            use_for_upgrades=payload.use_for_upgrades,
             categories=list(payload.categories),
             minimum_seeders=payload.minimum_seeders,
             priority=store.next_indexer_priority(),
@@ -209,6 +212,7 @@ async def update_indexer(
         timeout_seconds=(payload.timeout_seconds if payload.timeout_seconds is not None else current.timeout_seconds),
         enable_rss=(payload.enable_rss if payload.enable_rss is not None else current.enable_rss),
         enable_interactive_search=(payload.enable_interactive_search if payload.enable_interactive_search is not None else current.enable_interactive_search),
+        use_for_upgrades=(payload.use_for_upgrades if payload.use_for_upgrades is not None else current.use_for_upgrades),
         categories=(list(payload.categories) if payload.categories is not None else list(current.categories)),
         minimum_seeders=(payload.minimum_seeders if payload.minimum_seeders is not None else current.minimum_seeders),
         priority=current.priority,
@@ -227,6 +231,8 @@ async def update_indexer(
     indexer.health = "unknown"
     indexer.last_error = None
     indexer.latency_ms = None
+    if current.use_for_upgrades and not updated.use_for_upgrades:
+        await remove_unstarted_upgrades_from(db, indexer_id)
     await request_health_sweep(db)
     await db.commit()
     refreshed = await get_configured_indexer(db, indexer_id)

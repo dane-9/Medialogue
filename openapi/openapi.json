@@ -4187,6 +4187,11 @@
             "minLength": 1,
             "title": "Torznab Url",
             "type": "string"
+          },
+          "use_for_upgrades": {
+            "default": true,
+            "title": "Use For Upgrades",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4447,6 +4452,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "use_for_upgrades": {
+            "title": "Use For Upgrades",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4459,6 +4468,7 @@
           "timeout_seconds",
           "enable_rss",
           "enable_interactive_search",
+          "use_for_upgrades",
           "categories",
           "minimum_seeders",
           "priority",
@@ -4743,6 +4753,17 @@
               }
             ],
             "title": "Torznab Url"
+          },
+          "use_for_upgrades": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use For Upgrades"
           }
         },
         "title": "IndexerUpdate",

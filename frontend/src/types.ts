@@ -1042,6 +1042,7 @@ export interface Indexer {
   timeoutSeconds: number
   enableRss: boolean
   enableInteractiveSearch: boolean
+  useForUpgrades: boolean
   categories: number[]
   minimumSeeders: number
   color?: string

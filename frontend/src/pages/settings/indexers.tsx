@@ -26,6 +26,7 @@ type IndexerDraft = {
   timeoutSeconds: number
   enableRss: boolean
   enableInteractiveSearch: boolean
+  useForUpgrades: boolean
   categories: string
   minimumSeeders: number
   color: string
@@ -78,6 +79,7 @@ const emptyIndexer: IndexerDraft = {
   timeoutSeconds: 15,
   enableRss: true,
   enableInteractiveSearch: true,
+  useForUpgrades: true,
   categories: '',
   minimumSeeders: 1,
   color: '',
@@ -95,6 +97,7 @@ function draftFromIndexer(indexer: Indexer): IndexerDraft {
     timeoutSeconds: indexer.timeoutSeconds || 15,
     enableRss: indexer.enableRss,
     enableInteractiveSearch: indexer.enableInteractiveSearch,
+    useForUpgrades: indexer.useForUpgrades,
     categories: indexer.categories.join(', '),
     minimumSeeders: indexer.minimumSeeders,
     color: indexer.color ?? '',
@@ -203,6 +206,7 @@ export function IndexerSettings() {
         timeout_seconds: draft.timeoutSeconds,
         enable_rss: draft.enableRss,
         enable_interactive_search: draft.enableInteractiveSearch,
+        use_for_upgrades: draft.useForUpgrades,
         // A blank field is no categories: Number('') is 0, and category 0 made
         // every search return nothing.
         categories: draft.categories.split(',').map((value) => value.trim()).filter(Boolean).map(Number).filter((value) => Number.isInteger(value) && value > 0),
@@ -394,6 +398,9 @@ export function IndexerSettings() {
             </Field>
             <Field label="Interactive search" help="Answer user-triggered movie, season, and episode searches.">
               <Segmented ariaLabel="Interactive search" value={draft.enableInteractiveSearch ? 'on' : 'off'} onChange={(next) => updateDraft('enableInteractiveSearch', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+            </Field>
+            <Field label="Use for upgrades" help="Search this tracker for Upgrade Media. Turning it off removes its upgrades that have not started. Replace Media is not affected.">
+              <Segmented ariaLabel="Use for upgrades" value={draft.useForUpgrades ? 'on' : 'off'} onChange={(next) => updateDraft('useForUpgrades', next === 'on')} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
             </Field>
             <Field label="Categories" help="Category IDs sent with searches. Blank lets the indexer decide.">
               <Input value={draft.categories} onChange={(event) => updateDraft('categories', event.target.value)} placeholder="2000, 5000" />

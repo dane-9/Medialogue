@@ -33,7 +33,7 @@ _DOWNLOAD_CLIENT_KEYS = {
 _INDEXER_KEYS = {
     "id", "name", "torznab_url", "scope", "enabled", "timeout_seconds", "revision",
     "enable_rss", "enable_interactive_search", "categories", "minimum_seeders", "priority",
-    "color", "multi_languages", "download_client_ids",
+    "color", "multi_languages", "download_client_ids", "use_for_upgrades",
 }
 _SECRETS_KEYS = {"schema_version", "plex_token", "tmdb_api_key", "download_client_passwords", "indexer_api_keys"}
 
@@ -86,6 +86,7 @@ class IndexerConfig:
     timeout_seconds: int = 15
     enable_rss: bool = True
     enable_interactive_search: bool = True
+    use_for_upgrades: bool = True
     categories: list[int] = field(default_factory=list)
     minimum_seeders: int = 1
     priority: int = 25
@@ -194,6 +195,11 @@ class IntegrationConfigStore:
                 f"Unsupported {self.config_path.name} schema_version {payload.get('schema_version')!r}; "
                 f"expected {_SCHEMA_VERSION}."
             )
+        # A file written before this setting existed: every tracker was used.
+        indexers = payload.get("indexers")
+        for row in indexers if isinstance(indexers, list) else ():
+            if isinstance(row, dict):
+                row.setdefault("use_for_upgrades", True)
         self._validate_config(payload)
         return payload
 
@@ -490,6 +496,7 @@ class IntegrationConfigStore:
                 timeout_seconds=int(row["timeout_seconds"]), revision=int(row["revision"]),
                 enable_rss=bool(row["enable_rss"]),
                 enable_interactive_search=bool(row["enable_interactive_search"]),
+                use_for_upgrades=bool(row["use_for_upgrades"]),
                 categories=[int(value) for value in row["categories"] if int(value) > 0],
                 minimum_seeders=int(row["minimum_seeders"]), priority=int(row["priority"]),
                 color=(str(row["color"]) or None) if row["color"] else None,
@@ -514,6 +521,7 @@ class IntegrationConfigStore:
         row = {"id": str(item.id), "name": item.name, "torznab_url": item.torznab_url.rstrip("/"), "scope": item.scope,
                "enabled": bool(item.enabled), "timeout_seconds": int(item.timeout_seconds), "revision": revision,
                "enable_rss": bool(item.enable_rss), "enable_interactive_search": bool(item.enable_interactive_search),
+               "use_for_upgrades": bool(item.use_for_upgrades),
                "categories": list(item.categories), "minimum_seeders": int(item.minimum_seeders), "priority": int(item.priority),
                "color": item.color or None, "multi_languages": list(item.multi_languages),
                "download_client_ids": [str(value) for value in item.download_client_ids]}

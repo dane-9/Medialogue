@@ -106,7 +106,7 @@ async def run_new_release_check(job_id: UUID, *, client_factory: Any = TorznabCl
     async def worker(db: AsyncSession, job: Job) -> None:
         await update_job(db, job, status=JobStatus.RUNNING, progress={"percent": 0})
         await db.commit()
-        indexers = [indexer for indexer in await list_configured_indexers(db) if indexer.enabled and indexer.enable_rss]
+        indexers = [indexer for indexer in await list_configured_indexers(db) if indexer.enabled and indexer.enable_rss and indexer.use_for_upgrades]
         wanted = [(indexer, kind) for indexer in indexers for kind in ("movies", "shows") if indexer.scope in _SCOPES[kind]]
         feeds = await asyncio.gather(*[_read_feed(indexer, kind, client_factory) for indexer, kind in wanted])
         errors = [error for *_, error in feeds if error]

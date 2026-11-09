@@ -31,6 +31,7 @@ class IndexerCreate(BaseModel):
     timeout_seconds: int = Field(default=15, ge=5, le=60)
     enable_rss: bool = True
     enable_interactive_search: bool = True
+    use_for_upgrades: bool = True
     categories: list[int] = Field(default_factory=list, max_length=100)
     minimum_seeders: int = Field(default=1, ge=0, le=100000)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
@@ -52,6 +53,7 @@ class IndexerUpdate(BaseModel):
     timeout_seconds: int | None = Field(default=None, ge=5, le=60)
     enable_rss: bool | None = None
     enable_interactive_search: bool | None = None
+    use_for_upgrades: bool | None = None
     categories: list[int] | None = Field(default=None, max_length=100)
     minimum_seeders: int | None = Field(default=None, ge=0, le=100000)
     color: str | None = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
@@ -81,6 +83,7 @@ class IndexerResponse(ORMModel):
     timeout_seconds: int
     enable_rss: bool
     enable_interactive_search: bool
+    use_for_upgrades: bool
     categories: list[int]
     minimum_seeders: int
     priority: int  # Position in the user's order, 1 first; breaks ties between equal results.
