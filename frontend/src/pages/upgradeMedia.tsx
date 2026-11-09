@@ -6,6 +6,7 @@ import { badgeColor } from '../lib/badgeColor'
 import { formatAge } from '../lib/age'
 import { diffReleaseTokens } from '../lib/releaseTokens'
 import { candidateFormatReasons, shareCombinedDynamicRangeReasons, upgradeTokenReason, UPGRADE_REASON_SCORE } from '../lib/upgradeTokenReason'
+import { filterUpgrades, loadUpgradeFilters, saveUpgradeFilters, upgradeFilterSections, type UpgradeFilterKey, type UpgradeFilters } from '../lib/upgradeFilters'
 import { formatBytes, ReleaseResults } from '../components/ReleaseResults'
 import { ReleaseSourcePill } from '../components/ReleaseSourcePill'
 import { UpgradePill } from '../components/UpgradePill'
@@ -180,6 +181,12 @@ export function UpgradeMediaPage() {
   // waiting on a decision never share one list.
   const [status, setStatus] = useState<UpgradeStatus>('ready')
   const [statusChosen, setStatusChosen] = useState(false)
+  const [filters, setFilters] = useState<UpgradeFilters>(loadUpgradeFilters)
+  useEffect(() => { saveUpgradeFilters(filters) }, [filters])
+  const toggleFilter = (key: UpgradeFilterKey, value: string) => setFilters((current) => {
+    const picked = current[key] ?? []
+    return { ...current, [key]: picked.includes(value) ? picked.filter((entry) => entry !== value) : [...picked, value] }
+  })
   const upgradeReleaseResults = useMemo<InteractiveSearchResult[]>(() => (
     searchResults && resultsTarget ? upgradeResultsToReleases(searchResults, resultsTarget.id, resultsTarget.mediaType) : []
   ), [searchResults, resultsTarget])
@@ -409,17 +416,25 @@ export function UpgradeMediaPage() {
     : (['ready', 'attention', 'in_progress'] as UpgradeStatus[]).find((value) => statusCounts[value]) ?? 'ready'
   const statusItems = useMemo(() => items.filter((item) => item.executionState !== 'completed' && upgradeStatusOf(item) === shownStatus), [items, shownStatus])
   const roots = useMemo(() => {
-    const grouped = new Map<string, { name: string; mediaType: 'movies' | 'shows'; count: number }>()
+    const grouped = new Map<string, { name: string; mediaType: 'movies' | 'shows'; items: UpgradeCandidate[] }>()
     for (const item of statusItems) {
       const name = item.rootName ?? 'Unknown folder'
       const existing = grouped.get(name)
-      if (existing) existing.count += 1
-      else grouped.set(name, { name, mediaType: item.mediaType, count: 1 })
+      if (existing) existing.items.push(item)
+      else grouped.set(name, { name, mediaType: item.mediaType, items: [item] })
     }
-    return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [statusItems])
+    // A folder stays listed when the filters leave it empty, so picking one
+    // never moves you to another folder. Its count is what you would see there.
+    return [...grouped.values()]
+      .map(({ items: folder, ...entry }) => ({ ...entry, count: filterUpgrades(folder, filters).length }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [statusItems, filters])
   const rootName = roots.some((entry) => entry.name === selectedRoot) ? selectedRoot : roots[0]?.name ?? ''
-  const rows = useMemo(() => statusItems.filter((item) => (item.rootName ?? 'Unknown folder') === rootName), [statusItems, rootName])
+  const folderItems = useMemo(() => statusItems.filter((item) => (item.rootName ?? 'Unknown folder') === rootName), [statusItems, rootName])
+  // Everything below acts on what is shown, so a filter also narrows the
+  // profile bar and the batch upgrade.
+  const rows = useMemo(() => filterUpgrades(folderItems, filters), [folderItems, filters])
+  const filterSections = useMemo(() => upgradeFilterSections(folderItems, filters), [folderItems, filters])
 
   // The checkboxes decide what the bar acts on, for the profile exactly as for
   // the upgrade button.
@@ -453,7 +468,7 @@ export function UpgradeMediaPage() {
   const pickedBytesChange = useMemo(() => picked.reduce((total, item) => (
     item.size !== undefined && item.currentSize !== undefined ? total + item.size - item.currentSize : total
   ), 0), [picked])
-  const mediaType = rows[0]?.mediaType ?? 'movies'
+  const mediaType = folderItems[0]?.mediaType ?? 'movies'
   const noun = mediaType === 'movies' ? 'Movie' : 'Show'
   const eligibleClients = useMemo(() => clients.filter((client) => client.enabled && client.scope === mediaType), [clients, mediaType])
 
@@ -525,6 +540,28 @@ export function UpgradeMediaPage() {
         </div>}
       </div>
 
+      <div className="downloads-layout replace-layout">
+      <aside className="downloads-rail" aria-label="Filter upgrades">
+        {filterSections.map((section) => <div className="downloads-rail-group" key={section.key}>
+          <div className="downloads-rail-title replace-rail-title">
+            <span>{section.title}</span>
+            {section.options.some((option) => option.on) && <button type="button" className="replace-reason-all" onClick={() => setFilters((current) => ({ ...current, [section.key]: [] }))}>Clear</button>}
+          </div>
+          {section.options.map((option) => <button
+            type="button"
+            key={option.value}
+            aria-pressed={option.on}
+            disabled={!option.on && !option.count}
+            className={`downloads-rail-item upgrade-filter ${option.on ? 'active' : ''}`}
+            onClick={() => toggleFilter(section.key, option.value)}
+          >
+            <span className="rail-label">{option.value}</span>
+            <span className="rail-count">{option.count}</span>
+          </button>)}
+        </div>)}
+        {!filterSections.length && <div className="replace-rail-empty">Nothing to filter</div>}
+      </aside>
+      <div className="downloads-main">
       <div className="new-media-workspace upgrade-v2 upgrade-v3">
         <div className="new-media-scroll">
           <span className="new-media-col-head">Current</span>
@@ -543,7 +580,7 @@ export function UpgradeMediaPage() {
             {shownStatus === 'attention' && <span className="upgrade-v2-action">Action</span>}
           </span>
           <span className="upgrade-v3-rail-head" aria-hidden="true" />
-          {!rows.length && <div className="upgrade-v2-empty">{UPGRADE_STATUSES.find((entry) => entry.value === shownStatus)?.empty}</div>}
+          {!rows.length && <div className="upgrade-v2-empty">{folderItems.length ? 'No upgrades match these filters.' : UPGRADE_STATUSES.find((entry) => entry.value === shownStatus)?.empty}</div>}
           {rows.map((item) => {
             const active = false
             const batchable = upgradeStartable(item) && item.executionEligible
@@ -745,6 +782,8 @@ export function UpgradeMediaPage() {
           </>}
         </div>
 
+      </div>
+      </div>
       </div>
     </>}
 

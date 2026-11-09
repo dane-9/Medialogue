@@ -44,6 +44,8 @@
 .replace-reason-all:hover { text-decoration: underline; }
 .downloads-rail-item.replace-reason:not(.active) { color: var(--faint); }
 .replace-rail-empty { padding: 0 var(--s1); color: var(--faint); font: var(--t-xs) var(--sans); }
+/* An option the other filters leave nothing for. */
+.downloads-rail-item.upgrade-filter:disabled { background: transparent; color: var(--faint); opacity: .6; cursor: default; }
 .new-media-workspace.upgrade-v2 { --new-media-detected: 280px; grid-template-columns: minmax(0, 1fr) var(--new-media-detected) 400px; }
 .upgrade-v2-empty { grid-column: 1 / -1; padding: var(--s5); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-md) var(--r-md); background: var(--surface); color: var(--faint); font-size: var(--t-sm); text-align: center; }
 .upgrade-v2-current .new-media-match-copy strong, .upgrade-v2-change .new-media-match-copy strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
