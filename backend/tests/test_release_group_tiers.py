@@ -91,6 +91,19 @@ def test_only_the_best_audio_track_counts() -> None:
     assert _audio_score("Movie.2020.1080p.WEB-DL.DDP5.1.H.264-GRP") == {"audio-ddplus"}
 
 
+@pytest.mark.parametrize(("title", "expected"), [
+    ("Doc Hollywood 1991 1080p Bluray Remux AVC DTS-HD 2.0-decatora27", "audio-dtshd-ma"),
+    ("Movie.1991.1080p.BluRay.x264.DTS-HD.5.1-GRP", "audio-dtshd-hra"),
+    ("Movie.1991.1080p.WEB-DL.DTS-HD.5.1.H.264-GRP", "audio-dtshd-hra"),
+    # A named variant is taken at its word, remux or not.
+    ("Movie 1991 1080p BluRay Remux AVC DTS-HD HRA 5.1-GRP", "audio-dtshd-hra"),
+    ("Movie.1991.1080p.BluRay.x264.DTS-HD.MA.5.1-GRP", "audio-dtshd-ma"),
+    ("Movie 1991 1080p BluRay Remux AVC DTS 5.1-GRP", "audio-dts"),
+])
+def test_a_bare_dts_hd_tag_is_read_from_the_kind_of_release(title, expected) -> None:
+    assert _audio_score(title) == {expected}
+
+
 @pytest.mark.parametrize("title", [
     "28 Days Later 2002 Hybrid 2160p UHD Blu-ray Remux DV HDR10P HEVC TrueHD Atmos 7 1-CiNEPHiLES",
     "Movie.2020.2160p.WEB-DL.DV.HDR10+.H.265-GRP",

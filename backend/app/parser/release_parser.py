@@ -800,7 +800,7 @@ def _video(raw: str, normalized: str) -> VideoInfo:
     return VideoInfo()
 
 
-def _audio(raw: str, normalized: str) -> AudioInfo:
+def _audio(raw: str, normalized: str, *, is_remux: bool) -> AudioInfo:
     # Longest/base-specific patterns precede DD, which is a substring of DD+.
     patterns = (
         (r"(?<![A-Za-z0-9])TrueHD(?=[0-9]|(?![A-Za-z0-9]))", "TrueHD"),
@@ -828,6 +828,10 @@ def _audio(raw: str, normalized: str) -> AudioInfo:
         if match:
             codec = canonical
             break
+    # A bare "DTS-HD" names no variant. On a remux it is almost always Master
+    # Audio; elsewhere lossless cannot be assumed, so it reads as the lossy one.
+    if codec == "DTS-HD":
+        codec = "DTS-HD MA" if is_remux else "DTS-HD HRA"
     # A channel layout attached directly to the codec (DDP5.1, DD+7.1) is read
     # first; only then the standalone forms.
     channels_match = re.search(
@@ -1158,7 +1162,7 @@ def parse_release(raw_name: str) -> ReleaseParseResult:
     attributes = _attributes(normalized)
     hdr = _hdr(normalized)
     video = _video(cleaned, normalized)
-    audio = _audio(cleaned, normalized)
+    audio = _audio(cleaned, normalized, is_remux=quality.modifier == "REMUX")
     languages, regions = _language_and_regions(normalized)
     if identity.geographic and identity.geographic not in regions:
         regions = (*regions, identity.geographic)

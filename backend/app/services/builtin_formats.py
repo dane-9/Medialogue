@@ -174,7 +174,7 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
         supersedes=("audio-dtshd-ma", "audio-dts")),
     BuiltinFormat(
         key="audio-dtshd-ma", name="DTS-HD MA", group="Audio",
-        description="Lossless surround audio commonly used on Blu-ray, with a DTS core for older equipment. It supports up to 7.1 channels and can also carry DTS:X.",
+        description="Lossless surround audio commonly used on Blu-ray, with a DTS core for older equipment. It supports up to 7.1 channels and can also carry DTS:X. A remux tagged only DTS-HD counts as this.",
         conditions=(BuiltinCondition(type="audio_codec", value=["DTS-HD MA"]),)),
     BuiltinFormat(
         key="audio-pcm", name="PCM / LPCM", group="Audio",
@@ -199,12 +199,12 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
         conditions=(BuiltinCondition(type="audio_codec", value=["DTS-ES"]),)),
     BuiltinFormat(
         key="audio-dtshd-hra", name="DTS-HD HRA", group="Audio",
-        description="DTS-HD High Resolution Audio. Lossy, but at a far higher bitrate than core DTS or Dolby Digital, and the usual fallback when a disc does not carry DTS-HD Master Audio.",
+        description="DTS-HD High Resolution Audio. Lossy, but at a far higher bitrate than core DTS or Dolby Digital, and the usual fallback when a disc does not carry DTS-HD Master Audio. Anything but a remux tagged only DTS-HD counts as this.",
         conditions=(BuiltinCondition(type="audio_codec", value=["DTS-HD HRA"]),)),
     BuiltinFormat(
         key="audio-dts", name="DTS", group="Audio",
-        description="Lossy multichannel DTS surround, typically supporting 5.1 channels at a higher bitrate than Dolby Digital. DTS-HD High Resolution has its own format. This format also includes the generic DTS-HD tag when no variant is named. Original note: Resolution audio.",
-        conditions=(BuiltinCondition(type="audio_codec", value=["DTS", "DTS-HD"]),)),
+        description="Lossy multichannel DTS surround, typically supporting 5.1 channels at a higher bitrate than Dolby Digital. DTS-HD High Resolution has its own format.",
+        conditions=(BuiltinCondition(type="audio_codec", value=["DTS"]),)),
     BuiltinFormat(
         key="audio-dd", name="DD", group="Audio",
         description="Lossy Dolby Digital, also called DD or AC-3. It supports up to 5.1 channels and is broadly compatible with broadcasts, DVDs, Blu-rays, and playback devices.",
