@@ -5,6 +5,7 @@ from xml.etree import ElementTree
 
 import pytest
 
+from app.core.identity import release_title_matches
 from app.integrations.torznab import TORZNAB_NS, SearchResult, TorznabClient
 from app.models.domain import MediaType
 from app.parser import parse_release
@@ -34,6 +35,34 @@ def test_a_word_inside_the_source_tag_is_not_the_title() -> None:
 ])
 def test_the_same_title_and_year_is_accepted(release) -> None:
     assert _is_match(release, _target("Ray", 2004))
+
+
+@pytest.mark.parametrize(("release", "title", "year"), [
+    ("A.Nightmare.on.Elm.Street.2.Freddys.Revenge.1985.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR", "A Nightmare on Elm Street Part 2: Freddy's Revenge", 1985),
+    ("Rocky.2.1979.1080p.BluRay.REMUX.AVC-GRP", "Rocky II", 1979),
+    ("Rocky.II.1979.1080p.BluRay.REMUX.AVC-GRP", "Rocky 2", 1979),
+    ("Dune.Part.2.2024.2160p.WEB-DL.H.265-GRP", "Dune: Part Two", None),
+])
+def test_how_a_release_spells_a_sequel_number_does_not_matter(release, title, year) -> None:
+    if title == "Dune: Part Two":
+        # A spelled-out number is a different word, and is left to the id.
+        assert not _is_match(release, _target(title, 2024))
+        assert _is_match(release, _target(title, 2024), tmdb_id=334)
+        return
+    assert _is_match(release, _target(title, year))
+
+
+@pytest.mark.parametrize(("left", "right"), [
+    ("A Nightmare on Elm Street Part 2", "A Nightmare on Elm Street Part 3"),
+    ("Rocky II", "Rocky III"),
+    ("Back to the Future Part II", "Back to the Future"),
+])
+def test_a_different_number_is_a_different_title(left, right) -> None:
+    assert not release_title_matches(left, right)
+
+
+def test_a_word_called_part_stays_when_no_number_follows() -> None:
+    assert not release_title_matches("Part Time", "Time")
 
 
 def test_the_same_title_from_another_year_is_rejected() -> None:

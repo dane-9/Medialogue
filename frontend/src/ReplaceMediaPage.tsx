@@ -26,7 +26,7 @@ import { upgradeTokenReason } from './lib/upgradeTokenReason'
 import { qualityLabel } from './lib/qualityLabel'
 import { splitQuality } from './lib/quality'
 import { formatPeers, swarmHealth } from './lib/swarm'
-import { upgradeResultsToReleases } from './lib/upgradeResults'
+import { rejectionLabel, upgradeResultsToReleases } from './lib/upgradeResults'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import type { DownloadClient, UpgradeSearchResults } from './types'
 import { useLiveEvent, useLiveRefresh } from './lib/liveRefresh'
@@ -680,7 +680,7 @@ export default function ReplaceMediaPage() {
               {result.selected && <span className="release-pill upgrade-result-selected">Selected</span>}
               {result.sameFile && <span className="release-pill replace-same-file">Same file</span>}
               {result.linkFailed && <span className="release-pill release-blocked">Same name, different file</span>}
-              {!result.eligible && !release.blocklisted && <Tooltip className="release-pill release-blocked" content={<ul>{result.rejectionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}><Icon name="alert" size={11} />Rejected</Tooltip>}
+              {!result.eligible && !release.blocklisted && <Tooltip className="release-pill release-blocked" content={<ul>{result.rejectionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}><Icon name="alert" size={11} />{rejectionLabel(result.rejectionReasons)}</Tooltip>}
             </>
           }}
           label={`Replacement search results for ${resultsTarget.title}`}

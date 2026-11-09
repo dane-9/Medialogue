@@ -16,7 +16,7 @@ import json
 import sqlalchemy as sa
 from alembic import context, op
 
-from app.core.identity import identity_titles_equivalent
+from app.core.identity import release_title_matches
 from app.parser import parse_release
 
 revision = "0005"
@@ -29,7 +29,7 @@ def _is_same_title(release: str, title: str, year: int | None) -> bool:
     identity = parse_release(release).identity
     if year and identity.year and identity.year != year:
         return False
-    return any(identity_titles_equivalent(candidate, title) for candidate in (identity.title_candidate, *identity.alternate_titles))
+    return any(release_title_matches(candidate, title) for candidate in (identity.title_candidate, *identity.alternate_titles))
 
 
 def upgrade() -> None:

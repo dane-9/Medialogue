@@ -905,7 +905,8 @@ async def revalidate_replacement(db: AsyncSession, row: UpgradeCandidate) -> Non
     if not indexer or not indexer.enabled:
         raise AppError("INDEXER_UNAVAILABLE", "The replacement indexer is unavailable", status_code=409)
     result = SearchResult(guid=row.guid, title=row.title, download_url=row.download_url,
-                          size=row.size, seeders=row.seeders, published=None)
+                          size=row.size, seeders=row.seeders, published=None,
+                          tmdb_id=(row.comparison_snapshot or {}).get("result_tmdb_id"))
     scored = _score_candidate(target=target, profile=profile, formats=formats, indexer=indexer, result=result)
     if scored is None or scored.custom_format_score != row.custom_format_score or profile.snapshot() != row.comparison_snapshot.get("profile"):
         raise AppError("REPLACEMENT_STALE", "The profile or replacement eligibility changed. Search again before downloading.", status_code=409)

@@ -22,7 +22,7 @@ import { Dropdown } from '../components/Dropdown'
 import { Modal } from '../components/Modal'
 import { Button, EmptyState, Select } from '../components/ui'
 import { formatEta } from '../api/mappers/downloads'
-import { upgradeResultsToReleases } from '../lib/upgradeResults'
+import { rejectionLabel, upgradeResultsToReleases } from '../lib/upgradeResults'
 import { integrationsApi } from '../api/modules/integrations'
 import { settingsApi } from '../api/modules/settings'
 import { upgradesApi } from '../api/modules/upgrades'
@@ -882,7 +882,7 @@ export function UpgradeMediaPage() {
             return <>
               {result.recommended && <span className="release-pill upgrade-result-recommended">Recommended</span>}
               {result.selected && <span className="release-pill upgrade-result-selected">Selected</span>}
-              {!result.eligible && <Tooltip className="release-pill release-blocked" content={<ul>{result.rejectionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}><Icon name="alert" size={11} />Rejected</Tooltip>}
+              {!result.eligible && <Tooltip className="release-pill release-blocked" content={<ul>{result.rejectionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}><Icon name="alert" size={11} />{rejectionLabel(result.rejectionReasons)}</Tooltip>}
             </>
           }}
           label={`Cached upgrade search results for ${resultsTarget.mediaTitle}`}

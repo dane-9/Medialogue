@@ -18,7 +18,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.identity import normalize_identity_title
+from app.core.identity import comparable_release_title
 from app.integrations.torznab import SearchResult, TorznabClient
 from app.models.domain import Job, JobStatus, MediaScope, MediaType, Movie, Show, UpgradeCandidate
 from app.parser import parse_release
@@ -62,7 +62,7 @@ async def _read_feed(indexer: ConfiguredIndexer, media_type: str, client_factory
 async def _titles_by_name(db: AsyncSession, model: type[Movie] | type[Show]) -> dict[str, list[tuple[UUID, int | None]]]:
     names: dict[str, list[tuple[UUID, int | None]]] = {}
     for title_id, title, year in (await db.execute(select(model.id, model.title, model.year).where(model.monitored.is_(True)))).all():
-        names.setdefault(normalize_identity_title(title), []).append((title_id, year))
+        names.setdefault(comparable_release_title(title), []).append((title_id, year))
     return names
 
 
@@ -70,7 +70,7 @@ def _matching_title(names: dict[str, list[tuple[UUID, int | None]]], result: Sea
     """The one library title a release names. Nothing is better than a guess."""
 
     identity = parse_release(result.title).identity
-    same_name = names.get(normalize_identity_title(identity.title_candidate), [])
+    same_name = names.get(comparable_release_title(identity.title_candidate), [])
     if identity.year is None:
         return same_name[0][0] if not year_required and len(same_name) == 1 else None
     matches = [title_id for title_id, year in same_name if year == identity.year or (not year_required and year is None)]

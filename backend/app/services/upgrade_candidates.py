@@ -35,7 +35,7 @@ from app.models.domain import (
     UpgradeCandidate,
     UpgradeSearchMark,
 )
-from app.core.identity import identity_titles_equivalent
+from app.core.identity import release_title_matches
 from app.parser import parse_release
 from app.services.builtin_formats import BANNED_RELEASE_GROUP, BANNED_RELEASE_GROUPS_FORMAT, RELEASE_GROUP_FORMAT
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
@@ -682,7 +682,7 @@ def _is_the_searched_title(parsed: Any, result: TorznabSearchResult, target: Sea
         return False
     if result.tmdb_id is not None and result.tmdb_id == target.tmdb_id:
         return True
-    return any(identity_titles_equivalent(title, target.title) for title in (identity.title_candidate, *identity.alternate_titles))
+    return any(release_title_matches(title, target.title) for title in (identity.title_candidate, *identity.alternate_titles))
 
 
 def _score_candidate(
@@ -696,11 +696,9 @@ def _score_candidate(
     if not result.title.strip() or not result.download_url:
         return None
     parsed = parse_release(result.title)
-    if not target.replacement and not _is_the_searched_title(parsed, result, target.search_target):
+    if not _is_the_searched_title(parsed, result, target.search_target):
         return None
     if target.replacement:
-        if not identity_titles_equivalent(parsed.identity.title_candidate, target.search_target.title):
-            return None
         if target.media_type == MediaType.MOVIES and target.search_target.year and parsed.identity.year != target.search_target.year:
             return None
         from app.integrations.qbittorrent import magnet_info_hash
@@ -809,6 +807,8 @@ def _score_candidate(
     )
     snapshot = {
         "schema_version": 1,
+        # What vouched for the title, for when this is checked again at download.
+        "result_tmdb_id": result.tmdb_id,
         "profile": profile.snapshot(),
         "current": {
             "release_ids": [str(item.release_id) for item in target.releases],
@@ -894,7 +894,7 @@ def _rejection_reasons(
     if BANNED_RELEASE_GROUP.search(result.title):
         return ["This release group is banned."]
     parsed = parse_release(result.title)
-    if not target.replacement and not _is_the_searched_title(parsed, result, target.search_target):
+    if not _is_the_searched_title(parsed, result, target.search_target):
         return [f"A different title: {parsed.identity.title_candidate or 'unknown'}."]
     if target.replacement:
         from app.integrations.qbittorrent import magnet_info_hash
@@ -917,7 +917,7 @@ def _rejection_reasons(
         return ["The release quality is not recognized by this Quality Profile."]
     if preference > target.reference.quality_preference:
         return ["The release is lower quality than the current upgrade floor."]
-    return ["The release does not meet the replacement identity, quality, or equal-or-higher CF score requirements."] if target.replacement else ["The release does not improve quality, Custom Format score, or revision status."]
+    return ["The release scores below the release it would replace, or misses the profile's minimums."] if target.replacement else ["The release does not improve quality, Custom Format score, or revision status."]
 
 
 def _stored_search_result(

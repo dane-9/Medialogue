@@ -1,5 +1,26 @@
 import type { InteractiveSearchResult, UpgradeSearchResults } from '../types'
 
+const REJECTION_LABELS: Array<[start: string, label: string]> = [
+  ['A different title', 'Different title'],
+  ['This release group is banned', 'Banned group'],
+  ['Different movie edition', 'Different edition'],
+  ['The release quality is not recognized', 'Blocked by profile'],
+  ['The release is lower quality', 'Lower quality'],
+  ['The release scores below', 'Lower score'],
+  ['The release does not improve', 'No improvement'],
+  ['This is an existing torrent', 'Existing torrent'],
+  ['No seeders', 'No seeders'],
+  ['Individual episode', 'Not a season pack'],
+  ['The release is not a pack', 'Not a season pack'],
+  ['The indexer did not provide', 'No download link'],
+]
+
+/** A few words for why a result was rejected; the tooltip has the full reason. */
+export function rejectionLabel(reasons: string[]): string {
+  const reason = reasons[0] ?? ''
+  return REJECTION_LABELS.find(([start]) => reason.startsWith(start))?.[1] ?? 'Rejected'
+}
+
 /**
  * Adapt Upgrade/Replace search results to the shared release table, so both
  * screens get Interactive Search's sorting, badges and blocklist marks.
@@ -32,8 +53,9 @@ export function upgradeResultsToReleases(
       customFormatScore: result.customFormatScore,
       customFormatSnapshot: { matched_format_names: result.matchedFormatNames },
       parser: result.parser,
-      // Rejected results stay visible, with the reason as a warning.
-      warnings: result.eligible ? [] : (result.rejectionReasons ?? []).filter((reason) => !reason.startsWith('Blocklisted:')),
+      // Rejected results stay visible; the screens label them with the reason.
+      // A warning here would add the release table's own "Blocked by profile".
+      warnings: [],
       // The upgrade search marks previously failed releases with a
       // "Blocklisted:" rejection reason; they must not be selectable.
       blocklisted: Boolean(blockReason),
