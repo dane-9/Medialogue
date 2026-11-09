@@ -9207,6 +9207,11 @@
             ],
             "title": "Leechers"
           },
+          "link_failed": {
+            "default": false,
+            "title": "Link Failed",
+            "type": "boolean"
+          },
           "lost_evidence": {
             "items": {
               "$ref": "#/components/schemas/LostSourceEvidence"
@@ -9329,6 +9334,11 @@
               }
             ],
             "title": "Root Name"
+          },
+          "same_file": {
+            "default": false,
+            "title": "Same File",
+            "type": "boolean"
           },
           "searching": {
             "default": false,
@@ -13393,6 +13403,7 @@
               {
                 "enum": [
                   "submitted",
+                  "linking",
                   "downloading",
                   "validating",
                   "handoff_attention",
@@ -14194,6 +14205,11 @@
             ],
             "title": "Leechers"
           },
+          "link_failed": {
+            "default": false,
+            "title": "Link Failed",
+            "type": "boolean"
+          },
           "matched_format_names": {
             "items": {
               "type": "string"
@@ -14251,6 +14267,11 @@
               }
             ],
             "title": "Release Group"
+          },
+          "same_file": {
+            "default": false,
+            "title": "Same File",
+            "type": "boolean"
           },
           "seeders": {
             "anyOf": [

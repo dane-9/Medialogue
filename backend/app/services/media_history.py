@@ -49,6 +49,8 @@ async def history_snapshot(db: AsyncSession, row: UpgradeCandidate) -> dict[str,
 
 
 def _outcome(event_type: str, snapshot: dict[str, Any]) -> str:
+    if snapshot.get("linked"):
+        return "Linked to existing files"
     if event_type == "upgrade.cleanup_completed":
         return "Old files deleted" if snapshot.get("replacement") else "Old release removed"
     if snapshot.get("old_torrents_removed"):

@@ -884,6 +884,7 @@ def _stored_search_result(
         "added_custom_formats": [dict(item) for item in scored.added_custom_formats] if scored is not None else [],
         "snapshot": scored.snapshot if scored is not None else {},
         "parser": parsed.to_dict(),
+        "revision_rank": scored.revision_rank if scored is not None else 0,
     }
 
 
@@ -967,6 +968,29 @@ async def _search_target(
     return candidates[0], stored_results, failures, True
 
 
+def apply_search_result(row: UpgradeCandidate, value: dict[str, Any]) -> None:
+    """Make one of a candidate's stored search results the chosen release."""
+
+    snapshot = dict(value.get("snapshot") or {})
+    current = snapshot.get("current") or {}
+    row.indexer_id = uuid.UUID(str(value["indexer_id"])) if value.get("indexer_id") else None
+    row.indexer_name = str(value.get("indexer_name") or row.indexer_name)
+    row.guid = str(value.get("guid") or value.get("title") or row.guid)
+    row.download_url = value.get("download_url")
+    row.title = str(value.get("title") or row.title)
+    row.quality = value.get("quality")
+    row.custom_format_score = int(value.get("custom_format_score") or 0)
+    row.score_delta = row.custom_format_score - int(current.get("custom_format_score") or row.current_custom_format_score)
+    row.size = value.get("size")
+    row.seeders = value.get("seeders")
+    row.leechers = value.get("leechers")
+    published = value.get("published_at")
+    row.published_at = datetime.fromisoformat(published) if isinstance(published, str) else published
+    row.upgrade_types = [str(reason) for reason in value.get("upgrade_types") or []]
+    row.added_custom_formats = [dict(item) for item in value.get("added_custom_formats") or []]
+    row.comparison_snapshot = {**snapshot, **{key: True for key in ("same_file", "link_failed") if value.get(key)}}
+
+
 async def _persist_candidate(
     db: AsyncSession,
     *,
@@ -976,7 +1000,7 @@ async def _persist_candidate(
     searched_at: datetime,
 ) -> tuple[bool, bool]:
     row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.target_key == target.target_key))
-    if row is not None and row.execution_state in {"submitted", "downloading", "validating", "handoff_attention", "cleanup_required"}:
+    if row is not None and row.execution_state in {"submitted", "linking", "downloading", "validating", "handoff_attention", "cleanup_required"}:
         # A search may run while an explicitly selected upgrade is still in
         # flight. Never replace or remove the candidate snapshot that anchors
         # that destructive workflow.

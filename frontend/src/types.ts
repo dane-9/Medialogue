@@ -534,6 +534,8 @@ interface UpgradeSearchResult {
   parser: Record<string, unknown>
   recommended: boolean
   selected: boolean
+  sameFile: boolean
+  linkFailed: boolean
 }
 
 export interface UpgradeSearchResults {

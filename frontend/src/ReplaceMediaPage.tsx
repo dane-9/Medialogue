@@ -209,7 +209,8 @@ export default function ReplaceMediaPage() {
   const dismissable = (item: ReplacementItem) => Boolean(item.reason_code) && item.tab !== 'in_progress'
   const downloadable = (item: ReplacementItem) => item.tab === 'found' && Boolean(item.candidate_id)
   const pickable = (item: ReplacementItem) => searchable(item) || dismissable(item) || downloadable(item)
-  const checked = (item: ReplacementItem) => picked.has(item.target_key) || (downloadable(item) && !unticked.has(item.target_key))
+  // A release that failed the file check waits for a decision, so it is not ticked by itself.
+  const checked = (item: ReplacementItem) => picked.has(item.target_key) || (downloadable(item) && !item.link_failed && !unticked.has(item.target_key))
   const chosen = rows.filter(checked)
   const handPicked = rows.filter((item) => picked.has(item.target_key))
   const without = (set: Set<string>, key: string) => { const next = new Set(set); next.delete(key); return next }
@@ -281,6 +282,12 @@ export default function ReplaceMediaPage() {
 
   const toDownload = chosen.filter(downloadable)
   const kindsToDownload = [...new Set(toDownload.map((item) => (item.media_type ?? 'movies') as MediaKind))]
+  const linkCount = toDownload.filter((item) => item.same_file).length
+  const fetchCount = toDownload.length - linkCount
+  const fetchLabel = `Download ${fetchCount} ${fetchCount === 1 ? 'replacement' : 'replacements'}`
+  const submitLabel = !linkCount ? fetchLabel
+    : fetchCount ? `Link ${linkCount} · Download ${fetchCount}`
+      : `Link ${linkCount} ${linkCount === 1 ? 'file' : 'files'}`
   const openConfirm = () => {
     setClientFor({ movies: clientsFor('movies')[0]?.id ?? '', shows: clientsFor('shows')[0]?.id ?? '' })
     setConfirming(true)
@@ -462,10 +469,11 @@ export default function ReplaceMediaPage() {
             const rowBusy = busy === item.target_key
             // How far along the download is, as Upgrade Media shows it: a sent
             // torrent has not started and a verifying one is complete.
-            const running = item.execution_state === 'submitted' || item.execution_state === 'downloading' || item.execution_state === 'validating'
+            const running = item.execution_state === 'submitted' || item.execution_state === 'linking' || item.execution_state === 'downloading' || item.execution_state === 'validating'
             const runningPercent = item.execution_state === 'validating' ? 100 : item.execution_state === 'submitted' ? 0
               : Math.round(Math.max(0, Math.min(1, item.download_progress ?? 0)) * 100)
-            const runningLabel = item.execution_state === 'submitted' ? 'Sent' : item.execution_state === 'validating' ? 'Checking' : `${runningPercent}%`
+            const runningLabel = item.execution_state === 'submitted' ? 'Sent' : item.execution_state === 'validating' ? 'Checking'
+              : item.execution_state === 'linking' ? `Checking files ${runningPercent}%` : `${runningPercent}%`
             // With no replacement yet, the right side says where the search stands.
             const searchNote = item.searching ? 'Searching indexers…'
               : item.last_search_result === 'no_match' ? `Nothing equal or better found · ${formatAge(item.last_searched_at)}`
@@ -521,7 +529,7 @@ export default function ReplaceMediaPage() {
                       ? <span className="upgrade-v2-release">{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
                         <span className="upgrade-token-sep">{token.sep}</span>{token.sep && <wbr />}
                         <span className={lit[index] ? 'upgrade-token-new quality' : 'upgrade-token-same'}>{token.text}</span>
-                      </Fragment>) : breakable(item.candidate_title)}</span>
+                      </Fragment>) : breakable(item.candidate_title)}{item.same_file && <Tooltip className="release-pill replace-same-file" content="This torrent holds the files you already have. It is linked to them after a file check, and nothing is downloaded.">Same file</Tooltip>}{item.link_failed && <Tooltip className="release-pill release-blocked" content="This has the same name as your files, but qBittorrent's check found different contents. Your files were left alone. You can still download it as a new copy.">Same name, different file</Tooltip>}</span>
                       : <span className="upgrade-v2-release replace-v3-note">{item.searching && <span className="replace-spinner" aria-hidden="true" />}{searchNote}</span>}
                     {shownStatus === 'in_progress' || shownStatus === 'attention'
                       ? item.execution_state === 'handoff_attention'
@@ -599,7 +607,7 @@ export default function ReplaceMediaPage() {
               {toSearch.length
                 ? <Button variant={anyFound ? 'secondary' : 'primary'} icon="search" disabled={Boolean(busy)} onClick={() => void search(toSearch)}>{`Search ${toSearch.length} ${toSearch.length === 1 ? 'title' : 'titles'}`}</Button>
                 : <Button variant="secondary" icon="search" disabled={Boolean(busy) || bulkProgress !== null || !statusCounts.all} onClick={() => void search('all')}>Search all</Button>}
-              {anyFound && <Button variant="primary" icon="download" disabled={!toDownload.length || Boolean(busy)} onClick={openConfirm}>{`Download ${toDownload.length} ${toDownload.length === 1 ? 'replacement' : 'replacements'}`}</Button>}
+              {anyFound && <Button variant="primary" icon={linkCount && !fetchCount ? 'check' : 'download'} disabled={!toDownload.length || Boolean(busy)} onClick={openConfirm}>{submitLabel}</Button>}
             </>}
         </div>
       </div>
@@ -608,12 +616,14 @@ export default function ReplaceMediaPage() {
     </>}
 
     {confirming && <Modal
-      title={`Download ${toDownload.length} ${toDownload.length === 1 ? 'replacement' : 'replacements'}?`}
+      title={`${submitLabel}?`}
       eyebrow="REPLACE MEDIA"
       onClose={() => setConfirming(false)}
-      footer={<><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setConfirming(false)}>Cancel</Button><Button variant="primary" icon="download" disabled={kindsToDownload.some((kind) => !clientFor[kind]) || Boolean(busy)} onClick={() => void download()}>Download</Button></>}
+      footer={<><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setConfirming(false)}>Cancel</Button><Button variant="primary" icon={linkCount && !fetchCount ? 'check' : 'download'} disabled={kindsToDownload.some((kind) => !clientFor[kind]) || Boolean(busy)} onClick={() => void download()}>{!linkCount ? 'Download' : fetchCount ? 'Link and download' : 'Link'}</Button></>}
     >
-      <p className="replace-confirm-note">Each replacement is sent to the client below. The current torrents and files stay until the replacement is verified.</p>
+      <p className="replace-confirm-note">{linkCount
+        ? `${linkCount} will use the files you already have, nothing is downloaded.${fetchCount ? ` ${fetchCount} will be downloaded.` : ''} Each is sent to the client below.`
+        : 'Each replacement is sent to the client below. The current torrents and files stay until the replacement is verified.'}</p>
       {kindsToDownload.map((kind) => <label key={kind} className="replace-confirm-client">
         <span>{kind === 'shows' ? 'Shows' : 'Movies'} client</span>
         <Select aria-label={`${kind === 'shows' ? 'Shows' : 'Movies'} download client`} value={clientFor[kind]} onChange={(event) => setClientFor((current) => ({ ...current, [kind]: event.target.value }))}>
@@ -668,6 +678,8 @@ export default function ReplaceMediaPage() {
             return <>
               {result.recommended && <span className="release-pill upgrade-result-recommended">Recommended</span>}
               {result.selected && <span className="release-pill upgrade-result-selected">Selected</span>}
+              {result.sameFile && <span className="release-pill replace-same-file">Same file</span>}
+              {result.linkFailed && <span className="release-pill release-blocked">Same name, different file</span>}
               {!result.eligible && !release.blocklisted && <Tooltip className="release-pill release-blocked" content={<ul>{result.rejectionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}><Icon name="alert" size={11} />Rejected</Tooltip>}
             </>
           }}

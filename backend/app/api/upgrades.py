@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import PurePath, PurePosixPath
 
 from typing import Any, Iterable, Iterator
@@ -72,7 +71,7 @@ from app.services.quality_profiles import (
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
 from app.services.jobs import create_job
 from app.services.runtime_jobs import launch_runtime_job
-from app.services.upgrade_candidates import run_upgrade_search_job
+from app.services.upgrade_candidates import apply_search_result, run_upgrade_search_job
 from app.services.upgrade_cleanup import cleanup_preview, commit_cleanup, run_automatic_cleanups
 from app.services.upgrade_execution import retry_upgrade_handoff, submit_upgrade_candidate
 
@@ -530,6 +529,8 @@ def _search_result_response(row: UpgradeCandidate, value: dict[str, Any], *, pos
         parser=dict(value.get("parser") or {}),
         recommended=position == 0 and bool(value.get("eligible")),
         selected=selected,
+        same_file=bool(value.get("same_file")),
+        link_failed=bool(value.get("link_failed")),
     )
 
 
@@ -568,24 +569,7 @@ async def select_upgrade_search_result(
     if not value.get("eligible"):
         reasons = " ".join(str(reason) for reason in value.get("rejection_reasons") or [])
         raise AppError("UPGRADE_RESULT_REJECTED", reasons or "That result does not qualify as an upgrade.", status_code=409)
-    snapshot = dict(value.get("snapshot") or {})
-    current = snapshot.get("current") or {}
-    row.indexer_id = UUID(str(value["indexer_id"])) if value.get("indexer_id") else None
-    row.indexer_name = str(value.get("indexer_name") or row.indexer_name)
-    row.guid = str(value.get("guid") or value.get("title") or row.guid)
-    row.download_url = value.get("download_url")
-    row.title = str(value.get("title") or row.title)
-    row.quality = value.get("quality")
-    row.custom_format_score = int(value.get("custom_format_score") or 0)
-    row.score_delta = row.custom_format_score - int(current.get("custom_format_score") or row.current_custom_format_score)
-    row.size = value.get("size")
-    row.seeders = value.get("seeders")
-    row.leechers = value.get("leechers")
-    published = value.get("published_at")
-    row.published_at = datetime.fromisoformat(published) if isinstance(published, str) else published
-    row.upgrade_types = [str(reason) for reason in value.get("upgrade_types") or []]
-    row.added_custom_formats = [dict(item) for item in value.get("added_custom_formats") or []]
-    row.comparison_snapshot = snapshot
+    apply_search_result(row, value)
     # Choosing a different release changes only the recommendation. Target-level
     # guards (for example a profile that is awaiting re-evaluation) must survive.
     await create_event(

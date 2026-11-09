@@ -6019,6 +6019,11 @@ export interface components {
             last_searched_at?: string | null;
             /** Leechers */
             leechers?: number | null;
+            /**
+             * Link Failed
+             * @default false
+             */
+            link_failed: boolean;
             /** Lost Evidence */
             lost_evidence?: components["schemas"]["LostSourceEvidence"][];
             /** Media Present */
@@ -6046,6 +6051,11 @@ export interface components {
             reason_since?: string | null;
             /** Root Name */
             root_name?: string | null;
+            /**
+             * Same File
+             * @default false
+             */
+            same_file: boolean;
             /**
              * Searching
              * @default false
@@ -7352,7 +7362,7 @@ export interface components {
             /** Execution Error */
             execution_error?: string | null;
             /** Execution State */
-            execution_state?: ("submitted" | "downloading" | "validating" | "handoff_attention" | "cleanup_required" | "completed" | "failed") | null;
+            execution_state?: ("submitted" | "linking" | "downloading" | "validating" | "handoff_attention" | "cleanup_required" | "completed" | "failed") | null;
             /**
              * Id
              * Format: uuid
@@ -7596,6 +7606,11 @@ export interface components {
             indexer_name: string;
             /** Leechers */
             leechers?: number | null;
+            /**
+             * Link Failed
+             * @default false
+             */
+            link_failed: boolean;
             /** Matched Format Names */
             matched_format_names?: string[];
             /** Parser */
@@ -7615,6 +7630,11 @@ export interface components {
             rejection_reasons?: string[];
             /** Release Group */
             release_group?: string | null;
+            /**
+             * Same File
+             * @default false
+             */
+            same_file: boolean;
             /** Seeders */
             seeders?: number | null;
             /**

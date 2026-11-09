@@ -28,6 +28,7 @@ from app.services.payload_groups import GROUP_KEY
 from app.services.release_source import ReleaseSource, source_lookup, source_of_releases
 from app.services.format_breakdown import comparison_formats
 from app.services.quality_profiles import profiles_cached
+from app.services.same_file_links import apply_same_file_results, note_same_file_results
 from app.services.shared_results import pin_shared_result, shared_result
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
     _persist_candidate, _evaluation_policy, _score_candidate)
@@ -35,7 +36,7 @@ from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _sho
 
 SEARCH_JOB_TYPE = "search_media_replacements"
 EVIDENCE_WINDOW = timedelta(hours=2)
-ACTIVE_STATES = ("submitted", "downloading", "validating", "handoff_attention", "cleanup_required")
+ACTIVE_STATES = ("submitted", "linking", "downloading", "validating", "handoff_attention", "cleanup_required")
 #: States that wait for the user rather than for qBittorrent.
 ACTION_STATES = {"handoff_attention", "cleanup_required"}
 
@@ -513,7 +514,7 @@ def _item(**values: Any) -> dict[str, Any]:
         "current_quality": None, "current_score": None, "media_present": None, "last_searched_at": None,
         "last_search_result": None, "candidate_id": None, "candidate_title": None, "candidate_quality": None,
         "candidate_score": None, "candidate_size": None, "seeders": None, "leechers": None, "indexer": None,
-        "indexer_id": None, "execution_state": None, "error": None,
+        "indexer_id": None, "execution_state": None, "error": None, "same_file": False, "link_failed": False,
         "searching": False, "root_name": None, "lost_evidence": [], "current_size": None,
         "current_matched_formats": [], "candidate_matched_formats": [], "profile_name": None, "upgrade_types": [],
         "download_progress": None, "download_speed": None, "download_eta_seconds": None,
@@ -642,6 +643,8 @@ async def _replacement_queue(db: AsyncSession, *, details: bool = True) -> list[
             candidate_size=row.size if row else None, leechers=row.leechers if row else None,
             indexer_id=str(row.indexer_id) if row and row.indexer_id else None,
             execution_state=row.execution_state if row else None, error=row.execution_error if row else None,
+            same_file=bool(row and (row.comparison_snapshot or {}).get("same_file")),
+            link_failed=bool(row and (row.comparison_snapshot or {}).get("link_failed")),
             **(await _download_live(db, row) if row and details else {}),
             **(await _breakdown(db, row, current_score_snapshot=target.reference.score_snapshot) if row and details else {}),
             searching=not in_progress and (target.target_key in searching_keys or (bulk_search and not dismissed)),
@@ -787,6 +790,17 @@ async def _attach_root_names(db: AsyncSession, items: list[dict[str, Any]]) -> N
             item["root_name"] = show_roots.get(item["show_id"])
 
 
+async def _note_same_files(db: AsyncSession, entry: ReplacementTarget, results: list[dict[str, Any]], indexers, client_factory) -> None:
+    # Only a title with no torrent can be linked: its files are all it has.
+    if entry.reason == NO_TORRENT and all(release.release_state == ReleaseState.CURRENT for release in entry.releases):
+        await note_same_file_results(db, target=entry.target, results=results, indexers=indexers, client_factory=client_factory)
+
+
+async def _apply_same_files(db: AsyncSession, entry: ReplacementTarget, results: list[dict[str, Any]]) -> None:
+    if entry.reason == NO_TORRENT:
+        await apply_same_file_results(db, entry.target.target_key, results)
+
+
 async def run_replacement_search(job_id: UUID, *, target_key: str | None = None, only_new: bool = False, client_factory=TorznabClient):
     """Search for replacements: one title, every title, or (`only_new`) those never searched.
 
@@ -819,8 +833,10 @@ async def run_replacement_search(job_id: UUID, *, target_key: str | None = None,
             best, results, errors, success = await _search_target(db, target=entry.target, indexers=indexers, client_factory=client_factory)
             failures += errors
             if success:
+                await _note_same_files(db, entry, results, indexers, client_factory)
                 candidate, _ = await _persist_candidate(db, target=entry.target, candidate=best, search_results=results,
                                                       searched_at=datetime.now(timezone.utc))
+                await _apply_same_files(db, entry, results)
                 found += int(candidate)
             review = reviews.get(entry.target.target_key)
             if review is None:
@@ -856,7 +872,9 @@ async def search_replacement_now(db: AsyncSession, target_key: str, *, client_fa
     searched_at = datetime.now(timezone.utc)
     if not success:
         raise AppError("INDEXERS_FAILED", "Every indexer failed to answer. Check them in Settings and try again.", status_code=502)
+    await _note_same_files(db, entry, results, indexers, client_factory)
     await _persist_candidate(db, target=entry.target, candidate=best, search_results=results, searched_at=searched_at)
+    await _apply_same_files(db, entry, results)
     review = (await _reviews(db, [target_key])).get(target_key)
     if review is None:
         review = ReplacementReview(target_key=target_key)
@@ -892,5 +910,7 @@ async def revalidate_replacement(db: AsyncSession, row: UpgradeCandidate) -> Non
     if scored is None or scored.custom_format_score != row.custom_format_score or profile.snapshot() != row.comparison_snapshot.get("profile"):
         raise AppError("REPLACEMENT_STALE", "The profile or replacement eligibility changed. Search again before downloading.", status_code=409)
     entry = next(entry for entry in targets if entry.target.target_key == row.target_key)
-    # Kept on the row: a trumped title finishes like an upgrade (see handoff).
-    row.comparison_snapshot = {**scored.snapshot, "replacement_reason": entry.reason}
+    # Kept on the row: a trumped title finishes like an upgrade (see handoff),
+    # and a same-file result is linked rather than downloaded.
+    carried = {key: True for key in ("same_file", "link_failed") if (row.comparison_snapshot or {}).get(key)}
+    row.comparison_snapshot = {**scored.snapshot, "replacement_reason": entry.reason, **carried}

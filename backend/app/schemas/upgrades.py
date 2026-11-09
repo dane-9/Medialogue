@@ -11,6 +11,7 @@ from app.models.domain import MediaType
 
 UpgradeExecutionState = Literal[
     "submitted",
+    "linking",
     "downloading",
     "validating",
     "handoff_attention",
@@ -158,6 +159,10 @@ class UpgradeSearchResultResponse(BaseModel):
     parser: dict[str, Any] = Field(default_factory=dict)
     recommended: bool = False
     selected: bool = False
+    #: These are the very files already on disk, so nothing need be downloaded.
+    same_file: bool = False
+    #: Looked the same, but qBittorrent's check of the files on disk fell short.
+    link_failed: bool = False
 
 
 class UpgradeSearchResultsResponse(BaseModel):

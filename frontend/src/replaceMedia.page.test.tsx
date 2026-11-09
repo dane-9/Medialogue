@@ -65,6 +65,33 @@ describe('Replace Media page', () => {
     expect(text()).toContain('TRUMPED?beta.example')
   })
 
+  const found = (key: string, title: string, overrides: Partial<ReplacementItem> = {}) => item({
+    target_key: key, title, tab: 'found', candidate_id: `candidate-${key}`, candidate_title: `${title}.2160p`, needs_attention: true, ...overrides,
+  })
+
+  it('combines linking and downloading in one button, and labels what will happen', async () => {
+    api.queue.mockResolvedValue({ items: [
+      found('movie:1', 'Inception', { same_file: true }),
+      found('movie:2', 'Memento'),
+    ] })
+    renderPage(<ReplaceMediaPage />, '/replace-media')
+    expect(await screen.findByRole('button', { name: 'Link 1 · Download 1' })).toBeTruthy()
+    expect(text()).toContain('Same file')
+  })
+
+  it('says Link when every ticked title is the same file', async () => {
+    api.queue.mockResolvedValue({ items: [found('movie:1', 'Inception', { same_file: true }), found('movie:2', 'Memento', { same_file: true })] })
+    renderPage(<ReplaceMediaPage />, '/replace-media')
+    expect(await screen.findByRole('button', { name: 'Link 2 files' })).toBeTruthy()
+  })
+
+  it('leaves a release that failed its file check unticked', async () => {
+    api.queue.mockResolvedValue({ items: [found('movie:1', 'Inception', { link_failed: true }), found('movie:2', 'Memento')] })
+    renderPage(<ReplaceMediaPage />, '/replace-media')
+    expect(await screen.findByRole('button', { name: 'Download 1 replacement' })).toBeTruthy()
+    expect(text()).toContain('Same name, different file')
+  })
+
   it('shows bulk search progress, then reloads once the search finishes', async () => {
     renderPage(<ReplaceMediaPage />, '/replace-media')
     await waitFor(() => expect(text()).toContain('Inception'))

@@ -46,7 +46,7 @@ from app.services.upgrade_payloads import _ids, _old_live_torrents, utcnow
 QBittorrentClientFactory = Callable[..., Any]
 TorznabClientFactory = Callable[..., Any]
 
-ACTIVE_EXECUTION_STATES = frozenset({"submitted", "downloading", "validating", "handoff_attention", "cleanup_required"})
+ACTIVE_EXECUTION_STATES = frozenset({"submitted", "linking", "downloading", "validating", "handoff_attention", "cleanup_required"})
 
 
 def execution_active(row: UpgradeCandidate) -> bool:
@@ -205,6 +205,13 @@ async def submit_upgrade_candidate(
         raise AppError("DOWNLOAD_CLIENT_NOT_ALLOWED_BY_INDEXER", f"{indexer.name} is not configured to grab through {client.name}.", status_code=409)
 
     selected_category = category.strip() if category and category.strip() else (client.category or None)
+    if (row.comparison_snapshot or {}).get("same_file"):
+        from app.services.same_file_links import submit_same_file_link
+
+        return await submit_same_file_link(
+            db, row, client=client, indexer=indexer, category=selected_category,
+            torznab_client_factory=torznab_client_factory, qbittorrent_client_factory=qbittorrent_client_factory,
+        )
     adapter = qbittorrent_client_factory(client.url, client.username or "", client.password or "")
     torznab = None
     submitted_info_hash: str | None = None
@@ -304,7 +311,7 @@ async def associate_upgrade_torrent(
                 .where(
                     UpgradeCandidate.media_type == scope,
                     UpgradeCandidate.selected_download_client_id == download_client_id,
-                    UpgradeCandidate.execution_state.in_(["submitted", "downloading", "validating", "handoff_attention"]),
+                    UpgradeCandidate.execution_state.in_(["submitted", "linking", "downloading", "validating", "handoff_attention"]),
                 )
                 .order_by(UpgradeCandidate.submitted_at.desc())
             )
@@ -334,6 +341,11 @@ async def associate_upgrade_torrent(
         )
     if row is None:
         return None
+    if row.execution_state == "linking":
+        # Only being checked against files already linked to their release. It
+        # must not become an incoming release; settle_same_file_links decides.
+        row.torrent_id = torrent.id
+        return {"upgrade_execution_id": str(row.id)}
 
     incoming_ids = _ids(row.incoming_release_ids)
     if row.torrent_id is None:
@@ -442,10 +454,15 @@ async def mark_upgrade_torrent_removed(db: AsyncSession, torrent: Torrent) -> No
     row = await db.scalar(
         select(UpgradeCandidate).where(
             UpgradeCandidate.torrent_id == torrent.id,
-            UpgradeCandidate.execution_state.in_(["submitted", "downloading", "validating"]),
+            UpgradeCandidate.execution_state.in_(["submitted", "linking", "downloading", "validating"]),
         )
     )
     if row is None:
+        return
+    if row.execution_state == "linking":
+        from app.services.same_file_links import release_linking_row
+
+        release_linking_row(row, "The torrent was removed from qBittorrent before its files were checked.")
         return
     row.execution_state = "handoff_attention"
     row.execution_error = "The replacement torrent was removed from qBittorrent before the upgrade handoff completed."

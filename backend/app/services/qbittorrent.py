@@ -1022,6 +1022,18 @@ async def _poll_download_client(
             finally:
                 await failure_adapter.close()
 
+        try:
+            from app.services.same_file_links import settle_same_file_links
+
+            async with db.begin_nested():
+                await settle_same_file_links(db, client, client_factory=client_factory)
+        except Exception:
+            processing_errors += 1
+            logger.exception(
+                "Same-file link check failed after qBittorrent snapshot processing",
+                extra={"entity_type": "download_client", "entity_id": str(client.id)},
+            )
+
         if completed_upgrade_torrent_ids:
             from app.services.upgrade_execution import advance_upgrade_handoff
 

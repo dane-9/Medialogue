@@ -148,6 +148,8 @@ export function mapSearchResults(value: SearchResultsPayload): UpgradeSearchResu
       parser: result.parser ?? {},
       recommended: result.recommended,
       selected: result.selected,
+      sameFile: result.same_file ?? false,
+      linkFailed: result.link_failed ?? false,
     })),
   }
 }

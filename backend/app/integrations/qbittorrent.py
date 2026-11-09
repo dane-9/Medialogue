@@ -94,6 +94,58 @@ def _magnet_info_hash(url: str) -> str | None:
     return None
 
 
+_CONTENT_LAYOUTS = {"original": "Original", "subfolder": "Subfolder", "nosubfolder": "NoSubfolder"}
+
+
+def _bdecode(payload: bytes, position: int = 0, depth: int = 0) -> tuple[Any, int]:
+    if depth > 32:
+        raise ValueError("bencoded value is nested too deeply")
+    token = payload[position:position + 1]
+    if token == b"i":
+        end = payload.index(b"e", position + 1)
+        return int(payload[position + 1:end]), end + 1
+    if token == b"l":
+        items: list[Any] = []
+        cursor = position + 1
+        while payload[cursor:cursor + 1] != b"e":
+            item, cursor = _bdecode(payload, cursor, depth + 1)
+            items.append(item)
+        return items, cursor + 1
+    if token == b"d":
+        mapping: dict[bytes, Any] = {}
+        cursor = position + 1
+        while payload[cursor:cursor + 1] != b"e":
+            key, cursor = _bdecode(payload, cursor, depth + 1)
+            mapping[key], cursor = _bdecode(payload, cursor, depth + 1)
+        return mapping, cursor + 1
+    colon = payload.index(b":", position)
+    end = colon + 1 + int(payload[position:colon])
+    if end > len(payload):
+        raise ValueError("bencoded string runs past the end")
+    return payload[colon + 1:end], end
+
+
+def torrent_file_listing(payload: bytes) -> list[tuple[str, int]] | None:
+    """A .torrent's files as (path inside its top folder, size), or None if unreadable."""
+
+    try:
+        info = _bdecode(payload)[0][b"info"]
+        if b"files" not in info:
+            return [(info[b"name"].decode("utf-8"), int(info[b"length"]))]
+        listing: list[tuple[str, int]] = []
+        for item in info[b"files"]:
+            # Padding files exist only to align pieces; they are never on disk.
+            if b"p" in item.get(b"attr", b""):
+                continue
+            parts = [part.decode("utf-8") for part in item.get(b"path.utf-8", item[b"path"])]
+            if not parts or any(part in {"", ".", ".."} or "/" in part or "\\" in part for part in parts):
+                return None
+            listing.append(("/".join(parts), int(item[b"length"])))
+        return listing
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        return None
+
+
 def torrent_payload_info_hash(payload: bytes) -> str | None:
     """Return the v1 info hash encoded by a .torrent payload when available."""
 
@@ -713,8 +765,8 @@ class QBittorrentClient:
             data["sequentialDownload"] = "true"
         if first_last_first:
             data["firstLastPiecePrio"] = "true"
-        if content_layout in {"original", "subfolder"}:
-            data["contentLayout"] = content_layout.title()
+        if content_layout in _CONTENT_LAYOUTS:
+            data["contentLayout"] = _CONTENT_LAYOUTS[content_layout]
         response = await self._request(
             "POST",
             "/api/v2/torrents/add",

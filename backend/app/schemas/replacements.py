@@ -70,6 +70,10 @@ class ReplacementItem(BaseModel):
     indexer_color: str | None = None
     execution_state: str | None = None
     error: str | None = None
+    #: The found release is the very files already on disk: link, don't download.
+    same_file: bool = False
+    #: It looked the same, but qBittorrent's check of the files fell short.
+    link_failed: bool = False
     #: A replacement search covering this item is queued or running.
     searching: bool = False
     #: The media folder the title lives in, so the page groups by folder as

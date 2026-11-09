@@ -261,6 +261,7 @@
 /* Pages built on the New Media workspace (New, Upgrade and Replace Media) fill
    the window: the list takes whatever height is left, so its bar sits at the
    bottom however much stands above it (notes, filters that wrap). */
+.release-pill.replace-same-file { margin-left: var(--s2); color: var(--ok); border-color: var(--ok); }
 .page-scroll:has(.new-media-workspace) { display: flex; flex-direction: column; }
 .page-scroll:has(.new-media-workspace) > .page-content { display: flex; width: 100%; flex: 1 1 0; flex-direction: column; }
 .page:has(> .new-media-workspace) { display: flex; flex: 1 1 0; flex-direction: column; }
