@@ -39,6 +39,8 @@ class SearchResult:
     #: Languages the indexer declared. Authoritative over anything parsed from
     #: the title, because the tracker knows what it is serving.
     languages: tuple[str, ...] = ()
+    #: The movie or show the indexer says this release is, when it says.
+    tmdb_id: int | None = None
 
 
 class TorznabClient:
@@ -264,6 +266,8 @@ class TorznabClient:
             leechers=leechers,
             languages=tuple(languages),
             published=item.findtext("pubDate"),
+            # Trackers with no id for a release report 0.
+            tmdb_id=_safe_int(attrs.get("tmdbid")) or None,
         )
 
 

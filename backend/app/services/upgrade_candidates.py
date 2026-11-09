@@ -35,6 +35,7 @@ from app.models.domain import (
     UpgradeCandidate,
     UpgradeSearchMark,
 )
+from app.core.identity import identity_titles_equivalent
 from app.parser import parse_release
 from app.services.builtin_formats import BANNED_RELEASE_GROUP, BANNED_RELEASE_GROUPS_FORMAT, RELEASE_GROUP_FORMAT
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
@@ -638,6 +639,23 @@ async def _evaluation_policy(
     return profile, formats
 
 
+def _is_the_searched_title(parsed: Any, result: TorznabSearchResult, target: SearchTarget) -> bool:
+    """Whether a search result is really the title that was searched for.
+
+    A text search is only as good as the tracker's matching: "Ray 2004" finds
+    "50 First Dates 2004 ... Blu-ray". So a result counts only when its own
+    TMDB id or its parsed title says so. A year that disagrees rules it out
+    either way, since indexers do attach wrong ids.
+    """
+
+    identity = parsed.identity
+    if target.media_type == MediaType.MOVIES and target.year and identity.year and identity.year != target.year:
+        return False
+    if result.tmdb_id is not None and result.tmdb_id == target.tmdb_id:
+        return True
+    return any(identity_titles_equivalent(title, target.title) for title in (identity.title_candidate, *identity.alternate_titles))
+
+
 def _score_candidate(
     *,
     target: UpgradeTarget,
@@ -649,8 +667,9 @@ def _score_candidate(
     if not result.title.strip() or not result.download_url:
         return None
     parsed = parse_release(result.title)
+    if not target.replacement and not _is_the_searched_title(parsed, result, target.search_target):
+        return None
     if target.replacement:
-        from app.core.identity import identity_titles_equivalent
         if not identity_titles_equivalent(parsed.identity.title_candidate, target.search_target.title):
             return None
         if target.media_type == MediaType.MOVIES and target.search_target.year and parsed.identity.year != target.search_target.year:
@@ -846,6 +865,8 @@ def _rejection_reasons(
     if BANNED_RELEASE_GROUP.search(result.title):
         return ["This release group is banned."]
     parsed = parse_release(result.title)
+    if not target.replacement and not _is_the_searched_title(parsed, result, target.search_target):
+        return [f"A different title: {parsed.identity.title_candidate or 'unknown'}."]
     if target.replacement:
         from app.integrations.qbittorrent import magnet_info_hash
         result_hash = magnet_info_hash(result.download_url) if result.download_url.lower().startswith("magnet:") else None

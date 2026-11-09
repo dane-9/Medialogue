@@ -133,7 +133,7 @@ def test_upgrade_head_offline_sql_generation_succeeds() -> None:
     assert "CREATE TABLE tmdb_configurations" in completed.stdout
     assert "CREATE TABLE plex_configurations" in completed.stdout
     assert "INSERT INTO alembic_version" in completed.stdout
-    assert "'0004'" in completed.stdout
+    assert "'0005'" in completed.stdout
 
 
 def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None:
@@ -142,7 +142,7 @@ def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None
     migrations = sorted(path for path in versions_dir.glob("*.py") if path.name != "__init__.py")
     assert [path.name for path in migrations] == [
         "0001_fresh_baseline.py", "0002_ui_selections.py", "0003_release_identity_confidence.py",
-        "0004_upgrade_search_marks.py",
+        "0004_upgrade_search_marks.py", "0005_remove_wrong_title_upgrades.py",
     ]
 
     baseline = migrations[0].read_text(encoding="utf-8")
