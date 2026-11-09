@@ -411,7 +411,7 @@ export interface Download {
 }
 
 type UpgradeType = 'quality' | 'custom_format' | 'season_pack' | 'repack' | 'proper' | 'revision' | 'replacement'
-type UpgradeExecutionState = 'submitted' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
+type UpgradeExecutionState = 'submitted' | 'linking' | 'downloading' | 'validating' | 'handoff_attention' | 'cleanup_required' | 'completed' | 'failed'
 
 interface UpgradeCurrentRelease {
   id: string

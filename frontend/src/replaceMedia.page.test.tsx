@@ -23,7 +23,7 @@ function item(overrides: Partial<ReplacementItem> = {}): ReplacementItem {
   return {
     target_key: 'movie:1', title: 'Inception', year: 2010, media_type: 'movies', movie_id: 'movie-1',
     reason: 'The tracker no longer lists this torrent.', reason_code: 'removed_from_tracker', tab: 'needs_search',
-    dismissed: false, needs_attention: false, readdable: false, searching: false,
+    dismissed: false, needs_attention: false, readdable: false, searching: false, same_file: false, link_failed: false,
     current_release: 'Inception.2010.1080p.BluRay-GRP', current_quality: 'Bluray-1080p',
     ...overrides,
   }
