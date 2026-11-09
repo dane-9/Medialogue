@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Download, DownloadClient } from '../types'
 import { installLiveEvents, renderPage } from '../test/pageHarness'
+import { clearListCache } from '../lib/listCache'
 
 const api = vi.hoisted(() => ({
   downloads: vi.fn(),
@@ -43,7 +44,7 @@ beforeEach(() => {
   api.downloadFacets.mockResolvedValue({ counts: { all: 1, downloading: 1 }, categories: [], tags: [], trackers: [] })
   api.downloads.mockResolvedValue({ items: [download()], total: 1, pages: 1, page: 1 })
 })
-afterEach(() => { cleanup(); live.uninstall(); vi.clearAllMocks(); vi.useRealTimers() })
+afterEach(() => { cleanup(); clearListCache(); live.uninstall(); vi.clearAllMocks(); vi.useRealTimers() })
 
 describe('Downloads page', () => {
   it('lists the client\'s torrents with their progress', async () => {
@@ -77,6 +78,19 @@ describe('Downloads page', () => {
     act(() => { live.emit('download.completed'); live.emit('torrent.detected'); live.emit('download.completed') })
     expect(await screen.findByText('100%', {}, { timeout: 3000 })).toBeTruthy()
     expect(api.downloads.mock.calls.length).toBe(reads + 1)
+  })
+
+  it('shows the rows it last loaded when returned to, before the server answers', async () => {
+    renderPage(<DownloadsPage />, '/downloads')
+    await screen.findByText('Inception.2010.1080p.BluRay-GRP')
+    await waitFor(() => expect(api.downloads.mock.calls.at(-1)?.[0].clientId).toBe('client-1'))
+    await act(async () => { await Promise.resolve() })
+    cleanup()
+
+    api.downloads.mockReturnValue(new Promise(() => undefined))
+    api.downloadClients.mockReturnValue(new Promise(() => undefined))
+    renderPage(<DownloadsPage />, '/downloads')
+    expect(screen.getByText('Inception.2010.1080p.BluRay-GRP')).toBeTruthy()
   })
 
   it('sets the category of the selected torrents from the row menu', async () => {

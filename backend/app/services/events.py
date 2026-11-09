@@ -149,7 +149,8 @@ _FINISHED_JOB_STATES = frozenset({"completed", "failed", "cancelled", "interrupt
 
 def _changes_library_state(payload: dict[str, Any]) -> bool:
     event = payload.get("event")
-    if event in _PROGRESS_ONLY_EVENTS:
+    # A rebuilt shared list announcing itself must not make it out of date again.
+    if event in _PROGRESS_ONLY_EVENTS or str(event).startswith("results."):
         return False
     if event == "job.status":
         return str((payload.get("data") or {}).get("status") or "").lower() in _FINISHED_JOB_STATES
@@ -160,8 +161,8 @@ def _publish_payload(payload: dict[str, Any]) -> None:
     # A finished job or a recorded change (a torrent removed, an upgrade
     # submitted, a replacement found) may change the library or Replace Media.
     if _changes_library_state(payload):
-        from app.services.shared_results import invalidate_shared_results
-        invalidate_shared_results()
+        from app.services.shared_results import mark_shared_results_stale
+        mark_shared_results_stale()
     for queue in list(_subscribers):
         try:
             queue.put_nowait(payload)

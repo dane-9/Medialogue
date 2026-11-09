@@ -38,7 +38,7 @@ export const libraryInvalidationEvents = [
   'upgrade.execution',
 ] as const
 
-/** For the Movies and Shows lists: no row there shows progress, so a torrent's is not worth re-reading the library. */
+/** For Movies, Shows and New Media: no row there shows progress, so a torrent's is not worth re-reading the list. */
 export const libraryListEvents = libraryInvalidationEvents.filter((name) => name !== 'download.progress')
 
 export function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollIntervalMs = 15000, watchScanJobs = false, invalidationEvents: readonly string[] = libraryInvalidationEvents) {

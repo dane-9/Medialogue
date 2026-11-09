@@ -51,7 +51,7 @@ from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
-from app.services.shared_results import shared_result
+from app.services.shared_results import pin_shared_result, shared_result
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,8 @@ async def list_movies(
 ) -> Collection[MovieSummaryResponse]:
     return await shared_result(
         ("movies", page, page_size, query, state, tag, sort),
-        lambda: _list_movies(db, page=page, page_size=page_size, query=query, state=state, tag=tag, sort=sort),
+        db,
+        lambda session: _list_movies(session, page=page, page_size=page_size, query=query, state=state, tag=tag, sort=sort),
     )
 
 
@@ -175,6 +176,13 @@ async def _list_movies(
         total=total,
         pages=(total + page_size - 1) // page_size,
     )
+
+
+# The view the Movies page opens on.
+pin_shared_result(
+    ("movies", 1, LIBRARY_PAGE_LIMIT, None, None, None, "title"),
+    lambda session: _list_movies(session, page=1, page_size=LIBRARY_PAGE_LIMIT, query=None, state=None, tag=None, sort="title"),
+)
 
 
 @router.post("", response_model=MovieDetailResponse, status_code=status.HTTP_201_CREATED)

@@ -115,11 +115,11 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
   // read, so the counts follow along; coalescing keeps that to one query every
   // few seconds however busy the stream is.
   useLiveRefresh(refreshUpgradeCount, {
-    events: ['job.status', 'upgrade.candidate', 'upgrade.execution', 'upgrade.submitted', 'upgrade.result_selected'],
+    events: ['job.status', 'upgrade.candidate', 'upgrade.execution', 'upgrade.submitted', 'upgrade.result_selected', 'results.titles'],
     when: badgeJob, coalesceMs: 2_000, pollMs: 300_000, immediate: true,
   })
   useLiveRefresh(refreshReplaceCount, {
-    events: ['job.status', 'upgrade.candidate', 'upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished'],
+    events: ['job.status', 'upgrade.candidate', 'upgrade.execution', 'torrent.tracker_unregistered', 'torrent.tracker_recovered', 'replacement.finished', 'results.queue'],
     when: badgeJob, coalesceMs: 2_000, pollMs: 300_000, immediate: true,
   })
   useLiveRefresh(refreshNewMediaCount, {

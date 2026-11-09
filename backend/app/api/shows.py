@@ -44,7 +44,7 @@ from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
-from app.services.shared_results import shared_result
+from app.services.shared_results import pin_shared_result, shared_result
 
 logger = logging.getLogger(__name__)
 
@@ -436,7 +436,8 @@ async def list_shows(
 ) -> Collection[ShowSummaryResponse]:
     return await shared_result(
         ("shows", page, page_size, query, state, sort),
-        lambda: _list_shows(db, page=page, page_size=page_size, query=query, state=state, sort=sort),
+        db,
+        lambda session: _list_shows(session, page=page, page_size=page_size, query=query, state=state, sort=sort),
     )
 
 
@@ -466,6 +467,13 @@ async def _list_shows(
     total = len(items)
     start = (page - 1) * page_size
     return Collection(items=items[start:start + page_size], page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size)
+
+
+# The view the Shows page opens on.
+pin_shared_result(
+    ("shows", 1, LIBRARY_PAGE_LIMIT, None, None, "title"),
+    lambda session: _list_shows(session, page=1, page_size=LIBRARY_PAGE_LIMIT, query=None, state=None, sort="title"),
+)
 
 
 @router.get("/shows/lookup", response_model=list[TMDBShowLookupResponse])

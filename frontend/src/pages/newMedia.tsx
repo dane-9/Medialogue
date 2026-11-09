@@ -11,7 +11,7 @@ import { systemApi } from '../api/modules/system'
 import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
 import type { Job, MediaDiscovery, QualityProfile } from '../types'
-import { CUSTOM_EDITION, EditionDraft, MIXED_PROFILE, Page, THEATRICAL_EDITION, TMDBCandidate, defaultProfileLabel, editionChoices, editionUpdate, tmdbPosterUrl, useLiveLibraryRefresh } from './shared'
+import { CUSTOM_EDITION, EditionDraft, MIXED_PROFILE, Page, THEATRICAL_EDITION, TMDBCandidate, defaultProfileLabel, editionChoices, editionUpdate, libraryListEvents, tmdbPosterUrl, useLiveLibraryRefresh } from './shared'
 
 function movieEditionSlot(edition?: string): string {
   const normalized = (edition ?? '').trim().toLocaleLowerCase()
@@ -59,7 +59,7 @@ export function NewMediaPage() {
     void moviesApi.movieEditionOptions().then(setEditionOptions).catch(() => undefined)
     void settingsApi.qualityProfiles().then(setProfiles).catch(() => undefined)
   }, [])
-  useLiveLibraryRefresh(() => load(true))
+  useLiveLibraryRefresh(() => load(true), undefined, false, [...libraryListEvents, 'results.new_media'])
 
   // Confirmed-missing directories are not actionable New Media work. The API
   // excludes them too; this guard also prevents an already-loaded stale row

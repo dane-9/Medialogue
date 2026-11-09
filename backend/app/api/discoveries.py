@@ -55,6 +55,7 @@ from app.services.shows import add_show_from_tmdb, reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration
 from app.services.jobs import create_job, update_job
 from app.services.runtime_jobs import launch_runtime_job
+from app.services.shared_results import pin_shared_result, shared_result
 from app.schemas.jobs import JobAcceptedResponse, JobResponse
 
 router = APIRouter(prefix="/discoveries", tags=["discoveries"])
@@ -253,6 +254,16 @@ async def list_discoveries(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[MediaDiscoveryResponse]:
+    return await shared_result(
+        ("new_media", state, media_type, page, page_size),
+        db,
+        lambda session: _list_discoveries(session, state=state, media_type=media_type, page=page, page_size=page_size),
+    )
+
+
+async def _list_discoveries(
+    db: AsyncSession, *, state: str, media_type: str | None, page: int, page_size: int
+) -> Collection[MediaDiscoveryResponse]:
     try:
         new_media_state = NewMediaState(state)
     except ValueError as exc:
@@ -285,6 +296,13 @@ async def list_discoveries(
         for item in page_rows
     ]
     return Collection(items=items, page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size)
+
+
+# The first page the New Media page reads.
+pin_shared_result(
+    ("new_media", "pending", None, 1, 250),
+    lambda session: _list_discoveries(session, state="pending", media_type=None, page=1, page_size=250),
+)
 
 
 @router.post("/{discovery_id}/select", response_model=MediaDiscoveryResponse)

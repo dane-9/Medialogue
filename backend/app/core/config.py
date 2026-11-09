@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Follow filesystem events under media folders (see services/media_watcher).
     watch_media_folders: bool = True
-    # How long Replace Media's queue and the library lists are shared between requests (0: off).
+    # Age at which a shared library, New Media, Upgrade or Replace Media list is rebuilt (0: not shared).
     replacement_results_seconds: float = 30.0
 
     @field_validator("secret_key", mode="before")

@@ -62,6 +62,7 @@ from app.schemas.upgrades import (
 )
 from app.services.events import create_event
 from app.services.movie_editions import edition_label, edition_slot, same_edition
+from app.services.shared_results import pin_shared_result, shared_result
 from app.services.quality_profiles import (
     get_assignment,
     resolve_default_profile,
@@ -439,6 +440,12 @@ async def list_upgrade_candidates(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[UpgradeCandidateResponse]:
+    return await shared_result(
+        ("upgrades", media_type), db, lambda session: _list_upgrade_candidates(session, media_type)
+    )
+
+
+async def _list_upgrade_candidates(db: AsyncSession, media_type: MediaType | None) -> list[UpgradeCandidateResponse]:
     statement = select(UpgradeCandidate).where(~UpgradeCandidate.target_key.startswith("replace:"))
     if media_type is not None:
         statement = statement.where(UpgradeCandidate.media_type == media_type)
@@ -453,6 +460,10 @@ async def list_upgrade_candidates(
     ).all()
     replacing = await _titles_in_replace_media(db)
     return await _responses(db, [row for row in rows if not _left_to_replace_media(row, replacing)])
+
+
+# The view the Upgrade Media page opens on.
+pin_shared_result(("upgrades", None), lambda session: _list_upgrade_candidates(session, None))
 
 
 async def _titles_in_replace_media(db: AsyncSession) -> set[str]:

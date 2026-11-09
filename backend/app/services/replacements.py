@@ -28,7 +28,7 @@ from app.services.payload_groups import GROUP_KEY
 from app.services.release_source import ReleaseSource, source_lookup, source_of_releases
 from app.services.format_breakdown import comparison_formats
 from app.services.quality_profiles import profiles_cached
-from app.services.shared_results import shared_result
+from app.services.shared_results import pin_shared_result, shared_result
 from app.services.upgrade_candidates import (UpgradeTarget, _movie_targets, _show_targets, _search_target,
     _persist_candidate, _evaluation_policy, _score_candidate)
 
@@ -530,7 +530,7 @@ UPGRADE_KEEPS_REASONS = frozenset({NOT_WATCHED, FILES_MISSING, NO_TORRENT})
 
 
 async def replacing_title_ids(db: AsyncSession) -> set[str]:
-    return set(await shared_result(("titles",), lambda: _replacing_title_ids(db)))
+    return set(await shared_result(("titles",), db, lambda session: _replacing_title_ids(session)))
 
 
 async def _replacing_title_ids(db: AsyncSession) -> set[str]:
@@ -562,7 +562,12 @@ async def _replacing_title_ids(db: AsyncSession) -> set[str]:
 async def replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:
     """Every title Replace Media lists (shared briefly). Callers must not change the rows."""
 
-    return await shared_result(("queue", details), lambda: _replacement_queue(db, details=details))
+    return await shared_result(("queue", details), db, lambda session: _replacement_queue(session, details=details))
+
+
+pin_shared_result(("titles",), lambda session: _replacing_title_ids(session))
+pin_shared_result(("queue", True), lambda session: _replacement_queue(session, details=True))
+pin_shared_result(("queue", False), lambda session: _replacement_queue(session, details=False))
 
 
 async def _replacement_queue(db: AsyncSession, *, details: bool = True) -> list[dict[str, Any]]:

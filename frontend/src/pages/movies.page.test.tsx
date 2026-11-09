@@ -31,5 +31,8 @@ describe('Movies page', () => {
     expect(api.movies).toHaveBeenCalledTimes(1)
     act(() => live.emit('media.present'))
     await waitFor(() => expect(api.movies).toHaveBeenCalledTimes(2), { timeout: 2000 })
+    // The server announces a rebuilt list; the page picks it up.
+    act(() => live.emit('results.movies'))
+    await waitFor(() => expect(api.movies).toHaveBeenCalledTimes(3), { timeout: 2000 })
   })
 })

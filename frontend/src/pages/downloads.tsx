@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { formatBytes } from '../components/ReleaseResults'
 import { Link } from 'react-router-dom'
 import { Note, failed } from '../components/settings'
@@ -9,6 +9,7 @@ import { Badge, Button, EmptyState, Input, Panel, Progress } from '../components
 import { downloadsApi } from '../api/modules/downloads'
 import { applyProgressUpdate } from '../api/mappers/downloads'
 import { integrationsApi } from '../api/modules/integrations'
+import { cachedList, rememberList } from '../lib/listCache'
 import { contextMenuSelection, toggleIdSelection } from '../lib/uiState'
 import type { Download, DownloadClient } from '../types'
 import { Page, PosterImage } from './shared'
@@ -327,7 +328,8 @@ export function DownloadsPage() {
   const [facets, setFacets] = useState<{ counts: Record<string, number>; categories: string[]; tags: string[]; trackers: string[] }>(
     { counts: {}, categories: [], tags: [], trackers: [] },
   )
-  const [clients, setClients] = useState<DownloadClient[]>([])
+  // Known at once on return, so the remembered rows of the right client show.
+  const [clients, setClients] = useState<DownloadClient[]>(() => cachedList<DownloadClient>('downloadClients') ?? [])
   // One qBittorrent instance is shown at a time, so every count, category and
   // tracker below is derived from that client's rows alone.
   const [clientId, setClientId] = useState(() => {
@@ -379,8 +381,12 @@ export function DownloadsPage() {
   const sortRef = useRef<{ key: string; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' })
   const pageRef = useRef(1)
 
+  // The view as last loaded, kept for this browser tab.
+  const viewKey = () => `downloads:${activeClientRef.current}:${activeFiltersRef.current.join('|')}:${sortRef.current.key}:${sortRef.current.direction}:${pageRef.current}`
+
   const load = async (showLoading = true) => {
     if (showLoading) setLoading(true)
+    const key = viewKey()
     try {
       const payload = await downloadsApi.downloads({
         clientId: activeClientRef.current,
@@ -389,6 +395,7 @@ export function DownloadsPage() {
         direction: sortRef.current.direction,
         page: pageRef.current,
       })
+      rememberList(key, [{ items: payload.items, total: payload.total, pages: payload.pages }])
       setItems(payload.items)
       setTotal(payload.total)
       setPages(payload.pages)
@@ -405,7 +412,11 @@ export function DownloadsPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load downloads.') }
     finally { setLoading(false) }
   }
-  useEffect(() => { void integrationsApi.downloadClients().then(setClients).catch(() => setClients([])) }, [])
+  useEffect(() => {
+    void integrationsApi.downloadClients()
+      .then((next) => { rememberList('downloadClients', next); setClients(next) })
+      .catch(() => setClients([]))
+  }, [])
   // Live updates without re-reading the page on every tick: progress events
   // patch rows in place, structural events trigger one debounced reload, and
   // a slow timer picks up speeds/ETA (which events do not carry).
@@ -449,16 +460,33 @@ export function DownloadsPage() {
   activeFiltersRef.current = activeFilters
   sortRef.current = { key: sort.key, direction: sort.direction }
   pageRef.current = page
-  useEffect(() => { void load(false) }, [activeClientId, activeFilters.join('|'), sort.key, sort.direction, page])
+  // Before paint, so a view seen earlier appears at once while it refreshes.
+  useLayoutEffect(() => {
+    const remembered = cachedList<{ items: Download[]; total: number; pages: number }>(viewKey())?.[0]
+    if (remembered) {
+      setItems(remembered.items)
+      setTotal(remembered.total)
+      setPages(remembered.pages)
+      setLoading(false)
+    }
+    void load(false)
+  }, [activeClientId, activeFilters.join('|'), sort.key, sort.direction, page])
   const refreshFacets = async () => {
+    const key = `downloadFacets:${activeClientRef.current}`
     try {
       const payload = await downloadsApi.downloadFacets(activeClientRef.current)
-      setFacets({ counts: payload.counts, categories: payload.categories, tags: payload.tags, trackers: payload.trackers })
+      const next = { counts: payload.counts, categories: payload.categories, tags: payload.tags, trackers: payload.trackers }
+      rememberList(key, [next])
+      setFacets(next)
     } catch { setFacets({ counts: {}, categories: [], tags: [], trackers: [] }) }
   }
   refreshFacetsRef.current = refreshFacets
   // Counts follow the client and structural changes, not every row refresh.
-  useEffect(() => { void refreshFacets() }, [activeClientId])
+  useLayoutEffect(() => {
+    const remembered = cachedList<typeof facets>(`downloadFacets:${activeClientRef.current}`)?.[0]
+    if (remembered) setFacets(remembered)
+    void refreshFacets()
+  }, [activeClientId])
   // A narrower filter can leave the current page past the end of the results.
   useEffect(() => { if (pages > 0 && page > pages) setPage(1) }, [pages, page])
 

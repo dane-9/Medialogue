@@ -146,7 +146,7 @@ export default function ReplaceMediaPage() {
   })
   useLiveRefresh(() => loadRef.current(), {
     events: ['job.status', 'upgrade.execution', 'upgrade.candidate', 'torrent.tracker_unregistered',
-      'torrent.tracker_recovered', 'download.completed', 'replacement.finished'],
+      'torrent.tracker_recovered', 'download.completed', 'replacement.finished', 'results.queue'],
     when: (event, name) => {
       if (name !== 'job.status') return true
       const job = searchJob(event.data)

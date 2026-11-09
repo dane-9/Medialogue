@@ -50,7 +50,7 @@ export function ShowsPage() {
     finally { if (foreground) setLoading(false) }
   }
   // Live events already trigger a reload, so the poll is only a fallback.
-  useLiveLibraryRefresh(() => load(false), 60000, false, libraryListEvents)
+  useLiveLibraryRefresh(() => load(false), 60000, false, [...libraryListEvents, 'results.shows'])
   useEffect(() => {
     const cached = cachedList<Show>(`shows:${sort}`)
     if (cached) { setItems((current) => reuseUnchanged(current, cached)); setLoading(false) }

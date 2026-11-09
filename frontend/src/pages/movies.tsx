@@ -59,7 +59,7 @@ export function MoviesPage() {
   }
 
   // Live events already trigger a reload, so the poll is only a fallback.
-  useLiveLibraryRefresh(loadMovies, 60000, false, libraryListEvents)
+  useLiveLibraryRefresh(loadMovies, 60000, false, [...libraryListEvents, 'results.movies'])
 
   useEffect(() => {
     let alive = true

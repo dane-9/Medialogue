@@ -252,7 +252,7 @@ export function UpgradeMediaPage() {
   })
   // Structural changes reload; the timer is a safety net for missed events.
   useLiveRefresh(() => loadLiveRef.current(), {
-    events: libraryInvalidationEvents.filter((name) => name !== 'download.progress'),
+    events: [...libraryInvalidationEvents.filter((name) => name !== 'download.progress'), 'results.upgrades'],
     coalesceMs: 500,
     pollMs: 30_000,
   })
