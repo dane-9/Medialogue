@@ -116,6 +116,7 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
         "search_media_replacements",
         "readd_missing_torrents",
         "search_new_replacements",
+        "check_new_releases",
     }
     task = next(item for item in listed if item["job_type"] == "integration_health_sweep")
     assert task["name"] == "Check Integration Health"
@@ -140,9 +141,12 @@ def test_scheduled_health_task_can_be_listed_and_run_now(client: TestClient) -> 
 
     upgrade_search = next(item for item in listed if item["job_type"] == "search_media_upgrades")
     assert upgrade_search["name"] == "Search for Media Upgrades"
-    assert upgrade_search["interval_seconds"] == 86400
+    assert upgrade_search["interval_seconds"] == 604800
     assert upgrade_search["enabled"] is True
     assert upgrade_search["configurable"] is True
+    new_releases = next(item for item in listed if item["job_type"] == "check_new_releases")
+    assert new_releases["interval_seconds"] == 1800
+    assert new_releases["enabled"] is True
     assert {21600, 43200, 86400, 259200, 604800} <= set(upgrade_search["interval_options"])
 
     started = client.post(f"/api/v1/tasks/{task['id']}/run", headers=headers)

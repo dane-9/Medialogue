@@ -4,16 +4,20 @@ interface ReleaseToken {
   sep: string
 }
 
-/** Split a scene release name into its dotted tokens plus the trailing group.
+/** Split a release name into its words plus the trailing group.
  *
- * Dots separate, because tokens carry hyphens of their own (`DTS-HD`, `WEB-DL`).
- * The one exception is the release group at the end: leaving `-GROUP` fused to
- * the last token makes a group change read as a change to whatever it is stuck
- * to, so the final hyphen is cut when the name ends in one.
+ * Dots and spaces separate, since trackers write names both ways, but hyphens
+ * do not: tokens carry their own (`DTS-HD`, `WEB-DL`). The one exception is the
+ * release group at the end: leaving `-GROUP` fused to the last token makes a
+ * group change read as a change to whatever it is stuck to, so the final hyphen
+ * is cut when the name ends in one.
  */
 export function releaseTokens(name: string): ReleaseToken[] {
   if (!name.length) return []
-  const tokens: ReleaseToken[] = name.split('.').map((text, index) => ({ text, sep: index ? '.' : '' }))
+  // Splitting on a captured group keeps the separators, at the odd positions.
+  const parts = name.split(/([. ]+)/)
+  const tokens: ReleaseToken[] = []
+  for (let index = 0; index < parts.length; index += 2) tokens.push({ text: parts[index], sep: index ? parts[index - 1] : '' })
   const last = tokens[tokens.length - 1]
   const cut = last.text.lastIndexOf('-')
   if (cut > 0 && cut < last.text.length - 1) {

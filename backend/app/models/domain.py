@@ -965,6 +965,15 @@ class ReplacementReview(TimestampMixin, Base):
     last_search_result: Mapped[str | None] = mapped_column(String(32))
 
 
+class UpgradeSearchMark(Base):
+    """When a title was last searched for upgrades, whatever that search found."""
+
+    __tablename__ = "upgrade_search_marks"
+
+    target_key: Mapped[str] = mapped_column(String(160), primary_key=True)
+    searched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class UpgradeCandidate(TimestampMixin, Base):
     """Best currently known manual upgrade candidate for one library target.
 

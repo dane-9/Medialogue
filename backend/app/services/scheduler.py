@@ -23,7 +23,7 @@ from app.services.runtime_jobs import launch_runtime_job
 logger = logging.getLogger(__name__)
 ACTIVE_STATES = (JobStatus.QUEUED, JobStatus.RUNNING)
 #: Raised when defaults change; tasks still on a "previous_default" then move.
-DEFAULTS_REVISION = 2
+DEFAULTS_REVISION = 3
 
 DEFAULT_SCHEDULES = {
     # Weekly: a title searched when it first appeared, with nothing suitable
@@ -90,9 +90,20 @@ DEFAULT_SCHEDULES = {
     },
     "search_media_upgrades": {
         "name": "Search for Media Upgrades",
-        "description": "Searches monitored media for better releases and records only the best review candidate. It never downloads automatically.",
-        "interval_seconds": 86400,
+        "description": "Searches every monitored title for better releases, longest-unsearched first, and records only the best review candidate. It never downloads automatically.",
+        # New uploads are found by the release check below; this is for what
+        # that cannot see, releases that existed before they could be noticed.
+        "interval_seconds": 604800,
+        "previous_default": {"interval_seconds": 86400, "enabled": True},
         "interval_options": [21600, 43200, 86400, 259200, 604800],
+        "configurable": True,
+        "enabled": True,
+    },
+    "check_new_releases": {
+        "name": "Check for New Releases",
+        "description": "Reads each tracker's newest releases and offers the ones that upgrade something you have. It never downloads automatically.",
+        "interval_seconds": 1800,
+        "interval_options": [900, 1800, 3600, 21600],
         "configurable": True,
         "enabled": True,
     },
@@ -109,7 +120,7 @@ DEFAULT_SCHEDULES = {
 
 #: Safe to stop at any moment: each title's result is saved as it is found, and
 #: nothing is downloaded or changed on disk. A later run picks up the rest.
-CANCELLABLE_SCHEDULED_JOBS = frozenset({"search_media_upgrades", "search_media_replacements", "search_new_replacements"})
+CANCELLABLE_SCHEDULED_JOBS = frozenset({"search_media_upgrades", "search_media_replacements", "search_new_replacements", "check_new_releases"})
 
 
 def utcnow() -> datetime:
@@ -225,6 +236,9 @@ async def _run_schedule(schedule_id: UUID, job_id: UUID) -> None:
             await run_plex_library_sync(job_id)
         elif job_type == "search_media_upgrades":
             await run_upgrade_search_job(job_id)
+        elif job_type == "check_new_releases":
+            from app.services.release_feed import run_new_release_check
+            await run_new_release_check(job_id)
     finally:
         await _finish_schedule(schedule_id, job_id)
 

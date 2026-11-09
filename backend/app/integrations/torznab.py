@@ -168,6 +168,19 @@ class TorznabClient:
         categories = tuple(value for value in categories if value > 0)
         if categories:
             params["cat"] = ",".join(str(value) for value in categories)
+        return await self._results(params)
+
+    async def recent(self, *, media_type: str, categories: tuple[int, ...]) -> list[SearchResult]:
+        """The indexer's newest releases: a search with no query, its RSS feed."""
+
+        return await self._results({
+            "apikey": self.api_key,
+            "t": "movie" if media_type == "movies" else "tvsearch",
+            "cat": ",".join(str(value) for value in categories),
+            "limit": 100,
+        })
+
+    async def _results(self, params: dict[str, str | int]) -> list[SearchResult]:
         try:
             async with self._client.stream("GET", "", params=params) as response:
                 response.raise_for_status()

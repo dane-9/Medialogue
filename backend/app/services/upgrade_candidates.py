@@ -8,6 +8,7 @@ from typing import Any, Callable
 from uuid import UUID
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,6 +33,7 @@ from app.models.domain import (
     Show,
     ShowRelease,
     UpgradeCandidate,
+    UpgradeSearchMark,
 )
 from app.parser import parse_release
 from app.services.custom_formats import CustomFormat as EvaluationFormat, evaluate_custom_formats
@@ -896,7 +898,6 @@ async def _search_target(
     client_factory: TorznabClientFactory,
     errors: list[str] | None = None,
 ) -> tuple[ScoredCandidate | None, list[dict[str, Any]], int, bool]:
-    profile, formats = await _evaluation_policy(db, media_type=target.media_type, entity_id=target.profile_entity_id)
     eligible_scopes = (
         {MediaScope.MOVIES, MediaScope.BOTH}
         if target.media_type == MediaType.MOVIES
@@ -912,19 +913,10 @@ async def _search_target(
     outcomes = await asyncio.gather(
         *[_query_indexer(indexer, target.search_target, client_factory=client_factory) for indexer in scoped]
     )
-    candidates: list[ScoredCandidate] = []
-    stored_results: list[dict[str, Any]] = []
     failures = 0
     successful_indexers = 0
     by_id = {indexer.id: indexer for indexer in scoped}
-    from app.services.blocklist import blocklist_entries_for_target, entry_matches
-
-    blocklist = await blocklist_entries_for_target(
-        db,
-        media_type=target.media_type,
-        target_entity_type="movie" if target.media_type == MediaType.MOVIES else "season",
-        target_entity_id=target.movie_id if target.media_type == MediaType.MOVIES else target.season_id,
-    )
+    answered: list[tuple[ConfiguredIndexer, list[TorznabSearchResult]]] = []
     for indexer_id, outcome in outcomes:
         if outcome.get("status") != "completed":
             failures += 1
@@ -932,8 +924,32 @@ async def _search_target(
                 errors.append(f"{outcome.get('name') or 'Indexer'}: {outcome.get('error') or outcome.get('status')}")
             continue
         successful_indexers += 1
-        indexer = by_id[indexer_id]
-        for result in outcome.get("results") or []:
+        answered.append((by_id[indexer_id], list(outcome.get("results") or [])))
+    candidates, stored_results, _ = await evaluate_results(db, target=target, answered=answered)
+    return (candidates[0] if candidates else None), stored_results, failures, successful_indexers > 0
+
+
+async def evaluate_results(
+    db: AsyncSession,
+    *,
+    target: UpgradeTarget,
+    answered: list[tuple[ConfiguredIndexer, list[TorznabSearchResult]]],
+) -> tuple[list[ScoredCandidate], list[dict[str, Any]], EffectiveProfile]:
+    """Score indexer results against a title: qualifying ones best first, and all to store."""
+
+    from app.services.blocklist import blocklist_entries_for_target, entry_matches
+
+    profile, formats = await _evaluation_policy(db, media_type=target.media_type, entity_id=target.profile_entity_id)
+    candidates: list[ScoredCandidate] = []
+    stored_results: list[dict[str, Any]] = []
+    blocklist = await blocklist_entries_for_target(
+        db,
+        media_type=target.media_type,
+        target_entity_type="movie" if target.media_type == MediaType.MOVIES else "season",
+        target_entity_id=target.movie_id if target.media_type == MediaType.MOVIES else target.season_id,
+    )
+    for indexer, results in answered:
+        for result in results:
             scored = _score_candidate(target=target, profile=profile, formats=formats, indexer=indexer, result=result)
             blocked = next(
                 (
@@ -954,7 +970,7 @@ async def _search_target(
                 stored["blocklisted"] = True
             stored_results.append(stored)
     if not candidates:
-        return None, stored_results, failures, successful_indexers > 0
+        return [], stored_results, profile
     candidates.sort(key=_candidate_sort_key)
     stored_results.sort(
         key=lambda item: (
@@ -965,7 +981,7 @@ async def _search_target(
             ),
         )
     )
-    return candidates[0], stored_results, failures, True
+    return candidates, stored_results, profile
 
 
 def apply_search_result(row: UpgradeCandidate, value: dict[str, Any]) -> None:
@@ -1111,6 +1127,14 @@ async def _worker(
         await db.execute(stale)
     await db.commit()
 
+    # Longest since searched first, so a run that is cancelled or crashes is
+    # carried on by the next one rather than repeating the same titles.
+    if movie_id is None and show_id is None:
+        await db.execute(delete(UpgradeSearchMark).where(UpgradeSearchMark.target_key.not_in(valid_keys)))
+        await db.commit()
+    marks = dict((await db.execute(select(UpgradeSearchMark.target_key, UpgradeSearchMark.searched_at))).tuples().all())
+    targets.sort(key=lambda target: marks[target.target_key].replace(tzinfo=None) if target.target_key in marks else datetime.min)
+
     indexers = await list_configured_indexers(db)
     found = removed = failures = searched = 0
     errors: list[str] = []
@@ -1135,6 +1159,12 @@ async def _worker(
             )
             found += int(has_candidate)
             removed += int(removed_candidate)
+            searched_at = utcnow()
+            await db.execute(
+                sqlite_insert(UpgradeSearchMark)
+                .values(target_key=target.target_key, searched_at=searched_at)
+                .on_conflict_do_update(index_elements=["target_key"], set_={"searched_at": searched_at})
+            )
         summary = {
             "targets_total": total,
             "targets_searched": searched,

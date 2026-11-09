@@ -7,10 +7,23 @@ const changed = (candidate: string, current: string) =>
 const rebuilt = (name: string) => releaseTokens(name).map((token) => token.sep + token.text).join('')
 
 describe('releaseTokens', () => {
-  it('splits on dots only, so hyphenated tokens stay whole', () => {
+  it('keeps hyphenated tokens whole', () => {
     expect(text('Dune.2021.2160p.WEB-DL.DTS-HD.MA.5.1-GROUP')).toEqual([
       'Dune', '2021', '2160p', 'WEB-DL', 'DTS-HD', 'MA', '5', '1', 'GROUP',
     ])
+  })
+
+  it('splits a name written with spaces into the same words', () => {
+    expect(text('2 Fast 2 Furious 2003 BluRay 2160p Remux DV HDR10+ HEVC DTS-X 7.1-DepraveD')).toEqual([
+      '2', 'Fast', '2', 'Furious', '2003', 'BluRay', '2160p', 'Remux', 'DV', 'HDR10+', 'HEVC', 'DTS-X', '7', '1', 'DepraveD',
+    ])
+  })
+
+  it('marks only what really differs between a spaced name and a dotted one', () => {
+    expect(changed(
+      '2 Fast 2 Furious 2003 BluRay 2160p Remux DV HDR10+ HEVC DTS-X 7.1-DepraveD',
+      '2.Fast.2.Furious.2003.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-X-EPSiLON',
+    )).toEqual(['DV', 'HDR10+', '7', '1', 'DepraveD'])
   })
 
   it('leaves a name with no release group alone', () => {
@@ -18,7 +31,7 @@ describe('releaseTokens', () => {
   })
 
   it('rebuilds the original name from its separators', () => {
-    for (const name of ['Dune.2021.2160p.WEB-DL.DTS-HD.MA.5.1-GROUP', 'A.B.C', 'Solo']) {
+    for (const name of ['Dune.2021.2160p.WEB-DL.DTS-HD.MA.5.1-GROUP', 'A.B.C', 'Solo', 'Dune 2021 DD+7.1 x264-GRP.mkv', 'A  B..C']) {
       expect(rebuilt(name)).toBe(name)
     }
   })
