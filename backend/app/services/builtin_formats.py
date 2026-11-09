@@ -229,7 +229,7 @@ BUILTIN_FORMATS: tuple[BuiltinFormat, ...] = (
     BuiltinFormat(
         key="hdr-dv-hdr10-plus", name="DV HDR10+", group="Dynamic Range",
         description="Dolby Vision paired with an HDR10+ base layer: dynamic metadata for Dolby Vision displays and dynamic metadata again for everything else. The best dynamic range a release can carry.",
-        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\bHDR10(\+|[ .]?Plus\b))"),),
+        conditions=(BuiltinCondition(type="release_title", pattern=r"^(?=.*\b(DV|DoVi|Dolby[ .]?Vision)\b)(?=.*\bHDR10(\+|[ .]?Plus\b|P\b))"),),
         supersedes=("hdr-dolby-vision", "hdr-hdr10-plus", "hdr-hdr10")),
     BuiltinFormat(
         key="hdr-hdr10-plus", name="HDR10+", group="Dynamic Range",

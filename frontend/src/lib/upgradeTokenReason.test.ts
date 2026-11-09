@@ -22,6 +22,15 @@ const reasonFor = (text: string, ctx: UpgradeTokenContext = context) => {
   return upgradeTokenReason(token, ctx)
 }
 
+describe('the HDR10P spelling', () => {
+  it('earns the same reason as HDR10+', () => {
+    expect(upgradeTokenReason(
+      { text: 'HDR10P', sep: '.', changed: true },
+      { upgradeTypes: [], addedCustomFormats: [{ name: 'DV HDR10+', delta: 60 }] },
+    )).toBe('Custom Format: DV HDR10+ +60')
+  })
+})
+
 describe('upgradeTokenReason', () => {
   it('says nothing about a token the current release already has', () => {
     const token = diffReleaseTokens(CANDIDATE, CURRENT).find((entry) => entry.text === 'Thing')

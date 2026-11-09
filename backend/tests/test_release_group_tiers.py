@@ -91,6 +91,21 @@ def test_only_the_best_audio_track_counts() -> None:
     assert _audio_score("Movie.2020.1080p.WEB-DL.DDP5.1.H.264-GRP") == {"audio-ddplus"}
 
 
+@pytest.mark.parametrize("title", [
+    "28 Days Later 2002 Hybrid 2160p UHD Blu-ray Remux DV HDR10P HEVC TrueHD Atmos 7 1-CiNEPHiLES",
+    "Movie.2020.2160p.WEB-DL.DV.HDR10+.H.265-GRP",
+    "Movie.2020.2160p.WEB-DL.DoVi.HDR10Plus.H.265-GRP",
+])
+def test_every_spelling_of_dv_with_hdr10_plus_is_one_format(title) -> None:
+    formats = [
+        EvaluationFormat.from_dict({"id": item.key, "name": item.key, "description": "", "enabled": True,
+                                    "condition_definition": condition_definition(item, supersedes=item.supersedes)})
+        for item in BUILTIN_FORMATS if item.group == "Dynamic Range"
+    ]
+    result = evaluate_custom_formats(formats, parse_release(title), profile_scores={item.id: DEFAULT_FORMAT_SCORES[item.id] for item in formats}, score_overrides={}, context={})
+    assert {item.custom_format_name for item in result.formats if item.matched} == {"hdr-dv-hdr10-plus"}
+
+
 def test_hybrid_and_no_group_scores() -> None:
     assert DEFAULT_FORMAT_SCORES["attr-hybrid"] == -5
     assert DEFAULT_FORMAT_SCORES["attr-no-group"] == -5

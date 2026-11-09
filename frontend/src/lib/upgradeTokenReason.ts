@@ -83,7 +83,7 @@ export function combinedDynamicRangeTokenGroups(tokens: ReleaseTokenDiff[]): Map
   for (let index = 0; index < tokens.length - 1; index += 1) {
     const first = tokens[index].text.toLowerCase()
     const second = tokens[index + 1].text.toLowerCase()
-    if (!/^(?:dv|dovi)$/.test(first) || !/^hdr(?:10)?\+?$/.test(second)) continue
+    if (!/^(?:dv|dovi)$/.test(first) || !/^hdr(?:10)?(?:\+|p)?$/.test(second)) continue
     const group = `${index}:${index + 1}`
     groups.set(index, group)
     groups.set(index + 1, group)
@@ -123,6 +123,7 @@ const ALIASES: Record<string, string[]> = {
   dv: ['dv', 'dolby', 'vision'],
   hdr: ['hdr', 'hdr10'],
   'hdr10+': ['hdr10+'],
+  hdr10p: ['hdr10+'],
   truehd: ['truehd'],
   atmos: ['atmos'],
   remux: ['remux'],
