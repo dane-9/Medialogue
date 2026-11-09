@@ -171,6 +171,11 @@ class UpgradeSearchResultsResponse(BaseModel):
     results: list[UpgradeSearchResultResponse]
 
 
+class NotAnUpgradeResponse(BaseModel):
+    #: The release now offered instead; None when no other upgrade was found.
+    next_title: str | None = None
+
+
 class UpgradeSearchResultSelectRequest(BaseModel):
     result_id: UUID
 

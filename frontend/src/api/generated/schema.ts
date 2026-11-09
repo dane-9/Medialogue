@@ -2693,6 +2693,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/upgrade-candidates/{candidate_id}/not-an-upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Not An Upgrade
+         * @description Reject this release for this title, on every tracker listing it.
+         */
+        post: operations["mark_not_an_upgrade_api_v1_upgrade_candidates__candidate_id__not_an_upgrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/upgrade-candidates/{candidate_id}/results": {
         parameters: {
             query?: never;
@@ -5473,6 +5493,11 @@ export interface components {
          * @enum {string}
          */
         NewMediaState: "pending" | "approved" | "ignored";
+        /** NotAnUpgradeResponse */
+        NotAnUpgradeResponse: {
+            /** Next Title */
+            next_title?: string | null;
+        };
         /** PasswordChangeRequest */
         PasswordChangeRequest: {
             /** Current Password */
@@ -13051,6 +13076,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeCleanupPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_not_an_upgrade_api_v1_upgrade_candidates__candidate_id__not_an_upgrade_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotAnUpgradeResponse"];
                 };
             };
             /** @description Validation Error */

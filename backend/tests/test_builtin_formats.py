@@ -236,7 +236,7 @@ def test_unsafe_and_full_disc_qualities_are_left_out_of_the_default_profile() ->
 
     known = {item.name for item in list_quality_definitions()}
     assert DEFAULT_EXCLUDED_QUALITY_DEFINITIONS <= known
-    assert "1080i Encode" in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
+    assert {name for name in known if "Encode" in name} <= DEFAULT_EXCLUDED_QUALITY_DEFINITIONS
     assert {name for name in known if name.startswith("Full Disc")} == {
         name for name in DEFAULT_EXCLUDED_QUALITY_DEFINITIONS if name.startswith("Full Disc")
     }

@@ -7491,6 +7491,23 @@
         "title": "NewMediaState",
         "type": "string"
       },
+      "NotAnUpgradeResponse": {
+        "properties": {
+          "next_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Title"
+          }
+        },
+        "title": "NotAnUpgradeResponse",
+        "type": "object"
+      },
       "PasswordChangeRequest": {
         "properties": {
           "current_password": {
@@ -22316,6 +22333,50 @@
           }
         },
         "summary": "Preview Cleanup",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/not-an-upgrade": {
+      "post": {
+        "description": "Reject this release for this title, on every tracker listing it.",
+        "operationId": "mark_not_an_upgrade_api_v1_upgrade_candidates__candidate_id__not_an_upgrade_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotAnUpgradeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Not An Upgrade",
         "tags": [
           "upgrade candidates"
         ]

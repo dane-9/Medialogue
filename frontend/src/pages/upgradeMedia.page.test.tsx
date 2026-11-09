@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UpgradeCandidate } from '../types'
 import { installLiveEvents, renderPage } from '../test/pageHarness'
@@ -11,9 +11,10 @@ const api = vi.hoisted(() => ({
   qualityProfiles: vi.fn(),
   customFormats: vi.fn(),
   customFormatLayout: vi.fn(),
+  markNotAnUpgrade: vi.fn(),
 }))
 vi.mock('../api/modules/upgrades', () => ({
-  upgradesApi: new Proxy({ upgradeCandidates: api.upgradeCandidates, upgradeCandidateCount: api.upgradeCandidateCount }, {
+  upgradesApi: new Proxy({ upgradeCandidates: api.upgradeCandidates, upgradeCandidateCount: api.upgradeCandidateCount, markNotAnUpgrade: api.markNotAnUpgrade }, {
     get: (target, key) => (key in target ? target[key as keyof typeof target] : vi.fn().mockResolvedValue(undefined)),
   }),
 }))
@@ -63,6 +64,24 @@ describe('Upgrade Media page', () => {
     await waitFor(() => expect(text()).toContain('Inception'))
     expect(text()).toContain('REMUX')
     expect(text()).toContain('WEB-DL')
+  })
+
+  it('rejects the offered release from a right-click on the upgrade side', async () => {
+    api.markNotAnUpgrade.mockResolvedValue({ next_title: 'Inception.2010.2160p.WEB-DL-NEXT' })
+    renderPage(<UpgradeMediaPage />, '/upgrade-media')
+    await waitFor(() => expect(text()).toContain('Inception'))
+    fireEvent.contextMenu(document.querySelector('.upgrade-v2-change')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Not an upgrade' }))
+    await waitFor(() => expect(api.markNotAnUpgrade).toHaveBeenCalledWith('cand-1'))
+    expect(await screen.findByText(/Now offering Inception\.2010\.2160p\.WEB-DL-NEXT/)).toBeTruthy()
+  })
+
+  it('offers no rejection once an upgrade is under way', async () => {
+    api.upgradeCandidates.mockResolvedValue([candidate({ executionState: 'downloading', torrentId: 'torrent-9', downloadProgress: 0.2 })])
+    renderPage(<UpgradeMediaPage />, '/upgrade-media')
+    await screen.findByText('20%')
+    fireEvent.contextMenu(document.querySelector('.upgrade-v2-change')!)
+    expect(screen.queryByRole('button', { name: 'Not an upgrade' })).toBeNull()
   })
 
   it('opens on the in-progress list when that is all there is, and patches live progress', async () => {

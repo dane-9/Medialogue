@@ -149,6 +149,7 @@ export function UpgradeMediaPage() {
   const [loading, setLoading] = useState(() => cachedList('upgradeMedia') === undefined)
   const [searching, setSearching] = useState(false)
   const [busyId, setBusyId] = useState('')
+  const [releaseMenu, setReleaseMenu] = useState<{ item: UpgradeCandidate; x: number; y: number } | null>(null)
   // The lit word under the pointer: its reason, so every word sharing it
   // (DV + HDR) lights together, and the score it carries.
   // A Custom Format word carries its score; a quality word (2160p, BluRay)
@@ -325,6 +326,18 @@ export function UpgradeMediaPage() {
     if (submitted) setMessage(`Started ${submitted} ${submitted === 1 ? 'upgrade' : 'upgrades'}. Old torrents and media will be removed automatically after each replacement validates.`)
     if (failures.length) setError(failures.join(' · '))
     setBusyId('')
+  }
+
+  const markNotAnUpgrade = async (item: UpgradeCandidate) => {
+    setReleaseMenu(null); setBusyId(item.id); setError(''); setMessage('')
+    try {
+      const result = await upgradesApi.markNotAnUpgrade(item.id)
+      setMessage(result.next_title
+        ? `Blocklisted for ${item.mediaTitle}. Now offering ${result.next_title}.`
+        : `Blocklisted for ${item.mediaTitle}. No other upgrade was found.`)
+      await loadLiveRef.current()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not mark this release.') }
+    finally { setBusyId('') }
   }
 
   const retryHandoff = async (item: UpgradeCandidate) => {
@@ -624,7 +637,13 @@ export function UpgradeMediaPage() {
                 </div>
                 {blocked && <Tooltip content={item.executionBlockReason ?? 'This upgrade cannot be started.'}><span className="new-media-state needs-match"><Icon name="lock" size={11} />Blocked</span></Tooltip>}
               </div>
-              <div className={`new-media-match-cell upgrade-v2-change ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`}>
+              <div
+                className={`new-media-match-cell upgrade-v2-change ${active ? 'active' : ''} ${blocked ? 'excluded' : ''}`}
+                onContextMenu={upgradeStartable(item) ? (event) => {
+                  event.preventDefault()
+                  setReleaseMenu({ item, x: Math.min(event.clientX, window.innerWidth - 177), y: Math.min(event.clientY, window.innerHeight - 50) })
+                } : undefined}
+              >
                 {/* Opposite the current release across the divide, only the
                     changed words lit, so the two names read as a pair. */}
                 <div className="upgrade-v2-side">
@@ -844,5 +863,11 @@ export function UpgradeMediaPage() {
         <div className="upgrade-cleanup-targets">{cleanup.targets.map((target) => <div className="upgrade-cleanup-target" key={target.path}><span className="kind-box"><Icon name={target.kind === 'directory' ? 'folder' : 'clapper'} size={13} /></span><div><strong>{target.path}</strong><small>{target.kind} · {target.inventory.length} inventoried item{target.inventory.length === 1 ? '' : 's'}</small></div></div>)}</div>
       </div>}
     </Modal>}
+    {releaseMenu && <>
+      <div className="context-dismiss-layer" onClick={() => setReleaseMenu(null)} onContextMenu={(event) => { event.preventDefault(); setReleaseMenu(null) }} />
+      <div className="download-menu" style={{ left: releaseMenu.x, top: releaseMenu.y }}>
+        <button type="button" className="download-menu-item tone-red" disabled={busyId === releaseMenu.item.id} onClick={() => void markNotAnUpgrade(releaseMenu.item)}><Icon name="close" size={13} />Not an upgrade</button>
+      </div>
+    </>}
   </Page>
 }

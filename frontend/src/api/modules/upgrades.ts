@@ -202,6 +202,9 @@ export const upgradesApi = {
       body: { download_client_id: downloadClientId, category: category || null, delete_old_media: deleteOldMedia },
     })),
   ),
+  markNotAnUpgrade: (candidateId: string) => openApiData(openApiClient.POST('/api/v1/upgrade-candidates/{candidate_id}/not-an-upgrade', {
+    params: { path: { candidate_id: candidateId } },
+  })),
   retryUpgradeHandoff: async (candidateId: string) => mapUpgradeCandidate(
     await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/{candidate_id}/retry-handoff', {
       params: { path: { candidate_id: candidateId } },

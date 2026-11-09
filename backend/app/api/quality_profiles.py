@@ -168,7 +168,7 @@ async def create_quality_profile(
             (
                 await db.scalars(
                     select(QualityDefinition.id)
-                    .where(QualityDefinition.enabled.is_(True))
+                    .where(QualityDefinition.enabled.is_(True), ~QualityDefinition.name.contains("Encode"))
                     .order_by(QualityDefinition.rank.desc(), QualityDefinition.name)
                 )
             ).all()

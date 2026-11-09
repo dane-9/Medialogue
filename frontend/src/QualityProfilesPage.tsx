@@ -111,7 +111,9 @@ export default function QualityProfilesPage() {
   }
   const beginNew = () => {
     const allQualityIds = qualities.map((quality) => quality.id)
-    setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setMinimumScore(''); setSeasonPackUpgrades(true); setQualityIds(allQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
+    // Encodes are available to tick, but a new profile starts without them.
+    const startingQualityIds = qualities.filter((quality) => !quality.name.includes('Encode')).map((quality) => quality.id)
+    setCreating(true); setSelectedId(''); setName(''); setMinimumId(''); setMinimumScore(''); setSeasonPackUpgrades(true); setQualityIds(startingQualityIds); setQualityOrderIds(allQualityIds); setScores({}); setSavedScores({})
     setEditorView('details'); setFormatFilter(''); setQualityFilter(''); setScoreView('all'); setMessage(''); setEditorOpen(true)
   }
 

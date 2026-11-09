@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import PurePath, PurePosixPath
 
@@ -29,7 +30,9 @@ from app.models.domain import (
     MovieReleaseTorrent,
     ReleaseState,
     MediaProfileOverride,
+    Indexer,
     QualityProfile,
+    ReleaseBlocklist,
     Schedule,
     Season,
     Show,
@@ -55,10 +58,12 @@ from app.schemas.upgrades import (
     UpgradeQualityProfileBulkUpdate,
     UpgradeQualityProfileUpdateResponse,
     UpgradeSearchResponse,
+    NotAnUpgradeResponse,
     UpgradeSearchResultResponse,
     UpgradeSearchResultsResponse,
     UpgradeSearchResultSelectRequest,
 )
+from app.services.blocklist import blocklist_entries_for_target, entry_matches
 from app.services.events import create_event
 from app.services.movie_editions import edition_label, edition_slot, same_edition
 from app.services.shared_results import pin_shared_result, shared_result
@@ -582,6 +587,71 @@ async def select_upgrade_search_result(
     )
     await db.commit()
     return await _response(db, row)
+
+
+NOT_AN_UPGRADE_REASON = "Not an upgrade"
+
+
+def _same_release_name(first: str, second: str) -> bool:
+    """One release listed on several trackers, whatever the punctuation or extension."""
+
+    def comparable(value: str) -> str:
+        return re.sub(r"[^0-9a-z]+", "", re.sub(r"\.(mkv|mp4|avi|m2ts)$", "", value.strip(), flags=re.I).casefold())
+
+    return comparable(first) == comparable(second)
+
+
+@router.post("/upgrade-candidates/{candidate_id}/not-an-upgrade", response_model=NotAnUpgradeResponse)
+async def mark_not_an_upgrade(
+    candidate_id: UUID,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> NotAnUpgradeResponse:
+    """Reject this release for this title, on every tracker listing it."""
+
+    row = await db.get(UpgradeCandidate, candidate_id)
+    if row is None:
+        raise AppError("NOT_FOUND", "Upgrade candidate was not found.", status_code=404)
+    if row.execution_state not in {None, "failed"}:
+        raise AppError("UPGRADE_ALREADY_STARTED", "This upgrade has already started.", status_code=409)
+    target_type, target_id = ("movie", row.movie_id) if row.media_type == MediaType.MOVIES else ("season", row.season_id)
+    results = _search_result_rows(row)
+    listings = {(row.indexer_id, row.indexer_name, row.title)}
+    for value in results:
+        if _same_release_name(str(value.get("title") or ""), row.title):
+            value["eligible"] = False
+            value["blocklisted"] = True
+            value["rejection_reasons"] = [*(value.get("rejection_reasons") or []), f"Blocklisted: {NOT_AN_UPGRADE_REASON}"]
+            indexer_id = UUID(str(value["indexer_id"])) if value.get("indexer_id") else None
+            listings.add((indexer_id, value.get("indexer_name"), str(value.get("title"))))
+    known = await blocklist_entries_for_target(db, media_type=row.media_type, target_entity_type=target_type, target_entity_id=target_id)
+    rejected_title = row.title
+    # A result can outlive its indexer's configuration; the name still matches it.
+    wanted_ids = {indexer_id for indexer_id, _, _ in listings if indexer_id}
+    configured_ids = set(await db.scalars(select(Indexer.id).where(Indexer.id.in_(wanted_ids)))) if wanted_ids else set()
+    for indexer_id, indexer_name, title in listings:
+        if not any(entry_matches(entry, source_title=title, indexer_id=indexer_id, indexer_name=indexer_name) for entry in known):
+            db.add(ReleaseBlocklist(
+                media_type=row.media_type, target_entity_type=target_type, target_entity_id=target_id, source_title=title,
+                indexer_id=indexer_id if indexer_id in configured_ids else None,
+                indexer_name=indexer_name, quality=row.quality, reason=NOT_AN_UPGRADE_REASON,
+            ))
+    await create_event(
+        db, "upgrade.not_an_upgrade", entity_type="upgrade_candidate", entity_id=row.id,
+        message=f"{rejected_title} was marked as not an upgrade.",
+        details={"candidate_id": str(row.id), "title": rejected_title},
+    )
+    # The results are stored best first, so the next one left is the new best.
+    following = next((value for value in results if value.get("eligible")), None)
+    if following is None:
+        await db.delete(row)
+    else:
+        apply_search_result(row, following)
+        row.search_results = results
+        row.execution_state = None
+        row.execution_error = None
+    await db.commit()
+    return NotAnUpgradeResponse(next_title=str(following["title"]) if following else None)
 
 
 @router.get("/upgrade-candidates/history", response_model=list[MediaHistoryItem])
