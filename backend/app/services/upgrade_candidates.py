@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.integrations.torznab import SearchResult as TorznabSearchResult, TorznabClient
 from app.models.domain import (
@@ -323,9 +323,12 @@ async def invalidate_idle_upgrade_candidates(
     Active destructive workflows are deliberately left untouched.
     """
 
+    # Just the two columns: the rest of a row includes every stored search result.
     rows = (
         await db.scalars(
-            select(UpgradeCandidate).where(UpgradeCandidate.execution_state.is_(None))
+            select(UpgradeCandidate)
+            .options(load_only(UpgradeCandidate.execution_eligible, UpgradeCandidate.execution_block_reason))
+            .where(UpgradeCandidate.execution_state.is_(None))
         )
     ).all()
     for row in rows:

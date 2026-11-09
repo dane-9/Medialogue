@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,7 +44,7 @@ from app.services.custom_formats import (
     validate_custom_format,
 )
 from app.services.events import create_event
-from app.services.quality_profiles import refresh_all_release_scores
+from app.services.quality_profiles import rescore_library_after_save
 from app.services.upgrade_candidates import invalidate_idle_upgrade_candidates
 
 router = APIRouter(prefix="/custom-formats", tags=["custom-formats"])
@@ -206,7 +206,7 @@ async def _used_by_profiles(db: AsyncSession, custom_format_id: UUID) -> int:
     )
 
 
-async def _response(db: AsyncSession, row: CustomFormatModel) -> CustomFormatResponse:
+async def _response(db: AsyncSession, row: CustomFormatModel, *, used_by: int | None = None) -> CustomFormatResponse:
     fmt = _evaluation_format_from_model(row)
     conditions = [CustomFormatConditionResponse(**condition.to_dict()) for condition in fmt.conditions]
     return CustomFormatResponse(
@@ -219,7 +219,7 @@ async def _response(db: AsyncSession, row: CustomFormatModel) -> CustomFormatRes
         conditions=conditions,
         condition_count=len(conditions),
         supersedes=_supersedes_ids(row.condition_definition),
-        used_by_profiles=await _used_by_profiles(db, row.id),
+        used_by_profiles=used_by if used_by is not None else await _used_by_profiles(db, row.id),
         revision=row.revision,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -315,8 +315,11 @@ async def list_custom_formats(
             .limit(page_size)
         )
     ).all()
+    used_by = dict((await db.execute(
+        select(ProfileCustomFormatScore.custom_format_id, func.count()).group_by(ProfileCustomFormatScore.custom_format_id)
+    )).tuples().all())
     return Collection(
-        items=[await _response(db, row) for row in rows],
+        items=[await _response(db, row, used_by=used_by.get(row.id, 0)) for row in rows],
         page=page,
         page_size=page_size,
         total=total,
@@ -376,6 +379,7 @@ async def update_custom_format_layout(
 @router.post("", response_model=CustomFormatResponse, status_code=status.HTTP_201_CREATED)
 async def create_custom_format(
     payload: CustomFormatCreate,
+    background: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatResponse:
@@ -414,9 +418,9 @@ async def create_custom_format(
     # Even an unscored format can change an existing score through explicit
     # supersedence, and the durable breakdown should reflect newly available
     # formats. Keep stored current snapshots in sync with the evaluator.
-    await refresh_all_release_scores(db)
     await invalidate_idle_upgrade_candidates(db)
     await db.commit()
+    background.add_task(rescore_library_after_save)
     return await _response(db, row)
 
 
@@ -510,6 +514,7 @@ async def export_all_custom_formats(
 @router.post("/import", response_model=CustomFormatImportResponse, status_code=status.HTTP_201_CREATED)
 async def import_custom_formats(
     payload: CustomFormatImportBundle,
+    background: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatImportResponse:
@@ -564,9 +569,9 @@ async def import_custom_formats(
             message=f"Custom Format {row.name} was imported.",
             details={"schema_version": CUSTOM_FORMAT_SCHEMA_VERSION},
         )
-    await refresh_all_release_scores(db)
     await invalidate_idle_upgrade_candidates(db)
     await db.commit()
+    background.add_task(rescore_library_after_save)
     imported = [await _response(db, row) for row in rows]
     return CustomFormatImportResponse(imported=imported, count=len(imported))
 
@@ -587,6 +592,7 @@ async def get_custom_format(
 async def update_custom_format(
     custom_format_id: UUID,
     payload: CustomFormatUpdate,
+    background: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> CustomFormatResponse:
@@ -638,15 +644,16 @@ async def update_custom_format(
         },
     )
     await db.flush()
-    await refresh_all_release_scores(db)
     await invalidate_idle_upgrade_candidates(db)
     await db.commit()
+    background.add_task(rescore_library_after_save)
     return await _response(db, row)
 
 
 @router.delete("/{custom_format_id}", response_model=DeleteResponse)
 async def delete_custom_format(
     custom_format_id: UUID,
+    background: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> DeleteResponse:
@@ -694,9 +701,9 @@ async def delete_custom_format(
         other.revision += 1
     await db.delete(row)
     await db.flush()
-    await refresh_all_release_scores(db)
     await invalidate_idle_upgrade_candidates(db)
     await db.commit()
+    background.add_task(rescore_library_after_save)
     return DeleteResponse(id=custom_format_id)
 
 

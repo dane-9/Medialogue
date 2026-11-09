@@ -35,7 +35,7 @@ export const libraryInvalidationEvents = [
   'show.metadata_refreshed', 'movie.monitoring_updated', 'movie.tags_updated',
   'download.progress', 'download.completed', 'torrent.detected', 'torrent.removed',
   'torrent.archived', 'torrent.archive_failed', 'torrent.tracker_unregistered', 'torrent.tracker_recovered',
-  'upgrade.execution',
+  'upgrade.execution', 'release.scores_refreshed',
 ] as const
 
 /** For Movies, Shows and New Media: no row there shows progress, so a torrent's is not worth re-reading the list. */

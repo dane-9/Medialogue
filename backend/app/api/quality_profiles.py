@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -40,9 +40,9 @@ from app.services.quality_profiles import (
     resolve_default_profile,
     load_effective_profile,
     profile_name_exists,
-    refresh_all_release_scores,
     refresh_movie_release_scores,
     refresh_show_release_scores,
+    rescore_library_after_save,
     validate_profile_references,
 )
 
@@ -226,6 +226,7 @@ async def get_quality_profile(
 async def update_quality_profile(
     profile_id: UUID,
     payload: QualityProfileUpdate,
+    background: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> QualityProfileResponse:
@@ -297,10 +298,6 @@ async def update_quality_profile(
     assignments = (
         await db.scalars(select(MediaProfileOverride).where(MediaProfileOverride.quality_profile_id == row.id))
     ).all()
-    # The edited profile may be the default inherited by titles that have no
-    # assignment row. Re-score the library so stored release totals always
-    # reflect the same effective policy the search/upgrade paths resolve.
-    await refresh_all_release_scores(db)
     await invalidate_idle_upgrade_candidates(db)
     await create_event(
         db,
@@ -311,12 +308,17 @@ async def update_quality_profile(
         details={"revision": row.revision, "assigned_titles": len(assignments)},
     )
     await db.commit()
+    # The edited profile may be the default inherited by titles that have no
+    # assignment row. Re-score the library so stored release totals always
+    # reflect the same effective policy the search/upgrade paths resolve.
+    background.add_task(rescore_library_after_save)
     return await _profile_response(db, row)
 
 
 @router.post("/quality-profiles/{profile_id}/default", response_model=QualityProfileResponse)
 async def set_default_quality_profile(
     profile_id: UUID,
+    background: BackgroundTasks,
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> QualityProfileResponse:
@@ -342,9 +344,9 @@ async def set_default_quality_profile(
         candidate.settings = settings
         candidate.revision += 1
     await db.flush()
-    await refresh_all_release_scores(db)
     await invalidate_idle_upgrade_candidates(db)
     await db.commit()
+    background.add_task(rescore_library_after_save)
     await db.refresh(row)
     return await _profile_response(db, row, row.id)
 

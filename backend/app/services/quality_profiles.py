@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db import session as db_session
 from app.models.domain import (
     CustomFormat,
     InteractiveSearchResult,
@@ -22,8 +24,11 @@ from app.models.domain import (
     QualityProfile,
     ShowRelease,
 )
+from app.services.events import publish_live_event
+from app.services.jobs import with_lock_retries
 from collections.abc import Iterator, Sequence
 
+logger = logging.getLogger(__name__)
 
 
 def is_marked_default(profile: QualityProfile) -> bool:
@@ -726,15 +731,53 @@ async def refresh_all_release_scores(db: AsyncSession, *, commit_every: int | No
             pending = 0
             await db.commit()
 
-    for movie_id in movie_ids:
-        movie_releases += await refresh_movie_release_scores(db, movie_id)
-        await title_done()
-    for show_id in show_ids:
-        show_releases += await refresh_show_release_scores(db, show_id)
-        await title_done()
+    # Every release is scored against the same profiles and formats, and the
+    # caller has already flushed its own edit.
+    with profiles_cached():
+        for movie_id in movie_ids:
+            movie_releases += await refresh_movie_release_scores(db, movie_id)
+            await title_done()
+        for show_id in show_ids:
+            show_releases += await refresh_show_release_scores(db, show_id)
+            await title_done()
     return {
         "movies": len(movie_ids),
         "shows": len(show_ids),
         "movie_releases": movie_releases,
         "show_releases": show_releases,
     }
+
+
+_rescore_running = False
+_rescore_again = False
+
+
+async def rescore_library_after_save() -> None:
+    """Bring stored scores up to date once a save has been answered.
+
+    Run as a background task so saving a profile or Custom Format does not wait
+    for the whole library. Saves made during a run are covered by one more run
+    rather than one each, since a run always reads the latest settings.
+    """
+
+    global _rescore_running, _rescore_again
+    _rescore_again = True
+    if _rescore_running:
+        return
+    _rescore_running = True
+    try:
+        while _rescore_again:
+            _rescore_again = False
+
+            async def run() -> None:
+                async with db_session.async_session_factory() as db:
+                    await refresh_all_release_scores(db)
+                    await db.commit()
+
+            try:
+                await with_lock_retries(run)
+            except Exception:
+                logger.warning("could not rescore the library after a save", exc_info=True)
+            publish_live_event("release.scores_refreshed", entity_type="library")
+    finally:
+        _rescore_running = False

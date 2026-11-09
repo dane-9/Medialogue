@@ -69,6 +69,7 @@ from app.services.movie_editions import edition_label, edition_slot, same_editio
 from app.services.shared_results import pin_shared_result, shared_result
 from app.services.quality_profiles import (
     get_assignment,
+    profiles_cached,
     resolve_default_profile,
     refresh_movie_release_scores,
     refresh_show_release_scores,
@@ -886,11 +887,12 @@ async def set_upgrade_quality_profiles(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> UpgradeQualityProfileUpdateResponse:
-    return await _set_upgrade_quality_profile(
-        db,
-        candidate_ids=payload.candidate_ids,
-        quality_profile_id=payload.quality_profile_id,
-    )
+    with profiles_cached():
+        return await _set_upgrade_quality_profile(
+            db,
+            candidate_ids=payload.candidate_ids,
+            quality_profile_id=payload.quality_profile_id,
+        )
 
 
 @router.post("/upgrade-candidates/{candidate_id}/upgrade", response_model=UpgradeCandidateResponse)
