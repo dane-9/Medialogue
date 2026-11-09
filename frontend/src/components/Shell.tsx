@@ -182,7 +182,7 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       <header className="topbar">
         <div className="topbar-page-host" ref={setPageTopbarHost}>{!pageTopbarHost && <strong>{currentTitle}</strong>}</div>
       </header>
-      <div className="page-content">{children}</div>
+      <div className="page-scroll"><div className="page-content">{children}</div></div>
     </main>
     {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
   </div></PageTopbarHostContext.Provider></PlexAvailableContext.Provider>

@@ -261,8 +261,8 @@
 /* Pages built on the New Media workspace (New, Upgrade and Replace Media) fill
    the window: the list takes whatever height is left, so its bar sits at the
    bottom however much stands above it (notes, filters that wrap). */
-.main-area:has(.new-media-workspace) { display: flex; min-height: 100vh; flex-direction: column; }
-.main-area:has(.new-media-workspace) > .page-content { display: flex; width: 100%; flex: 1 1 0; flex-direction: column; }
+.page-scroll:has(.new-media-workspace) { display: flex; flex-direction: column; }
+.page-scroll:has(.new-media-workspace) > .page-content { display: flex; width: 100%; flex: 1 1 0; flex-direction: column; }
 .page:has(> .new-media-workspace) { display: flex; flex: 1 1 0; flex-direction: column; }
 .page > .new-media-workspace { height: auto; min-height: 420px; flex: 1 1 0; }
 /* Replace Media puts the workspace beside its Reason rail, one level deeper. */

@@ -100,10 +100,8 @@
 
 * { box-sizing: border-box; }
 /* Reserve the scrollbar's width whether or not it is showing. Without this the
-   page jumps sideways every time content grows past one screen, and again when
-   a modal locks body scrolling. Set on both elements because body's overflow is
-   what propagates to the viewport once a modal locks it. */
-html, body { scrollbar-gutter: stable; }
+   page jumps sideways every time content grows past one screen. */
+html { scrollbar-gutter: stable; }
 body { margin: 0; min-width: 1080px; background: var(--bg); color: var(--text); }
 
 * {
@@ -124,7 +122,12 @@ h1, h2, h3, p { margin: 0; }
 }
 .muted { color: var(--muted); }
 
-.app-shell { display: flex; min-height: 100vh; }
+/* Once signed in the page scrolls below the topbar, not the window, so its
+   scrollbar starts under the topbar and the background shows behind it. The
+   window only scrolls sideways, on screens narrower than body's minimum. */
+html:has(.app-shell), html:has(.app-shell) body, html:has(.app-shell) #root { height: 100%; }
+html:has(.app-shell) { overflow-x: auto; overflow-y: hidden; scrollbar-gutter: auto; }
+.app-shell { display: flex; height: 100%; }
 
 .sidebar {
   position: fixed;
@@ -224,11 +227,23 @@ h1, h2, h3, p { margin: 0; }
 .user-copy span { color: var(--faint); font-size: var(--t-micro); }
 .user-row > svg { flex: none; color: var(--faint); }
 
-.main-area { flex: 1; min-width: 0; margin-left: var(--sidebar); }
+.main-area { display: flex; flex: 1; min-width: 0; flex-direction: column; margin-left: var(--sidebar); }
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Always keep the scrollbar's room, so the page never jumps sideways when
+     content outgrows the window or a modal locks it. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+/* The page behind must not scroll while a dialog owns the viewport. */
+body:has(.modal-backdrop) .page-scroll { overflow-y: hidden; }
 .topbar {
-  position: sticky;
+  position: relative;
   z-index: 2;
-  top: 0;
+  flex: none;
   height: var(--topbar);
   display: flex;
   align-items: center;

@@ -203,14 +203,14 @@ a.download-kind:hover { filter: brightness(1.35); }
 .downloads-clients .new-media-root { min-width: 150px; padding: var(--s2); }
 .downloads-rail {
   position: sticky;
-  /* Clear of the sticky 52px topbar, which sits at a higher z-index and would
-     otherwise cover the first group heading once the page scrolls. */
-  top: calc(var(--topbar) + var(--s4));
+  top: var(--s4);
   display: grid;
   /* Taller than the viewport once categories and trackers are listed, so it
      scrolls internally instead of letting its top scroll out of reach. */
   max-height: calc(100vh - var(--topbar) - var(--s4) * 2);
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
   align-content: start;
   gap: var(--s4);
   /* A grid item defaults to min-width:auto and would widen past its 170px track

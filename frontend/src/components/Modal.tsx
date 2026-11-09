@@ -25,13 +25,7 @@ export function Modal({ title, titleSuffix, eyebrow, icon, brand, onClose, foote
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
-    // The page behind must not scroll while a dialog owns the viewport.
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = previous
-    }
+    return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
   return <div className="modal-backdrop" onClick={onClose}>

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 // A library can hold thousands of titles. Rendering only the rows near the
 // viewport keeps scrolling smooth and the first paint fast; spacers stand in
 // for everything above and below, so the page keeps its full height and the
-// window scrollbar behaves as if every row were there.
+// page's scrollbar behaves as if every row were there.
 
 type Range = { start: number; end: number }
 
@@ -12,7 +12,7 @@ const OVERSCAN_PX = 900
 
 function sameRange(a: Range, b: Range) { return a.start === b.start && a.end === b.end }
 
-/** Watches the window scroll and reports which rows of a list fall in view. */
+/** Watches page scrolling and reports which rows of a list fall in view. */
 function useWindowRange(container: HTMLElement | null, rowCount: number, rowHeight: number) {
   const [range, setRange] = useState<Range>({ start: 0, end: Math.min(rowCount, 12) })
   useLayoutEffect(() => {
@@ -30,10 +30,11 @@ function useWindowRange(container: HTMLElement | null, rowCount: number, rowHeig
     }
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update) }
     update()
-    window.addEventListener('scroll', schedule, { passive: true })
+    // Capturing, because the page scrolls in an element and that does not bubble.
+    window.addEventListener('scroll', schedule, { passive: true, capture: true })
     window.addEventListener('resize', schedule)
     return () => {
-      window.removeEventListener('scroll', schedule)
+      window.removeEventListener('scroll', schedule, { capture: true })
       window.removeEventListener('resize', schedule)
       if (frame) window.cancelAnimationFrame(frame)
     }
