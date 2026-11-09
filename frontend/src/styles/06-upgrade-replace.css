@@ -116,6 +116,10 @@
 .upgrade-v2-line > .upgrade-v2-seeds { display: flex; align-items: center; justify-content: flex-end; }
 .upgrade-v2-size { width: var(--upgrade-size); }
 .upgrade-v2-size-change { width: var(--upgrade-size-change); text-align: left; }
+/* The torrent's age, in the empty line above Seeds and Size. Out of flow, so
+   it takes no width from the release name and adds no height to the row. */
+.upgrade-v2-line > .upgrade-v2-size { position: relative; }
+.upgrade-v2-age { position: absolute; right: 0; bottom: 100%; margin-bottom: 2px; color: var(--faint); }
 /* Seeds and Size read as a pair: a tighter gap than the row's own. */
 .upgrade-v2-line > .upgrade-v2-size, .upgrade-v2-head > .upgrade-v2-size { margin-left: calc(var(--s2) - var(--s3)); }
 .upgrade-v2-line > .upgrade-v2-size-change, .upgrade-v2-head > .upgrade-v2-size-change { margin-left: calc(4px - var(--s3)); }
