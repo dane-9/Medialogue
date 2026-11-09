@@ -177,6 +177,13 @@ async def refresh_default_profile_scores(session: AsyncSession) -> int:
                 if key in ids_by_key and ids_by_key[key] not in scored:
                     session.add(ProfileCustomFormatScore(profile_id=profile.id, custom_format_id=ids_by_key[key], score=DEFAULT_FORMAT_SCORES[key]))
                     changed += 1
+        # Version 4: banned groups went from 0 to their own penalty.
+        if int(settings.get("default_scores_version") or 1) < 4 and "group-banned" in ids_by_key:
+            banned = await session.scalar(select(ProfileCustomFormatScore).where(
+                ProfileCustomFormatScore.profile_id == profile.id, ProfileCustomFormatScore.custom_format_id == ids_by_key["group-banned"]))
+            if banned is not None and banned.score == 0:
+                banned.score = DEFAULT_FORMAT_SCORES["group-banned"]
+                changed += 1
         profile.settings = {**settings, "default_scores_version": DEFAULT_FORMAT_SCORES_VERSION}
         if changed:
             profile.revision = (profile.revision or 1) + 1

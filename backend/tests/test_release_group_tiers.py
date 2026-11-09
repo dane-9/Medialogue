@@ -55,13 +55,23 @@ def test_a_release_matches_the_tier_of_its_group_and_kind(title, expected) -> No
     "A Beautiful Mind 2001 DUAL iNTERNAL UHD BluRay 2160p TrueHD Atmos 7 1 DV HDR10 REMUX-seedpool",
     "2 Fast 2 Furious 2003 BluRay 2160p Remux DV HDR10+ HEVC DTS-X 7.1-DepraveD",
     "Some.Movie.2020.2160p.WEB-DL-DEPRAVED.mkv",
+    "Knight and Day 2010 Extended 2160p UHD REMUX (AI Upscale) HDR10 10bit x265 HEVC DTS-HD MA 5 1-PHOCIS",
+    "Black Adam 2022 Hybrid 2160p UHD Blu-ray Remux HDR10Plus DV HEVC TrueHD Atmos 7 1-DamnUSamsung",
+    "Mission Impossible Ghost Protocol 2011 2160p REMUX HEVC DV HDR10+ TrueHD 7.1 Atmos-jennaortegaUHD",
+    "Movie.2020.1080p.WEB-DL.H.264-GRP[TGx]",
+    "Movie (2020) (1080p BluRay x265 10bit Tigole)",
+    "Movie.2020.1080p.BluRay.x264-FGT",
+    "Movie.2020.1080p.WEB-DL.H.264-Flights",
 ])
 def test_banned_groups_are_recognised(title) -> None:
     assert "group-banned" in _matching(title)
     assert BANNED_RELEASE_GROUP.search(title)
 
 
-@pytest.mark.parametrize("title", ["Seedpool.Stories.2020.2160p.WEB-DL.H.265-FLUX", "Data.Lass.2020.1080p.WEB-DL.H.264-CMRG"])
+@pytest.mark.parametrize("title", [
+    "Seedpool.Stories.2020.2160p.WEB-DL.H.265-FLUX", "Data.Lass.2020.1080p.WEB-DL.H.264-CMRG",
+    "Sicario.2015.2160p.UHD.BluRay.REMUX.HEVC-FraMeSToR", "Sicario",
+])
 def test_a_banned_name_elsewhere_in_the_title_is_fine(title) -> None:
     assert "group-banned" not in _matching(title)
 
@@ -122,6 +132,40 @@ def test_every_spelling_of_dv_with_hdr10_plus_is_one_format(title) -> None:
 def test_hybrid_and_no_group_scores() -> None:
     assert DEFAULT_FORMAT_SCORES["attr-hybrid"] == -5
     assert DEFAULT_FORMAT_SCORES["attr-no-group"] == -5
+
+
+@pytest.mark.parametrize("group", ["SiCFoI", "SumVision", "Flights"])
+def test_a_banned_group_earns_no_tier(group) -> None:
+    assert _matching(f"Movie.2020.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-{group}") == {"group-banned"}
+    assert _matching(f"Movie.2020.1080p.WEB-DL.DD5.1.H.264-{group}") == {"group-banned"}
+
+
+def test_an_existing_default_profile_moves_banned_groups_to_their_penalty_once(client) -> None:  # noqa: F811
+    async def scenario():
+        async with db_session.async_session_factory() as db:
+            await ensure_builtin_custom_formats(db)
+            await ensure_default_quality_profile(db)
+            profile = await db.scalar(select(QualityProfile).where(QualityProfile.name == "Default"))
+            banned_id = await db.scalar(select(CustomFormat.id).where(CustomFormat.builtin_key == "group-banned"))
+            row = await db.scalar(select(ProfileCustomFormatScore).where(
+                ProfileCustomFormatScore.profile_id == profile.id, ProfileCustomFormatScore.custom_format_id == banned_id))
+            row.score = 0
+            profile.settings = {**profile.settings, "default_scores_version": 3}
+            await db.commit()
+
+            assert await refresh_default_profile_scores(db) == 1
+            await db.commit()
+            await db.refresh(row)
+            assert row.score == -100
+
+            row.score = -5
+            profile.settings = {**profile.settings, "default_scores_version": 3}
+            await db.commit()
+            assert await refresh_default_profile_scores(db) == 0
+            await db.refresh(row)
+            assert row.score == -5
+
+    asyncio.run(scenario())
 
 
 def test_a_top_tier_outweighs_an_hdr_tag_but_not_dolby_vision() -> None:

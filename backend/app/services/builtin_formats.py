@@ -63,15 +63,15 @@ def _codec(key: str, name: str, description: str, values: list[str], group: str)
 #: two place a group differently, Radarr's tier is kept.
 _RELEASE_GROUP_TIERS: dict[str, tuple[str, ...]] = {
     "remux-tier-01": ("3L", "ATELiER", "BiZKiT", "BLURANiUM", "BMF", "CiNEPHiLES", "FraMeSToR", "PiRAMiDHEAD", "PmP", "WiLDCAT", "ZQ"),
-    "remux-tier-02": ("NCmt", "playBD", "PTer", "SiCFoI", "SURFINBIRD", "TEPES"),
-    "remux-tier-03": ("12GaugeShotgun", "decibeL", "EPSiLON", "HiFi", "iFT", "KRaLiMaRKo", "NTb", "PTP", "SumVision", "TOA", "TRiToN"),
+    "remux-tier-02": ("NCmt", "playBD", "PTer", "SURFINBIRD", "TEPES"),
+    "remux-tier-03": ("12GaugeShotgun", "decibeL", "EPSiLON", "HiFi", "iFT", "KRaLiMaRKo", "NTb", "PTP", "TOA", "TRiToN"),
     "web-tier-01": (
         "ABBIE", "AJP69", "APEX", "BLUTONiUM", "BYNDR", "CasStudio", "CMRG", "CRFW", "CRUD", "CtrlHD", "FLUX", "GNOME", "HONE", "KiNGS",
         "Kitsune", "MADSKY", "NOSiViD", "NTb", "NTG", "PAXA", "PEXA", "QOQ", "RAWR", "RTN", "SiC", "T6D", "TEPES", "TheFarm", "ViSUM", "XEPA",
         "ZoroSenpai",
     ),
     "web-tier-02": (
-        "3cTWeB", "4KBEC", "BTW", "CEBEX", "Chotab", "Cinefeel", "CiT", "Coo7", "dB", "DEEP", "END", "ETHiCS", "FC", "Flights", "iJP", "iKA",
+        "3cTWeB", "4KBEC", "BTW", "CEBEX", "Chotab", "Cinefeel", "CiT", "Coo7", "dB", "DEEP", "END", "ETHiCS", "FC", "iJP", "iKA",
         "iT00NZ", "JETIX", "KHN", "KiMCHI", "LAZY", "MiU", "monkee", "MZABI", "NYH", "orbitron", "PHOENiX", "playWEB", "PSiG", "RTFM", "SA89",
         "SbR", "SDCC", "SMURF", "SPiRiT", "TOMMY", "TVSmash", "WELP", "XEBEC",
     ),
@@ -85,9 +85,14 @@ _FILE_EXTENSION = r"(?:\.(?:mkv|mp4|m2ts|avi|ts))?"
 
 BANNED_RELEASE_GROUPS_FORMAT = "Banned Release Groups"
 #: Releases from these are rejected outright, whatever else they score.
-_BANNED_RELEASE_GROUPS = ("Data Lass", "seedpool", "DepraveD")
+_BANNED_RELEASE_GROUPS = (
+    "Data Lass", "seedpool", "DepraveD", "PHOCIS", "DamnUSamsung", "jennaortegaUHD", "4K4U", "HDT", "Flights", "FGT", "edge2020", "MGE",
+    "SasukeducK", "Sicario", "SiCFoI", "SWTYBLZ", "SumVision", "TAoE", "TGx", "Tigole", "UnKn0wn", "WKS", "PANDEMONiUM", "d3g",
+)
+# A separator is required before the name: some of these are ordinary words,
+# and a folder named just "Sicario" is the movie, not the group.
 _BANNED_RELEASE_GROUP_PATTERN = (
-    r"(?:^|[-\[(\s._])(?:" + "|".join(re.escape(group).replace(r"\ ", r"[ ._]+") for group in _BANNED_RELEASE_GROUPS)
+    r"[-\[(\s._](?:" + "|".join(re.escape(group).replace(r"\ ", r"[ ._]+") for group in _BANNED_RELEASE_GROUPS)
     + r")[\])]?" + _FILE_EXTENSION + r"\s*$"
 )
 BANNED_RELEASE_GROUP = re.compile(_BANNED_RELEASE_GROUP_PATTERN, re.IGNORECASE)
@@ -505,12 +510,11 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "web-itunes": 0,
     "web-movies-anywhere": 0,
     "attr-no-group": -5,
-    # Rejected outright, so a score would only skew what is already owned.
-    "group-banned": 0,
+    "group-banned": -100,
     **{f"group-{tier}": _RELEASE_GROUP_TIER_SCORES[tier.rsplit("-", 1)[1]] for tier in _RELEASE_GROUP_TIERS},
 }
 #: Bumped whenever DEFAULT_FORMAT_SCORES changes.
-DEFAULT_FORMAT_SCORES_VERSION = 3
+DEFAULT_FORMAT_SCORES_VERSION = 4
 
 
 if set(DEFAULT_FORMAT_SCORES) != BUILTIN_KEYS:
