@@ -90,7 +90,8 @@ async def lifespan(_: FastAPI):
                 # Built-in conditions and takeover relationships affect saved
                 # release score snapshots used by searches and upgrades.
                 from app.services.quality_profiles import refresh_all_release_scores
-                await refresh_all_release_scores(db)
+                # Before serving anything, so one transaction blocks nobody.
+                await refresh_all_release_scores(db, commit_every=None)
             await mark_running_jobs_interrupted(db)
             await ensure_configured_integration_states(db)
             await ensure_default_schedules(db)

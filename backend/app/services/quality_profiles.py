@@ -698,12 +698,16 @@ async def refresh_show_release_scores(db: AsyncSession, show_id: UUID) -> int:
     return len(releases)
 
 
-async def refresh_all_release_scores(db: AsyncSession) -> dict[str, int]:
+async def refresh_all_release_scores(db: AsyncSession, *, commit_every: int | None = 20) -> dict[str, int]:
     """Re-evaluate durable current scores for every release in the library.
 
     Custom Format edits are infrequent in this single-user application, while
     keeping the stored current score truthful is important. Search-time
     snapshots are deliberately not touched by this operation.
+
+    Saved every ``commit_every`` titles, along with whatever the caller had
+    pending: a large library takes minutes to score, and one transaction would
+    hold SQLite's only write lock throughout, failing every other save.
     """
 
     # Include inherited/default-profile titles too.  Those titles deliberately
@@ -713,10 +717,21 @@ async def refresh_all_release_scores(db: AsyncSession) -> dict[str, int]:
     show_ids = set((await db.scalars(select(ShowRelease.show_id).distinct())).all())
     movie_releases = 0
     show_releases = 0
+    pending = 0
+
+    async def title_done() -> None:
+        nonlocal pending
+        pending += 1
+        if commit_every is not None and pending >= commit_every:
+            pending = 0
+            await db.commit()
+
     for movie_id in movie_ids:
         movie_releases += await refresh_movie_release_scores(db, movie_id)
+        await title_done()
     for show_id in show_ids:
         show_releases += await refresh_show_release_scores(db, show_id)
+        await title_done()
     return {
         "movies": len(movie_ids),
         "shows": len(show_ids),

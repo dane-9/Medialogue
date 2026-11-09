@@ -19,7 +19,7 @@ from time import perf_counter
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import func, inspect, select, update
+from sqlalchemy import func, inspect, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import (
@@ -75,6 +75,17 @@ from app.services.tracker_checks import (
 QBittorrentClientFactory = Callable[[str, str, str], QBittorrentClient]
 
 logger = logging.getLogger(__name__)
+
+
+async def _claim_write_lock(db: AsyncSession) -> None:
+    """Take SQLite's write lock at the start of a transaction that reads first.
+
+    If anything else saves between a transaction's first read and its first
+    write, SQLite refuses the write at once, ignoring the busy timeout. Asking
+    for the lock first makes that transaction wait its turn instead.
+    """
+
+    await db.execute(text("UPDATE torrents SET id = id WHERE 0"))
 
 
 async def _selected_tracker_title(
@@ -693,6 +704,7 @@ async def _poll_download_client(
                 # torrent must not poison the entire qBittorrent client poll or
                 # prevent later torrents from being observed.
                 async with db.begin_nested():
+                    await _claim_write_lock(db)
                     torrent = await db.scalar(select(Torrent).where(Torrent.info_hash == info_hash))
                     timestamp_completed = _timestamp(observed.completed_at)
                     was_complete = False

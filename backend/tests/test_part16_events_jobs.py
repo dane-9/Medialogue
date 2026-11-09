@@ -537,6 +537,46 @@ def test_open_problem_updates_one_canonical_row(client: TestClient) -> None:
     asyncio.run(scenario())
 
 
+def test_a_job_that_fails_during_a_database_lock_still_records_the_failure(client: TestClient, monkeypatch) -> None:
+    import sqlite3
+
+    from sqlalchemy.exc import OperationalError
+
+    from app.services import jobs as jobs_module
+
+    monkeypatch.setattr(jobs_module, "_LOCK_RETRY_SECONDS", 0)
+    real_update = jobs_module.update_job
+    attempts: list[int] = []
+
+    async def locked_once(db, job, **values):
+        if values.get("status") == JobStatus.FAILED and not attempts:
+            attempts.append(1)
+            raise OperationalError("UPDATE jobs", {}, sqlite3.OperationalError("database is locked"))
+        return await real_update(db, job, **values)
+
+    monkeypatch.setattr(jobs_module, "update_job", locked_once)
+
+    async def scenario():
+        async with db_session.async_session_factory() as db:
+            job = await create_job(db, "will_fail")
+            await real_update(db, job, status=JobStatus.RUNNING)
+            await db.commit()
+            job_id = job.id
+
+        async def worker(_db, _job):
+            raise RuntimeError("database is locked while searching")
+
+        await run_job(job_id, worker, failure_code="SEARCH_FAILED", failure_message="Search failed")
+        async with db_session.async_session_factory() as db:
+            return await db.get(Job, job_id)
+
+    job = asyncio.run(scenario())
+    assert attempts == [1]
+    assert job.status == JobStatus.FAILED
+    assert job.error["code"] == "SEARCH_FAILED"
+    assert job.finished_at is not None
+
+
 @pytest.mark.parametrize(
     ("job_type", "stoppable"),
     [("search_media_upgrades", True), ("search_media_replacements", True), ("search_new_replacements", True), ("readd_missing_torrents", False)],

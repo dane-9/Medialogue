@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session as db_session
@@ -12,6 +13,10 @@ from app.models.domain import Job, JobStatus
 from app.services.events import publish_live_event
 
 logger = logging.getLogger(__name__)
+
+#: On top of SQLite's own 30-second wait for each attempt.
+_LOCK_RETRIES = 5
+_LOCK_RETRY_SECONDS = 2.0
 
 
 TERMINAL_JOB_STATES = frozenset(
@@ -156,6 +161,23 @@ async def checkpoint_job(
     return job
 
 
+async def with_lock_retries(work: Callable[[], Awaitable[Any]]) -> Any:
+    """Run ``work``, trying again while SQLite reports the database is locked.
+
+    A job's final status has to reach the database: if it does not, the job
+    reads as running until the next restart and its task cannot run again.
+    """
+
+    for attempt in range(_LOCK_RETRIES):
+        try:
+            return await work()
+        except OperationalError as exc:
+            if "locked" not in str(exc) or attempt == _LOCK_RETRIES - 1:
+                raise
+            logger.warning("database was locked saving a job's status; trying again")
+            await asyncio.sleep(_LOCK_RETRY_SECONDS)
+
+
 async def run_job(
     job_id: UUID,
     worker: Callable[[AsyncSession, Job], Awaitable[None]],
@@ -177,41 +199,35 @@ async def run_job(
         if job is None or job.status in TERMINAL_JOB_STATES:
             return
 
+        async def record_failure(progress: dict[str, Any] | None, error: dict[str, Any]) -> None:
+            async def attempt() -> None:
+                await db.rollback()
+                failed = await db.get(Job, job_id)
+                if failed is None or failed.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED}:
+                    return
+                await update_job(db, failed, status=JobStatus.FAILED, progress=progress, error=error)
+                await db.commit()
+                publish_job_status(failed)
+
+            await with_lock_retries(attempt)
+
         try:
             await worker(db, job)
         except asyncio.CancelledError:
             raise
         except JobFailure as exc:
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED}:
-                return
-            await update_job(
-                db,
-                job,
-                status=JobStatus.FAILED,
-                progress=exc.progress or failure_progress,
-                error={
-                    "code": exc.code,
-                    "message": exc.message,
-                    **({"details": exc.details} if exc.details is not None else {}),
-                },
-            )
+            await record_failure(exc.progress or failure_progress, {
+                "code": exc.code,
+                "message": exc.message,
+                **({"details": exc.details} if exc.details is not None else {}),
+            })
+            return
         except Exception as exc:
             logger.warning("job failed", extra={"job_id": str(job_id)}, exc_info=True)
-            await db.rollback()
-            job = await db.get(Job, job_id)
-            if job is None or job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED}:
-                return
-            await update_job(
-                db,
-                job,
-                status=JobStatus.FAILED,
-                progress=failure_progress,
-                error={"code": failure_code, "message": str(exc) or failure_message},
-            )
+            await record_failure(failure_progress, {"code": failure_code, "message": str(exc) or failure_message})
+            return
 
-        await db.commit()
+        await with_lock_retries(db.commit)
         publish_job_status(job)
 
 
