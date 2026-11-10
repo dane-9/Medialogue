@@ -263,6 +263,63 @@ class ReleaseProblem:
     payload: list[Torrent] = field(default_factory=list)
 
 
+def _comparable_path(path: str) -> str:
+    return path.replace("\\", "/").rstrip("/").casefold()
+
+
+async def _releases_with_a_torrent_on_their_files(db: AsyncSession, releases: dict[UUID, str]) -> set[UUID]:
+    """Which of these unlinked releases have a torrent in qBittorrent on their files.
+
+    The link follows on a later poll; until then the release is not torrentless.
+    Only a real content path counts: a save-path fallback can be a whole library.
+    """
+
+    if not releases:
+        return set()
+    content_path = Torrent.metadata_json["content_path"].as_string()
+    payloads = {
+        _comparable_path(path)
+        for path in await db.scalars(
+            select(TorrentClientObservation.resolved_save_path)
+            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+            .where(TorrentClientObservation.is_present.is_(True), TorrentClientObservation.resolved_save_path.is_not(None),
+                   content_path.is_not(None), content_path != "")
+        )
+    }
+    if not payloads:
+        return set()
+
+    def on_a_payload(folder: str, relative_path: str) -> bool:
+        path = _comparable_path(f"{folder.rstrip('/\\')}/{relative_path}")
+        while "/" in path:
+            if path in payloads:
+                return True
+            path = path.rsplit("/", 1)[0]
+        return False
+
+    covered: set[UUID] = set()
+    wanted = {
+        kind: [release_id for release_id, release_kind in releases.items() if release_kind == kind]
+        for kind in ("movie", "show")
+    }
+    for kind, release_column, joined in (
+        ("movie", MediaDirectory.movie_release_id,
+         lambda statement: statement.select_from(MediaDirectory).join(MediaFile, MediaFile.media_directory_id == MediaDirectory.id)),
+        ("show", EpisodeMediaMap.show_release_id,
+         lambda statement: statement.select_from(EpisodeMediaMap)
+         .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
+         .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)),
+    ):
+        for index in range(0, len(wanted[kind]), 500):
+            statement = joined(select(release_column, MediaDirectory.resolved_path, MediaFile.relative_path)).where(
+                release_column.in_(wanted[kind][index:index + 500]), MediaFile.exists.is_(True)
+            )
+            for release_id, folder, relative_path in (await db.execute(statement)).all():
+                if on_a_payload(folder, relative_path):
+                    covered.add(release_id)
+    return covered
+
+
 async def release_problems(
     db: AsyncSession,
     *,
@@ -336,6 +393,10 @@ async def release_problems(
     removed = await lost_sources(db)
     verdicts = {torrent_id: classify_torrent(torrent, now, confirmed_removed=torrent_id in removed)
                 for torrent_id, torrent in torrents.items()}
+    covered = await _releases_with_a_torrent_on_their_files(db, {
+        release_id: kind for release_id, (kind, _owner, state) in releases.items()
+        if state != ReleaseState.MISSING and release_id not in links
+    })
 
     problems: dict[UUID, ReleaseProblem] = {}
     affected_movies: set[UUID] = set()
@@ -352,6 +413,8 @@ async def release_problems(
             live = any(item.is_present for torrent in source_torrents for item in torrent.observations)
             problem = ReleaseProblem(SourceProblem(FILES_MISSING if live else MISSING), source_torrents)
         elif not sources:
+            if release_id in covered:
+                continue
             problem = ReleaseProblem(SourceProblem(NO_TORRENT), [])
         else:
             payload = payload_of(sources)

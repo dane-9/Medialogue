@@ -8,8 +8,9 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
-from app.models.domain import (AssociationType, IdentityState, Movie, MovieRelease, MovieReleaseTorrent, ReleaseState,
-                               ReplacementReview, Torrent, TorrentArchiveState, TorrentClientObservation)
+from app.models.domain import (AssociationType, Episode, EpisodeMediaMap, IdentityState, MediaDirectory, MediaFile, Movie,
+                               MovieRelease, MovieReleaseTorrent, PresenceState, ReleaseState, ReplacementReview, Season, Show,
+                               ShowRelease, Torrent, TorrentArchiveState, TorrentClientObservation)
 from app.services.replacements import (FILES_MISSING, MISSING, NO_SEEDERS, NO_TORRENT, NOT_WATCHED, REMOVED_FROM_TRACKER, TRACKER_GONE,
                                        ReplacementTarget, _dismissed, classify_torrent, release_problems)
 from app.services.torrent_tracking import other_seeders, terminal_tracker_reason, track_other_seeders
@@ -151,6 +152,68 @@ async def test_release_problems_cover_no_torrent_downloads_and_cross_seeds():
         assert [torrent.id for torrent in problems[gone.id].torrents] == [lonely.id]
         # Scoped to other titles, nothing is evaluated.
         assert (await release_problems(db, movie_ids={uuid4()}, show_ids=set()))[0] == {}
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_torrent_on_the_files_means_it_is_not_torrentless_before_the_link_exists():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions() as db:
+        movie = Movie(title="Movie", sort_title="Movie", identity_state=IdentityState.MATCHED)
+        show = Show(title="Example", year=2020)
+        db.add_all([movie, show]); await db.flush()
+        season = Season(show_id=show.id, season_number=1)
+        db.add(season); await db.flush()
+
+        async def movie_release(name: str, *, exists: bool = True) -> MovieRelease:
+            release = MovieRelease(movie_id=movie.id, raw_release_name=name)
+            db.add(release); await db.flush()
+            directory = MediaDirectory(resolved_path=f"/movies/{name}", movie_release_id=release.id)
+            db.add(directory); await db.flush()
+            db.add(MediaFile(media_directory_id=directory.id, relative_path=f"{name}.mkv", filename=f"{name}.mkv", exists=exists))
+            return release
+
+        folder = await movie_release("Folder")
+        single_file = await movie_release("Single")
+        prefix_only = await movie_release("Folder.Other")
+        left_qbit = await movie_release("Left")
+        library_wide = await movie_release("Fallback")
+        file_gone = await movie_release("Gone", exists=False)
+
+        pack = ShowRelease(show_id=show.id, season_id=season.id, raw_release_name="Example.S01", release_state=ReleaseState.CURRENT)
+        episode = Episode(show_id=show.id, season_id=season.id, season_number=1, episode_number=1, presence_state=PresenceState.PRESENT)
+        show_folder = MediaDirectory(resolved_path="/shows/Example")
+        db.add_all([pack, episode, show_folder]); await db.flush()
+        media_file = MediaFile(media_directory_id=show_folder.id, relative_path="Season 1/Example.S01E01.mkv", filename="Example.S01E01.mkv")
+        db.add(media_file); await db.flush()
+        db.add(EpisodeMediaMap(episode_id=episode.id, media_file_id=media_file.id, show_release_id=pack.id))
+
+        for number, (path, present, real_content_path) in enumerate((
+            ("/movies/Folder", True, True),
+            ("/movies/Single/Single.mkv", True, True),
+            ("/movies/Left", False, True),
+            ("/movies", True, False),
+            ("/movies/Gone", True, True),
+            ("/shows/Example/Season 1", True, True),
+        )):
+            torrent_row = Torrent(info_hash=f"{number:040d}", name=path,
+                                  metadata_json={"content_path": path} if real_content_path else {})
+            db.add(torrent_row); await db.flush()
+            db.add(TorrentClientObservation(torrent_id=torrent_row.id, download_client_id=CLIENT, is_present=present,
+                                            resolved_save_path=path, last_seen_at=NOW))
+        await db.commit()
+
+        problems, _movies, _shows = await release_problems(db)
+        assert {release_id: item.problem.reason for release_id, item in problems.items()} == {
+            prefix_only.id: NO_TORRENT,
+            left_qbit.id: NO_TORRENT,
+            library_wide.id: NO_TORRENT,
+            file_gone.id: NO_TORRENT,
+        }
+        assert folder.id not in problems and single_file.id not in problems and pack.id not in problems
     await engine.dispose()
 
 
