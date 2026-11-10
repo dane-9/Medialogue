@@ -258,6 +258,7 @@ def test_every_failing_qbittorrent_status_is_an_error():
     ("Torrent is not authorized for use on this tracker", "not_authorized"),
     ("Torrent banned", "banned"),
     ("Trumped", "trumped"),
+    ("Unregistered torrent: Trump: Superior Source - https://passthepopcorn.me", "trumped"),
     ("Dupe", "dupe"),
     ("Nuked", "removed"),
 ])

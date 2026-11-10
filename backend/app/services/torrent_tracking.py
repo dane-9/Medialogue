@@ -20,6 +20,8 @@ TERMINAL_CONFIRMATIONS = 2
 _URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 _PASSKEY_RE = re.compile(r"(?i)(passkey|auth|token|key)=([^&\s]+)")
 _TERMINAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    # First: PTP's "Unregistered torrent: Trump: <why>" is a trump above all.
+    ("trumped", re.compile(r"\btrump(?:ed)?\b", re.IGNORECASE)),
     ("unregistered", re.compile(r"\bunregistered\b", re.IGNORECASE)),
     ("deleted", re.compile(r"\btorrent\s+(?:(?:has\s+been|was|is)\s+)?deleted\b", re.IGNORECASE)),
     ("not_registered", re.compile(r"\b(?:torrent|info\s*hash)\s+(?:is\s+)?not\s+registered\b", re.IGNORECASE)),
@@ -32,7 +34,6 @@ _TERMINAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # Private trackers retire a torrent in their own words: replaced by a better
     # upload, a duplicate of another, or a moderator's "Removed: <why>". Some
     # answer with the bare word, which alone is too common to match inside a sentence.
-    ("trumped", re.compile(r"\btrumped\b", re.IGNORECASE)),
     ("dupe", re.compile(r"\b(?:dupe|duplicate)\s+of\b|^\s*(?:dupe|duplicate)\s*\.?\s*$", re.IGNORECASE)),
     ("removed", re.compile(r"^\s*(?:torrent\s+)?removed\b|^\s*(?:dead|nuked)\s*\.?\s*$", re.IGNORECASE)),
     ("removed", re.compile(r"\bcomplete\s+season\s+uploaded\b|\bretitled\b", re.IGNORECASE)),
