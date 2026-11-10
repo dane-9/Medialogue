@@ -8,12 +8,14 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
+from app.integrations.qbittorrent import TorrentTrackerSnapshot
 from app.models.domain import (AssociationType, Episode, EpisodeMediaMap, IdentityState, MediaDirectory, MediaFile, Movie,
                                MovieRelease, MovieReleaseTorrent, PresenceState, ReleaseState, ReplacementReview, Season, Show,
                                ShowRelease, Torrent, TorrentArchiveState, TorrentClientObservation)
 from app.services.replacements import (FILES_MISSING, MISSING, NO_SEEDERS, NO_TORRENT, NOT_WATCHED, REMOVED_FROM_TRACKER, TRACKER_GONE,
-                                       ReplacementTarget, _dismissed, classify_torrent, release_problems)
-from app.services.torrent_tracking import other_seeders, terminal_tracker_reason, track_other_seeders
+                                       ReplacementTarget, _dismissed, classify_torrent, lost_sources, release_problems)
+from app.services.torrent_tracking import (other_seeders, persist_tracker_health, terminal_tracker_reason, track_other_seeders,
+                                           tracker_health_state)
 
 NOW = datetime.now(timezone.utc)
 CLIENT = uuid4()
@@ -215,6 +217,65 @@ async def test_a_torrent_on_the_files_means_it_is_not_torrentless_before_the_lin
         }
         assert folder.id not in problems and single_file.id not in problems and pack.id not in problems
     await engine.dispose()
+
+
+@pytest.mark.parametrize("status", [4, 5])
+@pytest.mark.asyncio
+async def test_a_tracker_rejecting_the_torrent_twice_is_a_lost_source(status: int):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    rejection = TorrentTrackerSnapshot(url="https://aither.cc/announce/KEY", status=status, tier=0, peers=0, seeds=0, leeches=0,
+                                       downloaded=0, message="Torrent has been deleted.")
+    async with sessions() as db:
+        row = Torrent(info_hash="9" * 40, name="The Invasion 2007")
+        db.add(row); await db.flush()
+        db.add(TorrentClientObservation(torrent_id=row.id, download_client_id=CLIENT, is_present=True, last_seen_at=NOW))
+        await db.flush()
+
+        await persist_tracker_health(db, row, CLIENT, (rejection,), checked_at=datetime.now(timezone.utc))
+        assert row.id not in await lost_sources(db), "one rejection could be a tracker hiccup"
+        await persist_tracker_health(db, row, CLIENT, (rejection,), checked_at=datetime.now(timezone.utc))
+        assert row.id in await lost_sources(db)
+        assert row.tracker_summary["state"] == "unregistered"
+    await engine.dispose()
+
+
+def test_every_failing_qbittorrent_status_is_an_error():
+    assert [tracker_health_state(status) for status in (0, 1, 2, 3, 4, 5, 6)] == [
+        "disabled", "not_contacted", "working", "updating", "error", "error", "error",
+    ]
+    assert tracker_health_state(99) == "unknown"
+
+
+@pytest.mark.parametrize(("message", "expected"), [
+    ("InfoHash not found.", "not_found"),
+    ("Torrent has been deleted.", "deleted"),
+    ("Torrent deleted", "deleted"),
+    ("Unregistered", "unregistered"),
+    ("Torrent does not exist", "not_found"),
+    ("Torrent is not authorized for use on this tracker", "not_authorized"),
+    ("Torrent banned", "banned"),
+    ("Trumped", "trumped"),
+    ("Dupe", "dupe"),
+    ("Nuked", "removed"),
+])
+def test_real_tracker_wording_for_a_removed_torrent(message: str, expected: str):
+    assert terminal_tracker_reason(message) == expected
+
+
+@pytest.mark.parametrize("message", [
+    "Invalid passkey",
+    "Unregistered passkey",
+    "You have reached the client limit for this torrent",
+    "Tracker unavailable",
+    "Gateway timeout",
+    "Stream truncated",
+    "The server is dead slow right now",
+])
+def test_a_fault_with_the_account_or_tracker_is_not_a_removal(message: str):
+    assert terminal_tracker_reason(message) is None
 
 
 def test_private_tracker_removal_wording_is_terminal():

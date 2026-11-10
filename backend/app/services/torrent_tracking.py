@@ -20,15 +20,27 @@ TERMINAL_CONFIRMATIONS = 2
 _URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 _PASSKEY_RE = re.compile(r"(?i)(passkey|auth|token|key)=([^&\s]+)")
 _TERMINAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("unregistered", re.compile(r"\bunregistered\s+torrent\b", re.IGNORECASE)),
-    ("deleted", re.compile(r"\btorrent\s+(?:has\s+been|was|is)\s+deleted\b", re.IGNORECASE)),
-    ("not_registered", re.compile(r"\btorrent\s+(?:is\s+)?not\s+registered\b", re.IGNORECASE)),
-    ("not_found", re.compile(r"\b(?:unknown\s+torrent|torrent\s+not\s+found)\b", re.IGNORECASE)),
+    ("unregistered", re.compile(r"\bunregistered\b", re.IGNORECASE)),
+    ("deleted", re.compile(r"\btorrent\s+(?:(?:has\s+been|was|is)\s+)?deleted\b", re.IGNORECASE)),
+    ("not_registered", re.compile(r"\b(?:torrent|info\s*hash)\s+(?:is\s+)?not\s+registered\b", re.IGNORECASE)),
+    ("not_found", re.compile(
+        r"\b(?:unknown\s+torrent|torrent\s+(?:is\s+)?not\s+found|info\s*hash\s+not\s+found|torrent\s+(?:does\s+)?not\s+exists?)\b",
+        re.IGNORECASE,
+    )),
+    ("not_authorized", re.compile(r"\btorrent\s+is\s+not\s+authori[sz]ed\b", re.IGNORECASE)),
+    ("banned", re.compile(r"\b(?:torrent\s+(?:is\s+|has\s+been\s+)?|specifically\s+)banned\b", re.IGNORECASE)),
     # Private trackers retire a torrent in their own words: replaced by a better
-    # upload, a duplicate of another, or a moderator's "Removed: <why>".
+    # upload, a duplicate of another, or a moderator's "Removed: <why>". Some
+    # answer with the bare word, which alone is too common to match inside a sentence.
     ("trumped", re.compile(r"\btrumped\b", re.IGNORECASE)),
-    ("dupe", re.compile(r"\b(?:dupe|duplicate)\s+of\b", re.IGNORECASE)),
-    ("removed", re.compile(r"^\s*(?:torrent\s+)?removed\b", re.IGNORECASE)),
+    ("dupe", re.compile(r"\b(?:dupe|duplicate)\s+of\b|^\s*(?:dupe|duplicate)\s*\.?\s*$", re.IGNORECASE)),
+    ("removed", re.compile(r"^\s*(?:torrent\s+)?removed\b|^\s*(?:dead|nuked)\s*\.?\s*$", re.IGNORECASE)),
+    ("removed", re.compile(r"\bcomplete\s+season\s+uploaded\b|\bretitled\b", re.IGNORECASE)),
+)
+#: Faults with the account or the tracker itself, whatever else the message says.
+_NOT_ABOUT_THE_TORRENT = re.compile(
+    r"passkey|client\s+limit|missing\s+info_?hash|gateway|unavailable|postponed|bencoded|truncated|unreachable",
+    re.IGNORECASE,
 )
 
 
@@ -92,7 +104,7 @@ def redact_tracker_message(message: str | None) -> str | None:
 
 
 def terminal_tracker_reason(message: str | None) -> str | None:
-    if not message:
+    if not message or _NOT_ABOUT_THE_TORRENT.search(message):
         return None
     for reason, pattern in _TERMINAL_PATTERNS:
         if pattern.search(message):
@@ -101,7 +113,9 @@ def terminal_tracker_reason(message: str | None) -> str | None:
 
 
 def tracker_health_state(status: int) -> str:
-    return {0: "disabled", 1: "not_contacted", 2: "working", 3: "updating", 4: "error"}.get(status, "unknown")
+    # Newer qBittorrent splits "not working" (4) into a tracker's own rejection
+    # (5), which is what an unregistered torrent gets, and unreachable (6).
+    return {0: "disabled", 1: "not_contacted", 2: "working", 3: "updating", 4: "error", 5: "error", 6: "error"}.get(status, "unknown")
 
 
 def _aware(value: datetime | None) -> datetime | None:
