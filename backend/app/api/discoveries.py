@@ -50,6 +50,7 @@ from app.schemas.discoveries import (
 )
 from app.services.discoveries import DISCOVERY_CANDIDATE_LIMIT
 from app.services.movies import add_movie_from_tmdb
+from app.services.qbittorrent import reprocess_torrents_at
 from app.services.reconciliation import prefetch_plex_snapshot, reconcile_movie_directory
 from app.services.shows import add_show_from_tmdb, reconcile_show_directory
 from app.services.tmdb import get_tmdb_configuration
@@ -508,6 +509,8 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
     discovery.reviewed_at = utcnow()
     await db.commit()
     await db.refresh(discovery)
+    # After the commit, so the poll that picks these up can see the new title.
+    await reprocess_torrents_at(db, observation.path)
     return discovery
 
 

@@ -226,6 +226,70 @@ def test_review_stages_and_approves_movies_and_shows(client: TestClient, tmp_pat
     assert remaining.json()["count"] == 0
 
 
+def test_a_torrent_that_settled_before_the_folder_was_added_gets_linked(client: TestClient, tmp_path: Path) -> None:
+    """The torrent finished while no title existed; adding the folder must not leave it unlinked."""
+
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from sqlalchemy import select
+
+    from app.db import session as db_session
+    from app.models.domain import (AssociationType, DownloadClient, MediaType, MovieReleaseTorrent, Torrent,
+                                   TorrentClientObservation)
+    from app.services import qbittorrent as qbit_service
+    from app.services.torrent_reconciliation import associate_incoming_torrent, finalize_completed_torrent
+
+    headers = login(client)
+    configure_tmdb(client, headers)
+    movie_root = tmp_path / "movies"
+    movie_dir = movie_root / "Dune.2021.2160p.UHD.BluRay"
+    neighbour = movie_root / "Dune.2021.2160p.UHD.BluRay.Other"
+    for folder in (movie_dir, neighbour):
+        folder.mkdir(parents=True)
+    (movie_dir / "Dune.2021.2160p.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, movie_root, "movies")
+    scan(client, headers, storage["id"])
+    item = next(entry for entry in client.get("/api/v1/discoveries?page_size=250").json()["items"] if entry["media_type"] == "movies")
+
+    client_id = uuid4()
+    linked_hash, other_hash = "a" * 40, "b" * 40
+
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            db.add(DownloadClient(id=client_id))
+            await db.flush()
+            for info_hash, folder in ((linked_hash, movie_dir), (other_hash, neighbour)):
+                torrent = Torrent(info_hash=info_hash, name=folder.name)
+                db.add(torrent)
+                await db.flush()
+                db.add(TorrentClientObservation(torrent_id=torrent.id, download_client_id=client_id, is_present=True,
+                                                resolved_save_path=str(folder.resolve())))
+            await db.commit()
+
+    client.portal.call(seed)
+    settled_at = ("unchanged",), datetime.now(timezone.utc)
+    qbit_service._SETTLED[client_id] = {linked_hash: settled_at, other_hash: settled_at}
+    try:
+        approved = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [item["id"]], "action": "approve"})
+        assert approved.status_code == 200, approved.text
+        assert set(qbit_service._SETTLED[client_id]) == {other_hash}
+    finally:
+        qbit_service._SETTLED.pop(client_id, None)
+
+    async def next_full_pass() -> list[AssociationType]:
+        async with db_session.async_session_factory() as db:
+            torrent = await db.scalar(select(Torrent).where(Torrent.info_hash == linked_hash))
+            path = str(movie_dir.resolve())
+            await associate_incoming_torrent(db, torrent, resolved_path=path, scope=MediaType.MOVIES, complete=True)
+            await finalize_completed_torrent(db, torrent, resolved_path=path, scope=MediaType.MOVIES, download_client_id=client_id)
+            await db.commit()
+            return list(await db.scalars(select(MovieReleaseTorrent.association_type).where(MovieReleaseTorrent.torrent_id == torrent.id)))
+
+    assert AssociationType.ATTACHED in client.portal.call(next_full_pass)
+    assert client.get("/api/v1/movies").json()["total"] == 1
+
+
 def test_scan_caches_full_tmdb_result_lists_for_review(
     client: TestClient, tmp_path: Path, monkeypatch
 ) -> None:

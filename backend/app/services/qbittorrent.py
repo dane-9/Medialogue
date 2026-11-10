@@ -19,7 +19,7 @@ from time import perf_counter
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import func, inspect, select, text, update
+from sqlalchemy import func, inspect, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.qbittorrent import (
@@ -371,6 +371,26 @@ _FULL_REPROCESS_SECONDS = 600
 #: without a cap they all come due in the same poll every ten minutes: one long
 #: write transaction that blocks every other write. Capped, they spread out.
 _PERIODIC_REPROCESS_PER_POLL = 100
+
+
+async def reprocess_torrents_at(db: AsyncSession, folder: str) -> None:
+    """Have the next poll fully process every torrent on this folder.
+
+    A folder added to the library by hand may hold a torrent that settled while
+    no title existed to link it to. Without this it waits its periodic turn.
+    """
+
+    path = TorrentClientObservation.resolved_save_path
+    rows = await db.execute(
+        select(Torrent.info_hash, TorrentClientObservation.download_client_id)
+        .join(TorrentClientObservation, TorrentClientObservation.torrent_id == Torrent.id)
+        .where(
+            TorrentClientObservation.is_present.is_(True),
+            or_(path == folder, path.startswith(f"{folder}/", autoescape=True), path.startswith(f"{folder}\\", autoescape=True)),
+        )
+    )
+    for info_hash, client_id in rows.all():
+        _SETTLED.get(client_id, {}).pop(info_hash.lower(), None)
 
 
 async def _fetch_observations(adapter, client: ConfiguredDownloadClient) -> list[TorrentObservation]:
