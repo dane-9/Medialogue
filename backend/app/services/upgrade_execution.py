@@ -8,7 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.integrations.qbittorrent import magnet_info_hash, torrent_payload_info_hash
+from app.integrations.qbittorrent import (
+    magnet_announce_hosts,
+    magnet_info_hash,
+    torrent_announce_hosts,
+    torrent_payload_info_hash,
+)
 from app.models.domain import (
     AccessMode,
     AssociationType,
@@ -36,6 +41,7 @@ from app.parser import parse_release
 from app.services.events import create_event, publish_live_event
 from app.services.integration_state import get_configured_download_client, get_configured_indexer
 from app.services.movie_editions import edition_label, same_edition
+from app.services.tracker_hosts import remember_tracker_hosts
 from app.services.upgrade_cleanup import (
     _block_automatic_cleanup,
     _cleanup_core,
@@ -215,6 +221,7 @@ async def submit_upgrade_candidate(
     adapter = qbittorrent_client_factory(client.url, client.username or "", client.password or "")
     torznab = None
     submitted_info_hash: str | None = None
+    announce_hosts: tuple[str, ...] = ()
     try:
         if selected_category is not None:
             categories = await adapter.list_categories()
@@ -235,6 +242,7 @@ async def submit_upgrade_candidate(
         }
         if row.download_url.casefold().startswith("magnet:"):
             submitted_info_hash = magnet_info_hash(row.download_url)
+            announce_hosts = magnet_announce_hosts(row.download_url)
             await _assert_not_blocklisted(db, row, submitted_info_hash)
             if row.target_key.startswith("replace:") and (not submitted_info_hash or submitted_info_hash.lower() in row.comparison_snapshot.get("excluded_hashes", [])):
                 raise AppError("REPLACEMENT_SAME_TORRENT", "The indexer returned an existing or unidentified torrent. Choose another result.", status_code=409)
@@ -243,6 +251,7 @@ async def submit_upgrade_candidate(
             torznab = torznab_client_factory(indexer.torznab_url, indexer.api_key, timeout=float(indexer.timeout_seconds))
             torrent_bytes = await torznab.fetch_torrent(row.download_url)
             submitted_info_hash = torrent_payload_info_hash(torrent_bytes)
+            announce_hosts = torrent_announce_hosts(torrent_bytes)
             await _assert_not_blocklisted(db, row, submitted_info_hash)
             if row.target_key.startswith("replace:") and (not submitted_info_hash or submitted_info_hash.lower() in row.comparison_snapshot.get("excluded_hashes", [])):
                 raise AppError("REPLACEMENT_SAME_TORRENT", "The indexer returned an existing or unidentified torrent. Choose another result.", status_code=409)
@@ -292,6 +301,7 @@ async def submit_upgrade_candidate(
         },
     )
     publish_live_event("upgrade.execution", entity_type="upgrade_candidate", entity_id=row.id, data={"candidate_id": str(row.id), "state": row.execution_state})
+    await remember_tracker_hosts(db, indexer.id, announce_hosts)
     await db.flush()
     return row
 

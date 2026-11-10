@@ -3,12 +3,13 @@
 Medialogue keeps no direct link from a release to an indexer. When Medialogue
 itself sent the torrent to the client, the indexer is known from that search
 result or upgrade, matched by info hash. Otherwise the tracker the torrent
-announces to is the best available answer.
+announces to names the indexer when that tracker is known to belong to one, and
+is the best available answer on its own when not.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -16,8 +17,9 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.domain import (InteractiveSearchResult, MovieReleaseTorrent, ShowReleaseTorrent, Torrent,
-                               UpgradeCandidate)
+from app.core.integration_config import get_integration_config_store
+from app.models.domain import (IndexerTrackerHost, InteractiveSearchResult, MovieReleaseTorrent, ShowReleaseTorrent,
+                               Torrent, UpgradeCandidate)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,13 +29,31 @@ class ReleaseSource:
     tracker: str | None = None
 
 
-def _tracker_host(torrent: Torrent) -> str | None:
+def torrent_tracker_host(torrent: Torrent) -> str | None:
     value = (torrent.tracker_summary or {}).get("tracker")
     if not value:
         return None
     value = str(value)
     parsed = urlsplit(value if "//" in value else f"//{value}")
     return parsed.hostname or value
+
+
+async def indexers_by_tracker_host(db: AsyncSession) -> dict[str, ReleaseSource]:
+    """The indexer behind each tracker host, for hosts only one indexer claims."""
+
+    rows = (await db.execute(select(IndexerTrackerHost.host, IndexerTrackerHost.indexer_id))).all()
+    if not rows:
+        return {}
+    names = {config.id: config.name for config in get_integration_config_store().list_indexers()}
+    claimed: dict[str, set[UUID]] = {}
+    for host, indexer_id in rows:
+        if indexer_id in names:
+            claimed.setdefault(host, set()).add(indexer_id)
+    return {
+        host: ReleaseSource(indexer_name=names[indexer_id], indexer_id=indexer_id, tracker=host)
+        for host, (indexer_id, *others) in claimed.items()
+        if not others
+    }
 
 
 #: Rows per IN (...) query, under SQLite's bound-parameter limit.
@@ -50,11 +70,13 @@ class SourceLookup:
 
     upgrades: dict[str, ReleaseSource]
     searches: dict[str, ReleaseSource]
+    trackers: dict[str, ReleaseSource] = field(default_factory=dict)
 
     def source(self, torrents: Iterable[Torrent]) -> ReleaseSource:
         """The source of the first of these torrents that can name one.
 
-        An upgrade's indexer wins over a search's, and either over the tracker.
+        An upgrade's indexer wins over a search's, either over the indexer known
+        to own the tracker, and that over the bare tracker.
         """
 
         torrents = list(torrents)
@@ -63,8 +85,9 @@ class SourceLookup:
             found = next((table[value] for value in hashes if value in table), None)
             if found is not None:
                 return found
-        tracker = next((host for host in (_tracker_host(torrent) for torrent in torrents) if host), None)
-        return ReleaseSource(tracker=tracker)
+        hosts = [host for host in map(torrent_tracker_host, torrents) if host]
+        owned = next((self.trackers[host] for host in hosts if host in self.trackers), None)
+        return owned or ReleaseSource(tracker=hosts[0] if hosts else None)
 
 
 async def source_lookup(db: AsyncSession, torrents: Iterable[Torrent]) -> SourceLookup:
@@ -86,7 +109,7 @@ async def source_lookup(db: AsyncSession, torrents: Iterable[Torrent]) -> Source
             .where(func.lower(InteractiveSearchResult.submitted_info_hash).in_(chunk))
         )).all():
             searches.setdefault(value, ReleaseSource(indexer_name=name, indexer_id=indexer_id))
-    return SourceLookup(upgrades=upgrades, searches=searches)
+    return SourceLookup(upgrades=upgrades, searches=searches, trackers=await indexers_by_tracker_host(db))
 
 
 async def source_of_torrents(db: AsyncSession, torrents: Iterable[Torrent]) -> ReleaseSource:

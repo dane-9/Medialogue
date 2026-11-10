@@ -26,6 +26,7 @@ from app.models.domain import (
 )
 from app.services.events import publish_live_event
 from app.services.jobs import with_lock_retries
+from app.services.release_source import indexers_by_tracker_host, torrent_tracker_host
 from collections.abc import Iterator, Sequence
 
 logger = logging.getLogger(__name__)
@@ -644,17 +645,28 @@ async def release_indexer_name(
         grabs = await _cached(("grab-indexers", id(db)), load_grabs)
         found = [grabs[value] for value in info_hashes if value in grabs]
         newest = max(found, key=lambda item: item[0], default=None)
-        return str(newest[1]).strip() if newest is not None and newest[1] else None
-    selected = await db.scalar(
-        select(InteractiveSearchResult)
-        .where(
-            InteractiveSearchResult.selected_at.is_not(None),
-            InteractiveSearchResult.submitted_info_hash.in_(info_hashes),
+        grabbed_from = str(newest[1]).strip() if newest is not None and newest[1] else None
+    else:
+        selected = await db.scalar(
+            select(InteractiveSearchResult)
+            .where(
+                InteractiveSearchResult.selected_at.is_not(None),
+                InteractiveSearchResult.submitted_info_hash.in_(info_hashes),
+            )
+            .order_by(InteractiveSearchResult.selected_at.desc())
+            .limit(1)
         )
-        .order_by(InteractiveSearchResult.selected_at.desc())
-        .limit(1)
-    )
-    return str(selected.indexer_name).strip() if selected is not None and selected.indexer_name else None
+        grabbed_from = str(selected.indexer_name).strip() if selected is not None and selected.indexer_name else None
+    if grabbed_from:
+        return grabbed_from
+
+    # Not grabbed by Medialogue: the tracker it announces to may still say.
+    owners = await _cached(("tracker-owners", id(db)), lambda: indexers_by_tracker_host(db))
+    for torrent in sorted(release.torrents, key=lambda item: (item.last_seen_at, item.id), reverse=True):
+        owner = owners.get(torrent_tracker_host(torrent) or "")
+        if owner is not None:
+            return owner.indexer_name
+    return None
 
 
 async def refresh_movie_release_scores(db: AsyncSession, movie_id: UUID) -> int:

@@ -24,6 +24,7 @@ from app.models.domain import Job, JobStatus, MediaScope, MediaType, Movie, Show
 from app.parser import parse_release
 from app.services.integration_state import ConfiguredIndexer, list_configured_indexers
 from app.services.jobs import JobFailure, run_job, update_job
+from app.services.tracker_hosts import sample_new_indexers
 from app.services.upgrade_candidates import (
     _movie_targets,
     _persist_candidate,
@@ -103,6 +104,8 @@ async def _offer(db: AsyncSession, target: Any, answered: list[tuple[ConfiguredI
 async def run_new_release_check(job_id: UUID, *, client_factory: Any = TorznabClient, today: date | None = None) -> None:
     """Read every tracker's newest releases and offer the upgrades among them."""
 
+    answered: list[tuple[ConfiguredIndexer, list[SearchResult]]] = []
+
     async def worker(db: AsyncSession, job: Job) -> None:
         await update_job(db, job, status=JobStatus.RUNNING, progress={"percent": 0})
         await db.commit()
@@ -110,6 +113,7 @@ async def run_new_release_check(job_id: UUID, *, client_factory: Any = TorznabCl
         wanted = [(indexer, kind) for indexer in indexers for kind in ("movies", "shows") if indexer.scope in _SCOPES[kind]]
         feeds = await asyncio.gather(*[_read_feed(indexer, kind, client_factory) for indexer, kind in wanted])
         errors = [error for *_, error in feeds if error]
+        answered.extend((indexer, results) for indexer, _kind, results, _error in feeds if results)
         if wanted and len(errors) == len(wanted):
             raise JobFailure("NEW_RELEASE_CHECK_FAILED", f"No tracker answered. {errors[0]}", progress={"percent": 100})
 
@@ -149,3 +153,4 @@ async def run_new_release_check(job_id: UUID, *, client_factory: Any = TorznabCl
         failure_message="The new release check failed.",
         failure_progress={"percent": 100},
     )
+    await sample_new_indexers(answered, client_factory=client_factory)

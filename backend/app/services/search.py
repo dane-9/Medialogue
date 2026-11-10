@@ -32,6 +32,7 @@ from app.services.events import publish_live_event
 from app.services.integration_state import ConfiguredIndexer, get_configured_indexer, list_configured_indexers
 from app.services.jobs import update_job
 from app.services.quality_profiles import load_effective_profile, load_quality_profile_for_search, minimum_quality_status
+from app.services.tracker_hosts import sample_new_indexers
 
 logger = logging.getLogger(__name__)
 
@@ -214,10 +215,13 @@ async def run_search_job(
         for indexer in indexers
     }
     completed_count = 0
+    configured = {indexer.id: indexer for indexer in indexers}
+    answered: list[tuple[ConfiguredIndexer, list[TorznabSearchResult]]] = []
     try:
         for future in asyncio.as_completed(tasks):
             indexer_id, outcome = await future
             completed_count += 1
+            answered.append((configured[indexer_id], outcome["results"]))
             async with db_session.async_session_factory() as db:
                 job = await db.get(Job, job_id)
                 if job is None:
@@ -359,6 +363,7 @@ async def run_search_job(
             entity_id=job.id,
             data={"job_id": str(job.id), "result_count": int(summary.get("result_count") or 0)},
         )
+    await sample_new_indexers(answered, client_factory=client_factory)
 
 
 async def _query_indexer(

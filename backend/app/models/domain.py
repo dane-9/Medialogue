@@ -974,6 +974,20 @@ class UpgradeSearchMark(Base):
     searched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class IndexerTrackerHost(Base):
+    """A tracker host an indexer's torrents announce to.
+
+    Only the host is kept: the full announce URL carries a personal passkey.
+    Not a foreign key, because indexers live in the configuration file.
+    """
+
+    __tablename__ = "indexer_tracker_hosts"
+
+    indexer_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    host: Mapped[str] = mapped_column(String(255), primary_key=True)
+    learned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class UpgradeCandidate(TimestampMixin, Base):
     """Best currently known manual upgrade candidate for one library target.
 

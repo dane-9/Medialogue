@@ -13,7 +13,12 @@ from app.api import tmdb as tmdb_api
 from app.api.dependencies import require_admin, require_csrf
 from app.core.errors import AppError
 from app.db.session import get_db
-from app.integrations.qbittorrent import magnet_info_hash, torrent_payload_info_hash
+from app.integrations.qbittorrent import (
+    magnet_announce_hosts,
+    magnet_info_hash,
+    torrent_announce_hosts,
+    torrent_payload_info_hash,
+)
 from app.models.auth import AdminUser
 from app.models.domain import (
     InteractiveSearchResult,
@@ -50,6 +55,7 @@ from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
 from app.services.shows import add_show_from_tmdb
 from app.services.tmdb import get_show_details, get_tmdb_configuration
+from app.services.tracker_hosts import remember_tracker_hosts
 
 router = APIRouter(tags=["interactive search"])
 
@@ -583,9 +589,11 @@ async def download_search_result(
         "add_to_top": add_to_top,
     }
     submitted_info_hash: str | None = None
+    announce_hosts: tuple[str, ...] = ()
     try:
         if result.download_url.casefold().startswith("magnet:"):
             submitted_info_hash = magnet_info_hash(result.download_url)
+            announce_hosts = magnet_announce_hosts(result.download_url)
             blocked = await matching_blocklist_entry(
                 db, media_type=result.media_type, target_entity_type=result.target_entity_type,
                 target_entity_id=result.target_entity_id, source_title=result.title,
@@ -606,6 +614,7 @@ async def download_search_result(
             )
             torrent_bytes = await torznab.fetch_torrent(result.download_url)
             submitted_info_hash = torrent_payload_info_hash(torrent_bytes)
+            announce_hosts = torrent_announce_hosts(torrent_bytes)
             blocked = await matching_blocklist_entry(
                 db, media_type=result.media_type, target_entity_type=result.target_entity_type,
                 target_entity_id=result.target_entity_id, source_title=result.title,
@@ -717,6 +726,7 @@ async def download_search_result(
             "save_path": show_save_path,
         },
     )
+    await remember_tracker_hosts(db, result.indexer_id, announce_hosts)
     await db.commit()
     return SearchResultDownloadResponse(
         search_result_id=result.id,

@@ -147,6 +147,62 @@ def torrent_file_listing(payload: bytes) -> list[tuple[str, int]] | None:
         return None
 
 
+def _bencode_strings(payload: bytes, position: int) -> list[bytes]:
+    """Every string in a bencoded string or (nested) list."""
+
+    token = payload[position:position + 1]
+    if token == b"l":
+        found: list[bytes] = []
+        cursor = position + 1
+        while payload[cursor:cursor + 1] != b"e":
+            found += _bencode_strings(payload, cursor)
+            cursor = _bencode_value_end(payload, cursor)
+        return found
+    if token in {b"i", b"d"}:
+        return []
+    colon = payload.index(b":", position)
+    return [payload[colon + 1:colon + 1 + int(payload[position:colon])]]
+
+
+def _announce_hosts(urls: Sequence[str]) -> tuple[str, ...]:
+    """Tracker hosts alone: the rest of an announce URL holds a personal passkey."""
+
+    hosts: dict[str, None] = {}
+    for url in urls:
+        try:
+            host = urlparse(url.strip()).hostname
+        except ValueError:
+            continue
+        if host:
+            hosts[host.lower()] = None
+    return tuple(hosts)
+
+
+def torrent_announce_hosts(payload: bytes) -> tuple[str, ...]:
+    """The tracker hosts a .torrent file announces to."""
+
+    urls: list[bytes] = []
+    try:
+        if not payload.startswith(b"d"):
+            return ()
+        cursor = 1
+        while payload[cursor:cursor + 1] != b"e":
+            key_end = _bencode_value_end(payload, cursor)
+            key = payload[payload.index(b":", cursor) + 1:key_end]
+            if key in {b"announce", b"announce-list"}:
+                urls += _bencode_strings(payload, key_end)
+            cursor = _bencode_value_end(payload, key_end)
+    except (ValueError, IndexError):
+        return ()
+    return _announce_hosts([url.decode("utf-8", "ignore") for url in urls])
+
+
+def magnet_announce_hosts(url: str) -> tuple[str, ...]:
+    """The tracker hosts a magnet link names."""
+
+    return _announce_hosts(parse_qs(urlparse(url).query).get("tr", []))
+
+
 def _add_was_accepted(body: str) -> bool:
     """Read a torrents/add reply: text from older qBittorrent, JSON counts from newer."""
 

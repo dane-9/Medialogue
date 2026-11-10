@@ -528,7 +528,8 @@ def test_selected_search_result_submits_to_eligible_qbit_and_is_idempotent(clien
         assert qbit.submissions[0]["category"] == "movies"
         assert qbit.submissions[0]["tags"] == ("managed",)
         assert qbit.submissions[0]["save_path"] is None, "Search must not relocate downloads; qBit/client defaults decide the save path."
-        assert behavior.fetched == ["http://prowlarr.test/download/1"]
+        # Once as this indexer's one-time tracker sample, once for the grab.
+        assert behavior.fetched == ["http://prowlarr.test/download/1", "http://prowlarr.test/download/1"]
 
         repeat = client.post(
             f"/api/v1/search-results/{result['id']}/download",
