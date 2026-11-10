@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -144,6 +145,19 @@ def torrent_file_listing(payload: bytes) -> list[tuple[str, int]] | None:
         return listing
     except (AttributeError, IndexError, KeyError, TypeError, ValueError):
         return None
+
+
+def _add_was_accepted(body: str) -> bool:
+    """Read a torrents/add reply: text from older qBittorrent, JSON counts from newer."""
+
+    text = body.strip()
+    if text in {"", "Ok."}:
+        return True
+    try:
+        reply = json.loads(text)
+    except ValueError:
+        return False
+    return isinstance(reply, dict) and bool(reply.get("success_count") or reply.get("pending_count"))
 
 
 def torrent_payload_info_hash(payload: bytes) -> str | None:
@@ -773,7 +787,7 @@ class QBittorrentClient:
             data=data,
             files={"torrents": (filename, torrent, "application/x-bittorrent")},
         )
-        if response.text.strip() not in {"", "Ok."}:
+        if not _add_was_accepted(response.text):
             raise QBittorrentError("qBittorrent rejected the torrent")
         if add_to_top:
             info_hash = _torrent_info_hash(torrent)
@@ -809,7 +823,7 @@ class QBittorrentClient:
         if content_layout in {"original", "subfolder"}:
             data["contentLayout"] = content_layout.title()
         response = await self._request("POST", "/api/v2/torrents/add", data=data)
-        if response.text.strip() not in {"", "Ok."}:
+        if not _add_was_accepted(response.text):
             raise QBittorrentError("qBittorrent rejected the torrent URL")
         if add_to_top:
             info_hash = _magnet_info_hash(url)

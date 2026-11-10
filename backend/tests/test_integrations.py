@@ -180,6 +180,50 @@ async def test_qbittorrent_does_not_retry_mutating_request_after_disconnect():
     assert adds == 1
 
 
+def _qbit_answering_add_with(status: int, body: str) -> QBittorrentClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, text="Ok.")
+        return httpx.Response(status, text=body)
+
+    return QBittorrentClient("http://qbit", "user", "pass", transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (200, ""),
+        (200, "Ok."),
+        (200, '{"success_count":1,"failure_count":0,"pending_count":0,"added_torrent_ids":["abc"]}'),
+        (202, '{"success_count":0,"failure_count":0,"pending_count":1,"added_torrent_ids":[]}'),
+    ],
+)
+async def test_qbittorrent_add_accepts_every_success_reply(status: int, body: str):
+    client = _qbit_answering_add_with(status, body)
+    try:
+        await client.add_torrent(b"torrent")
+        await client.add_url("magnet:?xt=urn:btih:abc")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    ["Fails.", "[]", '{"success_count":0,"failure_count":1,"pending_count":0,"added_torrent_ids":[]}'],
+)
+async def test_qbittorrent_add_still_reports_a_real_rejection(body: str):
+    client = _qbit_answering_add_with(200, body)
+    try:
+        with pytest.raises(QBittorrentError, match="rejected the torrent"):
+            await client.add_torrent(b"torrent")
+        with pytest.raises(QBittorrentError, match="rejected the torrent URL"):
+            await client.add_url("magnet:?xt=urn:btih:abc")
+    finally:
+        await client.close()
+
+
 def test_qbittorrent_new_client_polling_default_is_30_seconds():
     from app.schemas.downloads import DownloadClientCreate
 
