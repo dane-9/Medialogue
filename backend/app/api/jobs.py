@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import String, case, cast, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_csrf
@@ -21,6 +21,10 @@ from app.services.jobs import cancel_job, publish_job_status
 from app.services.runtime_jobs import cancel_runtime_job
 
 router = APIRouter(tags=["jobs and events"])
+
+
+def _like_literal(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _event_severity(value: str) -> Severity:
@@ -56,12 +60,17 @@ def _event_order(sort: str):
 @router.get("/jobs", response_model=Collection[JobResponse])
 async def list_jobs(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=250),
+    page_size: int = Query(50, ge=1, le=1000),
     status_filter: str | None = Query(None, alias="status"),
     job_type: str | None = None,
+    search: str | None = Query(None, max_length=200),
+    search_job_types: list[str] = Query(default_factory=list, max_length=200),
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[JobResponse]:
+    """Newest first. ``search`` matches the job type, status, details and error;
+    ``search_job_types`` are the types whose display name (only the UI knows
+    those) matched the same text."""
     query = select(Job)
     count_query = select(func.count()).select_from(Job)
     if status_filter:
@@ -74,6 +83,18 @@ async def list_jobs(
     if job_type:
         query = query.where(Job.job_type == job_type)
         count_query = count_query.where(Job.job_type == job_type)
+    term = (search or "").strip().casefold()
+    if term:
+        pattern = f"%{_like_literal(term)}%"
+        typed = f"%{_like_literal(term.replace(' ', '_'))}%"
+        matched = or_(
+            func.lower(Job.job_type).like(typed, escape="\\"),
+            func.lower(cast(Job.status, String)).like(pattern, escape="\\"),
+            *(func.lower(cast(column, String)).like(pattern, escape="\\") for column in (Job.progress, Job.summary, Job.error)),
+            *([Job.job_type.in_(search_job_types)] if search_job_types else []),
+        )
+        query = query.where(matched)
+        count_query = count_query.where(matched)
     total = await db.scalar(count_query) or 0
     rows = (
         await db.scalars(

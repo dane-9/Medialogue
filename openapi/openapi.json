@@ -18149,6 +18149,7 @@
     },
     "/api/v1/jobs": {
       "get": {
+        "description": "Newest first. ``search`` matches the job type, status, details and error;\n``search_job_types`` are the types whose display name (only the UI knows\nthose) matched the same text.",
         "operationId": "list_jobs_api_v1_jobs_get",
         "parameters": [
           {
@@ -18168,7 +18169,7 @@
             "required": false,
             "schema": {
               "default": 50,
-              "maximum": 250,
+              "maximum": 1000,
               "minimum": 1,
               "title": "Page Size",
               "type": "integer"
@@ -18204,6 +18205,36 @@
                 }
               ],
               "title": "Job Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search_job_types",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Search Job Types",
+              "type": "array"
             }
           }
         ],

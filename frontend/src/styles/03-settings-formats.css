@@ -520,6 +520,8 @@
 
 .tasks-table-wrap { overflow-x: auto; }
 .tasks-panel + .tasks-panel { margin-top: var(--s5); }
+.tasks-history-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s2); }
+@media (max-width: 760px) { .tasks-history-controls .search-field.compact { width: 100%; } }
 .tasks-panel .data-table td strong { color: var(--text); font-weight: 500; }
 .task-duration { font-family: var(--sans); white-space: nowrap; }
 .job-progress-line { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }

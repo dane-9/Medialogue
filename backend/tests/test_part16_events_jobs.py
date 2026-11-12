@@ -819,6 +819,37 @@ def test_events_accept_the_largest_page_size_the_list_offers(client: TestClient)
 
 
 
+def test_job_history_pages_and_searches_by_type_display_name_details_and_error(client: TestClient) -> None:
+    async def seed() -> None:
+        async with db_session.async_session_factory() as db:
+            db.add(Job(job_type="storage_root_scan", status=JobStatus.COMPLETED, summary={"path": "/media/Movies_100%"}))
+            db.add(Job(job_type="qbittorrent_poll", status=JobStatus.FAILED, error={"message": "Connection refused"}))
+            db.add(Job(job_type="scheduled_housekeeping", status=JobStatus.COMPLETED))
+            await db.commit()
+
+    login_headers(client)
+    asyncio.run(seed())
+
+    def types(query: str) -> set[str]:
+        response = client.get(f"/api/v1/jobs?{query}")
+        assert response.status_code == 200, response.text
+        return {item["job_type"] for item in response.json()["items"]}
+
+    assert types("search=qbittorrent poll") == {"qbittorrent_poll"}
+    assert types("search=refused") == {"qbittorrent_poll"}
+    assert types("search=failed") >= {"qbittorrent_poll"} and "storage_root_scan" not in types("search=failed")
+    # LIKE wildcards in the text are literal.
+    assert types("search=Movies_100%25") == {"storage_root_scan"}
+    assert types("search=ies_10_") == set()
+    # A display name only the UI knows arrives as the types it matched.
+    assert types("search=Housekeeping&search_job_types=scheduled_housekeeping") >= {"scheduled_housekeeping"}
+
+    first = client.get("/api/v1/jobs?page_size=1").json()
+    assert (first["page_size"], len(first["items"])) == (1, 1) and first["pages"] == first["total"] >= 3
+    assert client.get("/api/v1/jobs?page_size=1000").status_code == 200
+
+
+
 def test_tasks_still_on_their_old_default_move_to_the_new_one_once(tmp_path) -> None:
     """Changed defaults reach existing installs only where the user kept the old ones."""
 

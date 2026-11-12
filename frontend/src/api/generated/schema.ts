@@ -1317,7 +1317,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Jobs */
+        /**
+         * List Jobs
+         * @description Newest first. ``search`` matches the job type, status, details and error;
+         *     ``search_job_types`` are the types whose display name (only the UI knows
+         *     those) matched the same text.
+         */
         get: operations["list_jobs_api_v1_jobs_get"];
         put?: never;
         post?: never;
@@ -10326,6 +10331,8 @@ export interface operations {
                 page_size?: number;
                 status?: string | null;
                 job_type?: string | null;
+                search?: string | null;
+                search_job_types?: string[];
             };
             header?: never;
             path?: never;

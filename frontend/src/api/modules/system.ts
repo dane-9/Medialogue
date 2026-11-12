@@ -1,5 +1,5 @@
 import type { EventHistoryItem, HealthIndicator, Job, RecoveryReimportPlan, ScheduledTask } from '../../types'
-import { mapJob } from '../mappers/system'
+import { jobTypesTitled, mapJob } from '../mappers/system'
 import { openApiClient, openApiData } from '../transport'
 
 export const systemApi = {
@@ -144,9 +144,15 @@ export const systemApi = {
       ] satisfies HealthIndicator[],
     }
   },
-  jobs: async () => {
-    const payload = await openApiData(openApiClient.GET('/api/v1/jobs'))
-    return payload.items.map(mapJob)
+  jobHistory: async ({ search = '', page = 1, pageSize = 50 }: { search?: string; page?: number; pageSize?: number } = {}) => {
+    const term = search.trim()
+    const payload = await openApiData(openApiClient.GET('/api/v1/jobs', { params: { query: {
+      page,
+      page_size: pageSize,
+      search: term || undefined,
+      search_job_types: term ? jobTypesTitled(term) : undefined,
+    } } }))
+    return { items: payload.items.map(mapJob), total: payload.total, pages: payload.pages, page: payload.page }
   },
   job: async (jobId: string) => mapJob(await openApiData(openApiClient.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId } } }))),
   recoveryReimportPlan: async (): Promise<RecoveryReimportPlan> => {
