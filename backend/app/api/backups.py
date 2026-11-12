@@ -20,7 +20,7 @@ from app.schemas.jobs import JobAcceptedResponse
 from app.services.backup_coverage import archive_coverage
 from app.services.backup_import import import_backup_zip
 from app.services.remote_backups import (DATABASE, DEFAULT_DATABASE_INTERVAL, DriveBackups, access_token,
-    begin_device_sign_in, check_device_sign_in, clear_client_credentials, client_credentials, copies_to_keep,
+    begin_device_sign_in, bytes_on_drive, check_device_sign_in, clear_client_credentials, client_credentials, copies_to_keep,
     read_backup_settings, read_copy_index, retention_settings, save_client_credentials, update_backup_settings)
 from app.services.torrent_archive import rebuild_catalogue_from_manifests
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
@@ -73,6 +73,7 @@ async def backup_status(_: AdminUser = Depends(require_admin), db: AsyncSession 
         **retention_settings(saved),
         "database_interval_seconds": int(saved.get("database_interval_seconds") or DEFAULT_DATABASE_INTERVAL),
         "torrents_on_drive": sum(1 for key in mirror if key.startswith("torrents/")),
+        "bytes_on_drive": bytes_on_drive(saved),
         "folder_url": f"https://drive.google.com/drive/folders/{saved['folders']['root']}" if (saved.get("folders") or {}).get("root") else None,
         "active_job_id": str(backup.id) if backup else None,
     }

@@ -18,6 +18,7 @@ export type BackupStatus = {
   keep_monthly: number
   database_interval_seconds: number
   torrents_on_drive: number
+  bytes_on_drive: number
   folder_url?: string | null
   active_job_id?: string | null
 }

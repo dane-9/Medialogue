@@ -220,12 +220,17 @@ async def protected_hashes(drive: "DriveBackups", folders: dict[str, str]) -> se
     changed = False
     for row in copies:
         if row["id"] in index:
+            # Copies indexed before sizes were recorded learn theirs here.
+            if index[row["id"]].get("size") is None and row.get("size") is not None:
+                index[row["id"]]["size"] = int(row["size"])
+                changed = True
             continue
         try:
             hashes = _catalogue_hashes(await drive.download(row["id"]))
         except DriveMissing:
             continue
-        index[row["id"]] = {"name": row.get("name"), "created_at": row.get("createdTime"), "torrents": hashes or []}
+        index[row["id"]] = {"name": row.get("name"), "created_at": row.get("createdTime"), "torrents": hashes or [],
+                            "size": int(row["size"]) if row.get("size") is not None else None}
         changed = True
     live = {row["id"] for row in copies}
     for file_id in [file_id for file_id in index if file_id not in live]:
@@ -234,6 +239,19 @@ async def protected_hashes(drive: "DriveBackups", folders: dict[str, str]) -> se
     if changed:
         _write_copy_index(index)
     return {item for entry in index.values() for item in entry.get("torrents") or []}
+
+
+def bytes_on_drive(state: dict) -> int:
+    """Total size of the torrents, manifests and database copies Medialogue keeps on Drive.
+
+    Read from local bookkeeping, so it reflects the last backup run; a file
+    whose size is not yet known (state rebuilt before sizes were kept) counts
+    once the next run records it.
+    """
+
+    mirrored = sum(int(entry.get("size") or 0) for entry in (state.get("mirror") or {}).values())
+    copies = sum(int(entry.get("size") or 0) for entry in read_copy_index().values())
+    return mirrored + copies
 
 
 # --- Google account ---------------------------------------------------------
@@ -572,7 +590,8 @@ async def _rebuild_mirror(drive: DriveBackups, folders: dict[str, str]) -> dict[
         for row in await drive.children(folders[kind]):
             fingerprint = (row.get("appProperties") or {}).get("fingerprint")
             if fingerprint:
-                mirror[f"{kind}/{row['name']}"] = {"id": row["id"], "fingerprint": fingerprint}
+                mirror[f"{kind}/{row['name']}"] = {"id": row["id"], "fingerprint": fingerprint,
+                                                   **({"size": int(row["size"])} if row.get("size") is not None else {})}
     return mirror
 
 
@@ -711,7 +730,7 @@ async def backup_database(drive: DriveBackups, state: dict, folders: dict[str, s
         bundle.unlink(missing_ok=True)
 
         index = read_copy_index()
-        index[row["id"]] = {"name": name, "created_at": row.get("createdTime"), "torrents": hashes}
+        index[row["id"]] = {"name": name, "created_at": row.get("createdTime"), "torrents": hashes, "size": data_size}
         _write_copy_index(index)
 
         # Older copies go only after this one is confirmed.

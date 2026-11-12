@@ -181,6 +181,26 @@ def test_lost_local_state_reuses_what_drive_already_holds(recovery_env, drive):
     assert (status, summary["uploaded"], summary["updated"]) == ("completed", 0, 0)
 
 
+def test_status_reports_the_total_size_on_drive(recovery_env, drive):
+    client, settings, _ = recovery_env
+    login_headers(client)
+    _archive_fixture(Path(settings.torrent_archive_dir))
+    assert _run("remote_backup")[0] == "completed"
+    on_drive = sum(len(FakeDrive.files[row["id"]].get("data", b""))
+                   for kind in ("torrents", "manifests", "database") for row in FakeDrive.live(kind))
+    assert on_drive > 0
+    assert client.get("/api/v1/backups/status").json()["bytes_on_drive"] == on_drive
+
+    # Rebuilt bookkeeping and a copy index from before sizes were kept still add up after the next run.
+    drive.update_backup_settings({"mirror": {}})
+    index = drive.read_copy_index()
+    for entry in index.values():
+        entry.pop("size", None)
+    drive._write_copy_index(index)
+    assert _run("remote_backup", manual=False)[0] == "completed"
+    assert client.get("/api/v1/backups/status").json()["bytes_on_drive"] == on_drive
+
+
 def test_a_deleted_drive_folder_is_recreated_and_filled_again(recovery_env, drive):
     _, settings, _ = recovery_env
     _archive_fixture(Path(settings.torrent_archive_dir))

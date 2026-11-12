@@ -2,7 +2,7 @@
 
 /* Backups: Google Drive copy, coverage, restore and the torrent list. */
 .backups-page { display: grid; gap: var(--s4); }
-.backups-status { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.backups-status { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s3); }
 .backups-status > div { display: grid; gap: 2px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
 .backups-status strong { color: var(--text); font-size: var(--t-md); font-weight: 600; }
 .backups-status span { color: var(--faint); font-size: var(--t-xs); }

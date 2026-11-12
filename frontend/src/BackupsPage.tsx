@@ -187,6 +187,7 @@ export default function BackupsPage() {
         onCancel={() => setSignIn(null)} />}
       {connected && status && <div className="backups-status">
         <div><strong>{status.torrents_on_drive.toLocaleString()}</strong><span>torrents on Drive</span></div>
+        <div><strong>{formatBytes(status.bytes_on_drive)}</strong><span>total size on Drive</span></div>
         <div><strong>{status.last_sync_at ? formatAge(status.last_sync_at) : 'Never'}</strong><span>last torrent copy</span></div>
         <div><strong>{status.last_database_at ? formatAge(status.last_database_at) : 'Never'}</strong><span>last database copy</span></div>
         <div><strong>{status.enabled ? `Every ${Math.round(status.sync_interval_seconds / 60)} min` : 'Off'}</strong><span>torrent copies</span></div>
