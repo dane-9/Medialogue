@@ -153,6 +153,8 @@ class UpgradeSearchResultResponse(BaseModel):
     leechers: int | None = None
     published_at: datetime | None = None
     eligible: bool
+    # Rejected only on score: shown as rejected but can still be picked by hand.
+    selectable: bool = False
     rejection_reasons: list[str] = Field(default_factory=list)
     upgrade_types: list[str] = Field(default_factory=list)
     matched_format_names: list[str] = Field(default_factory=list)

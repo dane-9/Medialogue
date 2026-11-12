@@ -276,8 +276,10 @@ export default function ReplaceMediaPage() {
     }
   }
 
-  const chooseResult = (candidateId: string, resultId: string) => act('choose', async () => {
-    await upgradesApi.selectUpgradeSearchResult(candidateId, resultId)
+  // A search where nothing qualified kept no candidate; picking one keeps it.
+  const chooseResult = (candidateId: string | null | undefined, targetKey: string, resultId: string) => act('choose', async () => {
+    if (candidateId) await upgradesApi.selectUpgradeSearchResult(candidateId, resultId)
+    else await replacementsApi.pick(targetKey, resultId)
   })
 
   const toDownload = chosen.filter(downloadable)
@@ -653,7 +655,7 @@ export default function ReplaceMediaPage() {
       eyebrow={resultsTarget.season_number != null ? `SEASON ${resultsTarget.season_number}` : 'REPLACE MEDIA'}
       className="upgrade-results-modal"
       onClose={() => setResultsTarget(null)}
-      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Searching the trackers…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.eligible} onClick={() => { if (results?.candidateId) void chooseResult(results.candidateId, fullSelectedId); setResultsTarget(null) }}>Use this result</Button></>}
+      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Searching the trackers…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.selectable} onClick={() => { if (results && resultsTarget) void chooseResult(results.candidateId, resultsTarget.target_key, fullSelectedId); setResultsTarget(null) }}>Use this result</Button></>}
     >
       <div className="upgrade-results-current">
         {(() => {
@@ -671,7 +673,7 @@ export default function ReplaceMediaPage() {
           results={fullReleases}
           selectedId={fullSelectedId}
           onSelect={setFullSelectedId}
-          isSelectable={(release) => Boolean(results.results.find((entry) => entry.id === release.id)?.eligible)}
+          isSelectable={(release) => Boolean(results.results.find((entry) => entry.id === release.id)?.selectable)}
           renderTags={(release) => {
             const result = results.results.find((entry) => entry.id === release.id)
             if (!result) return null

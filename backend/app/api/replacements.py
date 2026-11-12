@@ -28,7 +28,8 @@ from app.schemas.replacements import (
 from app.services.events import create_event
 from app.services.jobs import create_job
 from app.services.runtime_jobs import launch_runtime_job
-from app.services.replacements import SEARCH_JOB_TYPE, replacement_queue, run_replacement_search, search_replacement_now
+from app.services.replacements import (SEARCH_JOB_TYPE, pick_replacement_result, replacement_queue, run_replacement_search,
+                                       search_replacement_now)
 from app.api import downloads as downloads_api
 
 router = APIRouter(prefix="/replacements", tags=["replacements"])
@@ -127,6 +128,23 @@ async def search_now(payload: ReplacementSearchNowRequest, _: object = Depends(r
         results=[_search_result_response(anchor, value, position=index) for index, value in enumerate(results)],
         indexer_failures=failures,
     )
+
+
+class ReplacementPickRequest(BaseModel):
+    target_key: str = Field(min_length=1, max_length=150)
+    result_id: UUID
+
+
+class ReplacementPickResponse(BaseModel):
+    candidate_id: UUID
+
+
+@router.post("/pick", response_model=ReplacementPickResponse)
+async def pick(payload: ReplacementPickRequest, _: object = Depends(require_csrf), db: AsyncSession = Depends(get_db)):
+    """Keep a release picked by hand for a title whose search kept nothing."""
+
+    row = await pick_replacement_result(db, payload.target_key, str(payload.result_id))
+    return ReplacementPickResponse(candidate_id=row.id)
 
 
 @router.get("/history", response_model=list[MediaHistoryItem])

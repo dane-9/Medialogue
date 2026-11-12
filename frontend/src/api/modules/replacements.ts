@@ -14,6 +14,9 @@ export const replacementsApi = {
     const value = await openApiData(openApiClient.POST('/api/v1/replacements/search-now', { body: { target_key: targetKey } }))
     return { ...mapSearchResults(value), indexerFailures: value.indexer_failures ?? 0 }
   },
+  /** Keep a hand-picked release for a title whose search kept none. */
+  pick: async (targetKey: string, resultId: string) =>
+    (await openApiData(openApiClient.POST('/api/v1/replacements/pick', { body: { target_key: targetKey, result_id: resultId } }))).candidate_id,
   search: (targetKey?: string) => openApiData(openApiClient.POST('/api/v1/replacements/search', { body: { target_key: targetKey ?? null } })),
   review: (targets: { target_key: string; reason: NonNullable<ReplacementItem['reason_code']> }[], action: 'ignore' | 'restore') =>
     openApiData(openApiClient.POST('/api/v1/replacements/review', { body: { targets, action } })),

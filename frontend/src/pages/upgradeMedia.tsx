@@ -842,7 +842,7 @@ export function UpgradeMediaPage() {
       eyebrow={resultsTarget.seasonNumber !== undefined ? `SEASON ${resultsTarget.seasonNumber}` : undefined}
       className="upgrade-results-modal"
       onClose={() => { if (!resultSelecting) { setResultsTarget(null); setSearchResults(null) } }}
-      footer={<><span className="wizard-foot-count">{searchResults ? `${searchResults.results.length} Torrent${searchResults.results.length === 1 ? '' : 's'} found` : ''}</span><span className="modal-foot-spacer" /><Button variant="ghost" disabled={resultSelecting} onClick={() => { setResultsTarget(null); setSearchResults(null) }}>Cancel</Button><Button variant="primary" icon="check" disabled={resultSelecting || !selectedResultId || !searchResults?.results.find((entry) => entry.id === selectedResultId)?.eligible} onClick={() => void chooseSearchResult()}>{resultSelecting ? 'Selecting…' : 'Use this result'}</Button></>}
+      footer={<><span className="wizard-foot-count">{searchResults ? `${searchResults.results.length} Torrent${searchResults.results.length === 1 ? '' : 's'} found` : ''}</span><span className="modal-foot-spacer" /><Button variant="ghost" disabled={resultSelecting} onClick={() => { setResultsTarget(null); setSearchResults(null) }}>Cancel</Button><Button variant="primary" icon="check" disabled={resultSelecting || !selectedResultId || !searchResults?.results.find((entry) => entry.id === selectedResultId)?.selectable} onClick={() => void chooseSearchResult()}>{resultSelecting ? 'Selecting…' : 'Use this result'}</Button></>}
     >
       <div className="upgrade-results-current">
         {(() => {
@@ -875,7 +875,7 @@ export function UpgradeMediaPage() {
           selectedId={selectedResultId}
           onSelect={setSelectedResultId}
           disabled={resultSelecting}
-          isSelectable={(release) => Boolean(searchResults.results.find((entry) => entry.id === release.id)?.eligible)}
+          isSelectable={(release) => Boolean(searchResults.results.find((entry) => entry.id === release.id)?.selectable)}
           renderTags={(release) => {
             const result = searchResults.results.find((entry) => entry.id === release.id)
             if (!result) return null

@@ -9482,6 +9482,41 @@
         "title": "ReplacementItem",
         "type": "object"
       },
+      "ReplacementPickRequest": {
+        "properties": {
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "target_key": {
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Target Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_key",
+          "result_id"
+        ],
+        "title": "ReplacementPickRequest",
+        "type": "object"
+      },
+      "ReplacementPickResponse": {
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id"
+        ],
+        "title": "ReplacementPickResponse",
+        "type": "object"
+      },
       "ReplacementQueueResponse": {
         "properties": {
           "counts": {
@@ -14321,6 +14356,11 @@
               }
             ],
             "title": "Seeders"
+          },
+          "selectable": {
+            "default": false,
+            "title": "Selectable",
+            "type": "boolean"
           },
           "selected": {
             "default": false,
@@ -20111,6 +20151,48 @@
           }
         },
         "summary": "History",
+        "tags": [
+          "replacements"
+        ]
+      }
+    },
+    "/api/v1/replacements/pick": {
+      "post": {
+        "description": "Keep a release picked by hand for a title whose search kept nothing.",
+        "operationId": "pick_api_v1_replacements_pick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplacementPickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplacementPickResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pick",
         "tags": [
           "replacements"
         ]

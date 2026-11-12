@@ -528,6 +528,8 @@ interface UpgradeSearchResult {
   leechers?: number
   publishedAt?: string
   eligible: boolean
+  /** Rejected on score only: it can still be picked by hand. */
+  selectable: boolean
   rejectionReasons: string[]
   upgradeTypes: string[]
   matchedFormatNames: string[]

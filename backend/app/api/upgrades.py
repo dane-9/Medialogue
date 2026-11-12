@@ -529,6 +529,7 @@ def _search_result_response(row: UpgradeCandidate, value: dict[str, Any], *, pos
         leechers=value.get("leechers"),
         published_at=value.get("published_at"),
         eligible=bool(value.get("eligible")),
+        selectable=bool(value.get("eligible") or value.get("selectable")),
         rejection_reasons=[str(reason) for reason in value.get("rejection_reasons") or []],
         upgrade_types=[str(reason) for reason in value.get("upgrade_types") or []],
         matched_format_names=matched_format_names,
@@ -572,7 +573,7 @@ async def select_upgrade_search_result(
     value = next((item for item in _search_result_rows(row) if str(item.get("id")) == str(payload.result_id)), None)
     if value is None:
         raise AppError("UPGRADE_RESULT_NOT_FOUND", "That cached search result is no longer available.", status_code=404)
-    if not value.get("eligible"):
+    if not (value.get("eligible") or value.get("selectable")):
         reasons = " ".join(str(reason) for reason in value.get("rejection_reasons") or [])
         raise AppError("UPGRADE_RESULT_REJECTED", reasons or "That result does not qualify as an upgrade.", status_code=409)
     apply_search_result(row, value)
@@ -621,6 +622,7 @@ async def mark_not_an_upgrade(
     for value in results:
         if _same_release_name(str(value.get("title") or ""), row.title):
             value["eligible"] = False
+            value["selectable"] = False
             value["blocklisted"] = True
             value["rejection_reasons"] = [*(value.get("rejection_reasons") or []), f"Blocklisted: {NOT_AN_UPGRADE_REASON}"]
             indexer_id = UUID(str(value["indexer_id"])) if value.get("indexer_id") else None

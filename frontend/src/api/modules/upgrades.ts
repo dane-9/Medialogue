@@ -142,6 +142,7 @@ export function mapSearchResults(value: SearchResultsPayload): UpgradeSearchResu
       leechers: result.leechers ?? undefined,
       publishedAt: result.published_at ?? undefined,
       eligible: result.eligible,
+      selectable: result.selectable ?? result.eligible,
       rejectionReasons: result.rejection_reasons ?? [],
       upgradeTypes: result.upgrade_types ?? [],
       matchedFormatNames: result.matched_format_names ?? [],

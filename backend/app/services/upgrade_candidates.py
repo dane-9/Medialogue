@@ -692,7 +692,14 @@ def _score_candidate(
     formats: list[EvaluationFormat],
     indexer: ConfiguredIndexer,
     result: TorznabSearchResult,
+    manual: bool = False,
 ) -> ScoredCandidate | None:
+    """Score a result that qualifies as an upgrade or replacement.
+
+    ``manual`` scores a result a person picks by hand: it must still be the
+    right title, edition, season and no lower quality, but it may fall short on
+    Custom Format score or not improve on the current release.
+    """
     if not result.title.strip() or not result.download_url:
         return None
     parsed = parse_release(result.title)
@@ -705,7 +712,7 @@ def _score_candidate(
         result_hash = magnet_info_hash(result.download_url) if result.download_url.lower().startswith("magnet:") else None
         if result_hash and result_hash.lower() in target.excluded_hashes:
             return None
-        if result.seeders is not None and result.seeders < max(1, indexer.minimum_seeders):
+        if result.seeders is not None and result.seeders < (1 if manual else max(1, indexer.minimum_seeders)):
             return None
     if target.media_type == MediaType.MOVIES and not same_edition(target.reference.edition, parsed.edition):
         return None
@@ -788,14 +795,14 @@ def _score_candidate(
     if target.replacement:
         # A lost source is replaced by the same quality from any group.
         without_groups = score - _release_group_points(format_snapshots)
-        if without_groups < max(item.custom_format_score - _release_group_points(_matched_formats(item.score_snapshot).values()) for item in target.releases):
+        if not manual and without_groups < max(item.custom_format_score - _release_group_points(_matched_formats(item.score_snapshot).values()) for item in target.releases):
             return None
-        if profile.minimum_custom_format_score is not None and score < profile.minimum_custom_format_score:
+        if not manual and profile.minimum_custom_format_score is not None and score < profile.minimum_custom_format_score:
             return None
-        if minimum_quality_status(quality, profile.minimum_quality_name, profile.quality_order) is False:
+        if not manual and minimum_quality_status(quality, profile.minimum_quality_name, profile.quality_order) is False:
             return None
         reasons.append("replacement")
-    if not reasons:
+    if not reasons and not manual:
         return None
 
     added_formats = _added_or_improved_formats(target.reference.score_snapshot, format_snapshots)
@@ -850,6 +857,7 @@ def _score_candidate(
         "excluded_hashes": list(target.excluded_hashes),
         "execution_eligible": target.execution_eligible,
         "execution_block_reason": target.execution_block_reason,
+        "manual": manual,
     }
     return ScoredCandidate(
         indexer_id=indexer.id,
@@ -930,7 +938,12 @@ def _stored_search_result(
     result: TorznabSearchResult,
     scored: ScoredCandidate | None,
     profile: EffectiveProfile,
+    manual: ScoredCandidate | None = None,
 ) -> dict[str, Any]:
+    eligible = scored is not None
+    # A result that only falls short on score is shown with its rejection but
+    # can still be picked by hand, scored as a manual choice.
+    scored = scored or manual
     parsed = scored.parsed if scored is not None else parse_release(result.title)
     guid = (result.guid or result.download_url or result.title).strip()
     result_id = uuid.uuid5(uuid.NAMESPACE_URL, f"medialogue:{target.target_key}:{indexer.id}:{guid}")
@@ -951,8 +964,9 @@ def _stored_search_result(
         "seeders": result.seeders,
         "leechers": result.leechers,
         "published_at": published.isoformat() if published else None,
-        "eligible": scored is not None,
-        "rejection_reasons": [] if scored is not None else _rejection_reasons(target, profile, result),
+        "eligible": eligible,
+        "selectable": scored is not None,
+        "rejection_reasons": [] if eligible else _rejection_reasons(target, profile, result),
         "upgrade_types": list(scored.upgrade_types) if scored is not None else [],
         "added_custom_formats": [dict(item) for item in scored.added_custom_formats] if scored is not None else [],
         "snapshot": scored.snapshot if scored is not None else {},
@@ -1034,11 +1048,15 @@ async def evaluate_results(
             )
             if scored is not None and blocked is None:
                 candidates.append(scored)
-            stored = _stored_search_result(target=target, indexer=indexer, result=result, scored=scored, profile=profile)
+            manual = None if scored is not None else _score_candidate(
+                target=target, profile=profile, formats=formats, indexer=indexer, result=result, manual=True,
+            )
+            stored = _stored_search_result(target=target, indexer=indexer, result=result, scored=scored, profile=profile, manual=manual)
             if blocked is not None:
                 # A release that previously failed for this media is never
                 # proposed again until its Blocklist entry is removed.
                 stored["eligible"] = False
+                stored["selectable"] = False
                 stored["rejection_reasons"] = [*stored.get("rejection_reasons", []), f"Blocklisted: {blocked.reason}"]
                 stored["blocklisted"] = True
             stored_results.append(stored)

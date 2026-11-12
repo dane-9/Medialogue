@@ -949,6 +949,51 @@ async def search_replacement_now(db: AsyncSession, target_key: str, *, client_fa
     return row, results, searched_at, failures
 
 
+async def pick_replacement_result(db: AsyncSession, target_key: str, result_id: str, *, client_factory=TorznabClient) -> UpgradeCandidate:
+    """Keep a release the user picked by hand when the last search kept none.
+
+    A search where nothing qualified stores no candidate, so there is nothing to
+    pick from: this searches again and keeps the picked release, which may
+    score below the current one.
+    """
+
+    from app.services.upgrade_candidates import apply_search_result
+
+    entry = next((item for item in await replacement_targets(db) if item.target.target_key == target_key), None)
+    if entry is None:
+        raise AppError("NOT_FOUND", "This title is no longer in Replace Media.", status_code=404)
+    indexers = await list_configured_indexers(db)
+    best, results, _, success = await _search_target(db, target=entry.target, indexers=indexers, client_factory=client_factory)
+    if not success:
+        raise AppError("INDEXERS_FAILED", "Every indexer failed to answer. Check them in Settings and try again.", status_code=502)
+    value = next((item for item in results if str(item.get("id")) == result_id), None)
+    if value is None:
+        raise AppError("UPGRADE_RESULT_NOT_FOUND", "The trackers no longer list that release. Search again.", status_code=404)
+    if not (value.get("eligible") or value.get("selectable")):
+        reasons = " ".join(str(reason) for reason in value.get("rejection_reasons") or [])
+        raise AppError("UPGRADE_RESULT_REJECTED", reasons or "That release cannot replace this title.", status_code=409)
+    indexer = next((item for item in indexers if str(item.id) == str(value.get("indexer_id"))), None)
+    if indexer is None:
+        raise AppError("INDEXER_UNAVAILABLE", "The replacement indexer is unavailable", status_code=409)
+    profile, formats = await _evaluation_policy(db, media_type=entry.target.media_type, entity_id=entry.target.profile_entity_id)
+    picked = SearchResult(guid=value.get("guid"), title=str(value["title"]), download_url=value.get("download_url"),
+                          size=value.get("size"), seeders=value.get("seeders"), published=None,
+                          tmdb_id=(value.get("snapshot") or {}).get("result_tmdb_id"))
+    candidate = best or _score_candidate(target=entry.target, profile=profile, formats=formats, indexer=indexer,
+                                         result=picked, manual=True)
+    if candidate is None:
+        raise AppError("UPGRADE_RESULT_REJECTED", "That release cannot replace this title.", status_code=409)
+    searched_at = datetime.now(timezone.utc)
+    await _note_same_files(db, entry, results, indexers, client_factory)
+    await _persist_candidate(db, target=entry.target, candidate=candidate, search_results=results, searched_at=searched_at)
+    await _apply_same_files(db, entry, results)
+    row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.target_key == target_key))
+    assert row is not None
+    apply_search_result(row, next(item for item in row.search_results if str(item.get("id")) == result_id))
+    await db.commit()
+    return row
+
+
 async def revalidate_replacement(db: AsyncSession, row: UpgradeCandidate) -> None:
     # Only the media behind this candidate is re-evaluated, not the library.
     movie_ids: set[UUID] = set()
@@ -970,7 +1015,8 @@ async def revalidate_replacement(db: AsyncSession, row: UpgradeCandidate) -> Non
     result = SearchResult(guid=row.guid, title=row.title, download_url=row.download_url,
                           size=row.size, seeders=row.seeders, published=None,
                           tmdb_id=(row.comparison_snapshot or {}).get("result_tmdb_id"))
-    scored = _score_candidate(target=target, profile=profile, formats=formats, indexer=indexer, result=result)
+    manual = bool((row.comparison_snapshot or {}).get("manual"))
+    scored = _score_candidate(target=target, profile=profile, formats=formats, indexer=indexer, result=result, manual=manual)
     if scored is None or scored.custom_format_score != row.custom_format_score or profile.snapshot() != row.comparison_snapshot.get("profile"):
         raise AppError("REPLACEMENT_STALE", "The profile or replacement eligibility changed. Search again before downloading.", status_code=409)
     entry = next(entry for entry in targets if entry.target.target_key == row.target_key)

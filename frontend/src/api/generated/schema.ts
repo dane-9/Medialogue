@@ -1954,6 +1954,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/replacements/pick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pick
+         * @description Keep a release picked by hand for a title whose search kept nothing.
+         */
+        post: operations["pick_api_v1_replacements_pick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/replacements/review": {
         parameters: {
             query?: never;
@@ -6119,6 +6139,24 @@ export interface components {
             /** Year */
             year?: number | null;
         };
+        /** ReplacementPickRequest */
+        ReplacementPickRequest: {
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+            /** Target Key */
+            target_key: string;
+        };
+        /** ReplacementPickResponse */
+        ReplacementPickResponse: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+        };
         /** ReplacementQueueResponse */
         ReplacementQueueResponse: {
             /** Counts */
@@ -7671,6 +7709,11 @@ export interface components {
             same_file: boolean;
             /** Seeders */
             seeders?: number | null;
+            /**
+             * Selectable
+             * @default false
+             */
+            selectable: boolean;
             /**
              * Selected
              * @default false
@@ -11561,6 +11604,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MediaHistoryItem"][];
+                };
+            };
+        };
+    };
+    pick_api_v1_replacements_pick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplacementPickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplacementPickResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
