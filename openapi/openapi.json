@@ -14193,6 +14193,45 @@
         "title": "UpgradeQualityProfileUpdateResponse",
         "type": "object"
       },
+      "UpgradeSearchNowResponse": {
+        "properties": {
+          "candidate_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "indexer_failures": {
+            "default": 0,
+            "title": "Indexer Failures",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeSearchResultResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "searched_at": {
+            "format": "date-time",
+            "title": "Searched At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "searched_at",
+          "results"
+        ],
+        "title": "UpgradeSearchNowResponse",
+        "type": "object"
+      },
       "UpgradeSearchResponse": {
         "properties": {
           "job_id": {
@@ -22650,6 +22689,50 @@
           }
         },
         "summary": "Retry Handoff",
+        "tags": [
+          "upgrade candidates"
+        ]
+      }
+    },
+    "/api/v1/upgrade-candidates/{candidate_id}/search-now": {
+      "post": {
+        "description": "Search the trackers again for one upgrade and list every release found.",
+        "operationId": "search_upgrade_candidate_now_api_v1_upgrade_candidates__candidate_id__search_now_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeSearchNowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Upgrade Candidate Now",
         "tags": [
           "upgrade candidates"
         ]

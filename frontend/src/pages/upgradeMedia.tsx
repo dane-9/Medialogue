@@ -177,6 +177,7 @@ export function UpgradeMediaPage() {
   const [resultsLoading, setResultsLoading] = useState(false)
   const [selectedResultId, setSelectedResultId] = useState('')
   const [resultSelecting, setResultSelecting] = useState(false)
+  const [researching, setResearching] = useState(false)
   // Status first, then folder: ready candidates, ones on their way and ones
   // waiting on a decision never share one list.
   const [status, setStatus] = useState<UpgradeStatus>('ready')
@@ -374,6 +375,28 @@ export function UpgradeMediaPage() {
       setResultsTarget(null)
       setError(reason instanceof Error ? reason.message : 'Could not load cached upgrade search results.')
     } finally { setResultsLoading(false) }
+  }
+
+  // Searches the trackers again for this upgrade. When nothing qualifies any
+  // more the title leaves Upgrade Media, but its results stay open to look at.
+  const searchAgain = async () => {
+    if (!resultsTarget) return
+    const target = resultsTarget
+    setResearching(true); setError(''); setMessage('')
+    try {
+      const value = await upgradesApi.searchUpgradeNow(target.id)
+      setSearchResults(value)
+      setSelectedResultId(value.results.find((entry) => entry.selected)?.id ?? value.results.find((entry) => entry.recommended)?.id ?? '')
+      const failed = value.indexerFailures ? ` ${value.indexerFailures} indexer${value.indexerFailures === 1 ? '' : 's'} did not answer.` : ''
+      if (!value.candidateId) {
+        setItems((current) => current.filter((item) => item.id !== target.id))
+        setMessage(`No release is an upgrade for ${target.mediaTitle} any more, so it left Upgrade Media.${failed}`)
+      } else {
+        if (failed) setMessage(failed.trim())
+        void load(true)
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not search the trackers again.') }
+    finally { setResearching(false) }
   }
 
   const chooseSearchResult = async () => {
@@ -841,8 +864,8 @@ export function UpgradeMediaPage() {
       titleSuffix={resultsTarget.mediaYear ? <span className="upgrade-results-title-year"> ({resultsTarget.mediaYear})</span> : undefined}
       eyebrow={resultsTarget.seasonNumber !== undefined ? `SEASON ${resultsTarget.seasonNumber}` : undefined}
       className="upgrade-results-modal"
-      onClose={() => { if (!resultSelecting) { setResultsTarget(null); setSearchResults(null) } }}
-      footer={<><span className="wizard-foot-count">{searchResults ? `${searchResults.results.length} Torrent${searchResults.results.length === 1 ? '' : 's'} found` : ''}</span><span className="modal-foot-spacer" /><Button variant="ghost" disabled={resultSelecting} onClick={() => { setResultsTarget(null); setSearchResults(null) }}>Cancel</Button><Button variant="primary" icon="check" disabled={resultSelecting || !selectedResultId || !searchResults?.results.find((entry) => entry.id === selectedResultId)?.selectable} onClick={() => void chooseSearchResult()}>{resultSelecting ? 'Selecting…' : 'Use this result'}</Button></>}
+      onClose={() => { if (!resultSelecting && !researching) { setResultsTarget(null); setSearchResults(null) } }}
+      footer={<><span className="wizard-foot-count">{searchResults ? `${searchResults.results.length} Torrent${searchResults.results.length === 1 ? '' : 's'} found` : ''}</span><span className="modal-foot-spacer" /><Button variant="ghost" icon="refresh" disabled={resultSelecting || researching || resultsLoading} onClick={() => void searchAgain()}>{researching ? 'Searching…' : 'Search again'}</Button><Button variant="ghost" disabled={resultSelecting} onClick={() => { setResultsTarget(null); setSearchResults(null) }}>Cancel</Button><Button variant="primary" icon="check" disabled={resultSelecting || researching || !searchResults?.candidateId || !selectedResultId || !searchResults?.results.find((entry) => entry.id === selectedResultId)?.selectable} onClick={() => void chooseSearchResult()}>{resultSelecting ? 'Selecting…' : 'Use this result'}</Button></>}
     >
       <div className="upgrade-results-current">
         {(() => {
@@ -869,7 +892,7 @@ export function UpgradeMediaPage() {
           </div>
         })()}
       </div>
-      {resultsLoading ? <div className="table-loading">Loading cached search results…</div> : searchResults && <div className="upgrade-results-browser">
+      {researching ? <div className="table-loading">Searching the trackers…</div> : resultsLoading ? <div className="table-loading">Loading cached search results…</div> : searchResults && <div className="upgrade-results-browser">
         <ReleaseResults
           results={upgradeReleaseResults}
           selectedId={selectedResultId}

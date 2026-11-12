@@ -60,6 +60,7 @@ from app.schemas.upgrades import (
     UpgradeSearchResponse,
     NotAnUpgradeResponse,
     UpgradeSearchResultResponse,
+    UpgradeSearchNowResponse,
     UpgradeSearchResultsResponse,
     UpgradeSearchResultSelectRequest,
 )
@@ -77,7 +78,7 @@ from app.services.quality_profiles import (
 from app.services.scheduler import ensure_default_schedules, trigger_schedule
 from app.services.jobs import create_job
 from app.services.runtime_jobs import launch_runtime_job
-from app.services.upgrade_candidates import apply_search_result, run_upgrade_search_job
+from app.services.upgrade_candidates import apply_search_result, run_upgrade_search_job, search_upgrade_now
 from app.services.upgrade_cleanup import cleanup_preview, commit_cleanup, run_automatic_cleanups
 from app.services.upgrade_execution import retry_upgrade_handoff, submit_upgrade_candidate
 
@@ -555,6 +556,29 @@ async def upgrade_search_results(
         candidate_id=row.id,
         searched_at=row.last_searched_at,
         results=[_search_result_response(row, value, position=index) for index, value in enumerate(values)],
+    )
+
+
+@router.post("/upgrade-candidates/{candidate_id}/search-now", response_model=UpgradeSearchNowResponse)
+async def search_upgrade_candidate_now(
+    candidate_id: UUID,
+    _: object = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(indexers_api.get_torznab_client_factory),
+) -> UpgradeSearchNowResponse:
+    """Search the trackers again for one upgrade and list every release found."""
+
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    row, results, searched_at, failures = await search_upgrade_now(db, candidate_id, client_factory=client_factory)
+    # Nothing kept means nothing is selected; the rows still describe themselves.
+    anchor = row or SimpleNamespace(id=uuid4(), guid=None, indexer_id=None, title=None)
+    return UpgradeSearchNowResponse(
+        candidate_id=row.id if row else None,
+        searched_at=searched_at,
+        results=[_search_result_response(anchor, value, position=index) for index, value in enumerate(results)],
+        indexer_failures=failures,
     )
 
 

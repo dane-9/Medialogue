@@ -1309,6 +1309,52 @@ async def _worker(
     )
 
 
+_IN_FLIGHT = {"submitted", "linking", "downloading", "validating", "handoff_attention", "cleanup_required"}
+
+
+async def search_upgrade_now(
+    db: AsyncSession,
+    candidate_id: UUID,
+    *,
+    client_factory: TorznabClientFactory = TorznabClient,
+) -> tuple[UpgradeCandidate | None, list[dict[str, Any]], datetime, int]:
+    """Search the trackers again for one upgrade, as the scheduled search would.
+
+    Returns the candidate (None when nothing qualifies any more, which takes the
+    title out of Upgrade Media), every result found, when it searched, and how
+    many indexers failed.
+    """
+
+    from app.core.errors import AppError
+
+    row = await db.get(UpgradeCandidate, candidate_id)
+    if row is None:
+        raise AppError("NOT_FOUND", "Upgrade candidate was not found.", status_code=404)
+    if row.execution_state in _IN_FLIGHT:
+        raise AppError("UPGRADE_ALREADY_STARTED", "This upgrade is already under way, so it cannot be searched again.", status_code=409)
+    target_key = row.target_key
+    if row.media_type == MediaType.MOVIES:
+        targets = (await _movie_targets(db))[0]
+    else:
+        targets = (await _show_targets(db, today=utcnow().date()))[0]
+    target = next((item for item in targets if item.target_key == target_key), None)
+    if target is None:
+        raise AppError("UPGRADE_TARGET_UNAVAILABLE", "This title can no longer be searched for an upgrade. Run Search for upgrades to refresh the list.", status_code=409)
+    best, results, failures, success = await _search_target(db, target=target, indexers=await list_configured_indexers(db), client_factory=client_factory)
+    if not success:
+        raise AppError("INDEXERS_FAILED", "Every indexer failed to answer. Check them in Settings and try again.", status_code=502)
+    searched_at = utcnow()
+    await _persist_candidate(db, target=target, candidate=best, search_results=results, searched_at=searched_at)
+    await db.execute(
+        sqlite_insert(UpgradeSearchMark)
+        .values(target_key=target_key, searched_at=searched_at)
+        .on_conflict_do_update(index_elements=["target_key"], set_={"searched_at": searched_at})
+    )
+    await db.commit()
+    kept = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.target_key == target_key))
+    return kept, results, searched_at, failures
+
+
 async def run_upgrade_search_job(
     job_id: UUID,
     *,

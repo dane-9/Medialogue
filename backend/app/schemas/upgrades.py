@@ -173,6 +173,14 @@ class UpgradeSearchResultsResponse(BaseModel):
     results: list[UpgradeSearchResultResponse]
 
 
+class UpgradeSearchNowResponse(BaseModel):
+    #: The kept upgrade; None when nothing qualifies any more.
+    candidate_id: UUID | None = None
+    searched_at: datetime
+    results: list[UpgradeSearchResultResponse]
+    indexer_failures: int = 0
+
+
 class NotAnUpgradeResponse(BaseModel):
     #: The release now offered instead; None when no other upgrade was found.
     next_title: str | None = None

@@ -258,6 +258,26 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
         "Upgrade.Movie.2024.2160p.WEB-DL.x264-GRP"
     )
 
+    # Searching again from the results view refreshes just this upgrade.
+    from app.api import indexers as indexers_api
+
+    client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: behavior.factory
+    behavior.movie_results = [item for item in behavior.movie_results if item.guid in {"quality-upgrade", "no-improvement"}]
+    again = client.post(f"/api/v1/upgrade-candidates/{row['id']}/search-now", headers=headers)
+    assert again.status_code == 200, again.text
+    assert again.json()["candidate_id"] == row["id"]
+    assert len(again.json()["results"]) == 2
+    assert client.get("/api/v1/upgrade-candidates").json()[0]["result_count"] == 2
+
+    # When nothing qualifies any more the title leaves Upgrade Media, but the
+    # results still come back to look at.
+    behavior.movie_results = [item for item in behavior.movie_results if item.guid == "no-improvement"]
+    gone = client.post(f"/api/v1/upgrade-candidates/{row['id']}/search-now", headers=headers)
+    assert gone.status_code == 200, gone.text
+    assert gone.json()["candidate_id"] is None and len(gone.json()["results"]) == 1
+    assert client.get("/api/v1/upgrade-candidates").json() == []
+    assert client.post(f"/api/v1/upgrade-candidates/{row['id']}/search-now", headers=headers).status_code == 404
+
     behavior.movie_results = [
         SearchResult(
             title="Upgrade.Movie.2024.2160p.WEB-DL.REPACK.x264-OTHER",

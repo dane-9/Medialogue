@@ -2789,6 +2789,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/upgrade-candidates/{candidate_id}/search-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Upgrade Candidate Now
+         * @description Search the trackers again for one upgrade and list every release found.
+         */
+        post: operations["search_upgrade_candidate_now_api_v1_upgrade_candidates__candidate_id__search_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/upgrade-candidates/{candidate_id}/upgrade": {
         parameters: {
             query?: never;
@@ -7653,6 +7673,23 @@ export interface components {
             quality_profile_name?: string | null;
             /** Updated Entities */
             updated_entities: number;
+        };
+        /** UpgradeSearchNowResponse */
+        UpgradeSearchNowResponse: {
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /**
+             * Indexer Failures
+             * @default 0
+             */
+            indexer_failures: number;
+            /** Results */
+            results: components["schemas"]["UpgradeSearchResultResponse"][];
+            /**
+             * Searched At
+             * Format: date-time
+             */
+            searched_at: string;
         };
         /** UpgradeSearchResponse */
         UpgradeSearchResponse: {
@@ -13296,6 +13333,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeCandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_upgrade_candidate_now_api_v1_upgrade_candidates__candidate_id__search_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeSearchNowResponse"];
                 };
             };
             /** @description Validation Error */

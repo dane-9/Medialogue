@@ -655,7 +655,7 @@ export default function ReplaceMediaPage() {
       eyebrow={resultsTarget.season_number != null ? `SEASON ${resultsTarget.season_number}` : 'REPLACE MEDIA'}
       className="upgrade-results-modal"
       onClose={() => setResultsTarget(null)}
-      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Searching the trackers…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.selectable} onClick={() => { if (results && resultsTarget) void chooseResult(results.candidateId, resultsTarget.target_key, fullSelectedId); setResultsTarget(null) }}>Use this result</Button></>}
+      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Searching the trackers…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" icon="refresh" disabled={!results} onClick={() => { if (resultsTarget) void openResults(resultsTarget) }}>{results ? 'Search again' : 'Searching…'}</Button><Button variant="ghost" onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.selectable} onClick={() => { if (results && resultsTarget) void chooseResult(results.candidateId, resultsTarget.target_key, fullSelectedId); setResultsTarget(null) }}>Use this result</Button></>}
     >
       <div className="upgrade-results-current">
         {(() => {
@@ -668,6 +668,7 @@ export default function ReplaceMediaPage() {
           </div>
         })()}
       </div>
+      {!results && <div className="table-loading">Searching the trackers…</div>}
       {results && <div className="upgrade-results-browser">
         <ReleaseResults
           results={fullReleases}

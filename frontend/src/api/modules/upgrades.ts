@@ -173,6 +173,13 @@ export const upgradesApi = {
     }))
     return mapSearchResults(value)
   },
+  /** Search the trackers again for one upgrade; candidateId is empty when nothing qualifies any more. */
+  searchUpgradeNow: async (candidateId: string) => {
+    const value = await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/{candidate_id}/search-now', {
+      params: { path: { candidate_id: candidateId } },
+    }))
+    return { ...mapSearchResults(value), indexerFailures: value.indexer_failures ?? 0 }
+  },
   selectUpgradeSearchResult: async (candidateId: string, resultId: string) => mapUpgradeCandidate(
     await openApiData(openApiClient.POST('/api/v1/upgrade-candidates/{candidate_id}/results/select', {
       params: { path: { candidate_id: candidateId } },
