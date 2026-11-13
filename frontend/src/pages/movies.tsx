@@ -439,7 +439,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   const currentReleases = releases.filter((release) => release.state === 'current' || release.state === 'duplicate' || release.state === 'conflict')
   const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
-  const currentSummary = <div className="release-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
+  const currentSummary = <div className="release-summary-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies">
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
