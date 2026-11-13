@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+const INTERACTIVE = 'a, button, input, select, textarea, label, summary, [role], [tabindex], [contenteditable="true"], .media-card, tr, .modal, .bulk-context-menu, .context-dismiss-layer'
+
 export interface SelectionModifiers { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }
 
 /**
@@ -34,7 +36,7 @@ export function applySelectionClick(
 
 /**
  * Selection for a library page: click, Shift-click ranges, Ctrl/Cmd+A for every
- * title on screen, Escape to clear. Titles that a search or filter hides drop
+ * title on screen, Escape or a click on empty space to clear. Titles that a search or filter hides drop
  * out of the selection, so an action never reaches what you cannot see.
  */
 export function useLibrarySelection(visibleIds: readonly string[], { enabled = true }: { enabled?: boolean } = {}) {
@@ -80,8 +82,20 @@ export function useLibrarySelection(visibleIds: readonly string[], { enabled = t
         setSelected((current) => current.size ? new Set() : current)
       }
     }
+    // A click on empty space clears, as on a desktop. Anything that is a title,
+    // a control or an open menu is not empty space.
+    const onClick = (event: MouseEvent) => {
+      if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) return
+      const target = event.target as Element | null
+      if (!target?.isConnected || target.closest(INTERACTIVE)) return
+      setSelected((current) => current.size ? new Set() : current)
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('click', onClick)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('click', onClick)
+    }
   }, [enabled])
 
   return { selected, click, focus, selectAll, clear }

@@ -470,7 +470,6 @@
 .selection-bar strong { font-weight: 600; }
 .selection-bar button { padding: 2px var(--s2); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); font-size: var(--t-xs); }
 .selection-bar button:hover { background: rgba(255, 255, 255, .08); }
-.selection-bar-actions { display: inline-flex; align-items: center; gap: 5px; }
 /* A round select button. On a card it sits in the poster's free top-left
    corner: shown on hover, kept when selected, and on every card while any
    card is selected so a second click needs no hunting. */

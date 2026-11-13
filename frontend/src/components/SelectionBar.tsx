@@ -1,23 +1,20 @@
-import type { MouseEvent } from 'react'
 import type { SelectionModifiers } from '../lib/useLibrarySelection'
 import { Icon } from './Icon'
 
-/** The toolbar's selection summary: how many, select all, clear, and the
- *  actions menu, which right-click also opens. */
-export function SelectionBar({ count, total, noun, onSelectAll, onClear, onActions }: {
+/** The toolbar's selection summary: how many, select all, and clear. Bulk
+ *  actions open with a right-click on a selected title. */
+export function SelectionBar({ count, total, noun, onSelectAll, onClear }: {
   count: number
   total: number
   noun: string
   onSelectAll: () => void
   onClear: () => void
-  onActions: (event: MouseEvent<HTMLButtonElement>) => void
 }) {
   if (!count) return null
   return <span className="selection-bar" role="status">
     <strong>{count} selected</strong>
     {count < total && <button type="button" onClick={onSelectAll}>Select all {total}</button>}
     <button type="button" onClick={onClear}>Clear</button>
-    <button type="button" className="selection-bar-actions" onClick={onActions}><Icon name="menu" size={13} />Actions</button>
   </span>
 }
 
