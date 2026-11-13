@@ -473,7 +473,7 @@
 /* A round select button. On a card it sits in the poster's free top-left
    corner: shown on hover, kept when selected, and on every card while any
    card is selected so a second click needs no hunting. */
-.select-check { display: grid; flex: none; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid rgba(255, 255, 255, .7); border-radius: var(--r-full); background: rgba(23, 29, 37, .55); color: #171d25; cursor: pointer; }
+.select-check { display: grid; flex: none; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid rgba(255, 255, 255, .7); border-radius: var(--r-sm); background: rgba(23, 29, 37, .55); color: #171d25; cursor: pointer; }
 .select-check.on, .select-check.mixed { border-color: var(--accent); background: var(--accent); }
 .select-check-dash { width: 8px; height: 2px; border-radius: 1px; background: #171d25; }
 .media-card { position: relative; }

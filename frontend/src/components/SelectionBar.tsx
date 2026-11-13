@@ -18,7 +18,7 @@ export function SelectionBar({ count, total, noun, onSelectAll, onClear }: {
   </span>
 }
 
-/** A round select button: on a card's corner, or inline in a table row. Shift
+/** A square select button: on a card's corner, or inline in a table row. Shift
  *  extends the selection to a range. */
 export function SelectCheck({ checked, mixed = false, label, inline = false, onToggle }: {
   checked: boolean
