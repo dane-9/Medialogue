@@ -290,6 +290,13 @@ export default function ReplaceMediaPage() {
   const submitLabel = !linkCount ? fetchLabel
     : fetchCount ? `Link ${linkCount} · Download ${fetchCount}`
       : `Link ${linkCount} ${linkCount === 1 ? 'file' : 'files'}`
+  // As Upgrade Media's button: what is fetched (a linked file is already on
+  // disk), and how much the library grows or shrinks once these replace what
+  // is there. Only rows whose sizes are known can say.
+  const fetchBytes = toDownload.reduce((total, item) => total + (item.same_file ? 0 : item.candidate_size ?? 0), 0)
+  const bytesChange = toDownload.reduce((total, item) => (
+    item.candidate_size != null && item.current_size != null ? total + item.candidate_size - item.current_size : total
+  ), 0)
   const openConfirm = () => {
     setClientFor({ movies: clientsFor('movies')[0]?.id ?? '', shows: clientsFor('shows')[0]?.id ?? '' })
     setConfirming(true)
@@ -613,7 +620,12 @@ export default function ReplaceMediaPage() {
               {toSearch.length
                 ? <Button variant={anyFound ? 'secondary' : 'primary'} icon="search" disabled={Boolean(busy)} onClick={() => void search(toSearch)}>{`Search ${toSearch.length} ${toSearch.length === 1 ? 'title' : 'titles'}`}</Button>
                 : <Button variant="secondary" icon="search" disabled={Boolean(busy) || bulkProgress !== null || !statusCounts.all} onClick={() => void search('all')}>Search all</Button>}
-              {anyFound && <Button variant="primary" icon={linkCount && !fetchCount ? 'check' : 'download'} disabled={!toDownload.length || Boolean(busy)} onClick={openConfirm}>{submitLabel}</Button>}
+              {anyFound && <Button variant="primary" icon={linkCount && !fetchCount ? 'check' : 'download'} disabled={!toDownload.length || Boolean(busy)} onClick={openConfirm}>
+                {`${submitLabel}${fetchBytes ? ` · ${formatBytes(fetchBytes)}` : ''}`}
+                {bytesChange !== 0 && <em className={`upgrade-batch-change ${bytesChange > 0 ? 'size-up' : 'size-down'}`} aria-label={`${bytesChange > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(bytesChange))} in total`}>
+                  <Icon name="caret" size={11} />{formatBytes(Math.abs(bytesChange))}
+                </em>}
+              </Button>}
             </>}
         </div>
       </div>
