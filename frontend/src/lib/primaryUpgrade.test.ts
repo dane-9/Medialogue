@@ -11,8 +11,8 @@ describe('primaryUpgrade', () => {
     expect(value?.details).toEqual(['1080p Encode → 2160p REMUX', 'Custom Formats +190 (TrueHD Atmos, Dolby Vision)'])
   })
 
-  it('names only the resolution when the source stays', () => {
-    expect(primaryUpgrade({ ...base, currentQuality: '1080p REMUX', quality: '2160p REMUX', upgradeTypes: ['quality'] })?.label).toBe('1080p → 2160p')
+  it('names both sources when the resolution changes, even an unchanged one', () => {
+    expect(primaryUpgrade({ ...base, currentQuality: '1080p REMUX', quality: '2160p REMUX', upgradeTypes: ['quality'] })?.label).toBe('1080p REMUX → 2160p REMUX')
   })
 
   it('names the source when the resolution stays', () => {

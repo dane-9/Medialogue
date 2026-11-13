@@ -458,13 +458,17 @@ export default function ReplaceMediaPage() {
               qualityLabel(item.current_quality) || undefined].filter(Boolean).join(' · ')
             // With no details pane, the row itself is the checkbox.
             const open = () => { if (isPickable) togglePicked(item) }
-            // Only words the quality change explains are lit: a replacement is
-            // usually another group's equal copy, so merely differing is not
-            // a reason to call a word better.
+            // Only words a quality change or a gained Custom Format explains are
+            // lit, as in Upgrade Media: a replacement is usually another group's
+            // equal copy, so merely differing is not a reason to call a word better.
             const tokens = item.candidate_title && item.current_release ? diffReleaseTokens(item.candidate_title, item.current_release) : []
+            const gained = (item.candidate_matched_formats ?? []).map((format) => ({
+              name: format.custom_format_name,
+              delta: format.contribution - ((item.current_matched_formats ?? []).find((other) => other.custom_format_name === format.custom_format_name)?.contribution ?? 0),
+            })).filter((format) => format.delta > 0)
             const lit = tokens.map((token) => upgradeTokenReason(token, {
-              upgradeTypes: [],
-              addedCustomFormats: [],
+              upgradeTypes: item.upgrade_types ?? [],
+              addedCustomFormats: gained,
               currentQuality: item.current_quality ?? undefined,
               quality: item.candidate_quality ?? undefined,
             }))
@@ -530,7 +534,7 @@ export default function ReplaceMediaPage() {
                     {item.candidate_title
                       ? <span className="upgrade-v2-release">{tokens.length ? tokens.map((token, index) => <Fragment key={index}>
                         <span className="upgrade-token-sep">{token.sep}</span>{token.sep && <wbr />}
-                        <span className={lit[index] ? 'upgrade-token-new quality' : 'upgrade-token-same'}>{token.text}</span>
+                        <span className={lit[index] ? `upgrade-token-new ${lit[index]!.startsWith('Quality:') ? 'quality' : ''}` : 'upgrade-token-same'}>{token.text}</span>
                       </Fragment>) : breakable(item.candidate_title)}{item.same_file && <Tooltip className="release-pill replace-same-file" content="This torrent holds the files you already have. It is linked to them after a file check, and nothing is downloaded.">Same file</Tooltip>}{item.link_failed && <Tooltip className="release-pill release-blocked" content="This has the same name as your files, but qBittorrent's check found different contents. Your files were left alone. You can still download it as a new copy.">Same name, different file</Tooltip>}</span>
                       : <span className="upgrade-v2-release replace-v3-note">{item.searching && <span className="replace-spinner" aria-hidden="true" />}{searchNote}</span>}
                     {shownStatus === 'in_progress' || shownStatus === 'attention'

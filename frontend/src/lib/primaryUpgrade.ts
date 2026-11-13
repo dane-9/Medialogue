@@ -26,8 +26,8 @@ export function primaryUpgrade(facts: UpgradeFacts): { label: string; details: s
     const from = splitQuality(facts.currentQuality)
     const to = splitQuality(facts.quality)
     if (from.resolution && to.resolution && from.resolution !== to.resolution) {
-      // Only what changes is named: the source too when it differs.
-      const label = from.type && to.type && from.type !== to.type
+      // Both sources are named, changed or not, so the pill reads at a glance.
+      const label = from.type && to.type
         ? `${from.resolution} ${from.type} → ${to.resolution} ${to.type}`
         : `${from.resolution} → ${to.resolution}`
       found.push({ rank: 0, label, detail: label })
