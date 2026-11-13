@@ -696,6 +696,13 @@ async def reconcile_movie_directory(
     chose this directory to replace, when Medialogue could not tell.
     """
 
+    from app.services.ignored_folders import folder_ignored
+
+    # A title removed with its files kept stays removed, unless someone
+    # matches the folder by hand.
+    if movie_hint is None and incoming_release is None and not manual_identity and await folder_ignored(db, observation.path):
+        return "ignored"
+
     existing_directory = await db.scalar(
         select(MediaDirectory)
         .options(selectinload(MediaDirectory.files), selectinload(MediaDirectory.movie_release))

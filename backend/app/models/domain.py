@@ -974,6 +974,25 @@ class UpgradeSearchMark(Base):
     searched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class IgnoredFolder(Base):
+    """A folder that scans pass over.
+
+    Written when a title is removed from Medialogue with its files kept, so
+    the next scan does not add it straight back. Removing the row lets the
+    folder be picked up again.
+    """
+
+    __tablename__ = "ignored_folders"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resolved_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
+    #: The title that was removed, for the list in Settings.
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    year: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class IndexerTrackerHost(Base):
     """A tracker host an indexer's torrents announce to.
 

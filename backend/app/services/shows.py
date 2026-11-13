@@ -467,6 +467,13 @@ async def reconcile_show_directory(
     Problems while the rest of the pack remains usable.
     """
 
+    from app.services.ignored_folders import folder_ignored
+
+    # A show removed with its files kept stays removed, unless someone matches
+    # the folder by hand.
+    if show_hint is None and incoming_release is None and await folder_ignored(db, observation.path):
+        return "ignored"
+
     folder_parse = parse_release(observation.name)
     torrent_parse = parse_release(torrent.name) if torrent is not None else None
     identity_parse = torrent_parse or folder_parse

@@ -9,6 +9,8 @@ import { useConfirm } from '../components/Confirm'
 import { usePlexAvailable } from '../components/Shell'
 import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/ui'
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
+import { LibraryContextMenu } from '../components/LibraryContextMenu'
+import { RemoveTitlesModal } from '../components/RemoveTitlesModal'
 import { settingsApi } from '../api/modules/settings'
 import { showsApi } from '../api/modules/shows'
 import { systemApi } from '../api/modules/system'
@@ -38,8 +40,7 @@ export function ShowsPage() {
   const [message, setMessage] = useState('')
   const [cardBusy, setCardBusy] = useState<string | null>(null)
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
-  const [profiles, setProfiles] = useState<QualityProfile[]>([])
-  const [bulkBusy, setBulkBusy] = useState(false)
+  const [removing, setRemoving] = useState<string[] | null>(null)
   // Matches the server default, so the chip does not flash on before the fetch.
   const [countSpecials, setCountSpecials] = useState(false)
   const [specialsBusy, setSpecialsBusy] = useState(false)
@@ -57,7 +58,6 @@ export function ShowsPage() {
     void load(!cached && !items.length)
   }, [sort])
   useEffect(() => { showsApi.specialsCounting().then((value) => setCountSpecials(value.count_specials)).catch(() => undefined) }, [])
-  useEffect(() => { settingsApi.qualityProfiles().then(setProfiles).catch(() => undefined) }, [])
 
   // A hard switch, not a view filter: it rewrites the Counted flag on Season 0
   // for every show. Monitoring is left alone, so nothing stops being searched.
@@ -102,49 +102,26 @@ export function ShowsPage() {
       && (!needle || show.title.toLowerCase().includes(needle)))
   }, [items, filter, query])
   const visibleIds = useMemo(() => filtered.map((show) => show.id), [filtered])
-  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen })
+  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen && !removing })
   const openContext = useCallback((event: React.MouseEvent, showId: string) => {
     event.preventDefault()
     event.stopPropagation()
     focus(showId)
     setContext({ x: event.clientX, y: event.clientY })
   }, [focus])
-  const runBulk = async (action: 'change_profile' | 'monitor' | 'unmonitor', profileId?: string | null) => {
-    const ids = [...selected]
-    if (!ids.length) return
-    setBulkBusy(true); setMessage('')
-    try {
-      const result = await showsApi.bulkShows({ show_ids: ids, action, quality_profile_id: profileId })
-      setMessage(`${action.replace('_', ' ')}: ${result.updated} of ${result.requested} selected show${result.requested === 1 ? '' : 's'} updated.`)
-      await load(false)
-      setContext(null)
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Bulk action failed.') }
-    finally { setBulkBusy(false) }
-  }
   return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="shows" onClose={() => setHistoryOpen(false)} />}
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><SelectionBar count={selected.size} total={filtered.length} noun="show" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid show-grid" items={filtered} itemKey={(show) => show.id} renderItem={(show) => <ShowCard show={show} selected={selected.has(show.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />} /> : <ShowTable items={filtered} selected={selected} onToggle={toggleSelected} onSelectAll={selectAll} onClear={clear} onContext={openContext} />)}
-    {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><ShowBulkContextMenu position={context} count={selected.size} profiles={profiles} busy={bulkBusy} onRun={runBulk} onClear={() => { clear(); setContext(null) }} /></>}
+    {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><LibraryContextMenu position={context} count={selected.size} noun="show" onRemove={() => { setRemoving([...selected]); setContext(null) }} onClear={() => { clear(); setContext(null) }} /></>}
+    {removing && <RemoveTitlesModal kind="show" ids={removing} onClose={() => setRemoving(null)} onDone={(text) => { setRemoving(null); clear(); setMessage(text); void load(false) }} />}
     {!error && !loading && !filtered.length && <EmptyState icon="tv-screen" title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>
 }
 
 const needsShowReview = (show: Show) => (show.problemCount ?? 0) > 0
-
-function ShowBulkContextMenu({ position, count, profiles, busy, onRun, onClear }: { position: { x: number; y: number }; count: number; profiles: QualityProfile[]; busy: boolean; onRun: (action: 'change_profile' | 'monitor' | 'unmonitor', profileId?: string | null) => Promise<void>; onClear: () => void }) {
-  const [profileId, setProfileId] = useState('')
-  const left = Math.max(12, Math.min(position.x, window.innerWidth - 340))
-  const top = Math.max(12, Math.min(position.y, window.innerHeight - 280))
-  return <div className="bulk-context-menu" style={{ left, top }} onClick={(event) => event.stopPropagation()}>
-    <div className="bulk-context-head"><div><div className="eyebrow">BULK SHOW ACTIONS</div><strong>{count} selected</strong></div><button className="icon-button" onClick={onClear} aria-label="Clear selection"><Icon name="close" size={14} /></button></div>
-    <div className="context-action-grid"><button onClick={() => void onRun('monitor')} disabled={busy}><Icon name="check" size={14} />Monitor</button><button onClick={() => void onRun('unmonitor')} disabled={busy}><Icon name="pause" size={14} />Unmonitor</button></div>
-    <div className="context-section"><span className="field-label">Quality Profile</span><div className="context-inline"><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select><Button variant="ghost" disabled={busy} onClick={() => void onRun('change_profile', profileId || null)}>Apply</Button></div></div>
-    <div className="context-foot">Shift-click selects a range; Ctrl/Cmd+A selects every show shown, Escape clears.</div>
-  </div>
-}
 
 function ShowTable({ items, selected, onToggle, onSelectAll, onClear, onContext }: { items: Show[]; selected: Set<string>; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onSelectAll: () => void; onClear: () => void; onContext: (event: React.MouseEvent, id: string) => void }) {
   const plexAvailable = usePlexAvailable()

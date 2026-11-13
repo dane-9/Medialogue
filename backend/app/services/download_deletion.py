@@ -1,4 +1,5 @@
-"""Delete a download from qBittorrent and its media from disk, from Downloads.
+"""Delete a download from qBittorrent and its media from disk, from Downloads,
+or remove whole titles from the library (Movies and Shows).
 
 A plan comes first and is shown to the user: the folders that will be
 deleted, every torrent that goes with them (cross-seeds of the same files
@@ -21,11 +22,16 @@ Afterwards the library either lists the title in Replace Media as Missing, so
 a replacement is found, or forgets it ("forget"): a movie is removed from
 Medialogue, a show loses those releases and stops wanting the season, and the
 show goes only when nothing of it is left.
+
+Removing a title from Movies or Shows plans from the title instead: every
+folder it has (a show's whole show folder) and every torrent of it still in
+qBittorrent, an upgrade still downloading included. It may also keep the
+files ("keep_files"): nothing is deleted, the title is forgotten, and its
+folders are ignored by scans so it does not come straight back.
 """
 
 from __future__ import annotations
 
-import os
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -38,26 +44,19 @@ from sqlalchemy.orm import selectinload
 
 from app.core.errors import AppError
 from app.integrations.filesystem import folder_writable
-from app.models.domain import (AccessMode, EpisodeMediaMap, MediaDirectory, MediaFile, Movie, MovieRelease,
-                               MovieReleaseTorrent, ReleaseState, Season, Severity, Show, ShowRelease,
+from app.models.domain import (AccessMode, EpisodeMediaMap, IgnoredFolder, MediaDirectory, MediaFile, MediaType, Movie,
+                               MovieRelease, MovieReleaseTorrent, ReleaseState, Season, Severity, Show, ShowRelease,
                                ShowReleaseTorrent, StorageRoot, Torrent, TorrentClientObservation, UpgradeCandidate)
 from app.services.events import create_event
+from app.services.ignored_folders import path_inside as _inside
+from app.services.ignored_folders import path_key as _key
 from app.services.integration_state import get_configured_download_client
 from app.services.torrent_tracking import deactivate_client_tracker_health
 
 KEEP_IN_REPLACE_MEDIA = "replace"
 FORGET = "forget"
-
-
-def _key(path: str) -> str:
-    return os.path.normcase(os.path.normpath(str(path)))
-
-
-def _inside(path: str, folder: str) -> bool:
-    """`path` is `folder` or lies inside it."""
-
-    path_key, folder_key = _key(path), _key(folder)
-    return path_key == folder_key or path_key.startswith(folder_key.rstrip("\\/") + os.sep)
+KEEP_FILES = "keep_files"
+FROM_DOWNLOADS = "Deleted from Downloads"
 
 
 @dataclass
@@ -99,7 +98,6 @@ async def plan_deletion(db: AsyncSession, observation_ids: list[UUID]) -> Deleti
     )).all()
     if not selected:
         raise AppError("NOT_FOUND", "No live downloads matched the request.", status_code=404)
-    roots = (await db.scalars(select(StorageRoot).where(StorageRoot.enabled.is_(True)))).all()
 
     folders: list[str] = []
     for observation, torrent in selected:
@@ -133,6 +131,60 @@ async def plan_deletion(db: AsyncSession, observation_ids: list[UUID]) -> Deleti
                 plan.titles.append(title)
             if release.season is not None and release.season.season_number not in title.season_numbers:
                 title.season_numbers.append(release.season.season_number)
+    return await _complete_plan(db, plan, folders, {observation.id for observation, _ in selected})
+
+
+async def plan_title_removal(db: AsyncSession, movie_ids: list[UUID], show_ids: list[UUID]) -> DeletionPlan:
+    """What removing these movies and shows would delete: all of each title."""
+
+    plan = DeletionPlan()
+    folders: list[str] = []
+    torrent_ids: set[UUID] = set()
+    movies = (await db.scalars(
+        select(Movie).options(selectinload(Movie.releases).selectinload(MovieRelease.directories),
+                              selectinload(Movie.releases).selectinload(MovieRelease.torrents))
+        .where(Movie.id.in_(movie_ids)).order_by(Movie.sort_title)
+    )).all() if movie_ids else []
+    shows = (await db.scalars(
+        select(Show).options(selectinload(Show.releases).selectinload(ShowRelease.directories),
+                             selectinload(Show.releases).selectinload(ShowRelease.torrents))
+        .where(Show.id.in_(show_ids)).order_by(Show.title)
+    )).all() if show_ids else []
+    if not movies and not shows:
+        raise AppError("NOT_FOUND", "None of these titles are in the library.", status_code=404)
+    for movie in movies:
+        plan.titles.append(PlannedTitle("movie", movie.id, movie.title, movie.year))
+        for release in movie.releases:
+            plan.movie_release_ids.add(release.id)
+            folders.extend(directory.resolved_path for directory in release.directories if directory.exists)
+            torrent_ids.update(torrent.id for torrent in release.torrents)
+    for show in shows:
+        plan.titles.append(PlannedTitle("show", show.id, show.title, show.year))
+        for release in show.releases:
+            plan.show_release_ids.add(release.id)
+            torrent_ids.update(torrent.id for torrent in release.torrents)
+        # The show folder itself goes, every season in it.
+        folders.extend(await _show_directory_paths(db, show.id))
+
+    # The titles' torrents still in qBittorrent, an upgrade still downloading
+    # among them: their files go too, wherever they are being saved.
+    linked = (await db.execute(
+        select(TorrentClientObservation, Torrent)
+        .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+        .where(TorrentClientObservation.torrent_id.in_(torrent_ids), TorrentClientObservation.is_present.is_(True))
+    )).all() if torrent_ids else []
+    for observation, torrent in linked:
+        if not observation.resolved_save_path:
+            plan.blocked.append(f"{torrent.name}: qBittorrent does not report where its files are.")
+        elif not any(_inside(observation.resolved_save_path, folder) for folder in folders):
+            folders.append(observation.resolved_save_path)
+    return await _complete_plan(db, plan, folders, {observation.id for observation, _ in linked})
+
+
+async def _complete_plan(db: AsyncSession, plan: DeletionPlan, folders: list[str], chosen: set[UUID]) -> DeletionPlan:
+    """Settle the folders, what blocks deleting them, and every torrent seeding from them."""
+
+    roots = (await db.scalars(select(StorageRoot).where(StorageRoot.enabled.is_(True)))).all()
 
     # One folder inside another is deleted once, as the outer folder.
     for folder in sorted(set(folders), key=len):
@@ -177,7 +229,6 @@ async def plan_deletion(db: AsyncSession, observation_ids: list[UUID]) -> Deleti
         .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
         .where(TorrentClientObservation.is_present.is_(True))
     )).all()
-    chosen = {observation.id for observation, _ in selected}
     for observation, torrent in present:
         inside = observation.id in chosen or (
             observation.resolved_save_path and any(_inside(observation.resolved_save_path, folder) for folder in plan.folders))
@@ -215,6 +266,91 @@ async def execute_deletion(db: AsyncSession, observation_ids: list[UUID], *, lib
     if library not in {KEEP_IN_REPLACE_MEDIA, FORGET}:
         raise AppError("VALIDATION_ERROR", "Choose whether to keep the title in Replace Media or remove it from Medialogue.", status_code=422)
     plan = await plan_deletion(db, observation_ids)
+    return await _carry_out(db, plan, library=library, client_factory=client_factory, reason=FROM_DOWNLOADS)
+
+
+async def execute_title_removal(db: AsyncSession, movie_ids: list[UUID], show_ids: list[UUID], *, mode: str,
+                                client_factory) -> DeletionPlan:
+    """Remove whole titles from Movies or Shows; see the module docstring."""
+
+    if mode not in {KEEP_IN_REPLACE_MEDIA, FORGET, KEEP_FILES}:
+        raise AppError("VALIDATION_ERROR", "Choose what happens to the files and the titles.", status_code=422)
+    plan = await plan_title_removal(db, movie_ids, show_ids)
+    if mode != KEEP_FILES:
+        return await _carry_out(db, plan, library=mode, client_factory=client_factory, reason="Removed with its files")
+
+    # Nothing on disk or in qBittorrent is touched; only the library lets go.
+    await _ignore_folders(db, plan)
+    await _forget(db, plan, reason="Removed, files kept")
+    names = [item.title for item in plan.titles]
+    await create_event(
+        db, "media.removed", entity_type=plan.titles[0].kind, entity_id=plan.titles[0].id, severity=Severity.WARNING,
+        message=f"Removed {_count(len(names), 'title')} from Medialogue and kept the files. "
+                f"Scans now skip {_count(len(plan.folders), 'folder')}.",
+        details={"titles": names, "ignored_folders": plan.folders, "mode": mode},
+    )
+    await db.commit()
+    return plan
+
+
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}{'' if number == 1 else 's'}"
+
+
+async def _ignore_folders(db: AsyncSession, plan: DeletionPlan) -> None:
+    """Have scans pass over the kept folders, so the titles do not come straight back."""
+
+    roots = (await db.scalars(select(StorageRoot))).all()
+    known = {_key(path) for path in (await db.scalars(select(IgnoredFolder.resolved_path))).all()}
+    for folder in plan.folders:
+        root = next((item for item in roots if _inside(folder, item.resolved_root_path)), None)
+        # A media folder itself is never ignored: that would hide everything in it.
+        if _key(folder) in known or (root is not None and _key(folder) == _key(root.resolved_root_path)):
+            continue
+        owner = plan.titles[0]
+        for title in plan.titles:
+            if await _title_owns(db, title, folder):
+                owner = title
+                break
+        media_type = root.media_type if root is not None else (MediaType.SHOWS if owner.kind == "show" else MediaType.MOVIES)
+        db.add(IgnoredFolder(resolved_path=folder, media_type=media_type, title=owner.title, year=owner.year))
+        known.add(_key(folder))
+    await db.flush()
+
+
+async def _show_directory_paths(db: AsyncSession, show_id: UUID) -> list[str]:
+    """The folders holding a show's media.
+
+    A show folder is one directory for every season, linked to a release only
+    for a season pack; episodes link it through their files.
+    """
+
+    packs = select(MediaDirectory.resolved_path).join(
+        ShowRelease, ShowRelease.id == MediaDirectory.show_release_id
+    ).where(ShowRelease.show_id == show_id, MediaDirectory.exists.is_(True))
+    episodes = (
+        select(MediaDirectory.resolved_path)
+        .join(MediaFile, MediaFile.media_directory_id == MediaDirectory.id)
+        .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
+        .join(ShowRelease, ShowRelease.id == EpisodeMediaMap.show_release_id)
+        .where(ShowRelease.show_id == show_id, MediaDirectory.exists.is_(True))
+    )
+    paths = [*(await db.scalars(packs)).all(), *(await db.scalars(episodes)).all()]
+    return list(dict.fromkeys(paths))
+
+
+async def _title_owns(db: AsyncSession, title: PlannedTitle, folder: str) -> bool:
+    if title.kind == "movie":
+        paths = (await db.scalars(
+            select(MediaDirectory.resolved_path).join(MovieRelease, MovieRelease.id == MediaDirectory.movie_release_id)
+            .where(MovieRelease.movie_id == title.id)
+        )).all()
+    else:
+        paths = await _show_directory_paths(db, title.id)
+    return any(_inside(path, folder) or _inside(folder, path) for path in paths)
+
+
+async def _carry_out(db: AsyncSession, plan: DeletionPlan, *, library: str, client_factory, reason: str) -> DeletionPlan:
     if plan.blocked:
         raise AppError("DELETE_BLOCKED", " ".join(plan.blocked), status_code=409)
 
@@ -261,7 +397,7 @@ async def execute_deletion(db: AsyncSession, observation_ids: list[UUID], *, lib
             failures.append(f"{folder}: {exc.strerror or exc}")
 
     if library == FORGET and not failures:
-        await _forget(db, plan)
+        await _forget(db, plan, reason=reason)
     else:
         # A folder that could not be deleted may be partly there; keeping the
         # titles lets the next scan settle what is left.
@@ -270,8 +406,9 @@ async def execute_deletion(db: AsyncSession, observation_ids: list[UUID], *, lib
     await create_event(
         db, "media.deleted", entity_type="torrent", entity_id=plan.torrents[0].torrent_id if plan.torrents else None,
         severity=Severity.ERROR if failures else Severity.WARNING,
-        message=f"Deleted {deleted_count} folder{'s' if deleted_count != 1 else ''} and removed "
-                f"{len(plan.torrents)} torrent{'s' if len(plan.torrents) != 1 else ''} from Downloads."
+        message=f"Deleted {_count(deleted_count, 'folder')} and removed {_count(len(plan.torrents), 'torrent')} "
+                + ("from Downloads." if reason == FROM_DOWNLOADS
+                   else f"with {_count(len(plan.titles), 'title')} removed from the library.")
                 + (f" {len(failures)} folder{'s' if len(failures) != 1 else ''} could not be deleted." if failures else ""),
         details={"folders": plan.folders, "torrents": [item.info_hash for item in plan.torrents], "library": library,
                  "titles": [item.title for item in plan.titles], "failed_folders": failures},
@@ -349,7 +486,7 @@ async def _mark_missing(db: AsyncSession, plan: DeletionPlan) -> None:
     await _refresh_episodes(db, episode_ids)
 
 
-async def _record_history(db: AsyncSession, plan: DeletionPlan, title: PlannedTitle, *, whole_show: bool) -> None:
+async def _record_history(db: AsyncSession, plan: DeletionPlan, title: PlannedTitle, *, whole_show: bool, reason: str) -> None:
     """Keep a note of the title before its rows go, for the library's History."""
 
     from app.models.domain import LibraryHistoryEntry, MediaType, QualityDefinition
@@ -373,11 +510,11 @@ async def _record_history(db: AsyncSession, plan: DeletionPlan, title: PlannedTi
         release_name=release.raw_release_name if release else None,
         quality=quality.name if quality else None,
         size=max(sizes) if sizes else None,
-        reason="Deleted from Downloads",
+        reason=reason,
     ))
 
 
-async def _forget(db: AsyncSession, plan: DeletionPlan) -> None:
+async def _forget(db: AsyncSession, plan: DeletionPlan, *, reason: str) -> None:
     """Remove the titles from Medialogue, as far as this deletion reaches."""
 
     for title in plan.titles:
@@ -387,14 +524,14 @@ async def _forget(db: AsyncSession, plan: DeletionPlan) -> None:
                 ShowRelease.show_id == title.id, ShowRelease.id.not_in(plan.show_release_ids)).limit(1))
             # History lists shows that left the library, not single seasons.
             if others is None:
-                await _record_history(db, plan, title, whole_show=True)
+                await _record_history(db, plan, title, whole_show=True, reason=reason)
         else:
             # A movie kept through another edition has not left the library.
             others = await db.scalar(select(MovieRelease.id).where(
                 MovieRelease.movie_id == title.id, MovieRelease.id.not_in(plan.movie_release_ids),
                 MovieRelease.release_state.in_([ReleaseState.CURRENT, ReleaseState.MISSING])).limit(1))
             if others is None:
-                await _record_history(db, plan, title, whole_show=False)
+                await _record_history(db, plan, title, whole_show=False, reason=reason)
     whole, partial = await _deleted_media(db, plan)
     episode_ids = await _episode_ids(db, partial)
     for directory in whole:

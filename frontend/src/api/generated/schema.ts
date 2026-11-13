@@ -1386,6 +1386,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/ignored-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ignored Folders
+         * @description Folders scans skip because their title was removed with the files kept.
+         */
+        get: operations["list_ignored_folders_api_v1_library_ignored_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/ignored-folders/{folder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Stop Ignoring Folder
+         * @description Let scans pick the folder up again; the next scan of its media folder adds it.
+         */
+        delete: operations["stop_ignoring_folder_api_v1_library_ignored_folders__folder_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove From Library
+         * @description Remove movies or shows: with their files and torrents, or keeping the files.
+         */
+        post: operations["remove_from_library_api_v1_library_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/remove-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Library Remove
+         * @description What removing these movies or shows would delete, for the user to confirm.
+         */
+        post: operations["plan_library_remove_api_v1_library_remove_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/summary": {
         parameters: {
             query?: never;
@@ -4344,6 +4424,26 @@ export interface components {
          * @enum {string}
          */
         IdentityState: "matched" | "manual" | "unmatched";
+        /** IgnoredFolderItem */
+        IgnoredFolderItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            media_type: components["schemas"]["MediaType"];
+            /** Resolved Path */
+            resolved_path: string;
+            /** Title */
+            title: string;
+            /** Year */
+            year?: number | null;
+        };
         /** IndexerCreate */
         IndexerCreate: {
             /** Api Key */
@@ -4672,6 +4772,25 @@ export interface components {
             tmdb_id?: number | null;
             /** Year */
             year?: number | null;
+        };
+        /** LibraryRemovePlanRequest */
+        LibraryRemovePlanRequest: {
+            /** Movie Ids */
+            movie_ids?: string[];
+            /** Show Ids */
+            show_ids?: string[];
+        };
+        /** LibraryRemoveRequest */
+        LibraryRemoveRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "forget" | "replace" | "keep_files";
+            /** Movie Ids */
+            movie_ids?: string[];
+            /** Show Ids */
+            show_ids?: string[];
         };
         /**
          * LibrarySummary
@@ -10477,6 +10596,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryHistoryItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ignored_folders_api_v1_library_ignored_folders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IgnoredFolderItem"][];
+                };
+            };
+        };
+    };
+    stop_ignoring_folder_api_v1_library_ignored_folders__folder_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_from_library_api_v1_library_remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryRemoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadDeletePlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_library_remove_api_v1_library_remove_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryRemovePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadDeletePlanResponse"];
                 };
             };
             /** @description Validation Error */

@@ -19,6 +19,7 @@ import { storageApi } from '../../api/modules/storage'
 import type { DownloadClient, LibrarySummary, FilesystemListing, StorageRoot, RemotePathMapping } from '../../types'
 import { useLiveLibraryRefresh } from '../shared'
 import { DISCARD_CHANGES } from './shared'
+import { IgnoredFolders } from './IgnoredFolders'
 
 export function StorageSettings() {
   const confirm = useConfirm()
@@ -464,6 +465,8 @@ export function StorageSettings() {
       })}
     </div>
     {!mappings.length && <p className="provider-empty-copy">No mappings configured. Only add one when qBittorrent reports a path that differs from the path visible inside Medialogue.</p>}
+
+    <IgnoredFolders />
 
     {addingMapping && <Modal wide title={selectedMapping ? selectedMapping.name : 'Add remote path mapping'} onClose={closeMapping}
       titleAction={<EnabledButton enabled={mappingEnabled} onChange={(next) => updateMappingDraft(() => setMappingEnabled(next))} />}

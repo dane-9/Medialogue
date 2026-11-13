@@ -13,6 +13,8 @@ import { Tooltip } from '../components/Tooltip'
 import { usePlexAvailable } from '../components/Shell'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select } from '../components/ui'
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
+import { LibraryContextMenu } from '../components/LibraryContextMenu'
+import { RemoveTitlesModal } from '../components/RemoveTitlesModal'
 import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
 import { systemApi } from '../api/modules/system'
@@ -32,7 +34,6 @@ export function MoviesPage() {
   // The library as last loaded in this tab: shown at once on return.
   const [movies, setMovies] = useState<Movie[]>(() => cachedList<Movie>(moviesKey(searchParams.get('tag') ?? '', 'title')) ?? [])
   const [tags, setTags] = useState<Tag[]>([])
-  const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [loading, setLoading] = useState(() => cachedList(moviesKey(searchParams.get('tag') ?? '', 'title')) === undefined)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -43,7 +44,7 @@ export function MoviesPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [tagFilter, setTagFilter] = useState(searchParams.get('tag') ?? '')
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
-  const [bulkBusy, setBulkBusy] = useState(false)
+  const [removing, setRemoving] = useState<string[] | null>(null)
   const [cardBusy, setCardBusy] = useState<string | null>(null)
 
   const applyMovies = (items: Movie[]) => {
@@ -73,9 +74,7 @@ export function MoviesPage() {
 
   useEffect(() => {
     let alive = true
-    Promise.all([moviesApi.tags(), settingsApi.qualityProfiles()]).then(([tagRows, profileRows]) => {
-      if (alive) { setTags(tagRows); setProfiles(profileRows) }
-    }).catch(() => undefined)
+    moviesApi.tags().then((tagRows) => { if (alive) setTags(tagRows) }).catch(() => undefined)
     return () => { alive = false }
   }, [])
 
@@ -90,36 +89,6 @@ export function MoviesPage() {
   const changeMovieView = (next: 'cards' | 'table') => {
     setView(next)
     window.localStorage.setItem('medialogue.movies.view', next)
-  }
-
-  const runBulk = async (action: Parameters<typeof moviesApi.bulkMovies>[0]['action'], options: { profileId?: string | null; tagIds?: string[] } = {}) => {
-    const ids = [...selected]
-    if (!ids.length) return
-    setBulkBusy(true); setMessage('')
-    try {
-      const result = await moviesApi.bulkMovies({ movie_ids: ids, action, quality_profile_id: options.profileId, tag_ids: options.tagIds })
-      const label = action.replaceAll('_', ' ')
-      if ('job_id' in result) {
-        setMessage(`${label} queued as job ${result.job_id.slice(0, 8)}…. You can follow it in Tasks.`)
-        const [job] = await systemApi.waitForJobs([result.job_id])
-        const summary = job?.summary ?? {}
-        const requested = Number(summary.requested ?? ids.length)
-        const updated = Number(summary.updated ?? 0)
-        if (job?.state === 'completed') setMessage(`${label}: ${updated} of ${requested} selected movie${requested === 1 ? '' : 's'} processed. Check Tasks for any per-title failures.`)
-        else if (job?.state === 'cancelled') setMessage(`${label} cancelled after processing ${updated} of ${requested} selected movies.`)
-        else setMessage(`${label} failed${job?.error ? `: ${job.error}` : '.'} Check Tasks for details.`)
-      } else setMessage(`${label}: ${result.updated} of ${result.requested} selected movie${result.requested === 1 ? '' : 's'} updated.`)
-      await loadMovies()
-      setContext(null)
-    } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : 'Bulk action failed.')
-    } finally { setBulkBusy(false) }
-  }
-
-  const createTag = async (name: string) => {
-    const row = await moviesApi.createTag(name)
-    setTags((items) => [...items, row].sort((a, b) => a.name.localeCompare(b.name)))
-    return row
   }
 
   const runMovieCardAction = async (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => {
@@ -160,7 +129,7 @@ export function MoviesPage() {
     })
   }, [movies, filter, query])
   const visibleIds = useMemo(() => filtered.map((movie) => movie.id), [filtered])
-  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen })
+  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen && !removing })
   const openContext = useCallback((event: React.MouseEvent, movieId: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -175,7 +144,8 @@ export function MoviesPage() {
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
     {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid" items={filtered} itemKey={(movie) => movie.id} renderItem={(movie) => <MovieCard movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={onCardAction} />} /> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onSelectAll={selectAll} onClear={clear} onContext={openContext} onTagClick={updateTagFilter} />)}
     {!error && !loading && !filtered.length && <EmptyState icon="clapper" title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
-    {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><MovieBulkContextMenu position={context} count={selected.size} profiles={profiles} tags={tags} busy={bulkBusy} onRun={runBulk} onCreateTag={createTag} onClear={() => { clear(); setContext(null) }} /></>}
+    {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><LibraryContextMenu position={context} count={selected.size} noun="movie" onRemove={() => { setRemoving([...selected]); setContext(null) }} onClear={() => { clear(); setContext(null) }} /></>}
+    {removing && <RemoveTitlesModal kind="movie" ids={removing} onClose={() => setRemoving(null)} onDone={(text) => { setRemoving(null); clear(); setMessage(text); void loadMovies() }} />}
   </Page>
 }
 
@@ -206,29 +176,6 @@ function MovieTable({ items, selected, onToggle, onSelectAll, onClear, onContext
   const plexAvailable = usePlexAvailable()
   const rows = useVirtualRows(items, plexAvailable ? 10 : 9)
   return <Panel className="table-panel"><table className="data-table"><thead><tr><th className="select-cell"><SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all movies" onToggle={() => selected.size ? onClear() : onSelectAll()} /></th><th>Title</th><th>State</th><th>Current release</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id, event) } }}><td className="select-cell"><SelectCheck inline checked={selected.has(movie.id)} label={movie.title} onToggle={(modifiers) => onToggle(movie.id, modifiers)} /></td><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} size="w92" /></span><MonitorMark monitored={movie.monitored !== false} />{movie.title}<span className="muted">{movie.year}</span></Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><QbitStatusBadge status={movie.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}<td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td><Icon name="chevron" size={15} /></td></tr>)}{rows.after}</tbody></table></Panel>
-}
-
-function MovieBulkContextMenu({ position, count, profiles, tags, busy, onRun, onCreateTag, onClear }: { position: { x: number; y: number }; count: number; profiles: QualityProfile[]; tags: Tag[]; busy: boolean; onRun: (action: Parameters<typeof moviesApi.bulkMovies>[0]['action'], options?: { profileId?: string | null; tagIds?: string[] }) => Promise<void>; onCreateTag: (name: string) => Promise<Tag>; onClear: () => void }) {
-  const plexAvailable = usePlexAvailable()
-  const [profileId, setProfileId] = useState('')
-  const [tagId, setTagId] = useState('')
-  const [newTag, setNewTag] = useState('')
-  const [localMessage, setLocalMessage] = useState('')
-  const left = Math.max(12, Math.min(position.x, window.innerWidth - 340))
-  const top = Math.max(12, Math.min(position.y, window.innerHeight - 540))
-  const create = async () => {
-    if (!newTag.trim()) return
-    try { const row = await onCreateTag(newTag.trim()); setTagId(row.id); setNewTag(''); setLocalMessage(`Created ${row.name}.`) }
-    catch (reason) { setLocalMessage(reason instanceof Error ? reason.message : 'Could not create tag.') }
-  }
-  return <div className="bulk-context-menu" style={{ left, top }} onClick={(event) => event.stopPropagation()}>
-    <div className="bulk-context-head"><div><div className="eyebrow">BULK MOVIE ACTIONS</div><strong>{count} selected</strong></div><button className="icon-button" onClick={onClear} aria-label="Clear selection"><Icon name="close" size={14} /></button></div>
-    <div className="context-action-grid"><button onClick={() => void onRun('monitor')} disabled={busy}><Icon name="check" size={14} />Monitor</button><button onClick={() => void onRun('unmonitor')} disabled={busy}><Icon name="pause" size={14} />Unmonitor</button>{plexAvailable && <button onClick={() => void onRun('recheck_plex')} disabled={busy}><Icon name="refresh" size={14} />Recheck Plex</button>}<button onClick={() => void onRun('reevaluate_parser')} disabled={busy}><Icon name="activity" size={14} />Re-evaluate parser</button><button onClick={() => void onRun('reevaluate_custom_formats')} disabled={busy}><Icon name="sliders" size={14} />Re-evaluate CFs</button></div>
-    <div className="context-section"><span className="field-label">Quality Profile</span><div className="context-inline"><Select value={profileId} onChange={(event) => setProfileId(event.target.value)}><option value="">{defaultProfileLabel(profiles)}</option>{profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select><Button variant="ghost" disabled={busy} onClick={() => void onRun('change_profile', { profileId: profileId || null })}>Apply</Button></div><small>Per-title score/minimum overrides are preserved.</small></div>
-    <div className="context-section"><span className="field-label">Tags</span><div className="context-inline"><Select value={tagId} onChange={(event) => setTagId(event.target.value)}><option value="">Choose tag…</option>{tags.map((tag) => <option value={tag.id} key={tag.id}>{tag.name}</option>)}</Select></div><div className="context-inline"><Button variant="ghost" disabled={busy || !tagId} onClick={() => void onRun('add_tags', { tagIds: [tagId] })}>Add</Button><Button variant="ghost" disabled={busy || !tagId} onClick={() => void onRun('remove_tags', { tagIds: [tagId] })}>Remove</Button></div><div className="context-inline"><Input value={newTag} onChange={(event) => setNewTag(event.target.value)} placeholder="New tag…" onKeyDown={(event) => { if (event.key === 'Enter') void create() }} /><Button variant="ghost" disabled={!newTag.trim()} onClick={() => void create()}>Create</Button></div></div>
-    {localMessage && <small className="context-message">{localMessage}</small>}
-    <div className="context-foot">Shift-click selects a range; Ctrl/Cmd+A selects every movie shown, Escape clears.</div>
-  </div>
 }
 
 function releaseStateHelp(state: ReleaseState): string {

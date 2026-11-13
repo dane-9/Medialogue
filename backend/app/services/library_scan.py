@@ -163,7 +163,8 @@ async def execute_storage_root_scan(
             if root.media_type == MediaType.SHOWS
             else await reconcile_movie_directory(db, root, observation)
         )
-        summary[result] += 1
+        if result in summary:
+            summary[result] += 1
         progress = {"current": index, "total": total, "percent": round(index * 100 / total, 1) if total else 100, "stage": "checking_folders"}
         await update_job(
             db,

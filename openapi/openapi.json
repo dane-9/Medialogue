@@ -4098,6 +4098,51 @@
         "title": "IdentityState",
         "type": "string"
       },
+      "IgnoredFolderItem": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "resolved_path": {
+            "title": "Resolved Path",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "resolved_path",
+          "media_type",
+          "title",
+          "created_at"
+        ],
+        "title": "IgnoredFolderItem",
+        "type": "object"
+      },
       "IndexerCreate": {
         "properties": {
           "api_key": {
@@ -5083,6 +5128,66 @@
           "removed_at"
         ],
         "title": "LibraryHistoryItem",
+        "type": "object"
+      },
+      "LibraryRemovePlanRequest": {
+        "properties": {
+          "movie_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Movie Ids",
+            "type": "array"
+          },
+          "show_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Show Ids",
+            "type": "array"
+          }
+        },
+        "title": "LibraryRemovePlanRequest",
+        "type": "object"
+      },
+      "LibraryRemoveRequest": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "forget",
+              "replace",
+              "keep_files"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "movie_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Movie Ids",
+            "type": "array"
+          },
+          "show_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Show Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "LibraryRemoveRequest",
         "type": "object"
       },
       "LibrarySummary": {
@@ -18432,6 +18537,160 @@
           }
         },
         "summary": "Library History",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/v1/library/ignored-folders": {
+      "get": {
+        "description": "Folders scans skip because their title was removed with the files kept.",
+        "operationId": "list_ignored_folders_api_v1_library_ignored_folders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IgnoredFolderItem"
+                  },
+                  "title": "Response List Ignored Folders Api V1 Library Ignored Folders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Ignored Folders",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/v1/library/ignored-folders/{folder_id}": {
+      "delete": {
+        "description": "Let scans pick the folder up again; the next scan of its media folder adds it.",
+        "operationId": "stop_ignoring_folder_api_v1_library_ignored_folders__folder_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Ignoring Folder",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/v1/library/remove": {
+      "post": {
+        "description": "Remove movies or shows: with their files and torrents, or keeping the files.",
+        "operationId": "remove_from_library_api_v1_library_remove_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryRemoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadDeletePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove From Library",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/v1/library/remove-plan": {
+      "post": {
+        "description": "What removing these movies or shows would delete, for the user to confirm.",
+        "operationId": "plan_library_remove_api_v1_library_remove_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryRemovePlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadDeletePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Library Remove",
         "tags": [
           "library"
         ]
