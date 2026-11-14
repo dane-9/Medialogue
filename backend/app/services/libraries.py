@@ -86,11 +86,30 @@ async def titles_in_root(db: AsyncSession, root_id: UUID) -> tuple[set[UUID], se
 
 
 async def directory_library_id(db: AsyncSession, directory: MediaDirectory) -> UUID | None:
-    """The library a title first found in ``directory`` belongs to: its folder's."""
+    """The library a title first found in ``directory`` belongs to: its folder's.
+
+    A directory no longer linked to a folder gets None (the default library).
+    A folder in no library is invisible, so no title is added from it.
+    """
 
     if directory.storage_root_id is None:
         return None
-    return await db.scalar(select(StorageRoot.library_id).where(StorageRoot.id == directory.storage_root_id))
+    root = await db.get(StorageRoot, directory.storage_root_id)
+    if root is None:
+        return None
+    return root_library_id(root)
+
+
+def root_library_id(root: StorageRoot) -> UUID:
+    """``root``'s library; refused when the folder is in none."""
+
+    if root.library_id is None:
+        raise AppError(
+            "STORAGE_ROOT_NOT_IN_LIBRARY",
+            f"{root.name} is not in a library. Add it to one first.",
+            status_code=409,
+        )
+    return root.library_id
 
 
 async def note_title_in_other_library(db: AsyncSession, title: Movie | Show, directory: MediaDirectory) -> None:
@@ -99,7 +118,9 @@ async def note_title_in_other_library(db: AsyncSession, title: Movie | Show, dir
     A title's library is set once, when it is created; scans never move it.
     """
 
-    library_id = await directory_library_id(db, directory)
+    if directory.storage_root_id is None:
+        return
+    library_id = await db.scalar(select(StorageRoot.library_id).where(StorageRoot.id == directory.storage_root_id))
     if library_id is not None and title.library_id is not None and library_id != title.library_id:
         logger.warning(
             "title found in another library's media folder",

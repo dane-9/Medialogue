@@ -79,6 +79,7 @@ async def add_movie_from_tmdb(
     monitored: bool = True,
     client_factory=None,
     api_key: str | None = None,
+    library_id: UUID | None = None,
 ) -> Movie:
     """Create a library Movie from a TMDB id.
 
@@ -110,4 +111,5 @@ async def add_movie_from_tmdb(
         poster_ref=metadata.poster_path,
         original_language=metadata.original_language,
         monitored=monitored,
+        library_id=library_id,
     )

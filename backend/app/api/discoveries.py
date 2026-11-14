@@ -49,6 +49,7 @@ from app.schemas.discoveries import (
     MediaDiscoverySelection,
 )
 from app.services.discoveries import DISCOVERY_CANDIDATE_LIMIT
+from app.services.libraries import root_library_id
 from app.services.movies import add_movie_from_tmdb
 from app.services.qbittorrent import reprocess_torrents_at
 from app.services.reconciliation import prefetch_plex_snapshot, reconcile_movie_directory
@@ -449,6 +450,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
     root = directory.storage_root
     if root is None:
         raise AppError("DISCOVERY_UNLINKED", "Reconnect this directory to a media folder before adding it.", status_code=409)
+    library_id = root_library_id(root)
     if not directory.exists:
         raise AppError("DISCOVERY_MISSING", "This directory is no longer present on disk.", status_code=409)
     if discovery.selected_tmdb_id is None:
@@ -474,6 +476,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
                     monitored=True,
                     client_factory=client_factory,
                     api_key=configuration.api_key,
+                    library_id=library_id,
                 )
             except Exception as exc:
                 await db.rollback()
@@ -497,6 +500,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
                     discovery.selected_tmdb_id,
                     monitored=True,
                     client_factory=client_factory,
+                    library_id=library_id,
                 )
             except Exception as exc:
                 await db.rollback()

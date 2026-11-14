@@ -39,6 +39,28 @@ async def _ordered(db: AsyncSession) -> list[Library]:
     return list((await db.scalars(select(Library).order_by(Library.sort_order, Library.name))).all())
 
 
+async def _ensure_name_free(db: AsyncSession, name: str, library_id: UUID | None = None) -> None:
+    query = select(Library.id).where(func.lower(Library.name) == name.lower())
+    if library_id is not None:
+        query = query.where(Library.id != library_id)
+    if await db.scalar(query.limit(1)) is not None:
+        raise AppError("LIBRARY_EXISTS", "A library with this name already exists.", status_code=409)
+
+
+async def _ensure_not_last_of_kind(db: AsyncSession, library: Library, action: str) -> None:
+    # Titles added without a folder (an unattached grab, a show added by TMDB
+    # id) go to the first library of their type, so one has to remain.
+    others = await db.scalar(
+        select(func.count()).select_from(Library).where(Library.kind == library.kind, Library.id != library.id)
+    )
+    if not others:
+        raise AppError(
+            "LIBRARY_LAST_OF_KIND",
+            f"{library.name} is the only {library.kind.value} library. Add another before {action}.",
+            status_code=409,
+        )
+
+
 async def _commit_named(db: AsyncSession) -> None:
     try:
         await db.commit()
@@ -58,6 +80,7 @@ async def create_library(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> LibraryResponse:
+    await _ensure_name_free(db, payload.name)
     library = Library(
         name=payload.name,
         kind=MediaType(payload.kind.value),
@@ -106,6 +129,7 @@ async def update_library(
 ) -> LibraryResponse:
     library = await get_library(db, library_id)
     if payload.name is not None:
+        await _ensure_name_free(db, payload.name, library.id)
         library.name = payload.name
     if payload.kind is not None and MediaType(payload.kind.value) != library.kind:
         if await library_folder_count(db, library.id) or await library_title_count(db, library):
@@ -114,6 +138,7 @@ async def update_library(
                 f"{library.name} has media folders or titles, so its type cannot change.",
                 status_code=409,
             )
+        await _ensure_not_last_of_kind(db, library, "changing its type")
         library.kind = MediaType(payload.kind.value)
     await _commit_named(db)
     return await _response(db, library)
@@ -135,6 +160,7 @@ async def delete_library(
             f"{library.name} still has {' and '.join(parts)}. Move or remove them first.",
             status_code=409,
         )
+    await _ensure_not_last_of_kind(db, library, "deleting it")
     await db.delete(library)
     await db.commit()
     return DeleteResponse(id=library_id)

@@ -1109,3 +1109,43 @@ def test_adding_runs_as_one_background_job_that_a_second_request_reuses(client: 
     assert job["status"] == "completed" and job["summary"]["added"] == 2 and job["progress"]["current"] == 2
     assert client.get("/api/v1/discoveries/count").json()["count"] == 0
     assert client.get("/api/v1/discoveries/add-job").json() is None
+
+
+def test_approved_new_media_joins_the_library_of_its_folder(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    cartoons = client.post("/api/v1/libraries", headers=headers, json={"name": "Cartoon Movies", "kind": "movies"}).json()
+    root = tmp_path / "cartoons"
+    (root / "Dune.2021.2160p.UHD.BluRay").mkdir(parents=True)
+    (root / "Dune.2021.2160p.UHD.BluRay" / "Dune.2021.2160p.mkv").write_bytes(b"movie")
+    created = client.post("/api/v1/storage-roots", headers=headers, json={
+        "name": "Cartoons", "path": str(root), "media_type": "movies", "discovery_mode": "review",
+        "library_id": cartoons["id"],
+    })
+    assert created.status_code == 201, created.text
+    scan(client, headers, created.json()["id"])
+    item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
+
+    approved = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [item["id"]], "action": "approve"})
+    assert approved.status_code == 200, approved.text
+    counts = {library["name"]: library["title_count"] for library in client.get("/api/v1/libraries").json()}
+    assert counts["Cartoon Movies"] == 1 and counts["Movies"] == 0
+
+
+def test_new_media_in_a_folder_outside_every_library_is_not_added(client: TestClient, tmp_path: Path) -> None:
+    headers = login(client)
+    configure_tmdb(client, headers)
+    root = tmp_path / "movies"
+    (root / "Dune.2021.2160p.UHD.BluRay").mkdir(parents=True)
+    (root / "Dune.2021.2160p.UHD.BluRay" / "Dune.2021.2160p.mkv").write_bytes(b"movie")
+    storage = create_root(client, headers, root, "movies")
+    scan(client, headers, storage["id"])
+    item = client.get("/api/v1/discoveries?page_size=250").json()["items"][0]
+    movies = next(library for library in client.get("/api/v1/libraries").json() if library["name"] == "Movies")
+    left = client.put(f"/api/v1/libraries/{movies['id']}/folders", headers=headers, json={"storage_root_ids": []})
+    assert left.status_code == 200, left.text
+
+    response = client.post("/api/v1/discoveries/bulk", headers=headers, json={"ids": [item["id"]], "action": "approve"})
+    assert response.status_code == 200, response.text
+    assert [failure["code"] for failure in response.json()["failed"]] == ["STORAGE_ROOT_NOT_IN_LIBRARY"]
+    assert client.get("/api/v1/movies").json()["total"] == 0

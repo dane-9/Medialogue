@@ -225,3 +225,26 @@ def test_libraries_reorder(client):
     assert response.status_code == 200, response.text
     assert [item["name"] for item in response.json()] == ["Cartoon Movies", "Movies", "Shows"]
     assert list(libraries(client)) == ["Cartoon Movies", "Movies", "Shows"]
+
+
+def test_the_last_library_of_a_type_stays(client):
+    headers = login(client)
+    shows = libraries(client)["Shows"]
+    refused = client.delete(f"/api/v1/libraries/{shows['id']}", headers=headers)
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "LIBRARY_LAST_OF_KIND"
+    retyped = client.patch(f"/api/v1/libraries/{shows['id']}", headers=headers, json={"kind": "movies"})
+    assert retyped.status_code == 409
+    assert retyped.json()["error"]["code"] == "LIBRARY_LAST_OF_KIND"
+
+    create_library(client, headers, "Cartoon Shows", kind="shows")
+    assert client.delete(f"/api/v1/libraries/{shows['id']}", headers=headers).status_code == 200
+
+
+def test_library_names_are_unique_whatever_their_case(client):
+    headers = login(client)
+    assert client.post("/api/v1/libraries", headers=headers, json={"name": "movies", "kind": "movies"}).status_code == 409
+    cartoons = create_library(client, headers, "Cartoons")
+    renamed = client.patch(f"/api/v1/libraries/{cartoons['id']}", headers=headers, json={"name": "SHOWS"})
+    assert renamed.status_code == 409
+    assert client.patch(f"/api/v1/libraries/{cartoons['id']}", headers=headers, json={"name": "CARTOONS"}).status_code == 200
