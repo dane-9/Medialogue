@@ -12,8 +12,9 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, and_, event, select, text
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import JSON, Uuid
 
@@ -189,15 +190,83 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
+class Library(TimestampMixin, Base):
+    """A named group of media folders of one kind, shown as its own sidebar entry.
+
+    Like a Plex library: a folder belongs to at most one library, and a folder
+    in none is treated as if Medialogue did not know it. Every title belongs to
+    exactly one library.
+    """
+
+    __tablename__ = "libraries"
+    __table_args__ = (UniqueConstraint("name", name="uq_libraries_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    kind: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+DEFAULT_LIBRARIES = (("Movies", MediaType.MOVIES), ("Shows", MediaType.SHOWS))
+
+
+@event.listens_for(Library.__table__, "after_create")
+def _create_default_libraries(target, connection, **_: Any) -> None:
+    # A new database starts with one library of each kind, so a user who never
+    # makes a library of their own works exactly as before libraries existed.
+    # Offline SQL generation has no real connection; migration 0008 writes
+    # the rows there.
+    from sqlalchemy.engine.mock import MockConnection
+
+    if isinstance(connection, MockConnection):
+        return
+    now = utcnow()
+    connection.execute(
+        target.insert(),
+        [
+            {"id": uuid.uuid4(), "name": name, "kind": kind, "sort_order": index, "created_at": now, "updated_at": now}
+            for index, (name, kind) in enumerate(DEFAULT_LIBRARIES)
+        ],
+    )
+
+
+def _first_library_of(kind: MediaType | str | None, connection: Any) -> uuid.UUID | None:
+    if kind is None:
+        return None
+    if not isinstance(kind, MediaType):
+        kind = MediaType[kind] if kind in MediaType.__members__ else MediaType(kind)
+    return connection.execute(
+        select(Library.id).where(Library.kind == kind).order_by(Library.sort_order, Library.name).limit(1)
+    ).scalar()
+
+
+def _default_library(kind: MediaType):
+    """Column default: the first library of ``kind``.
+
+    Code that knows where a title belongs sets its library; this only covers a
+    caller that says nothing, the same way an API caller that omits a value
+    gets the default.
+    """
+
+    def default(context: Any) -> uuid.UUID | None:
+        return _first_library_of(kind, context.connection)
+
+    return default
+
+
 class Movie(TimestampMixin, Base):
     __tablename__ = "movies"
     __table_args__ = (
         UniqueConstraint("tmdb_id", name="uq_movies_tmdb_id"),
         Index("ix_movies_tmdb_id", "tmdb_id"),
         Index("ix_movies_state", "identity_state"),
+        Index("ix_movies_library", "library_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    library_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("libraries.id", ondelete="RESTRICT"), nullable=False, default=_default_library(MediaType.MOVIES)
+    )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     sort_title: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     year: Mapped[int | None] = mapped_column(Integer)
@@ -265,9 +334,13 @@ class Show(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("tmdb_id", name="uq_shows_tmdb_id"),
         Index("ix_shows_tmdb_id", "tmdb_id"),
+        Index("ix_shows_library", "library_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    library_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("libraries.id", ondelete="RESTRICT"), nullable=False, default=_default_library(MediaType.SHOWS)
+    )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     year: Mapped[int | None] = mapped_column(Integer)
     tmdb_id: Mapped[int | None] = mapped_column()
@@ -358,12 +431,23 @@ class ShowRelease(TimestampMixin, Base):
 
 class StorageRoot(TimestampMixin, Base):
     __tablename__ = "storage_roots"
-    __table_args__ = (UniqueConstraint("name", name="uq_storage_roots_name"), Index("ix_storage_roots_path", "resolved_root_path"))
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_storage_roots_name"),
+        Index("ix_storage_roots_path", "resolved_root_path"),
+        Index("ix_storage_roots_library", "library_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     resolved_root_path: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False)
+    #: The library this folder belongs to. None: the folder is in no library and
+    #: Medialogue treats it as if it did not exist (not scanned, watched,
+    #: health-checked or matched). A caller that does not say gets the first
+    #: library of the folder's media type; set None explicitly for none.
+    library_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("libraries.id", ondelete="RESTRICT"))
+    #: qBittorrent category whose save path downloads into this folder.
+    category: Mapped[str | None] = mapped_column(String(256))
     access_mode: Mapped[AccessMode] = mapped_column(SAEnum(AccessMode, native_enum=False), default=AccessMode.READ_ONLY, nullable=False)
     #: What a scan does with media it has never seen. The API defaults to adding
     #: it, which is what a caller that says nothing means; the UI offers New Media
@@ -381,6 +465,30 @@ class StorageRoot(TimestampMixin, Base):
 
     directories: Mapped[list["MediaDirectory"]] = relationship(back_populates="storage_root")
     mappings: Mapped[list["RemotePathMapping"]] = relationship(back_populates="storage_root")
+
+    @hybrid_property
+    def active(self) -> bool:
+        """Enabled and in a library: the folders Medialogue looks at."""
+        return bool(self.enabled) and self.library_id is not None
+
+    @active.inplace.expression
+    @classmethod
+    def _active_expression(cls):
+        return and_(cls.enabled.is_(True), cls.library_id.is_not(None))
+
+
+@event.listens_for(StorageRoot, "init")
+def _note_unstated_library(target: StorageRoot, args: tuple, kwargs: dict[str, Any]) -> None:
+    # A column default cannot tell "not given" from an explicit None, and only
+    # the first means "the default library".
+    if "library_id" not in kwargs:
+        target._library_unstated = True
+
+
+@event.listens_for(StorageRoot, "before_insert")
+def _default_root_library(_mapper: Any, connection: Any, target: StorageRoot) -> None:
+    if target.library_id is None and getattr(target, "_library_unstated", False):
+        target.library_id = _first_library_of(target.media_type, connection)
 
 
 class MediaDiscovery(TimestampMixin, Base):

@@ -297,7 +297,7 @@ async def finalize_completed_torrent(
     # Prefix-safe root lookup is done in Python so `/movies-evil` never
     # matches `/movies`.  This query also works for mapped nested paths.
     roots = (await db.scalars(select(StorageRoot).where(
-        StorageRoot.enabled.is_(True),
+        StorageRoot.active,
         StorageRoot.last_scan_at.is_not(None),
         StorageRoot.media_type == MediaType.MOVIES,
     ))).all()
@@ -388,7 +388,7 @@ async def _finalize_completed_show_torrent(
     roots = (
         await db.scalars(
             select(StorageRoot).where(
-                StorageRoot.enabled.is_(True),
+                StorageRoot.active,
                 StorageRoot.last_scan_at.is_not(None),
                 StorageRoot.media_type == MediaType.SHOWS,
             )

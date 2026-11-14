@@ -1366,6 +1366,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Libraries */
+        get: operations["list_libraries_api_v1_libraries_get"];
+        put?: never;
+        /** Create Library */
+        post: operations["create_library_api_v1_libraries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Libraries
+         * @description Persist a hand-dragged sidebar order. Libraries left out keep their
+         *     relative order after the ones given.
+         */
+        post: operations["reorder_libraries_api_v1_libraries_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Library Detail */
+        get: operations["get_library_detail_api_v1_libraries__library_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Library */
+        delete: operations["delete_library_api_v1_libraries__library_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Library */
+        patch: operations["update_library_api_v1_libraries__library_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Library Folders
+         * @description Make exactly these media folders the library's. All or nothing.
+         */
+        put: operations["set_library_folders_api_v1_libraries__library_id__folders_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Library
+         * @description Scan every enabled media folder in the library.
+         */
+        post: operations["scan_library_api_v1_libraries__library_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/history": {
         parameters: {
             query?: never;
@@ -4741,6 +4839,21 @@ export interface components {
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
+        /** LibraryCreate */
+        LibraryCreate: {
+            kind: components["schemas"]["MediaType"];
+            /** Name */
+            name: string;
+        };
+        /**
+         * LibraryFolders
+         * @description Every media folder that should be in the library. Folders in it now and
+         *     not listed leave it; listed folders in another library move here.
+         */
+        LibraryFolders: {
+            /** Storage Root Ids */
+            storage_root_ids?: string[];
+        };
         /** LibraryHistoryItem */
         LibraryHistoryItem: {
             /**
@@ -4793,6 +4906,52 @@ export interface components {
             show_ids?: string[];
         };
         /**
+         * LibraryReorder
+         * @description Ids in the order the sidebar should show them, top first.
+         */
+        LibraryReorder: {
+            /** Ids */
+            ids: string[];
+        };
+        /** LibraryResponse */
+        LibraryResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Folder Count
+             * @default 0
+             */
+            folder_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["MediaType"];
+            /** Name */
+            name: string;
+            /** Sort Order */
+            sort_order: number;
+            /**
+             * Title Count
+             * @default 0
+             */
+            title_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** LibraryScanResponse */
+        LibraryScanResponse: {
+            /** Job Ids */
+            job_ids: string[];
+        };
+        /**
          * LibrarySummary
          * @description Counts the Media Folders page needs to explain the library's state.
          */
@@ -4812,6 +4971,12 @@ export interface components {
              * @default 0
              */
             unlinked_directories: number;
+        };
+        /** LibraryUpdate */
+        LibraryUpdate: {
+            kind?: components["schemas"]["MediaType"] | null;
+            /** Name */
+            name?: string | null;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -7009,6 +7174,8 @@ export interface components {
         StorageRootCreate: {
             /** @default read_only */
             access_mode: components["schemas"]["AccessMode"];
+            /** Category */
+            category?: string | null;
             /** @default automatic */
             discovery_mode: components["schemas"]["DiscoveryMode"];
             /**
@@ -7016,6 +7183,8 @@ export interface components {
              * @default true
              */
             enabled: boolean;
+            /** Library Id */
+            library_id?: string | null;
             media_type: components["schemas"]["MediaType"];
             /**
              * Missing Grace Checks
@@ -7060,6 +7229,8 @@ export interface components {
              * @default 0
              */
             affected_media_count: number;
+            /** Category */
+            category: string | null;
             /**
              * Created At
              * Format: date-time
@@ -7079,6 +7250,10 @@ export interface components {
             last_health_checked_at: string | null;
             /** Last Scan At */
             last_scan_at: string | null;
+            /** Library Id */
+            library_id: string | null;
+            /** Library Name */
+            library_name?: string | null;
             /**
              * Media Count
              * @default 0
@@ -7149,9 +7324,13 @@ export interface components {
         /** StorageRootUpdate */
         StorageRootUpdate: {
             access_mode?: components["schemas"]["AccessMode"] | null;
+            /** Category */
+            category?: string | null;
             discovery_mode?: components["schemas"]["DiscoveryMode"] | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Library Id */
+            library_id?: string | null;
             media_type?: components["schemas"]["MediaType"] | null;
             /** Missing Grace Checks */
             missing_grace_checks?: number | null;
@@ -10565,6 +10744,255 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_libraries_api_v1_libraries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryResponse"][];
+                };
+            };
+        };
+    };
+    create_library_api_v1_libraries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_libraries_api_v1_libraries_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_library_detail_api_v1_libraries__library_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_library_api_v1_libraries__library_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_library_api_v1_libraries__library_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_library_folders_api_v1_libraries__library_id__folders_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryFolders"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_library_api_v1_libraries__library_id__scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryScanResponse"];
                 };
             };
             /** @description Validation Error */

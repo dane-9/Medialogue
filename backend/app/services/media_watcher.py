@@ -85,7 +85,7 @@ async def _watched_roots() -> dict[UUID, Path]:
     async with db_session.async_session_factory() as db:
         rows = (
             await db.scalars(
-                select(StorageRoot).where(StorageRoot.enabled.is_(True), StorageRoot.last_scan_at.is_not(None))
+                select(StorageRoot).where(StorageRoot.active, StorageRoot.last_scan_at.is_not(None))
             )
         ).all()
     roots: dict[UUID, Path] = {}
@@ -111,7 +111,7 @@ async def refresh_media_folder(root_id: UUID, folder: str) -> bool:
 
     async with db_session.async_session_factory() as db:
         root = await db.get(StorageRoot, root_id)
-        if root is None or not root.enabled:
+        if root is None or not root.active:
             return False
         if await active_storage_root_scan_job(db, root.id) is not None:
             # The running scan covers this folder; look again after it.

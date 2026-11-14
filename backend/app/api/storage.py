@@ -14,7 +14,7 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.integrations.filesystem import folder_writable
 from app.models.auth import AdminUser
-from app.models.domain import AccessMode, DiscoveryMode, Episode, EpisodeMediaMap, MediaDirectory, MediaFile, MediaType, Movie, MovieRelease, Problem, Season, RemotePathMapping, Show, ShowRelease, StorageRoot
+from app.models.domain import AccessMode, DiscoveryMode, Episode, Library, MediaDirectory, MediaFile, MediaType, Movie, MovieRelease, Problem, RemotePathMapping, Show, ShowRelease, StorageRoot
 from app.schemas.common import Collection, DeleteResponse
 from app.schemas.jobs import JobAcceptedResponse
 from app.services.media_watcher import watch_state
@@ -32,6 +32,7 @@ from app.schemas.storage import (
     StorageRootUpdate,
 )
 from app.services.jobs import create_job, publish_job_status
+from app.services.libraries import assign_root, get_library, movie_ids_in, show_ids_in
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.scheduler import request_health_sweep
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
@@ -132,6 +133,7 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
         )
         or 0
     )
+    library = await db.get(Library, root.library_id) if root.library_id is not None else None
     job = await active_storage_root_scan_job(db, root.id)
     scan = None
     if job is not None:
@@ -152,6 +154,7 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
             "scanning": job is not None,
             "scan": scan,
             "watch_state": watch_state(root.id),
+            "library_name": library.name if library is not None else None,
         }
     )
 
@@ -246,7 +249,7 @@ async def check_storage_root_health(
     """
     roots = (await db.scalars(select(StorageRoot).order_by(StorageRoot.sort_order, StorageRoot.name))).all()
     for root in roots:
-        if not root.enabled:
+        if not root.active:
             continue
         reachable = False
         try:
@@ -330,10 +333,27 @@ async def create_storage_root(
     db: AsyncSession = Depends(get_db),
 ) -> StorageRootResponse:
     _reject_read_only_mount(_resolved_path(payload.path), AccessMode(payload.access_mode.value))
+    media_type = MediaType(payload.media_type.value)
+    if "library_id" in payload.model_fields_set:
+        library = await get_library(db, payload.library_id) if payload.library_id is not None else None
+    else:
+        # A caller that does not say gets the first library of this media type;
+        # the UI always says, and may choose none.
+        library = await db.scalar(
+            select(Library).where(Library.kind == media_type).order_by(Library.sort_order, Library.name).limit(1)
+        )
+    if library is not None and library.kind != media_type:
+        raise AppError(
+            "LIBRARY_KIND_MISMATCH",
+            f"{library.name} is a {library.kind.value} library, so it cannot hold a {media_type.value} folder.",
+            status_code=409,
+        )
     root = StorageRoot(
         name=payload.name,
         resolved_root_path=_resolved_path(payload.path),
-        media_type=MediaType(payload.media_type.value),
+        media_type=media_type,
+        library_id=library.id if library is not None else None,
+        category=payload.category,
         access_mode=AccessMode(payload.access_mode.value),
         discovery_mode=DiscoveryMode(payload.discovery_mode.value),
         enabled=payload.enabled,
@@ -403,10 +423,20 @@ async def update_storage_root(
     if root is None:
         raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
     values = payload.model_dump(exclude_unset=True)
+    library_change = "library_id" in values
+    library_id = values.pop("library_id", None)
     if "path" in values:
         values["resolved_root_path"] = _resolved_path(values.pop("path"))
     if "media_type" in values:
         values["media_type"] = MediaType(values["media_type"])
+    target_library_id = library_id if library_change else root.library_id
+    target_library = await get_library(db, target_library_id) if target_library_id is not None else None
+    if target_library is not None and target_library.kind != values.get("media_type", root.media_type):
+        raise AppError(
+            "LIBRARY_KIND_MISMATCH",
+            f"{target_library.name} is a {target_library.kind.value} library, so this folder's media type must match it.",
+            status_code=409,
+        )
     if "access_mode" in values:
         values["access_mode"] = AccessMode(values["access_mode"])
     if "discovery_mode" in values:
@@ -415,16 +445,19 @@ async def update_storage_root(
         values.get("resolved_root_path", root.resolved_root_path) != root.resolved_root_path
         or values.get("media_type", root.media_type) != root.media_type
     )
-    if scan_identity_changed and await active_storage_root_scan_job(db, root.id) is not None:
+    moving = library_change and library_id != root.library_id
+    if (scan_identity_changed or moving) and await active_storage_root_scan_job(db, root.id) is not None:
         raise AppError(
             "STORAGE_ROOT_SCANNING",
-            "Wait for the current scan to finish before changing this root's path or media type.",
+            "Wait for the current scan to finish before changing this folder's path, media type or library.",
             status_code=409,
         )
     _reject_read_only_mount(values.get("resolved_root_path", root.resolved_root_path),
                             values.get("access_mode", root.access_mode))
     for key, value in values.items():
         setattr(root, key, value)
+    if library_change:
+        await assign_root(db, root, target_library)
     if scan_identity_changed:
         root.last_scan_at = None
     await request_health_sweep(db)
@@ -434,54 +467,6 @@ async def update_storage_root(
         await db.rollback()
         raise AppError("STORAGE_ROOT_EXISTS", "A media folder with this name already exists.", status_code=409) from exc
     return await _root_response(db, root)
-
-
-async def _show_ids_in(db: AsyncSession, condition) -> set[UUID]:
-    """Shows that have a directory matching ``condition``.
-
-    A show reaches its directory by two different routes and both have to be
-    followed. A scan of a show folder records the folder, the files inside it,
-    and an episode match per file, so the link runs
-    directory -> file -> episode map -> season -> show. Only a season pack that
-    was matched as a whole also sets MediaDirectory.show_release_id, so looking
-    at the release link alone finds nothing for an ordinary scanned library.
-    """
-    ids: set[UUID] = set()
-    ids.update(
-        (
-            await db.scalars(
-                select(ShowRelease.show_id)
-                .join(MediaDirectory, MediaDirectory.show_release_id == ShowRelease.id)
-                .where(condition)
-            )
-        ).all()
-    )
-    ids.update(
-        (
-            await db.scalars(
-                select(Season.show_id)
-                .join(Episode, Episode.season_id == Season.id)
-                .join(EpisodeMediaMap, EpisodeMediaMap.episode_id == Episode.id)
-                .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
-                .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
-                .where(condition)
-            )
-        ).all()
-    )
-    return ids
-
-
-async def _movie_ids_in(db: AsyncSession, condition) -> set[UUID]:
-    """Movies that have a directory matching ``condition``."""
-    return set(
-        (
-            await db.scalars(
-                select(MovieRelease.movie_id)
-                .join(MediaDirectory, MediaDirectory.movie_release_id == MovieRelease.id)
-                .where(condition)
-            )
-        ).all()
-    )
 
 
 async def _remove_entries_under(db: AsyncSession, root: StorageRoot) -> None:
@@ -500,8 +485,8 @@ async def _remove_entries_under(db: AsyncSession, root: StorageRoot) -> None:
         MediaDirectory.storage_root_id != root.id,
     )
 
-    movie_ids = await _movie_ids_in(db, here) - await _movie_ids_in(db, elsewhere)
-    show_ids = await _show_ids_in(db, here) - await _show_ids_in(db, elsewhere)
+    movie_ids = await movie_ids_in(db, here) - await movie_ids_in(db, elsewhere)
+    show_ids = await show_ids_in(db, here) - await show_ids_in(db, elsewhere)
     movie_release_ids = set(
         (await db.scalars(select(MovieRelease.id).where(MovieRelease.movie_id.in_(movie_ids)))).all()
     ) if movie_ids else set()
@@ -602,6 +587,12 @@ async def scan_storage_root(
         raise AppError("NOT_FOUND", "Media folder was not found.", status_code=404)
     if not root.enabled:
         raise AppError("STORAGE_ROOT_DISABLED", "Media folder is disabled.", status_code=409)
+    if root.library_id is None:
+        raise AppError(
+            "STORAGE_ROOT_NOT_IN_LIBRARY",
+            f"{root.name} is not in a library. Add it to one before scanning.",
+            status_code=409,
+        )
     configuration = await get_tmdb_configuration(db)
     if configuration is None or not configuration.enabled or not configuration.api_key:
         raise AppError(

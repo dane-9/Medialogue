@@ -154,7 +154,7 @@ async def run_known_media_verification(job_id: UUID) -> None:
         roots = (
             await db.scalars(
                 select(StorageRoot)
-                .where(StorageRoot.enabled.is_(True), StorageRoot.last_scan_at.is_not(None))
+                .where(StorageRoot.active, StorageRoot.last_scan_at.is_not(None))
                 .order_by(StorageRoot.sort_order, StorageRoot.name)
             )
         ).all()
@@ -204,7 +204,7 @@ async def run_full_media_folder_scan(job_id: UUID) -> None:
         roots = (
             await db.scalars(
                 select(StorageRoot)
-                .where(StorageRoot.enabled.is_(True), StorageRoot.last_scan_at.is_not(None))
+                .where(StorageRoot.active, StorageRoot.last_scan_at.is_not(None))
                 .order_by(StorageRoot.sort_order, StorageRoot.name)
             )
         ).all()

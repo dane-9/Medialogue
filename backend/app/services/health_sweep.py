@@ -71,7 +71,7 @@ async def run_integration_health_sweep(job_id) -> None:
         roots = (await db.scalars(select(StorageRoot).order_by(StorageRoot.name))).all()
         root_results: list[dict[str, object]] = []
         for root in roots:
-            if not root.enabled:
+            if not root.active:
                 skipped += 1
                 continue
             try:

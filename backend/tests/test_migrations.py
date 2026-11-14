@@ -74,6 +74,9 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
         "media_directories",
         } <= tables
     assert "media_discoveries" in tables
+    assert "libraries" in tables
+    assert {"library_id", "category"} <= storage_root_columns
+    assert "library_id" in movie_columns and "library_id" in show_columns
     assert "confirmation_nonces" in tables
     assert "release_blocklist" in tables
     assert "discovery_mode" in storage_root_columns
@@ -143,7 +146,7 @@ def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None
     assert [path.name for path in migrations] == [
         "0001_fresh_baseline.py", "0002_ui_selections.py", "0003_release_identity_confidence.py",
         "0004_upgrade_search_marks.py", "0005_remove_wrong_title_upgrades.py", "0006_indexer_tracker_hosts.py",
-        "0007_ignored_folders.py",
+        "0007_ignored_folders.py", "0008_libraries.py",
     ]
 
     baseline = migrations[0].read_text(encoding="utf-8")

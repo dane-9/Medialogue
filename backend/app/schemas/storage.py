@@ -23,6 +23,13 @@ class DiscoveryMode(str, Enum):
     REVIEW = "review"
 
 
+def _clean_category(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
 class StorageRootCreate(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     path: str = Field(min_length=1, max_length=4096)
@@ -31,6 +38,11 @@ class StorageRootCreate(BaseModel):
     discovery_mode: DiscoveryMode = DiscoveryMode.AUTOMATIC
     enabled: bool = True
     missing_grace_checks: int = Field(default=2, ge=1, le=100)
+    #: Omitted: the first library of this media type. None: in no library.
+    library_id: UUID | None = None
+    category: str | None = Field(default=None, max_length=256)
+
+    _category = field_validator("category")(_clean_category)
 
     @field_validator("path")
     @classmethod
@@ -50,6 +62,11 @@ class StorageRootUpdate(BaseModel):
     discovery_mode: DiscoveryMode | None = None
     enabled: bool | None = None
     missing_grace_checks: int | None = Field(default=None, ge=1, le=100)
+    #: None: take the folder out of its library.
+    library_id: UUID | None = None
+    category: str | None = Field(default=None, max_length=256)
+
+    _category = field_validator("category")(_clean_category)
 
     @field_validator("path")
     @classmethod
@@ -109,6 +126,9 @@ class StorageRootResponse(ORMModel):
     name: str
     resolved_root_path: str
     media_type: MediaType
+    library_id: UUID | None
+    library_name: str | None = None
+    category: str | None
     access_mode: AccessMode
     discovery_mode: DiscoveryMode
     enabled: bool

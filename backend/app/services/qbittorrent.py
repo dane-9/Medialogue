@@ -495,7 +495,7 @@ async def _poll_download_client(
     roots = (
         await db.scalars(
             select(StorageRoot).where(
-                StorageRoot.enabled.is_(True),
+                StorageRoot.active,
                 StorageRoot.last_scan_at.is_not(None),
                 StorageRoot.media_type == MediaType(client.scope.value),
             )

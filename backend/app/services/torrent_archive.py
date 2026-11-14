@@ -803,7 +803,7 @@ async def prepare_torrent_restore(
     resolved_save_path, _ = resolve_remote_path(save_path, mappings)
     roots = (
         await db.scalars(
-            select(StorageRoot).where(StorageRoot.enabled.is_(True), StorageRoot.media_type == client.scope)
+            select(StorageRoot).where(StorageRoot.active, StorageRoot.media_type == client.scope)
         )
     ).all()
     if not resolved_save_path or not any(_inside_restore_path(resolved_save_path, root.resolved_root_path) for root in roots):

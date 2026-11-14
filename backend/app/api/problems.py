@@ -210,7 +210,7 @@ async def _queue_root_rechecks(db: AsyncSession, root_ids: set[UUID]) -> tuple[l
     active_job_ids: list[UUID] = []
     for root_id in root_ids:
         root = await db.get(StorageRoot, root_id)
-        if root is None or not root.enabled:
+        if root is None or not root.active:
             continue
         existing = await active_storage_root_scan_job(db, root.id)
         if existing is not None:

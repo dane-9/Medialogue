@@ -5023,6 +5023,40 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "LibraryCreate": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "LibraryCreate",
+        "type": "object"
+      },
+      "LibraryFolders": {
+        "description": "Every media folder that should be in the library. Folders in it now and\nnot listed leave it; listed folders in another library move here.",
+        "properties": {
+          "storage_root_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Storage Root Ids",
+            "type": "array"
+          }
+        },
+        "title": "LibraryFolders",
+        "type": "object"
+      },
       "LibraryHistoryItem": {
         "properties": {
           "id": {
@@ -5190,6 +5224,92 @@
         "title": "LibraryRemoveRequest",
         "type": "object"
       },
+      "LibraryReorder": {
+        "description": "Ids in the order the sidebar should show them, top first.",
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "LibraryReorder",
+        "type": "object"
+      },
+      "LibraryResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "folder_count": {
+            "default": 0,
+            "title": "Folder Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title_count": {
+            "default": 0,
+            "title": "Title Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "sort_order",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LibraryResponse",
+        "type": "object"
+      },
+      "LibraryScanResponse": {
+        "properties": {
+          "job_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_ids"
+        ],
+        "title": "LibraryScanResponse",
+        "type": "object"
+      },
       "LibrarySummary": {
         "description": "Counts the Media Folders page needs to explain the library's state.",
         "properties": {
@@ -5210,6 +5330,35 @@
           }
         },
         "title": "LibrarySummary",
+        "type": "object"
+      },
+      "LibraryUpdate": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "LibraryUpdate",
         "type": "object"
       },
       "LoginRequest": {
@@ -11742,6 +11891,18 @@
             "$ref": "#/components/schemas/AccessMode",
             "default": "read_only"
           },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "discovery_mode": {
             "$ref": "#/components/schemas/DiscoveryMode",
             "default": "automatic"
@@ -11750,6 +11911,18 @@
             "default": true,
             "title": "Enabled",
             "type": "boolean"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
           },
           "media_type": {
             "$ref": "#/components/schemas/MediaType"
@@ -11852,6 +12025,17 @@
             "title": "Affected Media Count",
             "type": "integer"
           },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -11908,6 +12092,29 @@
               }
             ],
             "title": "Last Scan At"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
+          "library_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Name"
           },
           "media_count": {
             "default": 0,
@@ -11975,6 +12182,8 @@
           "name",
           "resolved_root_path",
           "media_type",
+          "library_id",
+          "category",
           "access_mode",
           "discovery_mode",
           "enabled",
@@ -12050,6 +12259,18 @@
               }
             ]
           },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "discovery_mode": {
             "anyOf": [
               {
@@ -12070,6 +12291,18 @@
               }
             ],
             "title": "Enabled"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
           },
           "media_type": {
             "anyOf": [
@@ -18493,6 +18726,349 @@
         "summary": "Cancel",
         "tags": [
           "jobs and events"
+        ]
+      }
+    },
+    "/api/v1/libraries": {
+      "get": {
+        "operationId": "list_libraries_api_v1_libraries_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryResponse"
+                  },
+                  "title": "Response List Libraries Api V1 Libraries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Libraries",
+        "tags": [
+          "libraries"
+        ]
+      },
+      "post": {
+        "operationId": "create_library_api_v1_libraries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Library",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/reorder": {
+      "post": {
+        "description": "Persist a hand-dragged sidebar order. Libraries left out keep their\nrelative order after the ones given.",
+        "operationId": "reorder_libraries_api_v1_libraries_reorder_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryReorder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryResponse"
+                  },
+                  "title": "Response Reorder Libraries Api V1 Libraries Reorder Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Libraries",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}": {
+      "delete": {
+        "operationId": "delete_library_api_v1_libraries__library_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Library",
+        "tags": [
+          "libraries"
+        ]
+      },
+      "get": {
+        "operationId": "get_library_detail_api_v1_libraries__library_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Library Detail",
+        "tags": [
+          "libraries"
+        ]
+      },
+      "patch": {
+        "operationId": "update_library_api_v1_libraries__library_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Library",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/folders": {
+      "put": {
+        "description": "Make exactly these media folders the library's. All or nothing.",
+        "operationId": "set_library_folders_api_v1_libraries__library_id__folders_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryFolders"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Library Folders",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/scan": {
+      "post": {
+        "description": "Scan every enabled media folder in the library.",
+        "operationId": "scan_library_api_v1_libraries__library_id__scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryScanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scan Library",
+        "tags": [
+          "libraries"
         ]
       }
     },

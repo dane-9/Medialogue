@@ -75,6 +75,16 @@ async def run_storage_root_scan(job_id: UUID, root_id: UUID) -> None:
                 return
             if job.status in {JobStatus.CANCELLED, JobStatus.INTERRUPTED, JobStatus.COMPLETED, JobStatus.FAILED}:
                 return
+            if root.library_id is None:
+                # Removed from its library after the scan was queued.
+                await update_job(
+                    db,
+                    job,
+                    status=JobStatus.FAILED,
+                    error={"code": "STORAGE_ROOT_NOT_IN_LIBRARY", "message": f"{root.name} is not in a library."},
+                )
+                await db.commit()
+                return
             try:
                 await execute_storage_root_scan(db, root, job)
                 await db.commit()

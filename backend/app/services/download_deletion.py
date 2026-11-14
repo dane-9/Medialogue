@@ -184,7 +184,7 @@ async def plan_title_removal(db: AsyncSession, movie_ids: list[UUID], show_ids: 
 async def _complete_plan(db: AsyncSession, plan: DeletionPlan, folders: list[str], chosen: set[UUID]) -> DeletionPlan:
     """Settle the folders, what blocks deleting them, and every torrent seeding from them."""
 
-    roots = (await db.scalars(select(StorageRoot).where(StorageRoot.enabled.is_(True)))).all()
+    roots = (await db.scalars(select(StorageRoot).where(StorageRoot.active))).all()
 
     # One folder inside another is deleted once, as the outer folder.
     for folder in sorted(set(folders), key=len):

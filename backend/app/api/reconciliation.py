@@ -25,7 +25,7 @@ async def run_reconciliation(
     _: object = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ) -> ReconciliationRunResponse:
-    query = select(StorageRoot).where(StorageRoot.enabled.is_(True))
+    query = select(StorageRoot).where(StorageRoot.active)
     if payload.root_id is not None:
         query = query.where(StorageRoot.id == payload.root_id)
     candidate_roots = (await db.scalars(query.order_by(StorageRoot.name))).all()
