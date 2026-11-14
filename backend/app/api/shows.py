@@ -115,6 +115,7 @@ async def _summary(
         )
     return ShowSummaryResponse(
         id=show.id,
+        library_id=show.library_id,
         resource_id=str(show.tmdb_id or show.id),
         tmdb_id=show.tmdb_id,
         tvdb_id=show.tvdb_id,
@@ -216,6 +217,7 @@ async def _list_summaries(db: AsyncSession, shows: list[Show]) -> list[ShowSumma
         items.append(
             ShowSummaryResponse(
                 id=show.id,
+                library_id=show.library_id,
                 resource_id=str(show.tmdb_id or show.id),
                 tmdb_id=show.tmdb_id,
                 tvdb_id=show.tvdb_id,
@@ -431,20 +433,26 @@ async def list_shows(
     query: str | None = None,
     state: str | None = None,
     sort: str = "title",
+    library_id: UUID | None = None,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[ShowSummaryResponse]:
     return await shared_result(
-        ("shows", page, page_size, query, state, sort),
+        ("shows", page, page_size, query, state, sort, library_id),
         db,
-        lambda session: _list_shows(session, page=page, page_size=page_size, query=query, state=state, sort=sort),
+        lambda session: _list_shows(
+            session, page=page, page_size=page_size, query=query, state=state, sort=sort, library_id=library_id
+        ),
     )
 
 
 async def _list_shows(
-    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, sort: str
+    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, sort: str,
+    library_id: UUID | None = None,
 ) -> Collection[ShowSummaryResponse]:
     statement = select(Show)
+    if library_id is not None:
+        statement = statement.where(Show.library_id == library_id)
     if query:
         pattern = f"%{query.strip()}%"
         statement = statement.where(Show.title.ilike(pattern))

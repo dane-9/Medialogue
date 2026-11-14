@@ -141,6 +141,7 @@ class ShowStorageRootResponse(BaseModel):
 
 class ShowSummaryResponse(BaseModel):
     id: UUID
+    library_id: UUID | None = None
     resource_id: str
     tmdb_id: int | None
     tvdb_id: int | None = None

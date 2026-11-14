@@ -15,13 +15,15 @@ import { GlobalSearch, GlobalSearchButton } from './GlobalSearch'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
 import { useLiveRefresh } from '../lib/liveRefresh'
+import { LibrariesProvider, useLibraries } from '../lib/libraries'
+import type { Library } from '../types'
+import { LibraryDialog } from './LibraryDialog'
+import { LibraryNav, TitlebarMenu } from './LibraryNav'
 
 const problemEvents = ['problem.created', 'problem.updated', 'problem.resolved', 'problem.deleted']
 const healthEvents = ['plex.health', 'tmdb.health', 'indexer.health', 'storage_root.health', 'qbittorrent.health']
 
 const primary = [
-  { to: '/movies', label: 'Movies', icon: 'clapper' as const },
-  { to: '/shows', label: 'Shows', icon: 'tv-screen' as const },
   { to: '/new-media', label: 'New Media', icon: 'new-media' as const },
   { to: '/replace-media', label: 'Replace Media', icon: 'refresh' as const },
   { to: '/upgrade-media', label: 'Upgrade Media', icon: 'upgrade-media' as const },
@@ -64,7 +66,14 @@ export function PageTopbar({ title, subtitle, action, back, onBack }: { title: s
   </div>, host)
 }
 
-export function AppShell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
+export function AppShell(props: { children: React.ReactNode; onLogout: () => void }) {
+  return <LibrariesProvider><Shell {...props} /></LibrariesProvider>
+}
+
+function Shell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
+  const { libraries, reload: reloadLibraries } = useLibraries()
+  const [titlebarMenu, setTitlebarMenu] = useState<{ x: number; y: number } | null>(null)
+  const [libraryDialog, setLibraryDialog] = useState<{ library?: Library } | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [health, setHealth] = useState<HealthIndicator[]>(fallbackHealth)
   const [plexAvailable, setPlexAvailable] = useState(false)
@@ -136,12 +145,12 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       window.clearTimeout(timer)
       timer = window.setTimeout(() => {
         void refreshNewMediaCount(); void refreshUpgradeCount(); void refreshReplaceCount()
-        void refreshProblemCount(); refreshHealthAndPlex()
+        void refreshProblemCount(); refreshHealthAndPlex(); void reloadLibraries()
       }, 500)
     }
     window.addEventListener(DATA_CHANGED_EVENT, changed)
     return () => { window.clearTimeout(timer); window.removeEventListener(DATA_CHANGED_EVENT, changed) }
-  }, [refreshNewMediaCount])
+  }, [refreshNewMediaCount, reloadLibraries])
   useLiveRefresh(refreshHealthAndPlex, { events: healthEvents, pollMs: 60_000, immediate: true })
 
   useEffect(() => {
@@ -156,17 +165,19 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
     }
   }, [refreshNewMediaCount])
 
-  const currentTitle = location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/new-media') ? 'New Media' : location.pathname.startsWith('/replace-media') ? 'Replace Media' : location.pathname.startsWith('/upgrade-media') ? 'Upgrade Media' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/blocklist') ? 'Blocklist' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/backups') ? 'Backups' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/tasks') ? 'Tasks' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
+  const libraryOnScreen = location.pathname.startsWith('/library/') ? libraries?.find((library) => location.pathname === `/library/${library.id}`) : undefined
+  const currentTitle = libraryOnScreen ? libraryOnScreen.name : location.pathname.startsWith('/movies') ? 'Movies' : location.pathname.startsWith('/shows') ? 'Shows' : location.pathname.startsWith('/new-media') ? 'New Media' : location.pathname.startsWith('/replace-media') ? 'Replace Media' : location.pathname.startsWith('/upgrade-media') ? 'Upgrade Media' : location.pathname.startsWith('/downloads') ? 'Downloads' : location.pathname.startsWith('/blocklist') ? 'Blocklist' : location.pathname.startsWith('/problems') ? 'Problems' : location.pathname.startsWith('/backups') ? 'Backups' : location.pathname.startsWith('/custom-formats') ? 'Custom Formats' : location.pathname.startsWith('/quality-profiles') ? 'Quality Profiles' : location.pathname.startsWith('/tasks') ? 'Tasks' : location.pathname.startsWith('/events') ? 'Events' : location.pathname.startsWith('/settings') ? 'Settings' : 'Medialogue'
 
   return <PlexAvailableContext.Provider value={plexAvailable}><PageTopbarHostContext.Provider value={pageTopbarHost}><div className="app-shell">
     <aside className="sidebar">
-      <div className="brand">
+      <div className="brand" onContextMenu={(event) => { event.preventDefault(); setTitlebarMenu({ x: event.clientX, y: event.clientY }) }}>
         <div className="brand-identity" onClick={() => navigate('/movies')} role="button" tabIndex={0}>
           <img className="brand-banner" src={medialogueBanner} alt="Medialogue" />
         </div>
         <GlobalSearchButton onOpen={() => setSearchOpen(true)} />
       </div>
       <div className="sidebar-scroll">
+        <LibraryNav onEdit={(library) => setLibraryDialog({ library })} />
         <NavSection items={primary.map((item) => item.to === '/problems' ? { ...item, count: problemCount, alert: true } : item.to === '/new-media' ? { ...item, count: newMediaCount } : item.to === '/upgrade-media' ? { ...item, count: upgradeCount, tone: 'ok' as const } : item.to === '/replace-media' ? { ...item, count: replaceCount } : item)} />
         <NavSection items={tools} />
         <NavSection items={system} />
@@ -185,6 +196,16 @@ export function AppShell({ children, onLogout }: { children: React.ReactNode; on
       <div className="page-scroll"><div className="page-content">{children}</div></div>
     </main>
     {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
+    {titlebarMenu && <TitlebarMenu position={titlebarMenu} onClose={() => setTitlebarMenu(null)} onAddLibrary={() => setLibraryDialog({})} />}
+    {libraryDialog && <LibraryDialog
+      library={libraryDialog.library}
+      libraries={libraries ?? []}
+      onClose={() => setLibraryDialog(null)}
+      onSaved={(saved) => {
+        void reloadLibraries()
+        if (!libraryDialog.library) navigate(`/library/${saved.id}`)
+      }}
+    />}
   </div></PageTopbarHostContext.Provider></PlexAvailableContext.Provider>
 }
 

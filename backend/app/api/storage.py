@@ -32,7 +32,7 @@ from app.schemas.storage import (
     StorageRootUpdate,
 )
 from app.services.jobs import create_job, publish_job_status
-from app.services.libraries import assign_root, get_library, movie_ids_in, show_ids_in
+from app.services.libraries import assign_root, get_library, movie_ids_in, show_ids_in, titles_in_root
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.scheduler import request_health_sweep
 from app.services.library_scan import active_storage_root_scan_job, run_storage_root_scan
@@ -134,6 +134,7 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
         or 0
     )
     library = await db.get(Library, root.library_id) if root.library_id is not None else None
+    movie_ids, show_ids = await titles_in_root(db, root.id)
     job = await active_storage_root_scan_job(db, root.id)
     scan = None
     if job is not None:
@@ -155,6 +156,7 @@ async def _root_response(db: AsyncSession, root: StorageRoot) -> StorageRootResp
             "scan": scan,
             "watch_state": watch_state(root.id),
             "library_name": library.name if library is not None else None,
+            "title_count": len(movie_ids) + len(show_ids),
         }
     )
 

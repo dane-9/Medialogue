@@ -9,6 +9,7 @@ import { ApiError } from './api/transport'
 import { authApi } from './api/modules/auth'
 import { clearListCache } from './lib/listCache'
 import { AppShell } from './components/Shell'
+import { firstLibraryOf, useLibraries } from './lib/libraries'
 import { Button, Input } from './components/ui'
 
 // Each page is its own chunk, fetched the first time it is opened, so the
@@ -67,9 +68,10 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const location = useLocation()
 
   return <AppShell onLogout={onLogout}><PageErrorBoundary key={location.pathname}><Suspense fallback={<PageLoading />}><Routes>
-    <Route path="/movies" element={<MoviesPage />} />
+    <Route path="/library/:libraryId" element={<LibraryRoute />} />
+    <Route path="/movies" element={<FirstLibrary kind="movies" />} />
     <Route path="/movies/:id" element={<MovieDetailRoute />} />
-    <Route path="/shows" element={<ShowsPage />} />
+    <Route path="/shows" element={<FirstLibrary kind="shows" />} />
     <Route path="/shows/:id" element={<ShowDetailRoute />} />
     <Route path="/downloads" element={<DownloadsPage />} />
     <Route path="/blocklist" element={<BlocklistPage />} />
@@ -84,7 +86,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     <Route path="/events" element={<EventHistoryPage />} />
     <Route path="/tasks" element={<TasksPage />} />
     <Route path="/settings" element={<SettingsPage />} />
-    <Route path="*" element={<Navigate to="/movies" replace />} />
+    <Route path="*" element={<FirstLibrary />} />
   </Routes></Suspense></PageErrorBoundary></AppShell>
 }
 
@@ -107,6 +109,26 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
 
 function PageLoading() { return <div className="page" aria-busy="true" /> }
 function BootScreen() { return <div className="boot-screen"><picture className="boot-logo"><source media="(prefers-reduced-motion: reduce)" srcSet={medialogueLogo} /><img src={medialogueLogoAnimated} alt="" /></picture><span>Loading Medialogue…</span></div> }
+/** One library: the Movies or Shows page, showing only its titles. */
+function LibraryRoute() {
+  const { libraryId = '' } = useParams()
+  const { libraries } = useLibraries()
+  if (libraries === undefined) return <PageLoading />
+  const library = libraries.find((item) => item.id === libraryId)
+  if (!library) return <FirstLibrary />
+  return library.kind === 'movies' ? <MoviesPage key={library.id} library={library} /> : <ShowsPage key={library.id} library={library} />
+}
+
+/** The first library of ``kind`` (any kind when omitted), for old links and the start page. */
+function FirstLibrary({ kind }: { kind?: 'movies' | 'shows' }) {
+  const { libraries } = useLibraries()
+  const { search } = useLocation()
+  if (libraries === undefined) return <PageLoading />
+  const library = kind ? firstLibraryOf(libraries, kind) : libraries[0]
+  if (!library) return <Navigate to="/settings" replace />
+  return <Navigate to={`/library/${library.id}${search}`} replace />
+}
+
 function MovieDetailRoute() { const { id = 'inception' } = useParams(); return <MovieDetailPage id={id} /> }
 function ShowDetailRoute() { const { id = '' } = useParams(); return <ShowDetailPage id={id} /> }
 

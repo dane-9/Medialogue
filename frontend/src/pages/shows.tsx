@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
 import { useConfirm } from '../components/Confirm'
 import { usePlexAvailable } from '../components/Shell'
+import { useCurrentLibrary, useLibraries } from '../lib/libraries'
 import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/ui'
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { LibraryContextMenu } from '../components/LibraryContextMenu'
@@ -20,22 +21,23 @@ import { useLibrarySelection, type SelectionModifiers } from '../lib/useLibraryS
 import { SelectionBar, SelectCheck } from '../components/SelectionBar'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
-import type { EpisodeOrdering, MediaProfileSettings, QualityDefinition, QualityProfile, Show, Season, Episode, EpisodeMedia } from '../types'
+import type { EpisodeOrdering, Library, MediaProfileSettings, QualityDefinition, QualityProfile, Show, Season, Episode, EpisodeMedia } from '../types'
 import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 
 function DetailFact({ label, value, tone }: { label: string; value: string; tone?: string }) { return <div className="detail-fact"><span>{label}</span>{tone ? <Badge tone={tone as 'green' | 'amber' | 'red' | 'neutral'}>{value}</Badge> : <strong>{value}</strong>}</div> }
 
-export function ShowsPage() {
+export function ShowsPage({ library }: { library?: Library } = {}) {
+  const libraryId = library?.id ?? ''
   const confirm = useConfirm()
   const plexAvailable = usePlexAvailable()
   // The library as last loaded in this tab: shown at once on return.
-  const [items, setItems] = useState<Show[]>(() => cachedList<Show>('shows:title') ?? [])
+  const [items, setItems] = useState<Show[]>(() => cachedList<Show>(`shows:${libraryId}:title`) ?? [])
   const [view, setView] = useState<'cards' | 'table'>(() => normalizeMediaView(window.localStorage.getItem('medialogue.shows.view')))
   const [query, setQuery] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [filter, setFilter] = useState('All')
   const [sort, setSort] = useState('title')
-  const [loading, setLoading] = useState(() => cachedList('shows:title') === undefined)
+  const [loading, setLoading] = useState(() => cachedList(`shows:${libraryId}:title`) === undefined)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [cardBusy, setCardBusy] = useState<string | null>(null)
@@ -46,14 +48,14 @@ export function ShowsPage() {
   const [specialsBusy, setSpecialsBusy] = useState(false)
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
-    try { const next = await showsApi.shows('', sort); rememberList(`shows:${sort}`, next); setItems((current) => reuseUnchanged(current, next)); setError('') }
+    try { const next = await showsApi.shows('', sort, libraryId); rememberList(`shows:${libraryId}:${sort}`, next); setItems((current) => reuseUnchanged(current, next)); setError('') }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load shows.') }
     finally { if (foreground) setLoading(false) }
   }
   // Live events already trigger a reload, so the poll is only a fallback.
   useLiveLibraryRefresh(() => load(false), 60000, false, [...libraryListEvents, 'results.shows'])
   useEffect(() => {
-    const cached = cachedList<Show>(`shows:${sort}`)
+    const cached = cachedList<Show>(`shows:${libraryId}:${sort}`)
     if (cached) { setItems((current) => reuseUnchanged(current, cached)); setLoading(false) }
     void load(!cached && !items.length)
   }, [sort])
@@ -109,7 +111,7 @@ export function ShowsPage() {
     focus(showId)
     setContext({ x: event.clientX, y: event.clientY })
   }, [focus])
-  return <Page title="Shows" subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
+  return <Page title={library?.name ?? 'Shows'} subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="shows" onClose={() => setHistoryOpen(false)} />}
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><SelectionBar count={selected.size} total={filtered.length} noun="show" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
@@ -147,6 +149,11 @@ export function ShowDetailPage({ id }: { id: string }) {
   const confirm = useConfirm()
   const plexAvailable = usePlexAvailable()
   const [show, setShow] = useState<Show | null>(null)
+  useCurrentLibrary(show?.libraryId)
+  const { libraries } = useLibraries()
+  const showLibrary = libraries?.find((item) => item.id === show?.libraryId)
+  const backLabel = `Back to ${showLibrary?.name ?? 'Shows'}`
+  const backTo = showLibrary ? `/library/${showLibrary.id}` : '/shows'
   const [selectedSeasonId, setSelectedSeasonId] = useState('')
   const [episodeFilter, setEpisodeFilter] = useState<'all' | 'missing' | 'problems'>('all')
   const [message, setMessage] = useState('')
@@ -230,14 +237,14 @@ export function ShowDetailPage({ id }: { id: string }) {
     if (!seasons.length) return
     setSelectedSeasonId((current) => current && seasons.some((season) => season.id === current) ? current : (seasons.find((season) => season.missingCount > 0) ?? seasons[0]).id)
   }, [show, seasons])
-  if (error) return <Page title="Show unavailable" subtitle={error} back="Back to Shows" backTo="/shows"><EmptyState title="Could not load this Show" detail={error} /></Page>
-  if (!show) return <Page title="Loading Show" subtitle="Retrieving seasons and episode inventory." back="Back to Shows" backTo="/shows"><EmptyState title="Loading…" detail="Loading this show." /></Page>
+  if (error) return <Page title="Show unavailable" subtitle={error} back={backLabel} backTo={backTo}><EmptyState title="Could not load this Show" detail={error} /></Page>
+  if (!show) return <Page title="Loading Show" subtitle="Retrieving seasons and episode inventory." back={backLabel} backTo={backTo}><EmptyState title="Loading…" detail="Loading this show." /></Page>
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? seasons[0]
   const selectedReleaseMedia = selectedSeason
     ? [...new Map(selectedSeason.episodes.flatMap((episode) => episode.media).filter((media) => media.showReleaseId).map((media) => [media.showReleaseId, media])).values()]
     : []
   const visibleEpisodes = selectedSeason?.episodes.filter((episode) => episodeFilter === 'all' || episodeFilter === 'missing' && episode.status !== 'Present' || episodeFilter === 'problems' && plexAvailable && episode.plex === 'Conflict') ?? []
-  return <Page title={show.title} subtitle={`${show.year || 'Year unknown'} · ${show.tmdbId ? `TMDB ${show.tmdbId}` : show.id}${show.tvdbId ? ` · TVDB ${show.tvdbId}` : ''}`} back="Back to Shows" backTo="/shows" action={<><Button variant="ghost" icon="refresh" onClick={() => void refreshMetadata()} disabled={busy}>{busy ? 'Working…' : 'Refresh metadata'}</Button>{plexAvailable && <Button variant="ghost" icon="refresh" onClick={() => void recheckPlex()} disabled={busy}>{busy ? 'Working…' : 'Recheck Plex'}</Button>}</>}>
+  return <Page title={show.title} subtitle={`${show.year || 'Year unknown'} · ${show.tmdbId ? `TMDB ${show.tmdbId}` : show.id}${show.tvdbId ? ` · TVDB ${show.tvdbId}` : ''}`} back={backLabel} backTo={backTo} action={<><Button variant="ghost" icon="refresh" onClick={() => void refreshMetadata()} disabled={busy}>{busy ? 'Working…' : 'Refresh metadata'}</Button>{plexAvailable && <Button variant="ghost" icon="refresh" onClick={() => void recheckPlex()} disabled={busy}>{busy ? 'Working…' : 'Recheck Plex'}</Button>}</>}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {mappingEditor && <Panel title="Correct episode mapping" eyebrow="LOGICAL MAPPING ONLY"><div className="settings-note"><Icon name="info" size={15} /><span>This changes only Medialogue's episode mapping. The file is not renamed, moved, copied, or modified.</span></div><div className="mapping-path">{mappingEditor.media.path}</div><div className="mapping-grid">{mappingEditor.season.episodes.map((episode) => <label className="inline-check" key={episode.id}><input type="checkbox" checked={mappingEpisodeIds.includes(episode.id)} onChange={(event) => setMappingEpisodeIds((current) => event.target.checked ? [...current, episode.id] : current.filter((item) => item !== episode.id))} />S{String(episode.seasonNumber).padStart(2, '0')}E{String(episode.episodeNumber).padStart(2, '0')} · {episode.title || 'Untitled episode'}</label>)}</div><div className="settings-footer"><Button variant="ghost" onClick={() => setMappingEditor(null)}>Cancel</Button><Button variant="primary" onClick={() => void saveMapping()} disabled={busy || !mappingEpisodeIds.length}>{busy ? 'Saving…' : 'Save mapping'}</Button></div></Panel>}
     <Panel className="detail-hero"><div className={`detail-poster poster-${show.id} ${show.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={show.poster} title={show.title} />{!show.poster && <span className="poster-fallback-title">{show.title}</span>}</div><div className="detail-intro"><div className="eyebrow">SHOW {show.tmdbId ? `· TMDB ${show.tmdbId}` : ''}</div><h2>{show.title} {show.year ? <span className="detail-year">({show.year})</span> : null}</h2><div className="badge-row"><Badge tone={statusTone(show.status)} className="media-card-primary-badge">{show.status}</Badge><QbitStatusBadge status={show.torrentStatus} />{plexAvailable && <Badge tone={statusTone(show.plex)} className="media-card-secondary-badge">Plex {show.plex}</Badge>}<Badge tone={show.monitored === false ? 'neutral' : 'blue'} className="media-card-secondary-badge">{show.monitored === false ? 'Unmonitored' : 'Monitored'}</Badge></div><div className="detail-summary-grid"><div><strong>{show.episodesPresent} / {show.episodesTotal}</strong><span>episodes present</span></div><div><strong>{show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)}</strong><span>missing</span></div><div><strong>{show.seasons}</strong><span>seasons</span></div></div><p className="detail-description">{show.overview ?? 'Episode presence is tracked independently while every file stays at its existing path.'}</p></div></Panel>

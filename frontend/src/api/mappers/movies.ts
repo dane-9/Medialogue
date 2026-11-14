@@ -85,6 +85,7 @@ export function mapMovie(value: MovieSummaryDto | MovieDetailDto): Movie {
   const incoming = detail?.incoming_downloads?.[0]
   return {
     id: value.resource_id,
+    libraryId: value.library_id ?? undefined,
     title: value.title,
     year: value.year ?? 0,
     poster: value.poster_ref ?? undefined,

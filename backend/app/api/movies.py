@@ -84,20 +84,26 @@ async def list_movies(
     state: str | None = None,
     tag: str | None = None,
     sort: str = "title",
+    library_id: UUID | None = None,
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[MovieSummaryResponse]:
     return await shared_result(
-        ("movies", page, page_size, query, state, tag, sort),
+        ("movies", page, page_size, query, state, tag, sort, library_id),
         db,
-        lambda session: _list_movies(session, page=page, page_size=page_size, query=query, state=state, tag=tag, sort=sort),
+        lambda session: _list_movies(
+            session, page=page, page_size=page_size, query=query, state=state, tag=tag, sort=sort, library_id=library_id
+        ),
     )
 
 
 async def _list_movies(
-    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, tag: str | None, sort: str
+    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, tag: str | None, sort: str,
+    library_id: UUID | None = None,
 ) -> Collection[MovieSummaryResponse]:
     statement = _movie_query(for_list=True)
+    if library_id is not None:
+        statement = statement.where(Movie.library_id == library_id)
     if query:
         pattern = f"%{query.strip()}%"
         statement = statement.where(or_(Movie.title.ilike(pattern), cast(Movie.year, String).ilike(pattern)))
@@ -616,6 +622,7 @@ def _summary(
     )
     return MovieSummaryResponse(
         id=movie.id,
+        library_id=movie.library_id,
         resource_id=str(movie.tmdb_id or movie.id),
         tmdb_id=movie.tmdb_id,
         title=movie.title,

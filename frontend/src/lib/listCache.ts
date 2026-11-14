@@ -5,7 +5,8 @@
 
 const lists = new Map<string, unknown[]>()
 
-const PERSISTED_KEYS = ['movies::title', 'shows:title']
+// The default view of each library: movies:<library>::title, shows:<library>:title.
+const persisted = (key: string) => /^movies:[^:]*::title$/.test(key) || /^shows:[^:]*:title$/.test(key)
 const DATABASE = 'medialogue-lists'
 const STORE = 'lists'
 // A burst of refreshes saves once.
@@ -34,9 +35,12 @@ async function withStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectSto
 /** Load the saved lists. Lists saved by another build may have another shape, so those are left out. */
 export function hydrateListCache(): Promise<void> {
   if (!canPersist()) return Promise.resolve()
-  const reading = withStore('readonly', (store) => Promise.all(PERSISTED_KEYS.map((key) => result(store.get(key)))))
-    .then((saved) => saved.forEach((entry, index) => {
-      const key = PERSISTED_KEYS[index]
+  // Both requests go out at once, inside the one transaction.
+  const reading = withStore('readonly', (store) => Promise.all([result(store.getAllKeys()), result(store.getAll())]))
+    .then(([keys, entries]) => keys.forEach((rawKey, index) => {
+      const key = String(rawKey)
+      const entry = entries[index]
+      if (!persisted(key)) return
       if (entry?.build === __BUILD_ID__ && Array.isArray(entry.items) && !lists.has(key)) lists.set(key, entry.items)
     }))
     .catch(() => undefined)
@@ -49,7 +53,7 @@ export function cachedList<T>(key: string): T[] | undefined {
 
 export function rememberList<T>(key: string, items: T[]): void {
   lists.set(key, items)
-  if (!canPersist() || !PERSISTED_KEYS.includes(key)) return
+  if (!canPersist() || !persisted(key)) return
   window.clearTimeout(saves.get(key))
   saves.set(key, window.setTimeout(() => {
     saves.delete(key)

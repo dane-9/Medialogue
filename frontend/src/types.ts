@@ -54,6 +54,7 @@ export interface PlexConfiguration {
 
 export interface Movie {
   id: string
+  libraryId?: string
   title: string
   year: number
   poster?: string
@@ -220,6 +221,15 @@ export interface LibrarySummary {
   unlinked_directories: number
 }
 
+export interface Library {
+  id: string
+  name: string
+  kind: 'movies' | 'shows'
+  sortOrder: number
+  folderCount: number
+  titleCount: number
+}
+
 export interface StorageRootScan {
   job_id: string
   status: 'queued' | 'running'
@@ -234,6 +244,13 @@ export interface StorageRoot {
   name: string
   resolved_root_path: string
   media_type: 'movies' | 'shows'
+  /** None: the folder is in no library, and Medialogue ignores it. */
+  library_id?: string
+  library_name?: string
+  /** Titles with media here; a folder holding any cannot leave its library. */
+  title_count: number
+  /** qBittorrent category whose save path is this folder; none: the client's default. */
+  category?: string
   access_mode: 'read_only' | 'read_write'
   discovery_mode: 'automatic' | 'review'
   enabled: boolean
@@ -309,6 +326,7 @@ export interface EpisodeOrdering {
 
 export interface Show {
   id: string
+  libraryId?: string
   internalId?: string
   title: string
   year: number

@@ -5446,6 +5446,8 @@ export interface components {
             incoming_kind?: ("replacement" | "release") | null;
             /** Last Observed At */
             last_observed_at?: string | null;
+            /** Library Id */
+            library_id?: string | null;
             /** Location */
             location: string | null;
             /** Monitored */
@@ -5751,6 +5753,8 @@ export interface components {
             incoming_kind?: ("replacement" | "release") | null;
             /** Last Observed At */
             last_observed_at?: string | null;
+            /** Library Id */
+            library_id?: string | null;
             /** Location */
             location: string | null;
             /** Monitored */
@@ -6940,6 +6944,8 @@ export interface components {
             identity_state: components["schemas"]["IdentityState"];
             /** Last Observed At */
             last_observed_at?: string | null;
+            /** Library Id */
+            library_id?: string | null;
             /** Monitored */
             monitored: boolean;
             /** Overview */
@@ -7110,6 +7116,8 @@ export interface components {
             identity_state: components["schemas"]["IdentityState"];
             /** Last Observed At */
             last_observed_at?: string | null;
+            /** Library Id */
+            library_id?: string | null;
             /** Monitored */
             monitored: boolean;
             /**
@@ -7277,6 +7285,11 @@ export interface components {
              * @default false
              */
             scanning: boolean;
+            /**
+             * Title Count
+             * @default 0
+             */
+            title_count: number;
             /**
              * Updated At
              * Format: date-time
@@ -11255,6 +11268,7 @@ export interface operations {
                 state?: string | null;
                 tag?: string | null;
                 sort?: string;
+                library_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -12653,6 +12667,7 @@ export interface operations {
                 query?: string | null;
                 state?: string | null;
                 sort?: string;
+                library_id?: string | null;
             };
             header?: never;
             path?: never;

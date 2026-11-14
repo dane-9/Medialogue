@@ -11,6 +11,7 @@ import { Field, SettingsGroup } from '../components/settings'
 import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
 import { usePlexAvailable } from '../components/Shell'
+import { useCurrentLibrary, useLibraries } from '../lib/libraries'
 import { Badge, Button, EmptyState, Input, Panel, Progress, Select } from '../components/ui'
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { LibraryContextMenu } from '../components/LibraryContextMenu'
@@ -24,17 +25,18 @@ import { useLibrarySelection, type SelectionModifiers } from '../lib/useLibraryS
 import { SelectionBar, SelectCheck } from '../components/SelectionBar'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
-import type { IncomingDownload, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
+import type { IncomingDownload, Library, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
 import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 
-const moviesKey = (tag: string, sort: string) => `movies:${tag}:${sort}`
+const moviesKey = (library: string, tag: string, sort: string) => `movies:${library}:${tag}:${sort}`
 
-export function MoviesPage() {
+export function MoviesPage({ library }: { library?: Library } = {}) {
+  const libraryId = library?.id ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
   // The library as last loaded in this tab: shown at once on return.
-  const [movies, setMovies] = useState<Movie[]>(() => cachedList<Movie>(moviesKey(searchParams.get('tag') ?? '', 'title')) ?? [])
+  const [movies, setMovies] = useState<Movie[]>(() => cachedList<Movie>(moviesKey(libraryId, searchParams.get('tag') ?? '', 'title')) ?? [])
   const [tags, setTags] = useState<Tag[]>([])
-  const [loading, setLoading] = useState(() => cachedList(moviesKey(searchParams.get('tag') ?? '', 'title')) === undefined)
+  const [loading, setLoading] = useState(() => cachedList(moviesKey(libraryId, searchParams.get('tag') ?? '', 'title')) === undefined)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [view, setView] = useState<'cards' | 'table'>(() => normalizeMediaView(window.localStorage.getItem('medialogue.movies.view')))
@@ -48,13 +50,13 @@ export function MoviesPage() {
   const [cardBusy, setCardBusy] = useState<string | null>(null)
 
   const applyMovies = (items: Movie[]) => {
-    rememberList(moviesKey(tagFilter, sort), items)
+    rememberList(moviesKey(libraryId, tagFilter, sort), items)
     setMovies((current) => reuseUnchanged(current, items))
     setError('')
   }
 
   const loadMovies = async () => {
-    try { applyMovies(await moviesApi.movies('', tagFilter, sort)) }
+    try { applyMovies(await moviesApi.movies('', tagFilter, sort, libraryId)) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load movies.') }
     finally { setLoading(false) }
   }
@@ -64,13 +66,13 @@ export function MoviesPage() {
 
   useEffect(() => {
     let alive = true
-    const cached = cachedList<Movie>(moviesKey(tagFilter, sort))
+    const cached = cachedList<Movie>(moviesKey(libraryId, tagFilter, sort))
     if (cached) { setMovies((current) => reuseUnchanged(current, cached)); setLoading(false) }
-    moviesApi.movies('', tagFilter, sort).then((items) => { if (alive) applyMovies(items) })
+    moviesApi.movies('', tagFilter, sort, libraryId).then((items) => { if (alive) applyMovies(items) })
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load movies.') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [tagFilter, sort])
+  }, [tagFilter, sort, libraryId])
 
   useEffect(() => {
     let alive = true
@@ -136,7 +138,7 @@ export function MoviesPage() {
     focus(movieId)
     setContext({ x: event.clientX, y: event.clientY })
   }, [focus])
-  return <Page title="Movies" subtitle="Your library, exactly where it was downloaded." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
+  return <Page title={library?.name ?? 'Movies'} subtitle="Your library, exactly where it was downloaded." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="movies" onClose={() => setHistoryOpen(false)} />}
     <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><SelectionBar count={selected.size} total={filtered.length} noun="movie" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
@@ -372,6 +374,9 @@ export function MovieDetailPage({ id }: { id: string }) {
   const openSearchFromQuery = detailSearchParams.get('search') === '1'
   const plexAvailable = usePlexAvailable()
   const [movie, setMovie] = useState<Movie | null>(null)
+  useCurrentLibrary(movie?.libraryId)
+  const { libraries } = useLibraries()
+  const movieLibrary = libraries?.find((item) => item.id === movie?.libraryId)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -440,7 +445,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
   const currentSummary = <div className="release-summary-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
-  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back="Back to Movies">
+  return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back={`Back to ${movieLibrary?.name ?? 'Movies'}`} backTo={movieLibrary ? `/library/${movieLibrary.id}` : '/movies'}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
     <div className="detail-single">

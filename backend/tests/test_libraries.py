@@ -248,3 +248,24 @@ def test_library_names_are_unique_whatever_their_case(client):
     renamed = client.patch(f"/api/v1/libraries/{cartoons['id']}", headers=headers, json={"name": "SHOWS"})
     assert renamed.status_code == 409
     assert client.patch(f"/api/v1/libraries/{cartoons['id']}", headers=headers, json={"name": "CARTOONS"}).status_code == 200
+
+
+def test_the_movie_list_shows_one_library(client, tmp_path):
+    headers = login(client)
+    cartoons = create_library(client, headers, "Cartoon Movies")
+    plain = create_root(client, headers, tmp_path / "movies", "Movies")
+    toons = create_root(client, headers, tmp_path / "cartoons", "Cartoons", library_id=cartoons["id"])
+    add_movie_in(plain["id"], str(tmp_path / "movies"), "Heat")
+    toy = add_movie_in(toons["id"], str(tmp_path / "cartoons"), "Toy Story")
+
+    from app.models.domain import Movie
+
+    async def file_under_cartoons() -> None:
+        async with db_session.async_session_factory() as db:
+            (await db.get(Movie, toy)).library_id = UUID(cartoons["id"])
+            await db.commit()
+
+    asyncio.run(file_under_cartoons())
+    listed = client.get("/api/v1/movies", params={"library_id": cartoons["id"]}).json()["items"]
+    assert [(item["title"], item["library_id"]) for item in listed] == [("Toy Story", cartoons["id"])]
+    assert client.get("/api/v1/movies").json()["total"] == 2

@@ -66,6 +66,7 @@ export function mapShow(value: ShowSummaryDto | ShowDetailDto): Show {
   return {
     id: value.resource_id,
     internalId: value.id,
+    libraryId: value.library_id ?? undefined,
     title: value.title,
     year: value.year ?? 0,
     poster: value.poster_ref ?? undefined,

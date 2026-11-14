@@ -128,6 +128,8 @@ class StorageRootResponse(ORMModel):
     media_type: MediaType
     library_id: UUID | None
     library_name: str | None = None
+    #: Titles with media in this folder; a folder holding any cannot leave its library.
+    title_count: int = 0
     category: str | None
     access_mode: AccessMode
     discovery_mode: DiscoveryMode

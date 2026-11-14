@@ -6,11 +6,12 @@ export const showsApi = {
   /** Monitor, unmonitor or change the Quality Profile of several shows at once. */
   bulkShows: (payload: { show_ids: string[]; action: 'change_profile' | 'monitor' | 'unmonitor'; quality_profile_id?: string | null }) =>
     openApiData(openApiClient.POST('/api/v1/shows/bulk', { body: payload })),
-  shows: async (query = '', sort = 'title') => {
+  shows: async (query = '', sort = 'title', libraryId = '') => {
     const payload = await openApiData(openApiClient.GET('/api/v1/shows', { params: { query: {
       page_size: LIBRARY_PAGE_SIZE,
       query: query || undefined,
       sort,
+      library_id: libraryId || undefined,
     } } }))
     return payload.items.map(mapShow)
   },

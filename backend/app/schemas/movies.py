@@ -122,6 +122,7 @@ class MovieTorrentHistoryResponse(BaseModel):
 
 class MovieSummaryResponse(BaseModel):
     id: UUID
+    library_id: UUID | None = None
     resource_id: str
     tmdb_id: int | None
     title: str

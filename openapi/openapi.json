@@ -6669,6 +6669,18 @@
             ],
             "title": "Last Observed At"
           },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
           "location": {
             "anyOf": [
               {
@@ -7518,6 +7530,18 @@
               }
             ],
             "title": "Last Observed At"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
           },
           "location": {
             "anyOf": [
@@ -11224,6 +11248,18 @@
             ],
             "title": "Last Observed At"
           },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
           "monitored": {
             "title": "Monitored",
             "type": "boolean"
@@ -11685,6 +11721,18 @@
               }
             ],
             "title": "Last Observed At"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
           },
           "monitored": {
             "title": "Monitored",
@@ -12155,6 +12203,11 @@
             "default": false,
             "title": "Scanning",
             "type": "boolean"
+          },
+          "title_count": {
+            "default": 0,
+            "title": "Title Count",
+            "type": "integer"
           },
           "updated_at": {
             "format": "date-time",
@@ -19510,6 +19563,23 @@
               "title": "Sort",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "library_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Library Id"
+            }
           }
         ],
         "responses": {
@@ -21595,6 +21665,23 @@
               "default": "title",
               "title": "Sort",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "library_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Library Id"
             }
           }
         ],
