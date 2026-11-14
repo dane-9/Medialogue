@@ -575,3 +575,44 @@ def test_recent_log_lines_are_readable_by_the_admin_only(client) -> None:
     lines = client.get("/api/v1/logs", params={"level": "WARNING", "contains": "indexer search"}).json()["items"]
     assert lines and lines[-1]["message"] == "Indexer search failed for BLU: boom" and lines[-1]["indexer"] == "BLU"
     assert all(line["level"] in {"WARNING", "ERROR", "CRITICAL"} for line in lines)
+
+
+def test_a_scan_puts_new_titles_in_the_library_of_their_folder(client: TestClient) -> None:
+    fixture_root = Path.cwd() / f"library-scan-fixture-{uuid.uuid4().hex}"
+    movie_dir = fixture_root / "movies" / "Arrival 2016 1080p BluRay x264-GRP"
+    movie_dir.mkdir(parents=True)
+    (movie_dir / "Arrival 2016 1080p BluRay x264-GRP.mkv").write_bytes(b"test")
+    season_dir = fixture_root / "shows" / "Dollface 2019" / "Season 01"
+    season_dir.mkdir(parents=True)
+    (season_dir / "Dollface S01E01 1080p WEB-DL H.264-GRP.mkv").write_bytes(b"test")
+    try:
+        login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminadmin"})
+        headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+        _configure_tmdb(client, headers)
+        ids = {}
+        for name, kind in (("Cartoon Movies", "movies"), ("Cartoon Shows", "shows")):
+            library = client.post("/api/v1/libraries", headers=headers, json={"name": name, "kind": kind})
+            assert library.status_code == 201, library.text
+            root = client.post("/api/v1/storage-roots", headers=headers, json={
+                "name": name, "path": str(fixture_root / kind), "media_type": kind, "library_id": library.json()["id"]})
+            assert root.status_code == 201, root.text
+            job = _scan(client, headers, root.json()["id"])
+            assert job["status"] == "completed", job
+            ids[kind] = library.json()["id"]
+
+        movies = client.get("/api/v1/movies").json()["items"]
+        shows = client.get("/api/v1/shows").json()["items"]
+        assert [item["title"] for item in movies] == ["Arrival"]
+        assert [item["title"] for item in shows] == ["Dollface"]
+
+        from app.models.domain import Movie, Show
+
+        async def library_ids():
+            async with db_session.async_session_factory() as db:
+                movie = await db.get(Movie, uuid.UUID(movies[0]["id"]))
+                show = await db.get(Show, uuid.UUID(shows[0]["id"]))
+                return str(movie.library_id), str(show.library_id)
+
+        assert asyncio.run(library_ids()) == (ids["movies"], ids["shows"])
+    finally:
+        shutil.rmtree(fixture_root, ignore_errors=True)

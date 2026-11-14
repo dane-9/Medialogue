@@ -46,6 +46,7 @@ from app.models.domain import (
 )
 from app.parser import extract_episode_numbers, parse_release, parse_season_folder
 from app.services.discoveries import retire_missing_new_media_discovery, stage_media_discovery
+from app.services.libraries import directory_library_id, note_title_in_other_library
 from app.services.events import create_event
 from app.services.quality_profiles import evaluate_current_release_score, preferred_release_name
 from app.services.reconciliation import open_problem, resolve_problem
@@ -112,6 +113,7 @@ async def add_show_from_tmdb(
     *,
     monitored: bool = True,
     client_factory=None,
+    library_id: UUID | None = None,
 ) -> Show:
     existing = await db.scalar(select(Show).where(Show.tmdb_id == tmdb_id))
     if existing is not None:
@@ -120,6 +122,7 @@ async def add_show_from_tmdb(
     # one place. If TMDB cannot return details, abort rather than inventing a
     # title for a logical Show.
     show = Show(
+        library_id=library_id,
         title=f"TMDB {tmdb_id}",
         year=None,
         tmdb_id=tmdb_id,
@@ -557,6 +560,7 @@ async def reconcile_show_directory(
         show = await db.scalar(select(Show).where(Show.tmdb_id == match.tmdb_id))
         if show is None:
             show = Show(
+                library_id=await directory_library_id(db, directory),
                 title=match.title,
                 year=match.year or year,
                 tmdb_id=match.tmdb_id,
@@ -578,6 +582,7 @@ async def reconcile_show_directory(
                 message=f"Discovered {show.title} from the configured Show root.",
                 details={"tmdb_id": show.tmdb_id, "path": observation.path},
             )
+    await note_title_in_other_library(db, show, directory)
     parsed_by_path: dict[str, Any] = {
         relative_path: parse_release(Path(relative_path).stem)
         for relative_path in observation.media_files

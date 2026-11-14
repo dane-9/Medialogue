@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from uuid import UUID
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -33,6 +34,7 @@ async def create_movie_from_metadata(
     original_language: str | None = None,
     monitored: bool = True,
     source: str = "tmdb",
+    library_id: UUID | None = None,
 ) -> Movie:
     """Create a Movie from already-validated TMDB metadata.
 
@@ -45,6 +47,7 @@ async def create_movie_from_metadata(
     if existing is not None:
         return existing
     movie = Movie(
+        library_id=library_id,
         title=title,
         sort_title=sort_title(title),
         year=year,

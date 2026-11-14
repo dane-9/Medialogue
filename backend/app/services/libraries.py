@@ -8,6 +8,7 @@ Moving a folder to another library moves its titles with it.
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -27,6 +28,8 @@ from app.models.domain import (
     ShowRelease,
     StorageRoot,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def show_ids_in(db: AsyncSession, condition) -> set[UUID]:
@@ -80,6 +83,29 @@ async def movie_ids_in(db: AsyncSession, condition) -> set[UUID]:
 async def titles_in_root(db: AsyncSession, root_id: UUID) -> tuple[set[UUID], set[UUID]]:
     here = MediaDirectory.storage_root_id == root_id
     return await movie_ids_in(db, here), await show_ids_in(db, here)
+
+
+async def directory_library_id(db: AsyncSession, directory: MediaDirectory) -> UUID | None:
+    """The library a title first found in ``directory`` belongs to: its folder's."""
+
+    if directory.storage_root_id is None:
+        return None
+    return await db.scalar(select(StorageRoot.library_id).where(StorageRoot.id == directory.storage_root_id))
+
+
+async def note_title_in_other_library(db: AsyncSession, title: Movie | Show, directory: MediaDirectory) -> None:
+    """Log a title whose files turned up in another library's folder.
+
+    A title's library is set once, when it is created; scans never move it.
+    """
+
+    library_id = await directory_library_id(db, directory)
+    if library_id is not None and title.library_id is not None and library_id != title.library_id:
+        logger.warning(
+            "title found in another library's media folder",
+            extra={"title": title.title, "title_library_id": str(title.library_id), "folder_library_id": str(library_id),
+                   "path": directory.resolved_path},
+        )
 
 
 async def get_library(db: AsyncSession, library_id: UUID) -> Library:

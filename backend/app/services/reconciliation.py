@@ -59,6 +59,7 @@ from app.reconciliation.types import (
     ExistingRelease,
     PlexState,
 )
+from app.services.libraries import directory_library_id, note_title_in_other_library
 from app.services.events import create_event, publish_live_event, queue_live_event
 from app.services.integration_state import get_configured_plex
 from app.services.tmdb import TMDBUnavailable, resolve_movie_identity_detailed
@@ -891,6 +892,7 @@ async def reconcile_movie_directory(
         confidence = max(confidence, 0.95)
         await resolve_problem(db, "PLEX_IDENTITY_MISMATCH", "media_directory", directory.id)
         movie = Movie(
+            library_id=await directory_library_id(db, directory),
             title=tmdb_match.title,
             sort_title=_sort_title(tmdb_match.title),
             year=tmdb_match.year or year,
@@ -986,6 +988,7 @@ async def reconcile_movie_directory(
             if old is not None:
                 old.release_state = ReleaseState.DUPLICATE
 
+        await note_title_in_other_library(db, movie, directory)
         quality = None
         if folder_parse.quality.canonical:
             quality = await db.scalar(select(QualityDefinition).where(QualityDefinition.name == folder_parse.quality.canonical))

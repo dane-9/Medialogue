@@ -25,6 +25,7 @@ from app.models.domain import (
 )
 from app.core.problem_types import MOVIE_MATCH_REASONS, SHOW_MATCH_REASONS
 from app.services.events import create_event, queue_live_event
+from app.services.libraries import directory_library_id
 from app.services.jobs import JobFailure, checkpoint_job, create_job, run_job
 from app.parser import EDITION_OPTIONS
 from app.services.reconciliation import reconcile_movie_directory, refresh_movie_duplicate_problem
@@ -268,6 +269,7 @@ async def _confirm_movie_match(
             raise AppError("NOT_FOUND", "Affected media directory no longer exists.", status_code=404)
         if movie is None:
             movie = Movie(
+                library_id=await directory_library_id(db, directory),
                 title=metadata.title,
                 sort_title=metadata.title.casefold(),
                 year=metadata.year,
@@ -330,6 +332,7 @@ async def _confirm_show_match(
         if show is None:
             metadata = await _tmdb_show(db, tmdb_id, tmdb_client_factory)
             show = Show(
+                library_id=await directory_library_id(db, directory),
                 title=metadata.title,
                 year=metadata.year,
                 tmdb_id=metadata.tmdb_id,
