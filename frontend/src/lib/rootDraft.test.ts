@@ -5,6 +5,7 @@ import type { RootDraft } from './rootDraft'
 const base: RootDraft = {
   name: 'Movies', path: '\\NAS\Movies', mediaType: 'movies',
   accessMode: 'read_only', approveNewMedia: false, missingGraceChecks: 2,
+  libraryId: 'lib-movies', category: 'movies',
 }
 const draft = (over: Partial<RootDraft> = {}): RootDraft => ({ ...base, ...over })
 
@@ -27,6 +28,8 @@ describe('rootDraftChanged', () => {
     expect(rootDraftChanged(draft({ accessMode: 'read_write' }), base)).toBe(true)
     expect(rootDraftChanged(draft({ approveNewMedia: true }), base)).toBe(true)
     expect(rootDraftChanged(draft({ missingGraceChecks: 3 }), base)).toBe(true)
+    expect(rootDraftChanged(draft({ libraryId: '' }), base)).toBe(true)
+    expect(rootDraftChanged(draft({ category: 'cartoons' }), base)).toBe(true)
   })
 
   it('ignores surrounding whitespace, which saving trims anyway', () => {

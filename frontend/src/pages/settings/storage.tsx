@@ -16,13 +16,15 @@ import { Modal } from '../../components/Modal'
 import { Button, EnabledButton, Input, Segmented, Select, Slider } from '../../components/ui'
 import { integrationsApi } from '../../api/modules/integrations'
 import { storageApi } from '../../api/modules/storage'
-import type { DownloadClient, LibrarySummary, FilesystemListing, StorageRoot, RemotePathMapping } from '../../types'
+import type { DownloadClient, DownloadClientCategory, LibrarySummary, FilesystemListing, StorageRoot, RemotePathMapping } from '../../types'
 import { useLiveLibraryRefresh } from '../shared'
 import { DISCARD_CHANGES } from './shared'
+import { firstLibraryOf, useLibraries } from '../../lib/libraries'
 import { IgnoredFolders } from './IgnoredFolders'
 
 export function StorageSettings() {
   const confirm = useConfirm()
+  const { libraries } = useLibraries()
   const [roots, setRoots] = useState<StorageRoot[]>([])
   // Multiple progress events can overlap REST reads. Only the newest root
   // snapshot may win, otherwise a slow stale response can resurrect Scanning.
@@ -51,6 +53,10 @@ export function StorageSettings() {
   const [accessMode, setAccessMode] = useState<'read_only' | 'read_write'>('read_only')
   const [approveNewMedia, setApproveNewMedia] = useState(false)
   const [missingGraceChecks, setMissingGraceChecks] = useState(2)
+  const [libraryId, setLibraryId] = useState('')
+  const [category, setCategory] = useState('')
+  // The categories of the qBittorrent clients that download this media type.
+  const [categories, setCategories] = useState<DownloadClientCategory[] | null>(null)
   const [mappingName, setMappingName] = useState('qBittorrent path')
   const [mappingClientId, setMappingClientId] = useState('')
   const [mappingEnabled, setMappingEnabled] = useState(true)
@@ -96,21 +102,41 @@ export function StorageSettings() {
 
   const changeMediaType = (next: 'movies' | 'shows') => {
     setMediaType(next)
+    // A library holds one media type; follow the switch to a library that can
+    // hold the folder, unless the folder was deliberately left out of every one.
+    setLibraryId((current) => current && libraries?.find((item) => item.id === current)?.kind !== next
+      ? firstLibraryOf(libraries, next)?.id ?? ''
+      : current)
     setName((current) => isGeneratedRootName(current)
       ? nextRootName(next === 'movies' ? 'Movies' : 'Shows', takenNames(selectedRoot))
       : current)
   }
 
   const beginAddRoot = () => {
-    setMessage(null); setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setApproveNewMedia(true); setMissingGraceChecks(2); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', approveNewMedia: true, missingGraceChecks: 2 }); setRootModalOpen(true); setMessage(null)
+    setMessage(null); setSelectedRoot(null); setName(nextRootName('Movies', takenNames())); setPath(''); openBrowser(''); setMediaType('movies'); setAccessMode('read_only'); setApproveNewMedia(true); setMissingGraceChecks(2); const defaultLibrary = firstLibraryOf(libraries, 'movies')?.id ?? ''; setLibraryId(defaultLibrary); setCategory(''); setRootBaseline({ name: '', path: '', mediaType: 'movies', accessMode: 'read_only', approveNewMedia: true, missingGraceChecks: 2, libraryId: defaultLibrary, category: '' }); setRootModalOpen(true); setMessage(null)
   }
   const editRoot = (root: StorageRoot) => {
-    setMessage(null); setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setApproveNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, approveNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2 }); setRootModalOpen(true); setMessage(null)
+    setMessage(null); setSelectedRoot(root); setName(root.name); setPath(root.resolved_root_path); openBrowser(root.resolved_root_path, { updateDraftPath: false, preservePathOnProblem: true }); setMediaType(root.media_type); setAccessMode(root.access_mode); setApproveNewMedia(root.discovery_mode === 'review'); setMissingGraceChecks(root.missing_grace_checks ?? 2); setLibraryId(root.library_id ?? ''); setCategory(root.category ?? ''); setRootBaseline({ name: root.name, path: root.resolved_root_path, mediaType: root.media_type, accessMode: root.access_mode, approveNewMedia: root.discovery_mode === 'review', missingGraceChecks: root.missing_grace_checks ?? 2, libraryId: root.library_id ?? '', category: root.category ?? '' }); setRootModalOpen(true); setMessage(null)
   }
   const rootDirty = rootDraftChanged(
-    { name, path, mediaType, accessMode, approveNewMedia, missingGraceChecks },
+    { name, path, mediaType, accessMode, approveNewMedia, missingGraceChecks, libraryId, category },
     rootBaseline,
   )
+  useEffect(() => {
+    if (!rootModalOpen) return
+    let alive = true
+    const scoped = clients.filter((client) => client.scope === mediaType && client.enabled)
+    setCategories(null)
+    Promise.all(scoped.map((client) => integrationsApi.downloadClientCategories(client.id).catch(() => [])))
+      .then((lists) => {
+        if (!alive) return
+        const byName = new Map<string, DownloadClientCategory>()
+        lists.flat().forEach((item) => { if (!byName.has(item.name)) byName.set(item.name, item) })
+        setCategories([...byName.values()].sort((a, b) => a.name.localeCompare(b.name)))
+      })
+    return () => { alive = false }
+  }, [rootModalOpen, mediaType, clients])
+
   const closeRootModal = async () => {
     if (rootDirty && !await confirm(DISCARD_CHANGES)) return
     setRootModalOpen(false); setMessage(null)
@@ -138,9 +164,10 @@ export function StorageSettings() {
     setRootBusy(true)
     try {
       const requestedDiscoveryMode = approveNewMedia ? 'review' : 'automatic'
+      const libraryChanged = (selectedRoot?.library_id ?? '') !== libraryId
       const saved = selectedRoot
-        ? await storageApi.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, missing_grace_checks: missingGraceChecks })
-        : await storageApi.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: true, missing_grace_checks: missingGraceChecks })
+        ? await storageApi.updateStorageRoot(selectedRoot.id, { name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, missing_grace_checks: missingGraceChecks, category: category.trim() || null, ...(libraryChanged ? { library_id: libraryId || null } : {}) })
+        : await storageApi.createStorageRoot({ name: name.trim(), path: path.trim(), media_type: mediaType, access_mode: accessMode, discovery_mode: requestedDiscoveryMode, enabled: true, missing_grace_checks: missingGraceChecks, library_id: libraryId || null, category: category.trim() || null })
       // A Vite page can outlive its backend process during development. Older
       // servers ignore unknown request fields, which previously closed the
       // modal as if New Media approval had been persisted when it had not.
@@ -158,7 +185,9 @@ export function StorageSettings() {
         // Scan straight away: a root that has never been scanned does nothing,
         // and leaving that as a second step people had to discover was the
         // main reason adding one felt like it had not worked.
-        if (!tmdbReady) {
+        if (!saved.library_id) {
+          setMessage(ok(`${saved.name} added. It is in no library, so it is not scanned until you put it in one.`))
+        } else if (!tmdbReady) {
           setMessage(ok(`${saved.name} added. Configure TMDB, then scan it.`))
         } else {
           try {
@@ -275,6 +304,25 @@ export function StorageSettings() {
     catch { setRoots(await storageApi.storageRoots().catch(() => roots)) }
   }
 
+  const librariesOfType = (libraries ?? []).filter((library) => library.kind === mediaType)
+  // Leaving every library would hide the titles already found here.
+  const mustStayInLibrary = Boolean(selectedRoot?.library_id && selectedRoot.title_count > 0)
+  const libraryHelp = !libraryId
+    ? 'In no library: not scanned, watched or checked, and its titles are not shown.'
+    : mustStayInLibrary && libraryId !== selectedRoot?.library_id
+      ? `Moves the ${selectedRoot?.title_count} ${selectedRoot?.title_count === 1 ? 'title' : 'titles'} found here along with it.`
+      : 'Where the titles found here are listed.'
+  // A saved category the clients no longer report (or that could not be read) stays selectable.
+  const savedOnly = { name: category, savePath: '', resolvedSavePath: '', isDefault: false }
+  const categoryOptions = !category ? categories ?? []
+    : !categories ? [savedOnly]
+    : categories.some((item) => item.name === category) ? categories : [...categories, savedOnly]
+  const categoryHelp = categories === null
+    ? 'Loading categories from qBittorrent…'
+    : !clients.some((client) => client.scope === mediaType && client.enabled)
+      ? `No ${mediaType === 'movies' ? 'movie' : 'show'} qBittorrent client is set up, so there are no categories to pick.`
+      : 'Downloads for this folder use this category, so qBittorrent saves them to its save path.'
+
   const liveSelectedRoot = selectedRoot ? roots.find((root) => root.id === selectedRoot.id) ?? selectedRoot : null
 
   return <>
@@ -302,6 +350,7 @@ export function StorageSettings() {
         const missing = root.missing_media_count ?? 0
         const state = root.scanning ? { tone: 'blue' as const, text: 'Scanning…' }
           : !root.enabled ? { tone: 'neutral' as const, text: 'Off' }
+          : !root.library_id ? { tone: 'neutral' as const, text: 'Not scanned' }
           : offline ? { tone: 'red' as const, text: `Path not reachable${root.affected_media_count ? ` · ${root.affected_media_count} affected` : ''}` }
           : !scanned ? { tone: 'amber' as const, text: 'Never scanned' }
           : missing ? { tone: 'amber' as const, text: `${missing} ${missing === 1 ? 'item' : 'items'} missing` }
@@ -322,6 +371,7 @@ export function StorageSettings() {
           <span className="root-row-copy">
             <span className="root-row-title">
               <strong>{root.name}</strong>
+              <span className={`root-row-library ${root.library_id ? '' : 'none'}`}>{root.library_id ? `(${root.library_name ?? 'Library'})` : '(No library)'}</span>
             </span>
             <code>{root.resolved_root_path}</code>
           </span>
@@ -342,7 +392,7 @@ export function StorageSettings() {
     {rootModalOpen && <Modal wide className="modal-tall" icon="folder" title={selectedRoot ? selectedRoot.name : 'Add media folder'} onClose={closeRootModal}
       footer={<>
       {selectedRoot && <Button variant="danger" onClick={() => beginRemoveRoot(selectedRoot)} disabled={rootBusy}>Remove</Button>}
-      {liveSelectedRoot && <Button variant="ghost" icon="refresh" onClick={() => void scanRoot(liveSelectedRoot)} disabled={rootBusy || rootDirty || !liveSelectedRoot.enabled || liveSelectedRoot.scanning || !tmdbReady}>{liveSelectedRoot.scanning ? 'Scanning…' : 'Scan now'}</Button>}
+      {liveSelectedRoot && <Button variant="ghost" icon="refresh" onClick={() => void scanRoot(liveSelectedRoot)} disabled={rootBusy || rootDirty || !liveSelectedRoot.enabled || !liveSelectedRoot.library_id || liveSelectedRoot.scanning || !tmdbReady}>{liveSelectedRoot.scanning ? 'Scanning…' : 'Scan now'}</Button>}
       <span className="modal-foot-spacer" />
       <Button variant="ghost" onClick={closeRootModal} disabled={rootBusy}>Cancel</Button>
       <Button variant="primary" onClick={() => void saveRoot()} disabled={rootBusy || !path.trim() || Boolean(selectedRoot && !rootDirty)}>{rootBusy ? 'Saving…' : selectedRoot ? 'Save media folder' : 'Add media folder'}</Button>
@@ -378,6 +428,12 @@ export function StorageSettings() {
                 options={[{ value: 'movies', label: 'Movies', tone: 'movie' }, { value: 'shows', label: 'Shows', tone: 'show' }]}
               />
             </Field>
+            <Field label="Library" help={libraryHelp}>
+              <Select value={libraryId} onChange={(event) => setLibraryId(event.target.value)}>
+                {librariesOfType.map((library) => <option value={library.id} key={library.id}>{library.name}</option>)}
+                <option value="" disabled={mustStayInLibrary}>No library</option>
+              </Select>
+            </Field>
             <Field label="Access" help="Read-only is recommended. Read/write allows deletion.">
               <Segmented
                 ariaLabel="Access"
@@ -385,6 +441,14 @@ export function StorageSettings() {
                 onChange={setAccessMode}
                 options={[{ value: 'read_only', label: 'Read-only' }, { value: 'read_write', label: 'Read/write' }]}
               />
+            </Field>
+          </SettingsGroup>
+          <SettingsGroup legend="Downloads">
+            <Field label="qBittorrent category" badge="optional" help={categoryHelp}>
+              <Select value={category} onChange={(event) => setCategory(event.target.value)}>
+                <option value="">Client default</option>
+                {categoryOptions.map((item) => <option value={item.name} key={item.name}>{item.name}{item.savePath ? ` · ${item.savePath}` : ''}</option>)}
+              </Select>
             </Field>
           </SettingsGroup>
           <SettingsGroup legend="Scanning">

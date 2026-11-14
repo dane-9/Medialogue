@@ -399,6 +399,8 @@
 .root-row-copy { display: grid; gap: var(--s2); min-width: 0; }
 .root-row-title { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .root-row-copy strong { overflow: hidden; font-size: var(--t-sm); text-overflow: ellipsis; white-space: nowrap; }
+.root-row-library { flex: none; color: var(--muted); font-size: var(--t-sm); white-space: nowrap; }
+.root-row-library.none { color: var(--faint); font-style: italic; }
 .root-row-copy code { overflow: hidden; color: var(--muted); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .root-row-end { display: flex; align-items: center; gap: var(--s3); flex: none; color: var(--faint); font-size: var(--t-xs); }
 .root-row-write { display: grid; place-items: center; color: var(--warn); }

@@ -6,6 +6,10 @@ export interface RootDraft {
   accessMode: 'read_only' | 'read_write'
   approveNewMedia: boolean
   missingGraceChecks: number
+  /** Empty: in no library. */
+  libraryId: string
+  /** Empty: the qBittorrent client's default save path. */
+  category: string
 }
 
 export function rootDraftChanged(draft: RootDraft, baseline: RootDraft | null): boolean {
@@ -16,6 +20,8 @@ export function rootDraftChanged(draft: RootDraft, baseline: RootDraft | null): 
     || draft.accessMode !== baseline.accessMode
     || draft.approveNewMedia !== baseline.approveNewMedia
     || draft.missingGraceChecks !== baseline.missingGraceChecks
+    || draft.libraryId !== baseline.libraryId
+    || draft.category.trim() !== baseline.category.trim()
 }
 
 export function rootBrowseStart(path: string): string {
