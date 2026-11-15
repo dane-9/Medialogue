@@ -47,6 +47,7 @@ from app.schemas.movies import (
 from app.schemas.torrent_status import MediaTorrentStatusResponse
 
 from app.services.movies import add_movie_from_tmdb
+from app.services.libraries import title_category
 from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
@@ -515,6 +516,7 @@ async def get_movie(
         root_health=root.last_health if root else None,
         root_affected_count=root_affected_count,
         last_observed_at=max((directory.last_seen_at for directory in active_directories), default=None),
+        folder_category=await title_category(db, movie),
     )
 
 

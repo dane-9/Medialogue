@@ -156,6 +156,18 @@ async def _assert_not_blocklisted(db: AsyncSession, row: UpgradeCandidate, info_
         )
 
 
+async def _folder_category(db: AsyncSession, row: UpgradeCandidate) -> str | None:
+    from app.services.libraries import title_category
+
+    title: Movie | Show | None = None
+    if row.media_type == MediaType.MOVIES and row.movie_id:
+        title = await db.get(Movie, row.movie_id)
+    elif row.season_id:
+        season = await db.get(Season, row.season_id)
+        title = await db.get(Show, season.show_id) if season is not None else None
+    return await title_category(db, title) if title is not None else None
+
+
 async def submit_upgrade_candidate(
     db: AsyncSession,
     candidate_id: UUID,
@@ -210,6 +222,9 @@ async def submit_upgrade_candidate(
     if indexer.download_client_ids and client.id not in indexer.download_client_ids:
         raise AppError("DOWNLOAD_CLIENT_NOT_ALLOWED_BY_INDEXER", f"{indexer.name} is not configured to grab through {client.name}.", status_code=409)
 
+    if category is None:
+        # Unsaid: the category of the media folder the title is in.
+        category = await _folder_category(db, row)
     selected_category = category.strip() if category and category.strip() else (client.category or None)
     if (row.comparison_snapshot or {}).get("same_file"):
         from app.services.same_file_links import submit_same_file_link

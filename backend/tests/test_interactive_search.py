@@ -927,3 +927,81 @@ def test_indexers_keep_the_order_they_are_dragged_into(client: TestClient) -> No
         mismatch = client.put("/api/v1/indexers/order", headers=headers, json={"ids": partial})
         assert mismatch.status_code == 409 and mismatch.json()["error"]["code"] == "INDEXER_ORDER_MISMATCH"
     assert client.put("/api/v1/indexers/order", json={"ids": list(ids.values())}).status_code in {401, 403}
+
+
+def _new_movie_grab(client: TestClient):
+    """A finished TMDB search for a movie not in the library, ready to grab."""
+
+    headers = _login(client)
+    assert client.put("/api/v1/integrations/tmdb", headers=headers, json={"api_key": "test-key", "enabled": True}).status_code == 200
+    profile = client.post("/api/v1/quality-profiles", headers=headers, json={"name": "Library Grab"})
+    indexer_url = "http://prowlarr.test/library/api"
+    _create_indexer(client, headers, name="Library", url=indexer_url, scope="movies")
+    search_behavior = FakeTorznabBehavior(results_by_url={indexer_url: [SearchResult(
+        guid="library-result",
+        title="Inception 2010 2160p UHD BluRay REMUX HEVC TrueHD 7.1-LM",
+        download_url="http://prowlarr.test/download/library",
+        size=10_000_000_000,
+        seeders=10,
+        published=None,
+    )]})
+    qbit_behavior = FakeQBitBehavior(categories=[
+        TorrentCategory(name="movies", save_path="/downloads/movies", resolved_save_path="/downloads/movies"),
+        TorrentCategory(name="cartoons", save_path="/downloads/cartoons", resolved_save_path="/downloads/cartoons"),
+    ])
+    client.app.dependency_overrides[indexers_api.get_torznab_client_factory] = lambda: search_behavior.factory
+    client.app.dependency_overrides[downloads_api.get_qbittorrent_client_factory] = lambda: qbit_behavior.factory
+    client.app.dependency_overrides[tmdb_api.get_tmdb_client_factory] = lambda: _fake_tmdb_factory
+    qbit_client = client.post("/api/v1/download-clients", headers=headers, json={
+        "name": "Movies", "url": "http://qbit.test:8080", "username": "media", "password": "secret",
+        "scope": "movies", "category": "movies", "enabled": True,
+    })
+    assert qbit_client.status_code == 201, qbit_client.text
+    started = client.post("/api/v1/interactive-search/movies", headers=headers,
+                          json={"tmdb_id": 27205, "quality_profile_id": profile.json()["id"]})
+    assert started.status_code == 202, started.text
+    result_id = get_search_job(client, started.json()["job_id"]).json()["results"][0]["id"]
+    return headers, qbit_client.json()["id"], result_id, qbit_behavior
+
+
+def test_a_new_movie_grabbed_into_a_folder_joins_its_library_with_its_category(client: TestClient, tmp_path) -> None:
+    try:
+        headers, qbit_client_id, result_id, qbit_behavior = _new_movie_grab(client)
+        cartoons = client.post("/api/v1/libraries", headers=headers, json={"name": "Cartoon Movies", "kind": "movies"}).json()
+        (tmp_path / "cartoons").mkdir()
+        folder = client.post("/api/v1/storage-roots", headers=headers, json={
+            "name": "Cartoons", "path": str(tmp_path / "cartoons"), "media_type": "movies",
+            "library_id": cartoons["id"], "category": "cartoons",
+        })
+        assert folder.status_code == 201, folder.text
+
+        submitted = client.post(f"/api/v1/search-results/{result_id}/download", headers=headers, json={
+            "download_client_id": qbit_client_id, "storage_root_id": folder.json()["id"],
+        })
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.json()["category"] == "cartoons"
+        assert qbit_behavior.submissions[0]["category"] == "cartoons"
+        movie = client.get(f"/api/v1/movies/{submitted.json()['movie_id']}").json()
+        assert movie["library_id"] == cartoons["id"]
+        # Nothing is on disk yet, so the movie's folder is its library's first one.
+        assert movie["folder_category"] == "cartoons"
+    finally:
+        client.app.dependency_overrides.clear()
+
+
+def test_a_movie_cannot_be_grabbed_into_a_folder_outside_every_library(client: TestClient, tmp_path) -> None:
+    try:
+        headers, qbit_client_id, result_id, qbit_behavior = _new_movie_grab(client)
+        folder = client.post("/api/v1/storage-roots", headers=headers, json={
+            "name": "Loose", "path": str(tmp_path), "media_type": "movies", "library_id": None,
+        })
+        assert folder.status_code == 201, folder.text
+
+        submitted = client.post(f"/api/v1/search-results/{result_id}/download", headers=headers, json={
+            "download_client_id": qbit_client_id, "storage_root_id": folder.json()["id"],
+        })
+        assert submitted.status_code == 409, submitted.text
+        assert submitted.json()["error"]["code"] == "STORAGE_ROOT_NOT_IN_LIBRARY"
+        assert qbit_behavior.submissions == []
+    finally:
+        client.app.dependency_overrides.clear()

@@ -109,6 +109,7 @@ export function mapMovie(value: MovieSummaryDto | MovieDetailDto): Movie {
     rootHealth: detail?.root_health ?? undefined,
     rootAffectedCount: detail?.root_affected_count,
     lastObservedAt: value.last_observed_at ?? undefined,
+    folderCategory: detail?.folder_category ?? undefined,
     releasesDetail: detail?.releases.map(mapRelease) ?? [],
     incoming: incoming ? mapIncoming(incoming) : undefined,
     problems: (detail?.problems ?? []).map(mapEvidence),

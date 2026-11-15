@@ -6622,6 +6622,17 @@
             ],
             "title": "Edition"
           },
+          "folder_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Category"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -10364,6 +10375,18 @@
               }
             ],
             "title": "Show Folder Name"
+          },
+          "storage_root_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Root Id"
           }
         },
         "required": [
@@ -13882,6 +13905,17 @@
               }
             ],
             "title": "Execution State"
+          },
+          "folder_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Category"
           },
           "id": {
             "format": "uuid",

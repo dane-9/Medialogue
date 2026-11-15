@@ -503,6 +503,7 @@ export function MovieDetailPage({ id }: { id: string }) {
     {searchOpen && <MovieInteractiveSearch
       movieId={id}
       title={`${movie.title}${movie.year ? ` (${movie.year})` : ''}`}
+      folderCategory={movie.folderCategory}
       onClose={() => setSearchOpen(false)}
       onStarted={(text) => { setMessage(text); void load() }}
     />}

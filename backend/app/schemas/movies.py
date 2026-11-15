@@ -164,6 +164,8 @@ class MovieDetailResponse(MovieSummaryResponse):
     root_health: StorageRootHealth | None = None
     root_affected_count: int = 0
     last_observed_at: datetime | None = None
+    #: The qBittorrent category of the movie's media folder; the default for its downloads.
+    folder_category: str | None = None
 
 
 class MovieCreate(BaseModel):

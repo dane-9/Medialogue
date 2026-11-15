@@ -15,6 +15,7 @@ import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
 import { ReleaseResults } from './ReleaseResults'
 import { DownloadClientField } from './DownloadClientField'
+import { MediaFolderStep, useMediaFolderChoice } from './MediaFolderStep'
 import { useHorizontalWheelScroll } from '../lib/useHorizontalWheelScroll'
 import { Button, Input, Select } from './ui'
 import imdbLogo from '../assets/imdb.svg'
@@ -94,7 +95,8 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
   const [setupLoading, setSetupLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
   const [clientReload, setClientReload] = useState(0)
-  const [step, setStep] = useState<'setup' | 'search'>('setup')
+  const [step, setStep] = useState<'folder' | 'setup' | 'search'>('folder')
+  const folders = useMediaFolderChoice('shows')
   const [searchProfileId, setSearchProfileId] = useState('')
   const [activeSeasonNumber, setActiveSeasonNumber] = useState<number | null>(null)
   const [seasonStates, setSeasonStates] = useState<Record<number, SeasonSearchState>>({})
@@ -125,6 +127,12 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
 
   const selectedClient = clients.find((client) => client.id === clientId)
   const selectedCategory = categories.find((item) => item.name === category)
+  const folderCategory = folders.folder?.category
+
+  // With one media folder (or none) there is nothing to pick.
+  useEffect(() => {
+    if (!folders.loading && !folders.choosable) setStep((current) => current === 'folder' ? 'setup' : current)
+  }, [folders.loading, folders.choosable])
   const finalShowFolderName = showFolderName(showFolderBaseName, preview?.year || show.year, includeYearInFolder)
   const finalDestination = joinQbitPath(selectedCategory?.resolvedSavePath, finalShowFolderName)
 
@@ -137,8 +145,9 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
       .then((rows) => {
         if (!alive) return
         setCategories(rows)
-        const defaultName = selectedClient?.category
-        const next = (defaultName && rows.some((item) => item.name === defaultName) ? defaultName : rows.find((item) => item.isDefault)?.name) || rows[0]?.name || ''
+        // The folder's category first, then the client's own default.
+        const next = [folderCategory, selectedClient?.category].find((name) => name && rows.some((item) => item.name === name))
+          || rows.find((item) => item.isDefault)?.name || rows[0]?.name || ''
         setCategory(next)
         if (!rows.length) setError('This qBittorrent instance has no categories. Create a category in qBittorrent before continuing.')
       })
@@ -149,7 +158,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
       })
       .finally(() => { if (alive) setCategoryLoading(false) })
     return () => { alive = false }
-  }, [clientId, selectedClient?.category, clientReload])
+  }, [clientId, selectedClient?.category, folderCategory, clientReload])
 
   const visibleSeasons = useMemo(() => {
     const rows = (preview?.seasons ?? []).filter((season) => includeSpecials || season.seasonNumber !== 0)
@@ -289,6 +298,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
           category,
           show_folder_name: showFolderBaseName,
           include_year_in_show_folder: includeYearInFolder,
+          storage_root_id: folders.folder?.id ?? null,
         })
         showId = response.show_id || showId
         succeeded += 1
@@ -332,29 +342,37 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
           >{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select>
         </label>}
         <nav className="wizard-steps" aria-label="Download steps">
+          {folders.choosable && <button
+            type="button"
+            className={step === 'folder' ? 'active' : ''}
+            aria-current={step === 'folder' ? 'step' : undefined}
+            onClick={() => { setStep('folder'); setError('') }}
+          ><i>1</i>Media folder</button>}
           <button
             type="button"
             className={step === 'setup' ? 'active' : ''}
             aria-current={step === 'setup' ? 'step' : undefined}
             onClick={() => { setStep('setup'); setError('') }}
-          ><i>1</i>Setup</button>
+          ><i>{folders.choosable ? 2 : 1}</i>Setup</button>
           <button
             type="button"
             className={step === 'search' ? 'active' : ''}
             aria-current={step === 'search' ? 'step' : undefined}
             disabled={!canContinue}
             onClick={continueToSeasons}
-          ><i>2</i>Select seasons</button>
+          ><i>{folders.choosable ? 3 : 2}</i>Select seasons</button>
         </nav>
         <button className="icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       </header>
 
-      {step === 'setup' ? <div className="wizard-setup">
+      {step !== 'search' ? <div className="wizard-setup">
         <aside className="wizard-movie-card">
           <div className="wizard-poster">{posterUrl(preview?.posterRef || show.poster) ? <img src={posterUrl(preview?.posterRef || show.poster)} alt="" /> : <Icon name="tv-screen" size={28} />}</div>
           <div><strong className="wizard-title-line">{preview?.title || show.title}{show.imdbRating != null && <span className="wizard-imdb-rating"><img src={imdbLogo} alt="IMDb" /> {show.imdbRating.toFixed(1)}{show.imdbVotes != null ? ` · ${show.imdbVotes.toLocaleString()} Ratings` : ''}</span>}</strong><span>{preview?.year || show.year || 'Year unknown'} · TMDB {show.tmdbId}</span>{(preview?.overview || show.overview) && <p>{preview?.overview || show.overview}</p>}</div>
         </aside>
-        <section className="wizard-form">
+        {step === 'folder' ? <section className="wizard-form">
+          <MediaFolderStep groups={folders.groups} loading={folders.loading} value={folders.folderId} onChange={folders.setFolderId} locked={Boolean(committedShowId)} />
+        </section> : <section className="wizard-form">
           <div className="wizard-box"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading || Boolean(committedShowId)}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></label></div>
           <div className="wizard-destination"><DownloadClientField
             clients={clients}
@@ -386,7 +404,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
             <div className="wizard-destination wizard-summary"><span>Final destination</span><strong>{finalDestination || 'Unavailable'}</strong></div>
           </Tooltip>
           {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
-        </section>
+        </section>}
       </div> : <div className="wizard-search show-wizard-search">
         <div className="show-season-tabs" ref={seasonTabsRef} role="tablist" aria-label="Show seasons">
           {visibleSeasons.map((season) => {
@@ -431,8 +449,9 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
         {step === 'search' && activeState?.job
           ? <span className="wizard-foot-count">{activeState.job.resultTotal} Torrent{activeState.job.resultTotal === 1 ? '' : 's'} found</span>
           : null}
-        <span>{step === 'setup' ? 'Nothing is added to your library until qBittorrent accepts a season pack.' : committedShowId ? 'This show is in your library, a season download has started.' : null}</span>
-        <div>{step === 'setup' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={!canContinue} onClick={continueToSeasons}>Continue</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button>{committedShowId && pendingSeasons.length === 0 ? <Button variant="primary" type="button" onClick={() => onComplete(committedShowId)}>Open Show</Button> : <Button variant="primary" type="button" disabled={!pendingSeasons.length || submitting} onClick={() => void startDownloads()}>{submitting ? 'Starting downloads…' : `${committedShowId ? 'Retry' : 'Start'} Downloads (${pendingSeasons.length})`}</Button>}</>}</div>
+        <span>{step === 'folder' ? (folders.folder ? <>Adds the show to <strong>{folders.folder.library_name}</strong></> : null) : step === 'setup' ? 'Nothing is added to your library until qBittorrent accepts a season pack.' : committedShowId ? 'This show is in your library, a season download has started.' : null}</span>
+        <div>{step === 'folder' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={folders.loading || !folders.folder} onClick={() => setStep('setup')}>Continue</Button></>
+          : step === 'setup' ? <><Button variant="secondary" type="button" onClick={folders.choosable ? () => setStep('folder') : onBack}>Back</Button><Button variant="primary" type="button" disabled={!canContinue} onClick={continueToSeasons}>Continue</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button>{committedShowId && pendingSeasons.length === 0 ? <Button variant="primary" type="button" onClick={() => onComplete(committedShowId)}>Open Show</Button> : <Button variant="primary" type="button" disabled={!pendingSeasons.length || submitting} onClick={() => void startDownloads()}>{submitting ? 'Starting downloads…' : `${committedShowId ? 'Retry' : 'Start'} Downloads (${pendingSeasons.length})`}</Button>}</>}</div>
       </footer>
     </div>
   </div>

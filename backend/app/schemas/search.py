@@ -126,6 +126,10 @@ class SearchResultDownloadRequest(BaseModel):
     category: str | None = Field(default=None, max_length=256)
     show_folder_name: str | None = Field(default=None, min_length=1, max_length=240)
     include_year_in_show_folder: bool = False
+    #: The media folder a new title is downloaded into; it joins that folder's
+    #: library, and the category defaults to the folder's. Ignored for a title
+    #: already in the library, which uses the folder its files are in.
+    storage_root_id: UUID | None = None
 
 
 class SearchResultDownloadResponse(BaseModel):

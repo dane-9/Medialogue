@@ -5429,6 +5429,8 @@ export interface components {
             current_quality: string | null;
             /** Edition */
             edition: string | null;
+            /** Folder Category */
+            folder_category?: string | null;
             /**
              * Id
              * Format: uuid
@@ -6674,6 +6676,8 @@ export interface components {
             include_year_in_show_folder: boolean;
             /** Show Folder Name */
             show_folder_name?: string | null;
+            /** Storage Root Id */
+            storage_root_id?: string | null;
         };
         /** SearchResultDownloadResponse */
         SearchResultDownloadResponse: {
@@ -7771,6 +7775,8 @@ export interface components {
             execution_error?: string | null;
             /** Execution State */
             execution_state?: ("submitted" | "linking" | "downloading" | "validating" | "handoff_attention" | "cleanup_required" | "completed" | "failed") | null;
+            /** Folder Category */
+            folder_category?: string | null;
             /**
              * Id
              * Format: uuid

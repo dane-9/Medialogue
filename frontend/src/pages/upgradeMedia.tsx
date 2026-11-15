@@ -30,6 +30,9 @@ import type { DownloadClient, InteractiveSearchResult, QualityProfile, UpgradeCa
 import { MIXED_PROFILE, Page, defaultProfileLabel, libraryInvalidationEvents, tmdbPosterUrl } from './shared'
 import { useLiveEvent, useLiveRefresh } from '../lib/liveRefresh'
 
+// The category picker's choice for a batch whose titles sit in folders with different categories.
+const EACH_FOLDER = '\u0000each-folder'
+
 /** A score change, signed: +5, −10, ±0. */
 function formatScoreDelta(value: number) {
   return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '±0'
@@ -275,7 +278,12 @@ export function UpgradeMediaPage() {
         if (!alive) return
         setCategories(rows)
         const client = clients.find((entry) => entry.id === clientId)
-        const preferred = rows.find((row) => row.name === client?.category) ?? rows.find((row) => row.isDefault) ?? rows[0]
+        // Each title downloads into its own media folder's category; titles
+        // from folders with different categories each keep theirs.
+        const folderCategories = new Set(picked.map((item) => item.folderCategory ?? ''))
+        if (folderCategories.size > 1) { setCategory(EACH_FOLDER); return }
+        const [folderCategory] = folderCategories
+        const preferred = rows.find((row) => row.name === folderCategory) ?? rows.find((row) => row.name === client?.category) ?? rows.find((row) => row.isDefault) ?? rows[0]
         setCategory(preferred?.name ?? '')
       })
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not read qBittorrent categories.') })
@@ -323,7 +331,7 @@ export function UpgradeMediaPage() {
     let submitted = 0
     for (const item of picked) {
       try {
-        const updated = await upgradesApi.executeUpgrade(item.id, clientId, category)
+        const updated = await upgradesApi.executeUpgrade(item.id, clientId, category === EACH_FOLDER ? undefined : category)
         setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
         submitted += 1
       } catch (reason) {
@@ -485,6 +493,7 @@ export function UpgradeMediaPage() {
   // A candidate already in flight keeps its own per-row actions, and a blocked
   // one cannot be submitted at all, so neither can join the batch.
   const picked = useMemo(() => rows.filter((item) => upgradeStartable(item) && item.executionEligible && !excluded.has(item.id)), [rows, excluded])
+  const mixedFolders = new Set(picked.map((item) => item.folderCategory ?? '')).size > 1
   const pickedBytes = useMemo(() => picked.reduce((total, item) => total + (item.size ?? 0), 0), [picked])
   // How much the library grows (or shrinks) once these replace what is on
   // disk. Only rows whose current size is known can say.
@@ -852,10 +861,10 @@ export function UpgradeMediaPage() {
             <Select value={clientId} onChange={(event) => setClientId(event.target.value)}>{eligibleClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</Select>
           </Field>
           <Field label="Category" help="qBittorrent owns the save path this category resolves to.">
-            <Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select>
+            <Select value={category} disabled={!clientId || categoryLoading} onChange={(event) => setCategory(event.target.value)}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && mixedFolders && <option value={EACH_FOLDER}>Each title's media folder category</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select>
           </Field>
         </SettingsGroup>
-        <div className="wizard-destination-path"><span>Save path</span><strong>{categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
+        <div className="wizard-destination-path"><span>Save path</span><strong>{category === EACH_FOLDER ? 'The save path of each title\'s media folder category' : categories.find((item) => item.name === category)?.resolvedSavePath || 'Select a category'}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
       </div>
     </Modal>}
 

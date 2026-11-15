@@ -8,6 +8,7 @@ import { Icon } from './Icon'
 import { Button, Select } from './ui'
 import { ReleaseResults, formatBytes } from './ReleaseResults'
 import { DownloadClientField } from './DownloadClientField'
+import { MediaFolderStep, useMediaFolderChoice } from './MediaFolderStep'
 import imdbLogo from '../assets/imdb.svg'
 
 type MovieChoice = {
@@ -42,7 +43,8 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
   const [setupLoading, setSetupLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
   const [clientReload, setClientReload] = useState(0)
-  const [step, setStep] = useState<'setup' | 'search'>('setup')
+  const [step, setStep] = useState<'folder' | 'setup' | 'search'>('folder')
+  const folders = useMediaFolderChoice('movies')
   const [jobId, setJobId] = useState('')
   const [searchedProfileId, setSearchedProfileId] = useState('')
   const [job, setJob] = useState<InteractiveSearchJob | null>(null)
@@ -70,6 +72,12 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
 
   const selectedClient = clients.find((client) => client.id === clientId)
   const selectedCategory = categories.find((item) => item.name === category)
+  const folderCategory = folders.folder?.category
+
+  // With one media folder (or none) there is nothing to pick.
+  useEffect(() => {
+    if (!folders.loading && !folders.choosable) setStep((current) => current === 'folder' ? 'setup' : current)
+  }, [folders.loading, folders.choosable])
 
   useEffect(() => {
     if (!clientId) { setCategories([]); setCategory(''); return }
@@ -80,8 +88,9 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
       .then((rows) => {
         if (!alive) return
         setCategories(rows)
-        const defaultName = selectedClient?.category
-        const next = (defaultName && rows.some((item) => item.name === defaultName) ? defaultName : rows.find((item) => item.isDefault)?.name) || rows[0]?.name || ''
+        // The folder's category first, then the client's own default.
+        const next = [folderCategory, selectedClient?.category].find((name) => name && rows.some((item) => item.name === name))
+          || rows.find((item) => item.isDefault)?.name || rows[0]?.name || ''
         setCategory(next)
         if (!rows.length) setError('This qBittorrent instance has no categories. Create a category in qBittorrent before continuing.')
       })
@@ -92,7 +101,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
       })
       .finally(() => { if (alive) setCategoryLoading(false) })
     return () => { alive = false }
-  }, [clientId, selectedClient?.category, clientReload])
+  }, [clientId, selectedClient?.category, folderCategory, clientReload])
 
   useEffect(() => {
     if (!jobId || step !== 'search') return
@@ -143,7 +152,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
     if (!selectedResult || !clientId || !category || !selectedResult.qualityAllowed) return
     setStarting(true); setError('')
     try {
-      const response = await searchApi.downloadSearchResult(selectedResult.id, { download_client_id: clientId, category })
+      const response = await searchApi.downloadSearchResult(selectedResult.id, { download_client_id: clientId, category, storage_root_id: folders.folder?.id ?? null })
       if (!response.movie_id) throw new Error('qBittorrent accepted the release, but no movie was created.')
       onComplete(response.movie_id)
     } catch (reason) {
@@ -167,29 +176,37 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
           >{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select>
         </label>}
         <nav className="wizard-steps" aria-label="Download steps">
+          {folders.choosable && <button
+            type="button"
+            className={step === 'folder' ? 'active' : ''}
+            aria-current={step === 'folder' ? 'step' : undefined}
+            onClick={() => { setStep('folder'); setError('') }}
+          ><i>1</i>Media folder</button>}
           <button
             type="button"
             className={step === 'setup' ? 'active' : ''}
             aria-current={step === 'setup' ? 'step' : undefined}
             onClick={() => { setStep('setup'); setError('') }}
-          ><i>1</i>Setup</button>
+          ><i>{folders.choosable ? 2 : 1}</i>Setup</button>
           <button
             type="button"
             className={step === 'search' ? 'active' : ''}
             aria-current={step === 'search' ? 'step' : undefined}
             disabled={!canSearch || starting}
             onClick={() => void search()}
-          ><i>2</i>Select release</button>
+          ><i>{folders.choosable ? 3 : 2}</i>Select release</button>
         </nav>
         <button className="icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
       </header>
 
-      {step === 'setup' ? <div className="wizard-setup">
+      {step !== 'search' ? <div className="wizard-setup">
         <aside className="wizard-movie-card">
           <div className="wizard-poster">{posterUrl(movie.poster) ? <img src={posterUrl(movie.poster)} alt="" /> : <Icon name="clapper" size={28} />}</div>
           <div><strong className="wizard-title-line">{movie.title}{movie.imdbRating != null && <span className="wizard-imdb-rating"><img src={imdbLogo} alt="IMDb" /> {movie.imdbRating.toFixed(1)}{movie.imdbVotes != null ? ` · ${movie.imdbVotes.toLocaleString()} Ratings` : ''}</span>}</strong><span>{movie.year || 'Year unknown'} · TMDB {movie.tmdbId}</span>{movie.overview && <p>{movie.overview}</p>}</div>
         </aside>
-        <section className="wizard-form">
+        {step === 'folder' ? <section className="wizard-form">
+          <MediaFolderStep groups={folders.groups} loading={folders.loading} value={folders.folderId} onChange={folders.setFolderId} />
+        </section> : <section className="wizard-form">
           <div className="wizard-box"><label><span className="field-label">Quality Profile</span><Select value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={setupLoading}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select><small>Controls quality ordering and Custom Format scoring for this search.</small></label></div>
           <div className="wizard-destination"><DownloadClientField
             clients={clients}
@@ -200,7 +217,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
             onRefreshed={(rows) => { setClients(rows); setClientReload((value) => value + 1) }}
           /><label><span className="field-label">Category</span><Select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!clientId || categoryLoading}>{categoryLoading && <option value="">Loading categories…</option>}{!categoryLoading && categories.map((item) => <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · default' : ''}</option>)}</Select></label><div className="wizard-destination-path"><span>Save path</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Unavailable')}</strong>{selectedCategory && !selectedCategory.savePath && <small>Uses the qBittorrent default download directory because this category has no explicit path.</small>}</div></div>
           {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
-        </section>
+        </section>}
       </div> : <div className="wizard-search">
         {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         <ReleaseResults
@@ -218,12 +235,15 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
         {step === 'search' && job
           ? <span className="wizard-foot-count">{job.resultTotal} Torrent{job.resultTotal === 1 ? '' : 's'} found</span>
           : null}
-        <span>{step === 'setup'
+        <span>{step === 'folder'
+          ? folders.folder ? <>Adds the movie to <strong>{folders.folder.library_name}</strong></> : null
+          : step === 'setup'
           ? 'Nothing is added to your library until the download starts.'
           : selectedResult
             ? <>Downloading to <strong>{selectedClient?.name} / {category}</strong> · {formatBytes(selectedResult.size)}</>
             : job?.status === 'completed' ? null : 'Results appear as each indexer finishes.'}</span>
-        <div>{step === 'setup' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={!canSearch || starting} onClick={() => void search()}>{starting ? 'Starting…' : (jobId && searchedProfileId === profileId ? 'Return to results' : 'Search releases')}</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button><Button variant="primary" type="button" disabled={!selectedResult || !selectedResult.qualityAllowed || starting} onClick={() => void startDownload()}>{starting ? 'Starting download…' : 'Start Download'}</Button></>}</div>
+        <div>{step === 'folder' ? <><Button variant="secondary" type="button" onClick={onBack}>Back</Button><Button variant="primary" type="button" disabled={folders.loading || !folders.folder} onClick={() => setStep('setup')}>Continue</Button></>
+          : step === 'setup' ? <><Button variant="secondary" type="button" onClick={folders.choosable ? () => setStep('folder') : onBack}>Back</Button><Button variant="primary" type="button" disabled={!canSearch || starting} onClick={() => void search()}>{starting ? 'Starting…' : (jobId && searchedProfileId === profileId ? 'Return to results' : 'Search releases')}</Button></> : <><Button variant="secondary" type="button" onClick={() => { setStep('setup'); setError('') }}>Back</Button><Button variant="primary" type="button" disabled={!selectedResult || !selectedResult.qualityAllowed || starting} onClick={() => void startDownload()}>{starting ? 'Starting download…' : 'Start Download'}</Button></>}</div>
       </footer>
     </div>
   </div>

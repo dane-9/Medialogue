@@ -664,3 +664,36 @@ select.input { background-color: var(--input-bg); }
 .library-folder-home { flex: none; color: var(--faint); font-size: var(--t-xs); }
 .library-folder-home.moving { color: var(--warn); }
 .library-dialog .provider-modal-editor > .settings-note { margin-top: var(--s4); margin-bottom: 0; }
+
+/* Download wizard step 1: the media folder, grouped by library. */
+.wizard-folders { display: grid; gap: var(--s4); }
+.wizard-folder-group { display: grid; gap: var(--s2); }
+.wizard-folder-group h3 { display: flex; align-items: center; gap: var(--s2); margin: 0; color: var(--muted); font-size: var(--t-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.wizard-folder-list { gap: 0; padding: 0; }
+.wizard-folder {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s3);
+  padding: 11px 14px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.wizard-folder + .wizard-folder { border-top: 1px solid var(--line); }
+.wizard-folder:hover:not(:disabled) { background: rgba(255, 255, 255, .03); }
+.wizard-folder.active { background: var(--accent-soft); }
+.wizard-folder:disabled { cursor: not-allowed; opacity: .6; }
+.wizard-folder-dot { width: 14px; height: 14px; border: 1px solid var(--line-strong); border-radius: var(--r-full); }
+.wizard-folder.active .wizard-folder-dot { border: 4px solid var(--accent); }
+.wizard-folder-copy { display: grid; gap: 3px; min-width: 0; }
+.wizard-folder-copy strong { overflow: hidden; font-size: var(--t-sm); text-overflow: ellipsis; white-space: nowrap; }
+.wizard-folder-copy small { overflow: hidden; color: var(--faint); font: var(--t-xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.wizard-folder-category { color: var(--faint); font-size: var(--t-xs); white-space: nowrap; }
+.wizard-folder-empty { color: var(--faint); font-size: var(--t-sm); }
+@media (max-width: 640px) {
+  .wizard-folder { grid-template-columns: 14px minmax(0, 1fr); }
+  .wizard-folder-category { grid-column: 2; }
+}

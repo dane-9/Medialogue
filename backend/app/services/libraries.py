@@ -178,3 +178,126 @@ async def assign_root(db: AsyncSession, root: StorageRoot, library: Library | No
             await db.execute(update(Show).where(Show.id.in_(show_ids)).values(library_id=library.id))
     root.library_id = library.id if library is not None else None
     await db.flush()
+
+
+async def title_storage_root(db: AsyncSession, title: Movie | Show) -> StorageRoot | None:
+    """The folder a new download of ``title`` belongs in.
+
+    The folder its files are in; a title with no files yet (still downloading,
+    or Missing) gets the first folder of its library.
+    """
+
+    if isinstance(title, Movie):
+        ids = await movie_root_ids(db, title.id)
+    else:
+        ids = await show_root_ids(db, title.id)
+    if ids:
+        root = await db.scalar(
+            select(StorageRoot).where(StorageRoot.id.in_(ids)).order_by(StorageRoot.sort_order, StorageRoot.name).limit(1)
+        )
+        if root is not None:
+            return root
+    return await db.scalar(
+        select(StorageRoot)
+        .where(StorageRoot.library_id == title.library_id, StorageRoot.enabled.is_(True))
+        .order_by(StorageRoot.sort_order, StorageRoot.name)
+        .limit(1)
+    )
+
+
+async def movie_root_ids(db: AsyncSession, movie_id: UUID) -> set[UUID]:
+    return set(
+        (
+            await db.scalars(
+                select(MediaDirectory.storage_root_id)
+                .join(MovieRelease, MediaDirectory.movie_release_id == MovieRelease.id)
+                .where(MovieRelease.movie_id == movie_id, MediaDirectory.storage_root_id.is_not(None))
+            )
+        ).all()
+    )
+
+
+async def show_root_ids(db: AsyncSession, show_id: UUID) -> set[UUID]:
+    ids: set[UUID] = set(
+        (
+            await db.scalars(
+                select(MediaDirectory.storage_root_id)
+                .join(ShowRelease, MediaDirectory.show_release_id == ShowRelease.id)
+                .where(ShowRelease.show_id == show_id, MediaDirectory.storage_root_id.is_not(None))
+            )
+        ).all()
+    )
+    ids.update(
+        (
+            await db.scalars(
+                select(MediaDirectory.storage_root_id)
+                .join(MediaFile, MediaFile.media_directory_id == MediaDirectory.id)
+                .join(EpisodeMediaMap, EpisodeMediaMap.media_file_id == MediaFile.id)
+                .join(Episode, Episode.id == EpisodeMediaMap.episode_id)
+                .join(Season, Season.id == Episode.season_id)
+                .where(Season.show_id == show_id, MediaDirectory.storage_root_id.is_not(None))
+            )
+        ).all()
+    )
+    return ids
+
+
+async def title_category(db: AsyncSession, title: Movie | Show) -> str | None:
+    """The qBittorrent category a new download of ``title`` defaults to: its folder's."""
+
+    root = await title_storage_root(db, title)
+    return root.category if root is not None else None
+
+
+async def title_categories(
+    db: AsyncSession, movies: list[Movie], shows: list[Show]
+) -> tuple[dict[UUID, str | None], dict[UUID, str | None]]:
+    """``title_category`` for many titles at once: (by movie id, by show id)."""
+
+    roots = list(await db.scalars(select(StorageRoot).order_by(StorageRoot.sort_order, StorageRoot.name)))
+    rank = {root.id: index for index, root in enumerate(roots)}
+    by_id = {root.id: root for root in roots}
+    library_first: dict[UUID, StorageRoot] = {}
+    for root in roots:
+        if root.enabled and root.library_id is not None:
+            library_first.setdefault(root.library_id, root)
+
+    def pick(found: dict[UUID, set[UUID]], title: Movie | Show) -> str | None:
+        ids = [root_id for root_id in found.get(title.id, ()) if root_id in by_id]
+        root = by_id[min(ids, key=rank.__getitem__)] if ids else library_first.get(title.library_id)
+        return root.category if root is not None else None
+
+    movie_roots: dict[UUID, set[UUID]] = {}
+    show_roots: dict[UUID, set[UUID]] = {}
+    movie_ids = [movie.id for movie in movies]
+    show_ids = [show.id for show in shows]
+    for start in range(0, len(movie_ids), 500):
+        chunk = movie_ids[start:start + 500]
+        for movie_id, root_id in await db.execute(
+            select(MovieRelease.movie_id, MediaDirectory.storage_root_id)
+            .join(MediaDirectory, MediaDirectory.movie_release_id == MovieRelease.id)
+            .where(MovieRelease.movie_id.in_(chunk), MediaDirectory.storage_root_id.is_not(None))
+        ):
+            movie_roots.setdefault(movie_id, set()).add(root_id)
+    for start in range(0, len(show_ids), 500):
+        chunk = show_ids[start:start + 500]
+        for show_id, root_id in await db.execute(
+            select(ShowRelease.show_id, MediaDirectory.storage_root_id)
+            .join(MediaDirectory, MediaDirectory.show_release_id == ShowRelease.id)
+            .where(ShowRelease.show_id.in_(chunk), MediaDirectory.storage_root_id.is_not(None))
+        ):
+            show_roots.setdefault(show_id, set()).add(root_id)
+        for show_id, root_id in await db.execute(
+            select(Season.show_id, MediaDirectory.storage_root_id)
+            .join(Episode, Episode.season_id == Season.id)
+            .join(EpisodeMediaMap, EpisodeMediaMap.episode_id == Episode.id)
+            .join(MediaFile, MediaFile.id == EpisodeMediaMap.media_file_id)
+            .join(MediaDirectory, MediaDirectory.id == MediaFile.media_directory_id)
+            .where(Season.show_id.in_(chunk), MediaDirectory.storage_root_id.is_not(None))
+            .distinct()
+        ):
+            show_roots.setdefault(show_id, set()).add(root_id)
+    return (
+        {movie.id: pick(movie_roots, movie) for movie in movies},
+        {show.id: pick(show_roots, show) for show in shows},
+    )

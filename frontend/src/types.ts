@@ -78,6 +78,8 @@ export interface Movie {
   rootHealth?: 'available' | 'unavailable' | 'unknown'
   rootAffectedCount?: number
   lastObservedAt?: string
+  /** The category of the movie's media folder; the default for its downloads. */
+  folderCategory?: string
   releasesDetail?: MovieRelease[]
   incoming?: IncomingDownload
   problems?: ReconciliationEvidence[]
@@ -511,6 +513,8 @@ export interface UpgradeCandidate {
   selectedDownloadClientId?: string
   selectedDownloadClientName?: string
   selectedCategory?: string
+  /** The category of the title's media folder; the default for its download. */
+  folderCategory?: string
   torrentId?: string
   downloadProgress?: number
   downloadState?: string

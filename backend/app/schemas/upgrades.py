@@ -111,6 +111,8 @@ class UpgradeCandidateResponse(BaseModel):
     selected_download_client_id: UUID | None = None
     selected_download_client_name: str | None = None
     selected_category: str | None = None
+    #: The category of the media folder the title is in; the default for its download.
+    folder_category: str | None = None
     torrent_id: UUID | None = None
     download_progress: float | None = None
     download_state: str | None = None

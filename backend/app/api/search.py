@@ -30,6 +30,7 @@ from app.models.domain import (
     ReleaseBlocklist,
     Season,
     Show,
+    StorageRoot,
 )
 from app.parser import parse_release
 from app.schemas.jobs import JobAcceptedResponse
@@ -54,6 +55,7 @@ from app.services.blocklist import blocklist_for_results, matching_blocklist_ent
 from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
 from app.services.shows import add_show_from_tmdb
+from app.services.libraries import root_library_id, title_storage_root
 from app.services.tmdb import get_show_details, get_tmdb_configuration
 from app.services.tracker_hosts import remember_tracker_hosts
 
@@ -469,7 +471,33 @@ async def download_search_result(
                 status_code=409,
             )
         target_show = await db.scalar(select(Show).where(Show.tmdb_id == tmdb_id))
-    selected_category = payload.category.strip() if payload.category and payload.category.strip() else (client.category or None)
+    # The folder the download belongs in: the one picked for a new title, or
+    # the one an existing title's files are in. Its category is the default.
+    folder: StorageRoot | None = None
+    new_title_library_id: UUID | None = None
+    if unattached_movie or (unattached_show_season and target_show is None):
+        if payload.storage_root_id is not None:
+            folder = await db.get(StorageRoot, payload.storage_root_id)
+            if folder is None or not folder.enabled:
+                raise AppError("STORAGE_ROOT_UNAVAILABLE", "The selected media folder is not available.", status_code=404)
+            if folder.media_type != result.media_type:
+                raise AppError(
+                    "STORAGE_ROOT_MEDIA_TYPE_MISMATCH",
+                    f"{folder.name} holds {folder.media_type.value}, not {result.media_type.value}.",
+                    status_code=409,
+                )
+            new_title_library_id = root_library_id(folder)
+    else:
+        existing_title: Movie | Show | None = target_show
+        if result.target_entity_type == "movie" and result.target_entity_id is not None:
+            existing_title = await db.get(Movie, result.target_entity_id)
+        elif result.target_entity_type == "season" and result.target_entity_id is not None:
+            season = await db.get(Season, result.target_entity_id)
+            existing_title = await db.get(Show, season.show_id) if season is not None else None
+        if existing_title is not None:
+            folder = await title_storage_root(db, existing_title)
+    requested_category = payload.category if payload.category is not None else (folder.category if folder else None)
+    selected_category = requested_category.strip() if requested_category and requested_category.strip() else (client.category or None)
     if result.selected_at is not None:
         existing_category = str((result.selection_snapshot or {}).get("category") or "") or None
         if result.selected_download_client_id != client.id or (payload.category is not None and existing_category != selected_category):
@@ -511,7 +539,7 @@ async def download_search_result(
     needs_show_destination = result.media_type == MediaType.SHOWS and (
         unattached_show_season or payload.show_folder_name is not None
     )
-    if payload.category is not None or needs_show_destination:
+    if requested_category is not None or needs_show_destination:
         try:
             categories = await qbittorrent_client.list_categories()
         except Exception as exc:
@@ -545,6 +573,7 @@ async def download_search_result(
                     int(target["tmdb_id"]),
                     monitored=True,
                     client_factory=tmdb_factory,
+                    library_id=new_title_library_id,
                 )
             except Exception as exc:
                 await qbittorrent_client.close()
@@ -653,6 +682,7 @@ async def download_search_result(
             poster_ref=str(target["poster_ref"]) if target.get("poster_ref") is not None else None,
             monitored=True,
             source="manual_download",
+            library_id=new_title_library_id,
         )
         profile_id_raw = target.get("quality_profile_id")
         if profile_id_raw:

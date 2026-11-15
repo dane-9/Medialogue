@@ -17,9 +17,11 @@ const FINISHED = ['completed', 'failed', 'cancelled', 'interrupted']
  * searches by TMDB id for a movie that does not exist yet. This one searches an
  * existing movie, so the grab attaches to it rather than creating anything.
  */
-export function MovieInteractiveSearch({ movieId, title, onClose, onStarted }: {
+export function MovieInteractiveSearch({ movieId, title, folderCategory, onClose, onStarted }: {
   movieId: string
   title: string
+  /** The category of the movie's media folder, picked first when the client has it. */
+  folderCategory?: string
   onClose: () => void
   onStarted: (message: string) => void
 }) {
@@ -69,8 +71,8 @@ export function MovieInteractiveSearch({ movieId, title, onClose, onStarted }: {
       .then((rows) => {
         if (!alive) return
         setCategories(rows)
-        const preferred = selectedClient?.category
-        setCategory((preferred && rows.some((item) => item.name === preferred) ? preferred : rows.find((item) => item.isDefault)?.name) || rows[0]?.name || '')
+        const preferred = [folderCategory, selectedClient?.category].find((name) => name && rows.some((item) => item.name === name))
+        setCategory(preferred || rows.find((item) => item.isDefault)?.name || rows[0]?.name || '')
         if (!rows.length) setError('This qBittorrent instance has no categories. Create one in qBittorrent before continuing.')
       })
       .catch((reason) => {
@@ -80,7 +82,7 @@ export function MovieInteractiveSearch({ movieId, title, onClose, onStarted }: {
       })
       .finally(() => { if (alive) setCategoryLoading(false) })
     return () => { alive = false }
-  }, [clientId, selectedClient?.category, clientReload])
+  }, [clientId, selectedClient?.category, folderCategory, clientReload])
 
   // Results stream in as each indexer answers, so the job is polled until it
   // reaches a terminal state rather than awaited once.

@@ -45,6 +45,7 @@ from app.models.domain import (
 from app.parser import parse_release
 from app.services.format_breakdown import comparison_formats_many
 from app.services.release_source import CHUNK, SourceLookup, source_lookup
+from app.services.libraries import title_categories
 from app.schemas.upgrades import (
     MediaHistoryItem,
     UpgradeCandidateCount,
@@ -135,6 +136,8 @@ class _Lookups:
     default_profile: QualityProfile | None = None
     indexer_colors: dict[UUID, str | None] = field(default_factory=dict)
     formats: dict[UUID, tuple[list[dict], list[dict]]] = field(default_factory=dict)
+    #: Movie or show -> the qBittorrent category of its media folder.
+    title_categories: dict[UUID, str | None] = field(default_factory=dict)
 
 
 async def _lookups(db: AsyncSession, rows: list[UpgradeCandidate]) -> _Lookups:
@@ -162,6 +165,9 @@ async def _lookups(db: AsyncSession, rows: list[UpgradeCandidate]) -> _Lookups:
     show_ids = {season.show_id for season in found.seasons.values()}
     for chunk in _in_chunks(show_ids):
         found.shows.update((show.id, show) for show in await db.scalars(select(Show).where(Show.id.in_(chunk))))
+
+    movie_categories, show_categories = await title_categories(db, list(found.movies.values()), list(found.shows.values()))
+    found.title_categories = {**movie_categories, **show_categories}
 
     for chunk in _in_chunks(movie_release_ids):
         found.release_editions.update((await db.execute(
@@ -246,6 +252,13 @@ async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidate
 async def _responses(db: AsyncSession, rows: list[UpgradeCandidate]) -> list[UpgradeCandidateResponse]:
     found = await _lookups(db, rows)
     return [_build_response(row, found) for row in rows]
+
+
+def _folder_category(row: UpgradeCandidate, found: _Lookups) -> str | None:
+    if row.media_type == MediaType.MOVIES:
+        return found.title_categories.get(row.movie_id) if row.movie_id else None
+    season = found.seasons.get(row.season_id) if row.season_id else None
+    return found.title_categories.get(season.show_id) if season is not None else None
 
 
 def _candidate_edition(row: UpgradeCandidate) -> str | None:
@@ -424,6 +437,7 @@ def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateR
         selected_download_client_id=row.selected_download_client_id,
         selected_download_client_name=row.selected_download_client_name,
         selected_category=row.selected_category,
+        folder_category=_folder_category(row, found),
         torrent_id=row.torrent_id,
         download_progress=progress,
         download_state=download_state,

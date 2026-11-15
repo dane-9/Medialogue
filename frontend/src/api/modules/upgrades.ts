@@ -79,6 +79,7 @@ function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
     selectedDownloadClientId: value.selected_download_client_id ?? undefined,
     selectedDownloadClientName: value.selected_download_client_name ?? undefined,
     selectedCategory: value.selected_category ?? undefined,
+    folderCategory: value.folder_category ?? undefined,
     torrentId: value.torrent_id ?? undefined,
     downloadProgress: value.download_progress ?? undefined,
     downloadState: value.download_state ?? undefined,
