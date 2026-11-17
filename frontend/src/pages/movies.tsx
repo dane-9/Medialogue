@@ -363,8 +363,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
     finally { setBusy(false) }
   }
   const dirty = profileFormChanged(settings, { profileId, minimumOverrideId, minimumScoreOverride })
-  return <Panel title="Quality profile" className="profile-panel"
-    action={<Button variant="primary" onClick={() => void save()} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save profile settings'}</Button>}>
+  return <Panel className="profile-panel">
     <div className="settings-form profile-form">
       <SettingsGroup>
         <Field label="Quality profile" help="Which profile ranks and scores releases for this movie.">
@@ -384,7 +383,10 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
         </Field>
       </SettingsGroup>
     </div>
-    {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
+    <div className="settings-footer">
+      {message && <span className="footer-state">{message}</span>}
+      <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty}>{busy ? 'Saving…' : 'Save'}</Button>
+    </div>
   </Panel>
 }
 
@@ -479,6 +481,8 @@ export function MovieDetailPage({ id }: { id: string }) {
   const currentReleases = releases.filter((release) => release.state === 'current' || release.state === 'duplicate' || release.state === 'conflict')
   const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
+  // Downloading shows as a row in Current releases, so the hero needn't say it too.
+  const heroStatus = needsAttention(movie.status) && movie.status !== 'Downloading'
   const currentSummary = <div className="release-summary-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back={`Back to ${movieLibrary?.name ?? 'Movies'}`} backTo={movieLibrary ? `/library/${movieLibrary.id}` : '/movies'}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
@@ -492,8 +496,8 @@ export function MovieDetailPage({ id }: { id: string }) {
           {/* Only states worth acting on. "Present" is the default for a movie
               you are looking at, and a confidence figure told nobody anything
               they could do something about. */}
-          {(needsAttention(movie.status) || plexAvailable || movie.monitored === false) && <div className="badge-row">
-            {needsAttention(movie.status) && <Badge tone={statusTone(movie.status)}>{movie.status}</Badge>}
+          {(heroStatus || plexAvailable || movie.monitored === false) && <div className="badge-row">
+            {heroStatus && <Badge tone={statusTone(movie.status)}>{movie.status}</Badge>}
             {plexAvailable && <Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge>}
             {movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}
           </div>}

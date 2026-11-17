@@ -679,6 +679,11 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 /* The profile form uses the same titled-group rows as Settings, so a per-title
    override reads like every other setting in the app. */
 .profile-form { padding: var(--s4); }
+/* Save sits right under the fields: no divider, no second band of padding. */
+/* .panel.profile-panel: .panel > .settings-form in 03 loads later and would win. */
+.panel.profile-panel > .profile-form { padding-bottom: 0; }
+.panel.profile-panel > .settings-footer { padding: var(--s2) var(--s4); border-top: 0; background: none; }
+.profile-panel > .settings-footer .button { height: 30px; }
 
 .history-row {
   display: flex;
