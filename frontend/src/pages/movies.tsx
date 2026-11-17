@@ -189,8 +189,31 @@ const MovieCard = memo(function MovieCard({ movie, selected, onToggle, onContext
 
 function MovieTable({ items, selected, onToggle, onSelectAll, onClear, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onSelectAll: () => void; onClear: () => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) {
   const plexAvailable = usePlexAvailable()
-  const rows = useVirtualRows(items, plexAvailable ? 10 : 9)
-  return <Panel className="table-panel"><table className="data-table"><thead><tr><th className="select-cell"><SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all movies" onToggle={() => selected.size ? onClear() : onSelectAll()} /></th><th>Title</th><th>State</th><th>Current release</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Tags</th><th>Confidence</th><th>Location</th><th /></tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((movie) => <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id, event) } }}><td className="select-cell"><SelectCheck inline checked={selected.has(movie.id)} label={movie.title} onToggle={(modifiers) => onToggle(movie.id, modifiers)} /></td><td><Link className="table-title" to={`/movies/${movie.id}`}><span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} size="w92" /></span><MonitorMark monitored={movie.monitored !== false} />{movie.title}<span className="muted">{movie.year}</span></Link></td><td><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></td><td>{movie.quality}{movie.edition && <span className="table-sub">{movie.edition}</span>}</td><td><QbitStatusBadge status={movie.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}<td><MovieTagChips movie={movie} onTagClick={onTagClick} /></td><td><span className="confidence">{movie.confidence}%</span></td><td className="path-cell">{movie.location}</td><td><Icon name="chevron" size={15} /></td></tr>)}{rows.after}</tbody></table></Panel>
+  const rows = useVirtualRows(items, plexAvailable ? 8 : 7)
+  return <Panel className="table-panel"><table className="data-table media-table"><thead><tr>
+    <th className="select-cell"><SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all movies" onToggle={() => selected.size ? onClear() : onSelectAll()} /></th>
+    <th>Title</th><th>Edition</th><th>Quality</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Media folder</th>
+  </tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((movie) => {
+    const problems = movie.problemCount ?? 0
+    return <tr key={movie.id} className={selected.has(movie.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, movie.id)} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id, event) } }}>
+      <td className="select-cell"><SelectCheck inline checked={selected.has(movie.id)} label={movie.title} onToggle={(modifiers) => onToggle(movie.id, modifiers)} /></td>
+      <td><div className="media-table-title">
+        <span className={`table-poster poster-${movie.id}`}><PosterImage reference={movie.poster} title={movie.title} size="w92" /></span>
+        <MonitorMark monitored={movie.monitored !== false} />
+        <Link className="media-table-name" to={`/movies/${movie.id}`}>{movie.title}</Link>
+        <span className="media-table-year">{movie.year || ''}</span>
+        <MovieTagChips movie={movie} onTagClick={onTagClick} />
+      </div></td>
+      {/* Blank unless the release names one: theatrical is the default and says nothing. */}
+      <td className="media-table-edition">{movie.edition ?? ''}</td>
+      <td className="media-table-quality">{movie.quality}</td>
+      <td><span className="media-table-badges"><Badge tone={statusTone(movie.status)}>{movie.status}</Badge>{problems > 0 && <Badge tone="red">{problems} problem{problems === 1 ? '' : 's'}</Badge>}</span></td>
+      <td><QbitStatusBadge status={movie.torrentStatus} showState /></td>
+      {plexAvailable && <td><Badge tone={statusTone(movie.plex)}>{movie.plex}</Badge></td>}
+      {/* The library's folder name; the full path is long and lives in the tooltip. */}
+      <td className="media-table-folder">{movie.storageRoot ? <Tooltip content={<span className="download-path">{movie.location}</span>}><span>{movie.storageRoot}</span></Tooltip> : <span className="muted">—</span>}</td>
+    </tr>
+  })}{rows.after}</tbody></table></Panel>
 }
 
 function releaseStateHelp(state: ReleaseState): string {

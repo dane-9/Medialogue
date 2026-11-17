@@ -785,3 +785,21 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 .multi-dropdown-check { display: inline-grid; flex: none; width: 14px; height: 14px; place-items: center; border: 1px solid var(--line-strong); border-radius: 2px; color: var(--accent-text); }
 .multi-dropdown-option.selected .multi-dropdown-check { border-color: var(--accent-line); background: var(--accent-soft); }
 .dropdown-placeholder { color: var(--faint); }
+
+/* Library table view: title first and widest, then the facts worth scanning down a column. */
+.media-table { table-layout: auto; }
+.media-table td { padding-block: 6px; }
+.media-table th:nth-child(2) { width: 100%; }
+.media-table td:not(:nth-child(2)) { white-space: nowrap; }
+.media-table-title { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.media-table-title .monitor-mark { width: auto; height: auto; flex: none; border: 0; background: none; }
+.media-table-name { overflow: hidden; color: var(--text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.media-table-name:hover { color: var(--accent-text); }
+.media-table-year { flex: none; color: var(--faint); font-size: var(--t-xs); }
+.media-table-title .tag-chip-row { flex-wrap: nowrap; margin-left: var(--s1); }
+.media-table-quality { color: var(--text); }
+.media-table-badges { display: inline-flex; gap: var(--s1); }
+.media-table-folder { color: var(--muted); font-size: var(--t-xs); }
+.media-table-edition { color: var(--muted); }
+.media-table-count { color: var(--text); }
+.media-table-missing { margin-left: var(--s2); color: var(--warn); font-size: var(--t-xs); }

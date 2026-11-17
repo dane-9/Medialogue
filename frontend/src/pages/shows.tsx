@@ -139,8 +139,28 @@ const needsShowReview = (show: Show) => (show.problemCount ?? 0) > 0
 
 function ShowTable({ items, selected, onToggle, onSelectAll, onClear, onContext }: { items: Show[]; selected: Set<string>; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onSelectAll: () => void; onClear: () => void; onContext: (event: React.MouseEvent, id: string) => void }) {
   const plexAvailable = usePlexAvailable()
-  const rows = useVirtualRows(items, plexAvailable ? 8 : 7)
-  return <Panel className="table-panel"><table className="data-table"><thead><tr><th className="select-cell"><SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all shows" onToggle={() => selected.size ? onClear() : onSelectAll()} /></th><th>Show</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Seasons</th><th /></tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((show) => <tr key={show.id} className={selected.has(show.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, show.id)} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(show.id, event) } }}><td className="select-cell"><SelectCheck inline checked={selected.has(show.id)} label={show.title} onToggle={(modifiers) => onToggle(show.id, modifiers)} /></td><td><Link className="table-title" to={`/shows/${show.id}`}><span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} size="w92" /></span><MonitorMark monitored={show.monitored !== false} />{show.title}<span className="muted">{show.year || ''}</span></Link></td><td>{show.episodesPresent} / {show.episodesTotal}</td><td><Badge tone={statusTone(show.status)}>{show.status}</Badge></td><td><QbitStatusBadge status={show.torrentStatus} showState /></td>{plexAvailable && <td><Badge tone={statusTone(show.plex)}>Plex {show.plex}</Badge></td>}<td>{show.seasons}</td><td><Icon name="chevron" size={15} /></td></tr>)}{rows.after}</tbody></table></Panel>
+  const rows = useVirtualRows(items, plexAvailable ? 7 : 6)
+  return <Panel className="table-panel"><table className="data-table media-table"><thead><tr>
+    <th className="select-cell"><SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all shows" onToggle={() => selected.size ? onClear() : onSelectAll()} /></th>
+    <th>Title</th><th>Seasons</th><th>Episodes</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}
+  </tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((show) => {
+    const problems = show.problemCount ?? 0
+    const missing = show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)
+    return <tr key={show.id} className={selected.has(show.id) ? 'row-selected' : ''} onContextMenu={(event) => onContext(event, show.id)} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(show.id, event) } }}>
+      <td className="select-cell"><SelectCheck inline checked={selected.has(show.id)} label={show.title} onToggle={(modifiers) => onToggle(show.id, modifiers)} /></td>
+      <td><div className="media-table-title">
+        <span className={`table-poster poster-${show.id}`}><PosterImage reference={show.poster} title={show.title} size="w92" /></span>
+        <MonitorMark monitored={show.monitored !== false} />
+        <Link className="media-table-name" to={`/shows/${show.id}`}>{show.title}</Link>
+        <span className="media-table-year">{show.year || ''}</span>
+      </div></td>
+      <td className="media-table-count">{show.seasons}</td>
+      <td className="media-table-count">{show.episodesPresent} / {show.episodesTotal}{missing > 0 && <span className="media-table-missing">{missing} missing</span>}</td>
+      <td><span className="media-table-badges"><Badge tone={statusTone(show.status)}>{show.status}</Badge>{problems > 0 && <Badge tone="red">{problems} problem{problems === 1 ? '' : 's'}</Badge>}</span></td>
+      <td><QbitStatusBadge status={show.torrentStatus} showState /></td>
+      {plexAvailable && <td><Badge tone={statusTone(show.plex)}>{show.plex}</Badge></td>}
+    </tr>
+  })}{rows.after}</tbody></table></Panel>
 }
 
 const ShowCard = memo(function ShowCard({ show, selected, onToggle, onContext, busy, onCheckUpgrade }: { show: Show; selected: boolean; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onContext: (event: React.MouseEvent, id: string) => void; busy: boolean; onCheckUpgrade: (show: Show) => Promise<void> }) {
