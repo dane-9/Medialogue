@@ -279,8 +279,18 @@
 .indexer-scope-pill { display: inline-flex; align-items: center; height: 20px; padding: 0 var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); font-size: var(--t-xs); white-space: nowrap; }
 /* Both libraries: a movie half and a show half, joined into one pill. */
 .indexer-scope-split { display: inline-flex; }
-.indexer-scope-split > .indexer-scope-pill:first-child { border-right-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.indexer-scope-split > .indexer-scope-pill:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+/* The two halves meet on a 45° cut: the pill is 20px tall, so the cut runs 20px across
+   and the show half slides 20px under the movie half to tile it exactly. A CSS border
+   cannot follow a diagonal, so each half draws its outline as a ring instead: a layer
+   in its border colour, clipped to the shape minus the same shape inset by 1px. The
+   movie ring leaves the cut open and the show ring closes it, so the divide is one
+   1px line. Inset by 1px across a 45° edge is √2 (1.414px) sideways. */
+.indexer-scope-split > .indexer-scope-pill { position: relative; border: 0; border-radius: 0; }
+.indexer-scope-split > .indexer-scope-pill::before { position: absolute; inset: 0; content: ''; pointer-events: none; }
+.indexer-scope-split > .indexer-scope-pill:first-child { padding-right: calc(var(--s2) + 12px); clip-path: polygon(0 0, 100% 0, calc(100% - 20px) 100%, 0 100%); }
+.indexer-scope-split > .indexer-scope-pill:first-child::before { background: var(--kind-movie-line); clip-path: polygon(evenodd, 0 0, 100% 0, calc(100% - 20px) 100%, 0 100%, 0 0, 1px 1px, calc(100% - 1px) 1px, calc(100% - 19px) calc(100% - 1px), 1px calc(100% - 1px), 1px 1px); }
+.indexer-scope-split > .indexer-scope-pill:last-child { margin-left: -20px; padding-left: calc(var(--s2) + 12px); clip-path: polygon(20px 0, 100% 0, 100% 100%, 0 100%); }
+.indexer-scope-split > .indexer-scope-pill:last-child::before { background: var(--kind-show-line); clip-path: polygon(evenodd, 20px 0, 100% 0, 100% 100%, 0 100%, 20px 0, 20.414px 1px, calc(100% - 1px) 1px, calc(100% - 1px) calc(100% - 1px), 2.414px calc(100% - 1px), 20.414px 1px); }
 .provider-card-sortable { cursor: grab; }
 .provider-card-sortable:active { cursor: grabbing; }
 .provider-card-dragging { opacity: .5; border-color: var(--accent); }
