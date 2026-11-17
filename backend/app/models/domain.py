@@ -1264,6 +1264,23 @@ class PlexConfiguration(TimestampMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
 
+class CustomFilter(Base):
+    """A saved filter for the Movies or Shows list, as Radarr keeps them.
+
+    ``filters`` holds the conditions, each ``{"key", "type", "value"}``: every
+    condition must match, and a condition with several values matches any.
+    """
+
+    __tablename__ = "custom_filters"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    media_type: Mapped[MediaType] = mapped_column(SAEnum(MediaType, native_enum=False), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    filters: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class UiSelection(Base):
     """A row left out of a list's bulk action (New Media, Upgrade, Replace).
 

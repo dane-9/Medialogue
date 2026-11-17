@@ -456,6 +456,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/custom-filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Custom Filters */
+        get: operations["list_custom_filters_api_v1_custom_filters_get"];
+        put?: never;
+        /** Create Custom Filter */
+        post: operations["create_custom_filter_api_v1_custom_filters_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-filters/{filter_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Custom Filter */
+        put: operations["update_custom_filter_api_v1_custom_filters__filter_id__put"];
+        post?: never;
+        /** Delete Custom Filter */
+        delete: operations["delete_custom_filter_api_v1_custom_filters__filter_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/custom-formats": {
         parameters: {
             query?: never;
@@ -3434,6 +3470,39 @@ export interface components {
             pages: number;
             /** Total */
             total: number;
+        };
+        /** CustomFilterCondition */
+        CustomFilterCondition: {
+            /** Key */
+            key: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "equal" | "notEqual" | "contains" | "notContains" | "startsWith" | "notStartsWith" | "endsWith" | "notEndsWith" | "greaterThan" | "greaterThanOrEqual" | "lessThan" | "lessThanOrEqual" | "inLast" | "notInLast";
+            /** Value */
+            value: (string | number | boolean)[];
+        };
+        /** CustomFilterResponse */
+        CustomFilterResponse: {
+            /** Filters */
+            filters: components["schemas"]["CustomFilterCondition"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            media_type: components["schemas"]["MediaType"];
+        };
+        /** CustomFilterWrite */
+        CustomFilterWrite: {
+            /** Filters */
+            filters: components["schemas"]["CustomFilterCondition"][];
+            /** Label */
+            label: string;
+            media_type: components["schemas"]["MediaType"];
         };
         /** CustomFormatConditionEvaluationResponse */
         CustomFormatConditionEvaluationResponse: {
@@ -8818,6 +8887,134 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BlocklistDeleteResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_custom_filters_api_v1_custom_filters_get: {
+        parameters: {
+            query?: {
+                media_type?: components["schemas"]["MediaType"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFilterResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_custom_filter_api_v1_custom_filters_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFilterWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFilterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_custom_filter_api_v1_custom_filters__filter_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                filter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomFilterWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFilterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_custom_filter_api_v1_custom_filters__filter_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                filter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

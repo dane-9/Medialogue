@@ -5,7 +5,7 @@ import { installLiveEvents, renderPage } from '../test/pageHarness'
 import { clearListCache } from '../lib/listCache'
 
 const api = vi.hoisted(() => ({ movies: vi.fn(), tags: vi.fn(), qualityProfiles: vi.fn() }))
-vi.mock('../api/modules/movies', () => ({ moviesApi: { movies: api.movies, tags: api.tags } }))
+vi.mock('../api/modules/movies', () => ({ moviesApi: { movies: api.movies, tags: api.tags, movieEditionOptions: () => Promise.resolve([]) } }))
 vi.mock('../api/modules/settings', () => ({ settingsApi: { qualityProfiles: api.qualityProfiles } }))
 
 import { MoviesPage } from './movies'

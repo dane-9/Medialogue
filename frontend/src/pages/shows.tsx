@@ -12,6 +12,8 @@ import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/u
 import { Modal } from '../components/Modal'
 import { profileFormChanged } from '../lib/profileForm'
 import { TorrentHistoryPanel } from '../components/TorrentHistoryPanel'
+import { CustomFiltersModal, LibraryFilterMenu, useCustomFilters } from '../components/CustomFilters'
+import { showFilterFields } from '../lib/libraryFilterFields'
 import { InteractiveSearchDialog } from '../components/InteractiveSearchDialog'
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { LibraryContextMenu } from '../components/LibraryContextMenu'
@@ -26,7 +28,7 @@ import { SelectionBar, SelectCheck } from '../components/SelectionBar'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { EpisodeOrdering, Library, MediaProfileSettings, QualityDefinition, QualityProfile, Show, Season, Episode, EpisodeMedia } from '../types'
-import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
+import { MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 
 const seasonName = (season: Season) => season.title || (season.seasonNumber === 0 ? 'Specials' : `Season ${season.seasonNumber}`)
 const fileName = (path: string) => path.split(/[\\/]/).pop() || path
@@ -51,6 +53,10 @@ export function ShowsPage({ library }: { library?: Library } = {}) {
   // Matches the server default, so the chip does not flash on before the fetch.
   const [countSpecials, setCountSpecials] = useState(false)
   const [specialsBusy, setSpecialsBusy] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const customFilters = useCustomFilters('shows', showFilterFields, filter)
+  // A saved filter deleted elsewhere leaves nothing to apply.
+  useEffect(() => { if (customFilters.isCustom && customFilters.filters.length && !customFilters.active) setFilter('All') }, [customFilters.isCustom, customFilters.active, customFilters.filters.length])
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
     try { const next = await showsApi.shows('', sort, libraryId); rememberList(`shows:${libraryId}:${sort}`, next); setItems((current) => reuseUnchanged(current, next)); setError('') }
@@ -105,11 +111,11 @@ export function ShowsPage({ library }: { library?: Library } = {}) {
   const totalEpisodes = useMemo(() => items.reduce((sum, show) => sum + show.episodesTotal, 0), [items])
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return items.filter((show) => (filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsShowReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter))
+    return items.filter((show) => (customFilters.isCustom ? customFilters.matches(show) : filter === 'All' || (filter === 'Missing' ? show.status === 'Missing' || (show.episodesMissing ?? 0) > 0 : filter === 'Problems' ? needsShowReview(show) : filter === 'Unmonitored' ? show.monitored === false : show.status === filter))
       && (!needle || show.title.toLowerCase().includes(needle)))
-  }, [items, filter, query])
+  }, [items, filter, query, customFilters.isCustom, customFilters.matches])
   const visibleIds = useMemo(() => filtered.map((show) => show.id), [filtered])
-  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen && !removing })
+  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen && !removing && !filtersOpen })
   const openContext = useCallback((event: React.MouseEvent, showId: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -118,11 +124,12 @@ export function ShowsPage({ library }: { library?: Library } = {}) {
   }, [focus])
   return <Page title={library?.name ?? 'Shows'} subtitle="Track seasons and episodes without reorganizing your files." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="shows" onClose={() => setHistoryOpen(false)} />}
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><SelectionBar count={selected.size} total={filtered.length} noun="show" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilter ariaLabel="Filter shows" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${items.length} ${items.length === 1 ? 'show' : 'shows'}, ${totalEpisodes} ${totalEpisodes === 1 ? 'episode' : 'episodes'}…`} /></div><Tooltip asChild content={countSpecials ? 'Specials count toward episode totals. Click to exclude them.' : 'Specials are excluded from episode totals. Click to include them.'}><button type="button" className={`filter-chip library-specials-toggle ${countSpecials ? 'active' : ''}`} aria-pressed={countSpecials} disabled={specialsBusy} onClick={() => void toggleSpecials()}><Icon name={countSpecials ? 'check' : 'close'} size={12} />Specials</button></Tooltip><SelectionBar count={selected.size} total={filtered.length} noun="show" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort shows" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="missing">Missing fewest</option><option value="-missing">Missing most</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option><option value="-last_observed">Last observed newest</option><option value="last_observed">Last observed oldest</option></Select><LibraryFilterMenu ariaLabel="Filter shows" value={filter} builtIn={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} custom={customFilters.filters} onChange={setFilter} onManage={() => setFiltersOpen(true)} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => { setView('cards'); window.localStorage.setItem('medialogue.shows.view', 'cards') }} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => { setView('table'); window.localStorage.setItem('medialogue.shows.view', 'table') }} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load Shows" detail={error} />}
     {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid show-grid" items={filtered} itemKey={(show) => show.id} renderItem={(show) => <ShowCard show={show} selected={selected.has(show.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === show.id} onCheckUpgrade={checkShowForUpgrade} />} /> : <ShowTable items={filtered} selected={selected} onToggle={toggleSelected} onSelectAll={selectAll} onClear={clear} onContext={openContext} />)}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><LibraryContextMenu position={context} count={selected.size} noun="show" onRemove={() => { setRemoving([...selected]); setContext(null) }} onClear={() => { clear(); setContext(null) }} /></>}
+    {filtersOpen && <CustomFiltersModal mediaType="shows" noun="shows" filters={customFilters.filters} fields={showFilterFields} items={items} onChanged={customFilters.setFilters} onApply={setFilter} onClose={() => setFiltersOpen(false)} />}
     {removing && <RemoveTitlesModal kind="show" ids={removing} onClose={() => setRemoving(null)} onDone={(text) => { setRemoving(null); clear(); setMessage(text); void load(false) }} />}
     {!error && !loading && !filtered.length && <EmptyState icon="tv-screen" title={items.length ? 'No shows match this filter' : 'No Shows yet'} detail={items.length ? 'Try another library filter.' : 'Add a Show from TMDB, or scan a Show media folder to find existing files.'} />}
   </Page>

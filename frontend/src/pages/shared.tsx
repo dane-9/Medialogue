@@ -3,7 +3,6 @@ import { badgeColor } from '../lib/badgeColor'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
-import { Dropdown } from '../components/Dropdown'
 import { PageTopbar } from '../components/Shell'
 import { Badge } from '../components/ui'
 import type { MediaTorrentStatus, MovieEditionUpdate, QualityProfile, TMDBShowLookup, TMDBMovieLookup } from '../types'
@@ -57,19 +56,6 @@ export function useLiveLibraryRefresh(refresh: () => void | Promise<void>, pollI
 }
 
 /** Library filter as a single select. */
-export function LibraryFilter({ value, options, onChange, ariaLabel }: { value: string; options: string[]; onChange: (value: string) => void; ariaLabel: string }) {
-  // Without a width class the trigger is width: 100%, which fills the toolbar
-  // and pushes everything after it onto its own row.
-  return <Dropdown
-    className="select library-control"
-    ariaLabel={ariaLabel}
-    selectedPrefix="FILTER"
-    value={value}
-    options={options.map((option) => ({ value: option, label: option }))}
-    onChange={onChange}
-  />
-}
-
 export function MonitorMark({ monitored, title, busy, onToggle }: { monitored: boolean; title?: string; busy?: boolean; onToggle?: (monitored: boolean) => void }) {
   // Short enough to sit on one line: a tooltip box is as wide as its max-width
   // the moment its text wraps, so a long string leaves the corner empty.

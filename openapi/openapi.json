@@ -826,6 +826,122 @@
         "title": "Collection[TorrentArchiveSummary]",
         "type": "object"
       },
+      "CustomFilterCondition": {
+        "properties": {
+          "key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "equal",
+              "notEqual",
+              "contains",
+              "notContains",
+              "startsWith",
+              "notStartsWith",
+              "endsWith",
+              "notEndsWith",
+              "greaterThan",
+              "greaterThanOrEqual",
+              "lessThan",
+              "lessThanOrEqual",
+              "inLast",
+              "notInLast"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Value",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "value"
+        ],
+        "title": "CustomFilterCondition",
+        "type": "object"
+      },
+      "CustomFilterResponse": {
+        "properties": {
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/CustomFilterCondition"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType"
+          }
+        },
+        "required": [
+          "id",
+          "media_type",
+          "label",
+          "filters"
+        ],
+        "title": "CustomFilterResponse",
+        "type": "object"
+      },
+      "CustomFilterWrite": {
+        "properties": {
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/CustomFilterCondition"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Filters",
+            "type": "array"
+          },
+          "label": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType"
+          }
+        },
+        "required": [
+          "media_type",
+          "label",
+          "filters"
+        ],
+        "title": "CustomFilterWrite",
+        "type": "object"
+      },
       "CustomFormatConditionEvaluationResponse": {
         "properties": {
           "condition_id": {
@@ -15855,6 +15971,185 @@
         "summary": "Delete Blocklist Entry",
         "tags": [
           "blocklist"
+        ]
+      }
+    },
+    "/api/v1/custom-filters": {
+      "get": {
+        "operationId": "list_custom_filters_api_v1_custom_filters_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "media_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MediaType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CustomFilterResponse"
+                  },
+                  "title": "Response List Custom Filters Api V1 Custom Filters Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Custom Filters",
+        "tags": [
+          "custom-filters"
+        ]
+      },
+      "post": {
+        "operationId": "create_custom_filter_api_v1_custom_filters_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomFilterWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomFilterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Custom Filter",
+        "tags": [
+          "custom-filters"
+        ]
+      }
+    },
+    "/api/v1/custom-filters/{filter_id}": {
+      "delete": {
+        "operationId": "delete_custom_filter_api_v1_custom_filters__filter_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "filter_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Filter Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Custom Filter",
+        "tags": [
+          "custom-filters"
+        ]
+      },
+      "put": {
+        "operationId": "update_custom_filter_api_v1_custom_filters__filter_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "filter_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Filter Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomFilterWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomFilterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Custom Filter",
+        "tags": [
+          "custom-filters"
         ]
       }
     },

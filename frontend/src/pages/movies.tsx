@@ -17,6 +17,8 @@ import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { LibraryContextMenu } from '../components/LibraryContextMenu'
 import { RemoveTitlesModal } from '../components/RemoveTitlesModal'
 import { TorrentHistoryPanel } from '../components/TorrentHistoryPanel'
+import { CustomFiltersModal, LibraryFilterMenu, useCustomFilters } from '../components/CustomFilters'
+import { movieFilterFields } from '../lib/libraryFilterFields'
 import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
 import { systemApi } from '../api/modules/system'
@@ -27,7 +29,7 @@ import { SelectionBar, SelectCheck } from '../components/SelectionBar'
 import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { IncomingDownload, Library, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
-import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
+import { MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 import { useLiveEvent } from '../lib/liveRefresh'
 import { formatEta } from '../api/mappers/downloads'
 
@@ -51,6 +53,13 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const [removing, setRemoving] = useState<string[] | null>(null)
   const [cardBusy, setCardBusy] = useState<string | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [editionOptions, setEditionOptions] = useState<string[]>([])
+  useEffect(() => { void moviesApi.movieEditionOptions().then(setEditionOptions).catch(() => undefined) }, [])
+  const filterFields = useMemo(() => movieFilterFields(editionOptions), [editionOptions])
+  const customFilters = useCustomFilters('movies', filterFields, filter)
+  // A saved filter deleted elsewhere leaves nothing to apply.
+  useEffect(() => { if (customFilters.isCustom && customFilters.filters.length && !customFilters.active) setFilter('All') }, [customFilters.isCustom, customFilters.active, customFilters.filters.length])
 
   const applyMovies = (items: Movie[]) => {
     rememberList(moviesKey(libraryId, tagFilter, sort), items)
@@ -129,12 +138,12 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return movies.filter((movie) => {
-      const matchesFilter = filter === 'All' || (filter === 'Problems' ? needsReview(movie) : filter === 'Unmonitored' ? movie.monitored === false : movie.status === filter)
+      const matchesFilter = customFilters.isCustom ? customFilters.matches(movie) : filter === 'All' || (filter === 'Problems' ? needsReview(movie) : filter === 'Unmonitored' ? movie.monitored === false : movie.status === filter)
       return matchesFilter && (!needle || movie.title.toLowerCase().includes(needle) || String(movie.year ?? '').includes(needle))
     })
-  }, [movies, filter, query])
+  }, [movies, filter, query, customFilters.isCustom, customFilters.matches])
   const visibleIds = useMemo(() => filtered.map((movie) => movie.id), [filtered])
-  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen && !removing })
+  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen && !removing && !filtersOpen })
   const openContext = useCallback((event: React.MouseEvent, movieId: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -143,13 +152,14 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   }, [focus])
   return <Page title={library?.name ?? 'Movies'} subtitle="Your library, exactly where it was downloaded." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="movies" onClose={() => setHistoryOpen(false)} />}
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><SelectionBar count={selected.size} total={filtered.length} noun="movie" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Downloading', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><SelectionBar count={selected.size} total={filtered.length} noun="movie" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilterMenu ariaLabel="Filter movies" value={filter} builtIn={['All', 'Downloading', 'Missing', 'Problems', 'Unmonitored', 'Present']} custom={customFilters.filters} onChange={setFilter} onManage={() => setFiltersOpen(true)} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
     {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid" items={filtered} itemKey={(movie) => movie.id} renderItem={(movie) => <MovieCard movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={onCardAction} />} /> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onSelectAll={selectAll} onClear={clear} onContext={openContext} onTagClick={updateTagFilter} />)}
     {!error && !loading && !filtered.length && <EmptyState icon="clapper" title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><LibraryContextMenu position={context} count={selected.size} noun="movie" onRemove={() => { setRemoving([...selected]); setContext(null) }} onClear={() => { clear(); setContext(null) }} /></>}
+    {filtersOpen && <CustomFiltersModal mediaType="movies" noun="movies" filters={customFilters.filters} fields={filterFields} items={movies} onChanged={customFilters.setFilters} onApply={setFilter} onClose={() => setFiltersOpen(false)} />}
     {removing && <RemoveTitlesModal kind="movie" ids={removing} onClose={() => setRemoving(null)} onDone={(text) => { setRemoving(null); clear(); setMessage(text); void loadMovies() }} />}
   </Page>
 }

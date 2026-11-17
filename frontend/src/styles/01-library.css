@@ -764,3 +764,24 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
   gap: var(--s2) var(--s4);
   margin: var(--s3) 0;
 }
+
+/* Custom filters: the saved list and the condition builder. */
+.custom-filter-list { display: grid; gap: var(--s2); padding: var(--s4); }
+.custom-filter-row { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-md); }
+.custom-filter-row > div { display: grid; flex: 1; min-width: 0; }
+.custom-filter-row strong { color: var(--text); font: 600 var(--t-sm) var(--sans); }
+.custom-filter-row span { color: var(--muted); font-size: var(--t-xs); }
+.filter-builder { display: grid; gap: var(--s4); padding: var(--s4); }
+.filter-builder > label { display: grid; gap: var(--s1); max-width: 360px; }
+.filter-builder-rows { display: grid; gap: var(--s2); }
+.filter-builder-row { display: grid; grid-template-columns: minmax(140px, 180px) minmax(150px, 200px) minmax(0, 1fr) auto; align-items: start; gap: var(--s2); }
+.filter-builder-days { display: flex; align-items: center; gap: var(--s2); color: var(--muted); font-size: var(--t-sm); }
+.filter-builder-days .input { max-width: 120px; }
+.filter-builder-empty { align-self: center; color: var(--muted); font-size: var(--t-sm); }
+@media (max-width: 720px) { .filter-builder-row { grid-template-columns: 1fr 1fr auto; } .filter-builder-row > :nth-child(3) { grid-column: 1 / -1; grid-row: 2; } }
+/* A multi-value dropdown: a tick column, and the menu stays open while ticking. */
+.multi-dropdown-option { display: flex; align-items: center; gap: var(--s2); }
+.multi-dropdown-option.selected { font-weight: 500; }
+.multi-dropdown-check { display: inline-grid; flex: none; width: 14px; height: 14px; place-items: center; border: 1px solid var(--line-strong); border-radius: 2px; color: var(--accent-text); }
+.multi-dropdown-option.selected .multi-dropdown-check { border-color: var(--accent-line); background: var(--accent-soft); }
+.dropdown-placeholder { color: var(--faint); }
