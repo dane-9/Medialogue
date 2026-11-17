@@ -42,6 +42,11 @@ export const moviesApi = {
     params: { path: { resource_id: id } },
     body: { tmdb_id: tmdbId },
   }))),
+  /** Move releases to the movie they really are; see REMATCH_KEEP_OR_REMOVE. */
+  rematchReleases: (id: string, releaseIds: string[], tmdbId: number, removeEmptied?: boolean) => openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/releases/rematch', {
+    params: { path: { resource_id: id } },
+    body: { release_ids: releaseIds, tmdb_id: tmdbId, remove_emptied: removeEmptied ?? null },
+  })),
   recheckMoviePlex: (id: string) => openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/actions/recheck-plex', { params: { path: { resource_id: id } } })),
   startMovieSearch: (id: string) => openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/interactive-search', { params: { path: { resource_id: id } } })),
   startUnattachedMovieSearch: (tmdbId: number, qualityProfileId: string) => openApiData(openApiClient.POST('/api/v1/interactive-search/movies', { body: { tmdb_id: tmdbId, quality_profile_id: qualityProfileId } })),

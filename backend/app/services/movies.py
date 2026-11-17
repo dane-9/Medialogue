@@ -80,8 +80,12 @@ async def add_movie_from_tmdb(
     client_factory=None,
     api_key: str | None = None,
     library_id: UUID | None = None,
+    source: str = "tmdb",
 ) -> Movie:
     """Create a library Movie from a TMDB id.
+
+    ``source`` says how it came in, for the "movie.added" event: "manual_add"
+    when someone added the title itself, "new_media" for an approved folder.
 
     This remains the explicit "add without downloading" path used by existing
     callers. New manual downloads use an unattached TMDB search instead and
@@ -112,4 +116,5 @@ async def add_movie_from_tmdb(
         original_language=metadata.original_language,
         monitored=monitored,
         library_id=library_id,
+        source=source,
     )

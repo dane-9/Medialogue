@@ -41,6 +41,8 @@ from app.schemas.movies import (
     MovieDetailResponse,
     MovieReleaseResponse,
     MovieRematchRequest,
+    MovieReleaseRematchRequest,
+    MovieReleaseRematchResponse,
     MovieSummaryResponse,
     TMDBMovieLookupResponse,
 )
@@ -223,6 +225,7 @@ async def create_movie(
             monitored=payload.monitored,
             client_factory=client_factory,
             api_key=configuration.api_key,
+            source="manual_add",
         )
     except AppError:
         raise
@@ -569,6 +572,37 @@ async def rematch_movie(
     await apply_movie_identity(db, movie, payload.tmdb_id, tmdb_client_factory=tmdb_client_factory)
     await db.commit()
     return await get_movie(resource_id=str(resource_id), _=None, db=db)
+
+
+@router.post("/{resource_id}/releases/rematch", response_model=MovieReleaseRematchResponse)
+async def rematch_movie_releases(
+    resource_id: UUID,
+    payload: MovieReleaseRematchRequest,
+    _: AuthSession = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+    tmdb_client_factory=Depends(get_tmdb_client_factory),
+) -> MovieReleaseRematchResponse:
+    """Move releases to the movie they really are: one in the library, or a new one.
+
+    Files, folders and torrents go with them; nothing on disk changes.
+    """
+
+    from app.services.release_rematch import move_releases
+
+    movie = await db.get(Movie, resource_id)
+    if movie is None:
+        raise AppError("NOT_FOUND", "Movie was not found.", status_code=404)
+    outcome = await move_releases(
+        db, movie, payload.release_ids, payload.tmdb_id,
+        remove_emptied=payload.remove_emptied, tmdb_client_factory=tmdb_client_factory,
+    )
+    target = outcome.target
+    response = MovieReleaseRematchResponse(
+        movie_id=target.id, title=target.title, year=target.year,
+        created=outcome.created, source_removed=outcome.source_removed,
+    )
+    await db.commit()
+    return response
 
 
 async def _problem_counts(db: AsyncSession, movie_ids: list[UUID]) -> dict[UUID, int]:

@@ -156,6 +156,27 @@ class MovieRematchRequest(BaseModel):
     tmdb_id: int = Field(gt=0)
 
 
+class MovieReleaseRematchRequest(BaseModel):
+    """Move releases of a movie to the movie they really are."""
+
+    release_ids: list[UUID] = Field(min_length=1)
+    tmdb_id: int = Field(gt=0)
+    #: What happens to the movie when no release is left. None: removed when a
+    #: scan made it, otherwise refused with REMATCH_KEEP_OR_REMOVE to ask.
+    remove_emptied: bool | None = None
+
+
+class MovieReleaseRematchResponse(BaseModel):
+    #: The movie the releases are now in.
+    movie_id: UUID
+    title: str
+    year: int | None = None
+    #: The releases' movie was new to the library.
+    created: bool
+    #: The movie they left had nothing else and was removed.
+    source_removed: bool
+
+
 class MovieDetailResponse(MovieSummaryResponse):
     overview: str | None
     poster_ref: str | None

@@ -16,7 +16,7 @@ type Kind = 'movie' | 'show'
 
 type Scope = Kind | 'all'
 
-type Result = {
+export type TitleSearchResult = {
   key: string
 
   index: number
@@ -43,17 +43,57 @@ const posterUrl = (reference?: string) => {
 }
 
 export function GlobalSearch({ onClose }: { onClose: () => void }) {
-  const [query, setQuery] = useState('')
-  const [scope, setScope] = useState<Scope>('all')
-  const [results, setResults] = useState<Result[]>([])
+  const [downloadTarget, setDownloadTarget] = useState<TitleSearchResult | null>(null)
+  const navigate = useNavigate()
+
+  const open = (result: TitleSearchResult) => {
+    if (result.libraryId) {
+      navigate(result.kind === 'movie' ? `/movies/${result.libraryId}` : `/shows/${result.libraryId}`)
+      onClose()
+      return
+    }
+    if (!result.tmdbId) return
+    setDownloadTarget(result)
+  }
+
+  if (downloadTarget?.tmdbId && downloadTarget.kind === 'movie') return <MovieDownloadWizard
+    movie={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId }}
+    onBack={() => setDownloadTarget(null)}
+    onClose={onClose}
+    onComplete={(movieId) => { navigate(`/movies/${movieId}`); onClose() }}
+  />
+  if (downloadTarget?.tmdbId && downloadTarget.kind === 'show') return <ShowDownloadWizard
+    show={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId }}
+    onBack={() => setDownloadTarget(null)}
+    onClose={onClose}
+    onComplete={(showId) => { navigate(`/shows/${showId}`); onClose() }}
+  />
+  return <TitleSearch onPick={open} onClose={onClose} />
+}
+
+/** The search dialog: TMDB and the library, with IMDb ratings and library state.
+ *  Global search opens a title from it; Change match picks the right movie in it. */
+export function TitleSearch({ onPick, onClose, kind, initialQuery = '', currentTmdbId, banner, busy = false }: {
+  onPick: (result: TitleSearchResult) => void
+  onClose: () => void
+  /** Only this kind, with no All / Movies / Shows tabs. */
+  kind?: Kind
+  initialQuery?: string
+  /** The title already matched: shown as the current match and not pickable. */
+  currentTmdbId?: number
+  /** Shown under the search field, to say what picking a result does. */
+  banner?: React.ReactNode
+  busy?: boolean
+}) {
+  const [query, setQuery] = useState(initialQuery)
+  const [scope, setScope] = useState<Scope>(kind ?? 'all')
+  const [results, setResults] = useState<TitleSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [active, setActive] = useState(0)
-  const [downloadTarget, setDownloadTarget] = useState<Result | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const navigate = useNavigate()
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select() }, [])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
@@ -82,20 +122,13 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     return () => { alive = false; window.clearTimeout(timer) }
   }, [query, scope])
 
-  const open = async (result: Result) => {
-    if (result.libraryId) {
-      navigate(result.kind === 'movie' ? `/movies/${result.libraryId}` : `/shows/${result.libraryId}`)
-      onClose()
-      return
-    }
-    if (!result.tmdbId) return
-    setDownloadTarget(result)
-  }
+  const pickable = (result: TitleSearchResult) => !busy && (currentTmdbId === undefined || result.tmdbId !== currentTmdbId)
+  const pick = (result: TitleSearchResult | undefined) => { if (result && pickable(result)) onPick(result) }
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => Math.min(value + 1, results.length - 1)) }
     if (event.key === 'ArrowUp') { event.preventDefault(); setActive((value) => Math.max(value - 1, 0)) }
-    if (event.key === 'Enter' && results[active]) { event.preventDefault(); void open(results[active]) }
+    if (event.key === 'Enter' && results[active]) { event.preventDefault(); pick(results[active]) }
   }
 
   const hint = useMemo(() => {
@@ -110,21 +143,6 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
     if (!results.length) return 'No matches.'
     return `${results.length} result${results.length === 1 ? '' : 's'}`
   }, [loading, query, results.length])
-
-  if (downloadTarget?.tmdbId && downloadTarget.kind === 'movie') return <MovieDownloadWizard
-    movie={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId }}
-    onBack={() => setDownloadTarget(null)}
-    onClose={onClose}
-    onComplete={(movieId) => { navigate(`/movies/${movieId}`); onClose() }}
-  />
-
-  if (downloadTarget?.tmdbId && downloadTarget.kind === 'show') return <ShowDownloadWizard
-    show={{ tmdbId: downloadTarget.tmdbId, title: downloadTarget.title, year: downloadTarget.year, poster: downloadTarget.poster, overview: downloadTarget.overview, imdbId: downloadTarget.imdbId }}
-    onBack={() => setDownloadTarget(null)}
-    onClose={onClose}
-    onComplete={(showId) => { navigate(`/shows/${showId}`); onClose() }}
-  />
-
   return <div className="modal-backdrop" onClick={onClose}>
     <div className="global-search" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Search">
       <div className="global-search-head">
@@ -137,7 +155,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <div className="filter-tabs">
+        {!kind && <div className="filter-tabs">
           <button className={scope === 'all' ? 'active' : ''} onClick={() => setScope('all')}>All</button>
           <button className={scope === 'movie' ? 'active' : ''} onClick={() => setScope('movie')}>
             <span className="kind-box kind-movie"><Icon name="clapper" size={12} />Movies</span>
@@ -145,18 +163,20 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           <button className={scope === 'show' ? 'active' : ''} onClick={() => setScope('show')}>
             <span className="kind-box kind-show"><Icon name="tv-screen" size={12} />Shows</span>
           </button>
-        </div>
+        </div>}
         <button className="icon-button" onClick={onClose} aria-label="Close search"><Icon name="close" size={18} /></button>
       </div>
 
+      {banner && <div className="global-search-banner">{banner}</div>}
       {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
 
       <div className="global-search-results">
         {results.map((result, index) => <button
           key={result.key}
           className={`global-search-row ${index === active ? 'active' : ''}`}
+          disabled={!pickable(result)}
           onMouseEnter={() => setActive(index)}
-          onClick={() => void open(result)}
+          onClick={() => pick(result)}
         >
           <span className="global-search-poster">
             {posterUrl(result.poster)
@@ -180,7 +200,9 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             {result.overview && <small>{result.overview}</small>}
           </span>
           <span className="global-search-state">
-            {result.present
+            {currentTmdbId !== undefined && result.tmdbId === currentTmdbId
+              ? <Badge tone="blue">Current match</Badge>
+              : result.present
               ? <Badge tone={result.state === 'Missing' || result.state === 'Downloading' ? 'amber' : 'green'}>{result.state ?? 'Present'}</Badge>
               : <Badge tone="neutral">Not in library</Badge>}
           </span>
@@ -196,12 +218,12 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
   </div>
 }
 
-async function searchEverything(term: string): Promise<Result[]> {
+async function searchEverything(term: string): Promise<TitleSearchResult[]> {
   const [movies, shows] = await Promise.all([searchMovies(term), searchShows(term)])
   return rankResults([...movies, ...shows], term)
 }
 
-async function searchMovies(term: string): Promise<Result[]> {
+async function searchMovies(term: string): Promise<TitleSearchResult[]> {
   const [library, tmdb] = await Promise.all([
     moviesApi.movies(term).catch(() => [] as Movie[]),
     moviesApi.lookupMovies(term).catch(() => [] as TMDBMovieLookup[]),
@@ -209,7 +231,7 @@ async function searchMovies(term: string): Promise<Result[]> {
   const byTmdb = new Map<number, Movie>()
   library.forEach((movie) => { if (movie.tmdbId) byTmdb.set(movie.tmdbId, movie) })
 
-  const rows: Result[] = tmdb.map((match, index) => {
+  const rows: TitleSearchResult[] = tmdb.map((match, index) => {
     const owned = byTmdb.get(match.tmdbId)
     return {
       key: `tmdb-${match.tmdbId}`,
@@ -238,7 +260,7 @@ async function searchMovies(term: string): Promise<Result[]> {
   return rows
 }
 
-async function searchShows(term: string): Promise<Result[]> {
+async function searchShows(term: string): Promise<TitleSearchResult[]> {
   const [library, tmdb] = await Promise.all([
     showsApi.shows(term).catch(() => [] as Show[]),
     showsApi.lookupShows(term).catch(() => [] as TMDBShowLookup[]),
@@ -246,7 +268,7 @@ async function searchShows(term: string): Promise<Result[]> {
   const byTmdb = new Map<number, Show>()
   library.forEach((show) => { if (show.tmdbId) byTmdb.set(show.tmdbId, show) })
 
-  const rows: Result[] = tmdb.map((match, index) => {
+  const rows: TitleSearchResult[] = tmdb.map((match, index) => {
     const owned = byTmdb.get(match.tmdbId)
     return {
       key: `tmdb-${match.tmdbId}`,

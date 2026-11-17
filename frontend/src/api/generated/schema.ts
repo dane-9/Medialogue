@@ -1788,6 +1788,28 @@ export interface paths {
         patch: operations["set_movie_release_editions_api_v1_movies__resource_id__releases_editions_patch"];
         trace?: never;
     };
+    "/api/v1/movies/{resource_id}/releases/rematch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rematch Movie Releases
+         * @description Move releases to the movie they really are: one in the library, or a new one.
+         *
+         *     Files, folders and torrents go with them; nothing on disk changes.
+         */
+        post: operations["rematch_movie_releases_api_v1_movies__resource_id__releases_rematch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/movies/{resource_id}/rematch": {
         parameters: {
             query?: never;
@@ -5671,6 +5693,34 @@ export interface components {
              * @enum {string}
              */
             state: "Present" | "Missing" | "Duplicate" | "Downloading";
+        };
+        /**
+         * MovieReleaseRematchRequest
+         * @description Move releases of a movie to the movie they really are.
+         */
+        MovieReleaseRematchRequest: {
+            /** Release Ids */
+            release_ids: string[];
+            /** Remove Emptied */
+            remove_emptied?: boolean | null;
+            /** Tmdb Id */
+            tmdb_id: number;
+        };
+        /** MovieReleaseRematchResponse */
+        MovieReleaseRematchResponse: {
+            /** Created */
+            created: boolean;
+            /**
+             * Movie Id
+             * Format: uuid
+             */
+            movie_id: string;
+            /** Source Removed */
+            source_removed: boolean;
+            /** Title */
+            title: string;
+            /** Year */
+            year?: number | null;
         };
         /** MovieReleaseResponse */
         MovieReleaseResponse: {
@@ -11602,6 +11652,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MovieEditionOverrideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rematch_movie_releases_api_v1_movies__resource_id__releases_rematch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovieReleaseRematchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovieReleaseRematchResponse"];
                 };
             };
             /** @description Validation Error */

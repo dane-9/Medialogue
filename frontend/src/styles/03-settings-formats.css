@@ -712,7 +712,7 @@
   color: inherit;
   text-align: left;
 }
-.global-search-row:disabled { opacity: .6; cursor: wait; }
+.global-search-row:disabled { opacity: .6; cursor: not-allowed; }
 .global-search-poster {
   display: grid;
   place-items: center;

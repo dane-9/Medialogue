@@ -6,7 +6,7 @@ import { ChangeMatchModal } from '../components/ChangeMatchModal'
 import { editionLabel, qualityMark } from '../lib/qualityMark'
 import { releaseScoreBreakdown } from '../lib/releaseScore'
 import { profileFormChanged, profileFormState } from '../lib/profileForm'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Field, SettingsGroup } from '../components/settings'
 import { Icon } from '../components/Icon'
 import { Tooltip } from '../components/Tooltip'
@@ -204,7 +204,7 @@ function releaseStateTone(state: ReleaseState) {
  * answer already exists per release in the torrent history; it was only ever
  * shown grouped at the bottom of the page.
  */
-function ReleaseEvidenceRow({ release }: { release: MovieRelease; torrents?: TorrentArchiveItem[] }) {
+function ReleaseEvidenceRow({ release, onChangeMatch }: { release: MovieRelease; torrents?: TorrentArchiveItem[]; onChangeMatch?: () => void }) {
   const directory = release.directories.find((item) => item.exists) ?? release.directories[0]
   const folder = directory?.path.split(/[\\/]/).filter(Boolean).pop()
   const filename = directory?.mediaFilename
@@ -258,6 +258,9 @@ function ReleaseEvidenceRow({ release }: { release: MovieRelease; torrents?: Tor
       {release.state !== 'current' && <Tooltip content={releaseStateHelp(release.state)}><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>{release.state}</Badge></Tooltip>}
       {release.confidence !== undefined && release.confidence < 100 && <Tooltip content="How sure Medialogue is that this release belongs to this movie"><Badge tone="amber">{Math.round(release.confidence)}% match</Badge></Tooltip>}
     </div>
+    {onChangeMatch && <Tooltip asChild content="Change match: this release is another movie">
+      <button type="button" className="icon-button release-rematch" aria-label={`Change match for ${release.name}`} onClick={onChangeMatch}><Icon name="external" size={14} /></button>
+    </Tooltip>}
   </div>
 }
 
@@ -397,7 +400,9 @@ export function MovieDetailPage({ id }: { id: string }) {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [matchOpen, setMatchOpen] = useState(false)
+  // Change match: from the header (every release), or one release's row.
+  const [match, setMatch] = useState<{ releaseIds?: string[] } | null>(null)
+  const navigate = useNavigate()
   useEffect(() => {
     if (!openSearchFromQuery) return
     setSearchOpen(true)
@@ -506,7 +511,7 @@ export function MovieDetailPage({ id }: { id: string }) {
             <Button variant="primary" icon="search" onClick={() => setSearchOpen(true)}>Interactive search</Button>
             <Button variant="secondary" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button>
             {plexAvailable && <Button variant="secondary" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}
-            <Button variant="secondary" icon="external" onClick={() => setMatchOpen(true)}>Change match</Button>
+            <Button variant="secondary" icon="external" onClick={() => setMatch({})}>Change match</Button>
             {/* The hero already reported this state; now it can be changed
                 from the same place it is shown. */}
             <Button variant="secondary" icon={movie.monitored === false ? 'monitored' : 'monitored-off'} onClick={() => void setMonitored(movie.monitored === false)} disabled={busy}>
@@ -526,7 +531,7 @@ export function MovieDetailPage({ id }: { id: string }) {
         </div>)}
       </Panel>}
       {/* A download on its way leads the panel; with nothing on disk yet it is all there is. */}
-      <Panel title="Current releases">{movie.incoming && <IncomingReleaseRow incoming={movie.incoming} />}{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : !movie.incoming && currentSummary}</Panel>
+      <Panel title="Current releases">{movie.incoming && <IncomingReleaseRow incoming={movie.incoming} />}{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} onChangeMatch={release.id ? () => setMatch({ releaseIds: [release.id] }) : undefined} />) : !movie.incoming && currentSummary}</Panel>
       <Panel title="Release history">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel>
       <TorrentHistoryPanel items={movie.torrentHistory} />
     </div>
@@ -537,13 +542,17 @@ export function MovieDetailPage({ id }: { id: string }) {
       onClose={() => setSearchOpen(false)}
       onStarted={(text) => { setMessage(text); void load() }}
     />}
-    {matchOpen && <ChangeMatchModal
-      movieId={id}
-      title={movie.title}
-      year={movie.year}
-      currentTmdbId={movie.tmdbId}
-      onClose={() => setMatchOpen(false)}
-      onMatched={(text) => { setMessage(text); void load() }}
+    {match && <ChangeMatchModal
+      movie={{ id: movie.id, title: movie.title, year: movie.year, tmdbId: movie.tmdbId }}
+      releases={releases.filter((release) => release.id && ['current', 'duplicate', 'conflict', 'missing'].includes(release.state))}
+      releaseIds={match.releaseIds}
+      onClose={() => setMatch(null)}
+      onDone={(outcome) => {
+        setMatch(null); setMessage(outcome.message)
+        // This movie is gone: show the one the releases went to.
+        if (outcome.sourceRemoved) navigate(`/movies/${outcome.movieId}`, { replace: true })
+        else void load()
+      }}
     />}
   </Page>
 }

@@ -5,12 +5,15 @@ import type { paths } from './generated/schema'
 export class ApiError extends Error {
   status: number
   code?: string
+  /** The error's own details, such as the reasons behind a question the server asks. */
+  details?: Record<string, unknown>
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, details?: Record<string, unknown>) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
@@ -55,7 +58,8 @@ async function apiErrorFromResponse(response: Response, parsed?: unknown): Promi
     }
   }
   const message = payload?.error?.message || response.statusText || 'Request failed'
-  return new ApiError(message, response.status, payload?.error?.code)
+  const details = payload?.error?.details
+  return new ApiError(message, response.status, payload?.error?.code, details && typeof details === 'object' && !Array.isArray(details) ? details as Record<string, unknown> : undefined)
 }
 
 function needsCsrf(method: string): boolean {

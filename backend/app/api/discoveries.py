@@ -477,6 +477,7 @@ async def _approve_one(db: AsyncSession, discovery: MediaDiscovery, client_facto
                     client_factory=client_factory,
                     api_key=configuration.api_key,
                     library_id=library_id,
+                    source="new_media",
                 )
             except Exception as exc:
                 await db.rollback()
