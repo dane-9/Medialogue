@@ -6,6 +6,7 @@ import { settingsApi } from '../api/modules/settings'
 import type { DownloadClient, DownloadClientCategory, InteractiveSearchJob, QualityProfile } from '../types'
 import { Icon } from './Icon'
 import { Button, Select } from './ui'
+import { SearchIndexerStatus } from './SearchIndexerStatus'
 import { ReleaseResults, formatBytes } from './ReleaseResults'
 import { DownloadClientField } from './DownloadClientField'
 import { MediaFolderStep, useMediaFolderChoice } from './MediaFolderStep'
@@ -220,6 +221,7 @@ export function MovieDownloadWizard({ movie, onBack, onClose, onComplete }: {
         </section>}
       </div> : <div className="wizard-search">
         {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
+        <SearchIndexerStatus job={job} />
         <ReleaseResults
           results={job?.results ?? []}
           selectedId={selectedResultId}

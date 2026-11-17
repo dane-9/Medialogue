@@ -280,6 +280,22 @@
 .wizard-summary { gap: 5px; }
 .wizard-search { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
 .wizard-search > .settings-note { margin: 10px 14px 0; }
+/* Which indexers a search is still waiting on: one chip each, settling to a
+   result count, a failure or "not searched" as they answer. */
+.search-indexers { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
+.wizard-search > .search-indexers { margin: 10px 14px 0; }
+.search-indexers-summary { margin-right: var(--s1); color: var(--muted); font: 600 var(--t-micro) var(--mono); text-transform: uppercase; }
+.search-indexer { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 var(--s2); border: 1px solid var(--line-strong); border-radius: var(--r-sm); color: var(--muted); background: var(--surface); font-size: var(--t-sm); white-space: nowrap; }
+.search-indexer svg { flex: none; }
+.search-indexer.is-completed { border-color: var(--ok-line); color: var(--text); background: var(--ok-soft); }
+.search-indexer.is-completed svg { color: var(--ok); }
+.search-indexer.is-failed { border-color: var(--err-line); color: var(--text); background: var(--err-soft); }
+.search-indexer.is-failed svg { color: var(--err); }
+.search-indexer.is-skipped { opacity: .6; }
+.search-indexer-count { color: var(--muted); font: 600 var(--t-micro) var(--mono); }
+.search-indexer-spinner { flex: none; width: 10px; height: 10px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: var(--r-full); animation: search-indexer-spin .8s linear infinite; }
+@keyframes search-indexer-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .search-indexer-spinner { animation-duration: 2.4s; } }
 .wizard-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 62px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--raised); }
 .wizard-foot > span { color: var(--faint); font-size: var(--t-xs); line-height: 1.4; }
 .wizard-foot-count {

@@ -6,6 +6,7 @@ import { Icon } from './Icon'
 import { Modal } from './Modal'
 import { Button, Select } from './ui'
 import { DownloadClientField } from './DownloadClientField'
+import { SearchIndexerStatus } from './SearchIndexerStatus'
 import { ReleaseResults, formatBytes } from './ReleaseResults'
 
 const FINISHED = ['completed', 'failed', 'cancelled', 'interrupted']
@@ -153,6 +154,7 @@ export function InteractiveSearchDialog({ searchKey, start, scope, title, folder
         <div className="wizard-destination-path"><span>Save path</span><strong>{selectedCategory?.resolvedSavePath || (categoryLoading ? 'Loading…' : 'Select a category')}</strong><small>Medialogue does not set a save path or move the downloaded media.</small></div>
       </div>
       {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
+      <SearchIndexerStatus job={job} />
       <ReleaseResults
         results={results}
         selectedId={selectedResultId}

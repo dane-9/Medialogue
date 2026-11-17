@@ -13,6 +13,7 @@ import type {
 } from '../types'
 import { Icon } from './Icon'
 import { Tooltip } from './Tooltip'
+import { SearchIndexerStatus } from './SearchIndexerStatus'
 import { ReleaseResults } from './ReleaseResults'
 import { DownloadClientField } from './DownloadClientField'
 import { MediaFolderStep, useMediaFolderChoice } from './MediaFolderStep'
@@ -427,6 +428,7 @@ export function ShowDownloadWizard({ show, onBack, onClose, onComplete }: {
         {error && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{error}</span></div>}
         {activeSeason ? <>
           {activeState?.submissionError && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{activeState.submissionError}</span></div>}
+          <SearchIndexerStatus job={activeState?.job} />
           <ReleaseResults
             results={activeState?.job?.results ?? []}
             selectedId={activeState?.selectedResultId ?? ''}
