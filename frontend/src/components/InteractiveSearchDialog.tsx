@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { integrationsApi } from '../api/modules/integrations'
-import { moviesApi } from '../api/modules/movies'
 import { searchApi } from '../api/modules/search'
 import type { DownloadClient, DownloadClientCategory, InteractiveSearchJob } from '../types'
 import { Icon } from './Icon'
@@ -11,14 +10,17 @@ import { ReleaseResults, formatBytes } from './ReleaseResults'
 
 const FINISHED = ['completed', 'failed', 'cancelled', 'interrupted']
 
-/** Search indexers for a movie already in the library and grab one result.
+/** Search indexers for a movie or a show season already in the library and grab one result.
  *
  * The download wizard covers the same ground for a title being added, but it
- * searches by TMDB id for a movie that does not exist yet. This one searches an
- * existing movie, so the grab attaches to it rather than creating anything.
+ * searches by TMDB id for a title that does not exist yet. This one searches an
+ * existing movie or season, so the grab attaches to it rather than creating anything.
  */
-export function MovieInteractiveSearch({ movieId, title, folderCategory, onClose, onStarted }: {
-  movieId: string
+export function InteractiveSearchDialog({ searchKey, start, scope, title, folderCategory, onClose, onStarted }: {
+  /** Identifies what is searched; the search starts again when it changes. */
+  searchKey: string
+  start: () => Promise<{ job_id: string }>
+  scope: 'movies' | 'shows'
   title: string
   /** The category of the movie's media folder, picked first when the client has it. */
   folderCategory?: string
@@ -38,28 +40,29 @@ export function MovieInteractiveSearch({ movieId, title, folderCategory, onClose
   const [error, setError] = useState('')
 
   // The search starts as soon as the dialog opens: there is nothing to choose
-  // beforehand, since the movie already carries its own profile.
+  // beforehand, since the title already carries its own profile.
   useEffect(() => {
     let alive = true
-    moviesApi.startMovieSearch(movieId)
+    start()
       .then((accepted) => { if (alive) setJobId(String(accepted.job_id)) })
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not start the search.') })
     return () => { alive = false }
-  }, [movieId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchKey])
 
   useEffect(() => {
     let alive = true
     integrationsApi.downloadClients()
       .then((rows) => {
         if (!alive) return
-        const usable = rows.filter((client) => client.enabled && client.scope === 'movies')
+        const usable = rows.filter((client) => client.enabled && client.scope === scope)
         setClients(usable)
         setClientId((current) => current || usable[0]?.id || '')
-        if (!usable.length) setError('Configure an enabled Movies qBittorrent client before grabbing a release.')
+        if (!usable.length) setError(`Configure an enabled ${scope === 'movies' ? 'Movies' : 'Shows'} qBittorrent client before grabbing a release.`)
       })
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load download clients.') })
     return () => { alive = false }
-  }, [])
+  }, [scope])
 
   const selectedClient = clients.find((client) => client.id === clientId)
 
@@ -127,7 +130,7 @@ export function MovieInteractiveSearch({ movieId, title, folderCategory, onClose
     title={title}
     eyebrow="INTERACTIVE SEARCH"
     onClose={onClose}
-    headerAction={<Button variant="secondary" icon="refresh" disabled={!jobId || starting} onClick={() => { setJob(null); setSelectedResultId(''); setError(''); setJobId(''); void moviesApi.startMovieSearch(movieId).then((accepted) => setJobId(String(accepted.job_id))).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not restart the search.')) }}>Search again</Button>}
+    headerAction={<Button variant="secondary" icon="refresh" disabled={!jobId || starting} onClick={() => { setJob(null); setSelectedResultId(''); setError(''); setJobId(''); void start().then((accepted) => setJobId(String(accepted.job_id))).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not restart the search.')) }}>Search again</Button>}
     footer={<>
       <span className="wizard-foot-count">{job ? `${results.length} Torrent${results.length === 1 ? '' : 's'} found` : 'Searching…'}</span>
       <span className="modal-foot-spacer" />
@@ -141,7 +144,7 @@ export function MovieInteractiveSearch({ movieId, title, folderCategory, onClose
         <DownloadClientField
           clients={clients}
           clientId={clientId}
-          scope="movies"
+          scope={scope}
           disabled={starting}
           onChange={setClientId}
           onRefreshed={(rows) => { setClients(rows); setClientReload((value) => value + 1) }}

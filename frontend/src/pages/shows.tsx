@@ -12,6 +12,7 @@ import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/u
 import { Modal } from '../components/Modal'
 import { profileFormChanged } from '../lib/profileForm'
 import { TorrentHistoryPanel } from '../components/TorrentHistoryPanel'
+import { InteractiveSearchDialog } from '../components/InteractiveSearchDialog'
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { LibraryContextMenu } from '../components/LibraryContextMenu'
 import { RemoveTitlesModal } from '../components/RemoveTitlesModal'
@@ -166,6 +167,7 @@ export function ShowDetailPage({ id }: { id: string }) {
   const [mappingEditor, setMappingEditor] = useState<{ media: EpisodeMedia; season: Season } | null>(null)
   const [mappingEpisodeIds, setMappingEpisodeIds] = useState<string[]>([])
   const [orderingOpen, setOrderingOpen] = useState(false)
+  const [searching, setSearching] = useState<Season | null>(null)
   const load = async (reportError = true) => { try { setShow(await showsApi.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
   useEffect(() => { void load() }, [id])
   useLiveLibraryRefresh(() => load(false))
@@ -235,7 +237,6 @@ export function ShowDetailPage({ id }: { id: string }) {
 
   const setSeasonCounted = async (season: Season, counted: boolean) => { try { await showsApi.updateSeason(season.id, { counted, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season counting.') } }
   const setEpisodeMonitored = async (episode: Episode, monitored: boolean) => { try { await showsApi.updateEpisode(episode.id, { monitored, expected_revision: episode.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update episode monitoring.') } }
-  const searchSeason = async (season: Season) => { try { const result = await showsApi.startSeasonSearch(season.id); setMessage(`Season search started · job ${result.job_id.slice(0, 8)}…`) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not start season search.') } }
   const editMapping = (media: EpisodeMedia, season: Season) => { const selected = season.episodes.filter((episode) => media.mappedEpisodeNumbers.includes(episode.episodeNumber)).map((episode) => episode.id); setMappingEpisodeIds(selected); setMappingEditor({ media, season }) }
   const saveMapping = async () => { if (!mappingEditor || !mappingEpisodeIds.length) return; setBusy(true); try { await showsApi.correctEpisodeMapping(mappingEditor.media.mediaFileId, mappingEpisodeIds); setMessage('Episode mapping corrected. The media file and path were not changed.'); setMappingEditor(null); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not correct episode mapping.') } finally { setBusy(false) } }
   const seasons = show?.seasonDetail ?? []
@@ -318,7 +319,7 @@ export function ShowDetailPage({ id }: { id: string }) {
               <label className="inline-check"><input type="checkbox" checked={selectedSeason.counted} onChange={(event) => void setSeasonCounted(selectedSeason, event.target.checked)} />Counted</label>
             </Tooltip>
             <div className="episode-filter-chips"><button className={episodeFilter === 'all' ? 'active' : ''} onClick={() => setEpisodeFilter('all')}>All</button><button className={episodeFilter === 'missing' ? 'active' : ''} onClick={() => setEpisodeFilter('missing')}>Missing</button><button className={episodeFilter === 'problems' ? 'active' : ''} onClick={() => setEpisodeFilter('problems')}>Problems</button></div>
-            <Button variant="secondary" icon="search" onClick={() => void searchSeason(selectedSeason)}>Search season</Button>
+            <Button variant="secondary" icon="search" onClick={() => setSearching(selectedSeason)}>Search season</Button>
           </div>
           {selectedReleaseMedia.length > 0 && <div className="release-status-list">{selectedReleaseMedia.map((media) => <div className="release-evidence-row" key={media.showReleaseId}><div className="release-icon kind-show"><Icon name="tv-screen" size={16} /></div><div className="release-main"><strong>{media.releaseName ?? media.path}</strong><small>{media.releaseScope === 'season_pack' ? 'Season pack' : 'Episode release'}</small></div><div className="release-tags"><QbitStatusBadge status={media.torrentStatus} showState /></div></div>)}</div>}
           <div className="episode-table-wrap"><table className="data-table episode-table"><tbody>{visibleEpisodes.map((episode) => {
@@ -342,6 +343,14 @@ export function ShowDetailPage({ id }: { id: string }) {
       <Panel title="Release history">{show.recentEvents?.length ? show.recentEvents.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : <div className="history-empty">No show or episode events recorded yet.</div>}</Panel>
       <TorrentHistoryPanel items={show.torrentHistory} noun="show" />
     </div>
+    {searching && <InteractiveSearchDialog
+      searchKey={searching.id}
+      start={() => showsApi.startSeasonSearch(searching.id)}
+      scope="shows"
+      title={`${show.title}${show.year ? ` (${show.year})` : ''} · ${seasonName(searching)}`}
+      onClose={() => setSearching(null)}
+      onStarted={(text) => { setMessage(text); void load() }}
+    />}
     {orderingOpen && <Modal title="Episode ordering" eyebrow={show.title.toUpperCase()} icon="list" onClose={() => setOrderingOpen(false)}>
       {orderings ? <div className="ordering-list">{orderings.map((option) => <button className={`ordering-option ${option.selected ? 'selected' : ''}`} key={option.id ?? 'default'} disabled={orderingBusy} onClick={() => void chooseOrdering(option)}><span className="ordering-copy"><strong>{option.name}</strong><span>{option.season_count} season{option.season_count === 1 ? '' : 's'} · {option.episode_count} episode{option.episode_count === 1 ? '' : 's'}{option.network ? ` · ${option.network}` : ''}</span>{option.description && <small>{option.description}</small>}</span><Badge tone={option.selected ? 'green' : 'neutral'}>{option.selected ? 'In use' : option.type_label}</Badge></button>)}<p className="cf-modal-note">If this show&rsquo;s seasons do not match your files, another ordering probably does. Switching renumbers the existing episodes rather than replacing them.</p></div>
         : <div className="history-empty">Loading TMDB orderings…</div>}

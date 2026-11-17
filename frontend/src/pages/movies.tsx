@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cachedList, rememberList } from '../lib/listCache'
 import { needsAttention, statusTone } from '../lib/status'
-import { MovieInteractiveSearch } from '../components/MovieInteractiveSearch'
+import { InteractiveSearchDialog } from '../components/InteractiveSearchDialog'
 import { ChangeMatchModal } from '../components/ChangeMatchModal'
 import { editionLabel, qualityMark } from '../lib/qualityMark'
 import { releaseScoreBreakdown } from '../lib/releaseScore'
@@ -504,8 +504,10 @@ export function MovieDetailPage({ id }: { id: string }) {
       <Panel title="Release history">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel>
       <TorrentHistoryPanel items={movie.torrentHistory} noun="movie" />
     </div>
-    {searchOpen && <MovieInteractiveSearch
-      movieId={id}
+    {searchOpen && <InteractiveSearchDialog
+      searchKey={id}
+      start={() => moviesApi.startMovieSearch(id)}
+      scope="movies"
       title={`${movie.title}${movie.year ? ` (${movie.year})` : ''}`}
       folderCategory={movie.folderCategory}
       onClose={() => setSearchOpen(false)}
