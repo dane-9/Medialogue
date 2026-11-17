@@ -27,6 +27,8 @@ import { reuseUnchanged } from '../lib/reuseUnchanged'
 import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { IncomingDownload, Library, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
 import { LibraryFilter, MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
+import { useLiveEvent } from '../lib/liveRefresh'
+import { formatEta } from '../api/mappers/downloads'
 
 const moviesKey = (library: string, tag: string, sort: string) => `movies:${library}:${tag}:${sort}`
 
@@ -140,7 +142,7 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   }, [focus])
   return <Page title={library?.name ?? 'Movies'} subtitle="Your library, exactly where it was downloaded." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="movies" onClose={() => setHistoryOpen(false)} />}
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><SelectionBar count={selected.size} total={filtered.length} noun="movie" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><SelectionBar count={selected.size} total={filtered.length} noun="movie" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilter ariaLabel="Filter movies" value={filter} options={['All', 'Downloading', 'Missing', 'Problems', 'Unmonitored', 'Present']} onChange={setFilter} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {error && <EmptyState title="Could not load the movie library" detail={error} />}
@@ -166,7 +168,7 @@ const MovieCard = memo(function MovieCard({ movie, selected, onToggle, onContext
   return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <SelectCheck checked={selected} label={movie.title} onToggle={(modifiers) => onToggle(movie.id, modifiers)} />
     <Link className="media-card-link" to={`/movies/${movie.id}`} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id, event) } }}>
-      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} size="w342" />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}<span className="poster-marks">{movie.incomingReplacement && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Incoming'}</span>}<span className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={13} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={13} /></button></Tooltip>}</span><MonitorMark monitored={movie.monitored !== false} title={movie.title} busy={busy} onToggle={(next) => void onAction(movie, next ? 'monitor' : 'unmonitor')} /></span></div>
+      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} size="w342" />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}<span className="poster-marks">{movie.incomingKind && <span className="incoming-mark"><Icon name="download" size={12} />{movie.incomingKind === 'replacement' ? 'Replacing' : 'Downloading'}</span>}<span className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={13} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={13} /></button></Tooltip>}</span><MonitorMark monitored={movie.monitored !== false} title={movie.title} busy={busy} onToggle={(next) => void onAction(movie, next ? 'monitor' : 'unmonitor')} /></span></div>
       <div className="media-card-body"><div className="media-card-meta"><QbitStatusBadge status={movie.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{movie.title}</strong>{/* An edition is long enough that sharing a row with the tier truncated one
         of them, so it takes the year's row and the tier drops to its own. */}
         <span className="media-card-sub">{movie.year || 'Year unknown'}{edition && <em className="media-card-quality">{edition}</em>}{!edition && tier && <em className="media-card-quality">{tier}</em>}</span>{edition && tier && <span className="media-card-sub media-card-tier">{tier}</span>}</div></div>
@@ -261,7 +263,9 @@ function ReleaseEvidenceRow({ release }: { release: MovieRelease; torrents?: Tor
 
 function IncomingReplacement({ incoming }: { incoming: IncomingDownload }) {
   const label = incoming.kind === 'replacement' ? 'INCOMING REPLACEMENT' : 'INCOMING RELEASE'
-  return <div className="incoming-replacement"><div className="incoming-icon"><Icon name="download" size={18} /></div><div className="incoming-copy"><div className="eyebrow">{label}</div><strong>{incoming.quality || incoming.name}</strong><span>{incoming.name}{incoming.edition ? ` · ${incoming.edition}` : ''}</span><div className="incoming-meta"><span>{incoming.client}</span>{incoming.state && <span>{incoming.state}</span>}{incoming.eta && <span>ETA {incoming.eta}</span>}</div><Progress value={incoming.progress} tone="blue" /></div><strong className="incoming-percent">{Math.round(incoming.progress)}%</strong></div>
+  // "sent": qBittorrent took the torrent and no poll has reported it yet.
+  const state = incoming.state === 'sent' ? 'Sent to qBittorrent, waiting for its first update' : incoming.state
+  return <div className="incoming-replacement"><div className="incoming-icon"><Icon name="download" size={18} /></div><div className="incoming-copy"><div className="eyebrow">{label}</div><strong>{incoming.quality || incoming.name}</strong><span>{incoming.name}{incoming.edition ? ` · ${incoming.edition}` : ''}</span><div className="incoming-meta"><span>{incoming.client}</span>{state && <span>{state}</span>}{incoming.eta && <span>ETA {incoming.eta}</span>}</div><Progress value={incoming.progress} tone="blue" /></div><strong className="incoming-percent">{Math.round(incoming.progress)}%</strong></div>
 }
 
 function torrentTrackerLabel(tracker?: string) {
@@ -394,7 +398,21 @@ export function MovieDetailPage({ id }: { id: string }) {
     catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Movie not found.') }
   }
   useEffect(() => { void load() }, [id])
-  useLiveLibraryRefresh(() => load(false))
+  // Progress moves the incoming card in place; anything else reloads the movie.
+  useLiveLibraryRefresh(() => load(false), 15000, false, libraryListEvents)
+  useLiveEvent(['download.progress'], (event) => {
+    let payload: { data?: Record<string, unknown> }
+    try { payload = JSON.parse(event.data) } catch { return }
+    const data = payload?.data
+    if (!data || typeof data.torrent_id !== 'string') return
+    setMovie((current) => {
+      const incoming = current?.incoming
+      if (!current || !incoming || incoming.torrentId !== data.torrent_id) return current
+      const progress = typeof data.progress === 'number' && Number.isFinite(data.progress) ? data.progress * 100 : incoming.progress
+      const eta = typeof data.eta_seconds === 'number' && data.eta_seconds > 0 && data.eta_seconds < 8_640_000 ? formatEta(data.eta_seconds) : undefined
+      return { ...current, incoming: { ...incoming, progress, state: typeof data.state === 'string' ? data.state : incoming.state, eta } }
+    })
+  })
   const setMonitored = async (monitored: boolean) => {
     setBusy(true); setMessage(monitored ? 'Monitoring…' : 'Unmonitoring…')
     try {
@@ -444,7 +462,9 @@ export function MovieDetailPage({ id }: { id: string }) {
   const currentReleases = releases.filter((release) => release.state === 'current' || release.state === 'duplicate' || release.state === 'conflict')
   const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
-  const currentSummary = <div className="release-summary-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
+  const currentSummary = movie.status === 'Downloading' && movie.incoming
+    ? <div className="release-summary-row"><div className="release-icon"><Icon name="download" size={18} /></div><div className="release-main"><strong>Nothing on disk yet</strong><span>The download above becomes the current release when it finishes.</span></div><Badge tone="amber">Downloading</Badge></div>
+    : <div className="release-summary-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back={`Back to ${movieLibrary?.name ?? 'Movies'}`} backTo={movieLibrary ? `/library/${movieLibrary.id}` : '/movies'}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}

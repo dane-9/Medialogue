@@ -1,6 +1,7 @@
 import type { IncomingDownload, Movie, MovieDirectory, MovieRelease, ReconciliationAggregate, Tag } from '../../types'
 import type { components } from '../generated/schema'
 import { percentValue } from './shared'
+import { formatEta } from './downloads'
 import { mapEvidence, mapEvent, mapPlexState, mapTorrentStatus } from './mediaCommon'
 import { mapTorrentArchiveItem } from './torrentArchive'
 
@@ -49,9 +50,11 @@ function mapRelease(value: MovieReleaseDto): MovieRelease {
 function mapIncoming(value: MovieIncomingDto): IncomingDownload {
   return {
     id: value.id,
+    torrentId: value.torrent_id ?? undefined,
     name: value.name,
     client: value.client_name,
     progress: percentValue(value.progress) ?? 0,
+    eta: value.eta_seconds ? formatEta(value.eta_seconds) : undefined,
     quality: value.quality ?? undefined,
     edition: value.edition ?? undefined,
     state: value.state,

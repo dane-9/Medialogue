@@ -48,6 +48,7 @@ from app.schemas.torrent_status import MediaTorrentStatusResponse
 
 from app.services.movies import add_movie_from_tmdb
 from app.services.libraries import title_category
+from app.services.pending_grabs import pending_movie_grabs
 from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
@@ -134,6 +135,9 @@ async def _list_movies(
         kind = "replacement" if str(raw_kind).casefold() == "replacement" else "release"
         if movie_id not in incoming_kinds or kind == "replacement":
             incoming_kinds[movie_id] = kind
+    # A grab qBittorrent has not reported yet is on its way all the same.
+    for movie_id in await pending_movie_grabs(db, movie_ids):
+        incoming_kinds.setdefault(movie_id, "release")
     active_by_movie = {
         movie.id: [
             release
@@ -375,6 +379,7 @@ async def get_movie(
                 "quality": release.quality_definition.name if release.quality_definition else None,
                 "edition": release.effective_edition,
                 "resolved_save_path": observation.resolved_save_path if observation else None,
+                "eta_seconds": _eta(observation),
                 "incoming_kind": (
                     "replacement"
                     if str(release.parse_snapshot.get("incoming_kind") or "release").casefold() == "replacement"
@@ -383,12 +388,34 @@ async def get_movie(
             }
         )
 
+    for grab in (await pending_movie_grabs(db, [movie.id])).get(movie.id, []):
+        observation = grab.observation
+        incoming.append(
+            {
+                "id": str(grab.result.id),
+                "torrent_id": str(grab.torrent.id) if grab.torrent else None,
+                "release_id": None,
+                "name": grab.torrent.name if grab.torrent else grab.result.title,
+                "client_name": grab.client_name,
+                "progress": float(observation.progress) if observation and observation.progress is not None else 0,
+                # Sent: qBittorrent took it, and no poll has reported it yet.
+                "state": observation.state if observation else "sent",
+                "torrent_state": observation.state if observation else "sent",
+                "quality": grab.result.quality,
+                "edition": grab.result.edition,
+                "resolved_save_path": observation.resolved_save_path if observation else None,
+                "eta_seconds": _eta(observation),
+                "incoming_kind": "release",
+            }
+        )
     incoming_kind = next(
         ("replacement" if str(item.get("incoming_kind")).casefold() == "replacement" else "release" for item in incoming),
         None,
     )
     summary_model.incoming = bool(incoming)
     summary_model.incoming_kind = incoming_kind
+    if summary_model.state == "Missing" and incoming:
+        summary_model.state = "Downloading"
     summary = summary_model.model_dump(exclude={"last_observed_at"})
 
     torrent_rows = (
@@ -573,6 +600,12 @@ async def _problem_counts(db: AsyncSession, movie_ids: list[UUID]) -> dict[UUID,
     return counts
 
 
+def _eta(observation: TorrentClientObservation | None) -> int | None:
+    # qBittorrent reports 8640000 (100 days) for "never".
+    value = observation.eta_seconds if observation is not None else None
+    return value if value is not None and 0 < value < 8_640_000 else None
+
+
 def _summary(
     movie: Movie,
     problem_count: int,
@@ -589,6 +622,8 @@ def _summary(
         state = "Duplicate"
     elif physical:
         state = "Present"
+    elif incoming_kind is not None:
+        state = "Downloading"
     else:
         state = "Missing"
     current = next((release for release in physical if release.release_state == ReleaseState.CURRENT), None)

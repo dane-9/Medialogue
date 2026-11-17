@@ -1005,3 +1005,40 @@ def test_a_movie_cannot_be_grabbed_into_a_folder_outside_every_library(client: T
         assert qbit_behavior.submissions == []
     finally:
         client.app.dependency_overrides.clear()
+
+
+def test_a_grabbed_movie_shows_its_download_before_qbittorrent_reports_it(client: TestClient) -> None:
+    try:
+        headers, qbit_client_id, result_id, _ = _new_movie_grab(client)
+        submitted = client.post(f"/api/v1/search-results/{result_id}/download", headers=headers,
+                                json={"download_client_id": qbit_client_id})
+        assert submitted.status_code == 200, submitted.text
+        movie_id = submitted.json()["movie_id"]
+
+        movie = client.get(f"/api/v1/movies/{movie_id}").json()
+        assert movie["state"] == "Downloading"
+        assert movie["incoming"] is True
+        [incoming] = movie["incoming_downloads"]
+        assert incoming["state"] == "sent"
+        assert incoming["torrent_id"] is None
+        assert incoming["client_name"] == "Movies"
+        assert incoming["name"] == "Inception 2010 2160p UHD BluRay REMUX HEVC TrueHD 7.1-LM"
+
+        listed = client.get("/api/v1/movies").json()
+        rows = listed["items"] if isinstance(listed, dict) else listed
+        assert next(item for item in rows if item["id"] == movie_id)["state"] == "Downloading"
+    finally:
+        client.app.dependency_overrides.clear()
+
+
+def test_a_requested_poll_runs_once_when_due() -> None:
+    from app.services import qbittorrent
+
+    client_id = uuid.uuid4()
+    assert qbittorrent._poll_requested(client_id) is False
+    qbittorrent.request_poll(client_id)
+    qbittorrent.request_poll(client_id, after_seconds=60)
+    assert qbittorrent._poll_requested(client_id) is True
+    # The later request waits for its time; the due one was used up.
+    assert qbittorrent._poll_requested(client_id) is False
+    qbittorrent._POLL_REQUESTS.pop(client_id, None)

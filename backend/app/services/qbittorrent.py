@@ -15,7 +15,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from time import perf_counter
+from time import monotonic, perf_counter
 from typing import Callable
 from uuid import UUID
 
@@ -297,6 +297,33 @@ async def run_torrent_action(
 #: unavailable, so one dropped request or a qBittorrent restart does not flash
 #: "unavailable" across the app.
 _FAILURE_STREAK: dict[UUID, int] = {}
+#: Polls asked for ahead of a client's interval: client -> when (monotonic).
+_POLL_REQUESTS: dict[UUID, list[float]] = {}
+
+
+def request_poll(client_id: UUID, *, after_seconds: float = 0) -> None:
+    """Poll this client once ``after_seconds`` from now, whatever its interval.
+
+    A grab asks for this so its download shows up within seconds instead of at
+    the next scheduled poll.
+    """
+
+    _POLL_REQUESTS.setdefault(client_id, []).append(monotonic() + after_seconds)
+
+
+def _poll_requested(client_id: UUID) -> bool:
+    """Whether a requested poll is due now; a due request is used up."""
+
+    pending = _POLL_REQUESTS.get(client_id)
+    if not pending:
+        return False
+    now = monotonic()
+    later = [when for when in pending if when > now]
+    if later:
+        _POLL_REQUESTS[client_id] = later
+    else:
+        _POLL_REQUESTS.pop(client_id, None)
+    return len(later) < len(pending)
 FAILURES_BEFORE_UNAVAILABLE = 2
 RETRY_AFTER_FAILURE_SECONDS = 5
 #: How long to leave a client that banned Medialogue's IP before trying again.
@@ -1198,7 +1225,7 @@ async def poll_due_download_clients(
                 continue
             if "temporarily banned Medialogue's IP" in client.last_error:
                 interval = BAN_RETRY_SECONDS
-        if last is not None and (now - last).total_seconds() < interval:
+        if last is not None and (now - last).total_seconds() < interval and not _poll_requested(client_id):
             continue
         try:
             result = await poll_download_client(db, client, client_factory=client_factory)

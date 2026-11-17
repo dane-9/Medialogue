@@ -56,6 +56,7 @@ from app.services.movies import create_movie_from_metadata
 from app.services.search import SearchTarget, cleanup_expired_search_results, run_search_job
 from app.services.shows import add_show_from_tmdb
 from app.services.libraries import root_library_id, title_storage_root
+from app.services.qbittorrent import request_poll
 from app.services.tmdb import get_show_details, get_tmdb_configuration
 from app.services.tracker_hosts import remember_tracker_hosts
 
@@ -758,6 +759,10 @@ async def download_search_result(
     )
     await remember_tracker_hosts(db, result.indexer_id, announce_hosts)
     await db.commit()
+    # Show the download on its title within seconds: once right away, and once
+    # more after qBittorrent has had time to fetch a .torrent from the indexer.
+    request_poll(client.id, after_seconds=1)
+    request_poll(client.id, after_seconds=8)
     return SearchResultDownloadResponse(
         search_result_id=result.id,
         download_client_id=client.id,

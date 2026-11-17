@@ -61,7 +61,7 @@ export interface Movie {
   releases: number
   quality: string
   edition?: string
-  status: 'Present' | 'Missing' | 'Duplicate'
+  status: 'Present' | 'Missing' | 'Duplicate' | 'Downloading'
   plex: 'Verified' | 'Pending' | 'Not in Plex' | 'Multiple versions' | 'Conflict' | 'Unavailable'
   confidence: number
   location: string
@@ -157,6 +157,8 @@ export interface MovieEditionUpdateResult {
 
 export interface IncomingDownload {
   id?: string
+  /** Unset until qBittorrent has reported the torrent. */
+  torrentId?: string
   name: string
   client: string
   progress: number

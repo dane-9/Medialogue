@@ -5490,7 +5490,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Duplicate";
+            state: "Present" | "Missing" | "Duplicate" | "Downloading";
             /** Storage Root */
             storage_root?: string | null;
             /** Tags */
@@ -5596,6 +5596,8 @@ export interface components {
             client_name: string;
             /** Edition */
             edition?: string | null;
+            /** Eta Seconds */
+            eta_seconds?: number | null;
             /**
              * Id
              * Format: uuid
@@ -5612,20 +5614,14 @@ export interface components {
             progress: number;
             /** Quality */
             quality?: string | null;
-            /**
-             * Release Id
-             * Format: uuid
-             */
-            release_id: string;
+            /** Release Id */
+            release_id?: string | null;
             /** Resolved Save Path */
             resolved_save_path?: string | null;
             /** State */
             state: string;
-            /**
-             * Torrent Id
-             * Format: uuid
-             */
-            torrent_id: string;
+            /** Torrent Id */
+            torrent_id?: string | null;
             /** Torrent State */
             torrent_state: string;
         };
@@ -5674,7 +5670,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Duplicate";
+            state: "Present" | "Missing" | "Duplicate" | "Downloading";
         };
         /** MovieReleaseResponse */
         MovieReleaseResponse: {
@@ -5781,7 +5777,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "Present" | "Missing" | "Duplicate";
+            state: "Present" | "Missing" | "Duplicate" | "Downloading";
             /** Tags */
             tags?: components["schemas"]["TagResponse"][];
             /** Title */

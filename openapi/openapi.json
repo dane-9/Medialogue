@@ -6804,7 +6804,8 @@
             "enum": [
               "Present",
               "Missing",
-              "Duplicate"
+              "Duplicate",
+              "Downloading"
             ],
             "title": "State",
             "type": "string"
@@ -7112,6 +7113,17 @@
             ],
             "title": "Edition"
           },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -7145,9 +7157,16 @@
             "title": "Quality"
           },
           "release_id": {
-            "format": "uuid",
-            "title": "Release Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
           },
           "resolved_save_path": {
             "anyOf": [
@@ -7165,9 +7184,16 @@
             "type": "string"
           },
           "torrent_id": {
-            "format": "uuid",
-            "title": "Torrent Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Torrent Id"
           },
           "torrent_state": {
             "title": "Torrent State",
@@ -7176,8 +7202,6 @@
         },
         "required": [
           "id",
-          "torrent_id",
-          "release_id",
           "name",
           "client_name",
           "progress",
@@ -7273,7 +7297,8 @@
             "enum": [
               "Present",
               "Missing",
-              "Duplicate"
+              "Duplicate",
+              "Downloading"
             ],
             "title": "State",
             "type": "string"
@@ -7610,7 +7635,8 @@
             "enum": [
               "Present",
               "Missing",
-              "Duplicate"
+              "Duplicate",
+              "Downloading"
             ],
             "title": "State",
             "type": "string"

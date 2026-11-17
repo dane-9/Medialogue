@@ -8,7 +8,8 @@ from app.models.domain import AssociationType, IdentityState, ReleaseState, Seve
 from app.schemas.tags import TagResponse
 from app.schemas.torrent_status import MediaTorrentStatusResponse
 
-MovieCollectionState = Literal["Present", "Missing", "Duplicate"]
+#: Downloading: nothing on disk, and a download for it is on its way.
+MovieCollectionState = Literal["Present", "Missing", "Duplicate", "Downloading"]
 MoviePlexState = Literal[
     "matched",
     "pending",
@@ -58,8 +59,10 @@ class MovieReleaseResponse(BaseModel):
 
 class MovieIncomingDownloadResponse(BaseModel):
     id: UUID
-    torrent_id: UUID
-    release_id: UUID
+    #: None for a grab qBittorrent has not reported yet.
+    torrent_id: UUID | None = None
+    #: None until the download is linked to a release of the movie.
+    release_id: UUID | None = None
     name: str
     client_name: str
     progress: float
@@ -69,6 +72,8 @@ class MovieIncomingDownloadResponse(BaseModel):
     edition: str | None = None
     resolved_save_path: str | None = None
     incoming_kind: IncomingKind
+    #: qBittorrent's estimate; None when it has none.
+    eta_seconds: int | None = None
 
 
 class MovieEventResponse(BaseModel):

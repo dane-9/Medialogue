@@ -181,7 +181,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           </span>
           <span className="global-search-state">
             {result.present
-              ? <Badge tone={result.state === 'Missing' ? 'amber' : 'green'}>{result.state ?? 'Present'}</Badge>
+              ? <Badge tone={result.state === 'Missing' || result.state === 'Downloading' ? 'amber' : 'green'}>{result.state ?? 'Present'}</Badge>
               : <Badge tone="neutral">Not in library</Badge>}
           </span>
         </button>)}
