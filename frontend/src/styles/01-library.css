@@ -547,7 +547,24 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
   cursor: pointer;
 }
 .tag-chip:hover { border-color: var(--accent-line); color: var(--accent-text); background: var(--accent-soft); }
-.detail-tag-row { margin-top: var(--s3); }
+/* Hero: title and monitoring on one row, badges and tags on the next, the
+   facts as one muted line, and the actions pinned to the card's bottom. */
+.detail-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
+.detail-title-row h2 { min-width: 0; }
+.detail-monitor {
+  display: inline-flex; flex: none; align-items: center; gap: 6px;
+  height: 28px; padding: 0 var(--s3);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: transparent; color: var(--muted);
+  font: 500 var(--t-xs) var(--sans); cursor: pointer;
+}
+.detail-monitor.on { color: var(--text); border-color: rgba(84, 160, 255, .45); background: rgba(84, 160, 255, .10); }
+.detail-monitor:hover:not(:disabled) { border-color: var(--muted); color: var(--text); }
+.detail-badges { align-items: center; }
+.detail-factline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); color: var(--faint); font-size: var(--t-xs); }
+.detail-factline a { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; }
+.detail-factline a:hover { color: var(--text); }
+.detail-hero .detail-actions { margin-top: auto; padding-top: var(--s4); }
 
 .detail-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .7fr); gap: var(--s4); }
 .detail-layout > div, .detail-layout > aside { display: grid; align-content: start; gap: var(--s4); }
@@ -588,12 +605,6 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 /* The movie page runs in one column. Its sidebar held two small cards and then
    reserved its width down the whole page for nothing. */
 .detail-single { display: grid; align-content: start; gap: var(--s4); }
-/* The facts the sidebar used to carry, on the hero where the poster's height
-   already leaves room for them. */
-.detail-facts { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5); margin-bottom: var(--s4); }
-.detail-facts > span { display: grid; gap: 2px; min-width: 0; }
-.detail-facts em { color: var(--faint); font: var(--t-micro) var(--sans); font-style: normal; letter-spacing: .04em; text-transform: uppercase; }
-.detail-facts strong { overflow: hidden; color: var(--text); font-size: var(--t-xs); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The hero and the profile share the top row and end together: whichever is
    taller sets the height and the other fills it, so neither leaves a hole

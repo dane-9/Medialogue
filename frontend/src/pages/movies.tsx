@@ -492,34 +492,33 @@ export function MovieDetailPage({ id }: { id: string }) {
       <Panel className="detail-hero">
         <div className="detail-poster"><PosterImage reference={movie.poster} title={movie.title} /></div>
         <div className="detail-intro">
-          <h2>{movie.title} <span className="detail-year">({movie.year})</span></h2>
-          {/* Only states worth acting on. "Present" is the default for a movie
-              you are looking at, and a confidence figure told nobody anything
-              they could do something about. */}
-          {(heroStatus || plexAvailable || movie.monitored === false) && <div className="badge-row">
+          <div className="detail-title-row">
+            <h2>{movie.title} <span className="detail-year">({movie.year})</span></h2>
+            {/* Monitoring is a state of the movie, so it reads and toggles beside the title. */}
+            <Tooltip content={movie.monitored === false ? 'Not watched for upgrades or problems. Click to monitor.' : 'Watched for upgrades and problems. Click to stop.'}>
+              <button type="button" className={`detail-monitor ${movie.monitored === false ? 'off' : 'on'}`} disabled={busy}
+                onClick={() => void setMonitored(movie.monitored === false)}>
+                <Icon name={movie.monitored === false ? 'monitored-off' : 'monitored'} size={15} />
+                {movie.monitored === false ? 'Unmonitored' : 'Monitored'}
+              </button>
+            </Tooltip>
+          </div>
+          {/* Only states worth acting on, then the tags, on one row. */}
+          {(heroStatus || plexAvailable || movie.tags?.length) ? <div className="badge-row detail-badges">
             {heroStatus && <Badge tone={statusTone(movie.status)}>{movie.status}</Badge>}
             {plexAvailable && <Badge tone={statusTone(movie.plex)}>Plex {movie.plex}</Badge>}
-            {movie.monitored === false && <Badge tone="neutral">Unmonitored</Badge>}
-          </div>}
-          {movie.tags?.length ? <div className="tag-chip-row detail-tag-row">{movie.tags.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}</div> : null}
+            {movie.tags?.map((tag) => <Link key={tag.id} className="tag-chip" to={`/movies?tag=${encodeURIComponent(tag.name)}`}>{tag.name}</Link>)}
+          </div> : null}
           <p className="detail-description">{movie.overview ?? 'Your files are the source of truth. Rechecking never moves or deletes media, and old paths are kept.'}</p>
-          {/* The facts the sidebar used to hold, inline and unlabelled where the
-              label would only repeat the value. */}
-          <div className="detail-facts">
-            <span><em>Last observed</em><strong>{formatEvidenceDate(movie.lastObservedAt)}</strong></span>
-            {movie.tmdbId ? <span><em>TMDB</em><strong>{movie.tmdbId}</strong></span> : null}
+          <div className="detail-factline">
+            <span>Last observed {formatEvidenceDate(movie.lastObservedAt)}</span>
+            {movie.tmdbId ? <a href={`https://www.themoviedb.org/movie/${movie.tmdbId}`} target="_blank" rel="noreferrer">TMDB <Icon name="external" size={12} /></a> : null}
           </div>
-          {/* Everything you can do to this movie sits in one row, beside the
-              title it acts on, rather than split across the page header. */}
+          {/* Pinned to the bottom of the card. Change match lives on each release row. */}
           <div className="detail-actions">
             <Button variant="primary" icon="search" onClick={() => setSearchOpen(true)}>Interactive search</Button>
             <Button variant="secondary" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button>
-            {plexAvailable && <Button variant="secondary" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}
-            {/* The hero already reported this state; now it can be changed
-                from the same place it is shown. */}
-            <Button variant="secondary" icon={movie.monitored === false ? 'monitored' : 'monitored-off'} onClick={() => void setMonitored(movie.monitored === false)} disabled={busy}>
-              {movie.monitored === false ? 'Monitor' : 'Unmonitor'}
-            </Button>
+            {plexAvailable && <Button variant="secondary" icon="plex" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}
           </div>
         </div>
       </Panel>
