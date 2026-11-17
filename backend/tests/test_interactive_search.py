@@ -1026,7 +1026,10 @@ def test_a_grabbed_movie_shows_its_download_before_qbittorrent_reports_it(client
 
         listed = client.get("/api/v1/movies").json()
         rows = listed["items"] if isinstance(listed, dict) else listed
-        assert next(item for item in rows if item["id"] == movie_id)["state"] == "Downloading"
+        row = next(item for item in rows if item["id"] == movie_id)
+        assert row["state"] == "Downloading"
+        # Nothing reported yet: the card's progress strip starts empty.
+        assert row["incoming_progress"] == 0
     finally:
         client.app.dependency_overrides.clear()
 

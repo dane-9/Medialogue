@@ -122,7 +122,11 @@ async def _list_movies(
     problems = await _problem_counts(db, movie_ids)
     incoming_rows = (
         await db.execute(
-            select(MovieRelease.movie_id, func.json_extract(MovieRelease.parse_snapshot, "$.incoming_kind"))
+            select(
+                MovieRelease.movie_id,
+                func.json_extract(MovieRelease.parse_snapshot, "$.incoming_kind"),
+                MovieReleaseTorrent.torrent_id,
+            )
             .join(MovieReleaseTorrent, MovieReleaseTorrent.movie_release_id == MovieRelease.id)
             .where(
                 MovieRelease.movie_id.in_(movie_ids),
@@ -132,13 +136,32 @@ async def _list_movies(
         )
     ).all() if movies else []
     incoming_kinds: dict[UUID, str] = {}
-    for movie_id, raw_kind in incoming_rows:
+    incoming_torrents: dict[UUID, UUID] = {}
+    for movie_id, raw_kind, torrent_id in incoming_rows:
         kind = "replacement" if str(raw_kind).casefold() == "replacement" else "release"
-        if movie_id not in incoming_kinds or kind == "replacement":
+        if movie_id not in incoming_kinds or (kind == "replacement" and incoming_kinds[movie_id] != "replacement"):
             incoming_kinds[movie_id] = kind
+            incoming_torrents[movie_id] = torrent_id
+    torrent_progress = dict(
+        (
+            await db.execute(
+                select(TorrentClientObservation.torrent_id, func.max(TorrentClientObservation.progress))
+                .where(
+                    TorrentClientObservation.torrent_id.in_(set(incoming_torrents.values())),
+                    TorrentClientObservation.is_present.is_(True),
+                )
+                .group_by(TorrentClientObservation.torrent_id)
+            )
+        ).all()
+    ) if incoming_torrents else {}
+    incoming_progress: dict[UUID, float] = {
+        movie_id: float(torrent_progress.get(torrent_id) or 0) for movie_id, torrent_id in incoming_torrents.items()
+    }
     # A grab qBittorrent has not reported yet is on its way all the same.
-    for movie_id in await pending_movie_grabs(db, movie_ids):
+    for movie_id, grabs in (await pending_movie_grabs(db, movie_ids)).items():
         incoming_kinds.setdefault(movie_id, "release")
+        observation = grabs[0].observation if grabs else None
+        incoming_progress.setdefault(movie_id, float(observation.progress or 0) if observation else 0.0)
     active_by_movie = {
         movie.id: [
             release
@@ -165,6 +188,8 @@ async def _list_movies(
         )
         for movie in movies
     ]
+    for item, movie in zip(items, movies):
+        item.incoming_progress = incoming_progress.get(movie.id)
     if state:
         items = [item for item in items if item.state.casefold() == state.casefold()]
     reverse = sort.startswith("-")
@@ -416,6 +441,7 @@ async def get_movie(
     )
     summary_model.incoming = bool(incoming)
     summary_model.incoming_kind = incoming_kind
+    summary_model.incoming_progress = float(incoming[0]["progress"]) if incoming else None
     if summary_model.state == "Missing" and incoming:
         summary_model.state = "Downloading"
     summary = summary_model.model_dump(exclude={"last_observed_at"})

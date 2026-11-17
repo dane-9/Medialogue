@@ -5512,6 +5512,8 @@ export interface components {
             incoming_downloads?: components["schemas"]["MovieIncomingDownloadResponse"][];
             /** Incoming Kind */
             incoming_kind?: ("replacement" | "release") | null;
+            /** Incoming Progress */
+            incoming_progress?: number | null;
             /** Last Observed At */
             last_observed_at?: string | null;
             /** Library Id */
@@ -5835,6 +5837,8 @@ export interface components {
             incoming: boolean;
             /** Incoming Kind */
             incoming_kind?: ("replacement" | "release") | null;
+            /** Incoming Progress */
+            incoming_progress?: number | null;
             /** Last Observed At */
             last_observed_at?: string | null;
             /** Library Id */

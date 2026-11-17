@@ -530,8 +530,18 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 /* In a table there is no artwork behind it, so it carries no plate. */
 .table-title .monitor-mark { width: auto; height: auto; border: 0; background: none; }
 
-.incoming-mark { position: static; z-index: 2; display: inline-flex; align-items: center; gap: var(--s1); padding: 3px var(--s2); border: 1px solid var(--accent-line); border-radius: var(--r-sm); color: var(--accent-text); background: rgba(36, 40, 47, .94); font: 600 var(--t-micro) var(--mono); text-transform: uppercase; }
-.incoming-mark svg { flex: none; }
+/* A download on its way: a square chip like the other corner marks, filled with the
+   accent so it reads as a state rather than a button, and a strip along the poster's
+   bottom edge showing how far it has got. */
+.incoming-mark { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 3px; min-width: 22px; height: 22px; padding: 0 5px 0 3px; border: 1px solid var(--accent-line); border-radius: var(--r-sm); color: var(--accent-text); background: rgba(23, 29, 37, .82); }
+.media-card .incoming-mark { position: absolute; z-index: 2; top: calc(var(--s2) - 1px); left: var(--s2); transition: left .12s; }
+/* Top left, where the select square appears: when the square shows, the chip steps right of it. */
+.media-card:hover .incoming-mark, .media-card:has(> .select-check.on) .incoming-mark, .media-grid:has(.select-check.on) .media-card .incoming-mark { left: calc(var(--s2) + 20px + var(--s1)); }
+@media (prefers-reduced-motion: reduce) { .media-card .incoming-mark { transition: none; } }
+.incoming-mark > span { font: 600 var(--t-micro) var(--sans); font-variant-numeric: tabular-nums; }
+.poster-progress { position: absolute; z-index: 2; right: 0; bottom: 0; left: 0; height: 3px; background: rgba(23, 29, 37, .82); }
+.poster-progress > span { display: block; height: 100%; background: var(--accent); transition: width .4s ease; }
+@media (prefers-reduced-motion: reduce) { .poster-progress > span { transition: none; } }
 
 .tag-chip-row { display: flex; flex-wrap: wrap; gap: var(--s1); }
 .tag-chip {

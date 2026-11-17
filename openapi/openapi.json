@@ -6784,6 +6784,17 @@
             ],
             "title": "Incoming Kind"
           },
+          "incoming_progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incoming Progress"
+          },
           "last_observed_at": {
             "anyOf": [
               {
@@ -7731,6 +7742,17 @@
               }
             ],
             "title": "Incoming Kind"
+          },
+          "incoming_progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incoming Progress"
           },
           "last_observed_at": {
             "anyOf": [

@@ -146,6 +146,8 @@ class MovieSummaryResponse(BaseModel):
     tags: list[TagResponse] = Field(default_factory=list)
     incoming: bool = False
     incoming_kind: IncomingKind | None = None
+    #: How far the incoming download is, 0-1, as qBittorrent last reported; None when nothing is incoming.
+    incoming_progress: float | None = None
     last_observed_at: datetime | None = None
     torrent_status: MediaTorrentStatusResponse = Field(default_factory=MediaTorrentStatusResponse)
 

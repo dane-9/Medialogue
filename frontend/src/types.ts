@@ -72,6 +72,8 @@ export interface Movie {
   problemCount?: number
   incomingReplacement?: boolean
   incomingKind?: 'replacement' | 'release'
+  /** 0-100, how far the incoming download is; undefined when nothing is incoming. */
+  incomingProgress?: number
   overview?: string
   posterRef?: string
   storageRoot?: string

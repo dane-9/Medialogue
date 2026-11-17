@@ -106,6 +106,7 @@ export function mapMovie(value: MovieSummaryDto | MovieDetailDto): Movie {
     problemCount: value.problem_count,
     incomingReplacement: value.incoming_kind === 'replacement',
     incomingKind: value.incoming_kind ?? undefined,
+    incomingProgress: value.incoming_progress == null ? undefined : percentValue(value.incoming_progress),
     overview: detail?.overview ?? undefined,
     posterRef: detail?.poster_ref ?? undefined,
     storageRoot: detail?.storage_root ?? undefined,
