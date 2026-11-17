@@ -631,28 +631,15 @@
 
   .media-grid, .show-grid { --card-w: 150px; }
 }
-@media (max-width: 980px) {
-  .show-season-workspace { grid-template-columns: 1fr; }
-  .season-nav-list { display: flex; overflow-x: auto; }
-  .season-nav-item { min-width: 170px; border-top: 0; border-left: 1px solid var(--line); }
-  .season-nav-item:first-child { border-left: 0; }
-}
 @media (max-width: 860px) {
   .problem-evidence-grid { grid-template-columns: minmax(0, 1fr); }
   .tmdb-selection-bar { align-items: flex-start; flex-direction: column; }
-  .detail-layout { grid-template-columns: 1fr; }
   .detail-hero { align-items: flex-start; }
   .media-card-actions { opacity: 1; }
-  .season-control-row { align-items: flex-start; flex-direction: column; }
-  .season-control-actions { width: 100%; justify-content: space-between; }
 }
 @media (max-width: 560px) {
   .detail-hero { flex-direction: column; padding: var(--s4); }
   .detail-poster { width: 116px; }
-  .detail-summary-grid { width: 100%; }
-  .season-header-actions { width: 100%; }
-  .season-header-actions .button { flex: 1; }
-  .season-control-actions { align-items: flex-start; flex-direction: column; }
 }
 
 .modal-backdrop {
@@ -1118,8 +1105,6 @@
 .cf-card-badges { display: flex; flex: none; align-items: center; gap: var(--s1); }
 .input[readonly], .input:disabled { opacity: .7; cursor: default; }
 
-.ordering-summary { display: grid; gap: var(--s1); padding: var(--s4); }
-.ordering-summary small { color: var(--faint); font-size: var(--t-xs); line-height: 1.55; }
 .ordering-list { display: grid; gap: var(--s2); padding: var(--s4); }
 .ordering-option {
   display: flex;

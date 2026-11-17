@@ -331,8 +331,7 @@ select.input { background-color: var(--input-bg); }
 .poster::after { background: linear-gradient(0deg, rgba(23,29,37,.94), rgba(23,29,37,.08) 62%); }
 
 .dropdown-menu,
-.bulk-context-menu,
-.episode-actions-popover {
+.bulk-context-menu {
   border-color: #3d4450;
   border-radius: 2px;
   background: #3d4450;
