@@ -29,6 +29,7 @@ import { upgradesApi } from '../api/modules/upgrades'
 import type { DownloadClient, InteractiveSearchResult, QualityProfile, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults } from '../types'
 import { MIXED_PROFILE, Page, defaultProfileLabel, libraryInvalidationEvents, tmdbPosterUrl } from './shared'
 import { useLiveEvent, useLiveRefresh } from '../lib/liveRefresh'
+import { HeadCheck } from '../components/SelectionBar'
 
 // The category picker's choice for a batch whose titles sit in folders with different categories.
 const EACH_FOLDER = '\u0000each-folder'
@@ -308,6 +309,13 @@ export function UpgradeMediaPage() {
     return next
   })
 
+  // Every row the batch can take on the page as filtered, for the select-all box.
+  const setRowsExcluded = (ids: string[], out: boolean) => setExcluded((current) => {
+    const next = new Set(current)
+    ids.forEach((id) => { if (out) next.add(id); else next.delete(id) })
+    return next
+  })
+
   const applyProfileResult = (
     result: { candidateIds: string[]; qualityProfileId?: string; qualityProfileName?: string },
   ) => {
@@ -492,7 +500,8 @@ export function UpgradeMediaPage() {
   }
   // A candidate already in flight keeps its own per-row actions, and a blocked
   // one cannot be submitted at all, so neither can join the batch.
-  const picked = useMemo(() => rows.filter((item) => upgradeStartable(item) && item.executionEligible && !excluded.has(item.id)), [rows, excluded])
+  const batchableRows = useMemo(() => rows.filter((item) => upgradeStartable(item) && item.executionEligible), [rows])
+  const picked = useMemo(() => batchableRows.filter((item) => !excluded.has(item.id)), [batchableRows, excluded])
   const mixedFolders = new Set(picked.map((item) => item.folderCategory ?? '')).size > 1
   const pickedBytes = useMemo(() => picked.reduce((total, item) => total + (item.size ?? 0), 0), [picked])
   // How much the library grows (or shrinks) once these replace what is on
@@ -596,7 +605,13 @@ export function UpgradeMediaPage() {
       <div className="downloads-main">
       <div className="new-media-workspace upgrade-v2 upgrade-v3">
         <div className="new-media-scroll">
-          <span className="new-media-col-head">Current</span>
+          <span className="new-media-col-head head-with-check"><HeadCheck
+            selected={batchableRows.filter((item) => !excluded.has(item.id)).length}
+            total={batchableRows.length}
+            noun="upgrades"
+            onSelectAll={() => setRowsExcluded(batchableRows.map((item) => item.id), false)}
+            onClear={() => setRowsExcluded(batchableRows.map((item) => item.id), true)}
+          />Current</span>
           <span className="new-media-col-head upgrade-v2-head">
             <span>Upgrade</span>
             {shownStatus === 'ready' && <>

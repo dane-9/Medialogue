@@ -12,6 +12,7 @@ import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
 import type { Job, MediaDiscovery, QualityProfile } from '../types'
 import { CUSTOM_EDITION, EditionDraft, MIXED_PROFILE, Page, THEATRICAL_EDITION, TMDBCandidate, defaultProfileLabel, editionChoices, editionUpdate, libraryListEvents, tmdbPosterUrl, useLiveLibraryRefresh } from './shared'
+import { HeadCheck } from '../components/SelectionBar'
 
 function movieEditionSlot(edition?: string): string {
   const normalized = (edition ?? '').trim().toLocaleLowerCase()
@@ -113,6 +114,13 @@ export function NewMediaPage() {
     const next = new Set(current)
     if (next.has(id)) next.delete(id)
     else next.add(id)
+    return next
+  })
+
+  const includable = rows.filter((item) => item.exists && item.selected)
+  const setRowsExcluded = (out: boolean) => setExcluded((current) => {
+    const next = new Set(current)
+    includable.forEach((item) => { if (out) next.add(item.id); else next.delete(item.id) })
     return next
   })
 
@@ -245,7 +253,13 @@ export function NewMediaPage() {
     <div className="new-media-workspace">
 
       <div className="new-media-scroll new-media-combined">
-        <span className="new-media-col-head">{noun === 'show' ? 'Show' : 'Movie'} folder and match</span>
+        <span className="new-media-col-head head-with-check"><HeadCheck
+          selected={includable.filter((item) => !excluded.has(item.id)).length}
+          total={includable.length}
+          noun={`${noun}s`}
+          onSelectAll={() => setRowsExcluded(false)}
+          onClear={() => setRowsExcluded(true)}
+        />{noun === 'show' ? 'Show' : 'Movie'} folder and match</span>
         {rows.map((item) => {
             const match = item.selected
             const active = false

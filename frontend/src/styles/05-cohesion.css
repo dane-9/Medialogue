@@ -697,3 +697,7 @@ select.input { background-color: var(--input-bg); }
   .wizard-folder { grid-template-columns: 14px minmax(0, 1fr); }
   .wizard-folder-category { grid-column: 2; }
 }
+
+/* The select-all box sits in the column head, above the rows' own boxes. */
+.new-media-col-head.head-with-check { display: flex; align-items: center; gap: var(--s3); }
+.head-check .select-check-dash { background: #fff; }

@@ -30,6 +30,7 @@ import { rejectionLabel, upgradeResultsToReleases } from './lib/upgradeResults'
 import { parseJobStatusLiveEvent } from './validation/liveEvents'
 import type { DownloadClient, UpgradeSearchResults } from './types'
 import { useLiveEvent, useLiveRefresh } from './lib/liveRefresh'
+import { HeadCheck } from './components/SelectionBar'
 
 const SEARCH_JOB = 'search_media_replacements'
 
@@ -218,6 +219,18 @@ export default function ReplaceMediaPage() {
     const key = item.target_key
     if (checked(item)) { setPicked((current) => without(current, key)); setUnticked((current) => new Set(current).add(key)) }
     else { setPicked((current) => new Set(current).add(key)); setUnticked((current) => without(current, key)) }
+  }
+  const pickableRows = rows.filter(pickable)
+  const pickAll = () => {
+    const keys = pickableRows.map((item) => item.target_key)
+    setPicked((current) => new Set([...current, ...keys]))
+    setUnticked((current) => new Set([...current].filter((key) => !keys.includes(key))))
+  }
+  const unpickAll = () => {
+    const keys = new Set(rows.map((item) => item.target_key))
+    setPicked((current) => new Set([...current].filter((key) => !keys.has(key))))
+    // A found replacement is ticked by itself, so clearing it takes an explicit untick.
+    setUnticked((current) => new Set([...current, ...rows.filter(downloadable).map((item) => item.target_key)]))
   }
   const chooseStatus = (value: ReplaceStatus) => { setStatus(value); setStatusChosen(true); clearPicks() }
   const chooseRoot = (name: string) => { setSelectedRoot(name); clearPicks() }
@@ -433,7 +446,7 @@ export default function ReplaceMediaPage() {
       <div className="downloads-main">
       <div className="new-media-workspace upgrade-v2 upgrade-v3 replace-v3">
         <div className="new-media-scroll">
-          <span className="new-media-col-head">Lost source</span>
+          <span className="new-media-col-head head-with-check"><HeadCheck selected={pickableRows.filter(checked).length} total={pickableRows.length} noun="titles" onSelectAll={pickAll} onClear={unpickAll} />Lost source</span>
           <span className="new-media-col-head upgrade-v2-head">
             <span>Replacement</span>
             {shownStatus === 'in_progress'
