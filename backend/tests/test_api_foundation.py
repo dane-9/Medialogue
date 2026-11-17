@@ -483,56 +483,6 @@ def _add_movie(client: TestClient, headers: dict[str, str], tmdb_id: int) -> dic
     return created.json()
 
 
-def test_change_match_repoints_a_movie_and_keeps_its_identity(client: TestClient) -> None:
-    """Re-matching swaps the TMDB title but not the library record itself."""
-
-    headers = _login(client)
-    _configure_tmdb(client, headers)
-    movie = _add_movie(client, headers, 27205)
-    assert movie["title"] == "Inception"
-
-    rematched = client.post(
-        f"/api/v1/movies/{movie['id']}/rematch",
-        headers=headers,
-        json={"tmdb_id": 329865},
-    )
-    assert rematched.status_code == 200, rematched.text
-    body = rematched.json()
-    # Same row, different title: nothing on disk or in the library is recreated.
-    assert body["id"] == movie["id"]
-    assert body["title"] == "Arrival"
-    assert body["year"] == 2016
-    assert body["tmdb_id"] == 329865
-    # Marked manual, so a later metadata refresh cannot quietly undo the choice.
-    assert body["identity_state"] == "manual"
-
-
-def test_change_match_refuses_a_tmdb_id_another_movie_already_holds(client: TestClient) -> None:
-    headers = _login(client)
-    _configure_tmdb(client, headers)
-    first = _add_movie(client, headers, 27205)
-    _add_movie(client, headers, 329865)
-
-    clash = client.post(
-        f"/api/v1/movies/{first['id']}/rematch",
-        headers=headers,
-        json={"tmdb_id": 329865},
-    )
-    assert clash.status_code == 409, clash.text
-    assert clash.json()["error"]["code"] == "TMDB_ID_ALREADY_USED"
-    # The rejected attempt leaves the original untouched.
-    assert client.get(f"/api/v1/movies/{first['id']}").json()["title"] == "Inception"
-
-
-def test_change_match_requires_csrf(client: TestClient) -> None:
-    headers = _login(client)
-    _configure_tmdb(client, headers)
-    movie = _add_movie(client, headers, 27205)
-
-    unprotected = client.post(f"/api/v1/movies/{movie['id']}/rematch", json={"tmdb_id": 329865})
-    assert unprotected.status_code == 403, unprotected.text
-
-
 def test_ui_selections_are_stored_per_list_and_replaced_whole(client) -> None:
     from tests.test_part17_recovery import login_headers
 

@@ -38,11 +38,6 @@ export const moviesApi = {
       })),
     }
   },
-  rematchMovie: async (id: string, tmdbId: number) => mapMovie(await openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/rematch', {
-    params: { path: { resource_id: id } },
-    body: { tmdb_id: tmdbId },
-  }))),
-  /** Move releases to the movie they really are; see REMATCH_KEEP_OR_REMOVE. */
   rematchReleases: (id: string, releaseIds: string[], tmdbId: number, removeEmptied?: boolean) => openApiData(openApiClient.POST('/api/v1/movies/{resource_id}/releases/rematch', {
     params: { path: { resource_id: id } },
     body: { release_ids: releaseIds, tmdb_id: tmdbId, remove_emptied: removeEmptied ?? null },

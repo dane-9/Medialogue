@@ -6,7 +6,6 @@ import { TitleSearch } from './GlobalSearch'
 import type { TitleSearchResult } from './GlobalSearch'
 import { Icon } from './Icon'
 import { Modal } from './Modal'
-import { SelectCheck } from './SelectionBar'
 import { Button } from './ui'
 
 export interface ChangeMatchOutcome {
@@ -28,38 +27,29 @@ export function releaseSearchTerm(name: string, fallback: string) {
 }
 
 /** Change match: move releases to the movie they really are, picked in the
- *  same search as global search. With no release, the movie itself is
- *  re-pointed. The movie a release leaves goes when it has nothing left, and
- *  the user is asked first if anything says it was wanted. */
-export function ChangeMatchModal({ movie, releases, releaseIds, onClose, onDone }: {
+ *  same search as global search. The movie a release leaves goes when it has
+ *  nothing left, and the user is asked first if anything says it was wanted. */
+export function ChangeMatchModal({ movie, releases, onClose, onDone }: {
   movie: { id: string; title: string; year?: number; tmdbId?: number }
-  /** The movie's releases that can be moved. */
+  /** The releases being moved, picked on their rows. */
   releases: MovieRelease[]
-  /** Moving these, picked on a release row. Unset: the header button, which asks when there are several. */
-  releaseIds?: string[]
   onClose: () => void
   onDone: (outcome: ChangeMatchOutcome) => void
 }) {
-  const [chosen, setChosen] = useState<string[]>(releaseIds ?? (releases.length === 1 ? [releases[0].id] : []))
-  const [step, setStep] = useState<'releases' | 'search' | 'decide'>(releaseIds || releases.length <= 1 ? 'search' : 'releases')
+  const [step, setStep] = useState<'search' | 'decide'>('search')
   const [target, setTarget] = useState<TitleSearchResult | null>(null)
   const [decision, setDecision] = useState<{ reasons: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const moving = releases.filter((release) => chosen.includes(release.id))
+  const moving = releases
   const label = `${movie.title}${movie.year ? ` (${movie.year})` : ''}`
   const named = (result: TitleSearchResult) => `${result.title}${result.year ? ` (${result.year})` : ''}`
 
   const apply = async (result: TitleSearchResult, removeEmptied?: boolean) => {
-    if (!result.tmdbId) return
+    if (!result.tmdbId || !moving.length) return
     setBusy(true); setError(''); setTarget(result)
     try {
-      if (!moving.length) {
-        const updated = await moviesApi.rematchMovie(movie.id, result.tmdbId)
-        onDone({ movieId: updated.id, message: `Now matched to ${updated.title}${updated.year ? ` (${updated.year})` : ''}.`, sourceRemoved: false })
-        return
-      }
       const outcome = await moviesApi.rematchReleases(movie.id, moving.map((release) => release.id), result.tmdbId, removeEmptied)
       const what = moving.length === 1 ? moving[0].name : `${moving.length} releases`
       onDone({
@@ -76,29 +66,6 @@ export function ChangeMatchModal({ movie, releases, releaseIds, onClose, onDone 
       }
     } finally { setBusy(false) }
   }
-
-  if (step === 'releases') return <Modal
-    title={label}
-    eyebrow="CHANGE MATCH"
-    icon="clapper"
-    onClose={onClose}
-    footer={<>
-      <span className="footer-state">{chosen.length ? `${chosen.length} of ${releases.length} selected` : 'Pick the releases that are another movie'}</span>
-      <Button variant="ghost" onClick={onClose}>Cancel</Button>
-      <Button variant="primary" disabled={!chosen.length} onClick={() => setStep('search')}>Continue</Button>
-    </>}
-  >
-    <div className="change-match-releases" role="group" aria-label="Releases to move">
-      {releases.map((release) => {
-        const on = chosen.includes(release.id)
-        const toggle = () => setChosen((current) => on ? current.filter((id) => id !== release.id) : [...current, release.id])
-        return <div key={release.id} className={`change-match-release ${on ? 'on' : ''}`} onClick={toggle}>
-          <SelectCheck inline checked={on} label={release.name} onToggle={toggle} />
-          <span><strong>{release.name}</strong><small>{[release.quality, release.edition, release.state !== 'current' ? release.state : undefined].filter(Boolean).join(' · ')}</small></span>
-        </div>
-      })}
-    </div>
-  </Modal>
 
   if (step === 'decide' && target) return <Modal
     title={`Keep ${label}?`}
@@ -129,8 +96,7 @@ export function ChangeMatchModal({ movie, releases, releaseIds, onClose, onDone 
     banner={<>
       <Icon name={error ? 'alert' : 'info'} size={14} />
       <span>{error || (busy && target ? `Moving to ${named(target)}…`
-        : first ? <>Pick the movie <strong>{moving.length === 1 ? first.name : `these ${moving.length} releases`}</strong> really {moving.length === 1 ? 'is' : 'are'}. Files, folders and torrents go with {moving.length === 1 ? 'it' : 'them'}; nothing on disk changes.</>
-        : <>Pick the movie <strong>{label}</strong> really is.</>)}</span>
+        : <>Pick the movie <strong>{moving.length === 1 ? first?.name : `these ${moving.length} releases`}</strong> really {moving.length === 1 ? 'is' : 'are'}. Files, folders and torrents go with {moving.length === 1 ? 'it' : 'them'}; nothing on disk changes.</>)}</span>
     </>}
   />
 }

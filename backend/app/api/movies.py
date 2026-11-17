@@ -40,7 +40,6 @@ from app.schemas.movies import (
     MovieCreate,
     MovieDetailResponse,
     MovieReleaseResponse,
-    MovieRematchRequest,
     MovieReleaseRematchRequest,
     MovieReleaseRematchResponse,
     MovieSummaryResponse,
@@ -548,30 +547,6 @@ async def get_movie(
         last_observed_at=max((directory.last_seen_at for directory in active_directories), default=None),
         folder_category=await title_category(db, movie),
     )
-
-
-@router.post("/{resource_id}/rematch", response_model=MovieDetailResponse)
-async def rematch_movie(
-    resource_id: UUID,
-    payload: MovieRematchRequest,
-    _: AuthSession = Depends(require_csrf),
-    db: AsyncSession = Depends(get_db),
-    tmdb_client_factory=Depends(get_tmdb_client_factory),
-) -> MovieDetailResponse:
-    """Point an existing Movie at a different TMDB title.
-
-    Identity only. The library record keeps its id, files, releases and
-    torrents; nothing on disk is touched. Previously this was reachable only by
-    resolving an identity Problem, so a movie that had simply matched the wrong
-    title could not be corrected at all.
-    """
-
-    movie = await db.get(Movie, resource_id)
-    if movie is None:
-        raise AppError("NOT_FOUND", "Movie was not found.", status_code=404)
-    await apply_movie_identity(db, movie, payload.tmdb_id, tmdb_client_factory=tmdb_client_factory)
-    await db.commit()
-    return await get_movie(resource_id=str(resource_id), _=None, db=db)
 
 
 @router.post("/{resource_id}/releases/rematch", response_model=MovieReleaseRematchResponse)

@@ -1810,31 +1810,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/movies/{resource_id}/rematch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rematch Movie
-         * @description Point an existing Movie at a different TMDB title.
-         *
-         *     Identity only. The library record keeps its id, files, releases and
-         *     torrents; nothing on disk is touched. Previously this was reachable only by
-         *     resolving an identity Problem, so a movie that had simply matched the wrong
-         *     title could not be corrected at all.
-         */
-        post: operations["rematch_movie_api_v1_movies__resource_id__rematch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/problems": {
         parameters: {
             query?: never;
@@ -5769,14 +5744,6 @@ export interface components {
             } | null;
             state: components["schemas"]["ReleaseState"];
             torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
-        };
-        /**
-         * MovieRematchRequest
-         * @description Re-point a Movie at a different TMDB title.
-         */
-        MovieRematchRequest: {
-            /** Tmdb Id */
-            tmdb_id: number;
         };
         /** MovieSummaryResponse */
         MovieSummaryResponse: {
@@ -11687,41 +11654,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MovieReleaseRematchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rematch_movie_api_v1_movies__resource_id__rematch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                resource_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MovieRematchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MovieDetailResponse"];
                 };
             };
             /** @description Validation Error */

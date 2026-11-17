@@ -222,13 +222,6 @@
 
 /* Change match: which releases to move, and whether to keep the movie they leave.
    The title itself is picked in the global search dialog. */
-.change-match-releases { display: grid; padding: var(--s3) var(--s4); }
-.change-match-release { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s2); cursor: pointer; }
-.change-match-release + .change-match-release { border-top: 1px solid var(--line); }
-.change-match-release:hover { background: rgba(255, 255, 255, .03); }
-.change-match-release > span { display: grid; gap: 2px; min-width: 0; }
-.change-match-release strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.change-match-release small { color: var(--faint); font-size: var(--t-xs); }
 .change-match-decide { display: grid; gap: var(--s3); padding: var(--s4); color: var(--muted); font-size: var(--t-sm); line-height: 1.5; }
 .change-match-decide p { margin: 0; }
 .change-match-decide strong { color: var(--text); font-weight: 500; }

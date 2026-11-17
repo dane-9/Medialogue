@@ -402,8 +402,8 @@ export function MovieDetailPage({ id }: { id: string }) {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  // Change match: from the header (every release), or one release's row.
-  const [match, setMatch] = useState<{ releaseIds?: string[] } | null>(null)
+  // Change match: the release whose row it was picked on.
+  const [match, setMatch] = useState<MovieRelease | null>(null)
   const navigate = useNavigate()
   useEffect(() => {
     if (!openSearchFromQuery) return
@@ -515,7 +515,6 @@ export function MovieDetailPage({ id }: { id: string }) {
             <Button variant="primary" icon="search" onClick={() => setSearchOpen(true)}>Interactive search</Button>
             <Button variant="secondary" icon="refresh" onClick={refreshEvidence} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh evidence'}</Button>
             {plexAvailable && <Button variant="secondary" icon="refresh" onClick={recheckPlex} disabled={busy}>{busy ? 'Checking Plex…' : 'Recheck Plex'}</Button>}
-            <Button variant="secondary" icon="external" onClick={() => setMatch({})}>Change match</Button>
             {/* The hero already reported this state; now it can be changed
                 from the same place it is shown. */}
             <Button variant="secondary" icon={movie.monitored === false ? 'monitored' : 'monitored-off'} onClick={() => void setMonitored(movie.monitored === false)} disabled={busy}>
@@ -535,7 +534,7 @@ export function MovieDetailPage({ id }: { id: string }) {
         </div>)}
       </Panel>}
       {/* A download on its way leads the panel; with nothing on disk yet it is all there is. */}
-      <Panel title="Current releases">{movie.incoming && <IncomingReleaseRow incoming={movie.incoming} />}{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} onChangeMatch={release.id ? () => setMatch({ releaseIds: [release.id] }) : undefined} />) : !movie.incoming && currentSummary}</Panel>
+      <Panel title="Current releases">{movie.incoming && <IncomingReleaseRow incoming={movie.incoming} />}{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} onChangeMatch={release.id ? () => setMatch(release) : undefined} />) : !movie.incoming && currentSummary}</Panel>
       <Panel title="Release history">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel>
       <TorrentHistoryPanel items={movie.torrentHistory} />
     </div>
@@ -548,8 +547,7 @@ export function MovieDetailPage({ id }: { id: string }) {
     />}
     {match && <ChangeMatchModal
       movie={{ id: movie.id, title: movie.title, year: movie.year, tmdbId: movie.tmdbId }}
-      releases={releases.filter((release) => release.id && ['current', 'duplicate', 'conflict', 'missing'].includes(release.state))}
-      releaseIds={match.releaseIds}
+      releases={[match]}
       onClose={() => setMatch(null)}
       onDone={(outcome) => {
         setMatch(null); setMessage(outcome.message)

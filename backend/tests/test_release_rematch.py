@@ -138,3 +138,13 @@ def test_a_release_cannot_move_to_the_title_it_already_has(client, tmp_path):
     assert same.status_code == 409
     assert same.json()["error"]["code"] == "REMATCH_SAME_TITLE"
     client.app.dependency_overrides.clear()
+
+
+def test_moving_a_release_requires_csrf(client, tmp_path):
+    setup(client)
+    root = create_root(client, login(client), tmp_path / "m", "M")
+    movie, [release] = movie_with_releases(root["id"], str(tmp_path / "m"), "Alien", 348, ["Aliens.1986.1080p"])
+
+    unprotected = client.post(f"/api/v1/movies/{movie}/releases/rematch", json={"release_ids": [str(release)], "tmdb_id": 679})
+    assert unprotected.status_code == 403, unprotected.text
+    client.app.dependency_overrides.clear()
