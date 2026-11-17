@@ -9667,6 +9667,11 @@
             "title": "Same File",
             "type": "boolean"
           },
+          "same_tracker": {
+            "default": false,
+            "title": "Same Tracker",
+            "type": "boolean"
+          },
           "searching": {
             "default": false,
             "title": "Searching",

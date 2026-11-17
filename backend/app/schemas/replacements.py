@@ -66,6 +66,8 @@ class ReplacementItem(BaseModel):
     leechers: int | None = None
     indexer: str | None = None
     indexer_id: str | None = None
+    #: The replacement comes from the tracker that trumped or removed the lost torrent.
+    same_tracker: bool = False
     #: The indexer's badge colour from its configuration, as search results use.
     indexer_color: str | None = None
     execution_state: str | None = None

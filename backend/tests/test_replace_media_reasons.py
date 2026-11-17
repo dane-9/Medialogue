@@ -426,3 +426,30 @@ def test_a_trumped_replacement_finishes_like_an_upgrade():
     assert _finishes_like_upgrade(SimpleNamespace(target_key="replace:movie-release:1", comparison_snapshot={"replacement_reason": "trumped"}))
     assert not _finishes_like_upgrade(SimpleNamespace(target_key="replace:movie-release:1", comparison_snapshot={"replacement_reason": "removed_from_tracker"}))
     assert not _finishes_like_upgrade(SimpleNamespace(target_key="movie-release:1", comparison_snapshot={"replacement_reason": "trumped"}))
+
+
+def test_a_trumped_or_removed_torrent_prefers_its_own_trackers_best_release():
+    from app.services.release_source import ReleaseSource, SourceLookup
+    from app.services.replacements import TRUMPED, _preferred_indexer
+    from app.services.upgrade_candidates import pick_best
+
+    own, other = uuid4(), uuid4()
+    lost = SimpleNamespace(info_hash="ab" * 20, tracker_summary={"tracker": "https://tracker.own/announce"})
+    sources = SourceLookup(upgrades={}, searches={"ab" * 20: ReleaseSource(indexer_name="Own", indexer_id=own)})
+
+    def entry(why):
+        return ReplacementTarget(target=None, torrents=[lost], releases=[], reason=why)
+
+    assert _preferred_indexer(entry(TRUMPED), sources) == own
+    assert _preferred_indexer(entry(REMOVED_FROM_TRACKER), sources) == own
+    # A tracker that stopped answering is the problem, not the place to look.
+    assert _preferred_indexer(entry(TRACKER_GONE), sources) is None
+    assert _preferred_indexer(entry(NO_SEEDERS), sources) is None
+
+    best_elsewhere = SimpleNamespace(indexer_id=other)
+    best_here = SimpleNamespace(indexer_id=own)
+    assert pick_best([best_elsewhere, best_here], own) is best_here
+    # Nothing qualifying on its own tracker: the best of all.
+    assert pick_best([best_elsewhere], own) is best_elsewhere
+    assert pick_best([best_elsewhere, best_here], None) is best_elsewhere
+    assert pick_best([], own) is None

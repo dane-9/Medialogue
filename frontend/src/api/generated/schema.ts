@@ -6426,6 +6426,11 @@ export interface components {
              */
             same_file: boolean;
             /**
+             * Same Tracker
+             * @default false
+             */
+            same_tracker: boolean;
+            /**
              * Searching
              * @default false
              */

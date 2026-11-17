@@ -590,7 +590,7 @@ export default function ReplaceMediaPage() {
                             candidateMatchedFormats: (item.candidate_matched_formats ?? []).map(toMatchedFormat),
                             currentCustomFormatScore: item.current_score ?? 0,
                             customFormatScore: item.candidate_score ?? 0,
-                          }} /><span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexer}</span></span>}
+                          }} /><span className="release-pill release-pill-indexer" style={indexerBadge ? { color: indexerBadge.text, borderColor: indexerBadge.border, background: indexerBadge.background } : undefined}><i>Indexer</i>{item.indexer}</span>{item.same_tracker && <Tooltip className="release-pill replace-same-tracker" content="Picked because it comes from the tracker that trumped or removed the lost torrent. The best release there is preferred over a better one elsewhere.">Same tracker</Tooltip>}</span>}
                         </div>
                         : <div className="upgrade-v2-meta" />}
                 </div>

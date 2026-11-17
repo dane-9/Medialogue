@@ -982,7 +982,14 @@ async def _search_target(
     indexers: list[ConfiguredIndexer],
     client_factory: TorznabClientFactory,
     errors: list[str] | None = None,
+    prefer_indexer_id: UUID | None = None,
 ) -> tuple[ScoredCandidate | None, list[dict[str, Any]], int, bool]:
+    """Search every eligible indexer and pick the best qualifying release.
+
+    ``prefer_indexer_id`` picks the best release from that indexer when it has
+    one that qualifies, and the best of all only when it has none.
+    """
+
     eligible_scopes = (
         {MediaScope.MOVIES, MediaScope.BOTH}
         if target.media_type == MediaType.MOVIES
@@ -1013,7 +1020,17 @@ async def _search_target(
         successful_indexers += 1
         answered.append((by_id[indexer_id], list(outcome.get("results") or [])))
     candidates, stored_results, _ = await evaluate_results(db, target=target, answered=answered)
-    return (candidates[0] if candidates else None), stored_results, failures, successful_indexers > 0
+    return pick_best(candidates, prefer_indexer_id), stored_results, failures, successful_indexers > 0
+
+
+def pick_best(candidates: list[ScoredCandidate], prefer_indexer_id: UUID | None = None) -> ScoredCandidate | None:
+    """The first of ``candidates`` (best first) from the preferred indexer, else the first of all."""
+
+    if prefer_indexer_id is not None:
+        preferred = next((item for item in candidates if item.indexer_id == prefer_indexer_id), None)
+        if preferred is not None:
+            return preferred
+    return candidates[0] if candidates else None
 
 
 async def evaluate_results(

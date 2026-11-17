@@ -25,7 +25,7 @@ from app.models.domain import (AssociationType, EpisodeMediaMap, Job, JobStatus,
 from app.services.integration_state import list_configured_indexers, get_configured_indexer
 from app.services.jobs import run_job, update_job
 from app.services.payload_groups import GROUP_KEY
-from app.services.release_source import ReleaseSource, source_lookup, source_of_releases
+from app.services.release_source import ReleaseSource, SourceLookup, source_lookup, source_of_releases
 from app.services.format_breakdown import comparison_formats
 from app.services.quality_profiles import profiles_cached
 from app.services.same_file_links import apply_same_file_results, note_same_file_results
@@ -578,6 +578,7 @@ def _item(**values: Any) -> dict[str, Any]:
         "last_search_result": None, "candidate_id": None, "candidate_title": None, "candidate_quality": None,
         "candidate_score": None, "candidate_size": None, "seeders": None, "leechers": None, "indexer": None,
         "indexer_id": None, "execution_state": None, "error": None, "same_file": False, "link_failed": False,
+        "same_tracker": False,
         "searching": False, "root_name": None, "lost_evidence": [], "current_size": None,
         "current_matched_formats": [], "candidate_matched_formats": [], "profile_name": None, "upgrade_types": [],
         "download_progress": None, "download_speed": None, "download_eta_seconds": None,
@@ -705,6 +706,8 @@ async def _replacement_queue(db: AsyncSession, *, details: bool = True) -> list[
             seeders=row.seeders if row else None, indexer=row.indexer_name if row else None,
             candidate_size=row.size if row else None, leechers=row.leechers if row else None,
             indexer_id=str(row.indexer_id) if row and row.indexer_id else None,
+            same_tracker=bool(row and row.indexer_id and entry.reason in SAME_TRACKER_REASONS
+                              and row.indexer_id == source.indexer_id),
             execution_state=row.execution_state if row else None, error=row.execution_error if row else None,
             same_file=bool(row and (row.comparison_snapshot or {}).get("same_file")),
             link_failed=bool(row and (row.comparison_snapshot or {}).get("link_failed")),
@@ -853,6 +856,20 @@ async def _attach_root_names(db: AsyncSession, items: list[dict[str, Any]]) -> N
             item["root_name"] = show_roots.get(item["show_id"])
 
 
+#: Reasons where the lost torrent's own tracker holds its successor: a trump is
+#: replaced on the same site, and a removed torrent usually is too. A tracker
+#: that stopped answering is the problem itself, so it is never preferred.
+SAME_TRACKER_REASONS = frozenset({TRUMPED, REMOVED_FROM_TRACKER})
+
+
+def _preferred_indexer(entry: ReplacementTarget, sources: SourceLookup) -> UUID | None:
+    """The indexer of the tracker that removed the torrent, when known."""
+
+    if entry.reason not in SAME_TRACKER_REASONS:
+        return None
+    return sources.source(entry.torrents).indexer_id
+
+
 async def _note_same_files(db: AsyncSession, entry: ReplacementTarget, results: list[dict[str, Any]], indexers, client_factory) -> None:
     # Only a title with no torrent can be linked: its files are all it has.
     if entry.reason == NO_TORRENT and all(release.release_state == ReleaseState.CURRENT for release in entry.releases):
@@ -891,9 +908,13 @@ async def run_replacement_search(job_id: UUID, *, target_key: str | None = None,
                 # the next run instead of hammering the indexers in one go.
                 targets = targets[:NEW_SEARCHES_PER_RUN]
         indexers = await list_configured_indexers(db)
+        sources = await source_lookup(db, [torrent for entry in targets for torrent in entry.torrents])
         found = failures = 0
         for position, entry in enumerate(targets):
-            best, results, errors, success = await _search_target(db, target=entry.target, indexers=indexers, client_factory=client_factory)
+            best, results, errors, success = await _search_target(
+                db, target=entry.target, indexers=indexers, client_factory=client_factory,
+                prefer_indexer_id=_preferred_indexer(entry, sources),
+            )
             failures += errors
             if success:
                 await _note_same_files(db, entry, results, indexers, client_factory)
@@ -931,7 +952,10 @@ async def search_replacement_now(db: AsyncSession, target_key: str, *, client_fa
     if entry is None:
         raise AppError("NOT_FOUND", "This title is no longer in Replace Media.", status_code=404)
     indexers = await list_configured_indexers(db)
-    best, results, failures, success = await _search_target(db, target=entry.target, indexers=indexers, client_factory=client_factory)
+    best, results, failures, success = await _search_target(
+        db, target=entry.target, indexers=indexers, client_factory=client_factory,
+        prefer_indexer_id=_preferred_indexer(entry, await source_lookup(db, entry.torrents)),
+    )
     searched_at = datetime.now(timezone.utc)
     if not success:
         raise AppError("INDEXERS_FAILED", "Every indexer failed to answer. Check them in Settings and try again.", status_code=502)
