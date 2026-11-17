@@ -648,6 +648,12 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
   padding: var(--s3) var(--s4);
 }
 .release-evidence-row { border-top: 1px solid var(--line); }
+/* A download on its way, at the top of Current releases. */
+.release-incoming-row { background: var(--accent-soft); }
+.release-icon.release-incoming-icon { color: var(--accent-text); }
+.release-incoming-row .release-main > span { color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.release-incoming-row .progress { width: 100%; margin-top: var(--s1); }
+.release-incoming-percent { min-width: 44px; color: var(--accent-text); font: 600 var(--t-sm) var(--sans); text-align: right; }
 .release-main { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
 .release-main strong { overflow: hidden; color: var(--text); font-size: var(--t-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .release-pill {

@@ -261,11 +261,23 @@ function ReleaseEvidenceRow({ release }: { release: MovieRelease; torrents?: Tor
   </div>
 }
 
-function IncomingReplacement({ incoming }: { incoming: IncomingDownload }) {
-  const label = incoming.kind === 'replacement' ? 'INCOMING REPLACEMENT' : 'INCOMING RELEASE'
+/** A download on its way, as the first row of Current releases: it becomes a
+ *  release of the movie when it finishes. */
+function IncomingReleaseRow({ incoming }: { incoming: IncomingDownload }) {
+  const replacing = incoming.kind === 'replacement'
   // "sent": qBittorrent took the torrent and no poll has reported it yet.
   const state = incoming.state === 'sent' ? 'Sent to qBittorrent, waiting for its first update' : incoming.state
-  return <div className="incoming-replacement"><div className="incoming-icon"><Icon name="download" size={18} /></div><div className="incoming-copy"><div className="eyebrow">{label}</div><strong>{incoming.quality || incoming.name}</strong><span>{incoming.name}{incoming.edition ? ` · ${incoming.edition}` : ''}</span><div className="incoming-meta"><span>{incoming.client}</span>{state && <span>{state}</span>}{incoming.eta && <span>ETA {incoming.eta}</span>}</div><Progress value={incoming.progress} tone="blue" /></div><strong className="incoming-percent">{Math.round(incoming.progress)}%</strong></div>
+  const facts = [incoming.client, state, incoming.eta ? `ETA ${incoming.eta}` : undefined, incoming.quality].filter(Boolean).join(' · ')
+  return <div className="release-evidence-row release-incoming-row">
+    <div className="release-icon release-incoming-icon"><Icon name="download" size={18} /></div>
+    <div className="release-main">
+      <strong title={incoming.name}>{incoming.name}</strong>
+      <span>{facts}</span>
+      <Progress value={incoming.progress} tone="blue" />
+    </div>
+    <strong className="release-incoming-percent">{Math.round(incoming.progress)}%</strong>
+    <Badge tone="blue">{replacing ? 'Replacing' : 'Downloading'}</Badge>
+  </div>
 }
 
 function torrentTrackerLabel(tracker?: string) {
@@ -462,9 +474,7 @@ export function MovieDetailPage({ id }: { id: string }) {
   const currentReleases = releases.filter((release) => release.state === 'current' || release.state === 'duplicate' || release.state === 'conflict')
   const historyReleases = releases.filter((release) => release.state === 'replaced' || release.state === 'removed' || release.state === 'missing')
   const history = movie.recentEvents ?? []
-  const currentSummary = movie.status === 'Downloading' && movie.incoming
-    ? <div className="release-summary-row"><div className="release-icon"><Icon name="download" size={18} /></div><div className="release-main"><strong>Nothing on disk yet</strong><span>The download above becomes the current release when it finishes.</span></div><Badge tone="amber">Downloading</Badge></div>
-    : <div className="release-summary-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
+  const currentSummary = <div className="release-summary-row"><div className="release-icon"><Icon name="clapper" size={18} /></div><div className="release-main"><strong>{movie.quality}{movie.edition ? ` · ${movie.edition}` : ''}</strong><span>{movie.location}</span></div><Badge tone={statusTone(movie.status)}>{movie.status}</Badge></div>
   return <Page title={movie.title} subtitle={`${movie.year} · ${movie.tmdbId ? `TMDB ${movie.tmdbId}` : `Internal ID ${movie.id}`}`} back={`Back to ${movieLibrary?.name ?? 'Movies'}`} backTo={movieLibrary ? `/library/${movieLibrary.id}` : '/movies'}>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
     {(movie.rootHealth === 'unavailable' || movie.reconciliation?.rootOffline) && <div className="reconciliation-banner reconciliation-banner-red"><Icon name="alert" size={17} /><div><strong>Media Folder Offline</strong><span>{movie.reconciliation?.rootAffectedCount ?? movie.rootAffectedCount ?? 0} media affected. Missing grace is held until the folder is reachable.</span></div></div>}
@@ -515,8 +525,8 @@ export function MovieDetailPage({ id }: { id: string }) {
           <div><strong>{item.title}</strong><span>{item.detail}</span></div>
         </div>)}
       </Panel>}
-      {movie.incoming && <IncomingReplacement incoming={movie.incoming} />}
-      <Panel title="Current releases">{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : currentSummary}</Panel>
+      {/* A download on its way leads the panel; with nothing on disk yet it is all there is. */}
+      <Panel title="Current releases">{movie.incoming && <IncomingReleaseRow incoming={movie.incoming} />}{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} />) : !movie.incoming && currentSummary}</Panel>
       <Panel title="Release history">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel>
       <TorrentHistoryPanel items={movie.torrentHistory} />
     </div>

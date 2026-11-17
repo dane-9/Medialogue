@@ -296,23 +296,6 @@ a.download-kind:hover { filter: brightness(1.35); }
   .rail-label { flex: none; }
 }
 
-.incoming-replacement {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3) var(--s4);
-  margin-bottom: var(--s4);
-  border: 1px solid var(--accent-line);
-  border-radius: var(--r-lg);
-  background: var(--accent-soft);
-}
-.incoming-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--s1); }
-.incoming-copy strong { font-size: var(--t-sm); font-weight: 500; }
-.incoming-copy > span { overflow: hidden; color: var(--muted); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
-.incoming-meta { display: flex; gap: var(--s3); color: var(--muted); font: var(--t-micro) var(--sans); }
-.incoming-copy .progress { width: 100%; }
-.incoming-percent { min-width: 40px; color: var(--accent-text); font: var(--t-lg) var(--sans); text-align: right; }
-
 .event-details pre {
   max-height: 320px;
   padding: var(--s3);
