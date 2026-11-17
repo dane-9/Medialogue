@@ -180,6 +180,14 @@
 .upgrade-v2-status-group { order: 2; margin-left: auto; }
 .upgrade-v2-status-group .new-media-roots-label { text-align: right; }
 .upgrade-v2-status-group .new-media-roots { justify-content: flex-end; }
+/* The status cards end where the list's panels do, not over the search rail:
+   the same inset as the footer below the list. On very wide windows the
+   workspace grows past the content by the rail, so only the scrollbar is left. */
+.upgrade-v2-filters { --upgrade-rail: 32px; }
+.upgrade-v2-status-group { margin-right: calc(var(--upgrade-rail) + var(--s3) + var(--scrollbar-size)); }
+@media (min-width: 2100px) {
+  .upgrade-v2-status-group { margin-right: 17px }
+}
 
 /* A search button per row in a rail beyond the Upgrade panel. The workspace
    grows by exactly the rail, so Current and Upgrade keep their widths. */
