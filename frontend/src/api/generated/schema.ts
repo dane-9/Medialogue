@@ -7009,6 +7009,8 @@ export interface components {
             tmdb_episode_group_id?: string | null;
             /** Tmdb Id */
             tmdb_id: number | null;
+            /** Torrent History */
+            torrent_history?: components["schemas"]["MovieTorrentHistoryResponse"][];
             torrent_status?: components["schemas"]["MediaTorrentStatusResponse"];
             /** Tvdb Id */
             tvdb_id?: number | null;

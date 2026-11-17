@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.domain import IdentityState, PresenceState, ReleaseScope, Severity
+from app.schemas.movies import MovieTorrentHistoryResponse
 from app.schemas.torrent_status import MediaTorrentStatusResponse
 
 ShowCollectionState = Literal["Present", "Missing"]
@@ -170,3 +171,4 @@ class ShowDetailResponse(ShowSummaryResponse):
     problems: list[ShowProblemResponse] = Field(default_factory=list)
     storage_roots: list[ShowStorageRootResponse] = Field(default_factory=list)
     last_observed_at: datetime | None = None
+    torrent_history: list[MovieTorrentHistoryResponse] = Field(default_factory=list)

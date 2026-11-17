@@ -16,6 +16,7 @@ import { Badge, Button, EmptyState, Input, Panel, Progress, Select } from '../co
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { LibraryContextMenu } from '../components/LibraryContextMenu'
 import { RemoveTitlesModal } from '../components/RemoveTitlesModal'
+import { TorrentHistoryPanel } from '../components/TorrentHistoryPanel'
 import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
 import { systemApi } from '../api/modules/system'
@@ -283,40 +284,6 @@ function IncomingReleaseRow({ incoming }: { incoming: IncomingDownload }) {
   </div>
 }
 
-function torrentTrackerLabel(tracker?: string) {
-  if (!tracker) return undefined
-  try { return new URL(tracker).hostname }
-  catch { return tracker }
-}
-
-function torrentHistoryGroups(items: TorrentArchiveItem[]) {
-  const groups = new Map<string, TorrentArchiveItem[]>()
-  items.forEach((item) => {
-    const key = item.releaseId || `${item.releaseName || item.torrentName}|${item.quality || ''}|${item.edition || ''}`
-    groups.set(key, [...(groups.get(key) ?? []), item])
-  })
-  return [...groups.values()]
-}
-
-function TorrentHistoryEntry({ torrent, nested = false }: { torrent: TorrentArchiveItem; nested?: boolean }) {
-  const tracker = torrentTrackerLabel(torrent.tracker)
-  return <div className={`history-row ${nested ? 'torrent-history-member' : ''}`}><span className="history-line" /><div><strong>{torrent.releaseName ?? torrent.torrentName}</strong><span>{tracker ? `${tracker} · ` : ''}{torrent.infoHash.slice(0, 12)}… · {torrent.originalDownloadClient ?? 'Unknown client'} · qBit {torrent.qbitPresent ? 'present' : 'removed'}</span></div><Badge tone={torrent.archiveState === 'archived' ? 'green' : torrent.archiveState === 'failed' ? 'red' : 'amber'}>{torrent.archiveState.replaceAll('_', ' ')}</Badge></div>
-}
-
-function TorrentHistoryPanel({ items }: { items?: TorrentArchiveItem[] }) {
-  const groups = torrentHistoryGroups(items ?? [])
-  return <Panel title="Torrent history">{groups.length ? groups.map((group) => {
-    const first = group[0]
-    if (group.length === 1) return <TorrentHistoryEntry key={first.id} torrent={first} />
-    const presentCount = group.filter((item) => item.qbitPresent).length
-    const trackers = [...new Set(group.map((item) => torrentTrackerLabel(item.tracker)).filter(Boolean))]
-    return <details className="torrent-history-group" key={first.releaseId || first.id}>
-      <summary className="torrent-history-summary"><span className="history-line" /><div><strong>{first.releaseName ?? first.torrentName}</strong><span>Cross-seeded · {group.length} torrents · {presentCount} qBit present</span>{trackers.length > 0 && <small>{trackers.join(' · ')}</small>}</div><Badge tone="blue">{group.length} torrents</Badge></summary>
-      <div className="torrent-history-members">{group.map((torrent) => <TorrentHistoryEntry key={torrent.id} torrent={torrent} nested />)}</div>
-    </details>
-  }) : <div className="history-empty">No torrent recovery history is associated with this movie yet.</div>}</Panel>
-}
-
 function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
   const evidence = [...(movie.problems ?? [])]
   const aggregate = movie.reconciliation
@@ -535,7 +502,7 @@ export function MovieDetailPage({ id }: { id: string }) {
       {/* A download on its way leads the panel; with nothing on disk yet it is all there is. */}
       <Panel title="Current releases">{movie.incoming && <IncomingReleaseRow incoming={movie.incoming} />}{currentReleases.length ? currentReleases.map((release) => <ReleaseEvidenceRow key={release.id || release.name} release={release} torrents={movie.torrentHistory} onChangeMatch={release.id ? () => setMatch(release) : undefined} />) : !movie.incoming && currentSummary}</Panel>
       <Panel title="Release history">{history.length ? history.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : historyReleases.map((release) => <div className="history-row" key={release.id || release.name}><span className="history-line" /><div><strong>{release.name}</strong><span>{release.state} · first observed {formatEvidenceDate(release.firstSeenAt)}</span></div><Badge tone={releaseStateTone(release.state) as 'green' | 'amber' | 'red' | 'neutral'}>Release</Badge></div>)}{!history.length && !historyReleases.length && <div className="history-empty">No persisted release events yet. New replacement and reappearance events will appear here.</div>}</Panel>
-      <TorrentHistoryPanel items={movie.torrentHistory} />
+      <TorrentHistoryPanel items={movie.torrentHistory} noun="movie" />
     </div>
     {searchOpen && <MovieInteractiveSearch
       movieId={id}

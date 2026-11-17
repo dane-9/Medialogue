@@ -11,6 +11,7 @@ import { useCurrentLibrary, useLibraries } from '../lib/libraries'
 import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { profileFormChanged } from '../lib/profileForm'
+import { TorrentHistoryPanel } from '../components/TorrentHistoryPanel'
 import { LibraryHistoryModal } from '../components/LibraryHistoryModal'
 import { LibraryContextMenu } from '../components/LibraryContextMenu'
 import { RemoveTitlesModal } from '../components/RemoveTitlesModal'
@@ -164,7 +165,6 @@ export function ShowDetailPage({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const [mappingEditor, setMappingEditor] = useState<{ media: EpisodeMedia; season: Season } | null>(null)
   const [mappingEpisodeIds, setMappingEpisodeIds] = useState<string[]>([])
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [orderingOpen, setOrderingOpen] = useState(false)
   const load = async (reportError = true) => { try { setShow(await showsApi.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
   useEffect(() => { void load() }, [id])
@@ -289,7 +289,6 @@ export function ShowDetailPage({ id }: { id: string }) {
           <div className="detail-actions">
             <Button variant="primary" icon="refresh" onClick={() => void refreshMetadata()} disabled={busy}>{busy ? 'Working…' : 'Refresh metadata'}</Button>
             {plexAvailable && <Button variant="secondary" icon="plex" onClick={() => void recheckPlex()} disabled={busy}>Recheck Plex</Button>}
-            <Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>
           </div>
         </div>
       </Panel>
@@ -340,10 +339,9 @@ export function ShowDetailPage({ id }: { id: string }) {
           })}</tbody></table>{!visibleEpisodes.length && <div className="history-empty">No episodes match this filter.</div>}</div>
         </>}
       </Panel>
+      <Panel title="Release history">{show.recentEvents?.length ? show.recentEvents.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{formatEvidenceDate(event.createdAt)}</span></div><Badge tone={event.type.includes('replaced') ? 'purple' : event.type.includes('duplicate') || event.type.includes('conflict') ? 'red' : 'neutral'}>{event.type.replaceAll('.', ' ')}</Badge></div>) : <div className="history-empty">No show or episode events recorded yet.</div>}</Panel>
+      <TorrentHistoryPanel items={show.torrentHistory} noun="show" />
     </div>
-    {historyOpen && <Modal title={show.title} eyebrow="HISTORY" icon="clock" onClose={() => setHistoryOpen(false)}>
-      <div className="show-history">{show.recentEvents?.length ? show.recentEvents.map((event, index) => <div className="history-row" key={event.id ?? `${event.type}-${index}`}><span className="history-line" /><div><strong>{event.message}</strong><span>{event.type} · {formatEvidenceDate(event.createdAt)}</span></div></div>) : <div className="history-empty">No show or episode events recorded yet.</div>}</div>
-    </Modal>}
     {orderingOpen && <Modal title="Episode ordering" eyebrow={show.title.toUpperCase()} icon="list" onClose={() => setOrderingOpen(false)}>
       {orderings ? <div className="ordering-list">{orderings.map((option) => <button className={`ordering-option ${option.selected ? 'selected' : ''}`} key={option.id ?? 'default'} disabled={orderingBusy} onClick={() => void chooseOrdering(option)}><span className="ordering-copy"><strong>{option.name}</strong><span>{option.season_count} season{option.season_count === 1 ? '' : 's'} · {option.episode_count} episode{option.episode_count === 1 ? '' : 's'}{option.network ? ` · ${option.network}` : ''}</span>{option.description && <small>{option.description}</small>}</span><Badge tone={option.selected ? 'green' : 'neutral'}>{option.selected ? 'In use' : option.type_label}</Badge></button>)}<p className="cf-modal-note">If this show&rsquo;s seasons do not match your files, another ordering probably does. Switching renumbers the existing episodes rather than replacing them.</p></div>
         : <div className="history-empty">Loading TMDB orderings…</div>}

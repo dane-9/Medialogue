@@ -34,7 +34,6 @@ from app.models.domain import (
     TorrentClientObservation,
 )
 from app.schemas.common import LIBRARY_PAGE_LIMIT, Collection
-from app.services.movie_identity import apply_movie_identity
 from app.schemas.movies import (
     MediaDirectoryResponse,
     MovieCreate,
@@ -55,6 +54,7 @@ from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
 from app.services.shared_results import pin_shared_result, shared_result
+from app.services.torrent_history import movie_torrent_history
 
 logger = logging.getLogger(__name__)
 
@@ -420,61 +420,7 @@ async def get_movie(
         summary_model.state = "Downloading"
     summary = summary_model.model_dump(exclude={"last_observed_at"})
 
-    torrent_rows = (
-        await db.execute(
-            select(MovieReleaseTorrent, MovieRelease, Torrent)
-            .join(MovieRelease, MovieRelease.id == MovieReleaseTorrent.movie_release_id)
-            .join(Torrent, Torrent.id == MovieReleaseTorrent.torrent_id)
-            .where(MovieRelease.movie_id == movie.id)
-            .order_by(MovieReleaseTorrent.created_at.desc())
-        )
-    ).all()
-    torrent_history: list[dict[str, object]] = []
-    seen_torrents: set[UUID] = set()
-    for association, release, torrent in torrent_rows:
-        if torrent.id in seen_torrents:
-            continue
-        seen_torrents.add(torrent.id)
-        observation = await db.scalar(
-            select(TorrentClientObservation)
-            .where(TorrentClientObservation.torrent_id == torrent.id)
-            .order_by(TorrentClientObservation.first_seen_at.asc())
-            .limit(1)
-        )
-        history_client = (
-            get_integration_config_store().get_download_client(observation.download_client_id)
-            if observation is not None
-            else None
-        )
-        qbit_present = bool(
-            await db.scalar(
-                select(func.count())
-                .select_from(TorrentClientObservation)
-                .where(
-                    TorrentClientObservation.torrent_id == torrent.id,
-                    TorrentClientObservation.is_present.is_(True),
-                )
-            )
-        )
-        torrent_history.append(
-            {
-                "id": str(torrent.id),
-                "torrent_name": torrent.name,
-                "release_id": str(release.id),
-                "release_name": release.raw_release_name,
-                "info_hash": torrent.info_hash,
-                "tracker": (torrent.tracker_summary or {}).get("tracker"),
-                "archive_state": torrent.archive_state.value,
-                "archive_path": torrent.archive_path,
-                "manifest_path": torrent.manifest_path,
-                "manifest_schema_version": torrent.manifest_schema_version,
-                "association_type": association.association_type.value,
-                "download_client_name": history_client.name if history_client else None,
-                "qbit_present": qbit_present,
-                "first_seen_at": torrent.first_seen_at.isoformat(),
-                "completed_at": torrent.completed_at.isoformat() if torrent.completed_at else None,
-            }
-        )
+    torrent_history = await movie_torrent_history(db, movie.id)
 
     active_directories = [
         directory

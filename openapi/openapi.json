@@ -11493,6 +11493,13 @@
             ],
             "title": "Tmdb Id"
           },
+          "torrent_history": {
+            "items": {
+              "$ref": "#/components/schemas/MovieTorrentHistoryResponse"
+            },
+            "title": "Torrent History",
+            "type": "array"
+          },
           "torrent_status": {
             "$ref": "#/components/schemas/MediaTorrentStatusResponse"
           },

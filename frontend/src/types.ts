@@ -351,6 +351,7 @@ export interface Show {
   overview?: string
   revision?: number
   seasonDetail?: Season[]
+  torrentHistory?: TorrentArchiveItem[]
   recentEvents?: MovieEvent[]
   problems?: ReconciliationEvidence[]
   storageRoots?: Array<{ id: string; name: string; path: string; health?: 'available' | 'unavailable' | 'unknown' }>

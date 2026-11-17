@@ -1,6 +1,7 @@
 import type { Episode, EpisodeMedia, Season, Show } from '../../types'
 import type { components } from '../generated/schema'
 import { mapEvidence, mapEvent, mapPlexState, mapTorrentStatus } from './mediaCommon'
+import { mapTorrentArchiveItem } from './torrentArchive'
 
 type EpisodeMediaDto = components['schemas']['EpisodeMediaResponse']
 type EpisodeDto = components['schemas']['EpisodeResponse']
@@ -86,6 +87,7 @@ export function mapShow(value: ShowSummaryDto | ShowDetailDto): Show {
     revision: value.revision,
     seasonDetail: (detail?.seasons ?? []).map(mapSeason),
     recentEvents: (detail?.recent_events ?? []).map(mapEvent),
+    torrentHistory: (detail?.torrent_history ?? []).map(mapTorrentArchiveItem),
     problems: (detail?.problems ?? []).map(mapEvidence),
     storageRoots: detail?.storage_roots?.map((root) => ({ id: root.id, name: root.name, path: root.path, health: root.health ?? undefined })),
     lastObservedAt: value.last_observed_at ?? undefined,

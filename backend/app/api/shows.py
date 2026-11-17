@@ -45,6 +45,7 @@ from app.services.runtime_jobs import launch_runtime_job
 from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
 from app.services.shared_results import pin_shared_result, shared_result
+from app.services.torrent_history import show_torrent_history
 
 logger = logging.getLogger(__name__)
 
@@ -742,6 +743,7 @@ async def _detail(db: AsyncSession, resource_id: str) -> ShowDetailResponse:
         ],
         storage_roots=[{"id": str(root.id), "name": root.name, "path": root.resolved_root_path, "health": root.last_health} for root in roots],
         last_observed_at=last_seen,
+        torrent_history=await show_torrent_history(db, show.id),
     )
 
 
