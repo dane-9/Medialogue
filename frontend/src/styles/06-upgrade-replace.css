@@ -103,6 +103,10 @@
 .upgrade-v2-line { display: flex; align-self: stretch; align-items: center; gap: var(--s3); min-width: 0; min-height: var(--upgrade-line); }
 .upgrade-v2-current .upgrade-v2-line { justify-content: flex-end; }
 .upgrade-v2-line > .upgrade-v2-release { flex: 0 1 auto; min-width: 0; margin-left: 0; }
+/* The Upgrade name takes all the room up to Seeds. Sized to its own measured
+   width, the highlighted words' -2px margins left that width a hair short, so
+   the last word wrapped while the line still had space. */
+.upgrade-v2-change .upgrade-v2-line > .upgrade-v2-release { flex-grow: 1; }
 .upgrade-v3 { --upgrade-seeds: 34px; --upgrade-size: 40px; --upgrade-size-change: 44px; --upgrade-line: 18px; }
 /* Both sides' name lines share one height, so the CF scores under them sit
    level. */
