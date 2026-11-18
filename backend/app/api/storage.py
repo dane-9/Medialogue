@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import string
@@ -237,6 +238,13 @@ async def library_summary(
     )
 
 
+def _root_reachable(path: str) -> bool:
+    try:
+        return Path(path).is_dir()
+    except OSError:
+        return False
+
+
 @router.post("/storage-roots/health", response_model=Collection[StorageRootResponse])
 async def check_storage_root_health(
     _: object = Depends(require_csrf),
@@ -249,15 +257,21 @@ async def check_storage_root_health(
     stayed green until something scanned it again. This is a directory stat per
     root, cheap enough to run whenever the page is opened.
     """
-    roots = (await db.scalars(select(StorageRoot).order_by(StorageRoot.sort_order, StorageRoot.name))).all()
+    statement = select(StorageRoot).order_by(StorageRoot.sort_order, StorageRoot.name)
+    roots = (await db.scalars(statement)).all()
+    # A mounted path can block. Probe before writing health state and keep the
+    # filesystem call off the API event loop.
+    checks = {
+        (root.id, root.resolved_root_path): await asyncio.to_thread(_root_reachable, root.resolved_root_path)
+        for root in roots if root.active
+    }
+    if checks:
+        # Skip probes for paths edited or disabled while the filesystem was busy.
+        roots = (await db.scalars(statement.execution_options(populate_existing=True))).all()
     for root in roots:
-        if not root.active:
+        reachable = checks.get((root.id, root.resolved_root_path))
+        if not root.active or reachable is None:
             continue
-        reachable = False
-        try:
-            reachable = Path(root.resolved_root_path).is_dir()
-        except OSError:
-            reachable = False
         if reachable:
             await mark_root_available(db, root)
         else:

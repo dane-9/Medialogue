@@ -26,12 +26,14 @@ export function StorageSettings() {
   const confirm = useConfirm()
   const { libraries } = useLibraries()
   const [roots, setRoots] = useState<StorageRoot[]>([])
+  const [rootsLoadState, setRootsLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   // Multiple progress events can overlap REST reads. Only the newest root
   // snapshot may win, otherwise a slow stale response can resurrect Scanning.
   // Every read and every local change of the list takes a new number; a read
   // applies only if nothing newer happened meanwhile, so a poll that started
   // before a save or a drag cannot put the old list back.
   const rootsLoadGeneration = useRef(0)
+  const checkedRootHealth = useRef(false)
   const dragging = useRef(false)
   const claimRoots = () => { rootsLoadGeneration.current += 1 }
   const [dragIndex, setDragIndex] = useState<number | null>(null)
@@ -73,28 +75,37 @@ export function StorageSettings() {
     const generation = ++rootsLoadGeneration.current
     try {
       const nextRoots = await storageApi.storageRoots()
-      if (generation === rootsLoadGeneration.current && !dragging.current) setRoots(nextRoots)
+      if (generation !== rootsLoadGeneration.current || dragging.current) return
+      setRoots(nextRoots)
+      setRootsLoadState('loaded')
     } catch (reason) {
-      if (generation === rootsLoadGeneration.current) setMessage(failed(reason, 'Could not load media folder state.'))
+      if (generation === rootsLoadGeneration.current) {
+        setRootsLoadState('failed')
+        setMessage(failed(reason, 'Could not load media folder state.'))
+      }
     }
   }
-  const load = async () => {
-    const generation = ++rootsLoadGeneration.current
-    try {
-      const [nextRoots, nextMappings, nextClients] = await Promise.all([storageApi.storageRoots(), integrationsApi.remotePathMappings(), integrationsApi.downloadClients()])
-      if (generation === rootsLoadGeneration.current && !dragging.current) setRoots(nextRoots)
-      setMappings(nextMappings); setClients(nextClients)
-      setMappingRootId((value) => value || nextRoots[0]?.id || '')
-    } catch (reason) { setMessage(failed(reason, 'Could not load storage configuration.')) }
-  }
-  useEffect(() => { void load() }, [])
   useLiveLibraryRefresh(loadRoots, 15000, true)
   useEffect(() => {
+    let alive = true
+    void loadRoots()
+    void integrationsApi.remotePathMappings()
+      .then((next) => { if (alive) setMappings(next) })
+      .catch((reason) => { if (alive) setMessage((current) => current ?? failed(reason, 'Could not load remote path mappings.')) })
+    void integrationsApi.downloadClients()
+      .then((next) => { if (alive) setClients(next) })
+      .catch((reason) => { if (alive) setMessage((current) => current ?? failed(reason, 'Could not load download clients.')) })
+    return () => { alive = false; claimRoots() }
+  }, [])
+  useEffect(() => {
+    // Render the saved folder state before checking the filesystem.
+    if (rootsLoadState !== 'loaded' || !roots.length || checkedRootHealth.current) return
+    checkedRootHealth.current = true
     const generation = ++rootsLoadGeneration.current
-    storageApi.checkStorageRootHealth().then((nextRoots) => {
+    void storageApi.checkStorageRootHealth().then((nextRoots) => {
       if (generation === rootsLoadGeneration.current && !dragging.current) setRoots(nextRoots)
     }).catch(() => undefined)
-  }, [])
+  }, [rootsLoadState, roots.length])
   useEffect(() => { storageApi.librarySummary().then(setSummary).catch(() => undefined) }, [])
   useEffect(() => {
     integrationsApi.tmdbConfiguration()
@@ -401,7 +412,8 @@ export function StorageSettings() {
         </button>
       })}
     </div>
-    {!roots.length && <p className="provider-empty-copy">No media folders yet. Add the folder where your media already lives, as Medialogue sees it, which inside a container is the container’s path.</p>}
+    {rootsLoadState === 'loading' && <p className="provider-empty-copy" role="status">Loading media folders…</p>}
+    {rootsLoadState === 'loaded' && !roots.length && <p className="provider-empty-copy">No media folders yet. Add the folder where your media already lives, as Medialogue sees it, which inside a container is the container’s path.</p>}
 
     {rootModalOpen && <Modal wide className="modal-tall" icon="folder" title={selectedRoot ? selectedRoot.name : 'Add media folder'} onClose={closeRootModal}
       footer={<>
