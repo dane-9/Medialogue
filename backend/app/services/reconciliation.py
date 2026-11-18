@@ -859,7 +859,64 @@ async def _persist_plex_candidate_evidence(
         )
 
 
+def is_folder_record_conflict(exc: IntegrityError) -> bool:
+    """Another worker saved a record of this folder first (the unique folder path)."""
+
+    return "media_directories.resolved_path" in str(getattr(exc, "orig", exc))
+
+
+async def retry_on_folder_conflict(db: AsyncSession, attempt, *, refresh: tuple = ()):
+    """Run one folder's reconcile; if another worker recorded the folder first, run it again.
+
+    The second run finds the folder the other worker saved and joins it, so a
+    folder seen by the watcher, qBittorrent completion and a scan at once is
+    recorded once.
+
+    Not a SAVEPOINT around the whole run: that would hold one read snapshot
+    through the TMDB and Plex lookups, and the first write after any other
+    worker's commit would then fail as "database is locked". Only a worker
+    whose transaction holds nothing but this folder can lose the race: a scan
+    commits each folder and the watcher has a session of its own, so rolling
+    back drops only this folder's attempt. qBittorrent's poll takes the write
+    lock before it reads a torrent, so it always sees a folder saved before it
+    and runs inside its own per-torrent SAVEPOINT; a conflict there is left to
+    that SAVEPOINT and the next poll.
+    """
+
+    for retry in (False, True):
+        try:
+            return await attempt()
+        except IntegrityError as exc:
+            if retry or not is_folder_record_conflict(exc) or db.in_nested_transaction():
+                raise
+            await db.rollback()
+            # The rollback expired everything; reload what the second run is
+            # handed before it reads them.
+            for item in refresh:
+                if item is not None:
+                    await db.refresh(item)
+
+
 async def reconcile_movie_directory(
+    db: AsyncSession,
+    root: StorageRoot,
+    observation: DirectoryObservation,
+    **options: Any,
+) -> str:
+    """Reconcile one filesystem directory; used by scans and qBit completion.
+
+    ``replacement_of_release_id`` is the missing release the administrator
+    chose this directory to replace, when Medialogue could not tell.
+    """
+
+    return await retry_on_folder_conflict(
+        db,
+        lambda: _reconcile_movie_directory(db, root, observation, **options),
+        refresh=(root, options.get("torrent"), options.get("movie_hint"), options.get("incoming_release")),
+    )
+
+
+async def _reconcile_movie_directory(
     db: AsyncSession,
     root: StorageRoot,
     observation: DirectoryObservation,
@@ -915,6 +972,8 @@ async def reconcile_movie_directory(
                     )
             if torrent is not None:
                 await _attach_torrent_to_release(db, existing_directory.movie_release, torrent, incoming_release)
+            if existing_directory.movie_release.release_state == ReleaseState.DUPLICATE:
+                await _refresh_movie_duplicate_problem(db, existing_directory.movie_release.movie_id)
             return "matched"
 
     folder_parse = parse_release(observation.name)

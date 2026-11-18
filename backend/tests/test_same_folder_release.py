@@ -114,8 +114,10 @@ def test_two_releases_already_recorded_for_one_folder_are_merged(client):  # noq
             torrent = Torrent(info_hash="cd" * 20, name=NAME)
             db.add_all([untracked, tracked, torrent])
             await db.flush()
-            for release in (untracked, tracked):
-                db.add(MediaDirectory(storage_root_id=root.id, resolved_path=FOLDER, reported_path=FOLDER, exists=True,
+            # The database holds one record per exact path; a second spelling of
+            # the folder is how two records of it can still arise.
+            for release, path in ((untracked, FOLDER), (tracked, FOLDER + os.sep)):
+                db.add(MediaDirectory(storage_root_id=root.id, resolved_path=path, reported_path=path, exists=True,
                                       movie_release_id=release.id))
             db.add(MovieReleaseTorrent(movie_release_id=tracked.id, torrent_id=torrent.id,
                                        association_type=AssociationType.ATTACHED))
@@ -138,71 +140,88 @@ def test_two_releases_already_recorded_for_one_folder_are_merged(client):  # noq
     asyncio.run(scenario())
 
 
-def _new_media_entries(db, path):
-    from app.models.domain import MediaDiscovery
+def test_a_worker_that_loses_the_race_for_a_new_folder_joins_the_winners_record(client, monkeypatch):  # noqa: F811
+    """qBittorrent completion is mid-run when the folder watcher saves the same folder."""
 
-    return db.scalars(
-        select(MediaDiscovery).join(MediaDirectory, MediaDirectory.id == MediaDiscovery.media_directory_id)
-        .where(MediaDirectory.resolved_path == path)
-    )
-
-
-def test_a_folder_recorded_twice_at_once_is_one_new_media_entry(client):  # noqa: F811
-    from app.parser import parse_release
-    from app.services.discoveries import stage_media_discovery
-
-    edge = "Edge.of.Tomorrow.2014.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-FraMeSToR"
-    path = os.path.join(os.sep, "media", "movies", edge)
+    from app.services import reconciliation
 
     async def scenario():
         async with db_session.async_session_factory() as db:
-            first = MediaDirectory(resolved_path=path, reported_path=path, exists=True)
-            db.add(first)
-            await db.flush()
-            await stage_media_discovery(db, first, parse_release(edge), media_type=MediaType.MOVIES, title=None, year=None)
+            root, movie = await _seed(db)
+            torrent = Torrent(info_hash="ef" * 20, name=NAME)
+            db.add(torrent)
             await db.commit()
-            first_id = first.id
+            ids = movie.id, root.id, torrent.id
 
-        # A second worker that saw the folder before the first saved it.
+        real_plex = reconciliation._plex_evidence_for_candidate
+        watcher_ran = False
+
+        async def plex_while_the_watcher_saves(db, title, year, candidate):
+            nonlocal watcher_ran
+            if not watcher_ran:
+                watcher_ran = True
+                async with db_session.async_session_factory() as other:
+                    assert await reconcile_movie_directory(
+                        other, await other.get(StorageRoot, ids[1]), _observation(FOLDER),
+                        movie_hint=await other.get(Movie, ids[0])) == "matched"
+                    await other.commit()
+            return await real_plex(db, title, year, candidate)
+
+        monkeypatch.setattr(reconciliation, "_plex_evidence_for_candidate", plex_while_the_watcher_saves)
         async with db_session.async_session_factory() as db:
-            second = MediaDirectory(resolved_path=path, reported_path=path, exists=True)
-            db.add(second)
-            entry = await stage_media_discovery(db, second, parse_release(edge), media_type=MediaType.MOVIES, title=None, year=None)
-            assert entry.media_directory_id == first_id
+            result = await reconcile_movie_directory(
+                db, await db.get(StorageRoot, ids[1]), _observation(FOLDER),
+                torrent=await db.get(Torrent, ids[2]), movie_hint=await db.get(Movie, ids[0]))
+            assert result == "matched"
             await db.commit()
+        assert watcher_ran
 
         async with db_session.async_session_factory() as db:
-            assert len((await _new_media_entries(db, path)).all()) == 1
-            assert len((await db.scalars(select(MediaDirectory).where(MediaDirectory.resolved_path == path))).all()) == 1
+            releases, current, directories, problem = await _state(db, ids[0])
+            assert len(current) == 1 and len(directories) == 1 and problem is None
+            assert await db.scalar(select(MovieReleaseTorrent).where(
+                MovieReleaseTorrent.movie_release_id == current[0].id, MovieReleaseTorrent.torrent_id == ids[2]))
 
     asyncio.run(scenario())
 
 
-def test_two_new_media_entries_already_recorded_for_one_folder_merge_on_the_next_look(client):  # noqa: F811
-    from app.models.domain import MediaDiscovery, NewMediaState
-    from app.parser import parse_release
-    from app.services.discoveries import stage_media_discovery
+def test_a_new_folder_two_workers_stage_at_once_is_one_new_media_entry(client, monkeypatch):  # noqa: F811
+    from app.models.domain import DiscoveryMode, MediaDiscovery
+    from app.services import discoveries
+    from app.services.tmdb import TMDBMovieIdentityResolution
 
     edge = "Edge.of.Tomorrow.2014.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-FraMeSToR"
     path = os.path.join(os.sep, "media", "movies", edge)
+    observation = DirectoryObservation(path=path, name=edge, media_files=(f"{edge}.mkv",), has_dvd_structure=False,
+                                       has_bluray_structure=False)
 
     async def scenario():
         async with db_session.async_session_factory() as db:
-            rows = [MediaDirectory(resolved_path=path, reported_path=path, exists=True) for _ in range(2)]
-            db.add_all(rows)
-            await db.flush()
-            for row in rows:
-                db.add(MediaDiscovery(media_directory_id=row.id, media_type=MediaType.MOVIES,
-                                      new_media_state=NewMediaState.PENDING))
+            root, _ = await _seed(db)
+            root.discovery_mode = DiscoveryMode.REVIEW
             await db.commit()
-            later_id = rows[1].id
+            root_id = root.id
+
+        other_ran = False
+
+        async def lookup_while_the_other_worker_saves(db, title, year):
+            nonlocal other_ran
+            if not other_ran:
+                other_ran = True
+                async with db_session.async_session_factory() as other:
+                    assert await reconcile_movie_directory(other, await other.get(StorageRoot, root_id), observation) == "review"
+                    await other.commit()
+            return TMDBMovieIdentityResolution(match=None, reason="no_match")
+
+        monkeypatch.setattr(discoveries, "resolve_movie_identity_detailed", lookup_while_the_other_worker_saves)
+        async with db_session.async_session_factory() as db:
+            assert await reconcile_movie_directory(db, await db.get(StorageRoot, root_id), observation) == "review"
+            await db.commit()
+        assert other_ran
 
         async with db_session.async_session_factory() as db:
-            later = await db.get(MediaDirectory, later_id)
-            await stage_media_discovery(db, later, parse_release(edge), media_type=MediaType.MOVIES, title=None, year=None)
-            await db.commit()
-
-        async with db_session.async_session_factory() as db:
-            assert len((await _new_media_entries(db, path)).all()) == 1
+            entries = (await db.scalars(select(MediaDiscovery))).all()
+            assert len(entries) == 1
+            assert len((await db.scalars(select(MediaDirectory))).all()) == 1
 
     asyncio.run(scenario())

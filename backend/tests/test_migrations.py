@@ -59,6 +59,8 @@ def test_upgrade_head_on_fresh_sqlite_database_matches_current_schema() -> None:
         finally:
             engine.dispose()
     finally:
+        if engine is not None:
+            engine.dispose()
         database_path.unlink(missing_ok=True)
 
     assert {
@@ -147,6 +149,7 @@ def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None
         "0001_fresh_baseline.py", "0002_ui_selections.py", "0003_release_identity_confidence.py",
         "0004_upgrade_search_marks.py", "0005_remove_wrong_title_upgrades.py", "0006_indexer_tracker_hosts.py",
         "0007_ignored_folders.py", "0008_libraries.py", "0009_custom_filters.py",
+        "0010_one_record_per_folder.py",
     ]
 
     baseline = migrations[0].read_text(encoding="utf-8")
@@ -225,3 +228,78 @@ def test_online_sqlite_migrations_use_installed_aiosqlite_driver() -> None:
     assert "async_engine_from_config" in source
     assert 'configuration["sqlalchemy.url"] = get_settings().database_url' in source
     assert "await connection.run_sync" in source
+
+
+def test_0010_merges_duplicate_folder_records_before_making_the_path_unique() -> None:
+    import uuid
+
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from app.models.domain import (
+        AssociationType, MediaDirectory, MediaFile, Movie, MovieRelease, MovieReleaseTorrent, ReleaseState, Torrent,
+    )
+
+    backend_dir = _backend_dir()
+    database_path = Path(tempfile.mktemp(prefix="medialogue-0010-", suffix=".db", dir=backend_dir))
+    database_url = f"sqlite:///{database_path}"
+    environment = {**os.environ, "MEDIALOGUE_DATABASE_URL": database_url}
+
+    def alembic(*args: str) -> None:
+        completed = subprocess.run(["alembic", "-c", str(backend_dir / "alembic.ini"), *args], cwd=backend_dir,
+                                   env=environment, capture_output=True, text=True)
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    engine = None
+    try:
+        alembic("upgrade", "0009")
+        engine = create_engine(database_url)
+        with engine.begin() as connection:
+            # A database from before 0010: the folder path is not unique yet.
+            connection.execute(text("DROP INDEX IF EXISTS uq_media_directories_resolved_path"))
+            connection.execute(text("DROP INDEX IF EXISTS uq_torrent_observations_torrent_client"))
+        with Session(engine) as session:
+            library_id = session.execute(text("SELECT id FROM libraries WHERE kind = 'MOVIES' LIMIT 1")).scalar()
+            movie = Movie(library_id=uuid.UUID(library_id), title="Backrooms", sort_title="backrooms", year=2026,
+                          tmdb_id=1, monitored=True)
+            session.add(movie)
+            session.flush()
+            releases = [MovieRelease(movie_id=movie.id, raw_release_name="Backrooms", release_state=ReleaseState.DUPLICATE,
+                                     parse_snapshot={}) for _ in range(2)]
+            torrent = Torrent(info_hash="abc", name="Backrooms")
+            session.add_all([*releases, torrent])
+            session.flush()
+            session.add(MovieReleaseTorrent(movie_release_id=releases[1].id, torrent_id=torrent.id,
+                                            association_type=AssociationType.ATTACHED))
+            for release in releases:
+                directory = MediaDirectory(resolved_path="/movies/Backrooms", movie_release_id=release.id, exists=True)
+                session.add(directory)
+                session.flush()
+                session.add(MediaFile(media_directory_id=directory.id, relative_path="Backrooms.mkv", filename="Backrooms.mkv", exists=True))
+            session.commit()
+            kept_release_id = releases[1].id.hex
+        engine.dispose()
+
+        alembic("upgrade", "head")
+
+        engine = create_engine(database_url)
+        try:
+            with engine.connect() as connection:
+                directories = connection.execute(text("SELECT id, movie_release_id FROM media_directories")).all()
+                assert len(directories) == 1
+                kept_release = directories[0][1]
+                # The record whose release qBittorrent tracks keeps the folder.
+                assert kept_release == kept_release_id
+                states = dict(connection.execute(text("SELECT id, release_state FROM movie_releases")).all())
+                assert states[kept_release] == "CURRENT"
+                assert sorted(states.values()) == ["CURRENT", "REMOVED"]
+                assert connection.execute(text("SELECT movie_release_id FROM movie_release_torrents")).scalar() == kept_release
+                assert connection.execute(text("SELECT COUNT(*) FROM media_files")).scalar() == 1
+            unique = {index["name"] for index in inspect(engine).get_indexes("media_directories") if index["unique"]}
+            assert "uq_media_directories_resolved_path" in unique
+        finally:
+            engine.dispose()
+    finally:
+        if engine is not None:
+            engine.dispose()
+        database_path.unlink(missing_ok=True)

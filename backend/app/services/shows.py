@@ -456,6 +456,23 @@ async def reconcile_show_directory(
     db: AsyncSession,
     root: StorageRoot,
     observation: DirectoryObservation,
+    **options: Any,
+) -> str:
+    """Map a show folder's media; recorded once however many workers see it at once."""
+
+    from app.services.reconciliation import retry_on_folder_conflict
+
+    return await retry_on_folder_conflict(
+        db,
+        lambda: _reconcile_show_directory(db, root, observation, **options),
+        refresh=(root, options.get("torrent"), options.get("show_hint"), options.get("incoming_release")),
+    )
+
+
+async def _reconcile_show_directory(
+    db: AsyncSession,
+    root: StorageRoot,
+    observation: DirectoryObservation,
     *,
     torrent: Torrent | None = None,
     show_hint: Show | None = None,

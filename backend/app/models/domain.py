@@ -542,7 +542,8 @@ class RemotePathMapping(TimestampMixin, Base):
 
 class MediaDirectory(Base):
     __tablename__ = "media_directories"
-    __table_args__ = (Index("ix_media_directories_resolved_path", "resolved_path"),)
+    #: One record per folder: two workers seeing a new folder at once must not both record it.
+    __table_args__ = (Index("uq_media_directories_resolved_path", "resolved_path", unique=True),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     storage_root_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("storage_roots.id", ondelete="SET NULL"))
@@ -639,7 +640,10 @@ class Torrent(TimestampMixin, Base):
 
 class TorrentClientObservation(Base):
     __tablename__ = "torrent_client_observations"
-    __table_args__ = (Index("ix_torrent_observations_client_present", "download_client_id", "is_present"),)
+    __table_args__ = (
+        Index("ix_torrent_observations_client_present", "download_client_id", "is_present"),
+        Index("uq_torrent_observations_torrent_client", "torrent_id", "download_client_id", unique=True),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     torrent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("torrents.id", ondelete="CASCADE"), nullable=False)
