@@ -46,6 +46,7 @@ from app.services.movie_editions import same_edition
 from app.services.quality_profiles import (
     EffectiveProfile,
     evaluate_current_release_score,
+    stored_release_score,
     load_effective_profile,
     minimum_quality_status,
     preferred_release_name,
@@ -397,7 +398,10 @@ async def _release_evidence(
     quality_order: tuple[str, ...],
 ) -> CurrentReleaseEvidence | None:
     release_name = preferred_release_name(release)
-    score, score_snapshot = await evaluate_current_release_score(
+    # The stored score while it is current: scoring every release again was
+    # most of the time a Replace Media or upgrade scan took.
+    stored = await stored_release_score(db, media_type=media_type, entity_id=entity_id, release=release)
+    score, score_snapshot = stored or await evaluate_current_release_score(
         db,
         media_type=media_type,
         entity_id=entity_id,

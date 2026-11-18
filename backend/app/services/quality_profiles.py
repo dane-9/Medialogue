@@ -574,6 +574,36 @@ async def evaluate_current_release_score(
     }
 
 
+async def stored_release_score(
+    db: AsyncSession,
+    *,
+    media_type: MediaType,
+    entity_id: UUID,
+    release: MovieRelease | ShowRelease,
+) -> tuple[int, dict[str, Any]] | None:
+    """The score stored on ``release``, if it is still what scoring it now would give.
+
+    Scores are stored whenever a release is attached and rescored after every
+    profile or Custom Format save. One computed for the title's current profile
+    and assignment revision, while no rescore is pending, is current, so lists
+    that score many releases use it instead of parsing and scoring each again.
+    """
+
+    if _rescore_running or _rescore_again or release.current_custom_format_score is None:
+        return None
+    snapshot = (release.parse_snapshot or {}).get("current_score_snapshot")
+    if not isinstance(snapshot, dict):
+        return None
+    effective = await load_effective_profile(db, media_type=media_type, entity_id=entity_id)
+    if (
+        snapshot.get("profile_id") != (str(effective.profile_id) if effective.profile_id else None)
+        or snapshot.get("profile_revision") != effective.profile_revision
+        or snapshot.get("assignment_revision") != effective.assignment_revision
+    ):
+        return None
+    return int(release.current_custom_format_score), snapshot
+
+
 def preferred_release_name(release: MovieRelease | ShowRelease) -> str:
     """Return the most faithful name Medialogue has for release scoring.
 
@@ -793,3 +823,7 @@ async def rescore_library_after_save() -> None:
             publish_live_event("release.scores_refreshed", entity_type="library")
     finally:
         _rescore_running = False
+        # Lists built from stored scores while this ran are rebuilt with the new ones.
+        from app.services.shared_results import mark_shared_results_stale
+
+        mark_shared_results_stale()

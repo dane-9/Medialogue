@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 from pathlib import PurePath
 from typing import Iterable
 
@@ -1057,9 +1058,17 @@ def parse_release(raw_name: str) -> ReleaseParseResult:
     The function is deterministic and side-effect free.  ``raw_name`` is
     retained exactly (apart from the caller's string conversion) and is safe
     to use as parser evidence.
+
+    Results are cached: the same names are parsed over and over (scoring every
+    release, building every list), and a result is immutable, so one parse
+    each is enough.
     """
 
-    raw = str(raw_name)
+    return _parse_release_cached(str(raw_name))
+
+
+@lru_cache(maxsize=16384)
+def _parse_release_cached(raw: str) -> ReleaseParseResult:
     cleaned = _clean_raw_name(raw)
     normalized_full = normalize_release_name(cleaned)
     normalized = normalized_full
