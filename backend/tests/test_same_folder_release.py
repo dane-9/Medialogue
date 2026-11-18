@@ -136,3 +136,73 @@ def test_two_releases_already_recorded_for_one_folder_are_merged(client):  # noq
             assert await db.scalar(select(Event).where(Event.event_type == "release.merged")) is not None
 
     asyncio.run(scenario())
+
+
+def _new_media_entries(db, path):
+    from app.models.domain import MediaDiscovery
+
+    return db.scalars(
+        select(MediaDiscovery).join(MediaDirectory, MediaDirectory.id == MediaDiscovery.media_directory_id)
+        .where(MediaDirectory.resolved_path == path)
+    )
+
+
+def test_a_folder_recorded_twice_at_once_is_one_new_media_entry(client):  # noqa: F811
+    from app.parser import parse_release
+    from app.services.discoveries import stage_media_discovery
+
+    edge = "Edge.of.Tomorrow.2014.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-FraMeSToR"
+    path = os.path.join(os.sep, "media", "movies", edge)
+
+    async def scenario():
+        async with db_session.async_session_factory() as db:
+            first = MediaDirectory(resolved_path=path, reported_path=path, exists=True)
+            db.add(first)
+            await db.flush()
+            await stage_media_discovery(db, first, parse_release(edge), media_type=MediaType.MOVIES, title=None, year=None)
+            await db.commit()
+            first_id = first.id
+
+        # A second worker that saw the folder before the first saved it.
+        async with db_session.async_session_factory() as db:
+            second = MediaDirectory(resolved_path=path, reported_path=path, exists=True)
+            db.add(second)
+            entry = await stage_media_discovery(db, second, parse_release(edge), media_type=MediaType.MOVIES, title=None, year=None)
+            assert entry.media_directory_id == first_id
+            await db.commit()
+
+        async with db_session.async_session_factory() as db:
+            assert len((await _new_media_entries(db, path)).all()) == 1
+            assert len((await db.scalars(select(MediaDirectory).where(MediaDirectory.resolved_path == path))).all()) == 1
+
+    asyncio.run(scenario())
+
+
+def test_two_new_media_entries_already_recorded_for_one_folder_merge_on_the_next_look(client):  # noqa: F811
+    from app.models.domain import MediaDiscovery, NewMediaState
+    from app.parser import parse_release
+    from app.services.discoveries import stage_media_discovery
+
+    edge = "Edge.of.Tomorrow.2014.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-FraMeSToR"
+    path = os.path.join(os.sep, "media", "movies", edge)
+
+    async def scenario():
+        async with db_session.async_session_factory() as db:
+            rows = [MediaDirectory(resolved_path=path, reported_path=path, exists=True) for _ in range(2)]
+            db.add_all(rows)
+            await db.flush()
+            for row in rows:
+                db.add(MediaDiscovery(media_directory_id=row.id, media_type=MediaType.MOVIES,
+                                      new_media_state=NewMediaState.PENDING))
+            await db.commit()
+            later_id = rows[1].id
+
+        async with db_session.async_session_factory() as db:
+            later = await db.get(MediaDirectory, later_id)
+            await stage_media_discovery(db, later, parse_release(edge), media_type=MediaType.MOVIES, title=None, year=None)
+            await db.commit()
+
+        async with db_session.async_session_factory() as db:
+            assert len((await _new_media_entries(db, path)).all()) == 1
+
+    asyncio.run(scenario())

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.domain import MediaDirectory, MediaDiscovery, MediaType, NewMediaState
 from app.parser import ReleaseParseResult
@@ -51,6 +53,33 @@ def discovery_candidate(item: object) -> dict[str, object]:
     }
 
 
+def _folder_key(path: str | None) -> str:
+    """One spelling per folder, so case or separators never make one folder two."""
+
+    return os.path.normcase(os.path.normpath(path)) if path else ""
+
+
+async def _same_folder_entry(db: AsyncSession, directory: MediaDirectory) -> MediaDiscovery | None:
+    """The New Media entry another record of this same folder already has."""
+
+    rows = (
+        await db.scalars(
+            select(MediaDiscovery)
+            .join(MediaDirectory, MediaDirectory.id == MediaDiscovery.media_directory_id)
+            .options(selectinload(MediaDiscovery.media_directory))
+            .where(
+                func.lower(MediaDirectory.resolved_path) == directory.resolved_path.lower(),
+                MediaDirectory.id != directory.id,
+                MediaDirectory.movie_release_id.is_(None),
+                MediaDirectory.show_release_id.is_(None),
+            )
+            .order_by(MediaDiscovery.created_at, MediaDiscovery.id)
+        )
+    ).all()
+    key = _folder_key(directory.resolved_path)
+    return next((item for item in rows if _folder_key(item.media_directory.resolved_path) == key), None)
+
+
 async def stage_media_discovery(
     db: AsyncSession,
     directory: MediaDirectory,
@@ -90,7 +119,24 @@ async def stage_media_discovery(
     discovery = await db.scalar(
         select(MediaDiscovery).where(MediaDiscovery.media_directory_id == directory.id)
     )
-    if discovery is None:
+    # The folder watcher, qBittorrent completion and a scan can each see a new
+    # folder before the others have saved it, and each records it. One folder
+    # is one New Media entry: the first record keeps it and this one is dropped.
+    twin = None
+    if directory.movie_release_id is None and directory.show_release_id is None and (
+        discovery is None or discovery.new_media_state == NewMediaState.PENDING
+    ):
+        twin = await _same_folder_entry(db, directory)
+    if twin is not None:
+        if directory in db.new:
+            db.expunge(directory)
+        else:
+            await db.delete(directory)
+        twin.media_directory.exists = True
+        twin.media_directory.missing_since = None
+        twin.media_directory.missing_check_count = 0
+        discovery = twin
+    elif discovery is None:
         discovery = MediaDiscovery(
             media_directory_id=directory.id,
             media_type=media_type,
