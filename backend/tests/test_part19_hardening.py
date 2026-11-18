@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.db import session as db_session
 from app.db.base import Base
 from app.schemas.common import LIBRARY_PAGE_LIMIT
@@ -140,7 +140,9 @@ def test_password_change_revokes_other_sessions_but_keeps_current_session(client
     assert new_login.status_code == 200
 
 
-def test_movie_collection_pagination_sort_query_tag_and_state_filters(client: TestClient) -> None:
+def test_movie_collection_pagination_sort_query_tag_and_state_filters(client: TestClient, monkeypatch) -> None:
+    from app.api import movies as movie_api
+
     login(client)
 
     async def seed(db):
@@ -187,6 +189,16 @@ def test_movie_collection_pagination_sort_query_tag_and_state_filters(client: Te
                 )
 
     db_run(seed)
+    monkeypatch.setattr(get_settings(), "replacement_results_seconds", 30.0)
+    built_pages: list[list[str] | None] = []
+    original = movie_api._list_movies
+
+    async def track_summary_scope(db, **kwargs):
+        ids = kwargs.get("movie_ids")
+        built_pages.append([str(value) for value in ids] if ids is not None else None)
+        return await original(db, **kwargs)
+
+    monkeypatch.setattr(movie_api, "_list_movies", track_summary_scope)
 
     first = client.get("/api/v1/movies?page=1&page_size=2&sort=title")
     assert first.status_code == 200, first.text
@@ -197,9 +209,12 @@ def test_movie_collection_pagination_sort_query_tag_and_state_filters(client: Te
 
     second = client.get("/api/v1/movies?page=2&page_size=2&sort=title").json()
     assert [item["title"] for item in second["items"]] == ["Charlie", "Delta"]
+    assert built_pages == [[item["id"] for item in result["items"]] for result in (payload, second)]
 
     descending = client.get("/api/v1/movies?page_size=2&sort=-year").json()
     assert [item["year"] for item in descending["items"]] == [2005, 2004]
+    assert client.get("/api/v1/movies?page=1&page_size=2&sort=title").json() == payload
+    assert len(built_pages) == 3
 
     queried = client.get("/api/v1/movies?query=del").json()
     assert [item["title"] for item in queried["items"]] == ["Delta"]

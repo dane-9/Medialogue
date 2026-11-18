@@ -405,27 +405,27 @@ def test_library_lists_are_shared_until_the_library_changes(recovery_env, monkey
     computed: list[str] = []
 
     async def counting(db, **kwargs):
-        computed.append(kwargs["sort"])
+        computed.append("summaries")
         return await original(db, **kwargs)
 
     monkeypatch.setattr(module, function, counting)
     for _ in range(3):
-        assert client.get(path).status_code == 200
-    assert computed == ["title"]
+        assert client.get(path, params={"page_size": 10000}).status_code == 200
+    assert computed == ["summaries"]
 
-    # Each sort is its own result, and download progress changes nothing listed.
-    client.get(path, params={"sort": "year"})
+    # Sorting and paging share a summary, and download progress changes nothing listed.
+    assert client.get(path, params={"sort": "year", "page_size": 1}).status_code == 200
     publish_live_event("download.progress", entity_type="torrent", data={})
     client.get(path)
-    assert computed == ["title", "year"]
+    assert computed == ["summaries"]
 
     # Scans affect the library, while saved selections do not.
     publish_live_event("scan.progress", entity_type="storage_root", data={})
-    client.get(path)
-    assert len(computed) == 3
+    client.get(path, params={"page_size": 10000})
+    assert len(computed) == 2
     client.put("/api/v1/ui-selections/replace-media-picked", headers=headers, json={"ids": []})
     client.get(path)
-    assert len(computed) == 3
+    assert len(computed) == 2
     invalidate_shared_results()
 
 

@@ -166,6 +166,16 @@ async def shared_result(key: tuple, db: AsyncSession, build: Build) -> Any:
         return value
 
 
+def cached_shared_result(key: tuple) -> Any:
+    """Read an available shared result without waiting for a rebuild."""
+    ttl = _ttl()
+    entry = _entries.get(_full_key(key))
+    if ttl > 0 and _servable(entry, ttl):
+        entry.read_at = time.monotonic()
+        return entry.value
+    return None
+
+
 def _due(entry: _Entry, ttl: float, now: float) -> bool:
     if _current(entry, ttl, now):
         return False
@@ -213,18 +223,21 @@ async def refresh_due_results() -> bool:
     return True
 
 
-def _add_pinned_entries() -> None:
-    for key, build in _pins.items():
-        _entries.setdefault(_full_key(key), _Entry(build=build, topic=str(key[0]), pinned=True))
+def _add_pinned_entries(extra_pins: dict[tuple, Build]) -> None:
+    for key, build in (_pins | extra_pins).items():
+        entry = _entries.setdefault(_full_key(key), _Entry(build=build, topic=str(key[0])))
+        entry.pinned = True
 
 
-async def run_shared_results_refresher(stop_event: asyncio.Event) -> None:
+async def run_shared_results_refresher(
+    stop_event: asyncio.Event, *, extra_pins: dict[tuple, Build] | None = None,
+) -> None:
     """Keep the shared lists ready until ``stop_event``."""
 
     global _refresher_running
     if _ttl() <= 0:
         return
-    _add_pinned_entries()
+    _add_pinned_entries(extra_pins or {})
     _refresher_running = True
     try:
         while not stop_event.is_set():

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from functools import partial
 from pathlib import PurePosixPath
 from uuid import UUID
 
@@ -44,7 +45,7 @@ from app.services.jobs import create_job, publish_job_status
 from app.services.runtime_jobs import launch_runtime_job
 from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh, sync_show_metadata
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
-from app.services.shared_results import pin_shared_result, shared_result
+from app.services.shared_results import shared_result
 from app.services.torrent_history import show_torrent_history
 from app.services.pending_grabs import pending_season_grabs
 
@@ -439,19 +440,18 @@ async def list_shows(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[ShowSummaryResponse]:
-    return await shared_result(
-        ("shows", page, page_size, query, state, sort, library_id),
-        db,
-        lambda session: _list_shows(
-            session, page=page, page_size=page_size, query=query, state=state, sort=sort, library_id=library_id
-        ),
-    )
+    key, build = show_list_result(library_id, query=query)
+    items = await shared_result(key, db, build)
+    return _show_collection(items, page, page_size, state, sort)
+
+
+def show_list_result(library_id: UUID | None, *, query: str | None = None):
+    return ("shows", library_id, query), partial(_list_shows, query=query, library_id=library_id)
 
 
 async def _list_shows(
-    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, sort: str,
-    library_id: UUID | None = None,
-) -> Collection[ShowSummaryResponse]:
+    db: AsyncSession, *, query: str | None = None, library_id: UUID | None = None,
+) -> list[ShowSummaryResponse]:
     statement = select(Show)
     if library_id is not None:
         statement = statement.where(Show.library_id == library_id)
@@ -459,31 +459,29 @@ async def _list_shows(
         pattern = f"%{query.strip()}%"
         statement = statement.where(Show.title.ilike(pattern))
     shows = list((await db.scalars(statement)).all())
-    items = await _list_summaries(db, shows)
+    return await _list_summaries(db, shows)
+
+
+def _show_collection(
+    items: list[ShowSummaryResponse], page: int, page_size: int, state: str | None, sort: str,
+) -> Collection[ShowSummaryResponse]:
     if state:
         items = [item for item in items if item.state.casefold() == state.casefold()]
     reverse = sort.startswith("-")
     key = sort.lstrip("-")
     if key == "year":
-        items.sort(key=lambda item: (item.year or 0, item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.year or 0, item.title.casefold()), reverse=reverse)
     elif key == "missing":
-        items.sort(key=lambda item: (item.episodes_missing, item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.episodes_missing, item.title.casefold()), reverse=reverse)
     elif key == "problems":
-        items.sort(key=lambda item: (item.problem_count, item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.problem_count, item.title.casefold()), reverse=reverse)
     elif key == "last_observed":
-        items.sort(key=lambda item: (item.last_observed_at.isoformat() if item.last_observed_at else "", item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.last_observed_at.isoformat() if item.last_observed_at else "", item.title.casefold()), reverse=reverse)
     else:
-        items.sort(key=lambda item: item.title.casefold(), reverse=reverse)
-    total = len(items)
+        ordered = sorted(items, key=lambda item: item.title.casefold(), reverse=reverse)
+    total = len(ordered)
     start = (page - 1) * page_size
-    return Collection(items=items[start:start + page_size], page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size)
-
-
-# The view the Shows page opens on.
-pin_shared_result(
-    ("shows", 1, LIBRARY_PAGE_LIMIT, None, None, "title"),
-    lambda session: _list_shows(session, page=1, page_size=LIBRARY_PAGE_LIMIT, query=None, state=None, sort="title"),
-)
+    return Collection(items=ordered[start:start + page_size], page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size)
 
 
 @router.get("/shows/lookup", response_model=list[TMDBShowLookupResponse])

@@ -3,17 +3,21 @@ import { mapMovie, mapTag } from '../mappers/movies'
 import { mapTMDBMovieLookup } from '../mappers/metadata'
 import { LIBRARY_PAGE_SIZE, openApiClient, openApiData } from '../transport'
 
+async function moviePage(query: string, tag: string, sort: string, libraryId: string, pageSize: number) {
+  const payload = await openApiData(openApiClient.GET('/api/v1/movies', { params: { query: {
+    page_size: pageSize,
+    query: query || undefined,
+    tag: tag || undefined,
+    sort,
+    library_id: libraryId || undefined,
+  } } }))
+  return { items: payload.items.map(mapMovie), total: payload.total }
+}
+
 export const moviesApi = {
-  movies: async (query = '', tag = '', sort = 'title', libraryId = '') => {
-    const payload = await openApiData(openApiClient.GET('/api/v1/movies', { params: { query: {
-      page_size: LIBRARY_PAGE_SIZE,
-      query: query || undefined,
-      tag: tag || undefined,
-      sort,
-      library_id: libraryId || undefined,
-    } } }))
-    return payload.items.map(mapMovie)
-  },
+  movies: async (query = '', tag = '', sort = 'title', libraryId = '') =>
+    (await moviePage(query, tag, sort, libraryId, LIBRARY_PAGE_SIZE)).items,
+  firstMoviePage: (tag: string, sort: string, libraryId: string) => moviePage('', tag, sort, libraryId, 50),
   movie: async (id: string) => mapMovie(await openApiData(openApiClient.GET('/api/v1/movies/{resource_id}', { params: { path: { resource_id: id } } }))),
   tags: async () => (await openApiData(openApiClient.GET('/api/v1/tags'))).map(mapTag),
   createTag: async (name: string) => mapTag(await openApiData(openApiClient.POST('/api/v1/tags', { body: { name } }))),

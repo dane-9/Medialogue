@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from functools import partial
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -53,7 +54,7 @@ from app.services.plex_discover import lookup_tmdb_ratings
 from app.services.tmdb import get_tmdb_configuration
 from app.services.events import movie_event_scope, scope_predicate
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
-from app.services.shared_results import pin_shared_result, shared_result
+from app.services.shared_results import cached_shared_result, shared_result
 from app.services.torrent_history import movie_torrent_history
 
 logger = logging.getLogger(__name__)
@@ -68,11 +69,12 @@ def _movie_query(*, for_list: bool = False):
     releases = selectinload(Movie.releases)
     if for_list:
         releases = releases.defer(MovieRelease.parse_snapshot, raiseload=True)
-    files = () if for_list else (selectinload(Movie.releases).selectinload(MovieRelease.directories).selectinload(MediaDirectory.files),)
+    directories = selectinload(Movie.releases).selectinload(MovieRelease.directories)
+    directory_details = () if for_list else (directories.selectinload(MediaDirectory.files), directories.selectinload(MediaDirectory.storage_root))
     return select(Movie).options(
         releases,
-        *files,
-        selectinload(Movie.releases).selectinload(MovieRelease.directories).selectinload(MediaDirectory.storage_root),
+        directories,
+        *directory_details,
         selectinload(Movie.releases).selectinload(MovieRelease.quality_definition),
         selectinload(Movie.plex_observations),
         selectinload(Movie.tags),
@@ -91,32 +93,63 @@ async def list_movies(
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection[MovieSummaryResponse]:
-    return await shared_result(
-        ("movies", page, page_size, query, state, tag, sort, library_id),
-        db,
-        lambda session: _list_movies(
-            session, page=page, page_size=page_size, query=query, state=state, tag=tag, sort=sort, library_id=library_id
-        ),
-    )
+    key, build = movie_list_result(library_id, query=query, tag=tag)
+    items = cached_shared_result(key)
+    if items is None:
+        if page_size <= 250 and not state and sort in {"title", "-title"}:
+            return await _movie_title_page(db, page=page, page_size=page_size, query=query, tag=tag,
+                                           library_id=library_id, reverse=sort.startswith("-"))
+        items = await shared_result(key, db, build)
+    return _movie_collection(items, page, page_size, state, sort)
 
 
-async def _list_movies(
-    db: AsyncSession, *, page: int, page_size: int, query: str | None, state: str | None, tag: str | None, sort: str,
-    library_id: UUID | None = None,
-) -> Collection[MovieSummaryResponse]:
-    statement = _movie_query(for_list=True)
+def movie_list_result(library_id: UUID | None, *, query: str | None = None, tag: str | None = None):
+    return ("movies", library_id, query, tag), partial(_list_movies, query=query, tag=tag, library_id=library_id)
+
+
+def _movie_filters(query: str | None, tag: str | None, library_id: UUID | None):
+    conditions = []
     if library_id is not None:
-        statement = statement.where(Movie.library_id == library_id)
+        conditions.append(Movie.library_id == library_id)
     if query:
         pattern = f"%{query.strip()}%"
-        statement = statement.where(or_(Movie.title.ilike(pattern), cast(Movie.year, String).ilike(pattern)))
+        conditions.append(or_(Movie.title.ilike(pattern), cast(Movie.year, String).ilike(pattern)))
     if tag:
         try:
             tag_id = UUID(tag)
         except ValueError:
-            statement = statement.where(Movie.tags.any(func.lower(Tag.name) == tag.strip().casefold()))
+            conditions.append(Movie.tags.any(func.lower(Tag.name) == tag.strip().casefold()))
         else:
-            statement = statement.where(Movie.tags.any(Tag.id == tag_id))
+            conditions.append(Movie.tags.any(Tag.id == tag_id))
+    return conditions
+
+
+async def _movie_title_page(
+    db: AsyncSession, *, page: int, page_size: int, query: str | None, tag: str | None,
+    library_id: UUID | None, reverse: bool,
+) -> Collection[MovieSummaryResponse]:
+    # Ordering lightweight title keys first keeps Unicode casefold ordering
+    # identical to the full list. Only the selected movies need summaries.
+    titles = (await db.execute(select(Movie.title, Movie.id).where(*_movie_filters(query, tag, library_id)))).all()
+    titles.sort(key=lambda row: (row.title.casefold(), row.id), reverse=reverse)
+    start = (page - 1) * page_size
+    ids = [row.id for row in titles[start:start + page_size]]
+    items = await _list_movies(db, query=query, tag=tag, library_id=library_id, movie_ids=ids) if ids else []
+    by_id = {item.id: item for item in items}
+    total = len(titles)
+    return Collection(
+        items=[by_id[movie_id] for movie_id in ids if movie_id in by_id],
+        page=page, page_size=page_size, total=total, pages=(total + page_size - 1) // page_size,
+    )
+
+
+async def _list_movies(
+    db: AsyncSession, *, query: str | None = None, tag: str | None = None, library_id: UUID | None = None,
+    movie_ids: list[UUID] | None = None,
+) -> list[MovieSummaryResponse]:
+    statement = _movie_query(for_list=True).where(*_movie_filters(query, tag, library_id))
+    if movie_ids is not None:
+        statement = statement.where(Movie.id.in_(movie_ids))
     movies = list((await db.scalars(statement)).unique().all())
     movie_ids = [movie.id for movie in movies]
     problems = await _problem_counts(db, movie_ids)
@@ -190,36 +223,35 @@ async def _list_movies(
     ]
     for item, movie in zip(items, movies):
         item.incoming_progress = incoming_progress.get(movie.id)
+    return items
+
+
+def _movie_collection(
+    items: list[MovieSummaryResponse], page: int, page_size: int, state: str | None, sort: str,
+) -> Collection[MovieSummaryResponse]:
     if state:
         items = [item for item in items if item.state.casefold() == state.casefold()]
     reverse = sort.startswith("-")
     key = sort.lstrip("-")
     if key == "year":
-        items.sort(key=lambda item: (item.year or 0, item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.year or 0, item.title.casefold()), reverse=reverse)
     elif key == "quality":
-        items.sort(key=lambda item: (item.current_quality or "", item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.current_quality or "", item.title.casefold()), reverse=reverse)
     elif key == "last_observed":
-        items.sort(key=lambda item: (item.last_observed_at.isoformat() if item.last_observed_at else "", item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.last_observed_at.isoformat() if item.last_observed_at else "", item.title.casefold()), reverse=reverse)
     elif key == "problems":
-        items.sort(key=lambda item: (item.problem_count, item.title.casefold()), reverse=reverse)
+        ordered = sorted(items, key=lambda item: (item.problem_count, item.title.casefold()), reverse=reverse)
     else:
-        items.sort(key=lambda item: item.title.casefold(), reverse=reverse)
-    total = len(items)
+        ordered = sorted(items, key=lambda item: (item.title.casefold(), item.id), reverse=reverse)
+    total = len(ordered)
     start = (page - 1) * page_size
     return Collection(
-        items=items[start : start + page_size],
+        items=ordered[start : start + page_size],
         page=page,
         page_size=page_size,
         total=total,
         pages=(total + page_size - 1) // page_size,
     )
-
-
-# The view the Movies page opens on.
-pin_shared_result(
-    ("movies", 1, LIBRARY_PAGE_LIMIT, None, None, None, "title"),
-    lambda session: _list_movies(session, page=1, page_size=LIBRARY_PAGE_LIMIT, query=None, state=None, tag=None, sort="title"),
-)
 
 
 @router.post("", response_model=MovieDetailResponse, status_code=status.HTTP_201_CREATED)

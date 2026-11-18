@@ -44,6 +44,7 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   const [movies, setMovies] = useState<Movie[]>(() => cachedList<Movie>(moviesKey(libraryId, searchParams.get('tag') ?? '', 'title')) ?? [])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(() => cachedList(moviesKey(libraryId, searchParams.get('tag') ?? '', 'title')) === undefined)
+  const [partial, setPartial] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [view, setView] = useState<'cards' | 'table'>(() => normalizeMediaView(window.localStorage.getItem('medialogue.movies.view')))
@@ -66,6 +67,7 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   const applyMovies = (items: Movie[]) => {
     rememberList(moviesKey(libraryId, tagFilter, sort), items)
     setMovies((current) => reuseUnchanged(current, items))
+    setPartial(false)
     setError('')
   }
 
@@ -83,8 +85,30 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   useEffect(() => {
     let alive = true
     const cached = cachedList<Movie>(moviesKey(libraryId, tagFilter, sort))
-    if (cached) { setMovies((current) => reuseUnchanged(current, cached)); setLoading(false) }
-    fresh(() => moviesApi.movies('', tagFilter, sort, libraryId), (items) => { if (alive) applyMovies(items) })
+    if (cached) {
+      setMovies((current) => reuseUnchanged(current, cached))
+      setPartial(false)
+      setLoading(false)
+    }
+    const load = async () => {
+      if (!cached && (sort === 'title' || sort === '-title')) {
+        let complete = false
+        const applied = await fresh(() => moviesApi.firstMoviePage(tagFilter, sort, libraryId), (page) => {
+          if (!alive) return
+          complete = page.items.length === page.total
+          if (complete) applyMovies(page.items)
+          else {
+            setMovies((current) => reuseUnchanged(current, page.items))
+            setPartial(true)
+            setError('')
+          }
+          setLoading(false)
+        }).catch(() => true) // Fall back to the full list if the first request fails.
+        if (!alive || !applied || complete) return
+      }
+      await fresh(() => moviesApi.movies('', tagFilter, sort, libraryId), (items) => { if (alive) applyMovies(items) })
+    }
+    load()
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load movies.') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
@@ -163,7 +187,7 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
     })
   }, [movies, filter, query, customFilters.isCustom, customFilters.matches])
   const visibleIds = useMemo(() => filtered.map((movie) => movie.id), [filtered])
-  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !context && !historyOpen && !removing && !filtersOpen })
+  const { selected, click: toggleSelected, focus, selectAll, clear } = useLibrarySelection(visibleIds, { enabled: !partial && !context && !historyOpen && !removing && !filtersOpen })
   const openContext = useCallback((event: React.MouseEvent, movieId: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -172,12 +196,13 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   }, [focus])
   return <Page title={library?.name ?? 'Movies'} subtitle="Your library, exactly where it was downloaded." action={<Button variant="secondary" icon="clock" onClick={() => setHistoryOpen(true)}>History</Button>}>
     {historyOpen && <LibraryHistoryModal mediaType="movies" onClose={() => setHistoryOpen(false)} />}
-    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><SelectionBar count={selected.size} total={filtered.length} noun="movie" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilterMenu ariaLabel="Filter movies" value={filter} builtIn={['All', 'Downloading', 'Missing', 'Problems', 'Unmonitored', 'Present']} custom={customFilters.filters} onChange={setFilter} onManage={() => setFiltersOpen(true)} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
+    <div className="toolbar"><div className="search-field"><Icon name="search" size={16} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${movies.length} ${movies.length === 1 ? 'movie' : 'movies'}…`} /></div><SelectionBar count={selected.size} total={partial ? selected.size : filtered.length} noun="movie" onSelectAll={selectAll} onClear={clear} /><div className="toolbar-spacer" /><Select className="library-control" selectedPrefix="SORT" aria-label="Sort movies" value={sort} onChange={(event) => setSort(event.target.value)}><option value="title">Title A–Z</option><option value="-title">Title Z–A</option><option value="year">Year oldest</option><option value="-year">Year newest</option><option value="quality">Quality low–high</option><option value="-quality">Quality high–low</option><option value="last_observed">Last observed oldest</option><option value="-last_observed">Last observed newest</option><option value="problems">Problems fewest</option><option value="-problems">Problems most</option></Select><LibraryFilterMenu ariaLabel="Filter movies" value={filter} builtIn={['All', 'Downloading', 'Missing', 'Problems', 'Unmonitored', 'Present']} custom={customFilters.filters} onChange={setFilter} onManage={() => setFiltersOpen(true)} /><div className="view-toggle"><button className={view === 'cards' ? 'selected' : ''} onClick={() => changeMovieView('cards')} aria-label="Card view"><Icon name="grid" size={16} /></button><button className={view === 'table' ? 'selected' : ''} onClick={() => changeMovieView('table')} aria-label="Table view"><Icon name="list" size={16} /></button></div></div>
     <div className="media-filter-row media-tag-filter">{tags.map((tag) => <button type="button" className={`filter-chip ${tagFilter === tag.name ? 'active' : ''}`} key={tag.id} onClick={() => updateTagFilter(tagFilter === tag.name ? '' : tag.name)}>{tag.name}</button>)}</div>
     {message && <div className="settings-note"><Icon name="info" size={16} /><span>{message}</span></div>}
-    {error && <EmptyState title="Could not load the movie library" detail={error} />}
-    {!error && !loading && (view === 'cards' ? <VirtualGrid className="media-grid" items={filtered} itemKey={(movie) => movie.id} renderItem={(movie) => <MovieCard movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={onCardAction} />} /> : <MovieTable items={filtered} selected={selected} onToggle={toggleSelected} onSelectAll={selectAll} onClear={clear} onContext={openContext} onTagClick={updateTagFilter} />)}
-    {!error && !loading && !filtered.length && <EmptyState icon="clapper" title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
+    {partial && <div className="settings-note" role="status"><span>{error || 'Loading more movies…'}</span></div>}
+    {error && !partial && <EmptyState title="Could not load the movie library" detail={error} />}
+    {(!error || partial) && !loading && (view === 'cards' ? <VirtualGrid className="media-grid" items={filtered} itemKey={(movie) => movie.id} renderItem={(movie) => <MovieCard movie={movie} selected={selected.has(movie.id)} onToggle={toggleSelected} onContext={openContext} busy={cardBusy === movie.id} onAction={onCardAction} />} /> : <MovieTable items={filtered} selected={selected} partial={partial} onToggle={toggleSelected} onSelectAll={selectAll} onClear={clear} onContext={openContext} onTagClick={updateTagFilter} />)}
+    {!error && !loading && !partial && !filtered.length && <EmptyState icon="clapper" title="No movies discovered yet" detail={tagFilter ? `No movies match the tag “${tagFilter}”.` : 'Add a Movie media folder, then scan it once to find your files.'} />}
     {context && <><div className="context-dismiss-layer" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null) }} /><LibraryContextMenu position={context} count={selected.size} noun="movie" onRemove={() => { setRemoving([...selected]); setContext(null) }} onClear={() => { clear(); setContext(null) }} /></>}
     {filtersOpen && <CustomFiltersModal mediaType="movies" noun="movies" filters={customFilters.filters} fields={filterFields} items={movies} onChanged={customFilters.setFilters} onApply={setFilter} onClose={() => setFiltersOpen(false)} />}
     {removing && <RemoveTitlesModal kind="movie" ids={removing} onClose={() => setRemoving(null)} onDone={(text) => { setRemoving(null); clear(); setMessage(text); void loadMovies() }} />}
@@ -207,11 +232,11 @@ const MovieCard = memo(function MovieCard({ movie, selected, onToggle, onContext
   </article>
 })
 
-function MovieTable({ items, selected, onToggle, onSelectAll, onClear, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onSelectAll: () => void; onClear: () => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) {
+function MovieTable({ items, selected, partial, onToggle, onSelectAll, onClear, onContext, onTagClick }: { items: Movie[]; selected: Set<string>; partial: boolean; onToggle: (id: string, modifiers?: SelectionModifiers) => void; onSelectAll: () => void; onClear: () => void; onContext: (event: React.MouseEvent, id: string) => void; onTagClick: (tag: string) => void }) {
   const plexAvailable = usePlexAvailable()
   const rows = useVirtualRows(items, plexAvailable ? 8 : 7)
   return <Panel className="table-panel"><table className="data-table media-table"><thead><tr>
-    <th className="select-cell"><SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all movies" onToggle={() => selected.size ? onClear() : onSelectAll()} /></th>
+    <th className="select-cell">{!partial && <SelectCheck inline checked={items.length > 0 && selected.size === items.length} mixed={selected.size > 0 && selected.size < items.length} label="all movies" onToggle={() => selected.size ? onClear() : onSelectAll()} />}</th>
     <th>Title</th><th>Edition</th><th>Quality</th><th>Status</th><th>qBittorrent</th>{plexAvailable && <th>Plex</th>}<th>Media folder</th>
   </tr></thead><tbody ref={rows.bodyRef}>{rows.before}{rows.visible.map((movie) => {
     const problems = movie.problemCount ?? 0

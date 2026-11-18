@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
 
 from app.api import blocklist, libraries, library, logs, replacements, backups, auth, bulk, custom_filters, custom_formats, discoveries, downloads, duplicates, health, indexers, jobs, movies, plex, problems, quality_profiles, reconciliation, recovery, search, shows, storage, tags, tasks, tmdb, torrent_archive, ui_selections, upgrades
 from app.core.config import Settings, ensure_runtime_secret, get_settings, set_settings
@@ -25,6 +26,7 @@ from app.db.bootstrap import (
 from app.db import session as db_session
 from app.db.session import configure_database
 from app.models.auth import AdminUser
+from app.models.domain import Library, MediaType
 from app.api.dependencies import require_admin
 from app.services.integration_state import ensure_configured_integration_states
 from app.services.qbittorrent import poll_due_download_clients
@@ -96,6 +98,7 @@ async def lifespan(_: FastAPI):
             await ensure_configured_integration_states(db)
             await ensure_default_schedules(db)
             await db.commit()
+            library_rows = (await db.execute(select(Library.id, Library.kind).order_by(Library.sort_order))).all()
     except Exception:
         # Seeding, interrupted-job recovery and default schedules all live
         # here. Serving requests without them means a half-initialized
@@ -108,7 +111,11 @@ async def lifespan(_: FastAPI):
     from app.services.media_watcher import run_media_watcher
     watcher_task = asyncio.create_task(run_media_watcher(stop_event))
     from app.services.shared_results import run_shared_results_refresher
-    results_task = asyncio.create_task(run_shared_results_refresher(stop_event))
+    library_results = dict(
+        movies.movie_list_result(library_id) if kind == MediaType.MOVIES else shows.show_list_result(library_id)
+        for library_id, kind in library_rows
+    )
+    results_task = asyncio.create_task(run_shared_results_refresher(stop_event, extra_pins=library_results))
     try:
         yield
     finally:
