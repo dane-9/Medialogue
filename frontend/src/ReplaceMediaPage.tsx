@@ -571,7 +571,12 @@ export default function ReplaceMediaPage() {
                         <span className="upgrade-v2-seeds">{(swarm === 'dead' || swarm === 'weak')
                           ? <Tooltip content={`${item.seeders ?? 0} seeders: this release may be slow or impossible to download.`}><span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span></Tooltip>
                           : <span className={`release-pill release-pill-swarm swarm-${swarm}`}>{formatPeers(item.seeders, item.leechers)}</span>}</span>
-                        <span className="upgrade-v2-size upgrade-fact">{item.candidate_size != null ? formatBytes(item.candidate_size) : '-'}</span>
+                        <span className="upgrade-v2-size upgrade-fact">
+                          <Tooltip asChild content={item.candidate_published_at ? new Date(item.candidate_published_at).toLocaleString() : 'This indexer reported no publication date'}>
+                            <span className="upgrade-v2-age">{formatAge(item.candidate_published_at)}</span>
+                          </Tooltip>
+                          {item.candidate_size != null ? formatBytes(item.candidate_size) : '-'}
+                        </span>
                         <span className="upgrade-v2-size-change upgrade-fact">{sizeDelta !== undefined && sizeDelta !== 0 && <em className={sizeDelta > 0 ? 'size-up' : 'size-down'} aria-label={`${sizeDelta > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(sizeDelta))}`}><Icon name="caret" size={10} />{formatBytes(Math.abs(sizeDelta))}</em>}</span>
                       </>}
                   </div>

@@ -9500,6 +9500,18 @@
             "title": "Candidate Matched Formats",
             "type": "array"
           },
+          "candidate_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Published At"
+          },
           "candidate_quality": {
             "anyOf": [
               {

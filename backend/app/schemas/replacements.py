@@ -60,6 +60,8 @@ class ReplacementItem(BaseModel):
     candidate_quality: str | None = None
     candidate_score: int | None = None
     candidate_size: int | None = None
+    #: When the indexer published the replacement release.
+    candidate_published_at: datetime | None = None
     #: The lost release's size, from its torrents, so the size change shows.
     current_size: int | None = None
     seeders: int | None = None

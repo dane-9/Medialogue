@@ -6426,6 +6426,8 @@ export interface components {
             candidate_id?: string | null;
             /** Candidate Matched Formats */
             candidate_matched_formats?: components["schemas"]["UpgradeMatchedFormat"][];
+            /** Candidate Published At */
+            candidate_published_at?: string | null;
             /** Candidate Quality */
             candidate_quality?: string | null;
             /** Candidate Score */
