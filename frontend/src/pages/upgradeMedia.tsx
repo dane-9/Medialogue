@@ -29,6 +29,7 @@ import { upgradesApi } from '../api/modules/upgrades'
 import type { DownloadClient, InteractiveSearchResult, QualityProfile, UpgradeCandidate, UpgradeCleanupPreview, UpgradeMatchedFormat, UpgradeSearchResults } from '../types'
 import { MIXED_PROFILE, Page, defaultProfileLabel, libraryInvalidationEvents, tmdbPosterUrl } from './shared'
 import { useLiveEvent, useLiveRefresh } from '../lib/liveRefresh'
+import { useFreshLoad } from '../lib/freshness'
 import { HeadCheck } from '../components/SelectionBar'
 
 // The category picker's choice for a batch whose titles sit in folders with different categories.
@@ -198,10 +199,12 @@ export function UpgradeMediaPage() {
 
   // `quiet`: no loading state (a cached list is showing, or a live refresh).
   // Live refreshes also keep errors quiet; the first load always reports them.
+  // Only the newest read, and none a change overtook, reaches the list.
+  const fresh = useFreshLoad()
   const load = async (quiet = false, reportError = !quiet) => {
     if (!quiet) setLoading(true)
     try {
-      const [nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout] = await Promise.all([upgradesApi.upgradeCandidates(), integrationsApi.downloadClients(), settingsApi.qualityProfiles(), upgradesApi.upgradeCandidateCount(), settingsApi.customFormats(), settingsApi.customFormatLayout()])
+      await fresh(() => Promise.all([upgradesApi.upgradeCandidates(), integrationsApi.downloadClients(), settingsApi.qualityProfiles(), upgradesApi.upgradeCandidateCount(), settingsApi.customFormats(), settingsApi.customFormatLayout()]), ([nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout]) => {
       rememberList('upgradeMedia', nextItems)
       setItems(nextItems)
       pruneExcluded(nextItems.map((item) => item.id))
@@ -216,6 +219,7 @@ export function UpgradeMediaPage() {
       }))))
       setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
       setError('')
+      })
     } catch (reason) {
       if (reportError) setError(reason instanceof Error ? reason.message : 'Could not load upgrade candidates.')
     } finally {
@@ -232,10 +236,11 @@ export function UpgradeMediaPage() {
   const loadLiveRef = useRef(async () => {})
   loadLiveRef.current = async () => {
     try {
-      const [nextItems, nextCount] = await Promise.all([upgradesApi.upgradeCandidates(), upgradesApi.upgradeCandidateCount()])
-      rememberList('upgradeMedia', nextItems)
-      setItems(nextItems)
-      setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
+      await fresh(() => Promise.all([upgradesApi.upgradeCandidates(), upgradesApi.upgradeCandidateCount()]), ([nextItems, nextCount]) => {
+        rememberList('upgradeMedia', nextItems)
+        setItems(nextItems)
+        setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
+      })
     } catch {
       // A missed refresh is retried by the next event or the poll.
     }

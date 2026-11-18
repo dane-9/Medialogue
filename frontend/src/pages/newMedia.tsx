@@ -11,6 +11,7 @@ import { systemApi } from '../api/modules/system'
 import { moviesApi } from '../api/modules/movies'
 import { settingsApi } from '../api/modules/settings'
 import type { Job, MediaDiscovery, QualityProfile } from '../types'
+import { useFreshLoad } from '../lib/freshness'
 import { CUSTOM_EDITION, EditionDraft, MIXED_PROFILE, Page, THEATRICAL_EDITION, TMDBCandidate, defaultProfileLabel, editionChoices, editionUpdate, libraryListEvents, tmdbPosterUrl, useLiveLibraryRefresh } from './shared'
 import { HeadCheck } from '../components/SelectionBar'
 
@@ -43,14 +44,18 @@ export function NewMediaPage() {
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [profileBusy, setProfileBusy] = useState(false)
 
+  // Only the newest read, and none a change overtook, reaches the list: a
+  // refresh that started before a match was changed must not put the old one back.
+  const fresh = useFreshLoad()
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true)
     try {
-      const next = await discoveryApi.discoveries()
-      rememberList('newMedia', next)
-      setItems(next)
-      pruneExcluded(next.map((item) => item.id))
-      setError('')
+      await fresh(() => discoveryApi.discoveries(), (next) => {
+        rememberList('newMedia', next)
+        setItems(next)
+        pruneExcluded(next.map((item) => item.id))
+        setError('')
+      })
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load New Media.') }
     finally { if (!quiet) setLoading(false) }

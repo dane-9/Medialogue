@@ -31,6 +31,7 @@ import { VirtualGrid, useVirtualRows } from '../components/VirtualList'
 import type { IncomingDownload, Library, MediaProfileSettings, Movie, MovieRelease, QualityDefinition, QualityProfile, ReconciliationEvidence, ReleaseState, TorrentArchiveItem, Tag } from '../types'
 import { MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 import { useLiveEvent } from '../lib/liveRefresh'
+import { useFreshLoad } from '../lib/freshness'
 import { formatEta } from '../api/mappers/downloads'
 import { IncomingReleaseRow, useLiveDownloads, withLiveUpdate } from '../components/IncomingDownload'
 
@@ -68,8 +69,10 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
     setError('')
   }
 
+  // Only the newest read, and none a change overtook, reaches the list.
+  const fresh = useFreshLoad()
   const loadMovies = async () => {
-    try { applyMovies(await moviesApi.movies('', tagFilter, sort, libraryId)) }
+    try { await fresh(() => moviesApi.movies('', tagFilter, sort, libraryId), applyMovies) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load movies.') }
     finally { setLoading(false) }
   }
@@ -81,7 +84,7 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
     let alive = true
     const cached = cachedList<Movie>(moviesKey(libraryId, tagFilter, sort))
     if (cached) { setMovies((current) => reuseUnchanged(current, cached)); setLoading(false) }
-    moviesApi.movies('', tagFilter, sort, libraryId).then((items) => { if (alive) applyMovies(items) })
+    fresh(() => moviesApi.movies('', tagFilter, sort, libraryId), (items) => { if (alive) applyMovies(items) })
       .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : 'Could not load movies.') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
@@ -307,7 +310,8 @@ function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
   return evidence
 }
 
-function MovieProfilePanel({ resourceId }: { resourceId: string }) {
+/** ``onSaved``: the page re-reads the movie, whose release scores the save re-evaluated. */
+function MovieProfilePanel({ resourceId, onSaved }: { resourceId: string; onSaved?: () => void }) {
   const [settings, setSettings] = useState<MediaProfileSettings | null>(null)
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [qualities, setQualities] = useState<QualityDefinition[]>([])
@@ -341,6 +345,7 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
         expected_revision: settings?.revision ?? 0,
       })
       setSettings(value); setMessage('Profile saved. Stored release scores were re-evaluated.')
+      onSaved?.()
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save profile settings.') }
     finally { setBusy(false) }
   }
@@ -394,8 +399,9 @@ export function MovieDetailPage({ id }: { id: string }) {
     // reopen the search dialog.
     setDetailSearchParams((current) => { const next = new URLSearchParams(current); next.delete('search'); return next }, { replace: true })
   }, [id, openSearchFromQuery, setDetailSearchParams])
+  const fresh = useFreshLoad()
   const load = async (reportError = true) => {
-    try { setMovie(await moviesApi.movie(id)); if (reportError) setError('') }
+    try { if (await fresh(() => moviesApi.movie(id), setMovie) && reportError) setError('') }
     catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Movie not found.') }
   }
   useEffect(() => { void load() }, [id])
@@ -495,7 +501,7 @@ export function MovieDetailPage({ id }: { id: string }) {
           </div>
         </div>
       </Panel>
-      <MovieProfilePanel resourceId={id} />
+      <MovieProfilePanel resourceId={id} onSaved={() => void load(false)} />
       </div>
       {/* Problems appear only when there are problems. A titled panel saying
           nothing is wrong was the common case and pure furniture. */}

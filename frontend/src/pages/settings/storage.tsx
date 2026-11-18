@@ -28,7 +28,12 @@ export function StorageSettings() {
   const [roots, setRoots] = useState<StorageRoot[]>([])
   // Multiple progress events can overlap REST reads. Only the newest root
   // snapshot may win, otherwise a slow stale response can resurrect Scanning.
+  // Every read and every local change of the list takes a new number; a read
+  // applies only if nothing newer happened meanwhile, so a poll that started
+  // before a save or a drag cannot put the old list back.
   const rootsLoadGeneration = useRef(0)
+  const dragging = useRef(false)
+  const claimRoots = () => { rootsLoadGeneration.current += 1 }
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mappings, setMappings] = useState<RemotePathMapping[]>([])
   const [clients, setClients] = useState<DownloadClient[]>([])
@@ -68,7 +73,7 @@ export function StorageSettings() {
     const generation = ++rootsLoadGeneration.current
     try {
       const nextRoots = await storageApi.storageRoots()
-      if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
+      if (generation === rootsLoadGeneration.current && !dragging.current) setRoots(nextRoots)
     } catch (reason) {
       if (generation === rootsLoadGeneration.current) setMessage(failed(reason, 'Could not load media folder state.'))
     }
@@ -77,7 +82,7 @@ export function StorageSettings() {
     const generation = ++rootsLoadGeneration.current
     try {
       const [nextRoots, nextMappings, nextClients] = await Promise.all([storageApi.storageRoots(), integrationsApi.remotePathMappings(), integrationsApi.downloadClients()])
-      if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
+      if (generation === rootsLoadGeneration.current && !dragging.current) setRoots(nextRoots)
       setMappings(nextMappings); setClients(nextClients)
       setMappingRootId((value) => value || nextRoots[0]?.id || '')
     } catch (reason) { setMessage(failed(reason, 'Could not load storage configuration.')) }
@@ -87,7 +92,7 @@ export function StorageSettings() {
   useEffect(() => {
     const generation = ++rootsLoadGeneration.current
     storageApi.checkStorageRootHealth().then((nextRoots) => {
-      if (generation === rootsLoadGeneration.current) setRoots(nextRoots)
+      if (generation === rootsLoadGeneration.current && !dragging.current) setRoots(nextRoots)
     }).catch(() => undefined)
   }, [])
   useEffect(() => { storageApi.librarySummary().then(setSummary).catch(() => undefined) }, [])
@@ -174,6 +179,7 @@ export function StorageSettings() {
       if (saved.discovery_mode !== requestedDiscoveryMode) {
         throw new Error('The backend did not save the New Media setting. Restart the backend and try again.')
       }
+      claimRoots()
       setRoots((items) => selectedRoot ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved])
       setMappingRootId((value) => value || saved.id); setRootBaseline(null); setRootModalOpen(false)
       if (selectedRoot) {
@@ -231,6 +237,7 @@ export function StorageSettings() {
       try {
         await storageApi.deleteStorageRoot(root.id, removeEntries)
         if (removeEntries) window.dispatchEvent(new Event('medialogue-new-media-changed'))
+        claimRoots()
         setRoots((items) => items.filter((item) => item.id !== root.id))
       setRemoving(null)
       setRootModalOpen(false)
@@ -289,6 +296,7 @@ export function StorageSettings() {
 
   function dragOverRoot(index: number) {
     if (dragIndex === null || dragIndex === index) return
+    claimRoots()
     setRoots((items) => moveItem(items, dragIndex, index))
     setDragIndex(index)
   }
@@ -296,9 +304,15 @@ export function StorageSettings() {
   async function commitRootOrder() {
     const wasDragging = dragIndex !== null
     setDragIndex(null)
+    dragging.current = false
     if (!wasDragging) return
     const ids = roots.map((root) => root.id)
-    try { setRoots(await storageApi.reorderStorageRoots(ids)) }
+    claimRoots()
+    const generation = rootsLoadGeneration.current
+    try {
+      const saved = await storageApi.reorderStorageRoots(ids)
+      if (generation === rootsLoadGeneration.current) setRoots(saved)
+    }
     // The list already shows the new order, so a failed save must put the
     // stored order back rather than leave the two disagreeing.
     catch { setRoots(await storageApi.storageRoots().catch(() => roots)) }
@@ -357,7 +371,7 @@ export function StorageSettings() {
           : { tone: 'green' as const, text: `Scanned ${formatAge(root.last_scan_at)}` }
         return <button type="button" className={`root-row ${root.enabled ? '' : 'root-row-disabled'} ${dragIndex === index ? 'root-row-dragging' : ''}`} key={root.id} onClick={() => editRoot(root)}
           draggable
-          onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; setDragIndex(index) }}
+          onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; dragging.current = true; claimRoots(); setDragIndex(index) }}
           onDragOver={(event) => { event.preventDefault(); dragOverRoot(index) }}
           onDragEnd={() => void commitRootOrder()}
           onDrop={(event) => { event.preventDefault(); void commitRootOrder() }}>

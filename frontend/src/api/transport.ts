@@ -1,4 +1,5 @@
 import createClient, { type Middleware } from 'openapi-fetch'
+import { noteChange } from '../lib/freshness'
 import type { ApiErrorShape } from '../types'
 import type { paths } from './generated/schema'
 
@@ -73,9 +74,15 @@ function announceDataChanged() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(DATA_CHANGED_EVENT))
 }
 
+/** A request that changes data. Remembered ticks change nothing a page lists. */
+function countsAsChange(request: Request): boolean {
+  return needsCsrf(request.method) && !new URL(request.url).pathname.includes('/ui-selections/')
+}
+
 const transportMiddleware: Middleware = {
   async onRequest({ request }) {
     request.headers.set('Accept', 'application/json')
+    if (countsAsChange(request)) noteChange()
     if (needsCsrf(request.method)) {
       const csrf = await ensureCsrf()
       if (csrf) request.headers.set('X-CSRF-Token', csrf)
@@ -83,6 +90,7 @@ const transportMiddleware: Middleware = {
     return request
   },
   async onResponse({ request, response }) {
+    if (countsAsChange(request)) noteChange()
     if (!response.ok) throw await apiErrorFromResponse(response)
     // Remembered ticks change no count; they would only refresh every badge per click.
     if (needsCsrf(request.method) && !new URL(request.url).pathname.includes('/ui-selections/')) announceDataChanged()
@@ -94,7 +102,9 @@ export async function uploadFile<T>(url: string, file: Blob): Promise<T> {
   const headers = new Headers({ Accept: 'application/json', 'Content-Type': file.type || 'application/octet-stream' })
   const csrf = await ensureCsrf()
   if (csrf) headers.set('X-CSRF-Token', csrf)
+  noteChange()
   const response = await fetch(url, { method: 'POST', credentials: 'include', headers, body: file })
+  noteChange()
   if (!response.ok) throw await apiErrorFromResponse(response)
   announceDataChanged()
   return await response.json() as T

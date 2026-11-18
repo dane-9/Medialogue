@@ -12,6 +12,7 @@ import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/u
 import { Modal } from '../components/Modal'
 import { profileFormChanged } from '../lib/profileForm'
 import { TorrentHistoryPanel } from '../components/TorrentHistoryPanel'
+import { useFreshLoad } from '../lib/freshness'
 import { IncomingReleaseRow, useLiveDownloads, withLiveUpdate } from '../components/IncomingDownload'
 import { CustomFiltersModal, LibraryFilterMenu, useCustomFilters } from '../components/CustomFilters'
 import { showFilterFields } from '../lib/libraryFilterFields'
@@ -58,9 +59,11 @@ export function ShowsPage({ library }: { library?: Library } = {}) {
   const customFilters = useCustomFilters('shows', showFilterFields, filter)
   // A saved filter deleted elsewhere leaves nothing to apply.
   useEffect(() => { if (customFilters.isCustom && customFilters.filters.length && !customFilters.active) setFilter('All') }, [customFilters.isCustom, customFilters.active, customFilters.filters.length])
+  // Only the newest read, and none a change overtook, reaches the list.
+  const fresh = useFreshLoad()
   const load = async (foreground = true) => {
     if (foreground) setLoading(true)
-    try { const next = await showsApi.shows('', sort, libraryId); rememberList(`shows:${libraryId}:${sort}`, next); setItems((current) => reuseUnchanged(current, next)); setError('') }
+    try { await fresh(() => showsApi.shows('', sort, libraryId), (next) => { rememberList(`shows:${libraryId}:${sort}`, next); setItems((current) => reuseUnchanged(current, next)); setError('') }) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load shows.') }
     finally { if (foreground) setLoading(false) }
   }
@@ -196,7 +199,8 @@ export function ShowDetailPage({ id }: { id: string }) {
   const [mappingEpisodeIds, setMappingEpisodeIds] = useState<string[]>([])
   const [orderingOpen, setOrderingOpen] = useState(false)
   const [searching, setSearching] = useState<Season | null>(null)
-  const load = async (reportError = true) => { try { setShow(await showsApi.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
+  const fresh = useFreshLoad()
+  const load = async (reportError = true) => { try { if (await fresh(() => showsApi.show(id), setShow) && reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
   useEffect(() => { void load() }, [id])
   useLiveLibraryRefresh(() => load(false))
   // Each season's download moves in place, every couple of seconds.
@@ -234,7 +238,22 @@ export function ShowDetailPage({ id }: { id: string }) {
     finally { setBusy(false) }
   }
   const setShowMonitored = async (monitored: boolean) => { if (!show) return; setBusy(true); try { await showsApi.updateShow(id, { monitored, expected_revision: show.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update monitoring.') } finally { setBusy(false) } }
-  const setSeasonMonitored = async (season: Season, monitored: boolean) => { try { await showsApi.updateSeason(season.id, { monitored, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season monitoring.') } }
+  // Toggles show at once and are saved behind. They set a value rather than
+  // edit one, so no revision is sent: monitoring a season bumps every episode's
+  // revision, and a second click before the reload then failed as a conflict.
+  const patchSeason = (seasonId: string, change: (season: Season) => Season) => setShow((current) => current?.seasonDetail
+    ? { ...current, seasonDetail: current.seasonDetail.map((season) => season.id === seasonId ? change(season) : season) }
+    : current)
+  const saveToggle = async (apply: () => void, save: () => Promise<unknown>, failure: string) => {
+    apply()
+    try { await save() } catch (reason) { setMessage(reason instanceof Error ? reason.message : failure) }
+    await load(false)
+  }
+  const setSeasonMonitored = (season: Season, monitored: boolean) => saveToggle(
+    () => patchSeason(season.id, (item) => ({ ...item, monitored, episodes: item.episodes.map((episode) => ({ ...episode, monitored })) })),
+    () => showsApi.updateSeason(season.id, { monitored }),
+    'Could not update season monitoring.',
+  )
   const [orderings, setOrderings] = useState<EpisodeOrdering[] | null>(null)
   const [orderingBusy, setOrderingBusy] = useState(false)
 
@@ -267,8 +286,16 @@ export function ShowDetailPage({ id }: { id: string }) {
     finally { setOrderingBusy(false) }
   }
 
-  const setSeasonCounted = async (season: Season, counted: boolean) => { try { await showsApi.updateSeason(season.id, { counted, expected_revision: season.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update season counting.') } }
-  const setEpisodeMonitored = async (episode: Episode, monitored: boolean) => { try { await showsApi.updateEpisode(episode.id, { monitored, expected_revision: episode.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update episode monitoring.') } }
+  const setSeasonCounted = (season: Season, counted: boolean) => saveToggle(
+    () => patchSeason(season.id, (item) => ({ ...item, counted })),
+    () => showsApi.updateSeason(season.id, { counted }),
+    'Could not update season counting.',
+  )
+  const setEpisodeMonitored = (episode: Episode, monitored: boolean) => saveToggle(
+    () => setShow((current) => current?.seasonDetail ? { ...current, seasonDetail: current.seasonDetail.map((season) => season.seasonNumber !== episode.seasonNumber ? season : { ...season, episodes: season.episodes.map((entry) => entry.id === episode.id ? { ...entry, monitored } : entry) }) } : current),
+    () => showsApi.updateEpisode(episode.id, { monitored }),
+    'Could not update episode monitoring.',
+  )
   const editMapping = (media: EpisodeMedia, season: Season) => { const selected = season.episodes.filter((episode) => media.mappedEpisodeNumbers.includes(episode.episodeNumber)).map((episode) => episode.id); setMappingEpisodeIds(selected); setMappingEditor({ media, season }) }
   const saveMapping = async () => { if (!mappingEditor || !mappingEpisodeIds.length) return; setBusy(true); try { await showsApi.correctEpisodeMapping(mappingEditor.media.mediaFileId, mappingEpisodeIds); setMessage('Episode mapping corrected. The media file and path were not changed.'); setMappingEditor(null); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not correct episode mapping.') } finally { setBusy(false) } }
   const seasons = show?.seasonDetail ?? []
@@ -326,7 +353,7 @@ export function ShowDetailPage({ id }: { id: string }) {
           </div>
         </div>
       </Panel>
-      <ShowProfilePanel resourceId={id} />
+      <ShowProfilePanel resourceId={id} onSaved={() => void load(false)} />
       </div>
       {problems.length > 0 && <Panel title="Problems" note={`${problems.length} NEED ATTENTION`}>
         {problems.map((item, index) => <div className="problem-mini problem-mini-alert" key={item.id ?? `${item.code}-${index}`}>
@@ -400,7 +427,8 @@ export function ShowDetailPage({ id }: { id: string }) {
   </Page>
 }
 
-function ShowProfilePanel({ resourceId }: { resourceId: string }) {
+/** ``onSaved``: the page re-reads the show, whose release scores the save re-evaluated. */
+function ShowProfilePanel({ resourceId, onSaved }: { resourceId: string; onSaved?: () => void }) {
   const [settings, setSettings] = useState<MediaProfileSettings | null>(null)
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [qualities, setQualities] = useState<QualityDefinition[]>([])
@@ -410,7 +438,7 @@ function ShowProfilePanel({ resourceId }: { resourceId: string }) {
   const [message, setMessage] = useState('')
   const load = async () => { try { const [value, profileRows, qualityRows] = await Promise.all([settingsApi.showProfileSettings(resourceId), settingsApi.qualityProfiles(), settingsApi.qualityDefinitions()]); setSettings(value); setProfiles(profileRows); setQualities(qualityRows); setProfileId(value.qualityProfileInherited ? '' : value.qualityProfileId ?? ''); setMinimumOverrideId(value.minimumQualityOverridden ? value.minimumQuality?.id ?? '' : ''); setMinimumScoreOverride(value.minimumCustomFormatScoreOverridden && value.minimumCustomFormatScore !== undefined ? String(value.minimumCustomFormatScore) : '') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load Show profile.') } }
   useEffect(() => { void load() }, [resourceId])
-  const save = async () => { try { const value = await settingsApi.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride), custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
+  const save = async () => { try { const value = await settingsApi.saveShowProfileSettings(resourceId, { quality_profile_id: profileId || null, minimum_quality_definition_override_id: minimumOverrideId || null, minimum_custom_format_score_override: minimumScoreOverride === '' ? null : Number(minimumScoreOverride), custom_format_score_overrides: Object.fromEntries((settings?.customFormatScores ?? []).filter((item) => item.overrideScore !== undefined).map((item) => [item.customFormatId, item.overrideScore ?? 0])), expected_revision: settings?.revision ?? 0 }); setSettings(value); setMessage('Show Quality Profile saved.'); onSaved?.() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not save Show profile.') } }
   const dirty = profileFormChanged(settings, { profileId, minimumOverrideId, minimumScoreOverride })
   return <Panel className="profile-panel">
     <div className="settings-form profile-form">

@@ -18,6 +18,7 @@ import { formatBytes, ReleaseResults } from './components/ReleaseResults'
 import { tmdbPosterUrl } from './pages/shared'
 import { UpgradeCompare } from './pages/upgradeMedia'
 import { formatAge } from './lib/age'
+import { useFreshLoad } from './lib/freshness'
 import { loadHiddenReasons, lostPillLabel, reasonShown, replaceReasonDetail, REPLACE_REASONS, saveHiddenReasons, type ReplaceReasonCode } from './lib/replaceReason'
 import { systemApi } from './api/modules/system'
 import { badgeColor } from './lib/badgeColor'
@@ -107,6 +108,8 @@ export default function ReplaceMediaPage() {
   const [resultsTarget, setResultsTarget] = useState<ReplacementItem | null>(null)
   const [results, setResults] = useState<UpgradeSearchResults | null>(null)
   const [fullSelectedId, setFullSelectedId] = useState('')
+  const [choosing, setChoosing] = useState(false)
+  const [resultsError, setResultsError] = useState('')
   // Downloading asks which client takes each kind of media first.
   const [confirming, setConfirming] = useState(false)
   const [clientFor, setClientFor] = useState<Record<MediaKind, string>>({ movies: '', shows: '' })
@@ -114,14 +117,23 @@ export default function ReplaceMediaPage() {
   const [resolveTarget, setResolveTarget] = useState<ReplacementItem | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
 
+  // Only the newest read, and none a change overtook, reaches the list.
+  const fresh = useFreshLoad()
+  // A title's ticks are only forgotten once two reads in a row leave it out,
+  // so one read that misses it cannot drop a choice for good.
+  const lastKeys = useRef<string[]>([])
   const load = async () => {
     try {
-      const [queue, configured] = await Promise.all([replacementsApi.queue(), integrationsApi.downloadClients()])
-      rememberList('replaceMedia', queue.items)
-      setItems(queue.items)
-      prunePicked(queue.items.map((item) => item.target_key))
-      pruneUnticked(queue.items.map((item) => item.target_key))
-      setClients(configured)
+      await fresh(() => Promise.all([replacementsApi.queue(), integrationsApi.downloadClients()]), ([queue, configured]) => {
+        rememberList('replaceMedia', queue.items)
+        setItems(queue.items)
+        const keys = queue.items.map((item) => item.target_key)
+        const keep = [...keys, ...lastKeys.current]
+        lastKeys.current = keys
+        prunePicked(keep)
+        pruneUnticked(keep)
+        setClients(configured)
+      })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load Replace Media.')
     } finally { setLoading(false) }
@@ -276,7 +288,7 @@ export default function ReplaceMediaPage() {
 
   // Searches the trackers again for this title, then lists every release.
   const openResults = async (item: ReplacementItem) => {
-    setResultsTarget(item); setResults(null); setError('')
+    setResultsTarget(item); setResults(null); setError(''); setResultsError('')
     try {
       const value = await replacementsApi.searchNow(item.target_key)
       setResults(value)
@@ -289,11 +301,26 @@ export default function ReplaceMediaPage() {
     }
   }
 
-  // A search where nothing qualified kept no candidate; picking one keeps it.
-  const chooseResult = (candidateId: string | null | undefined, targetKey: string, resultId: string) => act('choose', async () => {
-    if (candidateId) await upgradesApi.selectUpgradeSearchResult(candidateId, resultId)
-    else await replacementsApi.pick(targetKey, resultId)
-  })
+  // The dialog stays open until the pick is saved, and says there if it was not:
+  // closing at once left the row on its old release for the seconds a pick
+  // without a kept candidate takes (it searches the trackers again), and hid
+  // a failure at the top of the page. A search where nothing qualified kept no
+  // candidate; picking one keeps it.
+  const confirmResult = async () => {
+    if (!results || !resultsTarget || !fullSelectedId) return
+    const target = resultsTarget
+    const picked = results.results.find((entry) => entry.id === fullSelectedId)
+    setChoosing(true); setResultsError('')
+    try {
+      if (results.candidateId) await upgradesApi.selectUpgradeSearchResult(results.candidateId, fullSelectedId)
+      else await replacementsApi.pick(target.target_key, fullSelectedId)
+      setResultsTarget(null)
+      setMessage(`${target.title} will be replaced with ${picked?.title ?? 'the chosen release'}.`)
+      await load()
+    } catch (reason) {
+      setResultsError(reason instanceof Error ? reason.message : 'Could not use that result.')
+    } finally { setChoosing(false) }
+  }
 
   const toDownload = chosen.filter(downloadable)
   const kindsToDownload = [...new Set(toDownload.map((item) => (item.media_type ?? 'movies') as MediaKind))]
@@ -688,9 +715,10 @@ export default function ReplaceMediaPage() {
       titleSuffix={resultsTarget.year ? <span className="upgrade-results-title-year"> ({resultsTarget.year})</span> : undefined}
       eyebrow={resultsTarget.season_number != null ? `SEASON ${resultsTarget.season_number}` : 'REPLACE MEDIA'}
       className="upgrade-results-modal"
-      onClose={() => setResultsTarget(null)}
-      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Searching the trackers…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" icon="refresh" disabled={!results} onClick={() => { if (resultsTarget) void openResults(resultsTarget) }}>{results ? 'Search again' : 'Searching…'}</Button><Button variant="ghost" onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={!fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.selectable} onClick={() => { if (results && resultsTarget) void chooseResult(results.candidateId, resultsTarget.target_key, fullSelectedId); setResultsTarget(null) }}>Use this result</Button></>}
+      onClose={() => { if (!choosing) setResultsTarget(null) }}
+      footer={<><span className="wizard-foot-count">{results ? `${results.results.length} Torrent${results.results.length === 1 ? '' : 's'} found` : 'Searching the trackers…'}</span><span className="modal-foot-spacer" /><Button variant="ghost" icon="refresh" disabled={!results || choosing} onClick={() => { if (resultsTarget) void openResults(resultsTarget) }}>{results ? 'Search again' : 'Searching…'}</Button><Button variant="ghost" disabled={choosing} onClick={() => setResultsTarget(null)}>Cancel</Button><Button variant="primary" icon="check" disabled={choosing || !fullSelectedId || !results?.results.find((result) => result.id === fullSelectedId)?.selectable} onClick={() => void confirmResult()}>{choosing ? (results?.candidateId ? 'Saving…' : 'Checking the trackers…') : 'Use this result'}</Button></>}
     >
+      {resultsError && <div className="settings-note error-note"><Icon name="alert" size={15} /><span>{resultsError}</span></div>}
       <div className="upgrade-results-current">
         {(() => {
           const { resolution, type } = splitQuality(resultsTarget.current_quality ?? undefined)

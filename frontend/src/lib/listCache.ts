@@ -3,7 +3,11 @@
 // blank page for as long as the server takes. The default Movies and Shows
 // views are also saved in the browser, so this works after a reload too.
 
+import { lastChangeTime } from './freshness'
+
 const lists = new Map<string, unknown[]>()
+// When each list was last loaded in this tab; one restored from the browser has none.
+const rememberedAt = new Map<string, number>()
 
 // The default view of each library: movies:<library>::title, shows:<library>:title.
 const persisted = (key: string) => /^movies:[^:]*::title$/.test(key) || /^shows:[^:]*:title$/.test(key)
@@ -47,12 +51,15 @@ export function hydrateListCache(): Promise<void> {
   return Promise.race([reading, new Promise<void>((resolve) => { window.setTimeout(resolve, HYDRATE_TIMEOUT_MS) })])
 }
 
+/** The last loaded copy, unless something was changed since: then it may be out of date and the page loads afresh. */
 export function cachedList<T>(key: string): T[] | undefined {
+  if ((rememberedAt.get(key) ?? 0) < lastChangeTime()) return undefined
   return lists.get(key) as T[] | undefined
 }
 
 export function rememberList<T>(key: string, items: T[]): void {
   lists.set(key, items)
+  rememberedAt.set(key, Date.now())
   if (!canPersist() || !persisted(key)) return
   window.clearTimeout(saves.get(key))
   saves.set(key, window.setTimeout(() => {
@@ -65,6 +72,7 @@ export function rememberList<T>(key: string, items: T[]): void {
 /** Forget every list, here and in the browser (on sign-out, and between tests). */
 export function clearListCache(): void {
   lists.clear()
+  rememberedAt.clear()
   saves.forEach((timer) => window.clearTimeout(timer))
   saves.clear()
   if (canPersist()) void withStore('readwrite', (store) => result(store.clear())).catch(() => undefined)
