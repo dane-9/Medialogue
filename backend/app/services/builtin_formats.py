@@ -494,7 +494,9 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     "attr-repack-proper": 20,
     "attr-proper": 18,
     "attr-rerip": 16,
-    "attr-hybrid": -5,
+    # Hybrid only breaks a tie between otherwise equal releases: it stays
+    # below the 5-point nudges, so a hybrid DV HDR10+ still beats DV HDR10.
+    "attr-hybrid": -2,
     "attr-internal-limited": 0,
     "attr-re-encode": -40,
     "web-amzn": 0,
@@ -514,7 +516,7 @@ DEFAULT_FORMAT_SCORES: dict[str, int] = {
     **{f"group-{tier}": _RELEASE_GROUP_TIER_SCORES[tier.rsplit("-", 1)[1]] for tier in _RELEASE_GROUP_TIERS},
 }
 #: Bumped whenever DEFAULT_FORMAT_SCORES changes.
-DEFAULT_FORMAT_SCORES_VERSION = 4
+DEFAULT_FORMAT_SCORES_VERSION = 5
 
 
 if set(DEFAULT_FORMAT_SCORES) != BUILTIN_KEYS:

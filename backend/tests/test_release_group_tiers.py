@@ -130,7 +130,7 @@ def test_every_spelling_of_dv_with_hdr10_plus_is_one_format(title) -> None:
 
 
 def test_hybrid_and_no_group_scores() -> None:
-    assert DEFAULT_FORMAT_SCORES["attr-hybrid"] == -5
+    assert DEFAULT_FORMAT_SCORES["attr-hybrid"] == -2
     assert DEFAULT_FORMAT_SCORES["attr-no-group"] == -5
 
 
@@ -164,6 +164,50 @@ def test_an_existing_default_profile_moves_banned_groups_to_their_penalty_once(c
             assert await refresh_default_profile_scores(db) == 0
             await db.refresh(row)
             assert row.score == -5
+
+    asyncio.run(scenario())
+
+
+def test_a_hybrid_dv_hdr10_plus_outscores_a_plain_dv_hdr10() -> None:
+    formats = [
+        EvaluationFormat.from_dict({"id": item.key, "name": item.key, "description": "", "enabled": True,
+                                    "condition_definition": condition_definition(item, supersedes=item.supersedes)})
+        for item in BUILTIN_FORMATS
+    ]
+    scores = {item.id: DEFAULT_FORMAT_SCORES[item.id] for item in formats}
+
+    def total(title: str) -> int:
+        return evaluate_custom_formats(formats, parse_release(title), profile_scores=scores, score_overrides={}, context={}).total_score
+
+    assert total("Backrooms 2026 Hybrid 2160p UHD BluRay REMUX DV HDR10+ HEVC TrueHD 7.1 Atmos-CiNEPHiLES") > total(
+        "Backrooms 2026 2160p UHD BluRay REMUX DV HDR HEVC TrueHD 7.1 Atmos-CiNEPHiLES")
+
+
+def test_an_existing_default_profile_moves_hybrid_to_a_tie_breaker_once(client) -> None:  # noqa: F811
+    async def scenario():
+        async with db_session.async_session_factory() as db:
+            await ensure_builtin_custom_formats(db)
+            await ensure_default_quality_profile(db)
+            profile = await db.scalar(select(QualityProfile).where(QualityProfile.name == "Default"))
+            hybrid_id = await db.scalar(select(CustomFormat.id).where(CustomFormat.builtin_key == "attr-hybrid"))
+            row = await db.scalar(select(ProfileCustomFormatScore).where(
+                ProfileCustomFormatScore.profile_id == profile.id, ProfileCustomFormatScore.custom_format_id == hybrid_id))
+            row.score = -5
+            profile.settings = {**profile.settings, "default_scores_version": 4}
+            await db.commit()
+
+            assert await refresh_default_profile_scores(db) == 1
+            await db.commit()
+            await db.refresh(row)
+            assert row.score == -2
+
+            # A score the user picked themselves is left alone.
+            row.score = -20
+            profile.settings = {**profile.settings, "default_scores_version": 4}
+            await db.commit()
+            assert await refresh_default_profile_scores(db) == 0
+            await db.refresh(row)
+            assert row.score == -20
 
     asyncio.run(scenario())
 

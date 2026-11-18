@@ -184,6 +184,14 @@ async def refresh_default_profile_scores(session: AsyncSession) -> int:
             if banned is not None and banned.score == 0:
                 banned.score = DEFAULT_FORMAT_SCORES["group-banned"]
                 changed += 1
+        # Version 5: Hybrid went from -5 to a tie-breaker, so it no longer cancels
+        # the nudge a hybrid's better dynamic range earns.
+        if int(settings.get("default_scores_version") or 1) < 5 and "attr-hybrid" in ids_by_key:
+            hybrid = await session.scalar(select(ProfileCustomFormatScore).where(
+                ProfileCustomFormatScore.profile_id == profile.id, ProfileCustomFormatScore.custom_format_id == ids_by_key["attr-hybrid"]))
+            if hybrid is not None and hybrid.score == -5:
+                hybrid.score = DEFAULT_FORMAT_SCORES["attr-hybrid"]
+                changed += 1
         profile.settings = {**settings, "default_scores_version": DEFAULT_FORMAT_SCORES_VERSION}
         if changed:
             profile.revision = (profile.revision or 1) + 1
