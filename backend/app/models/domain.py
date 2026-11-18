@@ -510,6 +510,8 @@ class MediaDiscovery(TimestampMixin, Base):
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
     suggested_tmdb_id: Mapped[int | None] = mapped_column(Integer)
     selected_tmdb_id: Mapped[int | None] = mapped_column(Integer)
+    #: When the match was chosen by hand; a rescan then never changes it.
+    selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     manual_edition_override: Mapped[str | None] = mapped_column(String(128))
     edition_override_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: Quality Profile to give the title this directory becomes. Unconstrained on

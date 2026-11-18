@@ -977,6 +977,11 @@ async def _reconcile_movie_directory(
             return "matched"
 
     folder_parse = parse_release(observation.name)
+    # The incoming release may carry an edition set by hand on the one it
+    # replaces; the folder then lands in that edition, not the parsed one.
+    if not edition_override_active and incoming_release is not None and incoming_release.edition_override_active:
+        edition_override_active = True
+        manual_edition_override = incoming_release.manual_edition_override
     effective_candidate_edition = manual_edition_override if edition_override_active else folder_parse.edition
     file_parses = [parse_release(Path(name).stem) for name in observation.media_files]
     confidence = _confidence(

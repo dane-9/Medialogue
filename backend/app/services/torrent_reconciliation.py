@@ -96,7 +96,8 @@ async def associate_incoming_torrent(
                 show_id=show.id,
                 season_number=season_number,
                 title=f"Season {season_number}",
-                monitored=True,
+                # Follows the show, as a season from TMDB metadata does.
+                monitored=show.monitored,
                 # Season 0 follows the library-wide Specials setting, the same
                 # as a season created from TMDB metadata. Taking the column
                 # default here made a scanned Specials folder count even with
@@ -222,13 +223,22 @@ async def associate_incoming_torrent(
         elif len(missing) == 1:
             replacement_target = missing[0]
         incoming_kind = "replacement" if replacement_target is not None else "release"
+        # An edition set by hand on the release being replaced carries over when
+        # the new name names none: the copy that replaces it is the same cut.
+        inherited_edition = (
+            replacement_target.manual_edition_override
+            if replacement_target is not None and replacement_target.edition_override_active and not parsed.edition
+            else None
+        )
         release = MovieRelease(
             movie_id=movie.id,
             raw_release_name=torrent.name,
             parsed_title=title,
             parsed_year=year,
             parsed_edition=parsed.edition,
-            effective_edition=parsed.edition,
+            effective_edition=inherited_edition or parsed.edition,
+            edition_override_active=inherited_edition is not None,
+            manual_edition_override=inherited_edition,
             release_state=ReleaseState.MISSING,
             parse_snapshot={
                 **parsed.to_dict(),

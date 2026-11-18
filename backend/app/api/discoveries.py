@@ -359,6 +359,8 @@ async def select_discovery(
         values.append(chosen)
     discovery.candidates = values[:DISCOVERY_CANDIDATE_LIMIT]
     discovery.selected_tmdb_id = payload.tmdb_id
+    # Chosen by hand: a rescan keeps it even when it is also the suggestion.
+    discovery.selected_at = utcnow()
     await db.commit()
     await db.refresh(discovery)
     return await _current_response(db, discovery)

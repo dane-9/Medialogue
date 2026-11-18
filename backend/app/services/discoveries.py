@@ -147,9 +147,10 @@ async def stage_media_discovery(
 
     old_suggestion = discovery.suggested_tmdb_id
     old_candidates = [item for item in discovery.candidates if isinstance(item, dict)]
-    manually_selected = (
-        discovery.selected_tmdb_id is not None
-        and discovery.selected_tmdb_id != old_suggestion
+    # Chosen by hand (selected_at), or, for a choice made before that was
+    # recorded, one that differs from the suggestion it was made against.
+    manually_selected = discovery.selected_tmdb_id is not None and (
+        discovery.selected_at is not None or discovery.selected_tmdb_id != old_suggestion
     )
     if manually_selected and not any(
         int(item.get("tmdb_id", -1)) == discovery.selected_tmdb_id for item in candidates
@@ -173,7 +174,7 @@ async def stage_media_discovery(
     discovery.parse_snapshot = folder_parse.to_dict()
     discovery.candidates = candidates
     discovery.suggested_tmdb_id = suggested_tmdb_id
-    if discovery.selected_tmdb_id is None or discovery.selected_tmdb_id == old_suggestion:
+    if not manually_selected:
         discovery.selected_tmdb_id = suggested_tmdb_id
     if discovery.selected_tmdb_id is None and candidates:
         discovery.selected_tmdb_id = int(candidates[0]["tmdb_id"])
