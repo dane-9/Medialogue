@@ -7085,6 +7085,8 @@ export interface components {
              */
             id: string;
             identity_state: components["schemas"]["IdentityState"];
+            /** Incoming Downloads */
+            incoming_downloads?: components["schemas"]["ShowIncomingDownloadResponse"][];
             /** Last Observed At */
             last_observed_at?: string | null;
             /** Library Id */
@@ -7197,6 +7199,33 @@ export interface components {
             message: string;
             /** Type */
             type: string;
+        };
+        /**
+         * ShowIncomingDownloadResponse
+         * @description A download on its way for one season of the show.
+         */
+        ShowIncomingDownloadResponse: {
+            /** Client Name */
+            client_name: string;
+            /** Eta Seconds */
+            eta_seconds?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Progress */
+            progress: number;
+            /** Quality */
+            quality?: string | null;
+            /** Season Number */
+            season_number: number;
+            /** State */
+            state: string;
+            /** Torrent Id */
+            torrent_id?: string | null;
         };
         /** ShowProblemResponse */
         ShowProblemResponse: {

@@ -19,7 +19,7 @@ from app.core.problem_types import problem_description, problem_title
 from app.services.events import create_event
 from app.db.session import get_db
 from app.models.auth import AdminUser
-from app.models.domain import Episode, EpisodeMediaMap, Event, MediaDirectory, MediaFile, PlexMatchState, PlexObservation, PresenceState, Problem, ProblemStatus, Season, Show, ShowRelease, StorageRoot
+from app.models.domain import AssociationType, Episode, EpisodeMediaMap, Event, MediaDirectory, MediaFile, PlexMatchState, PlexObservation, PresenceState, Problem, ProblemStatus, Season, Show, ShowRelease, ShowReleaseTorrent, StorageRoot, Torrent, TorrentClientObservation
 from app.schemas.common import LIBRARY_PAGE_LIMIT, Collection
 from app.schemas.jobs import JobAcceptedResponse
 from app.schemas.shows import (
@@ -46,6 +46,7 @@ from app.services.tmdb import get_tmdb_configuration, run_show_metadata_refresh,
 from app.services.media_torrent_status import aggregate_torrent_status, release_torrent_statuses
 from app.services.shared_results import pin_shared_result, shared_result
 from app.services.torrent_history import show_torrent_history
+from app.services.pending_grabs import pending_season_grabs
 
 logger = logging.getLogger(__name__)
 
@@ -744,7 +745,72 @@ async def _detail(db: AsyncSession, resource_id: str) -> ShowDetailResponse:
         storage_roots=[{"id": str(root.id), "name": root.name, "path": root.resolved_root_path, "health": root.last_health} for root in roots],
         last_observed_at=last_seen,
         torrent_history=await show_torrent_history(db, show.id),
+        incoming_downloads=await _incoming_downloads(db, show),
     )
+
+
+def _eta(observation: TorrentClientObservation | None) -> int | None:
+    # qBittorrent reports 8640000 (100 days) for "never".
+    value = observation.eta_seconds if observation is not None else None
+    return value if value is not None and 0 < value < 8_640_000 else None
+
+
+async def _incoming_downloads(db: AsyncSession, show: Show) -> list[dict[str, object]]:
+    """Downloads on their way for the show's seasons: linked ones, then grabs qBittorrent has not reported."""
+
+    seasons = {season.id: season.season_number for season in (await db.scalars(select(Season).where(Season.show_id == show.id))).all()}
+    rows = (
+        await db.execute(
+            select(ShowReleaseTorrent, ShowRelease, Torrent)
+            .join(ShowRelease, ShowRelease.id == ShowReleaseTorrent.show_release_id)
+            .join(Torrent, Torrent.id == ShowReleaseTorrent.torrent_id)
+            .options(selectinload(ShowRelease.quality_definition))
+            .where(ShowRelease.show_id == show.id, ShowReleaseTorrent.association_type == AssociationType.INCOMING)
+            .order_by(ShowReleaseTorrent.created_at.desc())
+        )
+    ).all()
+    incoming: list[dict[str, object]] = []
+    seen_torrents: set[UUID] = set()
+    for association, release, torrent in rows:
+        if release.season_id not in seasons or torrent.id in seen_torrents:
+            continue
+        seen_torrents.add(torrent.id)
+        observation = await db.scalar(
+            select(TorrentClientObservation)
+            .where(TorrentClientObservation.torrent_id == torrent.id, TorrentClientObservation.is_present.is_(True))
+            .order_by(TorrentClientObservation.last_seen_at.desc())
+            .limit(1)
+        )
+        client = get_integration_config_store().get_download_client(observation.download_client_id) if observation else None
+        incoming.append({
+            "id": str(association.id),
+            "torrent_id": str(torrent.id),
+            "season_number": seasons[release.season_id],
+            "name": torrent.name,
+            "client_name": client.name if client else "Unknown client",
+            "progress": float(observation.progress) if observation and observation.progress is not None else 0,
+            "state": observation.state if observation else "incoming",
+            "quality": release.quality_definition.name if release.quality_definition else None,
+            "eta_seconds": _eta(observation),
+        })
+    for season_id, grabs in (await pending_season_grabs(db, list(seasons))).items():
+        for grab in grabs:
+            if grab.torrent is not None and grab.torrent.id in seen_torrents:
+                continue
+            observation = grab.observation
+            incoming.append({
+                "id": str(grab.result.id),
+                "torrent_id": str(grab.torrent.id) if grab.torrent else None,
+                "season_number": seasons[season_id],
+                "name": grab.torrent.name if grab.torrent else grab.result.title,
+                "client_name": grab.client_name,
+                "progress": float(observation.progress) if observation and observation.progress is not None else 0,
+                # Sent: qBittorrent took it, and no poll has reported it yet.
+                "state": observation.state if observation else "sent",
+                "quality": grab.result.quality,
+                "eta_seconds": _eta(observation),
+            })
+    return incoming
 
 
 async def _season_responses(

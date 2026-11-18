@@ -12,6 +12,7 @@ import { Badge, Button, EmptyState, Input, Panel, Select } from '../components/u
 import { Modal } from '../components/Modal'
 import { profileFormChanged } from '../lib/profileForm'
 import { TorrentHistoryPanel } from '../components/TorrentHistoryPanel'
+import { IncomingReleaseRow, useLiveDownloads, withLiveUpdate } from '../components/IncomingDownload'
 import { CustomFiltersModal, LibraryFilterMenu, useCustomFilters } from '../components/CustomFilters'
 import { showFilterFields } from '../lib/libraryFilterFields'
 import { InteractiveSearchDialog } from '../components/InteractiveSearchDialog'
@@ -198,6 +199,10 @@ export function ShowDetailPage({ id }: { id: string }) {
   const load = async (reportError = true) => { try { setShow(await showsApi.show(id)); if (reportError) setError('') } catch (reason) { if (reportError) setError(reason instanceof Error ? reason.message : 'Show not found.') } }
   useEffect(() => { void load() }, [id])
   useLiveLibraryRefresh(() => load(false))
+  // Each season's download moves in place, every couple of seconds.
+  useLiveDownloads((show?.incomingDownloads ?? []).flatMap((item) => item.torrentId ? [item.torrentId] : []), (update) => {
+    setShow((current) => current?.incomingDownloads ? { ...current, incomingDownloads: current.incomingDownloads.map((item) => withLiveUpdate(item, update)) } : current)
+  })
   const refreshMetadata = async () => {
     setBusy(true); setMessage('Starting TMDB metadata refresh…')
     try {
@@ -277,6 +282,7 @@ export function ShowDetailPage({ id }: { id: string }) {
   const selectedReleaseMedia = selectedSeason
     ? [...new Map(selectedSeason.episodes.flatMap((episode) => episode.media).filter((media) => media.showReleaseId).map((media) => [media.showReleaseId, media])).values()]
     : []
+  const selectedDownloads = (show.incomingDownloads ?? []).filter((item) => item.seasonNumber === selectedSeason?.seasonNumber)
   const visibleEpisodes = selectedSeason?.episodes.filter((episode) => episodeFilter === 'all' || episodeFilter === 'missing' && episode.status !== 'Present' || episodeFilter === 'problems' && plexAvailable && episode.plex === 'Conflict') ?? []
   const missing = show.episodesMissing ?? Math.max(0, show.episodesTotal - show.episodesPresent)
   // Only states worth acting on: "Present" is the default for a show you are looking at.
@@ -336,6 +342,12 @@ export function ShowDetailPage({ id }: { id: string }) {
             onClick={() => { setSelectedSeasonId(season.id); setEpisodeFilter('all') }}>
             {seasonName(season)}
             <span className="season-tab-count">{season.presentCount}/{season.episodeCount}</span>
+            {(() => {
+              const downloading = (show.incomingDownloads ?? []).filter((item) => item.seasonNumber === season.seasonNumber)
+              if (!downloading.length) return null
+              const percent = Math.round(Math.min(...downloading.map((item) => item.progress)))
+              return <span className="season-tab-download" aria-label={`Downloading, ${percent}%`}><Icon name="download" size={11} />{percent}%</span>
+            })()}
           </button>)}
         </div> : <div className="history-empty">No season metadata exists yet.</div>}
         {selectedSeason && <>
@@ -348,6 +360,7 @@ export function ShowDetailPage({ id }: { id: string }) {
             <div className="episode-filter-chips"><button className={episodeFilter === 'all' ? 'active' : ''} onClick={() => setEpisodeFilter('all')}>All</button><button className={episodeFilter === 'missing' ? 'active' : ''} onClick={() => setEpisodeFilter('missing')}>Missing</button><button className={episodeFilter === 'problems' ? 'active' : ''} onClick={() => setEpisodeFilter('problems')}>Problems</button></div>
             <Button variant="secondary" icon="search" onClick={() => setSearching(selectedSeason)}>Search season</Button>
           </div>
+          {selectedDownloads.length > 0 && <div className="release-status-list season-downloads">{selectedDownloads.map((item) => <IncomingReleaseRow key={item.id ?? item.name} incoming={item} />)}</div>}
           {selectedReleaseMedia.length > 0 && <div className="release-status-list">{selectedReleaseMedia.map((media) => <div className="release-evidence-row" key={media.showReleaseId}><div className="release-icon kind-show"><Icon name="tv-screen" size={16} /></div><div className="release-main"><strong>{media.releaseName ?? media.path}</strong><small>{media.releaseScope === 'season_pack' ? 'Season pack' : 'Episode release'}</small></div><div className="release-tags"><QbitStatusBadge status={media.torrentStatus} showState /></div></div>)}</div>}
           <div className="episode-table-wrap"><table className="data-table episode-table"><tbody>{visibleEpisodes.map((episode) => {
             const media = episode.media[0]
@@ -360,7 +373,9 @@ export function ShowDetailPage({ id }: { id: string }) {
                 {media ? <Tooltip content={media.path}><strong>{episode.quality || fileName(media.path)}</strong></Tooltip> : <span className="muted">—</span>}
                 {media && (media.mappedEpisodeNumbers.length > 1 || media.manualMapping) && <div className="badge-row compact">{media.mappedEpisodeNumbers.length > 1 && <Badge tone="blue">Multi-episode</Badge>}{media.manualMapping && <Badge tone="neutral">Manual mapping</Badge>}</div>}
               </div></td>
-              <td><Badge tone={statusTone(episode.status)}>{episode.status}</Badge></td>
+              <td>{selectedDownloads.length && !media
+                ? <Badge tone="blue">Downloading</Badge>
+                : <Badge tone={statusTone(episode.status)}>{episode.status}</Badge>}</td>
               {plexAvailable && <td><Badge tone={statusTone(episode.plex)}>Plex {episode.plex}</Badge></td>}
               <td className="episode-map-cell">{media && <Tooltip content="Map this file to other episodes"><button type="button" className="icon-button" aria-label={`Map ${media.path}`} onClick={() => editMapping(media, selectedSeason)}><Icon name="shuffle" size={14} /></button></Tooltip>}</td>
             </tr>

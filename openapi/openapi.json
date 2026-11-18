@@ -11559,6 +11559,13 @@
           "identity_state": {
             "$ref": "#/components/schemas/IdentityState"
           },
+          "incoming_downloads": {
+            "items": {
+              "$ref": "#/components/schemas/ShowIncomingDownloadResponse"
+            },
+            "title": "Incoming Downloads",
+            "type": "array"
+          },
           "last_observed_at": {
             "anyOf": [
               {
@@ -11907,6 +11914,80 @@
           "created_at"
         ],
         "title": "ShowEventResponse",
+        "type": "object"
+      },
+      "ShowIncomingDownloadResponse": {
+        "description": "A download on its way for one season of the show.",
+        "properties": {
+          "client_name": {
+            "title": "Client Name",
+            "type": "string"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "number"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "season_number": {
+            "title": "Season Number",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "torrent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Torrent Id"
+          }
+        },
+        "required": [
+          "id",
+          "season_number",
+          "name",
+          "client_name",
+          "progress",
+          "state"
+        ],
+        "title": "ShowIncomingDownloadResponse",
         "type": "object"
       },
       "ShowProblemResponse": {

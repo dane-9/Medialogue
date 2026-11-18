@@ -332,6 +332,8 @@ export interface EpisodeOrdering {
 
 export interface Show {
   id: string
+  /** Downloads on their way, each for one season. */
+  incomingDownloads?: (IncomingDownload & { seasonNumber: number })[]
   libraryId?: string
   internalId?: string
   title: string

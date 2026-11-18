@@ -1,4 +1,4 @@
-"""Movies grabbed from a search whose download is not linked to them yet.
+"""Movies and seasons grabbed from a search whose download is not linked to them yet.
 
 A grab sends the torrent to qBittorrent at once, but the movie only learns of
 it once a poll has seen the torrent and reconciliation has linked it as an
@@ -14,8 +14,8 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.domain import (InteractiveSearchResult, MovieRelease, MovieReleaseTorrent, Torrent,
-                               TorrentClientObservation)
+from app.models.domain import (InteractiveSearchResult, MovieRelease, MovieReleaseTorrent, ShowRelease,
+                               ShowReleaseTorrent, Torrent, TorrentClientObservation)
 
 #: A grab qBittorrent never reported, or that never got linked, stops counting
 #: after this long rather than saying "downloading" forever.
@@ -41,20 +41,40 @@ async def pending_movie_grabs(db: AsyncSession, movie_ids: list[UUID] | None = N
     qBittorrent before it was linked is over, so it is left out.
     """
 
-    if movie_ids is not None and not movie_ids:
+    return await _pending_grabs(
+        db, "movie", movie_ids,
+        lambda torrent_ids: select(MovieReleaseTorrent.torrent_id, MovieRelease.movie_id)
+        .join(MovieRelease, MovieRelease.id == MovieReleaseTorrent.movie_release_id)
+        .where(MovieReleaseTorrent.torrent_id.in_(torrent_ids)),
+    )
+
+
+async def pending_season_grabs(db: AsyncSession, season_ids: list[UUID]) -> dict[UUID, list[PendingGrab]]:
+    """Season grabs not yet linked to a release of their season, newest first, by season."""
+
+    return await _pending_grabs(
+        db, "season", season_ids,
+        lambda torrent_ids: select(ShowReleaseTorrent.torrent_id, ShowRelease.season_id)
+        .join(ShowRelease, ShowRelease.id == ShowReleaseTorrent.show_release_id)
+        .where(ShowReleaseTorrent.torrent_id.in_(torrent_ids)),
+    )
+
+
+async def _pending_grabs(db: AsyncSession, entity_type: str, target_ids: list[UUID] | None, links) -> dict[UUID, list[PendingGrab]]:
+    if target_ids is not None and not target_ids:
         return {}
     statement = (
         select(InteractiveSearchResult)
         .where(
-            InteractiveSearchResult.target_entity_type == "movie",
+            InteractiveSearchResult.target_entity_type == entity_type,
             InteractiveSearchResult.target_entity_id.is_not(None),
             InteractiveSearchResult.selected_at.is_not(None),
             InteractiveSearchResult.selected_at >= datetime.now(timezone.utc) - PENDING_FOR,
         )
         .order_by(InteractiveSearchResult.selected_at.desc())
     )
-    if movie_ids is not None:
-        statement = statement.where(InteractiveSearchResult.target_entity_id.in_(movie_ids))
+    if target_ids is not None:
+        statement = statement.where(InteractiveSearchResult.target_entity_id.in_(target_ids))
     results = list((await db.scalars(statement)).all())
     if not results:
         return {}
@@ -69,12 +89,8 @@ async def pending_movie_grabs(db: AsyncSession, movie_ids: list[UUID] | None = N
     if torrents:
         torrent_ids = [torrent.id for torrent in torrents.values()]
         linked = {
-            (torrent_id, movie_id)
-            for torrent_id, movie_id in (await db.execute(
-                select(MovieReleaseTorrent.torrent_id, MovieRelease.movie_id)
-                .join(MovieRelease, MovieRelease.id == MovieReleaseTorrent.movie_release_id)
-                .where(MovieReleaseTorrent.torrent_id.in_(torrent_ids))
-            )).all()
+            (torrent_id, target_id)
+            for torrent_id, target_id in (await db.execute(links(torrent_ids))).all()
         }
         # One observation per client: the latest client still holding the
         # torrent, else the latest that dropped it.
@@ -90,19 +106,19 @@ async def pending_movie_grabs(db: AsyncSession, movie_ids: list[UUID] | None = N
     found: dict[UUID, list[PendingGrab]] = {}
     seen: set[tuple[UUID, str]] = set()
     for result in results:
-        movie_id = result.target_entity_id
-        assert movie_id is not None
+        target_id = result.target_entity_id
+        assert target_id is not None
         value = (result.submitted_info_hash or "").lower()
         torrent = torrents.get(value) if value else None
         if value:
             # One grab per torrent: a release grabbed twice shows once.
-            if (movie_id, value) in seen:
+            if (target_id, value) in seen:
                 continue
-            seen.add((movie_id, value))
-        if torrent is not None and (torrent.id, movie_id) in linked:
+            seen.add((target_id, value))
+        if torrent is not None and (torrent.id, target_id) in linked:
             continue
         observation = observations.get(torrent.id) if torrent is not None else None
         if observation is not None and not observation.is_present:
             continue
-        found.setdefault(movie_id, []).append(PendingGrab(result, torrent, observation))
+        found.setdefault(target_id, []).append(PendingGrab(result, torrent, observation))
     return found

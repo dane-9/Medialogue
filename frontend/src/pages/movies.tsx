@@ -32,7 +32,7 @@ import type { IncomingDownload, Library, MediaProfileSettings, Movie, MovieRelea
 import { MonitorMark, Page, PosterImage, QbitStatusBadge, defaultProfileLabel, formatEvidenceDate, libraryListEvents, useLiveLibraryRefresh } from './shared'
 import { useLiveEvent } from '../lib/liveRefresh'
 import { formatEta } from '../api/mappers/downloads'
-import { downloadsApi } from '../api/modules/downloads'
+import { IncomingReleaseRow, useLiveDownloads, withLiveUpdate } from '../components/IncomingDownload'
 
 const moviesKey = (library: string, tag: string, sort: string) => `movies:${library}:${tag}:${sort}`
 
@@ -299,25 +299,6 @@ function ReleaseEvidenceRow({ release, onChangeMatch }: { release: MovieRelease;
   </div>
 }
 
-/** A download on its way, as the first row of Current releases: it becomes a
- *  release of the movie when it finishes. */
-function IncomingReleaseRow({ incoming }: { incoming: IncomingDownload }) {
-  const replacing = incoming.kind === 'replacement'
-  // "sent": qBittorrent took the torrent and no poll has reported it yet.
-  const state = incoming.state === 'sent' ? 'Sent to qBittorrent, waiting for its first update' : incoming.state
-  const facts = [incoming.client, state, incoming.eta ? `ETA ${incoming.eta}` : undefined, incoming.quality].filter(Boolean).join(' · ')
-  return <div className="release-evidence-row release-incoming-row">
-    <div className="release-icon release-incoming-icon"><Icon name="download" size={18} /></div>
-    <div className="release-main">
-      <strong title={incoming.name}>{incoming.name}</strong>
-      <span>{facts}</span>
-      <Progress value={incoming.progress} tone="blue" />
-    </div>
-    <strong className="release-incoming-percent">{Math.round(incoming.progress)}%</strong>
-    <Badge tone="blue">{replacing ? 'Replacing' : 'Downloading'}</Badge>
-  </div>
-}
-
 function evidenceFromMovie(movie: Movie): ReconciliationEvidence[] {
   const evidence = [...(movie.problems ?? [])]
   const aggregate = movie.reconciliation
@@ -391,9 +372,6 @@ function MovieProfilePanel({ resourceId }: { resourceId: string }) {
   </Panel>
 }
 
-/** How often a movie page following a download asks qBittorrent for its progress. */
-const LIVE_DOWNLOAD_MS = 2000
-
 export function MovieDetailPage({ id }: { id: string }) {
   const [detailSearchParams, setDetailSearchParams] = useSearchParams()
   const openSearchFromQuery = detailSearchParams.get('search') === '1'
@@ -423,41 +401,10 @@ export function MovieDetailPage({ id }: { id: string }) {
   useEffect(() => { void load() }, [id])
   // Progress moves the incoming card in place; anything else reloads the movie.
   useLiveLibraryRefresh(() => load(false), 15000, false, libraryListEvents)
-  const applyProgress = (data: Record<string, unknown>) => {
-    if (typeof data.torrent_id !== 'string') return
-    setMovie((current) => {
-      const incoming = current?.incoming
-      if (!current || !incoming || incoming.torrentId !== data.torrent_id) return current
-      const progress = typeof data.progress === 'number' && Number.isFinite(data.progress) ? data.progress * 100 : incoming.progress
-      const eta = typeof data.eta_seconds === 'number' && data.eta_seconds > 0 && data.eta_seconds < 8_640_000 ? formatEta(data.eta_seconds) : undefined
-      return { ...current, incoming: { ...incoming, progress, state: typeof data.state === 'string' ? data.state : incoming.state, eta } }
-    })
-  }
-  useLiveEvent(['download.progress'], (event) => {
-    let payload: { data?: Record<string, unknown> }
-    try { payload = JSON.parse(event.data) } catch { return }
-    if (payload?.data) applyProgress(payload.data)
+  // Progress moves the download row in place, every couple of seconds.
+  useLiveDownloads(movie?.incoming?.torrentId ? [movie.incoming.torrentId] : [], (update) => {
+    setMovie((current) => current?.incoming ? { ...current, incoming: withLiveUpdate(current.incoming, update) } : current)
   })
-  // The client poll runs on its own interval (30 seconds by default), so while
-  // this page shows a download it asks qBittorrent itself every couple of
-  // seconds and the bar and ETA keep moving. Only while the tab is visible.
-  const liveTorrentId = movie?.incoming?.torrentId
-  useEffect(() => {
-    if (!liveTorrentId) return
-    let alive = true
-    let timer = 0
-    const tick = async () => {
-      if (document.visibilityState === 'visible') {
-        try {
-          const live = await downloadsApi.liveDownload(liveTorrentId)
-          if (alive) applyProgress(live as unknown as Record<string, unknown>)
-        } catch { /* The poll and live events still update the card. */ }
-      }
-      if (alive) timer = window.setTimeout(() => void tick(), LIVE_DOWNLOAD_MS)
-    }
-    void tick()
-    return () => { alive = false; window.clearTimeout(timer) }
-  }, [liveTorrentId])
   const setMonitored = async (monitored: boolean) => {
     setBusy(true); setMessage(monitored ? 'Monitoring…' : 'Unmonitoring…')
     try {

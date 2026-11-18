@@ -164,6 +164,23 @@ class ShowSummaryResponse(BaseModel):
     torrent_status: MediaTorrentStatusResponse = Field(default_factory=MediaTorrentStatusResponse)
 
 
+class ShowIncomingDownloadResponse(BaseModel):
+    """A download on its way for one season of the show."""
+
+    id: UUID
+    #: None for a grab qBittorrent has not reported yet.
+    torrent_id: UUID | None = None
+    season_number: int
+    name: str
+    client_name: str
+    #: 0-1.
+    progress: float
+    state: str
+    quality: str | None = None
+    #: qBittorrent's estimate; None when it has none.
+    eta_seconds: int | None = None
+
+
 class ShowDetailResponse(ShowSummaryResponse):
     overview: str | None = None
     seasons: list[SeasonResponse] = Field(default_factory=list)
@@ -172,3 +189,4 @@ class ShowDetailResponse(ShowSummaryResponse):
     storage_roots: list[ShowStorageRootResponse] = Field(default_factory=list)
     last_observed_at: datetime | None = None
     torrent_history: list[MovieTorrentHistoryResponse] = Field(default_factory=list)
+    incoming_downloads: list[ShowIncomingDownloadResponse] = Field(default_factory=list)

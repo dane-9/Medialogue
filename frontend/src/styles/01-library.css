@@ -747,6 +747,10 @@ button.monitor-mark:disabled { cursor: not-allowed; opacity: .6; }
 .season-tab-count { padding: 1px 6px; border-radius: var(--r-sm); font: 500 var(--t-micro) var(--mono); }
 .season-tab.complete .season-tab-count { color: var(--ok); background: var(--ok-soft); }
 .season-tab.incomplete .season-tab-count { color: var(--warn); background: var(--warn-soft); }
+/* A season with a download on its way, readable from any tab. */
+.season-tab-download { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: var(--r-sm); color: var(--accent-text); background: var(--accent-soft); font: 500 var(--t-micro) var(--mono); }
+.season-tab-download svg { flex: none; }
+.season-downloads { margin-bottom: var(--s2); }
 .episode-pack-mark { display: inline-grid; width: 22px; place-items: center; color: var(--faint); }
 .season-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
 .season-bar-count { color: var(--muted); font-size: var(--t-xs); }
