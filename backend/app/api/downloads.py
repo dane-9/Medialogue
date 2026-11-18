@@ -51,6 +51,7 @@ from app.schemas.downloads import (
     DownloadActionRequest,
     DownloadFacetsResponse,
     DownloadActionResponse,
+    DownloadLiveResponse,
     DownloadClientCategoryResponse,
     DownloadClientCreate,
     DownloadClientResponse,
@@ -916,6 +917,53 @@ async def delete_downloads(
     from app.services.download_deletion import execute_deletion
 
     return _plan_response(await execute_deletion(db, payload.download_ids, library=payload.library, client_factory=client_factory))
+
+
+@router.get("/downloads/live", response_model=DownloadLiveResponse)
+async def live_download(
+    torrent_id: UUID = Query(...),
+    _: AdminUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    client_factory=Depends(get_qbittorrent_client_factory),
+) -> DownloadLiveResponse:
+    """Read one torrent's progress straight from qBittorrent, for a page following its download.
+
+    The client poll that keeps the library in step runs on the client's own
+    interval (30 seconds by default). A page showing a download asks this every
+    couple of seconds instead, so its bar and ETA move as qBittorrent's do.
+    Nothing is saved: the poll still owns every stored observation.
+    """
+
+    row = (
+        await db.execute(
+            select(TorrentClientObservation.download_client_id, Torrent.info_hash)
+            .join(Torrent, Torrent.id == TorrentClientObservation.torrent_id)
+            .where(TorrentClientObservation.torrent_id == torrent_id, TorrentClientObservation.is_present.is_(True))
+            .limit(1)
+        )
+    ).first()
+    if row is None:
+        raise AppError("NOT_FOUND", "No download client reports this torrent.", status_code=404)
+    client = await get_configured_download_client(db, row.download_client_id)
+    if client is None or not client.enabled:
+        raise AppError("CONFLICT", "The download client holding this torrent is not enabled.", status_code=409)
+    adapter = client_factory(client.url, client.username or "", client.password or "")
+    try:
+        observed = await adapter.get_torrent(row.info_hash)
+    except Exception as exc:
+        raise AppError("UPSTREAM_ERROR", f"{client.name}: {exc}", status_code=502) from exc
+    finally:
+        await adapter.close()
+    if observed is None:
+        raise AppError("NOT_FOUND", "qBittorrent no longer has this torrent.", status_code=404)
+    return DownloadLiveResponse(
+        torrent_id=torrent_id,
+        progress=float(observed.progress),
+        state=observed.state,
+        eta_seconds=observed.eta,
+        download_speed=observed.download_speed,
+        amount_left=observed.amount_left,
+    )
 
 
 @router.post("/downloads/actions", response_model=DownloadActionResponse)

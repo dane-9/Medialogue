@@ -25,6 +25,10 @@ export const downloadsApi = {
     }))
     return { items: payload.items.map(mapDownload), total: payload.total, pages: payload.pages, page: payload.page }
   },
+  /** One torrent as qBittorrent reports it now; nothing is saved. */
+  liveDownload: async (torrentId: string) => openApiData(openApiClient.GET('/api/v1/downloads/live', {
+    params: { query: { torrent_id: torrentId } },
+  })),
   downloadFacets: async (clientId?: string) => openApiData(openApiClient.GET('/api/v1/downloads/facets', {
     params: { query: { client_id: clientId || undefined } },
   })),

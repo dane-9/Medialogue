@@ -136,6 +136,9 @@ class FakeQBitClient:
     async def list_torrents(self) -> list[TorrentObservation]:
         return list(self.behavior.torrents)
 
+    async def get_torrent(self, info_hash: str) -> TorrentObservation | None:
+        return next((item for item in self.behavior.torrents if item.info_hash.lower() == info_hash.lower()), None)
+
     async def close(self) -> None:
         self.closed = True
 
@@ -469,6 +472,18 @@ def test_poll_persists_progress_filters_unrelated_paths_and_tracks_disappearance
             assert second["removed"] == 0
             current = client.get("/api/v1/downloads").json()["items"]
             assert current[0]["progress"] == pytest.approx(0.85)
+
+            # A page following the download reads qBittorrent between polls,
+            # without changing what the poll stored.
+            behavior.torrents = [
+                _torrent("moviehash", "Inception 2010 2160p WEB-DL", progress=0.9, save_path=str(root),
+                         content_path=str(root / "Inception 2010 2160p WEB-DL"), eta=30, download_speed=4_000_000),
+            ]
+            live = client.get(f"/api/v1/downloads/live?torrent_id={current[0]['torrent_id']}")
+            assert live.status_code == 200, live.text
+            assert live.json()["progress"] == pytest.approx(0.9)
+            assert live.json()["eta_seconds"] == 30 and live.json()["download_speed"] == 4_000_000
+            assert client.get("/api/v1/downloads").json()["items"][0]["progress"] == pytest.approx(0.85)
 
             behavior.torrents = []
             third = _poll_job(client, f"/api/v1/download-clients/{configured['id']}/poll", headers)

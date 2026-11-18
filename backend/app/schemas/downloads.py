@@ -195,6 +195,18 @@ class DownloadActionFailure(BaseModel):
     error: str
 
 
+class DownloadLiveResponse(BaseModel):
+    """One torrent as qBittorrent reports it this moment, for a page following its download."""
+
+    torrent_id: UUID
+    #: 0-1.
+    progress: float
+    state: str
+    eta_seconds: int | None = None
+    download_speed: int | None = None
+    amount_left: int | None = None
+
+
 class DownloadActionResponse(BaseModel):
     applied: int
     clients: int

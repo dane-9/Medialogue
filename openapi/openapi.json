@@ -3126,6 +3126,64 @@
         "title": "DownloadFacetsResponse",
         "type": "object"
       },
+      "DownloadLiveResponse": {
+        "description": "One torrent as qBittorrent reports it this moment, for a page following its download.",
+        "properties": {
+          "amount_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Left"
+          },
+          "download_speed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Speed"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "number"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "torrent_id": {
+            "format": "uuid",
+            "title": "Torrent Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "torrent_id",
+          "progress",
+          "state"
+        ],
+        "title": "DownloadLiveResponse",
+        "type": "object"
+      },
       "DownloadResponse": {
         "properties": {
           "activity": {
@@ -17927,6 +17985,50 @@
           }
         },
         "summary": "Download Facets",
+        "tags": [
+          "downloads"
+        ]
+      }
+    },
+    "/api/v1/downloads/live": {
+      "get": {
+        "description": "Read one torrent's progress straight from qBittorrent, for a page following its download.\n\nThe client poll that keeps the library in step runs on the client's own\ninterval (30 seconds by default). A page showing a download asks this every\ncouple of seconds instead, so its bar and ETA move as qBittorrent's do.\nNothing is saved: the poll still owns every stored observation.",
+        "operationId": "live_download_api_v1_downloads_live_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "torrent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Torrent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadLiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live Download",
         "tags": [
           "downloads"
         ]

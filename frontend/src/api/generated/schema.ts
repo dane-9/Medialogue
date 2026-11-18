@@ -1036,6 +1036,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/downloads/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live Download
+         * @description Read one torrent's progress straight from qBittorrent, for a page following its download.
+         *
+         *     The client poll that keeps the library in step runs on the client's own
+         *     interval (30 seconds by default). A page showing a download asks this every
+         *     couple of seconds instead, so its bar and ETA move as qBittorrent's do.
+         *     Nothing is saved: the poll still owns every stored observation.
+         */
+        get: operations["live_download_api_v1_downloads_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/episodes/{episode_id}": {
         parameters: {
             query?: never;
@@ -4257,6 +4282,27 @@ export interface components {
             tags: string[];
             /** Trackers */
             trackers: string[];
+        };
+        /**
+         * DownloadLiveResponse
+         * @description One torrent as qBittorrent reports it this moment, for a page following its download.
+         */
+        DownloadLiveResponse: {
+            /** Amount Left */
+            amount_left?: number | null;
+            /** Download Speed */
+            download_speed?: number | null;
+            /** Eta Seconds */
+            eta_seconds?: number | null;
+            /** Progress */
+            progress: number;
+            /** State */
+            state: string;
+            /**
+             * Torrent Id
+             * Format: uuid
+             */
+            torrent_id: string;
         };
         /** DownloadResponse */
         DownloadResponse: {
@@ -10190,6 +10236,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DownloadFacetsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    live_download_api_v1_downloads_live_get: {
+        parameters: {
+            query: {
+                torrent_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadLiveResponse"];
                 };
             };
             /** @description Validation Error */
