@@ -120,6 +120,9 @@ function currentReleaseLabel(item: UpgradeCandidate) {
 }
 
 /** Whether an upgrade can be started: never tried, or its last attempt failed. */
+/** What a row left out of the batch is remembered by. */
+const excludeKey = (item: UpgradeCandidate) => item.targetKey ?? item.id
+
 function upgradeStartable(item: UpgradeCandidate) {
   return !item.executionState || item.executionState === 'failed'
 }
@@ -167,6 +170,9 @@ export function UpgradeMediaPage() {
   const [message, setMessage] = useState('')
   // Rows left out stay left out across reloads and devices.
   const [excluded, setExcluded, pruneExcluded] = usePersistentSet('upgrade-media-excluded')
+  const excludedRef = useRef(excluded)
+  excludedRef.current = excluded
+  const lastExcludeKeys = useRef<string[]>([])
   const [profilePrompt, setProfilePrompt] = useState<string | null>(null)
   const [readOnlyRoots, setReadOnlyRoots] = useState<string[]>([])
   const [confirming, setConfirming] = useState(false)
@@ -207,7 +213,16 @@ export function UpgradeMediaPage() {
       await fresh(() => Promise.all([upgradesApi.upgradeCandidates(), integrationsApi.downloadClients(), settingsApi.qualityProfiles(), upgradesApi.upgradeCandidateCount(), settingsApi.customFormats(), settingsApi.customFormatLayout()]), ([nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout]) => {
       rememberList('upgradeMedia', nextItems)
       setItems(nextItems)
-      pruneExcluded(nextItems.map((item) => item.id))
+      // Rows left out are kept by title, not by the upgrade's id: a search that
+      // drops an upgrade and a later one that finds it again gives it a new id.
+      // Ones saved by id move to the title's key, and a title's is only
+      // forgotten once two reads in a row leave it out.
+      if (nextItems.some((item) => item.targetKey && excludedRef.current.has(item.id))) {
+        setExcluded((current) => new Set([...current].map((key) => nextItems.find((item) => item.id === key)?.targetKey ?? key)))
+      }
+      const keys = nextItems.map(excludeKey)
+      pruneExcluded([...keys, ...lastExcludeKeys.current])
+      lastExcludeKeys.current = keys
       setClients(nextClients)
       setProfiles(nextProfiles)
       // Token tooltips name a format by the section it is filed under on the
@@ -482,7 +497,7 @@ export function UpgradeMediaPage() {
 
   // The checkboxes decide what the bar acts on, for the profile exactly as for
   // the upgrade button.
-  const profileTargets = useMemo(() => rows.filter((item) => upgradeStartable(item) && !excluded.has(item.id)), [rows, excluded])
+  const profileTargets = useMemo(() => rows.filter((item) => upgradeStartable(item) && !excluded.has(excludeKey(item))), [rows, excluded])
   const sharedProfile = useMemo(() => {
     if (!profileTargets.length) return undefined
     const first = profileTargets[0].qualityProfileId ?? ''
@@ -506,7 +521,7 @@ export function UpgradeMediaPage() {
   // A candidate already in flight keeps its own per-row actions, and a blocked
   // one cannot be submitted at all, so neither can join the batch.
   const batchableRows = useMemo(() => rows.filter((item) => upgradeStartable(item) && item.executionEligible), [rows])
-  const picked = useMemo(() => batchableRows.filter((item) => !excluded.has(item.id)), [batchableRows, excluded])
+  const picked = useMemo(() => batchableRows.filter((item) => !excluded.has(excludeKey(item))), [batchableRows, excluded])
   const mixedFolders = new Set(picked.map((item) => item.folderCategory ?? '')).size > 1
   const pickedBytes = useMemo(() => picked.reduce((total, item) => total + (item.size ?? 0), 0), [picked])
   // How much the library grows (or shrinks) once these replace what is on
@@ -611,11 +626,11 @@ export function UpgradeMediaPage() {
       <div className="new-media-workspace upgrade-v2 upgrade-v3">
         <div className="new-media-scroll">
           <span className="new-media-col-head head-with-check"><HeadCheck
-            selected={batchableRows.filter((item) => !excluded.has(item.id)).length}
+            selected={batchableRows.filter((item) => !excluded.has(excludeKey(item))).length}
             total={batchableRows.length}
             noun="upgrades"
-            onSelectAll={() => setRowsExcluded(batchableRows.map((item) => item.id), false)}
-            onClear={() => setRowsExcluded(batchableRows.map((item) => item.id), true)}
+            onSelectAll={() => setRowsExcluded(batchableRows.map(excludeKey), false)}
+            onClear={() => setRowsExcluded(batchableRows.map(excludeKey), true)}
           />Current</span>
           <span className="new-media-col-head upgrade-v2-head">
             <span>Upgrade</span>
@@ -636,7 +651,7 @@ export function UpgradeMediaPage() {
           {rows.map((item) => {
             const active = false
             const batchable = upgradeStartable(item) && item.executionEligible
-            const included = batchable && !excluded.has(item.id)
+            const included = batchable && !excluded.has(excludeKey(item))
             const blocked = upgradeStartable(item) && !item.executionEligible
             const delta = item.scoreDelta
             const swarm = swarmHealth(item.seeders)
@@ -651,7 +666,7 @@ export function UpgradeMediaPage() {
               item.currentEdition ? { text: item.currentEdition } : undefined,
             ].filter((part): part is { text: string; quality?: boolean } => Boolean(part))
             // With no details pane, the row itself is the checkbox.
-            const open = () => { if (batchable) toggleChosen(item.id) }
+            const open = () => { if (batchable) toggleChosen(excludeKey(item)) }
             const profileName = profiles.find((profile) => profile.id === item.qualityProfileId)?.name
               ?? profiles.find((profile) => profile.isDefault)?.name ?? 'Default'
             const tokens = diffReleaseTokens(item.title, item.currentReleaseName)
@@ -700,7 +715,7 @@ export function UpgradeMediaPage() {
                   disabled={!batchable}
                   // Including a row in the batch is not the same intent as
                   // opening it, so the checkbox must not also select the row.
-                  onClick={(event) => { event.stopPropagation(); toggleChosen(item.id) }}
+                  onClick={(event) => { event.stopPropagation(); toggleChosen(excludeKey(item)) }}
                 >{included && <Icon name="check" size={11} />}</button>
                 <span className="new-media-poster">{item.posterRef
                   ? <img src={tmdbPosterUrl(item.posterRef)} alt="" loading="lazy" referrerPolicy="no-referrer" />

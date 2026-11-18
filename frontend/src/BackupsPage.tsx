@@ -12,6 +12,7 @@ import { formatBytes } from './components/ReleaseResults'
 import { RecoveryReimportSection, TorrentArchiveSection } from './pages/backups'
 import type { Job } from './types'
 import { useLiveRefresh } from './lib/liveRefresh'
+import { useFreshLoad } from './lib/freshness'
 
 const DATABASE_INTERVALS = [
   { value: 43200, label: 'Every 12 hours' },
@@ -126,6 +127,8 @@ function DeviceCode({ signIn, onConnected, onFailed, onCancel }: { signIn: Devic
   </div>
 }
 
+type BackupSettingsChange = Partial<{ enabled: boolean; database_interval_seconds: number } & BackupRetention>
+
 export default function BackupsPage() {
   const [tabParam, setTab] = useUrlState('tab', 'torrents')
   const tab: Tab = TABS.some((item) => item.value === tabParam) ? tabParam as Tab : 'torrents'
@@ -141,11 +144,15 @@ export default function BackupsPage() {
   const [signIn, setSignIn] = useState<DeviceSignIn | null>(null)
   const [editingClient, setEditingClient] = useState(false)
 
+  // Only the newest read, and none a save overtook, replaces the status.
+  const fresh = useFreshLoad()
   const load = async () => {
     try {
-      const nextStatus = await backupsApi.status()
-      setStatus(nextStatus)
-      if (nextStatus.active_job_id) setBackupJobId(nextStatus.active_job_id)
+      await fresh(() => backupsApi.status(), (nextStatus) => {
+        // Changes still being saved stay shown over what the server had.
+        setStatus({ ...nextStatus, ...pendingSettings.current })
+        if (nextStatus.active_job_id) setBackupJobId(nextStatus.active_job_id)
+      })
     } catch (reason) { setMessage(failed(reason, 'Could not load backup status.')) }
   }
   // Scheduled copies run every few minutes; keep the status line current.
@@ -159,14 +166,28 @@ export default function BackupsPage() {
     try { await action(); await load() } catch (reason) { setMessage(failed(reason, 'That did not work.')) }
     finally { setBusy(false) }
   }
-  const save = (changes: Partial<{ enabled: boolean; database_interval_seconds: number } & BackupRetention>) => act(async () => {
+  // The server takes every setting at once. Each change shows at once, saves
+  // run one after another, and each carries every change not yet saved: built
+  // from the last loaded status, a second change before the first's reload put
+  // the first one back.
+  const pendingSettings = useRef<Partial<BackupSettingsChange>>({})
+  const saving = useRef<Promise<unknown>>(Promise.resolve())
+  const save = (changes: BackupSettingsChange) => {
     if (!status) return
-    await backupsApi.saveSettings({
-      enabled: status.enabled, database_interval_seconds: status.database_interval_seconds,
-      keep_recent: status.keep_recent, keep_daily: status.keep_daily, keep_weekly: status.keep_weekly, keep_monthly: status.keep_monthly,
-      ...changes,
-    })
-  })
+    pendingSettings.current = { ...pendingSettings.current, ...changes }
+    setStatus((current) => current ? { ...current, ...changes } : current)
+    const base = status
+    const run = saving.current.then(() => act(async () => {
+      const settings = { ...base, ...pendingSettings.current }
+      await backupsApi.saveSettings({
+        enabled: settings.enabled, database_interval_seconds: settings.database_interval_seconds,
+        keep_recent: settings.keep_recent, keep_daily: settings.keep_daily, keep_weekly: settings.keep_weekly, keep_monthly: settings.keep_monthly,
+      })
+    }))
+    saving.current = run
+    // Once the last one is done, the page shows what the server holds, also after a failure.
+    void run.then(() => { if (saving.current === run) { pendingSettings.current = {}; void load() } })
+  }
 
   const connected = Boolean(status?.connected)
   const tone = !status ? 'neutral' : !connected ? 'neutral' : status.last_error ? 'red' : status.enabled ? 'green' : 'amber'

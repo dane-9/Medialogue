@@ -237,7 +237,16 @@ export function ShowDetailPage({ id }: { id: string }) {
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Plex recheck failed.') }
     finally { setBusy(false) }
   }
-  const setShowMonitored = async (monitored: boolean) => { if (!show) return; setBusy(true); try { await showsApi.updateShow(id, { monitored, expected_revision: show.revision }); await load() } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update monitoring.') } finally { setBusy(false) } }
+  // Sets a value rather than editing one, so no revision is sent: a TMDB
+  // refresh or a resolved problem bumps the show's, and the toggle then failed.
+  const setShowMonitored = async (monitored: boolean) => {
+    if (!show) return
+    setBusy(true)
+    setShow((current) => current ? { ...current, monitored } : current)
+    try { await showsApi.updateShow(id, { monitored }) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not update monitoring.') }
+    finally { setBusy(false) }
+    await load(false)
+  }
   // Toggles show at once and are saved behind. They set a value rather than
   // edit one, so no revision is sent: monitoring a season bumps every episode's
   // revision, and a second click before the reload then failed as a conflict.

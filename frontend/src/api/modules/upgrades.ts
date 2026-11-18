@@ -8,6 +8,7 @@ type UpgradeCleanupPreviewDto = components['schemas']['UpgradeCleanupPreviewResp
 function mapUpgradeCandidate(value: UpgradeCandidateDto): UpgradeCandidate {
   return {
     id: value.id,
+    targetKey: value.target_key ?? undefined,
     mediaType: value.media_type,
     movieId: value.movie_id ?? undefined,
     seasonId: value.season_id ?? undefined,

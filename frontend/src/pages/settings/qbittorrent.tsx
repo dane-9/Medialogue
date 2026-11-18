@@ -197,8 +197,10 @@ export function QBittorrentSettings() {
     setTogglingId(client.id); setError(''); setMessage('')
     try {
       const next = { ...draftFromDownloadClient(client), enabled: !client.enabled }
-      await integrationsApi.updateDownloadClient(client.id, downloadClientPayload(next))
-      setClients((items) => items.map((item) => item.id === client.id ? { ...item, enabled: next.enabled } : item))
+      // The saved client carries its new revision; keeping the old one made the
+      // next save of this client fail as a conflict.
+      const saved = await integrationsApi.updateDownloadClient(client.id, downloadClientPayload(next))
+      setClients((items) => items.map((item) => item.id === client.id ? { ...item, ...saved } : item))
       if (client.id === selectedId) setDraft((current) => ({ ...current, enabled: next.enabled }))
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this client.') }
     finally { setTogglingId('') }

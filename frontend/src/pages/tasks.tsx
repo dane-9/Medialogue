@@ -115,12 +115,23 @@ export function TasksPage() {
     finally { setRunningId('') }
   }
 
+  // The new interval shows at once. A reload already on its way (they run
+  // every 10 seconds and on every job update) is set aside, so it cannot put
+  // the old interval back.
   const updateInterval = async (task: ScheduledTask, value: string) => {
     setUpdatingId(task.id); setError('')
+    requestRef.current += 1
+    setTasks((current) => current.map((item) => item.id === task.id
+      ? (value === 'manual' ? { ...item, enabled: false } : { ...item, enabled: true, intervalSeconds: Number(value) })
+      : item))
     try {
       const updated = await systemApi.updateScheduledTask(task.id, value === 'manual' ? null : Number(value))
+      requestRef.current += 1
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))
-    } catch (reason) { setError(reason instanceof Error ? reason.message : `Could not update ${task.name}.`) }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : `Could not update ${task.name}.`)
+      void load()
+    }
     finally { setUpdatingId('') }
   }
 

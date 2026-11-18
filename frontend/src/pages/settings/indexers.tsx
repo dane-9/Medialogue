@@ -283,8 +283,10 @@ export function IndexerSettings() {
   const toggleIndexer = async (indexer: Indexer) => {
     setTogglingId(indexer.id); setError(''); setMessage('')
     try {
-      await integrationsApi.updateIndexer(indexer.id, { enabled: !indexer.enabled })
-      setIndexers((items) => items.map((item) => item.id === indexer.id ? { ...item, enabled: !indexer.enabled } : item))
+      // The saved indexer carries its new revision; keeping the old one made the
+      // next save of this indexer fail as a conflict.
+      const saved = await integrationsApi.updateIndexer(indexer.id, { enabled: !indexer.enabled })
+      setIndexers((items) => items.map((item) => item.id === indexer.id ? { ...item, ...saved } : item))
       if (indexer.id === selectedId) setDraft((current) => ({ ...current, enabled: !indexer.enabled }))
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this indexer.') }
     finally { setTogglingId('') }

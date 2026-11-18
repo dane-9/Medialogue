@@ -110,6 +110,22 @@ export function MoviesPage({ library }: { library?: Library } = {}) {
   }
 
   const runMovieCardAction = async (movie: Movie, action: 'upgrade' | 'plex' | 'monitor' | 'unmonitor') => {
+    if (action === 'monitor' || action === 'unmonitor') {
+      // The mark flips at once and is saved behind; waiting for the whole
+      // library to reload made it look like the click did nothing. It is not
+      // tied to the card's busy state, so a running upgrade check does not block it.
+      const monitored = action === 'monitor'
+      setMovies((current) => current.map((item) => item.id === movie.id ? { ...item, monitored } : item))
+      try {
+        await moviesApi.bulkMovies({ movie_ids: [movie.id], action })
+        setMessage('')
+      } catch (reason) {
+        setMovies((current) => current.map((item) => item.id === movie.id ? { ...item, monitored: movie.monitored } : item))
+        setMessage(reason instanceof Error ? reason.message : `Could not ${action} ${movie.title}.`)
+      }
+      void loadMovies()
+      return
+    }
     setCardBusy(movie.id)
     try {
       const accepted = action === 'upgrade'
@@ -183,7 +199,7 @@ const MovieCard = memo(function MovieCard({ movie, selected, onToggle, onContext
   return <article className={`media-card ${selected ? 'media-selected' : ''} ${needsAttention(movie.status) ? 'media-attention' : ''}`} onContextMenu={(event) => onContext(event, movie.id)}>
     <SelectCheck checked={selected} label={movie.title} onToggle={(modifiers) => onToggle(movie.id, modifiers)} />
     <Link className="media-card-link" to={`/movies/${movie.id}`} onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }} onClick={(event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); onToggle(movie.id, event) } }}>
-      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} size="w342" />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{movie.incomingKind && <span className="poster-progress" aria-hidden="true"><span style={{ width: `${movie.incomingProgress ?? 0}%` }} /></span>}{movie.incomingKind && <Tooltip asChild content={`${movie.incomingKind === 'replacement' ? 'Downloading a replacement' : 'Downloading'} · ${Math.round(movie.incomingProgress ?? 0)}%`}><span className="incoming-mark" aria-label={`${movie.incomingKind === 'replacement' ? 'Downloading a replacement' : 'Downloading'}, ${Math.round(movie.incomingProgress ?? 0)}%`}><Icon name="download" size={13} /><span>{Math.round(movie.incomingProgress ?? 0)}%</span></span></Tooltip>}<span className="poster-marks"><span className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={13} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={13} /></button></Tooltip>}</span><MonitorMark monitored={movie.monitored !== false} title={movie.title} busy={busy} onToggle={(next) => void onAction(movie, next ? 'monitor' : 'unmonitor')} /></span></div>
+      <div className={`poster poster-${movie.id} ${movie.poster ? 'poster-has-image' : 'poster-empty'}`}><PosterImage reference={movie.poster} title={movie.title} size="w342" />{!movie.poster && <span className="poster-fallback-title">{movie.title}</span>}{movie.incomingKind && <span className="poster-progress" aria-hidden="true"><span style={{ width: `${movie.incomingProgress ?? 0}%` }} /></span>}{movie.incomingKind && <Tooltip asChild content={`${movie.incomingKind === 'replacement' ? 'Downloading a replacement' : 'Downloading'} · ${Math.round(movie.incomingProgress ?? 0)}%`}><span className="incoming-mark" aria-label={`${movie.incomingKind === 'replacement' ? 'Downloading a replacement' : 'Downloading'}, ${Math.round(movie.incomingProgress ?? 0)}%`}><Icon name="download" size={13} /><span>{Math.round(movie.incomingProgress ?? 0)}%</span></span></Tooltip>}<span className="poster-marks"><span className="media-card-actions" aria-label={`Actions for ${movie.title}`}><Tooltip asChild content="Check for Upgrade"><button className="icon-button" aria-label={`Check ${movie.title} for an upgrade`} disabled={busy} onClick={run('upgrade')}><Icon name="upgrade-media" size={13} /></button></Tooltip>{plexAvailable && <Tooltip asChild content="Recheck Plex"><button className="icon-button" aria-label={`Recheck Plex for ${movie.title}`} disabled={busy} onClick={run('plex')}><Icon name="refresh" size={13} /></button></Tooltip>}</span><MonitorMark monitored={movie.monitored !== false} title={movie.title} onToggle={(next) => void onAction(movie, next ? 'monitor' : 'unmonitor')} /></span></div>
       <div className="media-card-body"><div className="media-card-meta"><QbitStatusBadge status={movie.torrentStatus} compact />{plexAvailable && <Tooltip content={`Plex ${movie.plex}`}><Badge tone={statusTone(movie.plex)} className="media-card-secondary-badge">Plex</Badge></Tooltip>}</div><div className="media-card-title"><strong>{movie.title}</strong>{/* An edition is long enough that sharing a row with the tier truncated one
         of them, so it takes the year's row and the tier drops to its own. */}
         <span className="media-card-sub">{movie.year || 'Year unknown'}{edition && <em className="media-card-quality">{edition}</em>}{!edition && tier && <em className="media-card-quality">{tier}</em>}</span>{edition && tier && <span className="media-card-sub media-card-tier">{tier}</span>}</div></div>

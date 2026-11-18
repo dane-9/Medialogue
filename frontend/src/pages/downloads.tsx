@@ -15,6 +15,7 @@ import type { Download, DownloadClient } from '../types'
 import { Page, PosterImage } from './shared'
 import { DeleteDownloadsModal } from '../components/DeleteDownloadsModal'
 import { useLiveEvent, useLiveRefresh } from '../lib/liveRefresh'
+import { useFreshLoad } from '../lib/freshness'
 
 // Events that change which rows exist or what they show, beyond progress.
 const structuralDownloadEvents = [
@@ -384,17 +385,20 @@ export function DownloadsPage() {
   // The view as last loaded, kept for this browser tab.
   const viewKey = () => `downloads:${activeClientRef.current}:${activeFiltersRef.current.join('|')}:${sortRef.current.key}:${sortRef.current.direction}:${pageRef.current}`
 
+  // Only the newest read reaches the table: switching filter, sort or page
+  // quickly could otherwise leave an older view's rows on screen.
+  const fresh = useFreshLoad()
   const load = async (showLoading = true) => {
     if (showLoading) setLoading(true)
     const key = viewKey()
     try {
-      const payload = await downloadsApi.downloads({
+      await fresh(() => downloadsApi.downloads({
         clientId: activeClientRef.current,
         filters: activeFiltersRef.current,
         sort: sortRef.current.key,
         direction: sortRef.current.direction,
         page: pageRef.current,
-      })
+      }), (payload) => {
       rememberList(key, [{ items: payload.items, total: payload.total, pages: payload.pages }])
       setItems(payload.items)
       setTotal(payload.total)
@@ -408,6 +412,7 @@ export function DownloadsPage() {
           : currentGroups.some((group) => group.id === id)
       ))))
       setError('')
+      })
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load downloads.') }
     finally { setLoading(false) }

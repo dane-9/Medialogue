@@ -467,6 +467,8 @@ interface UpgradeCustomFormatImprovement {
 
 export interface UpgradeCandidate {
   id: string
+  /** The title or season the upgrade is for; it outlives the upgrade's own id. */
+  targetKey?: string
   /** Size of the releases being replaced, from their torrents. */
   currentSize?: number
   mediaType: 'movies' | 'shows'
