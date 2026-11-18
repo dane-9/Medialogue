@@ -23803,6 +23803,18 @@
               ],
               "title": "Media Type"
             }
+          },
+          {
+            "description": "Return only the comparison evidence used by the Upgrade Media list.",
+            "in": "query",
+            "name": "summary",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Return only the comparison evidence used by the Upgrade Media list.",
+              "title": "Summary",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

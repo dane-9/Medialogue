@@ -751,6 +751,58 @@ def test_upgrade_count_leaves_out_a_candidate_of_a_different_edition(client) -> 
     assert test_client.get("/api/v1/upgrade-candidates/count").json()["count"] == 0
 
 
+def test_upgrade_list_summary_keeps_row_details_and_defers_search_results(client) -> None:
+    test_client, tmp_path = client
+    headers = _login(test_client)
+    qbit, indexer = _create_integrations(test_client, headers)
+    candidate_id, _, release_id, _, _, _ = asyncio.run(_seed_movie_upgrade(tmp_path, qbit, indexer))
+    condition = {"matched": True, "condition_type": "release_title", "regex_match": "WEB-DL"}
+    matched = {"custom_format_name": "Web release", "matched": True, "contribution": 5, "conditions": [condition]}
+
+    async def store_evidence():
+        async with db_session.async_session_factory() as db:
+            candidate = await db.get(UpgradeCandidate, candidate_id)
+            assert candidate is not None
+            candidate.title = "Upgrade.Movie.2024.Directors.Cut.2160p.WEB-DL-GRP"
+            candidate.comparison_snapshot = {
+                "candidate": {"edition": None, "formats": [matched, {"matched": False}, "old format entry"]},
+                "current": {
+                    "score_snapshot": {"breakdown": [matched]},
+                    "releases": [{"release_id": str(release_id), "release_name": candidate.current_release_name}],
+                },
+                "profile": {"format_definitions": ["x" * 20_000]},
+            }
+            candidate.search_results = [
+                {"title": title, "snapshot": candidate.comparison_snapshot}
+                for title in (candidate.title, "Another saved result")
+            ]
+            await db.commit()
+
+    asyncio.run(store_evidence())
+    url = "/api/v1/upgrade-candidates"
+    full = test_client.get(url)
+    summary = test_client.get(url, params={"summary": "true"})
+    assert full.status_code == summary.status_code == 200
+    [full_row] = full.json()
+    [summary_row] = summary.json()
+    full_snapshot = full_row.pop("comparison_snapshot")
+    candidate_summary = summary_row.pop("comparison_snapshot")["candidate"]
+    assert full_row == summary_row
+    assert summary_row["result_count"] == 2
+    assert summary_row["candidate_edition"] is None
+    assert summary_row["execution_eligible"]
+    assert len(summary_row["current_releases"]) == 1
+    assert len(summary_row["current_matched_formats"]) == len(summary_row["candidate_matched_formats"]) == 1
+    assert full_snapshot["profile"]["format_definitions"]
+    assert len(candidate_summary["formats"]) == 1
+    assert candidate_summary["formats"][0]["conditions"] == [condition]
+    assert len(summary.content) < len(full.content) / 4
+    assert test_client.get(f"{url}/count").json()["count"] == 1
+    results = test_client.get(f"{url}/{candidate_id}/results")
+    assert results.status_code == 200
+    assert [row["title"] for row in results.json()["results"]] == [summary_row["title"], "Another saved result"]
+
+
 def test_cleanup_refuses_when_replacement_disappears_after_preview(client) -> None:
     test_client, tmp_path = client
     headers = _login(test_client)

@@ -165,7 +165,7 @@ export const upgradesApi = {
   },
   upgradeCandidates: async (mediaType?: 'movies' | 'shows') => {
     const rows = await openApiData(openApiClient.GET('/api/v1/upgrade-candidates', {
-      params: { query: { media_type: mediaType ?? null } },
+      params: { query: { media_type: mediaType ?? null, summary: true } },
     }))
     return rows.map(mapUpgradeCandidate)
   },

@@ -14036,6 +14036,8 @@ export interface operations {
         parameters: {
             query?: {
                 media_type?: components["schemas"]["MediaType"] | null;
+                /** @description Return only the comparison evidence used by the Upgrade Media list. */
+                summary?: boolean;
             };
             header?: never;
             path?: never;

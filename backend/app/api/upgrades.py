@@ -9,8 +9,9 @@ from typing import Any, Iterable, Iterator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import JSON, case, func, select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer, load_only
 
 from app.api import downloads as downloads_api
 from app.api import indexers as indexers_api
@@ -141,7 +142,7 @@ class _Lookups:
     title_categories: dict[UUID, str | None] = field(default_factory=dict)
 
 
-async def _lookups(db: AsyncSession, rows: list[UpgradeCandidate]) -> _Lookups:
+async def _lookups(db: AsyncSession, rows: list[UpgradeCandidate], snapshots: list[dict[str, Any]]) -> _Lookups:
     found = _Lookups()
     movie_ids = {row.movie_id for row in rows if row.media_type == MediaType.MOVIES and row.movie_id}
     season_ids = {row.season_id for row in rows if row.media_type != MediaType.MOVIES and row.season_id}
@@ -226,7 +227,7 @@ async def _lookups(db: AsyncSession, rows: list[UpgradeCandidate]) -> _Lookups:
     found.default_profile = resolve_default_profile(profiles)
 
     found.indexer_colors = {item.id: item.color for item in get_integration_config_store().list_indexers()}
-    formats = await comparison_formats_many(db, [dict(row.comparison_snapshot or {}) for row in rows])
+    formats = await comparison_formats_many(db, snapshots)
     found.formats = {row.id: pair for row, pair in zip(rows, formats)}
     return found
 
@@ -247,12 +248,9 @@ def _current_size(row: UpgradeCandidate, found: _Lookups) -> int | None:
 
 
 async def _response(db: AsyncSession, row: UpgradeCandidate) -> UpgradeCandidateResponse:
-    return _build_response(row, await _lookups(db, [row]))
-
-
-async def _responses(db: AsyncSession, rows: list[UpgradeCandidate]) -> list[UpgradeCandidateResponse]:
-    found = await _lookups(db, rows)
-    return [_build_response(row, found) for row in rows]
+    snapshot = dict(row.comparison_snapshot or {})
+    found = await _lookups(db, [row], [snapshot])
+    return _build_response(row, found, snapshot, len(row.search_results or []))
 
 
 def _folder_category(row: UpgradeCandidate, found: _Lookups) -> str | None:
@@ -262,14 +260,16 @@ def _folder_category(row: UpgradeCandidate, found: _Lookups) -> str | None:
     return found.title_categories.get(season.show_id) if season is not None else None
 
 
-def _candidate_edition(row: UpgradeCandidate) -> str | None:
-    candidate = (row.comparison_snapshot or {}).get("candidate") or {}
+def _candidate_edition(title: str, candidate: Any) -> str | None:
     if isinstance(candidate, dict) and "edition" in candidate:
         return candidate.get("edition")
-    return parse_release(row.title).edition
+    return parse_release(title).edition
 
 
-def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateResponse:
+def _build_response(
+    row: UpgradeCandidate, found: _Lookups, snapshot: dict[str, Any], result_count: int,
+    *, summary: bool = False,
+) -> UpgradeCandidateResponse:
     media_title = "Unknown media"
     media_year: int | None = None
     tmdb_id: int | None = None
@@ -360,12 +360,11 @@ def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateR
         profile_name = profile.name if profile else None
         profile_id = profile.id if profile else None
 
-    snapshot = dict(row.comparison_snapshot or {})
     current_formats, candidate_formats = found.formats.get(row.id, ([], []))
     source = found.sources.source(
         torrent for release_id in release_ids for torrent in found.release_torrents.get(release_id, [])
     )
-    candidate_edition = _candidate_edition(row)
+    candidate_edition = _candidate_edition(row.title, snapshot.get("candidate"))
     edition_matches = row.media_type != MediaType.MOVIES or same_edition(current_edition, candidate_edition)
     execution_eligible = bool(row.execution_eligible and edition_matches)
     execution_block_reason = row.execution_block_reason
@@ -408,7 +407,7 @@ def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateR
         title=row.title,
         quality=row.quality,
         candidate_edition=candidate_edition,
-        result_count=max(1, len(row.search_results or [])),
+        result_count=max(1, result_count),
         custom_format_score=row.custom_format_score,
         score_delta=row.score_delta,
         size=row.size,
@@ -434,7 +433,7 @@ def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateR
         candidate_matched_formats=[UpgradeMatchedFormat(**item) for item in candidate_formats],
         execution_eligible=execution_eligible,
         execution_block_reason=execution_block_reason,
-        comparison_snapshot=dict(row.comparison_snapshot or {}),
+        comparison_snapshot={"candidate": snapshot["candidate"]} if summary else snapshot,
         execution_state=row.execution_state,
         selected_download_client_id=row.selected_download_client_id,
         selected_download_client_name=row.selected_download_client_name,
@@ -456,36 +455,88 @@ def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateR
     )
 
 
+def _snapshot_edition():
+    snapshot = UpgradeCandidate.comparison_snapshot
+    path = "$.candidate.edition"
+    # Older snapshots may lack an edition; an explicit null means standard edition.
+    return case(
+        (func.json_type(snapshot, path).is_not(None), func.json_object("edition", func.json_extract(snapshot, path))),
+        else_="{}",
+    )
+
+
+def _matched_snapshot_formats(path: str, *, include_conditions: bool = False):
+    entries = func.json_each(UpgradeCandidate.comparison_snapshot, path).table_valued("key", "value", "type")
+    entry = case((entries.c.type == "object", entries.c.value), else_="{}")
+    fields = ["custom_format_id", "custom_format_name", "custom_format_group", "contribution", "matched"]
+    if include_conditions:
+        fields.extend(["suppressed_for_upgrade", "conditions"])
+    projected = func.json_object(*(part for name in fields for part in (name, func.json_extract(entry, f"$.{name}"))))
+    return (
+        select(func.json_group_array(projected))
+        .select_from(entries)
+        .where(func.typeof(entries.c.key) == "integer", func.json_extract(entry, "$.matched"))
+        .correlate(UpgradeCandidate)
+        .scalar_subquery()
+    )
+
+
+def _list_snapshot():
+    """Project the comparison evidence used by the rows before decoding it in Python."""
+    candidate = func.json_set(
+        _snapshot_edition(), "$.formats", func.json(_matched_snapshot_formats("$.candidate.formats", include_conditions=True)),
+    )
+    current = func.json_object(
+        "releases", func.json_extract(UpgradeCandidate.comparison_snapshot, "$.current.releases"),
+        "score_snapshot", func.json_object(
+            "breakdown", func.json(_matched_snapshot_formats("$.current.score_snapshot.breakdown")),
+        ),
+    )
+    return type_coerce(func.json_object("candidate", func.json(candidate), "current", current), JSON)
+
+
 @router.get("/upgrade-candidates", response_model=list[UpgradeCandidateResponse])
 async def list_upgrade_candidates(
     media_type: MediaType | None = Query(default=None),
+    summary: bool = Query(False, description="Return only the comparison evidence used by the Upgrade Media list."),
     _: AdminUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[UpgradeCandidateResponse]:
     return await shared_result(
-        ("upgrades", media_type), db, lambda session: _list_upgrade_candidates(session, media_type)
+        ("upgrades", media_type, summary), db, lambda session: _list_upgrade_candidates(session, media_type, summary=summary)
     )
 
 
-async def _list_upgrade_candidates(db: AsyncSession, media_type: MediaType | None) -> list[UpgradeCandidateResponse]:
+async def _list_upgrade_candidates(
+    db: AsyncSession, media_type: MediaType | None, *, summary: bool,
+) -> list[UpgradeCandidateResponse]:
     statement = select(UpgradeCandidate).where(~UpgradeCandidate.target_key.startswith("replace:"))
     if media_type is not None:
         statement = statement.where(UpgradeCandidate.media_type == media_type)
-    rows = (
-        await db.scalars(
-            statement.order_by(
-                UpgradeCandidate.execution_eligible.desc(),
-                UpgradeCandidate.updated_at.desc(),
-                UpgradeCandidate.title,
-            )
-        )
-    ).all()
+    statement = statement.order_by(
+        UpgradeCandidate.execution_eligible.desc(), UpgradeCandidate.updated_at.desc(), UpgradeCandidate.title,
+    )
+    if summary:
+        entries = (await db.execute(statement.options(
+            defer(UpgradeCandidate.comparison_snapshot, raiseload=True),
+            defer(UpgradeCandidate.search_results, raiseload=True),
+            defer(UpgradeCandidate.download_url, raiseload=True),
+        ).add_columns(_list_snapshot(), func.json_array_length(UpgradeCandidate.search_results)))).tuples().all()
+    else:
+        entries = [
+            (row, dict(row.comparison_snapshot or {}), len(row.search_results or []))
+            for row in (await db.scalars(statement)).all()
+        ]
+    if not entries:
+        return []
     replacing = await _titles_in_replace_media(db)
-    return await _responses(db, [row for row in rows if not _left_to_replace_media(row, replacing)])
+    visible = [(row, snapshot, count) for row, snapshot, count in entries if not _left_to_replace_media(row, replacing)]
+    found = await _lookups(db, [row for row, _, _ in visible], [snapshot for _, snapshot, _ in visible])
+    return [_build_response(row, found, snapshot, count or 0, summary=summary) for row, snapshot, count in visible]
 
 
 # The view the Upgrade Media page opens on.
-pin_shared_result(("upgrades", None), lambda session: _list_upgrade_candidates(session, None))
+pin_shared_result(("upgrades", None, True), lambda session: _list_upgrade_candidates(session, None, summary=True))
 
 
 async def _titles_in_replace_media(db: AsyncSession) -> set[str]:
@@ -721,30 +772,35 @@ async def count_upgrade_candidates(
     """
 
     pending = (
-        await db.scalars(
-            select(UpgradeCandidate)
+        await db.execute(
+            select(UpgradeCandidate, type_coerce(_snapshot_edition(), JSON))
+            .options(load_only(
+                UpgradeCandidate.movie_id, UpgradeCandidate.season_id, UpgradeCandidate.media_type,
+                UpgradeCandidate.current_release_ids, UpgradeCandidate.title, UpgradeCandidate.execution_state,
+                raiseload=True,
+            ))
             .where(
                 ~UpgradeCandidate.target_key.startswith("replace:"),
                 UpgradeCandidate.execution_state.is_(None),
                 UpgradeCandidate.execution_eligible.is_(True),
             )
         )
-    ).all()
+    ).tuples().all()
     replacing = await _titles_in_replace_media(db) if pending else set()
     # The same edition check the list applies: a different edition cannot be started.
     editions: dict[UUID, str | None] = {}
-    for chunk in _in_chunks({ids[0] for row in pending if row.media_type == MediaType.MOVIES and (ids := _release_ids(row))}):
+    for chunk in _in_chunks({ids[0] for row, _ in pending if row.media_type == MediaType.MOVIES and (ids := _release_ids(row))}):
         editions.update((await db.execute(
             select(MovieRelease.id, MovieRelease.effective_edition).where(MovieRelease.id.in_(chunk))
         )).tuples().all())
 
-    def startable(row: UpgradeCandidate) -> bool:
+    def startable(row: UpgradeCandidate, candidate: dict[str, Any]) -> bool:
         if row.media_type != MediaType.MOVIES:
             return True
         release_ids = _release_ids(row)
-        return same_edition(editions.get(release_ids[0]) if release_ids else None, _candidate_edition(row))
+        return same_edition(editions.get(release_ids[0]) if release_ids else None, _candidate_edition(row.title, candidate))
 
-    count = sum(1 for row in pending if not _left_to_replace_media(row, replacing) and startable(row))
+    count = sum(1 for row, candidate in pending if not _left_to_replace_media(row, replacing) and startable(row, candidate))
     read_only = list(
         await db.scalars(
             select(StorageRoot.name)
