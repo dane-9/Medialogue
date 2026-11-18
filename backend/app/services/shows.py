@@ -161,7 +161,8 @@ async def _ensure_season(db: AsyncSession, show: Show, season_number: int) -> Se
             show_id=show.id,
             season_number=season_number,
             title=f"Season {season_number}",
-            monitored=True,
+            # Follows the show, as a season from TMDB metadata does.
+            monitored=show.monitored,
             # Season 0 follows the library-wide Specials setting, the same
             # as a season created from TMDB metadata. Taking the column
             # default here made a scanned Specials folder count even with
@@ -205,7 +206,8 @@ async def _ensure_episode_for_mapping(
         season_number=season.season_number,
         episode_number=episode_number,
         title=title_hint,
-        monitored=True,
+        # Follows its season, as an episode from TMDB metadata does.
+        monitored=season.monitored and show.monitored,
         presence_state=PresenceState.MISSING,
         metadata_json={"provider": "local_observation"},
     )

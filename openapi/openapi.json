@@ -14595,6 +14595,17 @@
             ],
             "title": "Submitted At"
           },
+          "target_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Key"
+          },
           "title": {
             "title": "Title",
             "type": "string"

@@ -8023,6 +8023,8 @@ export interface components {
             size?: number | null;
             /** Submitted At */
             submitted_at?: string | null;
+            /** Target Key */
+            target_key?: string | null;
             /** Title */
             title: string;
             /** Tmdb Id */

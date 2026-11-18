@@ -377,6 +377,7 @@ def _build_response(row: UpgradeCandidate, found: _Lookups) -> UpgradeCandidateR
         )
     return UpgradeCandidateResponse(
         id=row.id,
+        target_key=row.target_key,
         media_type=row.media_type,
         movie_id=row.movie_id,
         season_id=row.season_id,

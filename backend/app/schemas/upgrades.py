@@ -40,6 +40,9 @@ class UpgradeMatchedFormat(BaseModel):
 
 class UpgradeCandidateResponse(BaseModel):
     id: UUID
+    #: The title (or season) the upgrade is for. Unlike ``id`` it outlives a
+    #: search that drops the upgrade and a later one that finds it again.
+    target_key: str | None = None
     media_type: MediaType
     movie_id: UUID | None = None
     season_id: UUID | None = None

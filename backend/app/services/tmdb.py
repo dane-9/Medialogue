@@ -489,6 +489,8 @@ async def sync_show_metadata(
                     season_number=season_meta.season_number,
                     title=season_meta.title,
                     counted=counted,
+                    # A new season follows the show: one not monitored gains none.
+                    monitored=show.monitored,
                     metadata_json={},
                 )
                 db.add(season)
@@ -513,6 +515,9 @@ async def sync_show_metadata(
                         season_number=item.season_number,
                         episode_number=item.episode_number,
                         presence_state=PresenceState.MISSING,
+                        # A newly aired episode follows its season, so one the
+                        # user stopped monitoring stays that way.
+                        monitored=season.monitored and show.monitored,
                     )
                     db.add(episode)
                 episode.season_id = season.id
