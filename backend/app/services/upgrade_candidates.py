@@ -1115,6 +1115,32 @@ def apply_search_result(row: UpgradeCandidate, value: dict[str, Any]) -> None:
     row.comparison_snapshot = {**snapshot, **{key: True for key in ("same_file", "link_failed") if value.get(key)}}
 
 
+def _picked_result(row: UpgradeCandidate, search_results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The stored result for the release picked on ``row``, if it is listed and still qualifies."""
+
+    return next(
+        (
+            value for value in search_results
+            if str(value.get("indexer_id") or "") == str(row.indexer_id or "")
+            and str(value.get("guid") or value.get("title") or "") == row.guid
+            and (value.get("eligible") or value.get("selectable"))
+        ),
+        None,
+    )
+
+
+def _refresh_target(row: UpgradeCandidate, target: UpgradeTarget) -> None:
+    row.media_type = target.media_type
+    row.movie_id = target.movie_id
+    row.season_id = target.season_id
+    row.current_release_ids = [str(item.release_id) for item in target.releases]
+    row.current_release_name = target.reference.release_name
+    row.current_quality = target.reference.quality
+    row.current_custom_format_score = target.reference.custom_format_score
+    row.execution_eligible = target.execution_eligible
+    row.execution_block_reason = target.execution_block_reason
+
+
 async def _persist_candidate(
     db: AsyncSession,
     *,
@@ -1130,6 +1156,19 @@ async def _persist_candidate(
         # that destructive workflow.
         row.last_searched_at = searched_at
         return True, False
+    if row is not None and row.picked_at is not None:
+        picked = _picked_result(row, search_results)
+        if picked is not None:
+            # The release picked by hand is still listed and still qualifies:
+            # keep it, with what this search says of it now (seeders, score).
+            _refresh_target(row, target)
+            row.search_results = search_results
+            row.last_searched_at = searched_at
+            apply_search_result(row, picked)
+            await db.flush()
+            return True, False
+        # The trackers no longer list it, or it no longer qualifies.
+        row.picked_at = None
     if candidate is None:
         if row is None:
             return False, False

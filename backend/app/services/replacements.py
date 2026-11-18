@@ -1016,6 +1016,8 @@ async def pick_replacement_result(db: AsyncSession, target_key: str, result_id: 
     row = await db.scalar(select(UpgradeCandidate).where(UpgradeCandidate.target_key == target_key))
     assert row is not None
     apply_search_result(row, next(item for item in row.search_results if str(item.get("id")) == result_id))
+    # Picked by hand: later searches keep it while it is still listed.
+    row.picked_at = datetime.now(timezone.utc)
     await db.commit()
     return row
 

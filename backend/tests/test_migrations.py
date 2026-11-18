@@ -149,7 +149,7 @@ def test_migration_history_is_the_fresh_baseline_then_linear_revisions() -> None
         "0001_fresh_baseline.py", "0002_ui_selections.py", "0003_release_identity_confidence.py",
         "0004_upgrade_search_marks.py", "0005_remove_wrong_title_upgrades.py", "0006_indexer_tracker_hosts.py",
         "0007_ignored_folders.py", "0008_libraries.py", "0009_custom_filters.py",
-        "0010_one_record_per_folder.py",
+        "0010_one_record_per_folder.py", "0011_upgrade_candidate_picked_at.py",
     ]
 
     baseline = migrations[0].read_text(encoding="utf-8")

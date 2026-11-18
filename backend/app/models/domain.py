@@ -1164,6 +1164,9 @@ class UpgradeCandidate(TimestampMixin, Base):
     # Complete private result set from the latest target search. Download URLs
     # stay here and are projected through a URL-free response schema.
     search_results: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list, nullable=False)
+    #: When the release was picked by hand. Searches keep a picked release while
+    #: it is still listed and qualifies, instead of storing their own best.
+    picked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     execution_state: Mapped[str | None] = mapped_column(String(40))
     submitted_info_hash: Mapped[str | None] = mapped_column(String(64))
     selected_download_client_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))

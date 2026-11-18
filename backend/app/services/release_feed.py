@@ -91,6 +91,10 @@ async def _offer(db: AsyncSession, target: Any, answered: list[tuple[ConfiguredI
     new_ids = {value["id"] for value in qualifying}
     earlier = [value for value in ((row.search_results or []) if row is not None else []) if value.get("id") not in new_ids]
     best = candidates[0]
+    if row is not None and row.picked_at is not None:
+        # A release picked by hand stays; new ones are listed beside it.
+        row.search_results = [*earlier, *qualifying]
+        return False
     if row is not None and row.execution_eligible:
         offered = _quality_preference(row.quality, profile.quality_order)
         if offered is not None and (best.quality_preference, -best.custom_format_score) >= (offered, -row.custom_format_score):

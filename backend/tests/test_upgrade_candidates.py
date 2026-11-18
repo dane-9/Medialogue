@@ -258,6 +258,12 @@ def test_movie_upgrade_keeps_best_candidate_and_never_exposes_download_url(clien
         "Upgrade.Movie.2024.2160p.WEB-DL.x264-GRP"
     )
 
+    # A later search keeps the release picked by hand while it is still listed,
+    # instead of putting its own recommendation back.
+    _run_search(behavior)
+    kept = client.get("/api/v1/upgrade-candidates").json()[0]
+    assert kept["title"] == "Upgrade.Movie.2024.1080p.WEB-DL.REPACK.x264-GRP"
+
     # Searching again from the results view refreshes just this upgrade.
     from app.api import indexers as indexers_api
 

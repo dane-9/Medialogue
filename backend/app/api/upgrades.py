@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import PurePath, PurePosixPath
 
@@ -615,6 +616,8 @@ async def select_upgrade_search_result(
         reasons = " ".join(str(reason) for reason in value.get("rejection_reasons") or [])
         raise AppError("UPGRADE_RESULT_REJECTED", reasons or "That result does not qualify as an upgrade.", status_code=409)
     apply_search_result(row, value)
+    # Picked by hand: later searches keep it while it is still listed.
+    row.picked_at = datetime.now(timezone.utc)
     # Choosing a different release changes only the recommendation. Target-level
     # guards (for example a profile that is awaiting re-evaluation) must survive.
     await create_event(
