@@ -15,6 +15,7 @@ const LABELS: Record<string, string> = {
   'storage_root.unavailable': 'Folder unavailable',
   'storage_root.restored': 'Folder restored',
   'release.replaced': 'Release replaced',
+  'release.merged': 'Release merged',
   'media.missing': 'Media missing',
   'media.present': 'Media present',
   'media.reappeared': 'Media reappeared',

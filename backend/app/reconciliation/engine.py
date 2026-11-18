@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 
 from .types import (
@@ -10,6 +11,12 @@ from .types import (
     PresenceDecision,
     ReleaseState,
 )
+
+
+def _folder_key(path: str | None) -> str:
+    """One spelling per folder, so case or separators never make one folder two."""
+
+    return os.path.normcase(os.path.normpath(path)) if path else ""
 
 
 class ReconciliationEngine:
@@ -72,7 +79,10 @@ class ReconciliationEngine:
         if not candidate.download_complete:
             return Decision(DecisionKind.INCOMING, "INCOMING_DOWNLOAD", events=("torrent.incoming",))
 
-        same_path = next((item for item in existing if item.resolved_path == candidate.resolved_path), None)
+        same_path = next(
+            (item for item in existing if _folder_key(item.resolved_path) == _folder_key(candidate.resolved_path)),
+            None,
+        )
         if same_path is not None:
             if self._state_is(same_path.state, ReleaseState.MISSING) or not same_path.path_exists:
                 return Decision(

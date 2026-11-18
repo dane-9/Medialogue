@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -425,6 +426,182 @@ async def mark_absent_known_directories(
     return {"started": started, "missing": committed, "restored": restored, "threshold": threshold}
 
 
+def _folder_key(path: str | None) -> str:
+    """One spelling per folder, so case or separators never make one folder two."""
+
+    return os.path.normcase(os.path.normpath(path)) if path else ""
+
+
+async def _attach_torrent_to_release(
+    db: AsyncSession,
+    current_release: MovieRelease,
+    torrent: Torrent,
+    incoming_release: MovieRelease | None,
+) -> None:
+    """Link a completed torrent to the release that already owns its folder."""
+
+    # qBittorrent is polled before completed media is reconciled. If the
+    # torrent points at a directory that is already registered, the
+    # provisional incoming release must not remain visible as an incoming
+    # replacement.
+    if incoming_release is not None and incoming_release.id != current_release.id:
+        incoming_link = await db.scalar(
+            select(MovieReleaseTorrent).where(
+                MovieReleaseTorrent.movie_release_id == incoming_release.id,
+                MovieReleaseTorrent.torrent_id == torrent.id,
+                MovieReleaseTorrent.association_type == AssociationType.INCOMING,
+            )
+        )
+        if incoming_link is not None:
+            incoming_link.association_type = AssociationType.HISTORICAL
+        has_directory = bool(
+            await db.scalar(
+                select(func.count())
+                .select_from(MediaDirectory)
+                .where(MediaDirectory.movie_release_id == incoming_release.id)
+            )
+        )
+        if not has_directory:
+            incoming_release.release_state = ReleaseState.REMOVED
+            incoming_release.removed_at = utcnow()
+        # What the grab recorded follows the torrent to the release it landed in.
+        if current_release.selection_snapshot is None and incoming_release.selection_snapshot is not None:
+            current_release.selection_snapshot = dict(incoming_release.selection_snapshot)
+            current_release.original_custom_format_score = incoming_release.original_custom_format_score
+        if not current_release.tracker_title and incoming_release.tracker_title:
+            current_release.tracker_title = incoming_release.tracker_title
+
+    current_link = await db.scalar(
+        select(MovieReleaseTorrent).where(
+            MovieReleaseTorrent.movie_release_id == current_release.id,
+            MovieReleaseTorrent.torrent_id == torrent.id,
+        )
+    )
+    if current_link is None:
+        db.add(
+            MovieReleaseTorrent(
+                movie_release_id=current_release.id,
+                torrent_id=torrent.id,
+                association_type=AssociationType.ATTACHED,
+            )
+        )
+    else:
+        current_link.association_type = AssociationType.ATTACHED
+
+
+async def _join_attached_release(
+    db: AsyncSession,
+    release: MovieRelease,
+    directory: MediaDirectory,
+    observation: DirectoryObservation,
+    *,
+    torrent: Torrent | None,
+    incoming_release: MovieRelease | None,
+) -> str:
+    """The folder already belongs to ``release``: use it rather than add a second release.
+
+    Two workers can see a new folder at once (the folder watcher and qBittorrent
+    completion), each before the other has saved it. The later one then finds
+    the folder already attached here.
+    """
+
+    key = _folder_key(observation.path)
+    known = next((item for item in release.directories if _folder_key(item.resolved_path) == key), None)
+    if known is not None and known is not directory:
+        # This run's own row for the folder is a second copy of ``known``.
+        if directory in db.new:
+            db.expunge(directory)
+        else:
+            await db.delete(directory)
+        known.exists = True
+        known.last_seen_at = utcnow()
+        known.last_exists_check_at = utcnow()
+        known.missing_since = None
+        known.missing_check_count = 0
+        await db.refresh(known, ["files"])
+        _sync_files(known, observation)
+    else:
+        directory.movie_release_id = release.id
+    if release.release_state == ReleaseState.MISSING:
+        release.release_state = ReleaseState.CURRENT
+        await create_event(
+            db,
+            "media.reappeared",
+            entity_type="movie_release",
+            entity_id=release.id,
+            message="A missing release reappeared at its known path.",
+            details={"path": observation.path},
+        )
+    if torrent is not None:
+        await _attach_torrent_to_release(db, release, torrent, incoming_release)
+    await _refresh_movie_duplicate_problem(db, release.movie_id)
+    return "matched"
+
+
+async def _merge_same_folder_releases(db: AsyncSession, releases: list[MovieRelease]) -> set[UUID]:
+    """Fold releases that sit in one folder into a single release; returns the folded ids.
+
+    One folder is one release. Should two ever be recorded for it, the one
+    with torrents (else the first seen) keeps the folder, and the other's
+    torrents and grab details move onto it.
+    """
+
+    by_folder: defaultdict[str, list[MovieRelease]] = defaultdict(list)
+    for release in releases:
+        for key in {_folder_key(item.resolved_path) for item in release.directories if item.exists}:
+            by_folder[key].append(release)
+    folded: set[UUID] = set()
+    for key, group in by_folder.items():
+        group = [item for item in group if item.id not in folded]
+        if len(group) < 2:
+            continue
+        links = {
+            item.id: list((await db.scalars(
+                select(MovieReleaseTorrent).where(MovieReleaseTorrent.movie_release_id == item.id)
+            )).all())
+            for item in group
+        }
+        survivor = min(group, key=lambda item: (not links[item.id], item.first_seen_at))
+        survivor_torrents = {link.torrent_id: link for link in links[survivor.id]}
+        for other in group:
+            if other is survivor:
+                continue
+            for link in links[other.id]:
+                kept = survivor_torrents.get(link.torrent_id)
+                if kept is None:
+                    link.movie_release_id = survivor.id
+                    survivor_torrents[link.torrent_id] = link
+                else:
+                    if link.association_type == AssociationType.ATTACHED:
+                        kept.association_type = AssociationType.ATTACHED
+                    await db.delete(link)
+            for item in list(other.directories):
+                if _folder_key(item.resolved_path) == key:
+                    await db.delete(item)
+                else:
+                    item.movie_release_id = survivor.id
+            if survivor.selection_snapshot is None and other.selection_snapshot is not None:
+                survivor.selection_snapshot = dict(other.selection_snapshot)
+                survivor.original_custom_format_score = other.original_custom_format_score
+            if not survivor.tracker_title and other.tracker_title:
+                survivor.tracker_title = other.tracker_title
+            other.release_state = ReleaseState.REMOVED
+            other.removed_at = utcnow()
+            other.parse_snapshot = {**dict(other.parse_snapshot or {}), "merged_into_release_id": str(survivor.id)}
+            folded.add(other.id)
+            await create_event(
+                db,
+                "release.merged",
+                entity_type="movie",
+                entity_id=survivor.movie_id,
+                message=f"Merged a second record of {survivor.raw_release_name}: it is the same folder.",
+                details={"release_id": str(survivor.id), "merged_release_id": str(other.id), "path": key},
+            )
+    if folded:
+        await db.flush()
+    return folded
+
+
 def _existing_release_rows(movie: Movie, releases: list[MovieRelease] | None = None) -> list[ExistingRelease]:
     rows: list[ExistingRelease] = []
     for release in releases if releases is not None else movie.releases:
@@ -456,6 +633,11 @@ async def _refresh_movie_duplicate_problem(db: AsyncSession, movie_id: UUID) -> 
             .with_for_update()
         )
     ).unique().all()
+    folded = await _merge_same_folder_releases(db, [
+        release for release in releases
+        if release.release_state in {ReleaseState.CURRENT, ReleaseState.DUPLICATE, ReleaseState.MISSING}
+    ])
+    releases = [release for release in releases if release.id not in folded]
     physically_present = [
         release
         for release in releases
@@ -732,48 +914,7 @@ async def reconcile_movie_directory(
                         details={"path": observation.path},
                     )
             if torrent is not None:
-                current_release = existing_directory.movie_release
-                # qBittorrent is polled before completed media is
-                # reconciled. If the torrent points at a directory that is
-                # already registered, the provisional incoming release
-                # must not remain visible as an incoming replacement.
-                if incoming_release is not None and incoming_release.id != current_release.id:
-                    incoming_link = await db.scalar(
-                        select(MovieReleaseTorrent).where(
-                            MovieReleaseTorrent.movie_release_id == incoming_release.id,
-                            MovieReleaseTorrent.torrent_id == torrent.id,
-                            MovieReleaseTorrent.association_type == AssociationType.INCOMING,
-                        )
-                    )
-                    if incoming_link is not None:
-                        incoming_link.association_type = AssociationType.HISTORICAL
-                    has_directory = bool(
-                        await db.scalar(
-                            select(func.count())
-                            .select_from(MediaDirectory)
-                            .where(MediaDirectory.movie_release_id == incoming_release.id)
-                        )
-                    )
-                    if not has_directory:
-                        incoming_release.release_state = ReleaseState.REMOVED
-                        incoming_release.removed_at = utcnow()
-
-                current_link = await db.scalar(
-                    select(MovieReleaseTorrent).where(
-                        MovieReleaseTorrent.movie_release_id == current_release.id,
-                        MovieReleaseTorrent.torrent_id == torrent.id,
-                    )
-                )
-                if current_link is None:
-                    db.add(
-                        MovieReleaseTorrent(
-                            movie_release_id=current_release.id,
-                            torrent_id=torrent.id,
-                            association_type=AssociationType.ATTACHED,
-                        )
-                    )
-                else:
-                    current_link.association_type = AssociationType.ATTACHED
+                await _attach_torrent_to_release(db, existing_directory.movie_release, torrent, incoming_release)
             return "matched"
 
     folder_parse = parse_release(observation.name)
@@ -940,6 +1081,12 @@ async def reconcile_movie_directory(
             if incoming_release is None or item.release_id != str(incoming_release.id)
         ]
         decision = ReconciliationEngine().reconcile_candidate(candidate, existing_for_decision)
+        if decision.kind in {DecisionKind.NO_CHANGE, DecisionKind.REAPPEARED} and decision.old_release_id:
+            attached = next((item for item in active if str(item.id) == decision.old_release_id), None)
+            if attached is not None:
+                return await _join_attached_release(
+                    db, attached, directory, observation, torrent=torrent, incoming_release=incoming_release
+                )
         if decision.kind is DecisionKind.REVIEW:
             await stage_media_discovery(
                 db,

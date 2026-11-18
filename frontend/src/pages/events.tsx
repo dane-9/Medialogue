@@ -14,7 +14,7 @@ import { useLiveRefresh } from '../lib/liveRefresh'
 // Live events that are also written to Events, so the list has a new row.
 const durableEvents = [
   'download.completed', 'scan.completed', 'scan.failed', 'plex.health', 'plex.verified', 'plex.conflict', 'plex.sync_completed',
-  'problem.created', 'problem.resolved', 'storage_root.unavailable', 'storage_root.restored', 'release.replaced',
+  'problem.created', 'problem.resolved', 'storage_root.unavailable', 'storage_root.restored', 'release.replaced', 'release.merged',
   'media.missing', 'media.present', 'media.reappeared', 'torrent.detected', 'torrent.removed', 'torrent.reappeared',
   'search.download_submitted', 'show.metadata_refreshed', 'qbittorrent.health',
   'tag.created', 'tag.updated', 'tag.deleted', 'movie.tags_updated', 'movie.monitoring_updated',

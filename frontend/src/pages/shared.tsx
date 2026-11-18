@@ -28,7 +28,7 @@ export function PosterImage({ reference, title, size }: { reference?: string; ti
 
 export const libraryInvalidationEvents = [
   'scan.progress', 'scan.completed', 'scan.failed',
-  'media.present', 'media.missing', 'media.reappeared',
+  'media.present', 'media.missing', 'media.reappeared', 'release.merged',
   'plex.matched', 'plex.verified', 'plex.not_found', 'plex.pending', 'plex.conflict', 'plex.multiple_versions', 'plex.unavailable', 'plex.sync_completed',
   'problem.created', 'problem.updated', 'problem.resolved', 'problem.deleted',
   'show.metadata_refreshed', 'movie.monitoring_updated', 'movie.tags_updated',
