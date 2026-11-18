@@ -5,8 +5,8 @@ every affected title against every Custom Format. Pages, sidebar counts and live
 refreshes all ask for these, so one copy of each is kept and rebuilt when it
 goes out of date:
 
-- A change made through the API (see main.py) makes every copy unusable: the
-  next read waits for a fresh one, so what someone just did is always visible.
+- An API change that can affect the lists (see main.py) makes every copy
+  unusable. The next read waits for a fresh one.
 - A recorded event, or a copy passing its age limit, only makes it out of date:
   reads keep getting it while it is rebuilt in the background, and open pages
   are told by a ``results.<topic>`` live event when the new copy is different.
@@ -70,7 +70,7 @@ _building: ContextVar[bool] = ContextVar("shared_results_building", default=Fals
 
 
 def invalidate_shared_results() -> None:
-    """Something changed through the API: no copy may be served until rebuilt."""
+    """An API write can change the lists, so their next read must rebuild them."""
 
     global _change_generation
     _change_generation += 1

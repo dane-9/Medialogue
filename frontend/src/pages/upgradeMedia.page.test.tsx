@@ -66,6 +66,14 @@ describe('Upgrade Media page', () => {
     expect(text()).toContain('WEB-DL')
   })
 
+  it('shows rows while the count and page settings are still loading', async () => {
+    api.upgradeCandidateCount.mockReturnValue(new Promise(() => {}))
+    api.downloadClients.mockReturnValue(new Promise(() => {}))
+    renderPage(<UpgradeMediaPage />, '/upgrade-media')
+    await waitFor(() => expect(text()).toContain('Inception'))
+    expect(screen.queryByText('Loading upgrade candidates…')).toBeNull()
+  })
+
   it('rejects the offered release from a right-click on the upgrade side', async () => {
     api.markNotAnUpgrade.mockResolvedValue({ next_title: 'Inception.2010.2160p.WEB-DL-NEXT' })
     renderPage(<UpgradeMediaPage />, '/upgrade-media')

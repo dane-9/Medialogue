@@ -441,29 +441,16 @@ async def replacement_targets(
     *,
     movie_ids: set[UUID] | None = None,
     show_ids: set[UUID] | None = None,
-    ignore_reasons: frozenset[str] | None = None,
 ) -> list[ReplacementTarget]:
     """Movie releases and show seasons that could not be restored, with why.
 
     Only titles with a problem release are scored, instead of every profile and
-    release in the library. ``ignore_reasons`` also leaves out titles whose
-    every problem has one of these reasons, for a caller that would discard
-    them anyway: scoring them is most of the work.
+    release in the library.
     """
 
     problems, affected_movies, affected_shows = await release_problems(db, movie_ids=movie_ids, show_ids=show_ids)
     if not problems:
         return []
-    if ignore_reasons:
-        counted_movies: set[UUID] = set()
-        counted_shows: set[UUID] = set()
-        counted_ids = [release_id for release_id, item in problems.items() if item.problem.reason not in ignore_reasons]
-        for index in range(0, len(counted_ids), 500):
-            chunk = counted_ids[index : index + 500]
-            counted_movies.update((await db.scalars(select(MovieRelease.movie_id).where(MovieRelease.id.in_(chunk)))).all())
-            counted_shows.update((await db.scalars(select(ShowRelease.show_id).where(ShowRelease.id.in_(chunk)))).all())
-        affected_movies &= counted_movies
-        affected_shows &= counted_shows
     # A title being upgraded is expected to lose its old torrent; the upgrade
     # owns it until it finishes.
     upgrading_movies: set[UUID] = set()
@@ -594,6 +581,20 @@ def _item(**values: Any) -> dict[str, Any]:
 UPGRADE_KEEPS_REASONS = frozenset({NOT_WATCHED, FILES_MISSING, NO_TORRENT})
 
 
+async def _load_replacement_targets(
+    db: AsyncSession,
+) -> tuple[list[ReplacementTarget], dict[str, ReplacementReview]]:
+    targets = await replacement_targets(db)
+    return targets, await _reviews(db, [entry.target.target_key for entry in targets])
+
+
+async def _shared_replacement_targets(
+    db: AsyncSession,
+) -> tuple[list[ReplacementTarget], dict[str, ReplacementReview]]:
+    """Share the inventory walk and scoring across the queues and their badges."""
+    return await shared_result(("replacement_targets",), db, _load_replacement_targets)
+
+
 async def replacing_title_ids(db: AsyncSession) -> set[str]:
     return set(await shared_result(("titles",), db, lambda session: _replacing_title_ids(session)))
 
@@ -606,8 +607,7 @@ async def _replacing_title_ids(db: AsyncSession) -> set[str]:
     """
 
     ids: set[str] = set()
-    targets = await replacement_targets(db, ignore_reasons=UPGRADE_KEEPS_REASONS)
-    reviews = await _reviews(db, [entry.target.target_key for entry in targets])
+    targets, reviews = await _shared_replacement_targets(db)
     for entry in targets:
         # Only titles whose torrent is beyond saving belong to Replace Media alone.
         # One missing from qBittorrent is fixed by re-adding it, one whose files
@@ -642,9 +642,8 @@ async def _replacement_queue(db: AsyncSession, *, details: bool = True) -> list[
     breakdowns, live downloads, folders), for the polled sidebar count.
     """
 
-    targets = await replacement_targets(db)
+    targets, reviews = await _shared_replacement_targets(db)
     bulk_search, searching_keys = await _search_scope(db)
-    reviews = await _reviews(db, [entry.target.target_key for entry in targets])
 
     keys = [entry.target.target_key for entry in targets]
     candidates = {

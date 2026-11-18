@@ -208,9 +208,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
-        # A change made through the API may change what the library and Replace
-        # Media list: their shared results must not outlive it.
-        if request.method not in {"GET", "HEAD", "OPTIONS"} and response.status_code < 400:
+        path = request.url.path
+        # Account and UI preferences do not change the library or media queues.
+        affects_lists = not (
+            path.startswith(("/api/v1/ui-selections/", "/api/v1/auth/sessions/"))
+            or path in {"/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/password"}
+        )
+        if affects_lists and request.method not in {"GET", "HEAD", "OPTIONS"} and response.status_code < 400:
             from app.services.shared_results import invalidate_shared_results
             invalidate_shared_results()
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

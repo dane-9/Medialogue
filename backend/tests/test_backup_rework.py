@@ -324,36 +324,60 @@ def test_replace_media_count_includes_every_reason_the_queue_lists(recovery_env)
 
 
 def test_replace_media_results_are_shared_until_something_changes(recovery_env, monkeypatch):
-    """The page, its count and Upgrade Media share one computed queue; a change
-    through the API or a recorded event makes the next request compute afresh."""
+    """All queue reads share the same target calculation across unrelated writes."""
+    from sqlalchemy import select
 
     from app.core.config import get_settings
+    from app.db import session as db_session
     from app.services import replacements as module
     from app.services.events import publish_live_event
     from app.services.shared_results import invalidate_shared_results
+    from tests.test_upgrade_execution import _create_integrations, _seed_movie_upgrade
 
-    client, _, _ = recovery_env
+    client, _, root = recovery_env
     headers = login_headers(client)
+    qbit, indexer = _create_integrations(client, headers)
+    _, _, _, torrent_id, _, _ = asyncio.run(_seed_movie_upgrade(root, qbit, indexer))
+
+    async def mark_removed():
+        async with db_session.async_session_factory() as db:
+            observation = (await db.scalars(select(TorrentClientObservation).where(
+                TorrentClientObservation.torrent_id == torrent_id,
+            ))).one()
+            observation.is_present = False
+            observation.removed_at = datetime.now(timezone.utc) - timedelta(days=2)
+            await db.commit()
+
+    asyncio.run(mark_removed())
     monkeypatch.setattr(get_settings(), "replacement_results_seconds", 30.0)
     invalidate_shared_results()
     computed: list[str] = []
-    original = module._replacement_queue
+    original = module.replacement_targets
 
     async def counting(db, **kwargs):
-        computed.append("queue")
+        computed.append("targets")
         return await original(db, **kwargs)
 
-    monkeypatch.setattr(module, "_replacement_queue", counting)
-    for _ in range(3):
-        assert client.get("/api/v1/replacements/count").status_code == 200
-    assert computed == ["queue"]
+    monkeypatch.setattr(module, "replacement_targets", counting)
+    assert client.get("/api/v1/replacements/count").json() == {"count": 1}
+    queue = client.get("/api/v1/replacements").json()["items"]
+    assert len(queue) == 1
+    for path in ("/upgrade-candidates", "/upgrade-candidates/count"):
+        assert client.get(f"/api/v1{path}").status_code == 200
+    assert computed == ["targets"]
 
-    client.put("/api/v1/ui-selections/replace-media-picked", headers=headers, json={"ids": []})
-    client.get("/api/v1/replacements/count")
-    assert computed == ["queue", "queue"]
+    headers = login_headers(client)
+    assert client.put("/api/v1/ui-selections/replace-media-picked", headers=headers, json={"ids": []}).status_code == 200
+    assert client.get("/api/v1/replacements/count").status_code == 200
+    assert computed == ["targets"]
 
     publish_live_event("download.progress", entity_type="torrent", data={})
     client.get("/api/v1/replacements/count")
+    assert len(computed) == 1
+    assert client.post("/api/v1/replacements/review", headers=headers, json={
+        "action": "ignore", "targets": [{"target_key": queue[0]["target_key"], "reason": "not_watched"}],
+    }).status_code == 200
+    assert client.get("/api/v1/replacements/count").json() == {"count": 0}
     assert len(computed) == 2
     publish_live_event("torrent.removed", entity_type="torrent", data={})
     client.get("/api/v1/replacements/count")
@@ -395,13 +419,13 @@ def test_library_lists_are_shared_until_the_library_changes(recovery_env, monkey
     client.get(path)
     assert computed == ["title", "year"]
 
-    # A scan adds titles as it goes; a change through the API may change any.
+    # Scans affect the library, while saved selections do not.
     publish_live_event("scan.progress", entity_type="storage_root", data={})
     client.get(path)
     assert len(computed) == 3
     client.put("/api/v1/ui-selections/replace-media-picked", headers=headers, json={"ids": []})
     client.get(path)
-    assert len(computed) == 4
+    assert len(computed) == 3
     invalidate_shared_results()
 
 

@@ -54,6 +54,12 @@ describe('Replace Media page', () => {
     expect(api.queue).toHaveBeenCalledTimes(1)
   })
 
+  it('shows rows while download clients are still loading', async () => {
+    api.downloadClients.mockReturnValue(new Promise(() => {}))
+    renderPage(<ReplaceMediaPage />, '/replace-media')
+    await waitFor(() => expect(text()).toContain('Inception'))
+  })
+
   it('tags a trumped title TRUMPED, and TRUMPED? when the tracker only says it is gone', async () => {
     api.queue.mockResolvedValue({ items: [
       item({ reason: 'Trumped', reason_code: 'trumped', lost_evidence: [{ torrent_name: 'A', tracker: 'alpha.example', message: 'Trumped by a newer upload', terminal_reason: 'trumped' }] }),

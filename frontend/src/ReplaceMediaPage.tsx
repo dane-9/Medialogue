@@ -98,7 +98,7 @@ export default function ReplaceMediaPage() {
   // Switching view or acting clears hand-ticked rows only: a row unticked
   // from Download stays unticked until ticked again or it leaves the list.
   const clearPicks = () => setPicked(new Set())
-  const [clients, setClients] = useState<DownloadClient[]>([])
+  const [clients, setClients] = useState<DownloadClient[]>()
   const [loading, setLoading] = useState(() => cachedList('replaceMedia') === undefined)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -118,13 +118,17 @@ export default function ReplaceMediaPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
 
   // Only the newest read, and none a change overtook, reaches the list.
-  const fresh = useFreshLoad()
+  const freshRows = useFreshLoad()
+  const freshClients = useFreshLoad()
   // A title's ticks are only forgotten once two reads in a row leave it out,
   // so one read that misses it cannot drop a choice for good.
   const lastKeys = useRef<string[]>([])
   const load = async () => {
+    void freshClients(integrationsApi.downloadClients, setClients).catch((reason) => {
+      setError((current) => current || (reason instanceof Error ? reason.message : 'Could not load download clients.'))
+    })
     try {
-      await fresh(() => Promise.all([replacementsApi.queue(), integrationsApi.downloadClients()]), ([queue, configured]) => {
+      await freshRows(replacementsApi.queue, (queue) => {
         rememberList('replaceMedia', queue.items)
         setItems(queue.items)
         const keys = queue.items.map((item) => item.target_key)
@@ -132,7 +136,6 @@ export default function ReplaceMediaPage() {
         lastKeys.current = keys
         prunePicked(keep)
         pruneUnticked(keep)
-        setClients(configured)
       })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load Replace Media.')
@@ -252,7 +255,7 @@ export default function ReplaceMediaPage() {
     if (!next.delete(code)) next.add(code)
     setHidden(next)
   }
-  const clientsFor = (kind: MediaKind) => clients.filter((client) => client.enabled && client.scope === kind)
+  const clientsFor = (kind: MediaKind) => clients?.filter((client) => client.enabled && client.scope === kind) ?? []
 
   const search = (targets: ReplacementItem[] | 'all') => act('search', async () => {
     if (targets === 'all') { await replacementsApi.search(); setBulkProgress(0) }
@@ -667,7 +670,7 @@ export default function ReplaceMediaPage() {
               {toSearch.length
                 ? <Button variant={anyFound ? 'secondary' : 'primary'} icon="search" disabled={Boolean(busy)} onClick={() => void search(toSearch)}>{`Search ${toSearch.length} ${toSearch.length === 1 ? 'title' : 'titles'}`}</Button>
                 : <Button variant="secondary" icon="search" disabled={Boolean(busy) || bulkProgress !== null || !statusCounts.all} onClick={() => void search('all')}>Search all</Button>}
-              {anyFound && <Button variant="primary" icon={linkCount && !fetchCount ? 'check' : 'download'} disabled={!toDownload.length || Boolean(busy)} onClick={openConfirm}>
+              {anyFound && <Button variant="primary" icon={linkCount && !fetchCount ? 'check' : 'download'} disabled={!clients || !toDownload.length || Boolean(busy)} onClick={openConfirm}>
                 {`${submitLabel}${fetchBytes ? ` · ${formatBytes(fetchBytes)}` : ''}`}
                 {bytesChange !== 0 && <em className={`upgrade-batch-change ${bytesChange > 0 ? 'size-up' : 'size-down'}`} aria-label={`${bytesChange > 0 ? 'Larger' : 'Smaller'} by ${formatBytes(Math.abs(bytesChange))} in total`}>
                   <Icon name="caret" size={11} />{formatBytes(Math.abs(bytesChange))}

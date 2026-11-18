@@ -151,7 +151,7 @@ function formatUpgradeBytes(bytes?: number) {
 export function UpgradeMediaPage() {
   // The list as last loaded in this tab: shown at once on return.
   const [items, setItems] = useState<UpgradeCandidate[]>(() => cachedList<UpgradeCandidate>('upgradeMedia') ?? [])
-  const [clients, setClients] = useState<DownloadClient[]>([])
+  const [clients, setClients] = useState<DownloadClient[]>()
   const [profiles, setProfiles] = useState<QualityProfile[]>([])
   const [formatSections, setFormatSections] = useState<Record<string, string>>({})
   const [profileBusy, setProfileBusy] = useState(false)
@@ -203,46 +203,58 @@ export function UpgradeMediaPage() {
     searchResults && resultsTarget ? upgradeResultsToReleases(searchResults, resultsTarget.id, resultsTarget.mediaType) : []
   ), [searchResults, resultsTarget])
 
-  // `quiet`: no loading state (a cached list is showing, or a live refresh).
-  // Live refreshes also keep errors quiet; the first load always reports them.
   // Only the newest read, and none a change overtook, reaches the list.
-  const fresh = useFreshLoad()
-  const load = async (quiet = false, reportError = !quiet) => {
-    if (!quiet) setLoading(true)
+  const freshRows = useFreshLoad()
+  const freshCount = useFreshLoad()
+  const freshSettings = useFreshLoad()
+  const loadRows = async (reportError: boolean, prune: boolean) => {
     try {
-      await fresh(() => Promise.all([upgradesApi.upgradeCandidates(), integrationsApi.downloadClients(), settingsApi.qualityProfiles(), upgradesApi.upgradeCandidateCount(), settingsApi.customFormats(), settingsApi.customFormatLayout()]), ([nextItems, nextClients, nextProfiles, nextCount, nextFormats, nextLayout]) => {
-      rememberList('upgradeMedia', nextItems)
-      setItems(nextItems)
-      // Rows left out are kept by title, not by the upgrade's id: a search that
-      // drops an upgrade and a later one that finds it again gives it a new id.
-      // Ones saved by id move to the title's key, and a title's is only
-      // forgotten once two reads in a row leave it out.
-      if (nextItems.some((item) => item.targetKey && excludedRef.current.has(item.id))) {
-        setExcluded((current) => new Set([...current].map((key) => nextItems.find((item) => item.id === key)?.targetKey ?? key)))
-      }
-      const keys = nextItems.map(excludeKey)
-      pruneExcluded([...keys, ...lastExcludeKeys.current])
-      lastExcludeKeys.current = keys
-      setClients(nextClients)
-      setProfiles(nextProfiles)
-      // Token tooltips name a format by the section it is filed under on the
-      // Custom Formats page, so the layout is what turns an id into that name.
-      const formatNames = new Map(nextFormats.map((format) => [format.id, format.name]))
-      setFormatSections(Object.fromEntries(nextLayout.flatMap((section) => section.formatIds.flatMap((id) => {
-        const name = formatNames.get(id)
-        return name ? [[name.toLowerCase(), section.name] as const] : []
-      }))))
-      setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
-      setError('')
+      await freshRows(upgradesApi.upgradeCandidates, (nextItems) => {
+        rememberList('upgradeMedia', nextItems)
+        setItems(nextItems)
+        setLoading(false)
+        if (!prune) return
+        // Move exclusions saved by row id to the title key. Keep a title's
+        // exclusion until two reads in a row leave it out.
+        if (nextItems.some((item) => item.targetKey && excludedRef.current.has(item.id))) {
+          setExcluded((current) => new Set([...current].map((key) => nextItems.find((item) => item.id === key)?.targetKey ?? key)))
+        }
+        const keys = nextItems.map(excludeKey)
+        pruneExcluded([...keys, ...lastExcludeKeys.current])
+        lastExcludeKeys.current = keys
       })
     } catch (reason) {
       if (reportError) setError(reason instanceof Error ? reason.message : 'Could not load upgrade candidates.')
-    } finally {
-      if (!quiet) setLoading(false)
+      if (reportError) setLoading(false)
     }
   }
 
-  useEffect(() => { void load(cachedList('upgradeMedia') !== undefined, true) }, [])
+  const loadCount = () => freshCount(
+    upgradesApi.upgradeCandidateCount,
+    (count) => setReadOnlyRoots(count.readOnlyRoots ?? []),
+  ).catch(() => undefined)
+
+  const load = async (reportError = false) => {
+    if (reportError) setError('')
+    void loadCount()
+    void freshSettings(
+      () => Promise.all([integrationsApi.downloadClients(), settingsApi.qualityProfiles(), settingsApi.customFormats(), settingsApi.customFormatLayout()]),
+      ([nextClients, nextProfiles, nextFormats, nextLayout]) => {
+        setClients(nextClients)
+        setProfiles(nextProfiles)
+        const formatNames = new Map(nextFormats.map((format) => [format.id, format.name]))
+        setFormatSections(Object.fromEntries(nextLayout.flatMap((section) => section.formatIds.flatMap((id) => {
+          const name = formatNames.get(id)
+          return name ? [[name.toLowerCase(), section.name] as const] : []
+        }))))
+      },
+    ).catch((reason) => {
+      if (reportError) setError((current) => current || (reason instanceof Error ? reason.message : 'Could not load upgrade settings.'))
+    })
+    await loadRows(reportError, true)
+  }
+
+  useEffect(() => { void load(true) }, [])
 
   // Live updates. Progress events patch the downloading rows in place; only a
   // change of state (an upgrade submitted, finished or failed, a library
@@ -250,15 +262,8 @@ export function UpgradeMediaPage() {
   // profiles and formats change through this page's own actions, which load().
   const loadLiveRef = useRef(async () => {})
   loadLiveRef.current = async () => {
-    try {
-      await fresh(() => Promise.all([upgradesApi.upgradeCandidates(), upgradesApi.upgradeCandidateCount()]), ([nextItems, nextCount]) => {
-        rememberList('upgradeMedia', nextItems)
-        setItems(nextItems)
-        setReadOnlyRoots(nextCount.readOnlyRoots ?? [])
-      })
-    } catch {
-      // A missed refresh is retried by the next event or the poll.
-    }
+    void loadCount()
+    await loadRows(false, false)
   }
   useLiveEvent(['download.progress'], (event) => {
     let payload: { data?: Record<string, unknown> }
@@ -298,7 +303,7 @@ export function UpgradeMediaPage() {
       .then((rows) => {
         if (!alive) return
         setCategories(rows)
-        const client = clients.find((entry) => entry.id === clientId)
+        const client = clients?.find((entry) => entry.id === clientId)
         // Each title downloads into its own media folder's category; titles
         // from folders with different categories each keep theirs.
         const folderCategories = new Set(picked.map((item) => item.folderCategory ?? ''))
@@ -430,7 +435,7 @@ export function UpgradeMediaPage() {
         setMessage(`No release is an upgrade for ${target.mediaTitle} any more, so it left Upgrade Media.${failed}`)
       } else {
         if (failed) setMessage(failed.trim())
-        void load(true)
+        void load()
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not search the trackers again.') }
     finally { setResearching(false) }
@@ -455,7 +460,7 @@ export function UpgradeMediaPage() {
       const result = await upgradesApi.cleanupUpgrade(cleanupTarget.id, cleanup.confirmationToken)
       setCleanupTarget(null); setCleanup(null)
       setMessage(`Upgrade complete. Deleted ${result.deletedPaths.length} reviewed old-media ${result.deletedPaths.length === 1 ? 'target' : 'targets'}.`)
-      await load(true)
+      await load()
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the reviewed old media.') }
     finally { setBusyId('') }
   }
@@ -532,7 +537,7 @@ export function UpgradeMediaPage() {
   ), 0), [picked])
   const mediaType = folderItems[0]?.mediaType ?? 'movies'
   const noun = mediaType === 'movies' ? 'Movie' : 'Show'
-  const eligibleClients = useMemo(() => clients.filter((client) => client.enabled && client.scope === mediaType), [clients, mediaType])
+  const eligibleClients = useMemo(() => clients?.filter((client) => client.enabled && client.scope === mediaType) ?? [], [clients, mediaType])
 
   // One destination for the whole selection, chosen when the dialog opens.
   const openConfirm = () => {
@@ -826,7 +831,7 @@ export function UpgradeMediaPage() {
               <Dropdown
                 ariaLabel="Quality Profile for every upgrade candidate in this folder"
                 value={sharedProfile ?? MIXED_PROFILE}
-                disabled={profileBusy || !profileTargets.length}
+                disabled={!clients || profileBusy || !profileTargets.length}
                 options={[
                   ...(sharedProfile === undefined ? [{ value: MIXED_PROFILE, label: 'Mixed', disabled: true }] : []),
                   { value: '', label: defaultProfileLabel(profiles) },
@@ -840,7 +845,7 @@ export function UpgradeMediaPage() {
             <Button
               variant="primary"
               icon="download"
-              disabled={!picked.length || Boolean(busyId)}
+              disabled={!clients || !picked.length || Boolean(busyId)}
               onClick={openConfirm}
             >
               {`Upgrade ${picked.length} ${picked.length === 1 ? noun : `${noun}s`}${pickedBytes ? ` · ${formatBytes(pickedBytes)}` : ''}`}
