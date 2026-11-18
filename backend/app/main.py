@@ -2,6 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from time import perf_counter
 
 from fastapi import Depends, FastAPI
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
@@ -58,6 +59,28 @@ async def _qbittorrent_poll_loop(stop_event: asyncio.Event) -> None:
             continue
 
 logger = logging.getLogger(__name__)
+
+#: A request slower than this is logged, with how long it took.
+SLOW_REQUEST_MS = 1000
+#: The event loop runs every request and background loop in turn; a stall this
+#: long means something ran without letting anything else in.
+LOOP_STALL_MS = 250
+
+
+async def _event_loop_lag_monitor(stop_event: asyncio.Event) -> None:
+    """Log when the event loop was blocked, so a slow page can be traced to its cause."""
+
+    loop = asyncio.get_running_loop()
+    interval = 0.5
+    while not stop_event.is_set():
+        started = loop.time()
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            pass
+        stalled_ms = (loop.time() - started - interval) * 1000
+        if stalled_ms >= LOOP_STALL_MS:
+            logger.warning("event loop blocked for %d ms", stalled_ms, extra={"stalled_ms": round(stalled_ms)})
 
 
 @asynccontextmanager
@@ -116,10 +139,12 @@ async def lifespan(_: FastAPI):
         for library_id, kind in library_rows
     )
     results_task = asyncio.create_task(run_shared_results_refresher(stop_event, extra_pins=library_results))
+    lag_task = asyncio.create_task(_event_loop_lag_monitor(stop_event))
     try:
         yield
     finally:
         stop_event.set()
+        lag_task.cancel()
         cancel_all_runtime_jobs()
         # A poll already in flight is waiting on a qBittorrent HTTP call, which
         # can hang for as long as that host feels like. Shutdown must not depend
@@ -214,8 +239,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def security_headers(request, call_next):
+        started = perf_counter()
         response = await call_next(request)
         path = request.url.path
+        # How long the app took, for the browser's network panel (Server-Timing)
+        # and, when slow, for the log: a page that takes seconds names its request.
+        elapsed_ms = (perf_counter() - started) * 1000
+        response.headers.setdefault("Server-Timing", f"app;dur={elapsed_ms:.0f}")
+        if path.startswith("/api/") and elapsed_ms >= SLOW_REQUEST_MS:
+            logger.warning("slow request %s %s took %d ms", request.method, path, elapsed_ms,
+                           extra={"path": path, "duration_ms": round(elapsed_ms)})
         # Account and UI preferences do not change the library or media queues.
         affects_lists = not (
             path.startswith(("/api/v1/ui-selections/", "/api/v1/auth/sessions/"))

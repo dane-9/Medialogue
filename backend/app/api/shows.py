@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
 from app.api.tmdb import get_tmdb_client_factory
+from app.core.cooperate import pause_every
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
 from app.core.problem_types import problem_description, problem_title
@@ -210,7 +211,8 @@ async def _list_summaries(db: AsyncSession, shows: list[Show]) -> list[ShowSumma
     problems = await _problem_counts(db, show_ids)
 
     items = []
-    for show in shows:
+    for index, show in enumerate(shows):
+        await pause_every(index)
         total, counted_present, any_present = episodes.get(show.id, (0, 0, 0))
         if not total:
             state = "Present" if any_present else "Missing"

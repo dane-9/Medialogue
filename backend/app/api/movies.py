@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import require_admin, require_csrf
 from app.api.tmdb import get_tmdb_client_factory
+from app.core.cooperate import pause_every
 from app.core.errors import AppError
 from app.core.integration_config import get_integration_config_store
 from app.core.problem_types import problem_description, problem_title
@@ -209,8 +210,10 @@ async def _list_movies(
         (release.id for releases in active_by_movie.values() for release in releases),
         media_type="movies",
     )
-    items = [
-        _summary(
+    items = []
+    for index, movie in enumerate(movies):
+        await pause_every(index)
+        item = _summary(
             movie,
             problems.get(movie.id, 0),
             incoming_kinds.get(movie.id),
@@ -219,10 +222,8 @@ async def _list_movies(
                 for release in active_by_movie[movie.id]
             ),
         )
-        for movie in movies
-    ]
-    for item, movie in zip(items, movies):
         item.incoming_progress = incoming_progress.get(movie.id)
+        items.append(item)
     return items
 
 

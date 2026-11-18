@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.cooperate import pause_every
 from app.core.errors import AppError
 from app.integrations.torznab import TorznabClient, SearchResult
 from app.models.domain import (AssociationType, EpisodeMediaMap, Job, JobStatus, MediaDirectory, MediaFile, MediaType,
@@ -401,7 +402,8 @@ async def release_problems(
     problems: dict[UUID, ReleaseProblem] = {}
     affected_movies: set[UUID] = set()
     affected_shows: set[UUID] = set()
-    for release_id, (kind, owner_id, state) in releases.items():
+    for index, (release_id, (kind, owner_id, state)) in enumerate(releases.items()):
+        await pause_every(index)
         rows = links.get(release_id, [])
         sources = [torrent_id for torrent_id, association in rows if association != AssociationType.INCOMING]
         if rows and not sources:
