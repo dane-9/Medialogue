@@ -313,7 +313,7 @@ export function NewMediaPage() {
                     onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
                   >
                     <NewMediaDiscoveryEdition
-                      key={`${item.id}:${item.editionOverrideActive}:${item.manualEditionOverride ?? ''}`}
+                      key={`${item.id}:${item.editionOverrideActive}:${item.manualEditionOverride ?? ''}:${editionOptions.length > 0}`}
                       item={item}
                       options={editionOptions}
                       onChanged={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
@@ -452,7 +452,11 @@ function NewMediaDiscoveryEdition({ item, options, onChanged, onError }: { item:
     if (!update.edition?.trim()) return
     setSaving(true); onError('')
     try { onChanged(await discoveryApi.updateDiscoveryEdition(item.id, { mode: update.mode, edition: update.edition })) }
-    catch (reason) { onError(reason instanceof Error ? reason.message : 'Could not save the edition.') }
+    catch (reason) {
+      // Not saved: show what is stored, not the choice that failed.
+      setDraft(initialDiscoveryEdition(item, options))
+      onError(reason instanceof Error ? reason.message : 'Could not save the edition.')
+    }
     finally { setSaving(false) }
   }
   return <div className="new-media-edition-picker">

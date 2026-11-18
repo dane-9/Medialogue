@@ -292,7 +292,9 @@ export default function ReplaceMediaPage() {
     try {
       const value = await replacementsApi.searchNow(item.target_key)
       setResults(value)
-      setFullSelectedId(value.results.find((entry) => entry.selected)?.id ?? value.results.find((entry) => entry.recommended)?.id ?? '')
+      // The release highlighted before searching again stays highlighted while
+      // it is still listed; ids name their title, so another title's never is.
+      setFullSelectedId((current) => value.results.some((entry) => entry.id === current) ? current : value.results.find((entry) => entry.selected)?.id ?? value.results.find((entry) => entry.recommended)?.id ?? '')
       if (value.indexerFailures) setMessage(`${value.indexerFailures} indexer${value.indexerFailures === 1 ? '' : 's'} did not answer; the list shows what the others returned.`)
       void load()
     } catch (reason) {

@@ -320,7 +320,12 @@ function MovieEditionResolver({ problem, movie, options, loading, onSaved }: { p
     try {
       const result = await moviesApi.updateMovieReleaseEditions(movie.id, [update])
       await onSaved(result.duplicateResolved)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save movie editions.') }
+    } catch (reason) {
+      // Not saved: show what is stored, not the choice that failed.
+      const release = releases.find((item) => item.id === releaseId)
+      if (release) setDrafts((current) => ({ ...current, [releaseId]: initialEditionDraft(release, options) }))
+      setError(reason instanceof Error ? reason.message : 'Could not save movie editions.')
+    }
     finally { setSavingId('') }
   }
 

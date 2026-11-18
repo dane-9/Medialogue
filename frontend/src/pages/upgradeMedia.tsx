@@ -422,7 +422,8 @@ export function UpgradeMediaPage() {
     try {
       const value = await upgradesApi.searchUpgradeNow(target.id)
       setSearchResults(value)
-      setSelectedResultId(value.results.find((entry) => entry.selected)?.id ?? value.results.find((entry) => entry.recommended)?.id ?? '')
+      // The release highlighted before searching again stays highlighted while it is still listed.
+      setSelectedResultId((current) => value.results.some((entry) => entry.id === current) ? current : value.results.find((entry) => entry.selected)?.id ?? value.results.find((entry) => entry.recommended)?.id ?? '')
       const failed = value.indexerFailures ? ` ${value.indexerFailures} indexer${value.indexerFailures === 1 ? '' : 's'} did not answer.` : ''
       if (!value.candidateId) {
         setItems((current) => current.filter((item) => item.id !== target.id))
